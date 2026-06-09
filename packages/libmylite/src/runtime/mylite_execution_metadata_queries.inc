@@ -291,9 +291,67 @@ static bool ast_node_has_aggregate_window_expression(const struct mylite_sql_ast
     return false;
 }
 
+static bool ast_node_is_generic_aggregate_window_function(const struct mylite_sql_ast_node *node) {
+    static const char *const names[] = {
+        "JSON_ARRAYAGG",
+        "JSON_OBJECTAGG",
+        "STDDEV",
+        "STDDEV_POP",
+        "STDDEV_SAMP",
+        "VAR_POP",
+        "VAR_SAMP",
+        "VARIANCE",
+    };
+    const struct mylite_sql_ast_node *name = NULL;
+
+    if (node == NULL || node->kind != MYLITE_SQL_AST_GENERIC_FUNCTION) {
+        return false;
+    }
+
+    name = child_at(node, 0U);
+    if (name == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(names) / sizeof(names[0]); ++index) {
+        if (source_span_text_equals_ascii_case_insensitive(&name->span, names[index])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool source_span_text_equals_ascii_case_insensitive(
+    const struct mylite_sql_source_span *span,
+    const char *text
+) {
+    size_t length = strlen(text);
+
+    if (span == NULL || span->text == NULL || span->length != length) {
+        return false;
+    }
+    for (size_t index = 0U; index < length; ++index) {
+        char left = span->text[index];
+        char right = text[index];
+
+        if (left >= 'a' && left <= 'z') {
+            left = (char)(left - ('a' - 'A'));
+        }
+        if (right >= 'a' && right <= 'z') {
+            right = (char)(right - ('a' - 'A'));
+        }
+        if (left != right) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool ast_node_is_aggregate_function(const struct mylite_sql_ast_node *node) {
     if (node == NULL) {
         return false;
+    }
+    if (ast_node_is_generic_aggregate_window_function(node)) {
+        return true;
     }
 
     switch (node->kind) {

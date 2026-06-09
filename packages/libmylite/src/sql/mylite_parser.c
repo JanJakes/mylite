@@ -290,6 +290,9 @@ static bool map_keyword_token(
     int *out_parser_token
 );
 static bool token_text_is_count_function_name(const struct mylite_sql_token *token);
+static bool token_text_is_generic_aggregate_window_function_name(
+    const struct mylite_sql_token *token
+);
 static bool map_punctuation_token(const struct mylite_sql_token *token, int *out_parser_token);
 static bool map_operator_token(
     const struct mylite_sql_parser_state *state,
@@ -8878,6 +8881,26 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_generic_function(
     return function;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_generic_function_with_window_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_ast_node *arguments,
+    struct mylite_sql_token right_paren,
+    struct mylite_sql_ast_node *window_clause
+) {
+    struct mylite_sql_ast_node *function = NULL;
+
+    if (window_clause != NULL &&
+        !token_text_is_generic_aggregate_window_function_name(&function_token)) {
+        set_state_status(state, MYLITE_SQL_PARSE_SYNTAX_ERROR);
+        return NULL;
+    }
+
+    function =
+        mylite_sql_parser_make_generic_function(state, function_token, arguments, right_paren);
+    return mylite_sql_parser_attach_function_window_clause(function, window_clause);
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_function_argument_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *argument
@@ -11505,6 +11528,28 @@ static bool map_keyword_token(
 
 static bool token_text_is_count_function_name(const struct mylite_sql_token *token) {
     return token_text_equals(token, "COUNT");
+}
+
+static bool token_text_is_generic_aggregate_window_function_name(
+    const struct mylite_sql_token *token
+) {
+    static const char *const names[] = {
+        "JSON_ARRAYAGG",
+        "JSON_OBJECTAGG",
+        "STDDEV",
+        "STDDEV_POP",
+        "STDDEV_SAMP",
+        "VAR_POP",
+        "VAR_SAMP",
+        "VARIANCE",
+    };
+
+    for (size_t index = 0U; index < sizeof(names) / sizeof(names[0]); ++index) {
+        if (token_text_equals(token, names[index])) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool map_punctuation_token(const struct mylite_sql_token *token, int *out_parser_token) {

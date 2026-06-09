@@ -103,6 +103,24 @@ static int test_aggregate_window_surfaces(void) {
     );
     failures += execute_error(
         database,
+        "SELECT JSON_ARRAYAGG(j) OVER () FROM numbers",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "aggregate window functions are not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT STDDEV_SAMP(j) OVER (ORDER BY id) FROM numbers",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "aggregate window functions are not supported",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT SUM(c/d) FROM numbers",
         (struct expected_sql_error){
             .code = mysql_error_parse,

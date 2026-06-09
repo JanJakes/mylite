@@ -430,8 +430,11 @@ tests.
 The parser admits common aggregate-window `OVER` syntax for the current
 `COUNT(*)`, `COUNT(column)`, `COUNT(DISTINCT column)`, `SUM()` argument subset,
 column-argument `AVG()` / `MIN()` / `MAX()` / bitwise aggregates, and
-`GROUP_CONCAT(...)`. Execution of aggregate-window forms is explicitly
-unsupported. See [parser aggregate window syntax](docs/specs/parser-aggregate-window-syntax/specs.md).
+`GROUP_CONCAT(...)`, plus JSON and statistical aggregate-window placeholders
+such as `JSON_ARRAYAGG(...) OVER ...`, `JSON_OBJECTAGG(...) OVER ...`, and
+`STDDEV_SAMP(...) OVER ...`. Execution of aggregate-window forms is explicitly
+unsupported. See [parser aggregate window syntax](docs/specs/parser-aggregate-window-syntax/specs.md)
+and [parser corpus JSON/statistical aggregate window surfaces](docs/specs/parser-corpus-json-stat-aggregate-window-surfaces/specs.md).
 
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |

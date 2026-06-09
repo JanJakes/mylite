@@ -3,6 +3,7 @@
 static int test_aggregate_argument_placeholders(void);
 static int test_group_concat_and_group_keys(void);
 static int test_interval_window_frames(void);
+static int test_json_statistical_aggregate_windows(void);
 static int parse_ok(const char *sql);
 
 int main(void) {
@@ -11,6 +12,7 @@ int main(void) {
     failures += test_aggregate_argument_placeholders();
     failures += test_group_concat_and_group_keys();
     failures += test_interval_window_frames();
+    failures += test_json_statistical_aggregate_windows();
 
     return failures == 0 ? 0 : 1;
 }
@@ -213,6 +215,60 @@ static int test_interval_window_frames(void) {
         statement,
         MYLITE_SQL_AST_SELECT_STATEMENT,
         "interval window frame SELECT"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_json_statistical_aggregate_windows(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *function = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    int failures = 0;
+
+    failures += parse_ok("SELECT JSON_ARRAYAGG(j) OVER () FROM numbers");
+    failures +=
+        parse_ok("SELECT JSON_OBJECTAGG(name, j) OVER w FROM numbers WINDOW w AS (ORDER BY id)");
+    failures += parse_ok("SELECT STDDEV_SAMP(j) OVER (ORDER BY id ROWS CURRENT ROW), "
+                         "VARIANCE(j) OVER (PARTITION BY k) FROM numbers");
+
+    failures += parser_test_parse_sql(
+        "SELECT JSON_ARRAYAGG(j) OVER () FROM numbers",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    function = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    arguments = parser_test_child_at(function, 1U);
+    failures += parser_test_expect_node(
+        function,
+        MYLITE_SQL_AST_GENERIC_FUNCTION,
+        "JSON_ARRAYAGG window placeholder"
+    );
+    failures += parser_test_expect_child_count(function, 3U, "JSON_ARRAYAGG window child count");
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(function, 0U),
+        "JSON_ARRAYAGG",
+        "JSON_ARRAYAGG function name"
+    );
+    failures += parser_test_expect_node(
+        arguments,
+        MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST,
+        "JSON_ARRAYAGG argument list"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(function, 2U),
+        MYLITE_SQL_AST_WINDOW_SPEC,
+        "JSON_ARRAYAGG window spec"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT FOO(j) OVER () FROM numbers",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
     );
     mylite_sql_parse_result_deinit(&result);
 

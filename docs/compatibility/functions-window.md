@@ -8,9 +8,13 @@ clauses, including parser-only interval bounds in `RANGE` frames. Those broader 
 the executable baseline described per function below. Common aggregate-window
 forms such as `COUNT(*) OVER (...)`, `SUM(column) OVER (...)`, and selected
 literal/arithmetic aggregate-window placeholders are also parse-level
-compatibility only and are rejected on execution; see
+compatibility only and are rejected on execution. JSON and statistical
+aggregate-window placeholders such as `JSON_ARRAYAGG(...) OVER ...` and
+`STDDEV_SAMP(...) OVER ...` follow the same parser-only policy; see
 [parser aggregate window syntax](../specs/parser-aggregate-window-syntax/specs.md)
-and [parser corpus aggregate/window surfaces](../specs/parser-corpus-aggregate-window-surfaces/specs.md).
+and [parser corpus aggregate/window surfaces](../specs/parser-corpus-aggregate-window-surfaces/specs.md)
+and
+[parser corpus JSON/statistical aggregate window surfaces](../specs/parser-corpus-json-stat-aggregate-window-surfaces/specs.md).
 Value and navigation functions admit MySQL-shaped `RESPECT NULLS` and
 `IGNORE NULLS` clauses. `RESPECT NULLS` follows the default behavior inside the
 current executable envelopes, while `IGNORE NULLS` returns MySQL's unsupported

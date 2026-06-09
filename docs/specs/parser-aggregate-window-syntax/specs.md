@@ -29,9 +29,9 @@ frames.
 Out of scope:
 
 - execution of aggregate window functions;
-- JSON aggregate windows such as `JSON_ARRAYAGG(...) OVER ...` and
-  `JSON_OBJECTAGG(...) OVER ...`;
-- statistical aggregate windows such as `STDDEV_SAMP(...) OVER ...`;
+- JSON and statistical aggregate windows, which are covered by the later
+  [parser corpus JSON/statistical aggregate window surfaces](../parser-corpus-json-stat-aggregate-window-surfaces/specs.md)
+  placeholder slice;
 - window-function result metadata beyond parser AST shape;
 - real aggregate-window planning, SQLite SQL generation, frame evaluation, or
   MySQL exact numeric widening semantics.

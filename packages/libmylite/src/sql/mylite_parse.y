@@ -7151,17 +7151,19 @@ expression(A) ::= TEMPORAL_LITERAL_INTRODUCER STRING(T). {
 expression(A) ::= qualified_identifier(B). {
     A = B;
 }
-expression(A) ::= IDENTIFIER(T) LPAREN RPAREN(R). {
-    A = mylite_sql_parser_make_generic_function(state, T, NULL, R);
+expression(A) ::= IDENTIFIER(T) LPAREN RPAREN(R) aggregate_window_opt(W). {
+    A = mylite_sql_parser_make_generic_function_with_window_clause(state, T, NULL, R, W);
 }
-expression(A) ::= IDENTIFIER(T) LPAREN function_argument_list(B) RPAREN(R). {
-    A = mylite_sql_parser_make_generic_function(state, T, B, R);
+expression(A) ::= IDENTIFIER(T) LPAREN function_argument_list(B) RPAREN(R)
+                  aggregate_window_opt(W). {
+    A = mylite_sql_parser_make_generic_function_with_window_clause(state, T, B, R, W);
 }
-expression(A) ::= keyword_function_token(T) LPAREN RPAREN(R). {
-    A = mylite_sql_parser_make_generic_function(state, T, NULL, R);
+expression(A) ::= keyword_function_token(T) LPAREN RPAREN(R) aggregate_window_opt(W). {
+    A = mylite_sql_parser_make_generic_function_with_window_clause(state, T, NULL, R, W);
 }
-expression(A) ::= keyword_function_token(T) LPAREN function_argument_list(B) RPAREN(R). {
-    A = mylite_sql_parser_make_generic_function(state, T, B, R);
+expression(A) ::= keyword_function_token(T) LPAREN function_argument_list(B) RPAREN(R)
+                  aggregate_window_opt(W). {
+    A = mylite_sql_parser_make_generic_function_with_window_clause(state, T, B, R, W);
 }
 expression(A) ::= match_against_expression(B). {
     A = B;

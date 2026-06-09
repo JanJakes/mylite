@@ -6,10 +6,14 @@ The parser also admits common MySQL aggregate-window `OVER` syntax for the
 current `COUNT(*)`, `COUNT(column)`, `COUNT(DISTINCT column)`, `SUM()` argument
 subset, selected parser-only literal/arithmetic/nested aggregate arguments,
 column-argument `AVG()` / `MIN()` / `MAX()` / bitwise aggregates, and
-`GROUP_CONCAT(...)`. Execution of aggregate-window forms is explicitly
+`GROUP_CONCAT(...)`, plus JSON and statistical aggregate-window placeholders
+such as `JSON_ARRAYAGG(...) OVER ...`, `JSON_OBJECTAGG(...) OVER ...`, and
+`STDDEV_SAMP(...) OVER ...`. Execution of aggregate-window forms is explicitly
 unsupported and returns a deterministic diagnostic. See
 [parser aggregate window syntax](../specs/parser-aggregate-window-syntax/specs.md)
-and [parser corpus aggregate/window surfaces](../specs/parser-corpus-aggregate-window-surfaces/specs.md).
+and [parser corpus aggregate/window surfaces](../specs/parser-corpus-aggregate-window-surfaces/specs.md)
+and
+[parser corpus JSON/statistical aggregate window surfaces](../specs/parser-corpus-json-stat-aggregate-window-surfaces/specs.md).
 
 | Function | Status | Notes |
 | --- | --- | --- |
@@ -25,12 +29,12 @@ and [parser corpus aggregate/window surfaces](../specs/parser-corpus-aggregate-w
 | `MAX()` | 🟡 | Limited one-item `SELECT MAX(column) [AS alias]` over one descriptor-backed persistent base table with optional source table alias, source-qualified column argument, and baseline `WHERE`, plus limited grouped form `SELECT group_column, MAX(column) FROM source ... GROUP BY group_column` over one base table or the current two-source inner/cartesian/left-outer joined source envelope with optional selected-result `HAVING`; integer/`NULL` and nonbinary string descriptor columns only. The parser additionally admits literal arguments as unsupported placeholders. No executable expression arguments, executable literal arguments, `DISTINCT`, full grouping, aggregate ordering, binary string arguments, or executable window forms |
 | `MIN()` | 🟡 | Limited one-item `SELECT MIN(column) [AS alias]` over one descriptor-backed persistent base table with optional source table alias, source-qualified column argument, and baseline `WHERE`, plus limited grouped form `SELECT group_column, MIN(column) FROM source ... GROUP BY group_column` over one base table or the current two-source inner/cartesian/left-outer joined source envelope with optional selected-result `HAVING`; integer/`NULL` and nonbinary string descriptor columns only. The parser additionally admits literal arguments as unsupported placeholders. No executable expression arguments, executable literal arguments, `DISTINCT`, full grouping, aggregate ordering, binary string arguments, or executable window forms |
 | `STD()` | ❌ | Return population standard deviation |
-| `STDDEV()` | ❌ | Return population standard deviation |
-| `STDDEV_POP()` | ❌ | Return population standard deviation |
-| `STDDEV_SAMP()` | ❌ | Return sample standard deviation |
+| `STDDEV()` | ⚪ | Parser-admitted generic function and aggregate-window placeholder with explicit unsupported diagnostics; no executable population standard deviation |
+| `STDDEV_POP()` | ⚪ | Parser-admitted generic function and aggregate-window placeholder with explicit unsupported diagnostics; no executable population standard deviation |
+| `STDDEV_SAMP()` | ⚪ | Parser-admitted generic function and aggregate-window placeholder with explicit unsupported diagnostics; no executable sample standard deviation |
 | `SUM()` | 🟡 | Limited one-item `SELECT SUM(column) [AS alias]` and narrow `SELECT SUM(string_length(column)) [AS alias]` over one descriptor-backed persistent base table with optional source table alias, source-qualified column argument, and baseline `WHERE`, plus limited grouped form `SELECT group_column, SUM(column) FROM source ... GROUP BY group_column` over one base table or the current two-source inner/cartesian/left-outer joined source envelope with optional selected-result `HAVING`, and narrow grouped `SUM(column + column)` over two integer descriptor columns for metadata-size queries; integer/`NULL` descriptor columns or supported string-length row-scalar expressions only, with results limited to MyLite's signed-64 text result envelope. The parser additionally admits literal, simple arithmetic, cast/conversion, nested aggregate-window, and `SUM(DISTINCT expr)` placeholders and rejects unsupported execution deterministically. No general executable expression arguments beyond the documented string-length and narrow grouped addition forms, executable literals, executable `DISTINCT`, exact decimal result widening beyond signed 64 bits, full grouping, aggregate ordering, or executable window forms |
-| `VAR_POP()` | ❌ | Return population standard variance |
-| `VAR_SAMP()` | ❌ | Return sample variance |
-| `VARIANCE()` | ❌ | Return population standard variance |
+| `VAR_POP()` | ⚪ | Parser-admitted generic function and aggregate-window placeholder with explicit unsupported diagnostics; no executable population variance |
+| `VAR_SAMP()` | ⚪ | Parser-admitted generic function and aggregate-window placeholder with explicit unsupported diagnostics; no executable sample variance |
+| `VARIANCE()` | ⚪ | Parser-admitted generic function and aggregate-window placeholder with explicit unsupported diagnostics; no executable population variance |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

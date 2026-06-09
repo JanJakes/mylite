@@ -81,6 +81,27 @@ expect_output \
 "SELECT COUNT(*) OVER (ORDER BY dt RANGE INTERVAL 1 DAY PRECEDING) FROM t ORDER BY id;"
 
 expect_output \
+    "json array aggregate window" \
+    "1	[10]
+2	[10, 20]" \
+    "USE ${DATABASE}; "\
+"SELECT id, JSON_ARRAYAGG(j) OVER (PARTITION BY k ORDER BY id) FROM t ORDER BY id;"
+
+expect_output \
+    "json object aggregate window" \
+    "1	{\"ann\": 10}
+2	{\"ann\": 10, \"bob\": 20}" \
+    "USE ${DATABASE}; "\
+"SELECT id, JSON_OBJECTAGG(name, j) OVER (PARTITION BY k ORDER BY id) FROM t ORDER BY id;"
+
+expect_output \
+    "statistical aggregate window" \
+    "1	NULL
+2	7.0710678118654755" \
+    "USE ${DATABASE}; "\
+"SELECT id, STDDEV_SAMP(j) OVER (PARTITION BY k ORDER BY id) FROM t ORDER BY id;"
+
+expect_output \
     "string grouping with rollup" \
     "1foo,2foo
 1foo,2foo" \

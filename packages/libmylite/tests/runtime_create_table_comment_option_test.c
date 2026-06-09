@@ -632,7 +632,7 @@ static int test_comment_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "multi-action ALTER TABLE does not support this action",
         }
     );
     failures += execute_error(

@@ -79,6 +79,12 @@ static int execute_alter_table_modify_column_statement(
     }
 
     rc = plan_alter_table_modify_column(database, statement, &plan);
+    if (rc == MYLITE_OK &&
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_INSTANT &&
+        !plan.is_noop && !plan.is_metadata_only) {
+        set_alter_table_rebuild_instant_error(database);
+        rc = MYLITE_ERROR;
+    }
     if (rc == MYLITE_OK && !plan.adds_inline_primary_key) {
         rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
     }
@@ -117,6 +123,12 @@ static int execute_alter_table_change_column_statement(
     }
 
     rc = plan_alter_table_change_column(database, statement, &plan);
+    if (rc == MYLITE_OK &&
+        mylite_sql_ast_node_alter_algorithm(statement) == MYLITE_SQL_AST_ALTER_ALGORITHM_INSTANT &&
+        !plan.is_noop && !plan.is_metadata_only) {
+        set_alter_table_rebuild_instant_error(database);
+        rc = MYLITE_ERROR;
+    }
     if (rc == MYLITE_OK && !plan.adds_inline_primary_key) {
         rc = validate_sql_require_primary_key_for_table_descriptor(database, &plan.table);
     }

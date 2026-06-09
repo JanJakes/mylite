@@ -5,6 +5,7 @@ static int plan_column(
 ) {
     const struct mylite_sql_ast_node *type_node = NULL;
     const struct mylite_sql_ast_node *nullability_node = NULL;
+    const struct mylite_sql_ast_node *visibility_node = NULL;
     int rc = MYLITE_OK;
 
     *out_column = (struct planned_column){0};
@@ -37,9 +38,11 @@ static int plan_column(
     }
     if (rc == MYLITE_OK) {
         nullability_node = child_with_kind(column_node, MYLITE_SQL_AST_NULLABILITY);
+        visibility_node = child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_VISIBILITY_ATTRIBUTE);
         out_column->nullability = mylite_sql_ast_node_nullability(nullability_node);
         out_column->is_nullable = column_is_nullable(nullability_node);
-        out_column->is_visible = true;
+        out_column->is_visible = mylite_sql_ast_node_column_visibility(visibility_node) !=
+                                 MYLITE_SQL_AST_COLUMN_VISIBILITY_INVISIBLE;
     }
     if (rc == MYLITE_OK) {
         rc = apply_column_generated_attribute(database, column_node, out_column);
@@ -192,6 +195,8 @@ static int validate_column_attributes(
     size_t charset_count = 0U;
     size_t collation_count = 0U;
     size_t generated_count = 0U;
+    size_t visibility_count = 0U;
+    size_t srid_count = 0U;
     bool previous_attribute_allows_check_enforcement = false;
     int rc = MYLITE_OK;
 
@@ -225,6 +230,12 @@ static int validate_column_attributes(
         } else if (child->kind == MYLITE_SQL_AST_GENERATED_COLUMN_CLAUSE) {
             ++generated_count;
             previous_attribute_allows_check_enforcement = false;
+        } else if (child->kind == MYLITE_SQL_AST_COLUMN_VISIBILITY_ATTRIBUTE) {
+            ++visibility_count;
+            previous_attribute_allows_check_enforcement = false;
+        } else if (child->kind == MYLITE_SQL_AST_COLUMN_SRID_ATTRIBUTE) {
+            ++srid_count;
+            previous_attribute_allows_check_enforcement = false;
         } else if (child->kind == MYLITE_SQL_AST_CHECK_CONSTRAINT_DEFINITION) {
             /* Column CHECK attributes are planned after all columns are known. */
             previous_attribute_allows_check_enforcement = true;
@@ -254,8 +265,16 @@ static int validate_column_attributes(
         set_unsupported_error(database, "duplicate column attributes are not supported");
         return MYLITE_ERROR;
     }
+    if (visibility_count > 1U || srid_count > 1U) {
+        set_unsupported_error(database, "duplicate column attributes are not supported");
+        return MYLITE_ERROR;
+    }
     if (column == NULL) {
         return MYLITE_OK;
+    }
+    if (srid_count > 0U && !planned_column_is_spatial(column)) {
+        set_wrong_usage_error(database, "SRID", "non-geometry column");
+        return MYLITE_ERROR;
     }
 
     rc = validate_generated_column_attributes(database, column);

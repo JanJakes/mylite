@@ -1296,7 +1296,7 @@ static int test_alter_table_rename_failure_diagnostics_and_unwinding(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "multi-action ALTER TABLE does not support this action",
         }
     );
     failures += execute_error(
@@ -1305,7 +1305,7 @@ static int test_alter_table_rename_failure_diagnostics_and_unwinding(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "multi-action ALTER TABLE does not support this action",
         }
     );
     failures += execute_error(

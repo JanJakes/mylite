@@ -2075,7 +2075,7 @@ static int test_alter_table_drop_foreign_key_statements(void) {
 
     failures += parser_test_parse_sql(
         "ALTER TABLE child DROP FOREIGN KEY fk_child_parent, DROP INDEX fk_child_parent;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -2341,7 +2341,7 @@ static int test_alter_table_rename_index_statements(void) {
 
     failures += parser_test_parse_sql(
         "ALTER TABLE rename_idx RENAME INDEX k_old TO k_new, RENAME INDEX k2 TO k3;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -2479,7 +2479,7 @@ static int test_alter_table_index_visibility_statements(void) {
 
     failures += parser_test_parse_sql(
         "ALTER TABLE idx_visibility ALTER INDEX k_v INVISIBLE, ALTER INDEX k2 VISIBLE;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -2630,7 +2630,7 @@ static int test_alter_table_check_constraint_statements(void) {
 
     failures += parser_test_parse_sql(
         "ALTER TABLE checked ADD CHECK (a > 0), ADD CHECK (b > 0);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -2751,7 +2751,7 @@ static int test_alter_table_drop_primary_key_statements(void) {
 
     failures += parser_test_parse_sql(
         "ALTER TABLE drop_pk DROP CONSTRAINT `PRIMARY`, DROP INDEX k_v;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -2857,7 +2857,7 @@ static int test_alter_table_auto_increment_option_statements(void) {
 
     failures += parser_test_parse_sql(
         "ALTER TABLE auto_counter AUTO_INCREMENT=10, ADD COLUMN other INT;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);

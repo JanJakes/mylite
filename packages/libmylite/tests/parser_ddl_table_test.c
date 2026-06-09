@@ -3647,7 +3647,7 @@ static int test_alter_table_comment_statements(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "ALTER TABLE commented COMMENT='first', COMMENT='second';",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -5714,7 +5714,7 @@ static int test_alter_table_default_charset_collation_statements(void) {
 
     failures += parser_test_parse_sql(
         "ALTER TABLE old_name DEFAULT CHARSET=utf8mb4, COLLATE=utf8mb4_0900_ai_ci;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -6107,11 +6107,8 @@ static int test_alter_table_force_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "ALTER TABLE old_name FORCE, FORCE;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("ALTER TABLE old_name FORCE, FORCE;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
@@ -6200,7 +6197,7 @@ static int test_alter_table_disable_enable_keys_statements(void) {
 
     failures += parser_test_parse_sql(
         "ALTER TABLE old_name DISABLE KEYS, ENABLE KEYS;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);

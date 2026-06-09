@@ -1201,7 +1201,8 @@ static int test_multi_action_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part =
+                "multi-action ALTER TABLE does not yet support warning-producing ADD INDEX",
         }
     );
     failures += expect_statement_ok(database, "CREATE TABLE sp (p POINT NOT NULL)");

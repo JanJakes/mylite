@@ -9094,6 +9094,8 @@ static bool table_option_value_is_default(const struct mylite_sql_ast_node *valu
 static bool create_table_storage_statistics_option_is_valid(
     const struct mylite_sql_ast_node *table_option
 );
+static bool create_table_placeholder_option_is_valid(const struct mylite_sql_ast_node *table_option
+);
 static int validate_create_table_storage_statistics_combination(
     struct mylite_db *database,
     const struct planned_create_table *plan
@@ -16180,6 +16182,10 @@ static int plan_create_table_items(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *item_list,
     struct planned_create_table *out_plan
+);
+static int validate_create_table_visible_columns(
+    struct mylite_db *database,
+    const struct planned_create_table *plan
 );
 static int plan_create_table_item(
     struct mylite_db *database,

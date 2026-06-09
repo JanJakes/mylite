@@ -53,6 +53,8 @@ struct column_attribute_positions {
     size_t unique_key;
     size_t auto_increment;
     size_t generated;
+    size_t visibility;
+    size_t srid;
 };
 
 enum placeholder_statement_kind {
@@ -3235,6 +3237,92 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_table_delay_key_write_option(
     return option;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_tablespace_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token tablespace_token,
+    struct mylite_sql_ast_node *tablespace_name,
+    struct mylite_sql_ast_node *storage
+) {
+    struct mylite_sql_source_span span = span_from_token(&tablespace_token);
+    struct mylite_sql_ast_node *option = NULL;
+
+    if (storage != NULL) {
+        span = span_join(span, storage->span);
+    } else if (tablespace_name != NULL) {
+        span = span_join(span, tablespace_name->span);
+    }
+
+    option = make_node(state, MYLITE_SQL_AST_TABLE_TABLESPACE_OPTION, span);
+    if (option == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(option, tablespace_name);
+    if (storage != NULL) {
+        mylite_sql_ast_node_append_child(option, storage);
+    }
+    return option;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_union_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token union_token,
+    struct mylite_sql_ast_node *table_names,
+    struct mylite_sql_token end_token
+) {
+    struct mylite_sql_source_span span =
+        span_join(span_from_token(&union_token), span_from_token(&end_token));
+    struct mylite_sql_ast_node *option = make_node(state, MYLITE_SQL_AST_TABLE_UNION_OPTION, span);
+    if (option == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(option, table_names);
+    return option;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_insert_method_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token insert_method_token,
+    struct mylite_sql_ast_node *value
+) {
+    struct mylite_sql_source_span span = span_from_token(&insert_method_token);
+    struct mylite_sql_ast_node *option = NULL;
+
+    if (value != NULL) {
+        span = span_join(span, value->span);
+    }
+
+    option = make_node(state, MYLITE_SQL_AST_TABLE_INSERT_METHOD_OPTION, span);
+    if (option == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(option, value);
+    return option;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_storage_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token storage_token,
+    struct mylite_sql_ast_node *value
+) {
+    struct mylite_sql_source_span span = span_from_token(&storage_token);
+    struct mylite_sql_ast_node *option = NULL;
+
+    if (value != NULL) {
+        span = span_join(span, value->span);
+    }
+
+    option = make_node(state, MYLITE_SQL_AST_TABLE_STORAGE_OPTION, span);
+    if (option == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(option, value);
+    return option;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_index_option_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *option
@@ -4921,7 +5009,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_modify_column_sta
     struct mylite_sql_token alter_token,
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *column,
-    struct mylite_sql_ast_node *position
+    struct mylite_sql_ast_node *position,
+    struct mylite_sql_alter_table_options options
 ) {
     struct mylite_sql_source_span span = span_from_token(&alter_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -4944,6 +5033,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_modify_column_sta
     if (position != NULL) {
         mylite_sql_ast_node_append_child(statement, position);
     }
+    apply_alter_table_options(statement, options);
     return statement;
 }
 
@@ -4953,7 +5043,8 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_change_column_sta
     struct mylite_sql_ast_node *table_name,
     struct mylite_sql_ast_node *old_column_name,
     struct mylite_sql_ast_node *column,
-    struct mylite_sql_ast_node *position
+    struct mylite_sql_ast_node *position,
+    struct mylite_sql_alter_table_options options
 ) {
     struct mylite_sql_source_span span = span_from_token(&alter_token);
     struct mylite_sql_ast_node *statement = NULL;
@@ -4979,6 +5070,7 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_alter_table_change_column_sta
     if (position != NULL) {
         mylite_sql_ast_node_append_child(statement, position);
     }
+    apply_alter_table_options(statement, options);
     return statement;
 }
 
@@ -8838,6 +8930,45 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_column_comment_attribute(
     return attribute;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_visibility_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token visibility_token,
+    enum mylite_sql_ast_column_visibility visibility
+) {
+    struct mylite_sql_ast_node *attribute = make_node(
+        state,
+        MYLITE_SQL_AST_COLUMN_VISIBILITY_ATTRIBUTE,
+        span_from_token(&visibility_token)
+    );
+    if (attribute == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_column_visibility(attribute, visibility);
+    return attribute;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_column_srid_attribute(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token srid_token,
+    struct mylite_sql_ast_node *value
+) {
+    struct mylite_sql_source_span span = span_from_token(&srid_token);
+    struct mylite_sql_ast_node *attribute = NULL;
+
+    if (value != NULL) {
+        span = span_join(span, value->span);
+    }
+
+    attribute = make_node(state, MYLITE_SQL_AST_COLUMN_SRID_ATTRIBUTE, span);
+    if (attribute == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(attribute, value);
+    return attribute;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_generated_column_clause(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token as_token,
@@ -8974,6 +9105,8 @@ static int scan_column_attribute_positions(
         .unique_key = (size_t)-1,
         .auto_increment = (size_t)-1,
         .generated = (size_t)-1,
+        .visibility = (size_t)-1,
+        .srid = (size_t)-1,
     };
 
     attribute = attributes == NULL ? NULL : attributes->first_child;
@@ -9009,6 +9142,12 @@ static int scan_column_attribute_positions(
             break;
         case MYLITE_SQL_AST_GENERATED_COLUMN_CLAUSE:
             rc = record_column_attribute_position(state, &out_positions->generated, position);
+            break;
+        case MYLITE_SQL_AST_COLUMN_VISIBILITY_ATTRIBUTE:
+            rc = record_column_attribute_position(state, &out_positions->visibility, position);
+            break;
+        case MYLITE_SQL_AST_COLUMN_SRID_ATTRIBUTE:
+            rc = record_column_attribute_position(state, &out_positions->srid, position);
             break;
         default:
             break;
@@ -10220,7 +10359,10 @@ static bool map_keyword_token(
         {"ENUM", MYLITE_SQL_PARSE_ENUM},
         {"COMMENT", MYLITE_SQL_PARSE_COMMENT},
         {"STATUS", MYLITE_SQL_PARSE_STATUS},
+        {"DISK", MYLITE_SQL_PARSE_DISK},
         {"STORAGE", MYLITE_SQL_PARSE_STORAGE},
+        {"TABLESPACE", MYLITE_SQL_PARSE_TABLESPACE},
+        {"INSERT_METHOD", MYLITE_SQL_PARSE_INSERT_METHOD},
         {"VARIABLES", MYLITE_SQL_PARSE_VARIABLES},
         {"DEFAULT", MYLITE_SQL_PARSE_DEFAULT},
         {"CHAR", MYLITE_SQL_PARSE_CHAR},
@@ -10261,6 +10403,8 @@ static bool map_keyword_token(
         {"LOCK", MYLITE_SQL_PARSE_LOCK},
         {"LOCKED", MYLITE_SQL_PARSE_LOCKED},
         {"LOAD", MYLITE_SQL_PARSE_LOAD},
+        {"LAST", MYLITE_SQL_PARSE_LAST},
+        {"MEMORY", MYLITE_SQL_PARSE_MEMORY},
         {"MODE", MYLITE_SQL_PARSE_MODE},
         {"NOWAIT", MYLITE_SQL_PARSE_NOWAIT},
         {"READ", MYLITE_SQL_PARSE_READ},
@@ -10407,6 +10551,7 @@ static bool map_keyword_token(
         {"BOOLEAN", MYLITE_SQL_PARSE_BOOLEAN},
         {"INVISIBLE", MYLITE_SQL_PARSE_INVISIBLE},
         {"VISIBLE", MYLITE_SQL_PARSE_VISIBLE},
+        {"SRID", MYLITE_SQL_PARSE_SRID},
         {"INT1", MYLITE_SQL_PARSE_INT1},
         {"INT2", MYLITE_SQL_PARSE_INT2},
         {"INT3", MYLITE_SQL_PARSE_INT3},

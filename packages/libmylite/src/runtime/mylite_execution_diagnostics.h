@@ -18,6 +18,7 @@ void mylite_execution_diagnostics_set_unsupported_error(
 void mylite_execution_diagnostics_set_alter_table_instant_lock_error(struct mylite_db *database);
 void mylite_execution_diagnostics_set_alter_table_instant_algorithm_error(struct mylite_db *database
 );
+void mylite_execution_diagnostics_set_alter_table_rebuild_instant_error(struct mylite_db *database);
 void mylite_execution_diagnostics_set_alter_table_add_foreign_key_instant_error(
     struct mylite_db *database
 );
@@ -768,6 +769,8 @@ int mylite_execution_diagnostics_status_from_parse_status(enum mylite_sql_parse_
       mylite_execution_diagnostics_set_alter_table_instant_lock_error
 #  define set_alter_table_instant_algorithm_error                                                  \
       mylite_execution_diagnostics_set_alter_table_instant_algorithm_error
+#  define set_alter_table_rebuild_instant_error                                                    \
+      mylite_execution_diagnostics_set_alter_table_rebuild_instant_error
 #  define set_alter_table_add_foreign_key_instant_error                                            \
       mylite_execution_diagnostics_set_alter_table_add_foreign_key_instant_error
 #  define set_alter_table_add_foreign_key_inplace_error                                            \

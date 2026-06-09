@@ -838,14 +838,14 @@ static int test_syntax_errors(void) {
 
     failures += parser_test_parse_sql(
         "ALTER TABLE old_name RENAME new_name, ADD COLUMN added INT;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
         "ALTER TABLE old_name RENAME new_name, RENAME final_name;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -1076,7 +1076,7 @@ static int test_syntax_errors(void) {
 
     failures += parser_test_parse_sql(
         "ALTER TABLE old_name DROP COLUMN added, DROP COLUMN other;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -1174,7 +1174,7 @@ static int test_syntax_errors(void) {
 
     failures += parser_test_parse_sql(
         "ALTER TABLE old_name RENAME COLUMN old_col TO new_col, RENAME COLUMN other TO final;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -1233,14 +1233,14 @@ static int test_syntax_errors(void) {
 
     failures += parser_test_parse_sql(
         "ALTER TABLE old_name MODIFY old_col BIGINT, ALGORITHM=INSTANT;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
         "ALTER TABLE old_name MODIFY old_col BIGINT, LOCK=DEFAULT;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -1289,14 +1289,14 @@ static int test_syntax_errors(void) {
 
     failures += parser_test_parse_sql(
         "ALTER TABLE old_name CHANGE old_col new_col BIGINT, ALGORITHM=INSTANT;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
         "ALTER TABLE old_name CHANGE old_col new_col BIGINT, LOCK=DEFAULT;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -1361,7 +1361,7 @@ static int test_syntax_errors(void) {
 
     failures += parser_test_parse_sql(
         "ALTER TABLE old_name ALTER old_col SET INVISIBLE, ALTER other SET VISIBLE;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -1373,16 +1373,13 @@ static int test_syntax_errors(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "CREATE TABLE t (id INT INVISIBLE);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("CREATE TABLE t (id INT INVISIBLE);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
         "ALTER TABLE t ADD COLUMN v INT INVISIBLE;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);

@@ -170,6 +170,8 @@ static int validate_alter_table_algorithm_lock_options(
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_CHANGE_COLUMN_STATEMENT:
         return validate_alter_table_column_algorithm_options(database, algorithm);
 
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
@@ -335,13 +337,14 @@ static int validate_alter_table_key_maintenance_algorithm_lock_options(
     return MYLITE_OK;
 }
 
-static bool alter_table_statement_accepts_algorithm_lock_options(
-    enum mylite_sql_ast_node_kind kind
+static bool alter_table_statement_accepts_algorithm_lock_options(enum mylite_sql_ast_node_kind kind
 ) {
     switch (kind) {
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_RENAME_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_MODIFY_COLUMN_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_TABLE_CHANGE_COLUMN_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_PRIMARY_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_DROP_PRIMARY_KEY_STATEMENT:
     case MYLITE_SQL_AST_ALTER_TABLE_ADD_INDEX_STATEMENT:
@@ -363,8 +366,7 @@ static bool alter_table_statement_accepts_algorithm_lock_options(
     }
 }
 
-static bool alter_table_add_index_statement_is_fulltext(
-    const struct mylite_sql_ast_node *statement
+static bool alter_table_add_index_statement_is_fulltext(const struct mylite_sql_ast_node *statement
 ) {
     const struct mylite_sql_ast_node *index_definition = child_at(statement, 1U);
 

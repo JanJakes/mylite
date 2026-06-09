@@ -42,6 +42,7 @@ enum {
     mysql_error_data_out_of_range = 1264,
     mysql_error_data_truncated = 1265,
     mysql_error_data_too_long = 1406,
+    mysql_error_algorithm_not_supported_reason = 1846,
 };
 
 struct expected_sql_error {
@@ -1336,9 +1337,9 @@ static int test_modify_column_diagnostics_and_rollback(void) {
         database,
         "ALTER TABLE numbers MODIFY n BIGINT, ALGORITHM=INSTANT",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .code = mysql_error_algorithm_not_supported_reason,
+            .sqlstate = "0A000",
+            .message_part = "ALGORITHM=INSTANT is not supported. Reason: Need to rebuild the table",
         }
     );
 

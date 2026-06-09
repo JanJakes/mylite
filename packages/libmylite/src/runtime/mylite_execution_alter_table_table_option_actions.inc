@@ -93,6 +93,8 @@ static int plan_alter_table_storage_statistics(
             );
         } else if (create_table_storage_statistics_option_is_valid(table_option)) {
             rc = apply_table_storage_statistics_option(database, table_option, &option_plan);
+        } else if (create_table_placeholder_option_is_valid(table_option)) {
+            rc = MYLITE_OK;
         } else {
             set_parse_error(database, NULL);
             rc = MYLITE_ERROR;

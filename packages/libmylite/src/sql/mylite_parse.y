@@ -46,7 +46,7 @@
 %right UPLUS UMINUS BITWISE_NOT.
 
 %fallback IDENTIFIER SAVEPOINT ENFORCED NO ACTION ALGORITHM COMMENT CASCADED DEFINER INVOKER
-    MERGE SECURITY TEMPTABLE UNDEFINED.
+    DISK INSERT_METHOD LAST MEMORY MERGE SECURITY SRID TABLESPACE TEMPTABLE UNDEFINED.
 
 %type integer_type_name { struct mylite_sql_integer_type_name_tokens }
 %type text_type_name { struct mylite_sql_text_type_tokens }
@@ -90,6 +90,7 @@
 %type alter_lock_value { struct mylite_sql_alter_lock_value }
 %type predicate_comparison_operator { struct mylite_sql_comparison_operator_tokens }
 %type dml_function_token { struct mylite_sql_token }
+%type merge_insert_method { struct mylite_sql_ast_node * }
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -1377,6 +1378,37 @@ table_option(A) ::= AVG_ROW_LENGTH(T) equal_opt INTEGER(V). {
 table_option(A) ::= DELAY_KEY_WRITE(T) equal_opt table_default_or_integer_option_value(V). {
     A = mylite_sql_parser_make_table_delay_key_write_option(state, T, V);
 }
+table_option(A) ::= TABLESPACE(T) equal_opt option_name(N). {
+    A = mylite_sql_parser_make_table_tablespace_option(state, T, N, NULL);
+}
+table_option(A) ::= STORAGE(T) MEMORY(V). {
+    A = mylite_sql_parser_make_table_storage_option(
+        state,
+        T,
+        mylite_sql_parser_make_identifier(state, V));
+}
+table_option(A) ::= STORAGE(T) DISK(V). {
+    A = mylite_sql_parser_make_table_storage_option(
+        state,
+        T,
+        mylite_sql_parser_make_identifier(state, V));
+}
+table_option(A) ::= UNION(T) equal_opt LPAREN table_name_list(L) RPAREN(R). {
+    A = mylite_sql_parser_make_table_union_option(state, T, L, R);
+}
+table_option(A) ::= INSERT_METHOD(T) equal_opt merge_insert_method(V). {
+    A = mylite_sql_parser_make_table_insert_method_option(state, T, V);
+}
+
+merge_insert_method(A) ::= NO(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+merge_insert_method(A) ::= FIRST(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+merge_insert_method(A) ::= LAST(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 
 row_format_option_value(A) ::= DEFAULT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
@@ -2142,6 +2174,51 @@ alter_table_multi_first_action(A) ::= ADD(A1) named_primary_key_definition(P) CO
             P,
             mylite_sql_parser_empty_alter_table_options()));
 }
+alter_table_multi_first_action(A) ::= ADD(A1) fulltext_index_definition(I) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_add_index_statement(
+            state,
+            A1,
+            NULL,
+            I,
+            mylite_sql_parser_empty_alter_table_options()));
+}
+alter_table_multi_first_action(A) ::= ADD(A1) spatial_index_definition(I) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_add_index_statement(
+            state,
+            A1,
+            NULL,
+            I,
+            mylite_sql_parser_empty_alter_table_options()));
+}
+alter_table_multi_first_action(A) ::= ADD(A1) foreign_key_definition(F) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_add_foreign_key_statement(
+            state,
+            A1,
+            NULL,
+            F,
+            mylite_sql_parser_empty_alter_table_options()));
+}
+alter_table_multi_first_action(A) ::= ADD(A1) check_constraint_definition(C) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_add_check_statement(state, A1, NULL, C));
+}
+alter_table_multi_first_action(A) ::= DROP(A1) column_keyword_opt identifier(C) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_drop_column_statement(
+            state,
+            A1,
+            NULL,
+            C,
+            mylite_sql_parser_empty_alter_table_options()));
+}
 alter_table_multi_first_action(A) ::= DROP(A1) INDEX identifier(I) COMMA. {
     A = mylite_sql_parser_make_alter_table_action_list(
         state,
@@ -2172,17 +2249,96 @@ alter_table_multi_first_action(A) ::= DROP(A1) PRIMARY KEY(K) COMMA. {
             K,
             mylite_sql_parser_empty_alter_table_options()));
 }
+alter_table_multi_first_action(A) ::= DROP(A1) FOREIGN KEY identifier(I) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_drop_foreign_key_statement(
+            state,
+            A1,
+            NULL,
+            I,
+            mylite_sql_parser_empty_alter_table_options()));
+}
+alter_table_multi_first_action(A) ::= DROP(A1) CONSTRAINT identifier(C) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_drop_constraint_statement(
+            state,
+            A1,
+            NULL,
+            C,
+            mylite_sql_parser_empty_alter_table_options()));
+}
+alter_table_multi_first_action(A) ::= DROP(A1) CHECK identifier(C) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_drop_check_statement(state, A1, NULL, C));
+}
+alter_table_multi_first_action(A) ::=
+    RENAME(A1) table_rename_connector_opt table_name(T) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_rename_statement(state, A1, NULL, T));
+}
+alter_table_multi_first_action(A) ::= RENAME(A1) COLUMN identifier(O) TO identifier(N) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_rename_column_statement(
+            state,
+            A1,
+            NULL,
+            O,
+            N,
+            mylite_sql_parser_empty_alter_table_options()));
+}
+alter_table_multi_first_action(A) ::=
+    RENAME(A1) INDEX old_identifier(O) TO new_identifier(N) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_rename_index_statement(
+            state,
+            A1,
+            NULL,
+            O,
+            N,
+            mylite_sql_parser_empty_alter_table_options()));
+}
+alter_table_multi_first_action(A) ::=
+    RENAME(A1) KEY old_identifier(O) TO new_identifier(N) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_rename_index_statement(
+            state,
+            A1,
+            NULL,
+            O,
+            N,
+            mylite_sql_parser_empty_alter_table_options()));
+}
 alter_table_multi_first_action(A) ::=
     MODIFY(A1) column_keyword_opt column_definition(C) column_position_opt(P) COMMA. {
     A = mylite_sql_parser_make_alter_table_action_list(
         state,
-        mylite_sql_parser_make_alter_table_modify_column_statement(state, A1, NULL, C, P));
+        mylite_sql_parser_make_alter_table_modify_column_statement(
+            state,
+            A1,
+            NULL,
+            C,
+            P,
+            mylite_sql_parser_empty_alter_table_options()));
 }
 alter_table_multi_first_action(A) ::=
     CHANGE(A1) column_keyword_opt identifier(O) column_definition(C) column_position_opt(P) COMMA. {
     A = mylite_sql_parser_make_alter_table_action_list(
         state,
-        mylite_sql_parser_make_alter_table_change_column_statement(state, A1, NULL, O, C, P));
+        mylite_sql_parser_make_alter_table_change_column_statement(
+            state,
+            A1,
+            NULL,
+            O,
+            C,
+            P,
+            mylite_sql_parser_empty_alter_table_options()));
 }
 alter_table_multi_first_action(A) ::=
     ALTER(A1) column_keyword_opt identifier(C) SET DEFAULT(D) NULL(N) COMMA. {
@@ -2203,6 +2359,104 @@ alter_table_multi_first_action(A) ::=
     A = mylite_sql_parser_make_alter_table_action_list(
         state,
         mylite_sql_parser_make_alter_table_drop_default_statement(state, A1, NULL, C, D));
+}
+alter_table_multi_first_action(A) ::= ALTER(A1) INDEX identifier(I) VISIBLE(V) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_index_visibility_statement(
+            state, A1, NULL, I, V, MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE,
+            mylite_sql_parser_empty_alter_table_options()));
+}
+alter_table_multi_first_action(A) ::= ALTER(A1) INDEX identifier(I) INVISIBLE(V) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_index_visibility_statement(
+            state, A1, NULL, I, V, MYLITE_SQL_AST_COLUMN_VISIBILITY_INVISIBLE,
+            mylite_sql_parser_empty_alter_table_options()));
+}
+alter_table_multi_first_action(A) ::=
+    ALTER(A1) column_keyword_opt identifier(C) SET VISIBLE(V) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_column_visibility_statement(
+            state, A1, NULL, C, V, MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE));
+}
+alter_table_multi_first_action(A) ::=
+    ALTER(A1) column_keyword_opt identifier(C) SET INVISIBLE(V) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_column_visibility_statement(
+            state, A1, NULL, C, V, MYLITE_SQL_AST_COLUMN_VISIBILITY_INVISIBLE));
+}
+alter_table_multi_first_action(A) ::=
+    ALTER(A1) CHECK identifier(C) check_enforcement_required(E) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_alter_check_statement(state, A1, NULL, C, E));
+}
+alter_table_multi_first_action(A) ::= AUTO_INCREMENT(T) equal_opt INTEGER(V) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_auto_increment_statement(
+            state,
+            T,
+            NULL,
+            mylite_sql_parser_make_table_auto_increment_option(
+                state,
+                T,
+                mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_INTEGER))));
+}
+alter_table_multi_first_action(A) ::= alter_table_default_charset_collation_option(O) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_default_charset_collation_statement(
+            state,
+            (struct mylite_sql_token){0},
+            NULL,
+            mylite_sql_parser_make_table_option_list(state, O)));
+}
+alter_table_multi_first_action(A) ::= alter_table_multi_convert_character_set_action(C) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(state, C);
+}
+alter_table_multi_first_action(A) ::= COMMENT(C) equal_opt STRING(V) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_comment_statement(
+            state,
+            C,
+            NULL,
+            mylite_sql_parser_make_table_comment_option(
+                state,
+                C,
+                mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING)),
+            mylite_sql_parser_empty_alter_table_options()));
+}
+alter_table_multi_first_action(A) ::= FORCE(A1) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_force_statement(
+            state,
+            A1,
+            NULL,
+            mylite_sql_parser_empty_alter_table_options()));
+}
+alter_table_multi_first_action(A) ::= DISABLE(A1) KEYS COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_disable_keys_statement(
+            state,
+            A1,
+            NULL,
+            mylite_sql_parser_empty_alter_table_options()));
+}
+alter_table_multi_first_action(A) ::= ENABLE(A1) KEYS COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_enable_keys_statement(
+            state,
+            A1,
+            NULL,
+            mylite_sql_parser_empty_alter_table_options()));
 }
 
 alter_table_multi_action(A) ::=
@@ -2265,6 +2519,41 @@ alter_table_multi_action(A) ::= ADD(A1) named_primary_key_definition(P). {
         P,
         mylite_sql_parser_empty_alter_table_options());
 }
+alter_table_multi_action(A) ::= ADD(A1) fulltext_index_definition(I). {
+    A = mylite_sql_parser_make_alter_table_add_index_statement(
+        state,
+        A1,
+        NULL,
+        I,
+        mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::= ADD(A1) spatial_index_definition(I). {
+    A = mylite_sql_parser_make_alter_table_add_index_statement(
+        state,
+        A1,
+        NULL,
+        I,
+        mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::= ADD(A1) foreign_key_definition(F). {
+    A = mylite_sql_parser_make_alter_table_add_foreign_key_statement(
+        state,
+        A1,
+        NULL,
+        F,
+        mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::= ADD(A1) check_constraint_definition(C). {
+    A = mylite_sql_parser_make_alter_table_add_check_statement(state, A1, NULL, C);
+}
+alter_table_multi_action(A) ::= DROP(A1) column_keyword_opt identifier(C). {
+    A = mylite_sql_parser_make_alter_table_drop_column_statement(
+        state,
+        A1,
+        NULL,
+        C,
+        mylite_sql_parser_empty_alter_table_options());
+}
 alter_table_multi_action(A) ::= DROP(A1) INDEX identifier(I). {
     A = mylite_sql_parser_make_alter_table_drop_index_statement(
         state,
@@ -2289,13 +2578,75 @@ alter_table_multi_action(A) ::= DROP(A1) PRIMARY KEY(K). {
         K,
         mylite_sql_parser_empty_alter_table_options());
 }
+alter_table_multi_action(A) ::= DROP(A1) FOREIGN KEY identifier(I). {
+    A = mylite_sql_parser_make_alter_table_drop_foreign_key_statement(
+        state,
+        A1,
+        NULL,
+        I,
+        mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::= DROP(A1) CONSTRAINT identifier(C). {
+    A = mylite_sql_parser_make_alter_table_drop_constraint_statement(
+        state,
+        A1,
+        NULL,
+        C,
+        mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::= DROP(A1) CHECK identifier(C). {
+    A = mylite_sql_parser_make_alter_table_drop_check_statement(state, A1, NULL, C);
+}
+alter_table_multi_action(A) ::= RENAME(A1) table_rename_connector_opt table_name(T). {
+    A = mylite_sql_parser_make_alter_table_rename_statement(state, A1, NULL, T);
+}
+alter_table_multi_action(A) ::= RENAME(A1) COLUMN identifier(O) TO identifier(N). {
+    A = mylite_sql_parser_make_alter_table_rename_column_statement(
+        state,
+        A1,
+        NULL,
+        O,
+        N,
+        mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::= RENAME(A1) INDEX old_identifier(O) TO new_identifier(N). {
+    A = mylite_sql_parser_make_alter_table_rename_index_statement(
+        state,
+        A1,
+        NULL,
+        O,
+        N,
+        mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::= RENAME(A1) KEY old_identifier(O) TO new_identifier(N). {
+    A = mylite_sql_parser_make_alter_table_rename_index_statement(
+        state,
+        A1,
+        NULL,
+        O,
+        N,
+        mylite_sql_parser_empty_alter_table_options());
+}
 alter_table_multi_action(A) ::=
     MODIFY(A1) column_keyword_opt column_definition(C) column_position_opt(P). {
-    A = mylite_sql_parser_make_alter_table_modify_column_statement(state, A1, NULL, C, P);
+    A = mylite_sql_parser_make_alter_table_modify_column_statement(
+        state,
+        A1,
+        NULL,
+        C,
+        P,
+        mylite_sql_parser_empty_alter_table_options());
 }
 alter_table_multi_action(A) ::=
     CHANGE(A1) column_keyword_opt identifier(O) column_definition(C) column_position_opt(P). {
-    A = mylite_sql_parser_make_alter_table_change_column_statement(state, A1, NULL, O, C, P);
+    A = mylite_sql_parser_make_alter_table_change_column_statement(
+        state,
+        A1,
+        NULL,
+        O,
+        C,
+        P,
+        mylite_sql_parser_empty_alter_table_options());
 }
 alter_table_multi_action(A) ::=
     ALTER(A1) column_keyword_opt identifier(C) SET DEFAULT(D) NULL(N). {
@@ -2309,6 +2660,87 @@ alter_table_multi_action(A) ::=
 }
 alter_table_multi_action(A) ::= ALTER(A1) column_keyword_opt identifier(C) DROP DEFAULT(D). {
     A = mylite_sql_parser_make_alter_table_drop_default_statement(state, A1, NULL, C, D);
+}
+alter_table_multi_action(A) ::= ALTER(A1) INDEX identifier(I) VISIBLE(V). {
+    A = mylite_sql_parser_make_alter_table_index_visibility_statement(
+        state, A1, NULL, I, V, MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE,
+        mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::= ALTER(A1) INDEX identifier(I) INVISIBLE(V). {
+    A = mylite_sql_parser_make_alter_table_index_visibility_statement(
+        state, A1, NULL, I, V, MYLITE_SQL_AST_COLUMN_VISIBILITY_INVISIBLE,
+        mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::= ALTER(A1) column_keyword_opt identifier(C) SET VISIBLE(V). {
+    A = mylite_sql_parser_make_alter_table_column_visibility_statement(
+        state, A1, NULL, C, V, MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE);
+}
+alter_table_multi_action(A) ::= ALTER(A1) column_keyword_opt identifier(C) SET INVISIBLE(V). {
+    A = mylite_sql_parser_make_alter_table_column_visibility_statement(
+        state, A1, NULL, C, V, MYLITE_SQL_AST_COLUMN_VISIBILITY_INVISIBLE);
+}
+alter_table_multi_action(A) ::= ALTER(A1) CHECK identifier(C) check_enforcement_required(E). {
+    A = mylite_sql_parser_make_alter_table_alter_check_statement(state, A1, NULL, C, E);
+}
+alter_table_multi_action(A) ::= AUTO_INCREMENT(T) equal_opt INTEGER(V). {
+    A = mylite_sql_parser_make_alter_table_auto_increment_statement(
+        state,
+        T,
+        NULL,
+        mylite_sql_parser_make_table_auto_increment_option(
+            state,
+            T,
+            mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_INTEGER)));
+}
+alter_table_multi_action(A) ::= alter_table_default_charset_collation_option_list(O). {
+    A = mylite_sql_parser_make_alter_table_default_charset_collation_statement(
+        state,
+        (struct mylite_sql_token){0},
+        NULL,
+        O);
+}
+alter_table_multi_action(A) ::= alter_table_multi_convert_character_set_action(A1). {
+    A = A1;
+}
+alter_table_multi_action(A) ::= COMMENT(C) equal_opt STRING(V). {
+    A = mylite_sql_parser_make_alter_table_comment_statement(
+        state,
+        C,
+        NULL,
+        mylite_sql_parser_make_table_comment_option(
+            state,
+            C,
+            mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING)),
+        mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::= alter_table_storage_statistics_option(O). {
+    A = mylite_sql_parser_make_alter_table_storage_statistics_statement(
+        state,
+        (struct mylite_sql_token){0},
+        NULL,
+        mylite_sql_parser_make_table_option_list(state, O),
+        mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::= FORCE(A1). {
+    A = mylite_sql_parser_make_alter_table_force_statement(
+        state,
+        A1,
+        NULL,
+        mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::= DISABLE(A1) KEYS. {
+    A = mylite_sql_parser_make_alter_table_disable_keys_statement(
+        state,
+        A1,
+        NULL,
+        mylite_sql_parser_empty_alter_table_options());
+}
+alter_table_multi_action(A) ::= ENABLE(A1) KEYS. {
+    A = mylite_sql_parser_make_alter_table_enable_keys_statement(
+        state,
+        A1,
+        NULL,
+        mylite_sql_parser_empty_alter_table_options());
 }
 
 alter_table_add_column_statement(A) ::=
@@ -2476,14 +2908,14 @@ alter_table_rename_column_statement(A) ::=
 
 alter_table_modify_column_statement(A) ::=
     ALTER(A1) TABLE table_name(T) MODIFY column_keyword_opt column_definition(C)
-    column_position_opt(P). {
-    A = mylite_sql_parser_make_alter_table_modify_column_statement(state, A1, T, C, P);
+    column_position_opt(P) alter_table_option_tail_opt(O). {
+    A = mylite_sql_parser_make_alter_table_modify_column_statement(state, A1, T, C, P, O);
 }
 
 alter_table_change_column_statement(A) ::=
     ALTER(A1) TABLE table_name(T) CHANGE column_keyword_opt identifier(O) column_definition(C)
-    column_position_opt(P). {
-    A = mylite_sql_parser_make_alter_table_change_column_statement(state, A1, T, O, C, P);
+    column_position_opt(P) alter_table_option_tail_opt(P2). {
+    A = mylite_sql_parser_make_alter_table_change_column_statement(state, A1, T, O, C, P, P2);
 }
 
 column_position_opt(A) ::= . {
@@ -2637,6 +3069,89 @@ alter_table_convert_character_set_statement(A) ::=
         mylite_sql_parser_make_table_option_list(
             state,
             mylite_sql_parser_make_table_charset_option(
+            state,
+            C,
+            mylite_sql_parser_make_identifier(state, D))));
+}
+
+alter_table_multi_convert_character_set_action(A) ::=
+    CONVERT TO CHARACTER(C) SET option_name(N) convert_character_set_collate_opt(O). {
+    A = mylite_sql_parser_make_alter_table_convert_character_set_statement(
+        state,
+        C,
+        NULL,
+        mylite_sql_parser_append_table_option(
+            state,
+            mylite_sql_parser_make_table_option_list(
+                state,
+                mylite_sql_parser_make_table_charset_option(state, C, N)),
+            O));
+}
+alter_table_multi_convert_character_set_action(A) ::=
+    CONVERT TO CHARACTER(C) SET BINARY(N) convert_character_set_collate_opt(O). {
+    A = mylite_sql_parser_make_alter_table_convert_character_set_statement(
+        state,
+        C,
+        NULL,
+        mylite_sql_parser_append_table_option(
+            state,
+            mylite_sql_parser_make_table_option_list(
+                state,
+                mylite_sql_parser_make_table_charset_option(
+                    state,
+                    C,
+                    mylite_sql_parser_make_identifier(state, N))),
+            O));
+}
+alter_table_multi_convert_character_set_action(A) ::=
+    CONVERT TO CHARSET(C) option_name(N) convert_character_set_collate_opt(O). {
+    A = mylite_sql_parser_make_alter_table_convert_character_set_statement(
+        state,
+        C,
+        NULL,
+        mylite_sql_parser_append_table_option(
+            state,
+            mylite_sql_parser_make_table_option_list(
+                state,
+                mylite_sql_parser_make_table_charset_option(state, C, N)),
+            O));
+}
+alter_table_multi_convert_character_set_action(A) ::=
+    CONVERT TO CHARSET(C) BINARY(N) convert_character_set_collate_opt(O). {
+    A = mylite_sql_parser_make_alter_table_convert_character_set_statement(
+        state,
+        C,
+        NULL,
+        mylite_sql_parser_append_table_option(
+            state,
+            mylite_sql_parser_make_table_option_list(
+                state,
+                mylite_sql_parser_make_table_charset_option(
+                    state,
+                    C,
+                    mylite_sql_parser_make_identifier(state, N))),
+            O));
+}
+alter_table_multi_convert_character_set_action(A) ::= CONVERT TO CHARACTER(C) SET DEFAULT(D). {
+    A = mylite_sql_parser_make_alter_table_convert_character_set_statement(
+        state,
+        C,
+        NULL,
+        mylite_sql_parser_make_table_option_list(
+            state,
+            mylite_sql_parser_make_table_charset_option(
+                state,
+                C,
+                mylite_sql_parser_make_identifier(state, D))));
+}
+alter_table_multi_convert_character_set_action(A) ::= CONVERT TO CHARSET(C) DEFAULT(D). {
+    A = mylite_sql_parser_make_alter_table_convert_character_set_statement(
+        state,
+        C,
+        NULL,
+        mylite_sql_parser_make_table_option_list(
+            state,
+            mylite_sql_parser_make_table_charset_option(
                 state,
                 C,
                 mylite_sql_parser_make_identifier(state, D))));
@@ -2741,6 +3256,27 @@ alter_table_storage_statistics_option(A) ::= AVG_ROW_LENGTH(T) equal_opt INTEGER
 alter_table_storage_statistics_option(A) ::=
     DELAY_KEY_WRITE(T) equal_opt table_default_or_integer_option_value(V). {
     A = mylite_sql_parser_make_table_delay_key_write_option(state, T, V);
+}
+alter_table_storage_statistics_option(A) ::= TABLESPACE(T) equal_opt option_name(N). {
+    A = mylite_sql_parser_make_table_tablespace_option(state, T, N, NULL);
+}
+alter_table_storage_statistics_option(A) ::= STORAGE(T) MEMORY(V). {
+    A = mylite_sql_parser_make_table_storage_option(
+        state,
+        T,
+        mylite_sql_parser_make_identifier(state, V));
+}
+alter_table_storage_statistics_option(A) ::= STORAGE(T) DISK(V). {
+    A = mylite_sql_parser_make_table_storage_option(
+        state,
+        T,
+        mylite_sql_parser_make_identifier(state, V));
+}
+alter_table_storage_statistics_option(A) ::= UNION(T) equal_opt LPAREN table_name_list(L) RPAREN(R). {
+    A = mylite_sql_parser_make_table_union_option(state, T, L, R);
+}
+alter_table_storage_statistics_option(A) ::= INSERT_METHOD(T) equal_opt merge_insert_method(V). {
+    A = mylite_sql_parser_make_table_insert_method_option(state, T, V);
 }
 
 alter_table_order_by_statement(A) ::=
@@ -10417,6 +10953,9 @@ identifier(A) ::= AFTER(T). {
 identifier(A) ::= FIRST(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= LAST(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= TEXT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -10561,6 +11100,18 @@ identifier(A) ::= STATUS(T). {
 identifier(A) ::= STORAGE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= DISK(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= MEMORY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= TABLESPACE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= INSERT_METHOD(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= CHARSET(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -10613,6 +11164,9 @@ identifier(A) ::= VISIBLE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= INVISIBLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SRID(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= AUTO_INCREMENT(T). {
@@ -11197,6 +11751,24 @@ column_attribute(A) ::= COMMENT(C) STRING(V). {
         state,
         C,
         mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING));
+}
+column_attribute(A) ::= VISIBLE(T). {
+    A = mylite_sql_parser_make_column_visibility_attribute(
+        state,
+        T,
+        MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE);
+}
+column_attribute(A) ::= INVISIBLE(T). {
+    A = mylite_sql_parser_make_column_visibility_attribute(
+        state,
+        T,
+        MYLITE_SQL_AST_COLUMN_VISIBILITY_INVISIBLE);
+}
+column_attribute(A) ::= SRID(T) INTEGER(V). {
+    A = mylite_sql_parser_make_column_srid_attribute(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_INTEGER));
 }
 column_attribute(A) ::= generated_column_clause(B). {
     A = B;

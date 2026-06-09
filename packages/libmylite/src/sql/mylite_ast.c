@@ -798,6 +798,7 @@ enum mylite_sql_ast_column_visibility mylite_sql_ast_node_column_visibility(
         return node->payload.alter_table_options.visibility;
     }
     if (node->kind != MYLITE_SQL_AST_ALTER_TABLE_COLUMN_VISIBILITY_STATEMENT &&
+        node->kind != MYLITE_SQL_AST_COLUMN_VISIBILITY_ATTRIBUTE &&
         node->kind != MYLITE_SQL_AST_INDEX_VISIBILITY_OPTION) {
         return MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE;
     }
@@ -1236,6 +1237,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "column_collation_attribute";
     case MYLITE_SQL_AST_COLUMN_BINARY_COLLATION_ATTRIBUTE:
         return "column_binary_collation_attribute";
+    case MYLITE_SQL_AST_COLUMN_VISIBILITY_ATTRIBUTE:
+        return "column_visibility_attribute";
+    case MYLITE_SQL_AST_COLUMN_SRID_ATTRIBUTE:
+        return "column_srid_attribute";
     case MYLITE_SQL_AST_GENERATED_COLUMN_CLAUSE:
         return "generated_column_clause";
     case MYLITE_SQL_AST_GENERATED_COLUMN_VIRTUAL:
@@ -2076,6 +2081,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "table_avg_row_length_option";
     case MYLITE_SQL_AST_TABLE_DELAY_KEY_WRITE_OPTION:
         return "table_delay_key_write_option";
+    case MYLITE_SQL_AST_TABLE_TABLESPACE_OPTION:
+        return "table_tablespace_option";
+    case MYLITE_SQL_AST_TABLE_UNION_OPTION:
+        return "table_union_option";
+    case MYLITE_SQL_AST_TABLE_INSERT_METHOD_OPTION:
+        return "table_insert_method_option";
+    case MYLITE_SQL_AST_TABLE_STORAGE_OPTION:
+        return "table_storage_option";
     case MYLITE_SQL_AST_INSERT_SET_STATEMENT:
         return "insert_set_statement";
     case MYLITE_SQL_AST_INSERT_ASSIGNMENT_LIST:

@@ -1097,7 +1097,7 @@ static int test_drop_column_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "You have an error",
+            .message_part = "multi-action ALTER TABLE does not support this action",
         }
     );
     failures += execute_error(

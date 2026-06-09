@@ -164,7 +164,7 @@ static int alter_table_modify_column_in_mutation(
             plan->column.logical_type,
             plan->column.physical_type,
             plan->column.is_nullable,
-            true,
+            plan->column.is_visible,
             plan->column.is_auto_increment,
             plan->column.default_kind,
             plan->column.default_integer,

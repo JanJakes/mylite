@@ -73,6 +73,17 @@ void mylite_execution_diagnostics_set_alter_table_instant_algorithm_error(struct
     );
 }
 
+void mylite_execution_diagnostics_set_alter_table_rebuild_instant_error(struct mylite_db *database
+) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_algorithm_not_supported_reason,
+        "0A000",
+        "ALGORITHM=INSTANT is not supported. Reason: Need to rebuild the table to change column "
+        "type. Try ALGORITHM=COPY/INPLACE."
+    );
+}
+
 void mylite_execution_diagnostics_set_alter_table_add_foreign_key_instant_error(
     struct mylite_db *database
 ) {

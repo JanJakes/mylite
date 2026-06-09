@@ -88,11 +88,32 @@ static int plan_create_table(
     if (rc == MYLITE_OK) {
         rc = validate_create_table_auto_increment_columns(database, out_plan, true);
     }
+    if (rc == MYLITE_OK) {
+        rc = validate_create_table_visible_columns(database, out_plan);
+    }
     if (rc != MYLITE_OK) {
         planned_create_table_deinit(out_plan);
         return rc;
     }
 
+    return MYLITE_OK;
+}
+
+static int validate_create_table_visible_columns(
+    struct mylite_db *database,
+    const struct planned_create_table *plan
+) {
+    size_t visible_count = 0U;
+
+    for (size_t column_index = 0U; column_index < plan->column_count; ++column_index) {
+        if (plan->columns[column_index].is_visible) {
+            ++visible_count;
+        }
+    }
+    if (visible_count == 0U) {
+        set_must_have_visible_column_error(database);
+        return MYLITE_ERROR;
+    }
     return MYLITE_OK;
 }
 

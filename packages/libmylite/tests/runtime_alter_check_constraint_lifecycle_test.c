@@ -450,7 +450,7 @@ static int test_alter_check_diagnostics(void) {
         (struct expected_sql_error){
             mysql_error_parse,
             "42000",
-            "syntax",
+            "multi-action ALTER TABLE does not support this action",
         }
     );
     failures += expect_statement_ok(database, "CREATE TABLE reuse_owner (a INT)");

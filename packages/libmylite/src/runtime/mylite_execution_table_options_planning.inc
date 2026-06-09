@@ -277,6 +277,9 @@ static int validate_create_table_option(
     if (create_table_storage_statistics_option_is_valid(table_option)) {
         return MYLITE_OK;
     }
+    if (create_table_placeholder_option_is_valid(table_option)) {
+        return MYLITE_OK;
+    }
 
     set_parse_error(database, NULL);
     return MYLITE_ERROR;
@@ -1027,6 +1030,22 @@ static bool create_table_storage_statistics_option_is_valid(
     case MYLITE_SQL_AST_TABLE_MAX_ROWS_OPTION:
     case MYLITE_SQL_AST_TABLE_AVG_ROW_LENGTH_OPTION:
     case MYLITE_SQL_AST_TABLE_DELAY_KEY_WRITE_OPTION:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool create_table_placeholder_option_is_valid(const struct mylite_sql_ast_node *table_option
+) {
+    if (table_option == NULL) {
+        return false;
+    }
+    switch (table_option->kind) {
+    case MYLITE_SQL_AST_TABLE_TABLESPACE_OPTION:
+    case MYLITE_SQL_AST_TABLE_UNION_OPTION:
+    case MYLITE_SQL_AST_TABLE_INSERT_METHOD_OPTION:
+    case MYLITE_SQL_AST_TABLE_STORAGE_OPTION:
         return true;
     default:
         return false;

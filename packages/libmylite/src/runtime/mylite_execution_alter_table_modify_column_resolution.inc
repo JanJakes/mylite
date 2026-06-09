@@ -712,6 +712,9 @@ static bool modify_column_definition_matches(
     if (original_column->is_nullable != replacement_column->is_nullable) {
         return false;
     }
+    if (original_column->is_visible != replacement_column->is_visible) {
+        return false;
+    }
     if (original_column->is_auto_increment != replacement_column->is_auto_increment) {
         return false;
     }

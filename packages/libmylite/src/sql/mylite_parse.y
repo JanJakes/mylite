@@ -44,7 +44,8 @@
 %left COLLATE.
 %right UPLUS UMINUS BITWISE_NOT.
 
-%fallback IDENTIFIER SAVEPOINT ENFORCED NO ACTION ALGORITHM COMMENT.
+%fallback IDENTIFIER SAVEPOINT ENFORCED NO ACTION ALGORITHM COMMENT CASCADED DEFINER INVOKER
+    MERGE SECURITY TEMPTABLE UNDEFINED.
 
 %type integer_type_name { struct mylite_sql_integer_type_name_tokens }
 %type text_type_name { struct mylite_sql_text_type_tokens }
@@ -164,6 +165,9 @@ statement(A) ::= create_temporary_table_select_statement(B). {
     A = B;
 }
 statement(A) ::= create_view_statement(B). {
+    A = B;
+}
+statement(A) ::= alter_view_statement(B). {
     A = B;
 }
 statement(A) ::= create_procedure_statement(B). {
@@ -1063,8 +1067,104 @@ create_temporary_table_select_statement(A) ::=
     create_table_select_as_opt select_statement(S). {
     A = mylite_sql_parser_make_create_temporary_table_select_statement(state, C, E, T, O, S);
 }
-create_view_statement(A) ::= CREATE(C) VIEW table_name(T) AS select_statement(S). {
-    A = mylite_sql_parser_make_create_view_statement(state, C, T, S);
+create_view_statement(A) ::=
+    CREATE(C) create_or_replace_opt(R) view_option_list_opt(O) VIEW table_name(T)
+    view_column_list_opt(L) AS select_statement(S) view_check_option_opt(K). {
+    A = mylite_sql_parser_make_create_view_statement(state, C, R, O, T, L, K, S);
+}
+
+alter_view_statement(A) ::=
+    ALTER(C) view_option_list_opt(O) VIEW table_name(T) view_column_list_opt(L)
+    AS select_statement(S) view_check_option_opt(K). {
+    A = mylite_sql_parser_make_alter_view_statement(state, C, O, T, L, K, S);
+}
+
+create_or_replace_opt(A) ::= . {
+    A = NULL;
+}
+create_or_replace_opt(A) ::= OR(O) REPLACE(R). {
+    A = mylite_sql_parser_make_create_or_replace_clause(state, O, R);
+}
+
+view_option_list_opt(A) ::= . {
+    A = NULL;
+}
+view_option_list_opt(A) ::= view_option_list(L). {
+    A = L;
+}
+view_option_list(A) ::= view_option(O). {
+    A = mylite_sql_parser_make_view_option_list(state, O);
+}
+view_option_list(A) ::= view_option_list(L) view_option(O). {
+    A = mylite_sql_parser_append_view_option(state, L, O);
+}
+
+view_option(A) ::= ALGORITHM(T) equal_opt view_algorithm_value(V). {
+    A = mylite_sql_parser_make_view_algorithm_option(state, T, V);
+}
+view_option(A) ::= DEFINER(T) equal_opt view_definer_account(D). {
+    A = mylite_sql_parser_make_view_definer_option(state, T, D);
+}
+view_option(A) ::= SQL(S) SECURITY view_security_value(V). {
+    A = mylite_sql_parser_make_view_security_option(state, S, V);
+}
+
+view_algorithm_value(A) ::= UNDEFINED(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+view_algorithm_value(A) ::= MERGE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+view_algorithm_value(A) ::= TEMPTABLE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+
+view_security_value(A) ::= DEFINER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+view_security_value(A) ::= INVOKER(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+
+view_definer_account(A) ::= identifier(U). {
+    A = mylite_sql_parser_make_view_definer_account(state, U, NULL);
+}
+view_definer_account(A) ::= STRING(U). {
+    A = mylite_sql_parser_make_view_definer_account(
+        state, mylite_sql_parser_make_literal(state, U, MYLITE_SQL_AST_LITERAL_STRING), NULL);
+}
+view_definer_account(A) ::= identifier(U) user_variable(H). {
+    A = mylite_sql_parser_make_view_definer_account(state, U, H);
+}
+view_definer_account(A) ::= STRING(U) user_variable(H). {
+    A = mylite_sql_parser_make_view_definer_account(
+        state, mylite_sql_parser_make_literal(state, U, MYLITE_SQL_AST_LITERAL_STRING), H);
+}
+view_definer_account(A) ::= CURRENT_USER(T). {
+    A = mylite_sql_parser_make_current_user_view_definer_account(state, T, T);
+}
+view_definer_account(A) ::= CURRENT_USER(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_current_user_view_definer_account(state, T, R);
+}
+
+view_column_list_opt(A) ::= . {
+    A = NULL;
+}
+view_column_list_opt(A) ::= LPAREN identifier_list(L) RPAREN. {
+    A = L;
+}
+
+view_check_option_opt(A) ::= . {
+    A = NULL;
+}
+view_check_option_opt(A) ::= WITH(W) CHECK OPTION(O). {
+    A = mylite_sql_parser_make_view_check_option(state, W, O);
+}
+view_check_option_opt(A) ::= WITH(W) LOCAL CHECK OPTION(O). {
+    A = mylite_sql_parser_make_view_check_option(state, W, O);
+}
+view_check_option_opt(A) ::= WITH(W) CASCADED CHECK OPTION(O). {
+    A = mylite_sql_parser_make_view_check_option(state, W, O);
 }
 
 create_procedure_statement(A) ::=
@@ -1324,12 +1424,17 @@ drop_temporary_table_statement(A) ::=
     DROP(D) TEMPORARY TABLE drop_if_exists_opt(E) table_name_list(T). {
     A = mylite_sql_parser_make_drop_temporary_table_statement(state, D, E, T);
 }
-drop_view_statement(A) ::= DROP(D) VIEW drop_if_exists_opt(E) table_name_list(T). {
+drop_view_statement(A) ::= DROP(D) VIEW drop_if_exists_opt(E) table_name_list(T)
+        view_drop_tail_opt. {
     A = mylite_sql_parser_make_drop_view_statement(state, D, E, T);
 }
 drop_procedure_statement(A) ::= DROP(D) PROCEDURE drop_if_exists_opt(E) table_name(T). {
     A = mylite_sql_parser_make_drop_procedure_statement(state, D, E, T);
 }
+
+view_drop_tail_opt ::= .
+view_drop_tail_opt ::= RESTRICT.
+view_drop_tail_opt ::= CASCADE.
 
 drop_if_exists_opt(A) ::= . {
     A = NULL;

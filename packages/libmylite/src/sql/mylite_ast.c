@@ -2136,6 +2136,22 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "user_variable";
     case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_EXPRESSION:
         return "user_variable_assignment_expression";
+    case MYLITE_SQL_AST_ALTER_VIEW_STATEMENT:
+        return "alter_view_statement";
+    case MYLITE_SQL_AST_CREATE_OR_REPLACE_CLAUSE:
+        return "create_or_replace_clause";
+    case MYLITE_SQL_AST_VIEW_OPTION_LIST:
+        return "view_option_list";
+    case MYLITE_SQL_AST_VIEW_ALGORITHM_OPTION:
+        return "view_algorithm_option";
+    case MYLITE_SQL_AST_VIEW_DEFINER_OPTION:
+        return "view_definer_option";
+    case MYLITE_SQL_AST_VIEW_SECURITY_OPTION:
+        return "view_security_option";
+    case MYLITE_SQL_AST_VIEW_DEFINER_ACCOUNT:
+        return "view_definer_account";
+    case MYLITE_SQL_AST_VIEW_CHECK_OPTION:
+        return "view_check_option";
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
         return "system_variable";
     case MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION:

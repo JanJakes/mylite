@@ -2988,11 +2988,25 @@ struct planned_grouped_aggregate {
     struct planned_select_limit limit;
 };
 
+enum planned_view_statement_kind {
+    PLANNED_VIEW_CREATE = 0,
+    PLANNED_VIEW_CREATE_OR_REPLACE = 1,
+    PLANNED_VIEW_ALTER = 2,
+};
+
 struct planned_create_view {
+    enum planned_view_statement_kind statement_kind;
     struct table_name_resolution target;
     struct planned_select source;
     char **column_names;
+    char **select_column_names;
     size_t column_count;
+    bool has_explicit_column_names;
+    char algorithm[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char check_option[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char is_updatable[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char definer[MYLITE_CATALOG_DEFINER_CAPACITY];
+    char security_type[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char *view_definition;
     char *show_create_sql;
 };
@@ -5072,6 +5086,11 @@ static int execute_create_temporary_table_select_statement(
     mylite_result **out_result
 );
 static int execute_create_view_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_alter_view_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
@@ -8738,10 +8757,72 @@ static int create_temporary_table_select_from_plan(
     struct planned_create_table_select *plan,
     int64_t *out_affected_rows
 );
+static int execute_create_or_alter_view_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int plan_create_view(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     struct planned_create_view *out_plan
+);
+static int plan_create_view_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct planned_create_view *out_plan
+);
+static int apply_create_view_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *option,
+    struct planned_create_view *plan
+);
+static int copy_view_option_keyword(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    char *destination,
+    size_t destination_size
+);
+static int copy_view_definer_account(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *account,
+    char *destination,
+    size_t destination_size
+);
+static int copy_view_definer_user(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    char *destination,
+    size_t destination_size
+);
+static int copy_view_definer_host(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    char *destination,
+    size_t destination_size
+);
+static int copy_view_account_component_span(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_size,
+    char *destination,
+    size_t destination_size
+);
+static int append_view_account(
+    struct mylite_db *database,
+    const char *user,
+    const char *host,
+    char *destination,
+    size_t destination_size
+);
+static void copy_view_check_option(
+    const struct mylite_sql_ast_node *check_option_node,
+    char *destination,
+    size_t destination_size
+);
+static bool view_check_option_span_has_keyword(
+    const struct mylite_sql_ast_node *check_option_node,
+    const char *keyword
 );
 static int create_view_from_plan(
     struct mylite_db *database,
@@ -8754,7 +8835,33 @@ static int validate_create_view_select_subset(
 );
 static int copy_create_view_column_names(
     struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
     struct planned_create_view *plan
+);
+static int copy_create_view_inferred_column_names(
+    struct mylite_db *database,
+    struct planned_create_view *plan
+);
+static int copy_create_view_explicit_column_names(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column_list,
+    struct planned_create_view *plan
+);
+static size_t create_view_explicit_column_count(const struct mylite_sql_ast_node *column_list);
+static int copy_create_view_select_column_names(
+    struct mylite_db *database,
+    struct planned_create_view *plan
+);
+static int copy_create_view_inferred_column_name(
+    struct mylite_db *database,
+    struct planned_create_view *plan,
+    size_t column_index,
+    char **out_name
+);
+static void set_view_column_count_error(struct mylite_db *database);
+static void set_view_check_option_non_updatable_error(
+    struct mylite_db *database,
+    const struct planned_create_view *plan
 );
 static int build_create_view_definition_sql(
     struct mylite_db *database,
@@ -8776,6 +8883,14 @@ static int append_create_view_projection_sql(
     struct mylite_dynamic_string *string,
     const struct planned_create_view *plan,
     bool qualify_source_schema
+);
+static int append_create_view_column_list_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_create_view *plan
+);
+static int append_create_view_check_option_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_create_view *plan
 );
 static int append_create_view_from_sql(
     struct mylite_dynamic_string *string,

@@ -21,6 +21,7 @@ enum {
     mysql_error_unknown_table = 1051,
     mysql_error_unknown_column = 1054,
     mysql_error_duplicate_column = 1060,
+    mysql_error_check_option_on_non_updatable_view = 1368,
     mysql_error_not_view = 1347,
     mysql_error_table_does_not_exist = 1146,
     mysql_error_incorrect_table_name = 1103,
@@ -49,6 +50,7 @@ struct expected_result {
 };
 
 static int test_view_metadata_surfaces(void);
+static int test_view_option_metadata(void);
 static int test_view_diagnostics_and_drop_semantics(void);
 static int test_view_persistence_and_preamble(void);
 static int test_view_transaction_boundaries(void);
@@ -90,6 +92,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_view_metadata_surfaces();
+    failures += test_view_option_metadata();
     failures += test_view_diagnostics_and_drop_semantics();
     failures += test_view_persistence_and_preamble();
     failures += test_view_transaction_boundaries();
@@ -159,7 +162,7 @@ static int test_view_metadata_surfaces(void) {
         "v",
         "select `app`.`t`.`id` AS `id`,`app`.`t`.`name` AS `label` from `app`.`t`",
         "NONE",
-        "NO",
+        "YES",
         "root@%",
         "DEFINER",
         "utf8mb4",
@@ -411,6 +414,161 @@ static int test_view_metadata_surfaces(void) {
     return failures;
 }
 
+static int test_view_option_metadata(void) {
+    static const char *const show_create_columns[] = {
+        "View",
+        "Create View",
+        "character_set_client",
+        "collation_connection",
+    };
+    static const char option_show_create_sql[] =
+        "CREATE ALGORITHM=MERGE DEFINER=`app`@`example.com` SQL SECURITY INVOKER VIEW `option_v` "
+        "(`view_id`,`label`) AS select `t`.`id` AS `id`,`t`.`name` AS `name` from `t` "
+        "WITH LOCAL CHECK OPTION";
+    static const char *const option_show_create_values[] = {
+        "option_v",
+        option_show_create_sql,
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+    };
+    static const char *const views_columns[] = {
+        "TABLE_NAME",
+        "VIEW_DEFINITION",
+        "CHECK_OPTION",
+        "IS_UPDATABLE",
+        "DEFINER",
+        "SECURITY_TYPE",
+    };
+    static const char *const option_views_values[] = {
+        "option_v",
+        "select `app`.`t`.`id` AS `id`,`app`.`t`.`name` AS `name` from `app`.`t`",
+        "LOCAL",
+        "YES",
+        "app@example.com",
+        "INVOKER",
+    };
+    static const char *const replace_columns[] = {
+        "TABLE_NAME",
+        "CHECK_OPTION",
+        "IS_UPDATABLE",
+        "SECURITY_TYPE",
+    };
+    static const char *const replace_values[] = {"option_v", "NONE", "NO", "DEFINER"};
+    static const char alter_show_create_sql[] =
+        "CREATE ALGORITHM=MERGE DEFINER=`root`@`%` SQL SECURITY INVOKER VIEW `alter_v` "
+        "(`x`) AS select `t`.`id` AS `id` from `t` WITH CASCADED CHECK OPTION";
+    static const char *const alter_show_create_values[] = {
+        "alter_v",
+        alter_show_create_sql,
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+    };
+    static const char *const alter_values[] = {"alter_v", "CASCADED", "YES", "INVOKER"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "view_options") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open view options database");
+    failures += create_seed_schema(database);
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(database, "SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci");
+    failures += expect_statement_ok(
+        database,
+        "CREATE ALGORITHM=MERGE DEFINER='app'@'example.com' SQL SECURITY INVOKER "
+        "VIEW option_v (view_id, label) "
+        "AS SELECT id, name FROM t WITH LOCAL CHECK OPTION"
+    );
+    failures += expect_query(
+        database,
+        (struct expected_result){
+            .sql = "SHOW CREATE VIEW option_v",
+            .columns = show_create_columns,
+            .values = option_show_create_values,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "view options show create",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_result){
+            .sql = "SELECT TABLE_NAME,VIEW_DEFINITION,CHECK_OPTION,IS_UPDATABLE,DEFINER,"
+                   "SECURITY_TYPE FROM INFORMATION_SCHEMA.VIEWS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'option_v'",
+            .columns = views_columns,
+            .values = option_views_values,
+            .column_count = sizeof(views_columns) / sizeof(views_columns[0]),
+            .row_count = 1U,
+            .context = "view options information schema",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE OR REPLACE ALGORITHM=TEMPTABLE VIEW option_v AS SELECT id FROM t"
+    );
+    failures += expect_query(
+        database,
+        (struct expected_result){
+            .sql = "SELECT TABLE_NAME,CHECK_OPTION,IS_UPDATABLE,SECURITY_TYPE "
+                   "FROM INFORMATION_SCHEMA.VIEWS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'option_v'",
+            .columns = replace_columns,
+            .values = replace_values,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "create or replace view metadata",
+        }
+    );
+
+    failures += expect_statement_ok(database, "CREATE VIEW alter_v AS SELECT id FROM t");
+    failures += expect_statement_ok(
+        database,
+        "ALTER ALGORITHM=MERGE SQL SECURITY INVOKER VIEW alter_v (x) AS SELECT id FROM t "
+        "WITH CHECK OPTION"
+    );
+    failures += expect_query(
+        database,
+        (struct expected_result){
+            .sql = "SHOW CREATE VIEW alter_v",
+            .columns = show_create_columns,
+            .values = alter_show_create_values,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "alter view show create",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_result){
+            .sql = "SELECT TABLE_NAME,CHECK_OPTION,IS_UPDATABLE,SECURITY_TYPE "
+                   "FROM INFORMATION_SCHEMA.VIEWS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'alter_v'",
+            .columns = replace_columns,
+            .values = alter_values,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "alter view metadata",
+        }
+    );
+    failures += expect_statement_ok_warnings(
+        database,
+        "DROP VIEW IF EXISTS missing_v RESTRICT",
+        1U,
+        "drop missing view restrict"
+    );
+    failures += expect_statement_ok(database, "DROP VIEW IF EXISTS option_v CASCADE");
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_view_diagnostics_and_drop_semantics(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -528,11 +686,40 @@ static int test_view_diagnostics_and_drop_semantics(void) {
     );
     failures += expect_error(
         database,
-        "CREATE OR REPLACE VIEW replace_v AS SELECT id FROM t",
+        "CREATE ALGORITHM=TEMPTABLE VIEW check_v AS SELECT id FROM t WITH CHECK OPTION",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .code = mysql_error_check_option_on_non_updatable_view,
+            .sqlstate = "HY000",
+            .message_part = "CHECK OPTION on non-updatable view 'app.check_v'",
+        }
+    );
+    failures +=
+        expect_statement_ok(database, "CREATE OR REPLACE VIEW replace_v AS SELECT id FROM t");
+    failures += expect_error(
+        database,
+        "CREATE OR REPLACE VIEW t AS SELECT id FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_table_exists,
+            .sqlstate = "42S01",
+            .message_part = "Table 't' already exists",
+        }
+    );
+    failures += expect_error(
+        database,
+        "ALTER VIEW missing_view AS SELECT id FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_table_does_not_exist,
+            .sqlstate = "42S02",
+            .message_part = "Table 'app.missing_view' doesn't exist",
+        }
+    );
+    failures += expect_error(
+        database,
+        "ALTER VIEW t AS SELECT id FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_not_view,
+            .sqlstate = "HY000",
+            .message_part = "'app.t' is not VIEW",
         }
     );
     failures += expect_error(

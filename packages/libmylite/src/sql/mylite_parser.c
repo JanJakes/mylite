@@ -2482,7 +2482,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_temporary_table_select
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_view_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *or_replace_clause,
+    struct mylite_sql_ast_node *view_options,
     struct mylite_sql_ast_node *view_name,
+    struct mylite_sql_ast_node *column_names,
+    struct mylite_sql_ast_node *check_option,
     struct mylite_sql_ast_node *select_statement
 ) {
     struct mylite_sql_source_span span = span_from_token(&create_token);
@@ -2501,7 +2505,195 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_view_statement(
 
     mylite_sql_ast_node_append_child(statement, view_name);
     mylite_sql_ast_node_append_child(statement, select_statement);
+    if (or_replace_clause != NULL) {
+        mylite_sql_ast_node_append_child(statement, or_replace_clause);
+    }
+    if (view_options != NULL) {
+        mylite_sql_ast_node_append_child(statement, view_options);
+    }
+    if (column_names != NULL) {
+        mylite_sql_ast_node_append_child(statement, column_names);
+    }
+    if (check_option != NULL) {
+        mylite_sql_ast_node_append_child(statement, check_option);
+    }
     return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_view_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *view_options,
+    struct mylite_sql_ast_node *view_name,
+    struct mylite_sql_ast_node *column_names,
+    struct mylite_sql_ast_node *check_option,
+    struct mylite_sql_ast_node *select_statement
+) {
+    struct mylite_sql_source_span span = span_from_token(&alter_token);
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (select_statement != NULL) {
+        span = span_join(span, select_statement->span);
+    } else if (view_name != NULL) {
+        span = span_join(span, view_name->span);
+    }
+
+    statement = make_node(state, MYLITE_SQL_AST_ALTER_VIEW_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, view_name);
+    mylite_sql_ast_node_append_child(statement, select_statement);
+    if (view_options != NULL) {
+        mylite_sql_ast_node_append_child(statement, view_options);
+    }
+    if (column_names != NULL) {
+        mylite_sql_ast_node_append_child(statement, column_names);
+    }
+    if (check_option != NULL) {
+        mylite_sql_ast_node_append_child(statement, check_option);
+    }
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_or_replace_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token or_token,
+    struct mylite_sql_token replace_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_CREATE_OR_REPLACE_CLAUSE,
+        span_join(span_from_token(&or_token), span_from_token(&replace_token))
+    );
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_view_option_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *option
+) {
+    struct mylite_sql_source_span span =
+        option == NULL ? (struct mylite_sql_source_span){0} : option->span;
+    struct mylite_sql_ast_node *list = make_node(state, MYLITE_SQL_AST_VIEW_OPTION_LIST, span);
+
+    if (list != NULL) {
+        mylite_sql_ast_node_append_child(list, option);
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_view_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *option
+) {
+    if (list == NULL) {
+        return mylite_sql_parser_make_view_option_list(state, option);
+    }
+    mylite_sql_ast_node_append_child(list, option);
+    if (option != NULL) {
+        mylite_sql_ast_node_set_span(list, span_join(list->span, option->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_view_algorithm_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token algorithm_token,
+    struct mylite_sql_ast_node *value
+) {
+    struct mylite_sql_source_span span = span_from_token(&algorithm_token);
+    struct mylite_sql_ast_node *option = NULL;
+
+    if (value != NULL) {
+        span = span_join(span, value->span);
+    }
+    option = make_node(state, MYLITE_SQL_AST_VIEW_ALGORITHM_OPTION, span);
+    if (option != NULL) {
+        mylite_sql_ast_node_append_child(option, value);
+    }
+    return option;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_view_definer_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token definer_token,
+    struct mylite_sql_ast_node *account
+) {
+    struct mylite_sql_source_span span = span_from_token(&definer_token);
+    struct mylite_sql_ast_node *option = NULL;
+
+    if (account != NULL) {
+        span = span_join(span, account->span);
+    }
+    option = make_node(state, MYLITE_SQL_AST_VIEW_DEFINER_OPTION, span);
+    if (option != NULL) {
+        mylite_sql_ast_node_append_child(option, account);
+    }
+    return option;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_view_security_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token sql_token,
+    struct mylite_sql_ast_node *value
+) {
+    struct mylite_sql_source_span span = span_from_token(&sql_token);
+    struct mylite_sql_ast_node *option = NULL;
+
+    if (value != NULL) {
+        span = span_join(span, value->span);
+    }
+    option = make_node(state, MYLITE_SQL_AST_VIEW_SECURITY_OPTION, span);
+    if (option != NULL) {
+        mylite_sql_ast_node_append_child(option, value);
+    }
+    return option;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_view_definer_account(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *user,
+    struct mylite_sql_ast_node *host
+) {
+    struct mylite_sql_source_span span =
+        user == NULL ? (struct mylite_sql_source_span){0} : user->span;
+    struct mylite_sql_ast_node *account = NULL;
+
+    if (host != NULL) {
+        span = span_join(span, host->span);
+    }
+    account = make_node(state, MYLITE_SQL_AST_VIEW_DEFINER_ACCOUNT, span);
+    if (account != NULL) {
+        mylite_sql_ast_node_append_child(account, user);
+        mylite_sql_ast_node_append_child(account, host);
+    }
+    return account;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_current_user_view_definer_account(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token current_user_token,
+    struct mylite_sql_token end_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_VIEW_DEFINER_ACCOUNT,
+        span_join(span_from_token(&current_user_token), span_from_token(&end_token))
+    );
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_view_check_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token with_token,
+    struct mylite_sql_token option_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_VIEW_CHECK_OPTION,
+        span_join(span_from_token(&with_token), span_from_token(&option_token))
+    );
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_procedure_statement(
@@ -9582,13 +9774,22 @@ static bool map_keyword_token(
         {"ALGORITHM", MYLITE_SQL_PARSE_ALGORITHM},
         {"ALTER", MYLITE_SQL_PARSE_ALTER},
         {"AS", MYLITE_SQL_PARSE_AS},
+        {"CASCADED", MYLITE_SQL_PARSE_CASCADED},
         {"CAST", MYLITE_SQL_PARSE_CAST},
         {"CONVERT", MYLITE_SQL_PARSE_CONVERT},
         {"CONVERT_TZ", MYLITE_SQL_PARSE_CONVERT_TZ},
+        {"DEFINER", MYLITE_SQL_PARSE_DEFINER},
         {"ESCAPE", MYLITE_SQL_PARSE_ESCAPE},
         {"EXCEPT", MYLITE_SQL_PARSE_EXCEPT},
         {"FROM", MYLITE_SQL_PARSE_FROM},
+        {"INVOKER", MYLITE_SQL_PARSE_INVOKER},
         {"INTERSECT", MYLITE_SQL_PARSE_INTERSECT},
+        {"MERGE", MYLITE_SQL_PARSE_MERGE},
+        {"OPTION", MYLITE_SQL_PARSE_OPTION},
+        {"SECURITY", MYLITE_SQL_PARSE_SECURITY},
+        {"SQL", MYLITE_SQL_PARSE_SQL},
+        {"TEMPTABLE", MYLITE_SQL_PARSE_TEMPTABLE},
+        {"UNDEFINED", MYLITE_SQL_PARSE_UNDEFINED},
         {"UNION", MYLITE_SQL_PARSE_UNION},
         {"WHERE", MYLITE_SQL_PARSE_WHERE},
         {"AND", MYLITE_SQL_PARSE_AND},

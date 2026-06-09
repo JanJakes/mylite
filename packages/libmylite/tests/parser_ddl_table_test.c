@@ -5236,11 +5236,13 @@ static int test_create_table_select_statements(void) {
 }
 
 static int test_create_view_lifecycle_statements(void) {
+    enum { create_view_check_option_child = 5 };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *view_name = NULL;
     const struct mylite_sql_ast_node *select_statement = NULL;
     const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *option_list = NULL;
     const struct mylite_sql_ast_node *drop_list = NULL;
     int failures = 0;
 
@@ -5285,8 +5287,87 @@ static int test_create_view_lifecycle_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parser_test_parse_sql("DROP VIEW IF EXISTS v, app.other;", MYLITE_SQL_PARSE_OK, &result);
+    failures += parser_test_parse_sql(
+        "CREATE OR REPLACE ALGORITHM=MERGE DEFINER='app'@'example.com' "
+        "SQL SECURITY INVOKER VIEW app.v "
+        "(view_id, label) AS SELECT id, source.name FROM source WITH LOCAL CHECK OPTION;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    option_list = parser_test_child_at(statement, 3U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_VIEW_STATEMENT,
+        "create or replace view statement"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 2U),
+        MYLITE_SQL_AST_CREATE_OR_REPLACE_CLAUSE,
+        "create view or replace marker"
+    );
+    failures += parser_test_expect_node(
+        option_list,
+        MYLITE_SQL_AST_VIEW_OPTION_LIST,
+        "create view option list"
+    );
+    failures += parser_test_expect_child_count(option_list, 3U, "create view option count");
+    failures += parser_test_expect_node(
+        parser_test_child_at(option_list, 0U),
+        MYLITE_SQL_AST_VIEW_ALGORITHM_OPTION,
+        "create view algorithm option"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(option_list, 1U),
+        MYLITE_SQL_AST_VIEW_DEFINER_OPTION,
+        "create view definer option"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(option_list, 2U),
+        MYLITE_SQL_AST_VIEW_SECURITY_OPTION,
+        "create view security option"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 4U),
+        MYLITE_SQL_AST_IDENTIFIER_LIST,
+        "create view explicit column list"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, create_view_check_option_child),
+        MYLITE_SQL_AST_VIEW_CHECK_OPTION,
+        "create view check option"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "ALTER ALGORITHM=TEMPTABLE VIEW app.v AS SELECT id FROM source;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    option_list = parser_test_child_at(statement, 2U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_ALTER_VIEW_STATEMENT,
+        "alter view statement"
+    );
+    failures += parser_test_expect_node(
+        option_list,
+        MYLITE_SQL_AST_VIEW_OPTION_LIST,
+        "alter view option list"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(option_list, 0U),
+        MYLITE_SQL_AST_VIEW_ALGORITHM_OPTION,
+        "alter view algorithm option"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "DROP VIEW IF EXISTS v, app.other RESTRICT;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
     statement = parser_test_child_at(result.root, 0U);
     drop_list = parser_test_child_at(statement, 0U);
     failures += parser_test_expect_node(
@@ -5309,6 +5390,15 @@ static int test_create_view_lifecycle_statements(void) {
         parser_test_child_at(drop_list, 1U),
         "app.other",
         "drop view second target"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("DROP VIEW app.other CASCADE;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_DROP_VIEW_STATEMENT,
+        "drop view cascade statement"
     );
     mylite_sql_parse_result_deinit(&result);
 

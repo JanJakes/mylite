@@ -103,6 +103,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_DEALLOCATE_PREPARE_STATEMENT:
         return execute_deallocate_prepare_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_SPATIAL_INDEX_STATEMENT:
+    case MYLITE_SQL_AST_ALTER_VIEW_STATEMENT:
     case MYLITE_SQL_AST_VALUES_STATEMENT:
         return execute_non_prepared_statement(database, context, statement, out_result);
     case MYLITE_SQL_AST_SPATIAL_TYPE:
@@ -134,6 +135,13 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_VALUES_ROW:
     case MYLITE_SQL_AST_SELECT_INTO_LIST:
     case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_EXPRESSION:
+    case MYLITE_SQL_AST_CREATE_OR_REPLACE_CLAUSE:
+    case MYLITE_SQL_AST_VIEW_OPTION_LIST:
+    case MYLITE_SQL_AST_VIEW_ALGORITHM_OPTION:
+    case MYLITE_SQL_AST_VIEW_DEFINER_OPTION:
+    case MYLITE_SQL_AST_VIEW_SECURITY_OPTION:
+    case MYLITE_SQL_AST_VIEW_DEFINER_ACCOUNT:
+    case MYLITE_SQL_AST_VIEW_CHECK_OPTION:
         break;
     default:
         return execute_non_prepared_statement(database, context, statement, out_result);
@@ -208,6 +216,8 @@ static int execute_non_prepared_statement(
         return execute_create_temporary_table_select_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_VIEW_STATEMENT:
         return execute_create_view_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_ALTER_VIEW_STATEMENT:
+        return execute_alter_view_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_PROCEDURE_STATEMENT:
         return execute_create_procedure_statement(database, statement, out_result);
     case MYLITE_SQL_AST_CREATE_INDEX_STATEMENT:
@@ -216,6 +226,13 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_CREATE_SPATIAL_INDEX_STATEMENT:
         return execute_create_index_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ALTER_TABLE_ACTION_LIST:
+    case MYLITE_SQL_AST_CREATE_OR_REPLACE_CLAUSE:
+    case MYLITE_SQL_AST_VIEW_OPTION_LIST:
+    case MYLITE_SQL_AST_VIEW_ALGORITHM_OPTION:
+    case MYLITE_SQL_AST_VIEW_DEFINER_OPTION:
+    case MYLITE_SQL_AST_VIEW_SECURITY_OPTION:
+    case MYLITE_SQL_AST_VIEW_DEFINER_ACCOUNT:
+    case MYLITE_SQL_AST_VIEW_CHECK_OPTION:
     case MYLITE_SQL_AST_SPATIAL_TYPE:
     case MYLITE_SQL_AST_SPATIAL_INDEX_DEFINITION:
     case MYLITE_SQL_AST_LOAD_DATA_LOCAL_MODIFIER:

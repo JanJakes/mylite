@@ -548,8 +548,65 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_create_temporary_table_select
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_view_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token create_token,
+    struct mylite_sql_ast_node *or_replace_clause,
+    struct mylite_sql_ast_node *view_options,
     struct mylite_sql_ast_node *view_name,
+    struct mylite_sql_ast_node *column_names,
+    struct mylite_sql_ast_node *check_option,
     struct mylite_sql_ast_node *select_statement
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_alter_view_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token alter_token,
+    struct mylite_sql_ast_node *view_options,
+    struct mylite_sql_ast_node *view_name,
+    struct mylite_sql_ast_node *column_names,
+    struct mylite_sql_ast_node *check_option,
+    struct mylite_sql_ast_node *select_statement
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_create_or_replace_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token or_token,
+    struct mylite_sql_token replace_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_view_option_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *option
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_view_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *option
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_view_algorithm_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token algorithm_token,
+    struct mylite_sql_ast_node *value
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_view_definer_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token definer_token,
+    struct mylite_sql_ast_node *account
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_view_security_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token sql_token,
+    struct mylite_sql_ast_node *value
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_view_definer_account(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *user,
+    struct mylite_sql_ast_node *host
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_current_user_view_definer_account(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token current_user_token,
+    struct mylite_sql_token end_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_view_check_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token with_token,
+    struct mylite_sql_token option_token
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_create_procedure_statement(
     struct mylite_sql_parser_state *state,

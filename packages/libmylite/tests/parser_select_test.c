@@ -2237,8 +2237,15 @@ static int test_select_group_by_clause(void) {
 
     failures += parser_test_parse_sql(
         "SELECT g, COUNT(*) FROM numbers GROUP BY 1;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    group_clause = parser_test_first_child_kind(statement, MYLITE_SQL_AST_GROUP_BY_CLAUSE);
+    failures += parser_test_expect_literal(
+        parser_test_child_at(group_clause, 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "group ordinal placeholder"
     );
     mylite_sql_parse_result_deinit(&result);
 

@@ -1837,6 +1837,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_cast_binary_expression(
     struct mylite_sql_ast_node *value,
     struct mylite_sql_token right_paren
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_unary_binary_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token binary_token,
+    struct mylite_sql_ast_node *value
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_convert_using_binary_expression(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token convert_token,

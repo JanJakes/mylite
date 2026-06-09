@@ -1504,7 +1504,9 @@ static int test_grouped_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part =
+                "GROUP BY supports ORDER BY only on grouped, primary-key-dependent, or selected "
+                "aggregate columns",
         }
     );
     failures += execute_error(
@@ -1781,7 +1783,7 @@ static int test_grouped_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "GROUP BY supports only descriptor group columns",
         }
     );
 

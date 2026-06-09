@@ -12,7 +12,8 @@ static int plan_grouped_aggregate_group_columns(
 
     for (const struct mylite_sql_ast_node *group_key =
              group_clause == NULL ? NULL : group_clause->first_child;
-         group_key != NULL; group_key = group_key->next_sibling) {
+         group_key != NULL;
+         group_key = group_key->next_sibling) {
         if (group_key->kind == MYLITE_SQL_AST_GROUP_BY_ROLLUP_MODIFIER) {
             set_unsupported_error(database, "GROUP BY WITH ROLLUP is not yet supported");
             return MYLITE_ERROR;
@@ -327,10 +328,18 @@ static int count_grouped_source_columns_by_unqualified_name(
 }
 
 static size_t grouped_aggregate_group_key_count(const struct mylite_sql_ast_node *group_clause) {
+    size_t group_key_count = 0U;
+
     if (group_clause == NULL) {
         return 0U;
     }
-    return mylite_sql_ast_node_child_count(group_clause);
+    for (const struct mylite_sql_ast_node *group_key = group_clause->first_child; group_key != NULL;
+         group_key = group_key->next_sibling) {
+        if (group_key->kind != MYLITE_SQL_AST_GROUP_BY_ROLLUP_MODIFIER) {
+            ++group_key_count;
+        }
+    }
+    return group_key_count;
 }
 
 static int validate_grouped_aggregate_group_column(

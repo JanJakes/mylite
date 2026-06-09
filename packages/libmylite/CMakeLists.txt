@@ -228,6 +228,10 @@ if(BUILD_TESTING)
     tests/parser_corpus_expression_value_surfaces_test.c
   )
   mylite_add_parser_test(
+    mylite_parser_corpus_expression_query_surfaces_test
+    tests/parser_corpus_expression_query_surfaces_test.c
+  )
+  mylite_add_parser_test(
     mylite_parser_corpus_ddl_option_surfaces_test
     tests/parser_corpus_ddl_option_surfaces_test.c
   )
@@ -244,6 +248,15 @@ if(BUILD_TESTING)
     PRIVATE MyLite::mylite
   )
   mylite_configure_c_target(mylite_runtime_parser_corpus_expression_value_surfaces_test)
+  add_executable(
+    mylite_runtime_parser_corpus_expression_query_surfaces_test
+    tests/runtime_parser_corpus_expression_query_surfaces_test.c
+  )
+  target_link_libraries(
+    mylite_runtime_parser_corpus_expression_query_surfaces_test
+    PRIVATE MyLite::mylite
+  )
+  mylite_configure_c_target(mylite_runtime_parser_corpus_expression_query_surfaces_test)
   add_executable(
     mylite_runtime_parser_corpus_ddl_option_surfaces_test
     tests/runtime_parser_corpus_ddl_option_surfaces_test.c
@@ -5555,6 +5568,10 @@ if(BUILD_TESTING)
     COMMAND mylite_parser_corpus_expression_value_surfaces_test
   )
   add_test(
+    NAME libmylite.parser.corpus_expression_query_surfaces
+    COMMAND mylite_parser_corpus_expression_query_surfaces_test
+  )
+  add_test(
     NAME libmylite.parser.corpus_ddl_option_surfaces
     COMMAND mylite_parser_corpus_ddl_option_surfaces_test
   )
@@ -5565,6 +5582,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.parser_corpus_expression_value_surfaces
     COMMAND mylite_runtime_parser_corpus_expression_value_surfaces_test
+  )
+  add_test(
+    NAME libmylite.runtime.parser_corpus_expression_query_surfaces
+    COMMAND mylite_runtime_parser_corpus_expression_query_surfaces_test
   )
   add_test(
     NAME libmylite.runtime.parser_corpus_ddl_option_surfaces

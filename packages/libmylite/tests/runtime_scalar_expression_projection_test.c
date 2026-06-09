@@ -1106,6 +1106,8 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
     static const char *const value_one[] = {"1"};
     static const char *const column_id[] = {"id"};
     static const char *const value_two[] = {"2"};
+    static const char *const unary_binary_columns[] = {"BINARY 'ABC'"};
+    static const char *const unary_binary_values[] = {"ABC"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -1353,13 +1355,15 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
                 "SELECT literal projection supports at most 81 significant decimal digits",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT BINARY 'ABC'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
+        (struct expected_query){
+            .sql = "SELECT BINARY 'ABC'",
+            .columns = unary_binary_columns,
+            .column_count = 1U,
+            .values = unary_binary_values,
+            .row_count = 1U,
+            .context = "unary binary scalar",
         }
     );
     failures += execute_error(

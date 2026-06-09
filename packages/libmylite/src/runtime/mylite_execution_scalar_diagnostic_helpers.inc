@@ -200,8 +200,8 @@ static void set_scalar_logical_unsupported_error(struct mylite_db *database) {
         "SELECT scalar logical projection supports only signed 64-bit integer, boolean, "
         "NULL, and nested IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL() operands with signed "
         "64-bit +, binary -, *, %, infix MOD, MOD(), infix DIV, comparison operators "
-        "=, <=>, <>, !=, <, <=, >, >=, LIKE, keyword logical NOT, AND, XOR, and OR, and "
-        "scalar IS NULL, IS TRUE, IS FALSE, and IS UNKNOWN"
+        "=, <=>, <>, !=, <, <=, >, >=, LIKE, REGEXP, RLIKE, keyword logical NOT, AND, "
+        "XOR, and OR, and scalar IS NULL, IS TRUE, IS FALSE, and IS UNKNOWN"
     );
 }
 
@@ -211,6 +211,6 @@ static void set_scalar_comparison_unsupported_error(struct mylite_db *database) 
         "SELECT scalar comparison projection supports only signed 64-bit integer, boolean, "
         "NULL, and nested IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL() operands with signed "
         "64-bit +, binary -, *, %, infix MOD, MOD(), infix DIV, and comparison operators "
-        "=, <=>, <>, !=, <, <=, >, >=, and LIKE"
+        "=, <=>, <>, !=, <, <=, >, >=, LIKE, REGEXP, and RLIKE"
     );
 }

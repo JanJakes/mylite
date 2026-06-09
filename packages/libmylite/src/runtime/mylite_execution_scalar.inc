@@ -67,7 +67,11 @@ static int session_scalar_value(
         set_native_function_parameter_count_error(database, "SYSDATE");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION:
-        return mylite_execution_scalar_unix_timestamp_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_unix_timestamp_function_value(
+            database,
+            expression,
+            out_cell
+        );
     case MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "UNIX_TIMESTAMP");
         return MYLITE_ERROR;
@@ -156,7 +160,11 @@ static int session_scalar_value(
         return mylite_execution_scalar_string_length_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_ASCII_FUNCTION:
     case MYLITE_SQL_AST_ORD_FUNCTION:
-        return mylite_execution_scalar_string_codepoint_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_string_codepoint_function_value(
+            database,
+            expression,
+            out_cell
+        );
     case MYLITE_SQL_AST_ORD_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "ORD");
         return MYLITE_ERROR;
@@ -181,10 +189,18 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_RPAD_FUNCTION:
     case MYLITE_SQL_AST_REPEAT_FUNCTION:
     case MYLITE_SQL_AST_SPACE_FUNCTION:
-        return mylite_execution_scalar_string_padding_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_string_padding_function_value(
+            database,
+            expression,
+            out_cell
+        );
     case MYLITE_SQL_AST_EXPORT_SET_FUNCTION:
     case MYLITE_SQL_AST_MAKE_SET_FUNCTION:
-        return mylite_execution_scalar_string_bitmask_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_string_bitmask_function_value(
+            database,
+            expression,
+            out_cell
+        );
     case MYLITE_SQL_AST_EXPORT_SET_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "EXPORT_SET");
         return MYLITE_ERROR;
@@ -200,7 +216,11 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_STRCMP_FUNCTION:
         return mylite_execution_scalar_strcmp_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SUBSTRING_INDEX_FUNCTION:
-        return mylite_execution_scalar_substring_index_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_substring_index_function_value(
+            database,
+            expression,
+            out_cell
+        );
     case MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION:
         return mylite_execution_scalar_regexp_like_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_REGEXP_LIKE_ARGUMENT_COUNT_ERROR:
@@ -236,7 +256,11 @@ static int session_scalar_value(
         set_native_function_parameter_count_error(database, "JSON_CONTAINS");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_JSON_CONTAINS_PATH_FUNCTION:
-        return mylite_execution_scalar_json_contains_path_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_json_contains_path_function_value(
+            database,
+            expression,
+            out_cell
+        );
     case MYLITE_SQL_AST_JSON_CONTAINS_PATH_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "JSON_CONTAINS_PATH");
         return MYLITE_ERROR;
@@ -297,11 +321,19 @@ static int session_scalar_value(
         set_native_function_parameter_count_error(database, "CONCAT_WS");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_REPLACE_FUNCTION:
-        return mylite_execution_scalar_string_replace_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_string_replace_function_value(
+            database,
+            expression,
+            out_cell
+        );
     case MYLITE_SQL_AST_INSERT_STRING_FUNCTION:
         return mylite_execution_scalar_string_insert_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_REVERSE_FUNCTION:
-        return mylite_execution_scalar_string_reverse_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_string_reverse_function_value(
+            database,
+            expression,
+            out_cell
+        );
     case MYLITE_SQL_AST_SOUNDEX_FUNCTION:
         return mylite_execution_scalar_soundex_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SOUNDEX_ARGUMENT_COUNT_ERROR:
@@ -315,7 +347,11 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_CHARSET_FUNCTION:
     case MYLITE_SQL_AST_COLLATION_FUNCTION:
     case MYLITE_SQL_AST_COERCIBILITY_FUNCTION:
-        return mylite_execution_scalar_charset_collation_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_charset_collation_function_value(
+            database,
+            expression,
+            out_cell
+        );
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION: {
         int written = snprintf(
             out_cell->integer_text,
@@ -366,6 +402,8 @@ static int session_scalar_value(
         return session_unary_scalar_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
         return session_binary_scalar_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_NOT_PREDICATE:
+        return scalar_comparison_value(database, expression, out_cell);
     case MYLITE_SQL_AST_MOD_FUNCTION:
         return scalar_arithmetic_value(database, expression, out_cell);
     case MYLITE_SQL_AST_ABS_FUNCTION:
@@ -381,7 +419,11 @@ static int session_scalar_value(
         return mylite_execution_scalar_sqrt_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_DEGREES_FUNCTION:
     case MYLITE_SQL_AST_RADIANS_FUNCTION:
-        return mylite_execution_scalar_angle_conversion_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_angle_conversion_function_value(
+            database,
+            expression,
+            out_cell
+        );
     case MYLITE_SQL_AST_ACOS_FUNCTION:
     case MYLITE_SQL_AST_ASIN_FUNCTION:
         return mylite_execution_scalar_inverse_trig_function_value(database, expression, out_cell);
@@ -405,7 +447,11 @@ static int session_scalar_value(
         return mylite_execution_scalar_power_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BIN_FUNCTION:
     case MYLITE_SQL_AST_OCT_FUNCTION:
-        return mylite_execution_scalar_base_conversion_function_value(database, expression, out_cell);
+        return mylite_execution_scalar_base_conversion_function_value(
+            database,
+            expression,
+            out_cell
+        );
     case MYLITE_SQL_AST_CONV_FUNCTION:
         return mylite_execution_scalar_conv_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:

@@ -58,6 +58,10 @@ static int plan_grouped_aggregate(
             set_unsupported_error(database, "GROUP BY requires one descriptor group column");
             return MYLITE_ERROR;
         }
+        if (grouped_aggregate_group_clause_has_rollup(clauses.group_clause)) {
+            set_unsupported_error(database, "GROUP BY WITH ROLLUP is not yet supported");
+            return MYLITE_ERROR;
+        }
         if (group_key_count > grouped_aggregate_max_group_keys) {
             set_unsupported_error(
                 database,
@@ -254,4 +258,17 @@ static int collect_grouped_aggregate_clauses(
     }
 
     return MYLITE_OK;
+}
+
+static bool grouped_aggregate_group_clause_has_rollup(const struct mylite_sql_ast_node *group_clause
+) {
+    for (const struct mylite_sql_ast_node *group_key =
+             group_clause == NULL ? NULL : group_clause->first_child;
+         group_key != NULL;
+         group_key = group_key->next_sibling) {
+        if (group_key->kind == MYLITE_SQL_AST_GROUP_BY_ROLLUP_MODIFIER) {
+            return true;
+        }
+    }
+    return false;
 }

@@ -3987,11 +3987,13 @@ static int test_char_function(void) {
 
     failures += parser_test_parse_sql("SELECT CHAR();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT CHAR(65 USING utf8mb4);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SELECT CHAR(65 USING utf8mb4);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(expression, MYLITE_SQL_AST_GENERIC_FUNCTION, "char using");
+    failures +=
+        parser_test_expect_span_text(expression, "CHAR(65 USING utf8mb4)", "char using span");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

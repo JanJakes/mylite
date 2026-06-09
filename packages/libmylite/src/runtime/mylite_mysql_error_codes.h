@@ -172,6 +172,7 @@ enum {
     mysql_error_regexp_illegal_argument = 3685,
     mysql_error_regular_expression = 3696,
     mysql_error_regular_expression_character_range = 3697,
+    mysql_error_regexp_character_set_mismatch = 3995,
     mysql_error_prepared_command_not_supported = 1295,
     mysql_warning_deprecated_logical_and = 1287,
     mysql_warning_deprecated_logical_or = 1287,

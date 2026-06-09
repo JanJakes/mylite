@@ -3793,6 +3793,7 @@ enum scalar_comparison_eval_frame_kind {
     SCALAR_COMPARISON_EVAL_ENTER = 1,
     SCALAR_COMPARISON_EVAL_APPLY = 2,
     SCALAR_COMPARISON_EVAL_SHORT_CIRCUIT_OR_ENTER_RIGHT = 3,
+    SCALAR_COMPARISON_EVAL_APPLY_NOT = 4,
 };
 
 struct scalar_comparison_eval_frame {
@@ -12369,6 +12370,8 @@ static int count_grouped_source_columns_by_unqualified_name(
     size_t *out_match_count
 );
 static size_t grouped_aggregate_group_key_count(const struct mylite_sql_ast_node *group_clause);
+static bool grouped_aggregate_group_clause_has_rollup(const struct mylite_sql_ast_node *group_clause
+);
 static int validate_grouped_aggregate_group_column(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
@@ -14296,6 +14299,10 @@ static int evaluate_scalar_comparison_apply_frame(
     struct scalar_arithmetic_value_stack *value_stack,
     enum mylite_sql_ast_operator operator_kind
 );
+static int evaluate_scalar_comparison_apply_not_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_value_stack *value_stack
+);
 static int evaluate_scalar_comparison_short_circuit_or_enter_right_frame(
     struct mylite_db *database,
     struct scalar_comparison_eval_stack *expression_stack,
@@ -15126,6 +15133,9 @@ static bool scalar_logical_projection_node_is_admitted(
 static bool scalar_comparison_projection_node_is_admitted(
     const struct mylite_sql_ast_node *expression,
     struct scalar_arithmetic_node_stack *stack
+);
+static bool is_scalar_regexp_comparison_operand_expression(
+    const struct mylite_sql_ast_node *expression
 );
 static bool scalar_concat_projection_node_is_admitted(
     const struct mylite_sql_ast_node *expression,

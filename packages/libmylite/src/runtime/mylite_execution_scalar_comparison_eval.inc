@@ -9,6 +9,11 @@ static int evaluate_scalar_comparison_like_expression(
     const struct mylite_sql_ast_node *expression,
     struct scalar_arithmetic_value *out_value
 );
+static int evaluate_scalar_comparison_regexp_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_value *out_value
+);
 static int evaluate_scalar_comparison_numeric_frame(
     struct mylite_db *database,
     struct scalar_comparison_numeric_eval_stack *expression_stack,
@@ -162,6 +167,9 @@ static int evaluate_scalar_comparison_frame(
     if (frame->kind == SCALAR_COMPARISON_EVAL_APPLY) {
         return evaluate_scalar_comparison_apply_frame(database, value_stack, frame->operator_kind);
     }
+    if (frame->kind == SCALAR_COMPARISON_EVAL_APPLY_NOT) {
+        return evaluate_scalar_comparison_apply_not_frame(database, value_stack);
+    }
     if (frame->kind == SCALAR_COMPARISON_EVAL_SHORT_CIRCUIT_OR_ENTER_RIGHT) {
         return evaluate_scalar_comparison_short_circuit_or_enter_right_frame(
             database,
@@ -176,6 +184,23 @@ static int evaluate_scalar_comparison_frame(
         value_stack,
         frame->expression
     );
+}
+
+static int evaluate_scalar_comparison_apply_not_frame(
+    struct mylite_db *database,
+    struct scalar_arithmetic_value_stack *value_stack
+) {
+    struct scalar_arithmetic_value value = {.is_null = false, .integer = 0};
+
+    if (!scalar_arithmetic_value_stack_pop(value_stack, &value)) {
+        set_runtime_error(database, "invalid scalar comparison evaluation stack");
+        return MYLITE_ERROR;
+    }
+    if (value.is_null) {
+        return scalar_arithmetic_value_stack_push(database, value_stack, value);
+    }
+    value.integer = value.integer == 0 ? 1 : 0;
+    return scalar_arithmetic_value_stack_push(database, value_stack, value);
 }
 
 static int evaluate_scalar_comparison_apply_frame(
@@ -277,6 +302,25 @@ static int evaluate_scalar_comparison_enter_frame(
         set_scalar_comparison_unsupported_error(database);
         return MYLITE_ERROR;
     }
+    if (expression->kind == MYLITE_SQL_AST_NOT_PREDICATE) {
+        rc = scalar_comparison_eval_stack_push(
+            database,
+            expression_stack,
+            SCALAR_COMPARISON_EVAL_APPLY_NOT,
+            NULL,
+            MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT
+        );
+        if (rc == MYLITE_OK) {
+            rc = scalar_comparison_eval_stack_push(
+                database,
+                expression_stack,
+                SCALAR_COMPARISON_EVAL_ENTER,
+                child_at(expression, 0U),
+                MYLITE_SQL_AST_OPERATOR_NONE
+            );
+        }
+        return rc;
+    }
     if (expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
         rc = evaluate_scalar_comparison_numeric_expression(database, expression, &value);
         if (rc == MYLITE_OK) {
@@ -288,6 +332,14 @@ static int evaluate_scalar_comparison_enter_frame(
     operator_kind = mylite_sql_ast_node_operator(expression);
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE) {
         rc = evaluate_scalar_comparison_like_expression(database, expression, &value);
+        if (rc == MYLITE_OK) {
+            rc = scalar_arithmetic_value_stack_push(database, value_stack, value);
+        }
+        return rc;
+    }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_REGEXP ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_RLIKE) {
+        rc = evaluate_scalar_comparison_regexp_expression(database, expression, &value);
         if (rc == MYLITE_OK) {
             rc = scalar_arithmetic_value_stack_push(database, value_stack, value);
         }
@@ -355,8 +407,7 @@ static int evaluate_scalar_comparison_like_expression(
     struct scalar_arithmetic_value *out_value
 ) {
     static const struct scalar_text_conversion_messages value_messages = {
-        .unsupported =
-            "SELECT scalar LIKE supports only string, integer, boolean, and NULL values",
+        .unsupported = "SELECT scalar LIKE supports only string, integer, boolean, and NULL values",
         .signed_value = "SELECT scalar LIKE supports only signed integer values",
         .string_unsupported = "SELECT scalar LIKE supports only string value literals",
         .embedded_nul = "SELECT scalar LIKE value literals do not support NUL bytes",
@@ -412,6 +463,171 @@ static int evaluate_scalar_comparison_like_expression(
         out_value->integer = matches ? 1 : 0;
     }
 
+    session_scalar_cell_deinit(&pattern);
+    session_scalar_cell_deinit(&value);
+    return rc;
+}
+
+static int evaluate_scalar_comparison_regexp_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_value *out_value
+) {
+    static const struct scalar_text_conversion_messages value_messages = {
+        .unsupported =
+            "SELECT scalar REGEXP supports only string, integer, boolean, and NULL values",
+        .signed_value = "SELECT scalar REGEXP supports only signed integer values",
+        .string_unsupported = "SELECT scalar REGEXP supports only string value literals",
+        .embedded_nul = "SELECT scalar REGEXP value literals do not support NUL bytes",
+    };
+    static const struct scalar_text_conversion_messages pattern_messages = {
+        .unsupported =
+            "SELECT scalar REGEXP supports only string, integer, boolean, and NULL patterns",
+        .signed_value = "SELECT scalar REGEXP supports only signed integer patterns",
+        .string_unsupported = "SELECT scalar REGEXP supports only string pattern literals",
+        .embedded_nul = "SELECT scalar REGEXP pattern literals do not support NUL bytes",
+    };
+    struct session_scalar_cell value = {0};
+    struct session_scalar_cell pattern = {0};
+    struct mylite_regexp_program *program = NULL;
+    enum mylite_regexp_compile_status compile_status = MYLITE_REGEXP_COMPILE_OK;
+    enum mylite_regexp_match_status match_status = MYLITE_REGEXP_MATCH_OK;
+    bool value_is_binary = false;
+    bool pattern_is_binary = false;
+    bool case_sensitive = false;
+    bool matches = false;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = (struct scalar_arithmetic_value){.is_null = false, .integer = 0};
+    if (expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION ||
+        (mylite_sql_ast_node_operator(expression) != MYLITE_SQL_AST_OPERATOR_REGEXP &&
+         mylite_sql_ast_node_operator(expression) != MYLITE_SQL_AST_OPERATOR_RLIKE) ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_scalar_comparison_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    value_is_binary = predicate_row_scalar_cast_expression_is_binary(child_at(expression, 0U));
+    pattern_is_binary = predicate_row_scalar_cast_expression_is_binary(child_at(expression, 1U));
+    case_sensitive = value_is_binary || pattern_is_binary;
+    rc = scalar_text_conversion_input_value(
+        database,
+        child_at(expression, 0U),
+        &value_messages,
+        &value
+    );
+    if (rc == MYLITE_OK) {
+        rc = scalar_text_conversion_input_value(
+            database,
+            child_at(expression, 1U),
+            &pattern_messages,
+            &pattern
+        );
+    }
+    if (rc == MYLITE_OK && value_is_binary != pattern_is_binary &&
+        !(value_is_binary ? pattern.value == NULL : value.value == NULL)) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            mysql_error_regexp_character_set_mismatch,
+            "HY000",
+            value_is_binary
+                ? "Character set 'binary' cannot be used in conjunction with "
+                  "'latin1_swedish_ci' in call to regexp_like."
+                : "Character set 'latin1_swedish_ci' cannot be used in conjunction with "
+                  "'binary' in call to regexp_like."
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && (value.value == NULL || pattern.value == NULL)) {
+        out_value->is_null = true;
+    }
+    if (rc == MYLITE_OK && !out_value->is_null &&
+        !text_value_is_supported_string_key(value.value, scalar_cell_text_length(&value))) {
+        set_unsupported_error(
+            database,
+            "SELECT scalar REGEXP value literals support only ASCII text"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && !out_value->is_null &&
+        !text_value_is_supported_string_key(pattern.value, scalar_cell_text_length(&pattern))) {
+        set_unsupported_error(
+            database,
+            "SELECT scalar REGEXP pattern literals support only ASCII text"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && !out_value->is_null) {
+        compile_status = case_sensitive ? mylite_regexp_compile_ascii_cs(
+                                              pattern.value,
+                                              scalar_cell_text_length(&pattern),
+                                              &program
+                                          )
+                                        : mylite_regexp_compile_ascii_ci(
+                                              pattern.value,
+                                              scalar_cell_text_length(&pattern),
+                                              &program
+                                          );
+        if (compile_status != MYLITE_REGEXP_COMPILE_OK) {
+            if (compile_status == MYLITE_REGEXP_COMPILE_NOMEM) {
+                set_nomem_error(database);
+                rc = MYLITE_NOMEM;
+            } else if (compile_status == MYLITE_REGEXP_COMPILE_UNCLOSED_BRACKET) {
+                set_regexp_error(
+                    database,
+                    "The regular expression contains an unclosed bracket expression."
+                );
+                rc = MYLITE_ERROR;
+            } else if (compile_status == MYLITE_REGEXP_COMPILE_INVALID_RANGE) {
+                set_regexp_character_range_error(
+                    database,
+                    "The regular expression contains an invalid character range."
+                );
+                rc = MYLITE_ERROR;
+            } else {
+                set_unsupported_error(
+                    database,
+                    "SELECT scalar REGEXP patterns support only MyLite's baseline ASCII regular "
+                    "expression subset"
+                );
+                rc = MYLITE_ERROR;
+            }
+        }
+    }
+    if (rc == MYLITE_OK && !out_value->is_null) {
+        match_status = case_sensitive ? mylite_regexp_program_match_ascii_cs(
+                                            program,
+                                            value.value,
+                                            scalar_cell_text_length(&value),
+                                            &matches
+                                        )
+                                      : mylite_regexp_program_match_ascii_ci(
+                                            program,
+                                            value.value,
+                                            scalar_cell_text_length(&value),
+                                            &matches
+                                        );
+        if (match_status == MYLITE_REGEXP_MATCH_NOMEM) {
+            set_nomem_error(database);
+            rc = MYLITE_NOMEM;
+        } else if (match_status == MYLITE_REGEXP_MATCH_UNSUPPORTED_VALUE) {
+            set_unsupported_error(database, "SELECT scalar REGEXP values support only ASCII text");
+            rc = MYLITE_ERROR;
+        } else if (match_status != MYLITE_REGEXP_MATCH_OK) {
+            set_unsupported_error(
+                database,
+                "SELECT scalar REGEXP input is too large for MyLite's baseline subset"
+            );
+            rc = MYLITE_ERROR;
+        } else {
+            out_value->integer = matches ? 1 : 0;
+        }
+    }
+
+    mylite_regexp_program_free(program);
     session_scalar_cell_deinit(&pattern);
     session_scalar_cell_deinit(&value);
     return rc;
@@ -502,13 +718,7 @@ static int evaluate_scalar_comparison_numeric_apply_frame(
         set_runtime_error(database, "invalid scalar comparison numeric evaluation stack");
         return MYLITE_ERROR;
     }
-    rc = apply_scalar_comparison_numeric_operator(
-        database,
-        operator_kind,
-        &left,
-        &right,
-        &result
-    );
+    rc = apply_scalar_comparison_numeric_operator(database, operator_kind, &left, &right, &result);
     if (rc == MYLITE_OK) {
         rc = scalar_arithmetic_value_stack_push(database, value_stack, result);
     }
@@ -700,8 +910,8 @@ static int parse_scalar_comparison_complete_numeric_text(
         return MYLITE_MISUSE;
     }
     errno = 0;
-    if (mylite_execution_parse_c_locale_double(text, &end, &parsed) != MYLITE_OK ||
-        errno != 0 || end == text || end == NULL || *end != '\0') {
+    if (mylite_execution_parse_c_locale_double(text, &end, &parsed) != MYLITE_OK || errno != 0 ||
+        end == text || end == NULL || *end != '\0') {
         set_scalar_comparison_unsupported_error(database);
         return MYLITE_ERROR;
     }
@@ -722,8 +932,7 @@ static int parse_scalar_comparison_string_numeric_text(
         return MYLITE_MISUSE;
     }
     errno = 0;
-    if (mylite_execution_parse_c_locale_double(text, &end, &parsed) != MYLITE_OK ||
-        errno != 0) {
+    if (mylite_execution_parse_c_locale_double(text, &end, &parsed) != MYLITE_OK || errno != 0) {
         set_scalar_comparison_unsupported_error(database);
         return MYLITE_ERROR;
     }

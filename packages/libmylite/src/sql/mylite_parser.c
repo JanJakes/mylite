@@ -7299,6 +7299,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_cast_binary_expression(
     return expression;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_unary_binary_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token binary_token,
+    struct mylite_sql_ast_node *value
+) {
+    struct mylite_sql_source_span span = span_from_token(&binary_token);
+    struct mylite_sql_ast_node *expression = NULL;
+
+    if (value != NULL) {
+        span = span_join(span, value->span);
+    }
+
+    expression = make_node(state, MYLITE_SQL_AST_CAST_BINARY_EXPRESSION, span);
+    if (expression == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(expression, value);
+    return expression;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_convert_using_binary_expression(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token convert_token,
@@ -10196,6 +10217,7 @@ static bool map_keyword_token(
         {"XOR", MYLITE_SQL_PARSE_XOR},
         {"GROUP", MYLITE_SQL_PARSE_GROUP},
         {"GROUP_CONCAT", MYLITE_SQL_PARSE_GROUP_CONCAT},
+        {"GROUPING", MYLITE_SQL_PARSE_GROUPING},
         {"ANY_VALUE", MYLITE_SQL_PARSE_ANY_VALUE},
         {"HAVING", MYLITE_SQL_PARSE_HAVING},
         {"ORDER", MYLITE_SQL_PARSE_ORDER},

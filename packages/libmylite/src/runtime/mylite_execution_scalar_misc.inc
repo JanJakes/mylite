@@ -144,6 +144,8 @@ static int session_scalar_value_without_case(
         return session_unary_scalar_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
         return session_binary_scalar_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_NOT_PREDICATE:
+        return scalar_comparison_value(database, expression, out_cell);
     case MYLITE_SQL_AST_MOD_FUNCTION:
         return scalar_arithmetic_value(database, expression, out_cell);
     case MYLITE_SQL_AST_IF_FUNCTION:
@@ -201,9 +203,13 @@ static int session_binary_scalar_value(
         return scalar_logical_value(database, expression, out_cell);
     }
     if (mylite_execution_scalar_is_date_format_numeric_comparison_expression(expression)) {
-        return mylite_execution_scalar_date_format_numeric_comparison_value(database, expression, out_cell);
+        return mylite_execution_scalar_date_format_numeric_comparison_value(
+            database,
+            expression,
+            out_cell
+        );
     }
-    if (is_scalar_comparison_operator(mylite_sql_ast_node_operator(expression))) {
+    if (is_scalar_comparison_projection_expression(expression)) {
         return scalar_comparison_value(database, expression, out_cell);
     }
     return scalar_arithmetic_value(database, expression, out_cell);
@@ -399,8 +405,7 @@ static int evaluate_concat_function_scalar_arguments(
             const struct mylite_sql_ast_node *function_arguments = child_at(current, 0U);
             size_t function_argument_count = 0U;
 
-            if (mylite_sql_ast_node_child_count(current) != 1U ||
-                function_arguments == NULL ||
+            if (mylite_sql_ast_node_child_count(current) != 1U || function_arguments == NULL ||
                 function_arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
                 set_unsupported_error(database, "CONCAT() requires one or more arguments");
                 rc = MYLITE_ERROR;
@@ -571,7 +576,11 @@ static int evaluate_concat_operator_scalar_argument(
     } else if (concat_operator_scalar_argument_is_nested_scalar_value(expression)) {
         rc = session_scalar_value(database, expression, inout_cell);
     } else {
-        rc = mylite_execution_string_length_session_scalar_argument_value(database, expression, inout_cell);
+        rc = mylite_execution_string_length_session_scalar_argument_value(
+            database,
+            expression,
+            inout_cell
+        );
     }
     if (rc != MYLITE_OK) {
         return rc;
@@ -625,8 +634,7 @@ static int scalar_concat_operator_result(
     size_t total_length = 0U;
     size_t offset = 0U;
 
-    if (arguments == NULL || argument_count == 0U || out_text == NULL ||
-        out_text_length == NULL) {
+    if (arguments == NULL || argument_count == 0U || out_text == NULL || out_text_length == NULL) {
         return MYLITE_MISUSE;
     }
     *out_text = NULL;
@@ -668,8 +676,7 @@ static int scalar_concat_operator_result(
     return MYLITE_OK;
 }
 
-static bool concat_operator_scalar_argument_is_admitted(
-    const struct mylite_sql_ast_node *expression
+static bool concat_operator_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression
 ) {
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
@@ -776,8 +783,7 @@ static bool concat_operator_scalar_arithmetic_node_is_admitted(
         return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
     }
     if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
-        if (!integer_default_binary_operator_is_supported(
-                mylite_sql_ast_node_operator(expression)
+        if (!integer_default_binary_operator_is_supported(mylite_sql_ast_node_operator(expression)
             )) {
             return false;
         }
@@ -1807,8 +1813,7 @@ static int evaluate_greatest_least_scalar_decimal_argument(
         return MYLITE_ERROR;
     }
     span = &literal->span;
-    if (span->text == NULL || span->length == 0U ||
-        span->length > SIZE_MAX - prefix_size - 1U) {
+    if (span->text == NULL || span->length == 0U || span->length > SIZE_MAX - prefix_size - 1U) {
         set_unsupported_error(
             database,
             "GREATEST() and LEAST() support only string, integer, boolean, and NULL arguments"

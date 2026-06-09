@@ -33,7 +33,7 @@
 %left AND.
 %right NOT.
 %right ON.
-%left EQUAL NULL_SAFE_EQUAL NOT_EQUAL LESS LESS_EQUAL GREATER GREATER_EQUAL IS LIKE.
+%left EQUAL NULL_SAFE_EQUAL NOT_EQUAL LESS LESS_EQUAL GREATER GREATER_EQUAL IS LIKE REGEXP RLIKE.
 %left BITWISE_OR.
 %left BITWISE_AND.
 %left LEFT_SHIFT RIGHT_SHIFT.
@@ -43,7 +43,7 @@
 %left CONCAT_OPERATOR.
 %left JSON_EXTRACT_OPERATOR JSON_UNQUOTE_EXTRACT_OPERATOR.
 %left COLLATE.
-%right UPLUS UMINUS BITWISE_NOT.
+%right UPLUS UMINUS BITWISE_NOT BINARY.
 
 %fallback IDENTIFIER SAVEPOINT ENFORCED NO ACTION ALGORITHM COMMENT CASCADED DEFINER INVOKER
     DISK INSERT_METHOD LAST MEMORY MERGE NULLS RESPECT SECURITY SRID TABLESPACE TEMPTABLE
@@ -92,6 +92,7 @@
 %type alter_lock_value { struct mylite_sql_alter_lock_value }
 %type predicate_comparison_operator { struct mylite_sql_comparison_operator_tokens }
 %type dml_function_token { struct mylite_sql_token }
+%type keyword_function_token { struct mylite_sql_token }
 %type merge_insert_method { struct mylite_sql_ast_node * }
 
 input ::= statement_list(A). {
@@ -4355,6 +4356,40 @@ dml_function_token(A) ::= GEOMETRYCOLLECTION(T). {
 dml_function_token(A) ::= GEOMCOLLECTION(T). {
     A = T;
 }
+
+keyword_function_token(A) ::= ROW(T). {
+    A = T;
+}
+keyword_function_token(A) ::= VALUES(T). {
+    A = T;
+}
+keyword_function_token(A) ::= GROUPING(T). {
+    A = T;
+}
+keyword_function_token(A) ::= POINT(T). {
+    A = T;
+}
+keyword_function_token(A) ::= LINESTRING(T). {
+    A = T;
+}
+keyword_function_token(A) ::= POLYGON(T). {
+    A = T;
+}
+keyword_function_token(A) ::= MULTIPOINT(T). {
+    A = T;
+}
+keyword_function_token(A) ::= MULTILINESTRING(T). {
+    A = T;
+}
+keyword_function_token(A) ::= MULTIPOLYGON(T). {
+    A = T;
+}
+keyword_function_token(A) ::= GEOMETRYCOLLECTION(T). {
+    A = T;
+}
+keyword_function_token(A) ::= GEOMCOLLECTION(T). {
+    A = T;
+}
 dml_constant_scalar_value(A) ::= charset_introducer STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
@@ -5445,6 +5480,15 @@ group_key_list(A) ::= group_key_list(L) COMMA group_key(K). {
 
 group_key(A) ::= qualified_identifier(K). {
     A = K;
+}
+group_key(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+group_key(A) ::= qualified_identifier(V) COLLATE(C) option_name(N). {
+    A = mylite_sql_parser_make_collate_expression(state, V, C, N);
+}
+group_key(A) ::= BINARY(T) qualified_identifier(V). [BINARY] {
+    A = mylite_sql_parser_make_unary_binary_expression(state, T, V);
 }
 group_key(A) ::= WEEK(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
@@ -6832,8 +6876,18 @@ select_order_key(A) ::= qualified_identifier(B) PLUS(T) INTEGER(C). {
         mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_INTEGER)
     );
 }
+select_order_key(A) ::= selected_grouped_aggregate_expression(K). {
+    A = K;
+}
 select_order_key(A) ::= cast_convert_expression(K). {
     A = K;
+}
+select_order_key(A) ::= BINARY(T) qualified_identifier(K). [BINARY] {
+    A = mylite_sql_parser_make_unary_binary_expression(state, T, K);
+}
+select_order_key(A) ::= BINARY(T) STRING(V). [BINARY] {
+    A = mylite_sql_parser_make_unary_binary_expression(
+        state, T, mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING));
 }
 select_order_key(A) ::= predicate_collate_expression(K). {
     A = K;
@@ -6850,65 +6904,31 @@ select_order_key(A) ::=
             .escape = E,
         });
 }
-select_order_key(A) ::= select_field_order_expression(K). {
-    A = K;
-}
-select_order_key(A) ::= select_rand_order_expression(K). {
-    A = K;
-}
-select_order_key(A) ::= select_searched_case_order_expression(K). {
-    A = K;
-}
-
-select_searched_case_order_expression(A) ::=
-    CASE(T) searched_case_when_list(W) case_else_opt(E) END(R). {
-    A = mylite_sql_parser_make_searched_case_expression(state, T, W, E, R);
-}
-select_searched_case_order_expression(A) ::=
-    LPAREN(L) select_searched_case_order_expression(B) RPAREN(R). {
-    A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
-}
-
-select_field_order_expression(A) ::= FIELD(T) LPAREN function_argument_list(B) RPAREN(R). {
+select_order_key(A) ::= FIELD(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_FIELD_FUNCTION, B, R);
 }
-select_field_order_expression(A) ::= FIELD(T) LPAREN RPAREN(R). {
+select_order_key(A) ::= FIELD(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR, NULL, R);
 }
-select_field_order_expression(A) ::= LPAREN(L) select_field_order_expression(B) RPAREN(R). {
-    A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
-}
-select_rand_order_expression(A) ::= RAND(T) LPAREN RPAREN(R). {
+select_order_key(A) ::= RAND(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
-        state,
-        T,
-        MYLITE_SQL_AST_RAND_FUNCTION,
-        R
-    );
+        state, T, MYLITE_SQL_AST_RAND_FUNCTION, R);
 }
-select_rand_order_expression(A) ::= RAND(T) LPAREN expression(B) RPAREN(R). {
+select_order_key(A) ::= RAND(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
-        state,
-        T,
-        MYLITE_SQL_AST_RAND_SEED_FUNCTION,
-        B,
-        R
-    );
+        state, T, MYLITE_SQL_AST_RAND_SEED_FUNCTION, B, R);
 }
-select_rand_order_expression(A) ::=
-    RAND(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+select_order_key(A) ::= RAND(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
-        state,
-        T,
-        MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR,
-        C,
-        R
-    );
+        state, T, MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR, C, R);
 }
-select_rand_order_expression(A) ::= LPAREN(L) select_rand_order_expression(B) RPAREN(R). {
+select_order_key(A) ::= CASE(T) searched_case_when_list(W) case_else_opt(E) END(R). {
+    A = mylite_sql_parser_make_searched_case_expression(state, T, W, E, R);
+}
+select_order_key(A) ::= LPAREN(L) select_order_key(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
 }
 
@@ -7078,6 +7098,12 @@ expression(A) ::= IDENTIFIER(T) LPAREN RPAREN(R). {
 expression(A) ::= IDENTIFIER(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_generic_function(state, T, B, R);
 }
+expression(A) ::= keyword_function_token(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_generic_function(state, T, NULL, R);
+}
+expression(A) ::= keyword_function_token(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_generic_function(state, T, B, R);
+}
 expression(A) ::= match_against_expression(B). {
     A = B;
 }
@@ -7151,6 +7177,9 @@ cast_convert_expression(A) ::= CONVERT(T) LPAREN expression(V) USING BINARY RPAR
 }
 cast_convert_expression(A) ::= CONVERT(T) LPAREN expression(V) USING option_name(C) RPAREN(R). {
     A = mylite_sql_parser_make_convert_using_charset_expression(state, T, V, C, R);
+}
+expression(A) ::= BINARY(T) expression(V). [BINARY] {
+    A = mylite_sql_parser_make_unary_binary_expression(state, T, V);
 }
 expression(A) ::= expression(V) COLLATE(C) option_name(N). {
     A = mylite_sql_parser_make_collate_expression(state, V, C, N);
@@ -8142,6 +8171,13 @@ expression(A) ::= CONCAT_WS(T) LPAREN function_argument_list(B) RPAREN(R). {
 expression(A) ::= CHAR(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_CHAR_FUNCTION, B, R);
+}
+expression(A) ::= CHAR(T) LPAREN function_argument_list(B) USING option_name(C) RPAREN(R). {
+    A = mylite_sql_parser_make_generic_function(
+        state,
+        T,
+        mylite_sql_parser_append_function_argument(state, B, C),
+        R);
 }
 expression(A) ::= REPLACE(T) LPAREN expression(B) COMMA expression(C)
                   COMMA expression(D) RPAREN(R). {
@@ -10136,11 +10172,31 @@ expression(A) ::= COUNT(T) LPAREN(L) DISTINCT LPAREN qualified_identifier(B) RPA
             state, T, L, MYLITE_SQL_AST_COUNT_DISTINCT_COLUMN_FUNCTION, B, R),
         W);
 }
+expression(A) ::= COUNT(T) LPAREN DISTINCT qualified_identifier(B) COMMA function_argument_list(C)
+                  RPAREN(R) aggregate_window_opt(W). {
+    (void)B;
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_generic_function(state, T, C, R),
+        W);
+}
+expression(A) ::= COUNT(T) LPAREN DISTINCT count_distinct_placeholder_argument(B) RPAREN(R)
+                  aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_generic_function(
+            state, T, mylite_sql_parser_make_function_argument_list(state, B), R),
+        W);
+}
 expression(A) ::= COUNT(T) LPAREN(L) qualified_identifier(B) RPAREN(R) aggregate_window_opt(W). {
     A = mylite_sql_parser_attach_function_window_clause(
         mylite_sql_parser_make_no_space_one_argument_function(
             state, T, L, MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION, B, R),
         W);
+}
+count_distinct_placeholder_argument(A) ::= CONCAT(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(state, T, MYLITE_SQL_AST_CONCAT_FUNCTION, B, R);
+}
+count_distinct_placeholder_argument(A) ::= BINARY(T) expression(B). [BINARY] {
+    A = mylite_sql_parser_make_unary_binary_expression(state, T, B);
 }
 expression(A) ::= COUNT(T) LPAREN(L) count_nullif_predicate_expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
@@ -10195,10 +10251,22 @@ expression(A) ::= SUM(T) LPAREN(L) sum_aggregate_argument(B) RPAREN(R)
             state, T, L, MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION, B, R),
         W);
 }
+expression(A) ::= SUM(T) LPAREN DISTINCT expression(B) RPAREN(R) aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_generic_function(
+            state, T, mylite_sql_parser_make_function_argument_list(state, B), R),
+        W);
+}
 expression(A) ::= AVG(T) LPAREN qualified_identifier(B) RPAREN(R) aggregate_window_opt(W). {
     A = mylite_sql_parser_attach_function_window_clause(
         mylite_sql_parser_make_one_argument_function(
             state, T, MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION, B, R),
+        W);
+}
+expression(A) ::= AVG(T) LPAREN DISTINCT expression(B) RPAREN(R) aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_generic_function(
+            state, T, mylite_sql_parser_make_function_argument_list(state, B), R),
         W);
 }
 expression(A) ::= BIT_AND(T) LPAREN(L) qualified_identifier(B) RPAREN(R)
@@ -10226,6 +10294,15 @@ expression(A) ::= GROUP_CONCAT(T) LPAREN(L) expression(B)
     group_concat_order_opt(O) group_concat_separator_opt(S) RPAREN(R) aggregate_window_opt(W). {
     A = mylite_sql_parser_attach_function_window_clause(
         mylite_sql_parser_make_group_concat_function(state, T, L, B, O, S, R),
+        W);
+}
+expression(A) ::= GROUP_CONCAT(T) LPAREN DISTINCT expression(B)
+    group_concat_order_opt(O) group_concat_separator_opt(S) RPAREN(R) aggregate_window_opt(W). {
+    (void)O;
+    (void)S;
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_generic_function(
+            state, T, mylite_sql_parser_make_function_argument_list(state, B), R),
         W);
 }
 expression(A) ::= ANY_VALUE(T) LPAREN expression(B) RPAREN(R). {
@@ -10351,6 +10428,27 @@ expression(A) ::= expression(B) GREATER_EQUAL(T) expression(C). {
 expression(A) ::= expression(B) LIKE(T) expression(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_LIKE, C);
+}
+expression(A) ::= expression(B) REGEXP(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_REGEXP, C);
+}
+expression(A) ::= expression(B) RLIKE(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_RLIKE, C);
+}
+expression(A) ::= expression(B) NOT(N) REGEXP(T) expression(C). [NOT] {
+    A = mylite_sql_parser_make_not_predicate(
+        state,
+        N,
+        mylite_sql_parser_make_binary_expression(
+            state, B, T, MYLITE_SQL_AST_OPERATOR_REGEXP, C));
+}
+expression(A) ::= expression(B) NOT(N) RLIKE(T) expression(C). [NOT] {
+    A = mylite_sql_parser_make_not_predicate(
+        state,
+        N,
+        mylite_sql_parser_make_binary_expression(state, B, T, MYLITE_SQL_AST_OPERATOR_RLIKE, C));
 }
 expression(A) ::= expression(B) BITWISE_OR(T) expression(C). {
     A = mylite_sql_parser_make_binary_expression(

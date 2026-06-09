@@ -109,8 +109,7 @@ static bool is_user_variable_assignment_projection_expression(
     return is_scalar_projection_expression(child_at(expression, 1U));
 }
 
-static bool is_last_insert_id_set_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_last_insert_id_set_projection_expression(const struct mylite_sql_ast_node *expression
 ) {
     expression = unwrap_parenthesized_expression(expression);
 
@@ -252,8 +251,7 @@ static bool is_json_scalar_function_projection_expression(
             mylite_execution_scalar_is_date_format_numeric_comparison_expression(expression)) != 0;
 }
 
-static bool is_scalar_conversion_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_scalar_conversion_projection_expression(const struct mylite_sql_ast_node *expression
 ) {
     return (is_cast_binary_projection_expression(expression) ||
             is_cast_convert_basic_projection_expression(expression) ||
@@ -331,8 +329,7 @@ static bool is_sqrt_projection_expression(const struct mylite_sql_ast_node *expr
     return child_at(expression, 0U) != NULL;
 }
 
-static bool is_angle_conversion_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_angle_conversion_projection_expression(const struct mylite_sql_ast_node *expression
 ) {
     expression = unwrap_parenthesized_expression(expression);
 
@@ -839,8 +836,7 @@ static bool is_uuid_projection_expression(const struct mylite_sql_ast_node *expr
     return false;
 }
 
-static bool is_uuid_value_projection_argument_supported(
-    const struct mylite_sql_ast_node *expression
+static bool is_uuid_value_projection_argument_supported(const struct mylite_sql_ast_node *expression
 ) {
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
@@ -1014,8 +1010,7 @@ static bool is_string_length_projection_expression(const struct mylite_sql_ast_n
     return mylite_execution_string_length_scalar_argument_is_admitted(child_at(expression, 0U));
 }
 
-static bool is_string_codepoint_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_string_codepoint_projection_expression(const struct mylite_sql_ast_node *expression
 ) {
     expression = unwrap_parenthesized_expression(expression);
 
@@ -1083,8 +1078,11 @@ static bool is_string_slice_projection_expression(const struct mylite_sql_ast_no
     }
     if (function_kind != PLANNED_STRING_SLICE_FUNCTION_SUBSTRING) {
         return (argument_count == 2U &&
-                mylite_execution_string_slice_scalar_text_argument_is_admitted(child_at(expression, 0U)) &&
-                mylite_execution_string_slice_length_argument_is_admitted(child_at(expression, 1U))) != 0;
+                mylite_execution_string_slice_scalar_text_argument_is_admitted(
+                    child_at(expression, 0U)
+                ) &&
+                mylite_execution_string_slice_length_argument_is_admitted(child_at(expression, 1U))
+               ) != 0;
     }
     if (argument_count != 2U && argument_count != 3U) {
         return false;
@@ -1094,7 +1092,8 @@ static bool is_string_slice_projection_expression(const struct mylite_sql_ast_no
         return false;
     }
     return (argument_count == 2U ||
-            mylite_execution_string_slice_length_argument_is_admitted(child_at(expression, 2U))) != 0;
+            mylite_execution_string_slice_length_argument_is_admitted(child_at(expression, 2U))) !=
+           0;
 }
 
 static bool is_string_search_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -1122,7 +1121,8 @@ static bool is_string_search_projection_expression(const struct mylite_sql_ast_n
         return false;
     }
     return (argument_count == 2U ||
-            mylite_execution_string_slice_length_argument_is_admitted(child_at(expression, 2U))) != 0;
+            mylite_execution_string_slice_length_argument_is_admitted(child_at(expression, 2U))) !=
+           0;
 }
 
 static bool is_find_in_set_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -1131,8 +1131,10 @@ static bool is_find_in_set_projection_expression(const struct mylite_sql_ast_nod
         return false;
     }
     return (mylite_sql_ast_node_child_count(expression) == 2U &&
-            mylite_execution_string_slice_scalar_text_argument_is_admitted(child_at(expression, 0U)) &&
-            mylite_execution_string_slice_scalar_text_argument_is_admitted(child_at(expression, 1U))) != 0;
+            mylite_execution_string_slice_scalar_text_argument_is_admitted(child_at(expression, 0U)
+            ) &&
+            mylite_execution_string_slice_scalar_text_argument_is_admitted(child_at(expression, 1U))
+           ) != 0;
 }
 
 static bool is_strcmp_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -1141,8 +1143,10 @@ static bool is_strcmp_projection_expression(const struct mylite_sql_ast_node *ex
         return false;
     }
     return (mylite_sql_ast_node_child_count(expression) == 2U &&
-            mylite_execution_string_slice_scalar_text_argument_is_admitted(child_at(expression, 0U)) &&
-            mylite_execution_string_slice_scalar_text_argument_is_admitted(child_at(expression, 1U))) != 0;
+            mylite_execution_string_slice_scalar_text_argument_is_admitted(child_at(expression, 0U)
+            ) &&
+            mylite_execution_string_slice_scalar_text_argument_is_admitted(child_at(expression, 1U))
+           ) != 0;
 }
 
 static bool is_substring_index_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -1151,9 +1155,12 @@ static bool is_substring_index_projection_expression(const struct mylite_sql_ast
         return false;
     }
     return (mylite_sql_ast_node_child_count(expression) == 3U &&
-            mylite_execution_string_slice_scalar_text_argument_is_admitted(child_at(expression, 0U)) &&
-            mylite_execution_string_slice_scalar_text_argument_is_admitted(child_at(expression, 1U)) &&
-            mylite_execution_string_slice_length_argument_is_admitted(child_at(expression, 2U))) != 0;
+            mylite_execution_string_slice_scalar_text_argument_is_admitted(child_at(expression, 0U)
+            ) &&
+            mylite_execution_string_slice_scalar_text_argument_is_admitted(child_at(expression, 1U)
+            ) &&
+            mylite_execution_string_slice_length_argument_is_admitted(child_at(expression, 2U))) !=
+           0;
 }
 
 static bool is_string_padding_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -1170,18 +1177,27 @@ static bool is_string_padding_projection_expression(const struct mylite_sql_ast_
     if (function_kind == PLANNED_STRING_PADDING_FUNCTION_LPAD ||
         function_kind == PLANNED_STRING_PADDING_FUNCTION_RPAD) {
         return (argument_count == 3U &&
-                mylite_execution_string_slice_scalar_text_argument_is_admitted(child_at(expression, 0U)) &&
-                mylite_execution_string_slice_length_argument_is_admitted(child_at(expression, 1U)) &&
-                mylite_execution_string_slice_scalar_text_argument_is_admitted(child_at(expression, 2U))) != 0;
+                mylite_execution_string_slice_scalar_text_argument_is_admitted(
+                    child_at(expression, 0U)
+                ) &&
+                mylite_execution_string_slice_length_argument_is_admitted(child_at(expression, 1U)
+                ) &&
+                mylite_execution_string_slice_scalar_text_argument_is_admitted(
+                    child_at(expression, 2U)
+                )) != 0;
     }
     if (function_kind == PLANNED_STRING_PADDING_FUNCTION_REPEAT) {
         return (argument_count == 2U &&
-                mylite_execution_string_slice_scalar_text_argument_is_admitted(child_at(expression, 0U)) &&
-                mylite_execution_string_slice_length_argument_is_admitted(child_at(expression, 1U))) != 0;
+                mylite_execution_string_slice_scalar_text_argument_is_admitted(
+                    child_at(expression, 0U)
+                ) &&
+                mylite_execution_string_slice_length_argument_is_admitted(child_at(expression, 1U))
+               ) != 0;
     }
     if (function_kind == PLANNED_STRING_PADDING_FUNCTION_SPACE) {
         return (argument_count == 1U &&
-                mylite_execution_string_slice_length_argument_is_admitted(child_at(expression, 0U))) != 0;
+                mylite_execution_string_slice_length_argument_is_admitted(child_at(expression, 0U))
+               ) != 0;
     }
     return false;
 }
@@ -1226,7 +1242,8 @@ static bool is_string_replace_projection_expression(const struct mylite_sql_ast_
     }
     return (mylite_execution_string_replace_scalar_argument_is_admitted(child_at(expression, 0U)) &&
             mylite_execution_string_replace_scalar_argument_is_admitted(child_at(expression, 1U)) &&
-            mylite_execution_string_replace_scalar_argument_is_admitted(child_at(expression, 2U))) != 0;
+            mylite_execution_string_replace_scalar_argument_is_admitted(child_at(expression, 2U))
+           ) != 0;
 }
 
 static bool is_string_insert_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -1238,7 +1255,8 @@ static bool is_string_insert_projection_expression(const struct mylite_sql_ast_n
     return (mylite_execution_string_replace_scalar_argument_is_admitted(child_at(expression, 0U)) &&
             mylite_execution_string_slice_length_argument_is_admitted(child_at(expression, 1U)) &&
             mylite_execution_string_slice_length_argument_is_admitted(child_at(expression, 2U)) &&
-            mylite_execution_string_replace_scalar_argument_is_admitted(child_at(expression, 3U))) != 0;
+            mylite_execution_string_replace_scalar_argument_is_admitted(child_at(expression, 3U))
+           ) != 0;
 }
 
 static bool is_string_reverse_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -1295,12 +1313,12 @@ static bool is_string_quote_projection_expression(const struct mylite_sql_ast_no
     return mylite_execution_quote_scalar_argument_is_admitted(argument);
 }
 
-static bool is_charset_collation_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_charset_collation_projection_expression(const struct mylite_sql_ast_node *expression
 ) {
     expression = unwrap_parenthesized_expression(expression);
 
-    if (expression == NULL || !mylite_execution_is_charset_collation_function_kind(expression->kind)) {
+    if (expression == NULL ||
+        !mylite_execution_is_charset_collation_function_kind(expression->kind)) {
         return false;
     }
     if (mylite_sql_ast_node_child_count(expression) != 1U) {
@@ -1367,8 +1385,7 @@ static bool is_cast_binary_projection_expression(const struct mylite_sql_ast_nod
     return mylite_sql_ast_node_child_count(expression) == 1U;
 }
 
-static bool is_cast_convert_basic_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_cast_convert_basic_projection_expression(const struct mylite_sql_ast_node *expression
 ) {
     expression = unwrap_parenthesized_expression(expression);
 
@@ -1426,7 +1443,8 @@ static bool is_date_interval_second_projection_expression(
 ) {
     expression = unwrap_parenthesized_expression(expression);
 
-    if (expression == NULL || !mylite_execution_is_date_interval_second_function_kind(expression->kind)) {
+    if (expression == NULL ||
+        !mylite_execution_is_date_interval_second_function_kind(expression->kind)) {
         return false;
     }
     if (expression->kind == MYLITE_SQL_AST_TIMESTAMPADD_FUNCTION) {
@@ -1450,7 +1468,8 @@ static bool is_time_arithmetic_projection_expression(const struct mylite_sql_ast
                                expression->kind == MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR)) {
         return true;
     }
-    if (expression == NULL || !mylite_execution_is_time_arithmetic_function_kind(expression->kind)) {
+    if (expression == NULL ||
+        !mylite_execution_is_time_arithmetic_function_kind(expression->kind)) {
         return false;
     }
     if (mylite_sql_ast_node_child_count(expression) != 2U) {
@@ -1474,8 +1493,7 @@ static bool is_date_format_projection_expression(const struct mylite_sql_ast_nod
     return (child_at(expression, 0U) != NULL && child_at(expression, 1U) != NULL) != 0;
 }
 
-static bool is_temporal_extract_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_temporal_extract_projection_expression(const struct mylite_sql_ast_node *expression
 ) {
     expression = unwrap_parenthesized_expression(expression);
 
@@ -1601,8 +1619,8 @@ static bool is_json_valid_projection_expression(const struct mylite_sql_ast_node
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_JSON_VALID_FUNCTION) {
         return false;
     }
-    return (mylite_sql_ast_node_child_count(expression) == 1U &&
-            child_at(expression, 0U) != NULL) != 0;
+    return (mylite_sql_ast_node_child_count(expression) == 1U && child_at(expression, 0U) != NULL
+           ) != 0;
 }
 
 static bool is_regexp_like_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -1691,8 +1709,7 @@ static bool is_json_value_projection_expression(const struct mylite_sql_ast_node
             child_at(expression, 1U) != NULL) != 0;
 }
 
-static bool is_json_introspection_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_json_introspection_projection_expression(const struct mylite_sql_ast_node *expression
 ) {
     size_t child_count = 0U;
 
@@ -1716,8 +1733,8 @@ static bool is_json_unquote_projection_expression(const struct mylite_sql_ast_no
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION) {
         return false;
     }
-    return (mylite_sql_ast_node_child_count(expression) == 1U &&
-            child_at(expression, 0U) != NULL) != 0;
+    return (mylite_sql_ast_node_child_count(expression) == 1U && child_at(expression, 0U) != NULL
+           ) != 0;
 }
 
 static bool is_json_quote_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -1726,12 +1743,11 @@ static bool is_json_quote_projection_expression(const struct mylite_sql_ast_node
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_JSON_QUOTE_FUNCTION) {
         return false;
     }
-    return (mylite_sql_ast_node_child_count(expression) == 1U &&
-            child_at(expression, 0U) != NULL) != 0;
+    return (mylite_sql_ast_node_child_count(expression) == 1U && child_at(expression, 0U) != NULL
+           ) != 0;
 }
 
-static bool is_json_construction_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_json_construction_projection_expression(const struct mylite_sql_ast_node *expression
 ) {
     size_t child_count = 0U;
 
@@ -1788,8 +1804,7 @@ static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_no
     return is_scalar_function_expression(expression);
 }
 
-static bool is_scalar_arithmetic_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_scalar_arithmetic_projection_expression(const struct mylite_sql_ast_node *expression
 ) {
     struct scalar_arithmetic_node_stack stack = {0};
     bool result = true;
@@ -1805,7 +1820,9 @@ static bool is_scalar_arithmetic_projection_expression(
     return result;
 }
 
-bool mylite_execution_is_scalar_division_projection_expression(const struct mylite_sql_ast_node *expression) {
+bool mylite_execution_is_scalar_division_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION ||
         mylite_sql_ast_node_operator(expression) != MYLITE_SQL_AST_OPERATOR_DIVIDE) {
@@ -1875,8 +1892,7 @@ static bool is_scalar_logical_projection_expression(const struct mylite_sql_ast_
     return saw_logical;
 }
 
-static bool is_scalar_comparison_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_scalar_comparison_projection_expression(const struct mylite_sql_ast_node *expression
 ) {
     struct scalar_arithmetic_node_stack stack = {0};
     bool result = true;
@@ -2084,19 +2100,30 @@ static bool scalar_comparison_projection_node_is_admitted(
     const struct mylite_sql_ast_node *expression,
     struct scalar_arithmetic_node_stack *stack
 ) {
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
         return false;
     }
+    if (expression->kind == MYLITE_SQL_AST_NOT_PREDICATE) {
+        return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
+    }
     if (expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
         return is_scalar_numeric_comparison_projection_expression(expression);
     }
-    if (!is_scalar_comparison_operator(mylite_sql_ast_node_operator(expression))) {
+    operator_kind = mylite_sql_ast_node_operator(expression);
+    if (!is_scalar_comparison_operator(operator_kind)) {
         return is_scalar_numeric_comparison_projection_expression(expression);
     }
     if (expression_is_unparenthesized_scalar_is(child_at(expression, 0U)) ||
         expression_is_unparenthesized_scalar_is(child_at(expression, 1U))) {
         return false;
+    }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_REGEXP ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_RLIKE) {
+        return is_scalar_regexp_comparison_operand_expression(child_at(expression, 0U)) &&
+               is_scalar_regexp_comparison_operand_expression(child_at(expression, 1U));
     }
     if (is_scalar_logical_projection_expression(child_at(expression, 0U)) ||
         is_scalar_logical_projection_expression(child_at(expression, 1U))) {
@@ -2106,6 +2133,47 @@ static bool scalar_comparison_projection_node_is_admitted(
         return false;
     }
     return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
+}
+
+static bool is_scalar_regexp_comparison_operand_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        enum mylite_sql_ast_literal_kind literal_kind =
+            mylite_sql_ast_node_literal_kind(expression);
+
+        return (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_FALSE ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_NULL) != 0;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+        const struct mylite_sql_ast_node *literal =
+            unwrap_parenthesized_expression(child_at(expression, 0U));
+
+        return (operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+                operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) &&
+               literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+               mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER;
+    }
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CAST_CHAR_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_CHAR_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+        return mylite_sql_ast_node_child_count(expression) == 1U;
+    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
+        return mylite_sql_ast_node_child_count(expression) == 2U;
+    default:
+        return false;
+    }
 }
 
 static bool scalar_concat_projection_node_is_admitted(
@@ -2186,6 +2254,8 @@ static bool is_scalar_comparison_operator(enum mylite_sql_ast_operator operator_
     case MYLITE_SQL_AST_OPERATOR_GREATER:
     case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_RLIKE:
         return true;
     default:
         return false;
@@ -2378,8 +2448,7 @@ static bool scalar_arithmetic_attempt_node_is_admitted(
     return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
 }
 
-static bool is_scalar_value_projection_attempt_operand(
-    const struct mylite_sql_ast_node *expression
+static bool is_scalar_value_projection_attempt_operand(const struct mylite_sql_ast_node *expression
 ) {
     while (true) {
         enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
@@ -2415,8 +2484,7 @@ static bool is_scalar_value_projection_attempt_operand(
     }
 }
 
-static bool is_scalar_numeric_function_attempt_operand(
-    const struct mylite_sql_ast_node *expression
+static bool is_scalar_numeric_function_attempt_operand(const struct mylite_sql_ast_node *expression
 ) {
     if (expression == NULL) {
         return false;

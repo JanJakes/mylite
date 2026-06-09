@@ -3,15 +3,16 @@
 Spatial constructors, predicates, measurements, and conversion functions.
 
 Selected spatial constructor and conversion function calls are parser-admitted
-as generic function placeholders in current `SET` and DML value positions.
+as generic function placeholders in current scalar, `SET`, and DML value
+positions.
 MyLite still does not implement non-`NULL` geometry values, SRIDs, spatial
 predicates, measurements, or spatial function execution.
 
 | Function | Status | Notes |
 | --- | --- | --- |
-| `GeomCollection()` | ❌ | Construct geometry collection from geometries |
-| `GeometryCollection()` | ❌ | Construct geometry collection from geometries |
-| `LineString()` | ❌ | Construct LineString from Point values |
+| `GeomCollection()` | ⚪ | Parser-admitted placeholder; no executable geometry collection construction |
+| `GeometryCollection()` | ⚪ | Parser-admitted placeholder; no executable geometry collection construction |
+| `LineString()` | ⚪ | Parser-admitted placeholder; no executable LineString construction |
 | `MBRContains()` | ❌ | Whether MBR of one geometry contains MBR of another |
 | `MBRCoveredBy()` | ❌ | Whether one MBR is covered by another |
 | `MBRCovers()` | ❌ | Whether one MBR covers another |
@@ -21,11 +22,11 @@ predicates, measurements, or spatial function execution.
 | `MBROverlaps()` | ❌ | Whether MBRs of two geometries overlap |
 | `MBRTouches()` | ❌ | Whether MBRs of two geometries touch |
 | `MBRWithin()` | ❌ | Whether MBR of one geometry is within MBR of another |
-| `MultiLineString()` | ❌ | Contruct MultiLineString from LineString values |
-| `MultiPoint()` | ❌ | Construct MultiPoint from Point values |
-| `MultiPolygon()` | ❌ | Construct MultiPolygon from Polygon values |
-| `Point()` | ❌ | Construct Point from coordinates |
-| `Polygon()` | ❌ | Construct Polygon from LineString arguments |
+| `MultiLineString()` | ⚪ | Parser-admitted placeholder; no executable MultiLineString construction |
+| `MultiPoint()` | ⚪ | Parser-admitted placeholder; no executable MultiPoint construction |
+| `MultiPolygon()` | ⚪ | Parser-admitted placeholder; no executable MultiPolygon construction |
+| `Point()` | ⚪ | Parser-admitted placeholder; no executable Point construction |
+| `Polygon()` | ⚪ | Parser-admitted placeholder; no executable Polygon construction |
 | `ST_Area()` | ❌ | Return Polygon or MultiPolygon area |
 | `ST_AsBinary(), ST_AsWKB()` | ❌ | Convert from internal geometry format to WKB |
 | `ST_AsGeoJSON()` | ❌ | Generate GeoJSON object from geometry |

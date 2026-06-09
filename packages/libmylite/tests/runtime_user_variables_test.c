@@ -23,6 +23,14 @@ enum {
     uninitialized_read_column_count = 5,
     assigned_read_column_count = 18,
     assignment_expression_column_count = 7,
+    scalar_temporal_column_count = 7,
+    scalar_temporal_utc_column_index = 5,
+    scalar_temporal_sysdate_column_index = 6,
+    uuid_text_length = 36,
+    uuid_first_dash_offset = 8,
+    uuid_second_dash_offset = 13,
+    uuid_third_dash_offset = 18,
+    uuid_fourth_dash_offset = 23,
     atomic_rollback_column_count = 5,
     test_path_capacity = 256,
 };
@@ -50,6 +58,7 @@ static const char default_sql_mode[] =
 
 static int test_user_variable_values_and_scalar_reads(void);
 static int test_user_variable_assignment_expressions(void);
+static int test_user_variable_scalar_function_assignments(void);
 static int test_user_variable_system_restore_and_atomic_failure(void);
 static int test_user_variable_diagnostics(void);
 static int test_user_variable_file_reopen_is_nonpersistent(void);
@@ -83,6 +92,7 @@ static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_text(const char *actual, const char *expected, const char *context);
 static int expect_contains(const char *actual, const char *needle, const char *context);
+static int expect_uuid_shape(const char *actual, const char *context);
 static int make_test_path(char *path, size_t path_size, const char *name);
 static int current_process_id(void);
 
@@ -91,6 +101,7 @@ int main(void) {
 
     failures += test_user_variable_values_and_scalar_reads();
     failures += test_user_variable_assignment_expressions();
+    failures += test_user_variable_scalar_function_assignments();
     failures += test_user_variable_system_restore_and_atomic_failure();
     failures += test_user_variable_diagnostics();
     failures += test_user_variable_file_reopen_is_nonpersistent();
@@ -315,6 +326,128 @@ static int test_user_variable_assignment_expressions(void) {
             .context = "DO assignment side effects and warning count",
         }
     );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_user_variable_scalar_function_assignments(void) {
+    static const char *const scalar_columns[] = {
+        "@concat",
+        "@flow",
+        "@nil",
+        "@co",
+        "@rep",
+        "@regexp",
+        "@ws",
+        "@neq",
+        "@greatest",
+        "@least",
+        "@lid",
+        "LAST_INSERT_ID()",
+    };
+    static const char *const scalar_values[] = {
+        "abb",
+        "3",
+        "4",
+        "5",
+        "aBc",
+        "aBc",
+        "a-b",
+        "8",
+        "3",
+        "4",
+        "7",
+        "7",
+    };
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures =
+        expect_int(mylite_open_memory(&database), MYLITE_OK, "open scalar assignment functions");
+
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += execute_statement_ok(
+        database,
+        "SET @concat = CONCAT('a', REPEAT('b', 2)), @flow = IF(0, 2, 3), "
+        "@nil = IFNULL(NULL, 4), @co = COALESCE(NULL, 5), "
+        "@rep = REPLACE('abc', 'b', 'B'), @regexp = REGEXP_REPLACE('abc', 'b', 'B'), "
+        "@ws = CONCAT_WS('-', 'a', 'b'), @neq = NULLIF(8, 9), "
+        "@greatest = GREATEST(1, 3, 2), @least = LEAST(9, 4, 7), "
+        "@lid = LAST_INSERT_ID(7)"
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @concat, @flow, @nil, @co, @rep, @regexp, @ws, @neq, "
+                   "@greatest, @least, @lid, LAST_INSERT_ID()",
+            .columns = scalar_columns,
+            .values = scalar_values,
+            .column_count = sizeof(scalar_columns) / sizeof(scalar_columns[0]),
+            .row_count = 1U,
+            .affected_rows = 0,
+            .warning_count = 0U,
+            .context = "scalar function user variable assignments",
+        }
+    );
+    failures += execute_statement_ok(
+        database,
+        "SET @now = NOW(), @ts = CURRENT_TIMESTAMP(), @d = DATE '2001-01-02', "
+        "@cd = CURRENT_DATE(), @ct = CURRENT_TIME(), @utc = UTC_TIMESTAMP(), @sys = SYSDATE()"
+    );
+    failures += execute_ok(database, "SELECT @now, @ts, @d, @cd, @ct, @utc, @sys", &result);
+    if (failures == 0) {
+        failures += expect_size(
+            mylite_result_column_count(result),
+            scalar_temporal_column_count,
+            "temporal columns"
+        );
+        failures += expect_size(mylite_result_row_count(result), 1U, "temporal rows");
+        failures +=
+            expect_contains(mylite_result_value_text(result, 0U, 0U), "-", "NOW assignment");
+        failures += expect_contains(
+            mylite_result_value_text(result, 0U, 1U),
+            "-",
+            "CURRENT_TIMESTAMP assignment"
+        );
+        failures +=
+            expect_text(mylite_result_value_text(result, 0U, 2U), "2001-01-02", "DATE literal");
+        failures += expect_contains(
+            mylite_result_value_text(result, 0U, 3U),
+            "-",
+            "CURRENT_DATE assignment"
+        );
+        failures += expect_contains(
+            mylite_result_value_text(result, 0U, 4U),
+            ":",
+            "CURRENT_TIME assignment"
+        );
+        failures += expect_contains(
+            mylite_result_value_text(result, 0U, scalar_temporal_utc_column_index),
+            "-",
+            "UTC_TIMESTAMP assignment"
+        );
+        failures += expect_contains(
+            mylite_result_value_text(result, 0U, scalar_temporal_sysdate_column_index),
+            "-",
+            "SYSDATE assignment"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_statement_ok(database, "SET @cid = CONNECTION_ID(), @uuid = UUID()");
+    failures += execute_ok(database, "SELECT @cid > 0, @uuid", &result);
+    if (failures == 0) {
+        failures += expect_size(mylite_result_column_count(result), 2U, "uuid assignment columns");
+        failures += expect_size(mylite_result_row_count(result), 1U, "uuid assignment rows");
+        failures +=
+            expect_text(mylite_result_value_text(result, 0U, 0U), "1", "connection id assigned");
+        failures +=
+            expect_uuid_shape(mylite_result_value_text(result, 0U, 1U), "uuid assigned value");
+    }
+    mylite_result_free(result);
 
     mylite_close(database);
     return failures;
@@ -915,6 +1048,21 @@ static int expect_contains(const char *actual, const char *needle, const char *c
             context,
             actual == NULL ? "NULL" : actual,
             needle == NULL ? "NULL" : needle
+        );
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_uuid_shape(const char *actual, const char *context) {
+    if (actual == NULL || strlen(actual) != uuid_text_length ||
+        actual[uuid_first_dash_offset] != '-' || actual[uuid_second_dash_offset] != '-' ||
+        actual[uuid_third_dash_offset] != '-' || actual[uuid_fourth_dash_offset] != '-') {
+        fprintf(
+            stderr,
+            "%s: expected UUID-shaped text, got [%s]\n",
+            context,
+            actual == NULL ? "(null)" : actual
         );
         return 1;
     }

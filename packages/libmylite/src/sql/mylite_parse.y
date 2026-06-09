@@ -965,6 +965,9 @@ user_variable_set_value(A) ::= NULL(T). {
 user_variable_set_value(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
+user_variable_set_value(A) ::= TEMPORAL_LITERAL_INTRODUCER STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
 user_variable_set_value(A) ::= HEX_LITERAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
 }
@@ -1019,6 +1022,77 @@ set_expression_value(A) ::= LPAREN(L) select_statement(S) RPAREN(R). {
 
 set_function_value(A) ::= dml_function_call(B). {
     A = B;
+}
+set_function_value(A) ::= current_timestamp_value(B). {
+    A = B;
+}
+set_function_value(A) ::= current_date_value(B). {
+    A = B;
+}
+set_function_value(A) ::= current_time_value(B). {
+    A = B;
+}
+set_function_value(A) ::= utc_date_value(B). {
+    A = B;
+}
+set_function_value(A) ::= utc_time_value(B). {
+    A = B;
+}
+set_function_value(A) ::= utc_timestamp_value(B). {
+    A = B;
+}
+set_function_value(A) ::= sysdate_value(B). {
+    A = B;
+}
+set_function_value(A) ::= session_state_scalar_function_value(B). {
+    A = B;
+}
+set_function_value(A) ::= CONCAT(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_CONCAT_FUNCTION, B, R);
+}
+set_function_value(A) ::= REPEAT(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_REPEAT_FUNCTION, B, C, R);
+}
+set_function_value(A) ::= REPLACE(T) LPAREN expression(B) COMMA expression(C)
+    COMMA expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_REPLACE_FUNCTION, B, C, D, R);
+}
+set_function_value(A) ::= REGEXP_REPLACE(T) LPAREN expression(B) COMMA expression(C)
+    COMMA expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_REGEXP_REPLACE_FUNCTION, B, C, D, R);
+}
+set_function_value(A) ::= IF(T) LPAREN expression(B) COMMA expression(C)
+    COMMA expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_IF_FUNCTION, B, C, D, R);
+}
+set_function_value(A) ::= IFNULL(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_IFNULL_FUNCTION, B, C, R);
+}
+set_function_value(A) ::= NULLIF(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_NULLIF_FUNCTION, B, C, R);
+}
+set_function_value(A) ::= COALESCE(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_COALESCE_FUNCTION, B, R);
+}
+set_function_value(A) ::= CONCAT_WS(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_CONCAT_WS_FUNCTION, B, R);
+}
+set_function_value(A) ::= GREATEST(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_GREATEST_FUNCTION, B, R);
+}
+set_function_value(A) ::= LEAST(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_LEAST_FUNCTION, B, R);
 }
 set_function_value(A) ::= LOG10(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
@@ -4414,6 +4488,16 @@ dml_constant_scalar_value(A) ::= REPEAT(T) LPAREN expression(B) COMMA expression
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_REPEAT_FUNCTION, B, C, R);
 }
+dml_constant_scalar_value(A) ::= REPLACE(T) LPAREN expression(B) COMMA expression(C)
+    COMMA expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_REPLACE_FUNCTION, B, C, D, R);
+}
+dml_constant_scalar_value(A) ::= REGEXP_REPLACE(T) LPAREN expression(B) COMMA expression(C)
+    COMMA expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_REGEXP_REPLACE_FUNCTION, B, C, D, R);
+}
 dml_constant_scalar_value(A) ::= STR_TO_DATE(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_STR_TO_DATE_FUNCTION, B, C, R);
@@ -4547,6 +4631,34 @@ dml_constant_scalar_value(A) ::= TIMESTAMP(T) LPAREN expression(B) RPAREN(R). {
 dml_constant_scalar_value(A) ::= TIMESTAMP(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_TIMESTAMP_FUNCTION, B, C, R);
+}
+dml_constant_scalar_value(A) ::= session_state_scalar_function_value(B). {
+    A = B;
+}
+
+session_state_scalar_function_value(A) ::= CONNECTION_ID(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_CONNECTION_ID_FUNCTION, R);
+}
+session_state_scalar_function_value(A) ::= ROW_COUNT(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_ROW_COUNT_FUNCTION, R);
+}
+session_state_scalar_function_value(A) ::= FOUND_ROWS(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_FOUND_ROWS_FUNCTION, R);
+}
+session_state_scalar_function_value(A) ::= LAST_INSERT_ID(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION, R);
+}
+session_state_scalar_function_value(A) ::= LAST_INSERT_ID(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION, B, R);
+}
+session_state_scalar_function_value(A) ::= UUID(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_UUID_FUNCTION, R);
 }
 
 arithmetic_update_source_column(A) ::= IDENTIFIER(T). {

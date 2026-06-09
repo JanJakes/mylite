@@ -26,6 +26,14 @@ static int test_set_expression_values(void) {
         "SET @a = ST_AsText(ST_GeomFromText('POINT(1 1)'))",
         "SET @a := LOG10(0.0) + 1",
         "SET @a = CONVERT(@b USING utf8mb4)",
+        "SET @a = CONCAT('a', REPEAT('b', 2))",
+        "SET @a = CONCAT_WS('-', 'a', 'b'), @b = GREATEST(1, 3, 2), @c = LEAST(9, 4, 7)",
+        ("SET @a = IF(0, 'yes', 'no'), @b = IFNULL(NULL, 'fallback'), "
+         "@c = COALESCE(NULL, 'co')"),
+        "SET @a = CONNECTION_ID(), @b = LAST_INSERT_ID(), @c = UUID()",
+        "SET @a = ROW_COUNT(), @b = FOUND_ROWS(), @c = LAST_INSERT_ID(7)",
+        ("SET @a = NOW(), @b = CURRENT_TIMESTAMP(0), @c = DATE '2001-01-02', "
+         "@d = CURRENT_DATE(), @e = CURRENT_TIME(), @f = UTC_TIMESTAMP(), @g = SYSDATE()"),
         "SET @a = (SELECT COUNT(*) FROM t1)",
         "SET TIMESTAMP = UNIX_TIMESTAMP('2019-03-11 12:00:00')",
     };
@@ -58,9 +66,13 @@ static int test_dml_expression_values(void) {
         "INSERT INTO t1 VALUES (ST_GeomFromText('POINT(10 10)'))",
         "INSERT INTO t1 VALUES ((ST_PointFromText('POINT(10 10)')))",
         "INSERT INTO t1 VALUES (~0, -1 | 0, ROW(1, 2))",
+        "INSERT INTO t1 VALUES (REPLACE('abc', 'b', 'B'), REGEXP_REPLACE('abc', 'b', 'B'))",
+        "INSERT INTO t1 VALUES (CONNECTION_ID(), LAST_INSERT_ID(), UUID())",
         "INSERT INTO t1 SET g = ST_GeomFromText('POINT(1 1)')",
         "REPLACE INTO t1 VALUES (POINT(1, 1), ST_SRID(ST_GeomFromText('POINT(0 0)')))",
+        "REPLACE INTO t1 VALUES (ROW_COUNT(), FOUND_ROWS(), LAST_INSERT_ID(9))",
         "UPDATE t1 SET g = ST_GeomFromText('POINT(1 1)') WHERE id = 1",
+        "UPDATE t1 SET v = REPLACE(v, 'a', 'A'), n = CONNECTION_ID() WHERE id = 1",
         "UPDATE t1 SET n = ~0 WHERE id = 1",
         "INSERT INTO t1 VALUES (1) ON DUPLICATE KEY UPDATE g = ST_PointFromText('POINT(0 0)')",
     };

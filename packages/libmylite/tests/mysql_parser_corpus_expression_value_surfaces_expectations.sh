@@ -65,6 +65,7 @@ run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE}; "\
 "CREATE TABLE numbers (id INT PRIMARY KEY, amount INT, region VARCHAR(16)); "\
 "INSERT INTO numbers VALUES (1, 10, 'east'), (2, 20, 'west'); "\
 "CREATE TABLE bits (a BIGINT UNSIGNED, b BIGINT UNSIGNED); "\
+"CREATE TABLE dml_values (id INT, v VARCHAR(64), n INT); "\
 "CREATE TABLE geo (g GEOMETRY); "\
 "CREATE TABLE articles ("\
 "title TEXT, body TEXT, FULLTEXT KEY ft_title (title), FULLTEXT KEY ft_body (title, body)); "\
@@ -83,6 +84,28 @@ expect_output \
     "SET user variable convert expression" \
     "abc" \
     "USE ${DATABASE}; SET @b = 'abc'; SET @a = CONVERT(@b USING utf8mb4); SELECT @a;"
+expect_output \
+    "SET user variable scalar function values" \
+    "abb	3	4	5	aBc	aBc	a-b	8	3	4	7	7" \
+    "USE ${DATABASE}; "\
+"SET @concat = CONCAT('a', REPEAT('b', 2)), @flow = IF(0, 2, 3), "\
+"@nil = IFNULL(NULL, 4), @co = COALESCE(NULL, 5), "\
+"@rep = REPLACE('abc', 'b', 'B'), @regexp = REGEXP_REPLACE('abc', 'b', 'B'), "\
+"@ws = CONCAT_WS('-', 'a', 'b'), @neq = NULLIF(8, 9), "\
+"@greatest = GREATEST(1, 3, 2), @least = LEAST(9, 4, 7), "\
+"@lid = LAST_INSERT_ID(7); "\
+"SELECT @concat, @flow, @nil, @co, @rep, @regexp, @ws, @neq, @greatest, @least, "\
+"@lid, LAST_INSERT_ID();"
+expect_output \
+    "SET user variable session scalar values" \
+    "1	36	1	1	2001-01-02	1	1	1	1" \
+"USE ${DATABASE}; "\
+"SET @cid = CONNECTION_ID(), @uuid = UUID(), @now = NOW(), "\
+"@ts = CURRENT_TIMESTAMP(), @d = DATE '2001-01-02', "\
+"@cd = CURRENT_DATE(), @ct = CURRENT_TIME(), @utc = UTC_TIMESTAMP(), @sys = SYSDATE(); "\
+"SELECT @cid REGEXP '^[0-9]+$', CHAR_LENGTH(@uuid), @now IS NOT NULL, "\
+"@ts IS NOT NULL, @d, @cd IS NOT NULL, @ct IS NOT NULL, @utc IS NOT NULL, "\
+"@sys IS NOT NULL;"
 expect_output \
     "SET user variable scalar subquery" \
     "2" \
@@ -106,6 +129,18 @@ expect_output \
     "DML bitwise expressions" \
     "18446744073709551615	18446744073709551615" \
     "USE ${DATABASE}; INSERT INTO bits VALUES (~0, -1 | 0); SELECT a, b FROM bits;"
+expect_output \
+    "DML scalar function values" \
+    "aBc	aBc	11	11" \
+"USE ${DATABASE}; "\
+"INSERT INTO dml_values VALUES "\
+"(1, REPLACE('abc', 'b', 'B'), 5), "\
+"(2, REGEXP_REPLACE('abc', 'b', 'B'), LAST_INSERT_ID(11)); "\
+"SELECT "\
+"(SELECT v FROM dml_values WHERE id = 1), "\
+"(SELECT v FROM dml_values WHERE id = 2), "\
+"(SELECT n FROM dml_values WHERE id = 2), "\
+"LAST_INSERT_ID();"
 expect_success \
     "DML spatial function values" \
     "USE ${DATABASE}; INSERT INTO geo VALUES "\

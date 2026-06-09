@@ -20029,6 +20029,15 @@ static int plan_where_scalar_literal_value(
     const struct mylite_sql_ast_node *expression,
     struct planned_value *out_value
 );
+static int plan_where_row_scalar_predicate_literal_value(
+    struct mylite_db *database,
+    const struct planned_row_scalar_expression *row_scalar_expression,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_value *out_value
+);
+static bool row_scalar_predicate_literal_prefers_text(
+    const struct planned_row_scalar_expression *expression
+);
 static int plan_where_scalar_hex_literal_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal,
@@ -20054,6 +20063,9 @@ static bool predicate_row_scalar_cast_expression_is_binary(
     const struct mylite_sql_ast_node *expression
 );
 static bool predicate_node_is_scalar_literal_expression(
+    const struct mylite_sql_ast_node *predicate_node
+);
+static bool predicate_node_is_supported_row_scalar_expression(
     const struct mylite_sql_ast_node *predicate_node
 );
 static bool predicate_node_is_column_reference(const struct mylite_sql_ast_node *node);
@@ -20196,6 +20208,15 @@ static int plan_substring_comparison_predicate(
     size_t *out_node_index
 );
 static int plan_substring_is_null_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
+static int plan_row_scalar_expression_is_null_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
     const struct select_source_context *source_context,

@@ -147,7 +147,9 @@ static int plan_select_predicate_leaf_node(
                 &node_index
             );
         } else if (row_scalar_conversion_kind_from_expression(child_at(predicate_node, 0U)) !=
-                   PLANNED_ROW_SCALAR_CONVERSION_NONE) {
+                       PLANNED_ROW_SCALAR_CONVERSION_NONE ||
+                   predicate_node_is_supported_row_scalar_expression(
+                       child_at(predicate_node, 0U))) {
             rc = plan_row_scalar_expression_between_predicate(
                 database,
                 predicate_node,
@@ -348,7 +350,9 @@ static int plan_select_predicate_leaf_node_without_exists(
                 &node_index
             );
         } else if (row_scalar_conversion_kind_from_expression(child_at(predicate_node, 0U)) !=
-                   PLANNED_ROW_SCALAR_CONVERSION_NONE) {
+                       PLANNED_ROW_SCALAR_CONVERSION_NONE ||
+                   predicate_node_is_supported_row_scalar_expression(
+                       child_at(predicate_node, 0U))) {
             rc = plan_row_scalar_expression_between_predicate(
                 database,
                 predicate_node,
@@ -1689,6 +1693,17 @@ static int plan_row_scalar_function_comparison_predicate(
             out_node_index
         );
     }
+    if (predicate_node_is_supported_row_scalar_expression(left_node)) {
+        return plan_row_scalar_expression_comparison_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            out_node_index
+        );
+    }
 
     *out_handled = false;
     return MYLITE_OK;
@@ -1756,10 +1771,12 @@ static int plan_row_scalar_expression_comparison_predicate(
                 child_at(predicate_node, 1U),
                 &node.value
             );
-        } else if (child_at(predicate_node, 1U) != NULL &&
-                   (child_at(predicate_node, 1U)->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION ||
-                    (node.row_scalar_expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLLATE &&
-                     child_at(predicate_node, 1U)->kind == MYLITE_SQL_AST_LITERAL))) {
+        } else if (
+            predicate_node_is_supported_row_scalar_expression(child_at(predicate_node, 1U)) ||
+            (child_at(predicate_node, 1U) != NULL &&
+             (child_at(predicate_node, 1U)->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION ||
+              (node.row_scalar_expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLLATE &&
+               child_at(predicate_node, 1U)->kind == MYLITE_SQL_AST_LITERAL)))) {
             rc = plan_predicate_row_scalar_value_expression(
                 database,
                 child_at(predicate_node, 1U),
@@ -1769,8 +1786,9 @@ static int plan_row_scalar_expression_comparison_predicate(
                 &node
             );
         } else {
-            rc = plan_where_scalar_literal_value(
+            rc = plan_where_row_scalar_predicate_literal_value(
                 database,
+                node.row_scalar_expression,
                 child_at(predicate_node, 1U),
                 &node.value
             );
@@ -1781,6 +1799,8 @@ static int plan_row_scalar_expression_comparison_predicate(
     }
     if (rc != MYLITE_OK) {
         planned_value_deinit(&node.value);
+        planned_row_scalar_expression_deinit(node.row_scalar_value_expression);
+        free(node.row_scalar_value_expression);
         planned_row_scalar_expression_deinit(node.row_scalar_expression);
         free(node.row_scalar_expression);
     }
@@ -1831,7 +1851,12 @@ static int plan_row_scalar_expression_between_predicate(
             &node.value
         );
     } else if (rc == MYLITE_OK) {
-        rc = plan_where_scalar_literal_value(database, child_at(predicate_node, 1U), &node.value);
+        rc = plan_where_row_scalar_predicate_literal_value(
+            database,
+            node.row_scalar_expression,
+            child_at(predicate_node, 1U),
+            &node.value
+        );
     }
     if (rc == MYLITE_OK && node.row_scalar_compare_as_real) {
         rc = plan_where_scalar_decimal_literal_value(
@@ -1840,8 +1865,9 @@ static int plan_row_scalar_expression_between_predicate(
             &node.upper_value
         );
     } else if (rc == MYLITE_OK) {
-        rc = plan_where_scalar_literal_value(
+        rc = plan_where_row_scalar_predicate_literal_value(
             database,
+            node.row_scalar_expression,
             child_at(predicate_node, 2U),
             &node.upper_value
         );
@@ -2076,6 +2102,146 @@ static int plan_constant_truth_predicate(
         free(node.row_scalar_expression);
     }
     return rc;
+}
+
+static int plan_where_row_scalar_predicate_literal_value(
+    struct mylite_db *database,
+    const struct planned_row_scalar_expression *row_scalar_expression,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_value *out_value
+) {
+    const struct mylite_sql_ast_node *literal =
+        mylite_execution_unwrap_parenthesized_expression(expression);
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (row_scalar_predicate_literal_prefers_text(row_scalar_expression) &&
+        literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
+        rc = decode_sql_string_literal(
+            database,
+            literal,
+            "WHERE row-scalar predicates support only string literals without NUL bytes",
+            "WHERE row-scalar predicate string literals do not support NUL bytes",
+            &text,
+            &text_length
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return assign_text_value(database, text, text_length, out_value);
+    }
+
+    return plan_where_scalar_literal_value(database, expression, out_value);
+}
+
+static bool row_scalar_predicate_literal_prefers_text(
+    const struct planned_row_scalar_expression *expression
+) {
+    if (expression == NULL) {
+        return false;
+    }
+
+    switch (expression->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+        return expression->value.is_text;
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        return column_descriptor_uses_string_key_collation(&expression->column, true);
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SOUNDEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALUE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
+        return true;
+    case PLANNED_ROW_SCALAR_EXPRESSION_IF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
+        return expression->field_domain == PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING;
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
+        return (expression->conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_CHAR ||
+                expression->conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_USING_CHARSET) != 0;
+    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_COMPARISON:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_INSTR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_SUBSTR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_KEYS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
+        break;
+    }
+
+    return false;
 }
 
 static int plan_where_scalar_literal_expression(
@@ -2425,6 +2591,68 @@ static bool predicate_node_is_scalar_literal_expression(
     default:
         return false;
     }
+}
+
+static bool predicate_node_is_supported_row_scalar_expression(
+    const struct mylite_sql_ast_node *predicate_node
+) {
+    const struct mylite_sql_ast_node *node = unwrap_parenthesized_predicate(predicate_node);
+
+    if (node == NULL) {
+        return false;
+    }
+    if (is_row_scalar_control_flow_expression(node) ||
+        row_scalar_expression_is_string_function(node->kind) ||
+        is_row_scalar_json_expression(node) ||
+        row_scalar_expression_is_rand_function(node) ||
+        row_scalar_conversion_kind_from_expression(node) != PLANNED_ROW_SCALAR_CONVERSION_NONE ||
+        node->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION) {
+        return true;
+    }
+
+    switch (node->kind) {
+    case MYLITE_SQL_AST_CONCAT_FUNCTION:
+    case MYLITE_SQL_AST_CONCAT_WS_FUNCTION:
+    case MYLITE_SQL_AST_FIELD_FUNCTION:
+    case MYLITE_SQL_AST_GREATEST_FUNCTION:
+    case MYLITE_SQL_AST_LEAST_FUNCTION:
+    case MYLITE_SQL_AST_INTERVAL_FUNCTION:
+    case MYLITE_SQL_AST_HEX_FUNCTION:
+    case MYLITE_SQL_AST_UNHEX_FUNCTION:
+    case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
+    case MYLITE_SQL_AST_FROM_BASE64_FUNCTION:
+    case MYLITE_SQL_AST_UUID_FUNCTION:
+    case MYLITE_SQL_AST_IS_UUID_FUNCTION:
+    case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
+    case MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION:
+    case MYLITE_SQL_AST_CHAR_FUNCTION:
+    case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
+    case MYLITE_SQL_AST_TIME_FORMAT_FUNCTION:
+    case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
+    case MYLITE_SQL_AST_DATEDIFF_FUNCTION:
+    case MYLITE_SQL_AST_TIMEDIFF_FUNCTION:
+    case MYLITE_SQL_AST_TIMESTAMPDIFF_FUNCTION:
+    case MYLITE_SQL_AST_TIMESTAMP_FUNCTION:
+    case MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION:
+    case MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION:
+    case MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION:
+    case MYLITE_SQL_AST_FROM_DAYS_FUNCTION:
+    case MYLITE_SQL_AST_MAKEDATE_FUNCTION:
+    case MYLITE_SQL_AST_MAKETIME_FUNCTION:
+    case MYLITE_SQL_AST_PERIOD_ADD_FUNCTION:
+    case MYLITE_SQL_AST_PERIOD_DIFF_FUNCTION:
+    case MYLITE_SQL_AST_CONVERT_TZ_FUNCTION:
+        return true;
+    default:
+        break;
+    }
+    if (mylite_execution_is_date_interval_second_function_kind(node->kind) ||
+        mylite_execution_is_temporal_extract_function_kind(node->kind) ||
+        mylite_execution_is_charset_collation_function_kind(node->kind)) {
+        return true;
+    }
+
+    return false;
 }
 
 static bool predicate_node_is_column_reference(const struct mylite_sql_ast_node *node) {

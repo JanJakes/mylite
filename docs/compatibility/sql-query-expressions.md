@@ -22,16 +22,21 @@ projection lists, and a narrow joined simple `CASE` projection shape over
 integer descriptor/literal operands. Searched `CASE` also has a narrow hidden
 `ORDER BY` key subset over admitted row
 conditions, including `LIKE` atoms combined with `AND`/`OR`, and integer rank
-results. It does not make those functions available in predicates, broader
-ordering/grouping expressions, or DML assignments.
+results. The current descriptor-backed `WHERE` predicate subset also admits
+these function calls as row-scalar comparison, `IS [NOT] NULL`, and
+`[NOT] BETWEEN` operands. It does not admit bare function truth predicates,
+broader ordering/grouping expressions, or DML assignments.
 
 The limited row-scalar comparison-extrema family includes `GREATEST()` and
 `LEAST()` in no-source, `DUAL`, `DO`, and single-table projection lists over
 flat all-string or all-integer argument lists. It uses the current ASCII
 `utf8mb4_0900_ai_ci` collation subset for string comparisons. The related
 `INTERVAL()` slice is limited to sorted integer-domain thresholds with a
-literal or descriptor-column integer search value. These functions are not
-available in predicates, ordering/grouping expressions, or DML assignments.
+literal or descriptor-column integer search value. `GREATEST()` and `LEAST()`
+are also admitted in the current descriptor-backed row-scalar comparison,
+`IS [NOT] NULL`, and `[NOT] BETWEEN` predicate subset. `INTERVAL()` predicate
+forms remain deferred, and these functions are not available in
+ordering/grouping expressions or DML assignments.
 
 The limited table-backed signed integer arithmetic slice admits `+`, binary
 `-`, and `*` projection expressions over signed integer descriptor columns,

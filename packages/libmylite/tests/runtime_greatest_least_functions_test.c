@@ -313,6 +313,8 @@ static int test_table_backed_greatest_least(void) {
 static int test_greatest_least_diagnostics(void) {
     static const char *const columns_decimal[] = {"GREATEST(1.5, 1.25)"};
     static const char *const values_decimal[] = {"1.5"};
+    static const char *const columns_greatest_predicate[] = {"n"};
+    static const char *const values_greatest_predicate[] = {"1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -457,13 +459,16 @@ static int test_greatest_least_diagnostics(void) {
                 "row-scalar SELECT GREATEST() and LEAST() are supported only as top-level",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT n FROM t WHERE GREATEST(n, 2) = 2",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
+        (struct expected_query){
+            .sql = "SELECT n FROM t WHERE GREATEST(n, 2) = 2",
+            .columns = columns_greatest_predicate,
+            .column_count =
+                sizeof(columns_greatest_predicate) / sizeof(columns_greatest_predicate[0]),
+            .values = values_greatest_predicate,
+            .row_count = 1U,
+            .context = "greatest predicate",
         }
     );
     failures += execute_error(

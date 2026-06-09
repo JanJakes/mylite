@@ -776,7 +776,7 @@ static int test_show_like_diagnostics_and_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "SHOW TABLES WHERE supports only output columns",
         }
     );
     failures += execute_error(

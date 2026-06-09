@@ -4984,6 +4984,28 @@ predicate_atom(A) ::= predicate_collate_expression(C) predicate_comparison_opera
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O.token, O.operator_kind, V);
 }
+predicate_atom(A) ::= predicate_row_scalar_expression(C) predicate_comparison_operator(O)
+        predicate_comparison_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O.token, O.operator_kind, V);
+}
+predicate_atom(A) ::= predicate_row_scalar_expression(C) IS(I) NULL(N). {
+    A = mylite_sql_parser_make_is_null_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NULL, N);
+}
+predicate_atom(A) ::= predicate_row_scalar_expression(C) IS(I) NOT NULL(N). {
+    A = mylite_sql_parser_make_is_null_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, N);
+}
+predicate_atom(A) ::= predicate_row_scalar_expression(C) BETWEEN(B)
+        predicate_range_value(L) AND predicate_range_value(U). {
+    A = mylite_sql_parser_make_between_predicate(state, C, B, L, U);
+}
+predicate_atom(A) ::= predicate_row_scalar_expression(C) NOT(N) BETWEEN(B)
+        predicate_range_value(L) AND predicate_range_value(U). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N, mylite_sql_parser_make_between_predicate(state, C, B, L, U));
+}
 predicate_atom(A) ::=
     cast_convert_expression(C) LIKE(O) predicate_like_pattern(P) predicate_like_escape_opt(E). {
     A = mylite_sql_parser_make_like_comparison_predicate(
@@ -5516,6 +5538,204 @@ predicate_comparison_value(A) ::= SCHEMA(T) LPAREN RPAREN(R). {
 }
 predicate_comparison_value(A) ::= LPAREN(L) select_statement(S) RPAREN(R). {
     A = mylite_sql_parser_make_scalar_subquery_expression(state, L, S, R);
+}
+predicate_comparison_value(A) ::= row_scalar_string_predicate_expression(V). {
+    A = V;
+}
+predicate_comparison_value(A) ::= row_scalar_json_predicate_expression(V). {
+    A = V;
+}
+predicate_comparison_value(A) ::= row_scalar_temporal_predicate_expression(V). {
+    A = V;
+}
+
+predicate_row_scalar_expression(A) ::= IF(T) LPAREN expression(B) COMMA expression(C)
+        COMMA expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_IF_FUNCTION, B, C, D, R);
+}
+predicate_row_scalar_expression(A) ::= IFNULL(T) LPAREN expression(B) COMMA expression(C)
+        RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_IFNULL_FUNCTION, B, C, R);
+}
+predicate_row_scalar_expression(A) ::= NULLIF(T) LPAREN expression(B) COMMA expression(C)
+        RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_NULLIF_FUNCTION, B, C, R);
+}
+predicate_row_scalar_expression(A) ::= ISNULL(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_ISNULL_FUNCTION, B, R);
+}
+predicate_row_scalar_expression(A) ::= COALESCE(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_COALESCE_FUNCTION, B, R);
+}
+predicate_row_scalar_expression(A) ::= CONCAT(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_CONCAT_FUNCTION, B, R);
+}
+predicate_row_scalar_expression(A) ::= CONCAT_WS(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_CONCAT_WS_FUNCTION, B, R);
+}
+predicate_row_scalar_expression(A) ::= FIELD(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_FIELD_FUNCTION, B, R);
+}
+predicate_row_scalar_expression(A) ::= GREATEST(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_GREATEST_FUNCTION, B, R);
+}
+predicate_row_scalar_expression(A) ::= LEAST(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_LEAST_FUNCTION, B, R);
+}
+predicate_row_scalar_expression(A) ::= row_scalar_string_predicate_expression(B). {
+    A = B;
+}
+predicate_row_scalar_expression(A) ::= row_scalar_json_predicate_expression(B). {
+    A = B;
+}
+predicate_row_scalar_expression(A) ::= row_scalar_temporal_predicate_expression(B). {
+    A = B;
+}
+
+row_scalar_string_predicate_expression(A) ::= HEX(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_HEX_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= UNHEX(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_UNHEX_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= LOWER(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_LOWER_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= LCASE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_LCASE_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= UPPER(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_UPPER_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= UCASE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_UCASE_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= LTRIM(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_LTRIM_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= RTRIM(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_RTRIM_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= TRIM(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_trim_function(
+        state, T, MYLITE_SQL_AST_TRIM_FUNCTION, NULL, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= TRIM(T) LPAREN expression(B) FROM expression(C)
+        RPAREN(R). {
+    A = mylite_sql_parser_make_trim_function(
+        state, T, MYLITE_SQL_AST_TRIM_FUNCTION, B, C, R);
+}
+row_scalar_string_predicate_expression(A) ::= TRIM(T) LPAREN trim_direction(D) expression(B)
+        FROM expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_trim_function(state, T, D, B, C, R);
+}
+row_scalar_string_predicate_expression(A) ::= TRIM(T) LPAREN trim_direction(D) FROM expression(C)
+        RPAREN(R). {
+    A = mylite_sql_parser_make_trim_function(state, T, D, NULL, C, R);
+}
+row_scalar_string_predicate_expression(A) ::= REVERSE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_REVERSE_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= SOUNDEX(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_SOUNDEX_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= QUOTE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_QUOTE_FUNCTION, B, R);
+}
+
+row_scalar_json_predicate_expression(A) ::= JSON_EXTRACT(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION, B, C, R);
+}
+row_scalar_json_predicate_expression(A) ::= JSON_UNQUOTE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION, B, R);
+}
+row_scalar_json_predicate_expression(A) ::= JSON_LENGTH(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_LENGTH_FUNCTION, B, R);
+}
+row_scalar_json_predicate_expression(A) ::= JSON_LENGTH(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_LENGTH_FUNCTION, B, C, R);
+}
+row_scalar_json_predicate_expression(A) ::= JSON_TYPE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_TYPE_FUNCTION, B, R);
+}
+row_scalar_json_predicate_expression(A) ::= JSON_QUOTE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_QUOTE_FUNCTION, B, R);
+}
+
+row_scalar_temporal_predicate_expression(A) ::= DATEDIFF(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_DATEDIFF_FUNCTION, B, C, R);
+}
+row_scalar_temporal_predicate_expression(A) ::= TIMEDIFF(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_TIMEDIFF_FUNCTION, B, C, R);
+}
+row_scalar_temporal_predicate_expression(A) ::= TIMESTAMPDIFF(T) LPAREN timestampdiff_unit(U)
+        COMMA expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_TIMESTAMPDIFF_FUNCTION, U, B, C, R);
+}
+row_scalar_temporal_predicate_expression(A) ::= TIMESTAMP(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_TIMESTAMP_FUNCTION, B, R);
+}
+row_scalar_temporal_predicate_expression(A) ::= TIMESTAMP(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_TIMESTAMP_FUNCTION, B, C, R);
+}
+row_scalar_temporal_predicate_expression(A) ::= UNIX_TIMESTAMP(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION, B, R);
+}
+row_scalar_temporal_predicate_expression(A) ::= SEC_TO_TIME(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION, B, R);
+}
+row_scalar_temporal_predicate_expression(A) ::= FROM_UNIXTIME(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION, B, R);
+}
+row_scalar_temporal_predicate_expression(A) ::= MAKEDATE(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_MAKEDATE_FUNCTION, B, C, R);
+}
+row_scalar_temporal_predicate_expression(A) ::= MAKETIME(T) LPAREN expression(B) COMMA
+        expression(C) COMMA expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_MAKETIME_FUNCTION, B, C, D, R);
 }
 
 predicate_collate_expression(A) ::= predicate_collatable_expression(V) COLLATE(C) option_name(N). {

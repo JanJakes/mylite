@@ -383,7 +383,7 @@ static int test_string_case_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax near '('",
+            .message_part = "string case functions support only ASCII text values",
         }
     );
     failures += execute_error(

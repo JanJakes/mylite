@@ -1724,8 +1724,18 @@ static int test_select_where_predicates(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parser_test_parse_sql("SELECT EXISTS (SELECT 1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT EXISTS (SELECT 1);", MYLITE_SQL_PARSE_OK, &result);
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 0U),
+                0U
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_EXISTS_PREDICATE,
+        "select-list exists expression"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

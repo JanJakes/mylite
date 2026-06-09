@@ -33,7 +33,8 @@
 %left AND.
 %right NOT.
 %right ON.
-%left EQUAL NULL_SAFE_EQUAL NOT_EQUAL LESS LESS_EQUAL GREATER GREATER_EQUAL IS LIKE REGEXP RLIKE.
+%left EQUAL NULL_SAFE_EQUAL NOT_EQUAL LESS LESS_EQUAL GREATER GREATER_EQUAL IS LIKE REGEXP RLIKE
+    BETWEEN.
 %left BITWISE_OR.
 %left BITWISE_AND.
 %left LEFT_SHIFT RIGHT_SHIFT.
@@ -7175,8 +7176,46 @@ expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
 expression(A) ::= LPAREN(L) select_statement(B) RPAREN(R). {
     A = mylite_sql_parser_make_scalar_subquery_expression(state, L, B, R);
 }
+expression(A) ::= EXISTS(E) LPAREN select_statement(B) RPAREN(R). {
+    A = mylite_sql_parser_make_exists_predicate(state, E, B, R);
+}
+expression(A) ::= expression(B) BETWEEN(T) scalar_predicate_value(L)
+        AND scalar_predicate_value(U). [BETWEEN] {
+    A = mylite_sql_parser_make_between_predicate(state, B, T, L, U);
+}
+expression(A) ::= expression(B) NOT(N) BETWEEN(T) scalar_predicate_value(L)
+        AND scalar_predicate_value(U). [BETWEEN] {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N, mylite_sql_parser_make_between_predicate(state, B, T, L, U));
+}
 expression(A) ::= cast_convert_expression(B). {
     A = B;
+}
+
+scalar_predicate_value(A) ::= literal(B). {
+    A = B;
+}
+scalar_predicate_value(A) ::= PLUS(P) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+scalar_predicate_value(A) ::= MINUS(M) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+scalar_predicate_value(A) ::= qualified_identifier(B). {
+    A = B;
+}
+scalar_predicate_value(A) ::= cast_convert_expression(B). {
+    A = B;
+}
+scalar_predicate_value(A) ::= SYSTEM_VARIABLE(T). {
+    A = mylite_sql_parser_make_system_variable(state, T);
+}
+scalar_predicate_value(A) ::= user_variable(T). {
+    A = T;
 }
 
 match_against_expression(A) ::=

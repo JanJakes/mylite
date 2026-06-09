@@ -1775,6 +1775,23 @@ static int populate_row_scalar_expression_result_column_descriptor(
             expression,
             descriptor
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE: {
+        int rc = MYLITE_OK;
+
+        if (expression->arguments == NULL || expression->argument_count != 1U) {
+            return MYLITE_ERROR;
+        }
+        rc = populate_row_scalar_expression_result_column_descriptor(
+            database,
+            &expression->arguments[0],
+            descriptor
+        );
+        if (rc == MYLITE_OK) {
+            descriptor->charset_id = result_metadata_collation_id(expression->collation_name);
+            descriptor->collation_id = descriptor->charset_id;
+        }
+        return rc;
+    }
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
         if (mylite_temporal_extract_kind_is_calendar_name(expression->temporal_extract_kind)) {
             populate_calendar_name_result_column_descriptor(database, descriptor);
@@ -1999,6 +2016,7 @@ static int populate_window_value_function_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:

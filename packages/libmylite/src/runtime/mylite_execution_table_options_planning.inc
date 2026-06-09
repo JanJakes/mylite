@@ -1355,7 +1355,8 @@ static int classify_table_charset_option_value(
     if (charset != NULL && (*out_is_binary || !charset_name_is_binary(charset_name))) {
         *out_is_supported = true;
     }
-    *out_is_known_unsupported = charset_name_is_known_unsupported(charset_name);
+    *out_is_known_unsupported =
+        !*out_is_supported && charset_name_is_known_unsupported(charset_name);
     if (!*out_is_binary && !*out_is_supported && !*out_is_known_unsupported) {
         set_unknown_character_set_error(database, charset_name);
         return MYLITE_ERROR;
@@ -1389,7 +1390,8 @@ static int classify_table_collation_option_value(
     if (collation != NULL && (*out_is_binary || !collation_name_is_binary(collation_name))) {
         *out_is_supported = true;
     }
-    *out_is_known_unsupported = collation_name_is_known_unsupported(collation_name);
+    *out_is_known_unsupported =
+        !*out_is_supported && collation_name_is_known_unsupported(collation_name);
     if (!*out_is_binary && !*out_is_supported && !*out_is_known_unsupported) {
         set_unknown_collation_error(database, collation_name);
         return MYLITE_ERROR;

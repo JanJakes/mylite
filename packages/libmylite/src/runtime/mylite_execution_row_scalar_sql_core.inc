@@ -237,11 +237,96 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_rand_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
         return append_row_scalar_conversion_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
+        return append_row_scalar_collate_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         break;
     }
 
     return MYLITE_ERROR;
+}
+
+static int append_row_scalar_collate_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    const char *sqlite_collation = NULL;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_COLLATE ||
+        expression->arguments == NULL || expression->argument_count != 1U) {
+        return MYLITE_ERROR;
+    }
+
+    sqlite_collation = row_scalar_sql_collation_name(expression->collation_name);
+    rc = mylite_dynamic_string_append_char(string, '(');
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_expression_sql(string, &expression->arguments[0], next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " COLLATE ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, sqlite_collation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static const char *row_scalar_sql_collation_name(const char *collation_name) {
+    if (row_scalar_mysql_collation_is_binary(collation_name)) {
+        return "BINARY";
+    }
+    if (row_scalar_mysql_collation_is_case_sensitive(collation_name)) {
+        return ascii_case_sensitive_collation_name;
+    }
+    return string_key_collation_name;
+}
+
+static bool row_scalar_mysql_collation_is_binary_sensitive(const char *collation_name) {
+    return row_scalar_mysql_collation_is_binary(collation_name) ||
+           row_scalar_mysql_collation_is_case_sensitive(collation_name);
+}
+
+static bool row_scalar_mysql_collation_is_binary(const char *collation_name) {
+    if (collation_name == NULL) {
+        return false;
+    }
+    return text_equals_ascii_case_insensitive(collation_name, "binary") ||
+           text_has_ascii_case_insensitive_suffix(collation_name, "_bin");
+}
+
+static bool row_scalar_mysql_collation_is_case_sensitive(const char *collation_name) {
+    if (collation_name == NULL) {
+        return false;
+    }
+    return text_has_ascii_case_insensitive_suffix(collation_name, "_cs");
+}
+
+static bool row_scalar_expression_is_binary_sensitive_collate(
+    const struct planned_row_scalar_expression *expression
+) {
+    return expression != NULL && expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLLATE &&
+           row_scalar_mysql_collation_is_binary_sensitive(expression->collation_name);
+}
+
+static bool text_has_ascii_case_insensitive_suffix(const char *text, const char *suffix) {
+    size_t text_length = 0U;
+    size_t suffix_length = 0U;
+
+    if (text == NULL || suffix == NULL) {
+        return false;
+    }
+
+    text_length = strlen(text);
+    suffix_length = strlen(suffix);
+    if (suffix_length > text_length) {
+        return false;
+    }
+    return text_equals_ascii_case_insensitive(text + text_length - suffix_length, suffix);
 }
 
 static int append_row_scalar_sum_column_expression_sql(
@@ -462,6 +547,7 @@ static int append_row_scalar_window_function_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
@@ -618,6 +704,7 @@ static int append_row_scalar_conversion_base_expression_sql(
         return append_row_scalar_column_sql(string, expression);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
         return append_row_scalar_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
@@ -844,6 +931,8 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         break;
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
+        return append_row_scalar_collate_expression_sql(string, expression, next_parameter);
     }
     return append_row_scalar_non_control_flow_expression_sql(string, expression, next_parameter);
 }
@@ -930,6 +1019,8 @@ static int append_row_scalar_non_control_flow_expression_sql(
         break;
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
         return append_row_scalar_conversion_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
+        return append_row_scalar_collate_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
@@ -1162,6 +1253,7 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         break;
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:

@@ -2260,6 +2260,11 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
             return PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING;
         }
         break;
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
+        if (expression->arguments != NULL && expression->argument_count == 1U) {
+            return row_scalar_control_flow_argument_domain(&expression->arguments[0]);
+        }
+        break;
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:

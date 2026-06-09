@@ -6,18 +6,24 @@
 
 enum {
     mysql_collation_big5_chinese_ci_id = 1,
+    mysql_collation_latin1_german1_ci_id = 5,
     mysql_collation_koi8r_general_ci_id = 7,
     mysql_collation_binary_id = 63,
     mysql_collation_latin1_swedish_ci_id = 8,
     mysql_collation_ujis_japanese_ci_id = 12,
     mysql_collation_hebrew_general_ci_id = 16,
     mysql_collation_tis620_thai_ci_id = 18,
+    mysql_collation_latin1_german2_ci_id = 31,
     mysql_collation_utf8mb3_general_ci_id = 33,
     mysql_collation_latin1_bin_id = 47,
+    mysql_collation_latin1_general_ci_id = 48,
+    mysql_collation_latin1_general_cs_id = 49,
     mysql_collation_cp1251_general_ci_id = 51,
     mysql_collation_utf8mb3_bin_id = 83,
     mysql_collation_utf8mb3_unicode_ci_id = 192,
     mysql_collation_utf8mb4_0900_ai_ci_id = 255,
+    mysql_collation_utf8mb4_0900_as_cs_id = 278,
+    mysql_collation_utf8mb4_0900_as_ci_id = 305,
 };
 
 struct mylite_catalog_name_alias {
@@ -96,6 +102,10 @@ static const struct mylite_execution_catalog_collation supported_collations[] = 
     {"cp1251_general_ci", "cp1251", "51", "Yes", "Yes", "1", "PAD SPACE"},
     {"hebrew_general_ci", "hebrew", "16", "Yes", "Yes", "1", "PAD SPACE"},
     {"koi8r_general_ci", "koi8r", "7", "Yes", "Yes", "1", "PAD SPACE"},
+    {"latin1_german1_ci", "latin1", "5", "", "Yes", "1", "PAD SPACE"},
+    {"latin1_german2_ci", "latin1", "31", "", "Yes", "2", "PAD SPACE"},
+    {"latin1_general_ci", "latin1", "48", "", "Yes", "1", "PAD SPACE"},
+    {"latin1_general_cs", "latin1", "49", "", "Yes", "1", "PAD SPACE"},
     {"latin1_swedish_ci", "latin1", "8", "Yes", "Yes", "1", "PAD SPACE"},
     {"latin1_bin", "latin1", "47", "", "Yes", "1", "PAD SPACE"},
     {"tis620_thai_ci", "tis620", "18", "Yes", "Yes", "4", "PAD SPACE"},
@@ -108,6 +118,8 @@ static const struct mylite_execution_catalog_collation supported_collations[] = 
     {"utf8mb4_unicode_ci", "utf8mb4", "224", "", "Yes", "8", "PAD SPACE"},
     {"utf8mb4_unicode_520_ci", "utf8mb4", "246", "", "Yes", "8", "PAD SPACE"},
     {"utf8mb4_0900_ai_ci", "utf8mb4", "255", "Yes", "Yes", "0", "NO PAD"},
+    {"utf8mb4_0900_as_cs", "utf8mb4", "278", "", "Yes", "0", "NO PAD"},
+    {"utf8mb4_0900_as_ci", "utf8mb4", "305", "", "Yes", "0", "NO PAD"},
     {"utf8mb4_0900_bin", "utf8mb4", "309", "", "Yes", "1", "NO PAD"},
 };
 
@@ -408,6 +420,10 @@ static const struct mylite_execution_catalog_scalar_collation scalar_supported_c
     {"cp1251_general_ci", "cp1251", mysql_collation_cp1251_general_ci_id},
     {"hebrew_general_ci", "hebrew", mysql_collation_hebrew_general_ci_id},
     {"koi8r_general_ci", "koi8r", mysql_collation_koi8r_general_ci_id},
+    {"latin1_german1_ci", "latin1", mysql_collation_latin1_german1_ci_id},
+    {"latin1_german2_ci", "latin1", mysql_collation_latin1_german2_ci_id},
+    {"latin1_general_ci", "latin1", mysql_collation_latin1_general_ci_id},
+    {"latin1_general_cs", "latin1", mysql_collation_latin1_general_cs_id},
     {"latin1_swedish_ci", "latin1", mysql_collation_latin1_swedish_ci_id},
     {"latin1_bin", "latin1", mysql_collation_latin1_bin_id},
     {"tis620_thai_ci", "tis620", mysql_collation_tis620_thai_ci_id},
@@ -420,6 +436,8 @@ static const struct mylite_execution_catalog_scalar_collation scalar_supported_c
     {"utf8mb4_unicode_ci", "utf8mb4", 224},
     {"utf8mb4_unicode_520_ci", "utf8mb4", 246},
     {"utf8mb4_0900_ai_ci", "utf8mb4", mysql_collation_utf8mb4_0900_ai_ci_id},
+    {"utf8mb4_0900_as_cs", "utf8mb4", mysql_collation_utf8mb4_0900_as_cs_id},
+    {"utf8mb4_0900_as_ci", "utf8mb4", mysql_collation_utf8mb4_0900_as_ci_id},
     {"utf8mb4_0900_bin", "utf8mb4", 309},
 };
 

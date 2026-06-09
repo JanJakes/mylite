@@ -718,5 +718,115 @@ static int plan_row_scalar_column(
     out_expression->column = column;
     out_expression->column_has_source_index = select_source_context_is_joined(source_context);
     out_expression->column_source_index = source_index;
+    return populate_row_scalar_column_effective_collation_metadata(
+        database,
+        source_context,
+        &column,
+        source_index,
+        out_expression
+    );
+}
+
+static int populate_row_scalar_column_effective_collation_metadata(
+    struct mylite_db *database,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t source_index,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_table_descriptor single_source_table = {0};
+    const struct mylite_catalog_table_descriptor *table = NULL;
+    const char *charset = NULL;
+    const char *collation = NULL;
+    int rc = MYLITE_OK;
+
+    rc = row_scalar_column_source_table(
+        database,
+        source_context,
+        source_index,
+        &single_source_table,
+        &table
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    charset = column_effective_character_set_name(table, column);
+    collation = column_effective_collation_name(table, column);
+    if (charset != NULL) {
+        snprintf(
+            out_expression->column_effective_charset,
+            sizeof(out_expression->column_effective_charset),
+            "%s",
+            charset
+        );
+    }
+    if (collation != NULL) {
+        snprintf(
+            out_expression->column_effective_collation,
+            sizeof(out_expression->column_effective_collation),
+            "%s",
+            collation
+        );
+    }
+    return MYLITE_OK;
+}
+
+static int row_scalar_column_source_table(
+    struct mylite_db *database,
+    const struct select_source_context *source_context,
+    size_t source_index,
+    struct mylite_catalog_table_descriptor *single_source_table,
+    const struct mylite_catalog_table_descriptor **out_table
+) {
+    bool found = false;
+    int rc = MYLITE_OK;
+
+    *out_table = NULL;
+    if (source_context == NULL) {
+        return MYLITE_OK;
+    }
+    if (select_source_context_is_joined(source_context)) {
+        if (source_index < source_context->source_count &&
+            !source_context->sources[source_index].is_derived) {
+            *out_table = &source_context->sources[source_index].table;
+        }
+        return MYLITE_OK;
+    }
+    if (source_context->source == NULL) {
+        return MYLITE_OK;
+    }
+    if (source_context->source->table_name[0] == '\0' ||
+        source_context->source->schema.name[0] == '\0') {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_temporary_catalog_try_read_table_by_name(
+        &database->session.temporary_catalog,
+        source_context->source->schema.name,
+        source_context->source->table_name,
+        single_source_table,
+        &found
+    );
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read temporary table descriptor");
+        return rc;
+    }
+    if (found) {
+        *out_table = single_source_table;
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_read_table_by_name(
+        database,
+        source_context->source->schema.schema_id,
+        source_context->source->table_name,
+        single_source_table
+    );
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read table descriptor");
+        return rc;
+    }
+    *out_table = single_source_table;
     return MYLITE_OK;
 }

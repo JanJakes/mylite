@@ -1447,12 +1447,20 @@ static int append_select_predicate_column_term_sql(
     size_t *next_parameter
 ) {
     if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON &&
-        node->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE_BINARY) {
+        (node->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE_BINARY ||
+         (node->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE &&
+          row_scalar_expression_is_binary_sensitive_collate(
+              node->row_scalar_value_expression
+          )))) {
         return append_select_like_binary_predicate_sql(string, predicate, node, next_parameter);
     }
 
-    int rc =
-        append_select_predicate_subject_sql(string, node, predicate->qualify_column_references);
+    int rc = append_select_predicate_subject_sql(
+        string,
+        node,
+        predicate->qualify_column_references,
+        planned_select_predicate_rhs_has_explicit_collate(node)
+    );
 
     if (rc == MYLITE_OK) {
         if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
@@ -1489,12 +1497,20 @@ static int append_select_predicate_column_term_sql_without_subqueries(
     size_t *next_parameter
 ) {
     if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON &&
-        node->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE_BINARY) {
+        (node->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE_BINARY ||
+         (node->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE &&
+          row_scalar_expression_is_binary_sensitive_collate(
+              node->row_scalar_value_expression
+          )))) {
         return append_select_like_binary_predicate_sql(string, predicate, node, next_parameter);
     }
 
-    int rc =
-        append_select_predicate_subject_sql(string, node, predicate->qualify_column_references);
+    int rc = append_select_predicate_subject_sql(
+        string,
+        node,
+        predicate->qualify_column_references,
+        planned_select_predicate_rhs_has_explicit_collate(node)
+    );
 
     if (rc == MYLITE_OK) {
         if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
@@ -1536,6 +1552,12 @@ static int append_select_row_scalar_predicate_sql(
     if (node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON &&
         comparison_operator_is_regexp(node->operator_kind)) {
         return append_select_row_scalar_regexp_predicate_sql(string, node, next_parameter);
+    }
+    if (node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON &&
+        node->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE &&
+        (row_scalar_expression_is_binary_sensitive_collate(node->row_scalar_expression) ||
+         row_scalar_expression_is_binary_sensitive_collate(node->row_scalar_value_expression))) {
+        return append_select_row_scalar_like_binary_predicate_sql(string, node, next_parameter);
     }
 
     if (decimal_like) {
@@ -1625,6 +1647,28 @@ static int append_select_row_scalar_regexp_predicate_sql(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_select_row_scalar_like_binary_predicate_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    int rc = mylite_dynamic_string_append(string, "_mylite_like_binary(");
+
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_expression_sql(string, node->row_scalar_expression, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, ", ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_row_scalar_comparison_rhs_sql(string, node, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, node->like_uses_escape ? ", 1)" : ", 0)");
     }
     return rc;
 }
@@ -1845,7 +1889,7 @@ static int append_scalar_aggregate_subquery_subject_sql(
         );
     }
 
-    return append_select_predicate_subject_sql(string, node, qualify_column);
+    return append_select_predicate_subject_sql(string, node, qualify_column, false);
 }
 
 static int append_scalar_aggregate_subquery_value_sql(
@@ -2154,10 +2198,19 @@ static int append_descriptor_value_sql_for_source(
     return append_descriptor_column_name_sql_for_source(string, column, source_index, qualify);
 }
 
+static bool planned_select_predicate_rhs_has_explicit_collate(
+    const struct planned_select_predicate_node *node
+) {
+    return node != NULL && node->kind == PLANNED_SELECT_PREDICATE_COMPARISON &&
+           node->row_scalar_value_expression != NULL &&
+           node->row_scalar_value_expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLLATE;
+}
+
 static int append_select_predicate_subject_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select_predicate_node *node,
-    bool qualify
+    bool qualify,
+    bool suppress_default_string_collation
 ) {
     if (node->compare_string_as_integer) {
         return append_string_integer_value_sql_for_source(
@@ -2169,6 +2222,14 @@ static int append_select_predicate_subject_sql(
     }
     if (node->compare_date_as_datetime) {
         return append_date_midnight_value_sql_for_source(
+            string,
+            &node->column,
+            node->column_source_index,
+            qualify
+        );
+    }
+    if (suppress_default_string_collation) {
+        return append_descriptor_column_name_sql_for_source(
             string,
             &node->column,
             node->column_source_index,
@@ -2211,8 +2272,12 @@ static int append_select_like_binary_predicate_sql(
     int rc = mylite_dynamic_string_append(string, "_mylite_like_binary(");
 
     if (rc == MYLITE_OK) {
-        rc =
-            append_select_predicate_subject_sql(string, node, predicate->qualify_column_references);
+        rc = append_select_predicate_subject_sql(
+            string,
+            node,
+            predicate->qualify_column_references,
+            false
+        );
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(string, ", ");

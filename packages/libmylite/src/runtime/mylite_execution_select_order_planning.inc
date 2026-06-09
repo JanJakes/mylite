@@ -212,7 +212,8 @@ static int plan_select_order_ast_item(
          PLANNED_ROW_SCALAR_CONVERSION_NONE) ||
         row_scalar_expression_contains_integer_arithmetic_attempt(item_nodes.order_key) ||
         select_order_key_is_searched_case_expression(item_nodes.order_key) ||
-        select_order_key_is_like_predicate(item_nodes.order_key)) {
+        select_order_key_is_like_predicate(item_nodes.order_key) ||
+        select_order_key_is_collate_expression(item_nodes.order_key)) {
         if (select_source_context_is_joined(source_context) &&
             !select_order_key_is_supported_joined_row_scalar_order(item_nodes.order_key)) {
             set_unsupported_error(database, "SELECT ORDER BY supports only descriptor columns");
@@ -524,6 +525,11 @@ static bool select_order_key_is_like_predicate(const struct mylite_sql_ast_node 
         return false;
     }
     return mylite_sql_ast_node_operator(order_key) == MYLITE_SQL_AST_OPERATOR_LIKE;
+}
+
+static bool select_order_key_is_collate_expression(const struct mylite_sql_ast_node *order_key) {
+    order_key = unwrap_parenthesized_expression(order_key);
+    return order_key != NULL && order_key->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION;
 }
 
 static bool select_order_key_is_supported_joined_row_scalar_order(

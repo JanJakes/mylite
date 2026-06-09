@@ -69,6 +69,7 @@ static int bind_row_scalar_conversion_base_expression_parameters(
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
         return bind_row_scalar_expression_parameters(statement, expression, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:

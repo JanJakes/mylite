@@ -178,6 +178,8 @@ static int test_select_where_predicates(void) {
         },
     };
     struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *left_collate = NULL;
+    const struct mylite_sql_ast_node *right_collate = NULL;
     int failures = 0;
 
     for (size_t index = 0U; index < sizeof(cases) / sizeof(cases[0]); ++index) {
@@ -205,6 +207,110 @@ static int test_select_where_predicates(void) {
         );
         mylite_sql_parse_result_deinit(&result);
     }
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM people WHERE firstname = 'john' COLLATE utf8mb4_0900_ai_ci;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    right_collate = parser_test_child_at(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 2U), 0U),
+        1U
+    );
+    failures += parser_test_expect_node(
+        right_collate,
+        MYLITE_SQL_AST_COLLATE_EXPRESSION,
+        "right-side collate comparison value"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(right_collate, 0U),
+        "'john'",
+        "right-side collate operand"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(right_collate, 1U),
+        "utf8mb4_0900_ai_ci",
+        "right-side collate name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM people WHERE firstname COLLATE utf8mb4_0900_as_cs = 'john';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    left_collate = parser_test_child_at(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 2U), 0U),
+        0U
+    );
+    failures += parser_test_expect_node(
+        left_collate,
+        MYLITE_SQL_AST_COLLATE_EXPRESSION,
+        "left-side collate comparison value"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(left_collate, 0U),
+        "firstname",
+        "left-side collate operand"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(left_collate, 1U),
+        "utf8mb4_0900_as_cs",
+        "left-side collate name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM people WHERE firstname LIKE 'jo%' COLLATE utf8mb4_0900_ai_ci;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    right_collate = parser_test_child_at(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 2U), 0U),
+        1U
+    );
+    failures += parser_test_expect_node(
+        right_collate,
+        MYLITE_SQL_AST_COLLATE_EXPRESSION,
+        "right-side collate like pattern"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(right_collate, 0U),
+        "'jo%'",
+        "right-side collate like operand"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(right_collate, 1U),
+        "utf8mb4_0900_ai_ci",
+        "right-side collate like name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM people WHERE firstname COLLATE utf8mb4_0900_as_cs LIKE 'jo%';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    left_collate = parser_test_child_at(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 2U), 0U),
+        0U
+    );
+    failures += parser_test_expect_node(
+        left_collate,
+        MYLITE_SQL_AST_COLLATE_EXPRESSION,
+        "left-side collate like subject"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(left_collate, 0U),
+        "firstname",
+        "left-side collate like operand"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(left_collate, 1U),
+        "utf8mb4_0900_as_cs",
+        "left-side collate like name"
+    );
+    mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
         "SELECT id FROM simple_lifecycle WHERE TRUE;",
@@ -1631,6 +1737,7 @@ static int test_select_order_limit_clauses(void) {
     const struct mylite_sql_ast_node *order_clause = NULL;
     const struct mylite_sql_ast_node *order_items = NULL;
     const struct mylite_sql_ast_node *order_item = NULL;
+    const struct mylite_sql_ast_node *order_collate = NULL;
     const struct mylite_sql_ast_node *limit_clause = NULL;
     int failures = 0;
 
@@ -1765,6 +1872,44 @@ static int test_select_order_limit_clauses(void) {
         parser_test_child_at(limit_clause, 0U),
         "3",
         "multi-key limit row count"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM people ORDER BY firstname COLLATE utf8mb4_0900_as_cs DESC, id;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    order_clause = parser_test_first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    order_items = parser_test_child_at(order_clause, 0U);
+    order_item = parser_test_child_at(order_items, 0U);
+    order_collate = parser_test_child_at(order_item, 0U);
+    failures += parser_test_expect_node(
+        order_collate,
+        MYLITE_SQL_AST_COLLATE_EXPRESSION,
+        "collate order key"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(order_collate, 0U),
+        "firstname",
+        "collate order operand"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(order_collate, 1U),
+        "utf8mb4_0900_as_cs",
+        "collate order name"
+    );
+    failures += parser_test_expect_order_direction(
+        parser_test_child_at(order_item, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "collate order direction"
+    );
+    order_item = parser_test_child_at(order_items, 1U);
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(order_item, 0U),
+        "id",
+        "collate order tiebreaker"
     );
     mylite_sql_parse_result_deinit(&result);
 

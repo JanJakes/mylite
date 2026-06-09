@@ -1472,6 +1472,9 @@ static bool comparison_predicate_rhs_requires_row_scalar_value(
     if (rhs->kind == MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION) {
         return true;
     }
+    if (rhs->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION) {
+        return true;
+    }
     if (rhs->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE) {
         return column_descriptor_is_string_family(&node->column) ||
                column_descriptor_is_datetime(&node->column) ||
@@ -1663,6 +1666,18 @@ static int plan_row_scalar_function_comparison_predicate(
             out_node_index
         );
     }
+    left_node = unwrap_parenthesized_expression(left_node);
+    if (left_node != NULL && left_node->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION) {
+        return plan_row_scalar_expression_comparison_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            out_node_index
+        );
+    }
     if (row_scalar_expression_is_rand_function(left_node)) {
         return plan_row_scalar_expression_comparison_predicate(
             database,
@@ -1740,6 +1755,18 @@ static int plan_row_scalar_expression_comparison_predicate(
                 database,
                 child_at(predicate_node, 1U),
                 &node.value
+            );
+        } else if (child_at(predicate_node, 1U) != NULL &&
+                   (child_at(predicate_node, 1U)->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION ||
+                    (node.row_scalar_expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLLATE &&
+                     child_at(predicate_node, 1U)->kind == MYLITE_SQL_AST_LITERAL))) {
+            rc = plan_predicate_row_scalar_value_expression(
+                database,
+                child_at(predicate_node, 1U),
+                source_context,
+                table_columns,
+                table_column_count,
+                &node
             );
         } else {
             rc = plan_where_scalar_literal_value(

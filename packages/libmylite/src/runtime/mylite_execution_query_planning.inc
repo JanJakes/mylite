@@ -74,6 +74,18 @@ static int plan_row_scalar_special_expression(
     int rc = MYLITE_OK;
 
     *out_handled = true;
+    if (expression->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION) {
+        return plan_row_scalar_collate_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (row_scalar_expression_is_concat_operator(expression)) {
         return plan_row_scalar_concat_operator_expression(
             database,
@@ -313,6 +325,311 @@ static int plan_row_scalar_special_expression(
     }
     *out_handled = false;
     return MYLITE_OK;
+}
+
+static int plan_row_scalar_collate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *base = NULL;
+    const char *collation_name = NULL;
+    int rc = MYLITE_OK;
+
+    (void)table;
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_COLLATE_EXPRESSION ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_unsupported_error(database, "COLLATE supports only postfix row-scalar expressions");
+        return MYLITE_ERROR;
+    }
+
+    base = child_at(expression, 0U);
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLLATE;
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(1U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->argument_count = 1U;
+
+    rc = plan_row_scalar_expression(
+        database,
+        base,
+        has_source,
+        source_context,
+        table,
+        table_columns,
+        table_column_count,
+        &out_expression->arguments[0]
+    );
+    if (rc == MYLITE_OK) {
+        rc = validate_row_scalar_collate_expression(
+            database,
+            expression,
+            &out_expression->arguments[0],
+            &collation_name
+        );
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(out_expression);
+        return rc;
+    }
+
+    out_expression->collation_name = collation_name;
+    return MYLITE_OK;
+}
+
+static int validate_row_scalar_collate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct planned_row_scalar_expression *base_expression,
+    const char **out_collation_name
+) {
+    const struct mylite_sql_ast_node *collation_node = NULL;
+    const struct mylite_execution_catalog_scalar_collation *collation_info = NULL;
+    const char *charset = NULL;
+    char collation_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = MYLITE_OK;
+
+    if (out_collation_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_collation_name = NULL;
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_COLLATE_EXPRESSION ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_unsupported_error(database, "COLLATE supports only postfix row-scalar expressions");
+        return MYLITE_ERROR;
+    }
+
+    collation_node = child_at(expression, 1U);
+    rc = copy_table_option_name_text(
+        database,
+        collation_node,
+        collation_name,
+        sizeof(collation_name),
+        (struct table_option_name_policy){
+            .identifier_kind = "collation",
+            .nul_message = "COLLATE names do not support NUL bytes",
+        }
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    collation_info = mylite_execution_scalar_collation_info_by_name(collation_name);
+    if (collation_info == NULL) {
+        set_unknown_collation_error(database, collation_name);
+        return MYLITE_ERROR;
+    }
+
+    rc = row_scalar_collate_base_charset(
+        database,
+        child_at(expression, 0U),
+        base_expression,
+        &charset
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!text_equals_ascii_case_insensitive(charset, collation_info->charset)) {
+        set_collation_not_valid_for_charset_error(
+            database,
+            collation_info->collation,
+            charset
+        );
+        return MYLITE_ERROR;
+    }
+
+    *out_collation_name = collation_info->collation;
+    return MYLITE_OK;
+}
+
+static int row_scalar_collate_base_charset(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *base_node,
+    const struct planned_row_scalar_expression *base_expression,
+    const char **out_charset
+) {
+    if (out_charset == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_charset = "binary";
+    base_node = unwrap_parenthesized_expression(base_node);
+    if (base_node == NULL || base_expression == NULL) {
+        set_unsupported_error(
+            database,
+            "COLLATE supports only row-scalar values with known character set metadata"
+        );
+        return MYLITE_ERROR;
+    }
+
+    switch (base_expression->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+        *out_charset = base_expression->value.is_text ? database->session.character_set_connection
+                                                      : "binary";
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        if (column_descriptor_is_string_family(&base_expression->column) &&
+            base_expression->column_effective_charset[0] != '\0') {
+            *out_charset = base_expression->column_effective_charset;
+            return MYLITE_OK;
+        }
+        if (column_descriptor_is_string_family(&base_expression->column) &&
+            base_expression->column.character_set_name[0] != '\0') {
+            *out_charset = base_expression->column.character_set_name;
+            return MYLITE_OK;
+        }
+        *out_charset = "binary";
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
+        *out_charset = database->session.character_set_connection;
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION: {
+        const char *charset = row_scalar_conversion_result_charset(base_expression);
+
+        if (charset == NULL) {
+            set_unsupported_error(
+                database,
+                "COLLATE supports only character or binary CAST/CONVERT results"
+            );
+            return MYLITE_ERROR;
+        }
+        *out_charset = charset;
+        return MYLITE_OK;
+    }
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE: {
+        const struct mylite_execution_catalog_scalar_collation *collation_info =
+            mylite_execution_scalar_collation_info_by_name(base_expression->collation_name);
+
+        if (collation_info == NULL) {
+            set_unknown_collation_error(database, base_expression->collation_name);
+            return MYLITE_ERROR;
+        }
+        *out_charset = collation_info->charset;
+        return MYLITE_OK;
+    }
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALUE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
+        *out_charset = database->session.character_set_connection;
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_COMPARISON:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_KEYS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_INSTR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_SUBSTR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_REPLACE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SOUNDEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_TIMEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
+        break;
+    }
+
+    set_unsupported_error(
+        database,
+        "COLLATE supports only row-scalar values with known character set metadata"
+    );
+    return MYLITE_ERROR;
+}
+
+static const char *row_scalar_conversion_result_charset(
+    const struct planned_row_scalar_expression *expression
+) {
+    if (expression == NULL || expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION ||
+        expression->conversion_step_count == 0U) {
+        return NULL;
+    }
+    switch (expression->conversion_steps[0U].kind) {
+    case PLANNED_ROW_SCALAR_CONVERSION_CHAR:
+    case PLANNED_ROW_SCALAR_CONVERSION_USING_CHARSET:
+    case PLANNED_ROW_SCALAR_CONVERSION_BINARY:
+    case PLANNED_ROW_SCALAR_CONVERSION_USING_BINARY:
+        return expression->conversion_steps[0U].charset;
+    case PLANNED_ROW_SCALAR_CONVERSION_SIGNED:
+    case PLANNED_ROW_SCALAR_CONVERSION_UNSIGNED:
+    case PLANNED_ROW_SCALAR_CONVERSION_NONE:
+        break;
+    }
+    return NULL;
 }
 
 static int plan_row_scalar_count_star_expression(

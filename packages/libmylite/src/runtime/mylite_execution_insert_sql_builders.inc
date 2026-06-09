@@ -474,6 +474,8 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
         return (expression->conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_CHAR ||
                 expression->conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_USING_CHARSET) != 0;
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
+        return false;
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:

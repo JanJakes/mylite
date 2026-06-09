@@ -783,6 +783,7 @@ static const char national_character_set_warning_message[] =
     "UTF8MB4 in a future release. Please consider using CHAR(x) CHARACTER SET UTF8MB4 in order "
     "to be unambiguous.";
 static const char string_key_collation_name[] = "utf8mb4_0900_ai_ci";
+static const char ascii_case_sensitive_collation_name[] = "utf8mb4_0900_as_cs";
 static const char insert_select_union_branch_column_name[] = "_mylite_union_branch";
 static const char insert_select_union_current_alias[] = "_mylite_union_current";
 static const char insert_select_union_prior_alias[] = "_mylite_union_prior";
@@ -2496,6 +2497,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION = 84,
     PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR = 85,
     PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN = 86,
+    PLANNED_ROW_SCALAR_EXPRESSION_COLLATE = 87,
 };
 
 enum row_scalar_control_flow_bind_mode {
@@ -2610,6 +2612,7 @@ struct planned_row_scalar_expression {
     bool conversion_ascii_only;
     const char *conversion_charset;
     const char *conversion_collation;
+    const char *collation_name;
     struct planned_row_scalar_conversion_step
         conversion_steps[planned_row_scalar_conversion_step_capacity];
     size_t conversion_step_count;
@@ -2617,6 +2620,8 @@ struct planned_row_scalar_expression {
     struct mylite_catalog_column_descriptor window_partition_column;
     struct mylite_catalog_column_descriptor window_order_column;
     struct mylite_catalog_column_descriptor column;
+    char column_effective_charset[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char column_effective_collation[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     bool column_cast_as_integer;
     bool column_has_source_index;
     size_t column_source_index;
@@ -20952,6 +20957,7 @@ static bool select_order_key_is_rand_function(const struct mylite_sql_ast_node *
 static bool select_order_key_is_searched_case_expression(const struct mylite_sql_ast_node *order_key
 );
 static bool select_order_key_is_like_predicate(const struct mylite_sql_ast_node *order_key);
+static bool select_order_key_is_collate_expression(const struct mylite_sql_ast_node *order_key);
 static bool select_order_key_is_supported_joined_row_scalar_order(
     const struct mylite_sql_ast_node *order_key
 );
@@ -21492,6 +21498,31 @@ static int plan_row_scalar_special_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression,
     bool *out_handled
+);
+static int plan_row_scalar_collate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int validate_row_scalar_collate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct planned_row_scalar_expression *base_expression,
+    const char **out_collation_name
+);
+static int row_scalar_collate_base_charset(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *base_node,
+    const struct planned_row_scalar_expression *base_expression,
+    const char **out_charset
+);
+static const char *row_scalar_conversion_result_charset(
+    const struct planned_row_scalar_expression *expression
 );
 static int plan_row_scalar_count_star_expression(
     struct mylite_db *database,
@@ -23392,6 +23423,20 @@ static int plan_row_scalar_column(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
+);
+static int populate_row_scalar_column_effective_collation_metadata(
+    struct mylite_db *database,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t source_index,
+    struct planned_row_scalar_expression *out_expression
+);
+static int row_scalar_column_source_table(
+    struct mylite_db *database,
+    const struct select_source_context *source_context,
+    size_t source_index,
+    struct mylite_catalog_table_descriptor *single_source_table,
+    const struct mylite_catalog_table_descriptor **out_table
 );
 static int plan_row_scalar_concat_expression(
     struct mylite_db *database,
@@ -25534,6 +25579,19 @@ static int append_row_scalar_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
+static int append_row_scalar_collate_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static const char *row_scalar_sql_collation_name(const char *collation_name);
+static bool row_scalar_mysql_collation_is_binary_sensitive(const char *collation_name);
+static bool row_scalar_mysql_collation_is_binary(const char *collation_name);
+static bool row_scalar_mysql_collation_is_case_sensitive(const char *collation_name);
+static bool row_scalar_expression_is_binary_sensitive_collate(
+    const struct planned_row_scalar_expression *expression
+);
+static bool text_has_ascii_case_insensitive_suffix(const char *text, const char *suffix);
 static int append_row_scalar_sum_column_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression
@@ -26375,6 +26433,11 @@ static int append_select_row_scalar_regexp_predicate_sql(
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 );
+static int append_select_row_scalar_like_binary_predicate_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
 static int append_select_row_scalar_decimal_text_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select_predicate_node *node,
@@ -26465,10 +26528,14 @@ static int append_descriptor_value_sql_for_source(
     size_t source_index,
     bool qualify
 );
+static bool planned_select_predicate_rhs_has_explicit_collate(
+    const struct planned_select_predicate_node *node
+);
 static int append_select_predicate_subject_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select_predicate_node *node,
-    bool qualify
+    bool qualify,
+    bool suppress_default_string_collation
 );
 static int append_string_integer_value_sql_for_source(
     struct mylite_dynamic_string *string,

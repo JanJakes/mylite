@@ -4557,6 +4557,11 @@ predicate_atom(A) ::= cast_convert_expression(C) predicate_comparison_operator(O
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O.token, O.operator_kind, V);
 }
+predicate_atom(A) ::= predicate_collate_expression(C) predicate_comparison_operator(O)
+        predicate_comparison_value(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O.token, O.operator_kind, V);
+}
 predicate_atom(A) ::=
     cast_convert_expression(C) LIKE(O) predicate_like_pattern(P) predicate_like_escape_opt(E). {
     A = mylite_sql_parser_make_like_comparison_predicate(
@@ -4571,6 +4576,34 @@ predicate_atom(A) ::=
 }
 predicate_atom(A) ::=
     cast_convert_expression(C) NOT(N) LIKE(O) predicate_like_pattern(P) predicate_like_escape_opt(E). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N,
+        mylite_sql_parser_make_like_comparison_predicate(
+            state,
+            &(const struct mylite_sql_parser_like_comparison_predicate_request){
+                .left = C,
+                .operator_token = O,
+                .operator_kind = MYLITE_SQL_AST_OPERATOR_LIKE,
+                .right = P,
+                .escape = E,
+            }));
+}
+predicate_atom(A) ::=
+    predicate_collate_expression(C) LIKE(O) predicate_like_pattern(P)
+    predicate_like_escape_opt(E). {
+    A = mylite_sql_parser_make_like_comparison_predicate(
+        state,
+        &(const struct mylite_sql_parser_like_comparison_predicate_request){
+            .left = C,
+            .operator_token = O,
+            .operator_kind = MYLITE_SQL_AST_OPERATOR_LIKE,
+            .right = P,
+            .escape = E,
+        });
+}
+predicate_atom(A) ::=
+    predicate_collate_expression(C) NOT(N) LIKE(O) predicate_like_pattern(P)
+    predicate_like_escape_opt(E). {
     A = mylite_sql_parser_make_not_predicate(
         state, N,
         mylite_sql_parser_make_like_comparison_predicate(
@@ -4868,6 +4901,9 @@ predicate_like_pattern(A) ::= STRING(T). {
 predicate_like_pattern(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
 }
+predicate_like_pattern(A) ::= predicate_collate_expression(V). {
+    A = V;
+}
 predicate_like_pattern(A) ::= CONCAT(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_CONCAT_FUNCTION, B, R);
@@ -5034,6 +5070,9 @@ predicate_comparison_value(A) ::= HEX_LITERAL(T). {
 predicate_comparison_value(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
 }
+predicate_comparison_value(A) ::= predicate_collate_expression(V). {
+    A = V;
+}
 predicate_comparison_value(A) ::= CONCAT(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_CONCAT_FUNCTION, B, R);
@@ -5055,6 +5094,24 @@ predicate_comparison_value(A) ::= SCHEMA(T) LPAREN RPAREN(R). {
 }
 predicate_comparison_value(A) ::= LPAREN(L) select_statement(S) RPAREN(R). {
     A = mylite_sql_parser_make_scalar_subquery_expression(state, L, S, R);
+}
+
+predicate_collate_expression(A) ::= predicate_collatable_expression(V) COLLATE(C) option_name(N). {
+    A = mylite_sql_parser_make_collate_expression(state, V, C, N);
+}
+
+predicate_collatable_expression(A) ::= qualified_identifier(V). {
+    A = V;
+}
+predicate_collatable_expression(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+predicate_collatable_expression(A) ::= cast_convert_expression(V). {
+    A = V;
+}
+predicate_collatable_expression(A) ::= CONCAT(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_CONCAT_FUNCTION, B, R);
 }
 
 predicate_integer_value(A) ::= INTEGER(T). {
@@ -5203,6 +5260,9 @@ select_order_key(A) ::= qualified_identifier(B) PLUS(T) INTEGER(C). {
     );
 }
 select_order_key(A) ::= cast_convert_expression(K). {
+    A = K;
+}
+select_order_key(A) ::= predicate_collate_expression(K). {
     A = K;
 }
 select_order_key(A) ::=

@@ -390,6 +390,15 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
+        if (expression->arguments == NULL || expression->argument_count != 1U) {
+            return MYLITE_ERROR;
+        }
+        return bind_row_scalar_expression_parameters(
+            statement,
+            &expression->arguments[0],
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
         break;
     }

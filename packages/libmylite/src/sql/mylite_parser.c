@@ -8265,6 +8265,30 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_argument_list(
     return list;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_prepend_function_argument(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *argument,
+    struct mylite_sql_ast_node *list
+) {
+    if (!is_parse_ok(state)) {
+        return list;
+    }
+    if (list == NULL) {
+        return mylite_sql_parser_make_function_argument_list(state, argument);
+    }
+    if (argument == NULL) {
+        return list;
+    }
+
+    argument->next_sibling = list->first_child;
+    list->first_child = argument;
+    if (list->last_child == NULL) {
+        list->last_child = argument;
+    }
+    mylite_sql_ast_node_set_span(list, span_join(argument->span, list->span));
+    return list;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_append_function_argument(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *list,

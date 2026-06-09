@@ -2124,6 +2124,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_function_argument_list(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *argument
 );
+struct mylite_sql_ast_node *mylite_sql_parser_prepend_function_argument(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *argument,
+    struct mylite_sql_ast_node *list
+);
 struct mylite_sql_ast_node *mylite_sql_parser_append_function_argument(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *list,

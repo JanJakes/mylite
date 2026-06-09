@@ -1862,16 +1862,24 @@ static int test_count_star_aggregate(void) {
         "count distinct expression placeholder"
     );
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT COUNT(DISTINCT 1) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
+    failures +=
+        parser_test_parse_sql("SELECT COUNT(DISTINCT 1) FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_GENERIC_FUNCTION,
+        "count distinct literal placeholder"
     );
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT COUNT(DISTINCT TRUE) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
+    failures +=
+        parser_test_parse_sql("SELECT COUNT(DISTINCT TRUE) FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_GENERIC_FUNCTION,
+        "count distinct boolean placeholder"
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
@@ -2036,9 +2044,23 @@ static int test_min_max_aggregate(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql("SELECT MIN();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT MAX(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT MAX(1);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION,
+        "max literal aggregate"
+    );
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT MIN(NULL);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT MIN(NULL);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION,
+        "min null aggregate"
+    );
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parser_test_parse_sql("SELECT MIN(id, n) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -2267,12 +2289,32 @@ static int test_sum_aggregate(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql("SELECT SUM();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT SUM(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT SUM(1);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION,
+        "sum literal aggregate"
+    );
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT SUM(NULL);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT SUM(NULL);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION,
+        "sum null aggregate"
+    );
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT SUM(id + 1) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT SUM(id + 1) FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 0U),
+        MYLITE_SQL_AST_BINARY_EXPRESSION,
+        "sum identifier plus literal argument"
+    );
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parser_test_parse_sql("SELECT SUM(id, n) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -2430,9 +2472,23 @@ static int test_avg_aggregate(void) {
 
     failures += parser_test_parse_sql("SELECT AVG();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT AVG(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT AVG(1);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION,
+        "avg literal aggregate"
+    );
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT AVG(NULL);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT AVG(NULL);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION,
+        "avg null aggregate"
+    );
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parser_test_parse_sql("SELECT AVG(id, n) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -2577,10 +2633,23 @@ static int test_bitwise_aggregate(void) {
 
     failures += parser_test_parse_sql("SELECT BIT_AND();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT BIT_AND(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT BIT_AND(1);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_BIT_AND_AGGREGATE_FUNCTION,
+        "bit_and literal aggregate"
+    );
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT BIT_OR(NULL);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT BIT_OR(NULL);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_BIT_OR_AGGREGATE_FUNCTION,
+        "bit_or null aggregate"
+    );
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT BIT_XOR(id, n) FROM t;",
@@ -2751,10 +2820,14 @@ static int test_group_concat_aggregate(void) {
         "group_concat distinct placeholder"
     );
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT GROUP_CONCAT(id, n) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
+    failures +=
+        parser_test_parse_sql("SELECT GROUP_CONCAT(id, n) FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_GENERIC_FUNCTION,
+        "multi-argument group_concat placeholder"
     );
     mylite_sql_parse_result_deinit(&result);
     failures +=

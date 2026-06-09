@@ -4,11 +4,13 @@ Window-only ranking, distribution, navigation, and frame-value functions.
 
 The parser also admits MySQL-shaped named windows, `OVER window_name`,
 expression and multi-key partition/order clauses, and `ROWS` / `RANGE` frame
-clauses. Those broader forms are parse-level compatibility only unless they fit
+clauses, including parser-only interval bounds in `RANGE` frames. Those broader forms are parse-level compatibility only unless they fit
 the executable baseline described per function below. Common aggregate-window
-forms such as `COUNT(*) OVER (...)` and `SUM(column) OVER (...)` are also
-parse-level compatibility only and are rejected on execution; see
-[parser aggregate window syntax](../specs/parser-aggregate-window-syntax/specs.md).
+forms such as `COUNT(*) OVER (...)`, `SUM(column) OVER (...)`, and selected
+literal/arithmetic aggregate-window placeholders are also parse-level
+compatibility only and are rejected on execution; see
+[parser aggregate window syntax](../specs/parser-aggregate-window-syntax/specs.md)
+and [parser corpus aggregate/window surfaces](../specs/parser-corpus-aggregate-window-surfaces/specs.md).
 Value and navigation functions admit MySQL-shaped `RESPECT NULLS` and
 `IGNORE NULLS` clauses. `RESPECT NULLS` follows the default behavior inside the
 current executable envelopes, while `IGNORE NULLS` returns MySQL's unsupported

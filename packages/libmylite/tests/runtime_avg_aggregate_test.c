@@ -730,7 +730,7 @@ static int test_avg_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "AVG(column) supports only descriptor columns",
         }
     );
     failures += execute_error(
@@ -739,7 +739,7 @@ static int test_avg_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "AVG(column) supports only descriptor columns",
         }
     );
     failures += execute_error(

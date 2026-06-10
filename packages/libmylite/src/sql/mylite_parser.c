@@ -381,6 +381,32 @@ static bool placeholder_scan_contains_lateral_derived_table(
 static bool placeholder_scan_contains_grouping_function(
     const struct placeholder_statement_scan *scan
 );
+static bool placeholder_scan_contains_sounds_like_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_deprecated_logical_operator_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_like_surface(const struct placeholder_statement_scan *scan);
+static bool placeholder_scan_contains_like_escape_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_not_like_surface(const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_typed_temporal_literal_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_interval_expression_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_interval_expression_follows_parenthesized_separator(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_is_date_interval_unit(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
 static bool placeholder_scan_contains_scalar_in_surface(
     const struct placeholder_statement_scan *scan
 );
@@ -1647,6 +1673,13 @@ static enum placeholder_statement_kind classify_query_scalar_expression_placehol
     }
     if (placeholder_scan_contains_lateral_derived_table(scan) ||
         placeholder_scan_contains_grouping_function(scan) ||
+        placeholder_scan_contains_sounds_like_surface(scan) ||
+        placeholder_scan_contains_deprecated_logical_operator_surface(scan) ||
+        placeholder_scan_contains_like_surface(scan) ||
+        placeholder_scan_contains_like_escape_surface(scan) ||
+        placeholder_scan_contains_not_like_surface(scan) ||
+        placeholder_scan_contains_typed_temporal_literal_surface(scan) ||
+        placeholder_scan_contains_interval_expression_surface(scan) ||
         placeholder_scan_contains_scalar_in_surface(scan) ||
         placeholder_scan_contains_quantified_subquery_surface(scan) ||
         placeholder_scan_contains_fulltext_match_against_surface(scan)) {
@@ -2601,6 +2634,192 @@ static bool placeholder_scan_contains_grouping_function(
         }
     }
     return false;
+}
+
+static bool placeholder_scan_contains_sounds_like_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return false;
+    }
+    for (size_t index = 2U; index + 2U < scan->token_count; ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, "SOUNDS") &&
+            placeholder_scan_token_text_equals(scan, index + 1U, "LIKE") &&
+            !placeholder_scan_token_is_incomplete_statement_tail(scan, index - 1U) &&
+            !placeholder_scan_token_stops_expression_clause_search(scan, index - 1U) &&
+            !placeholder_scan_token_is_incomplete_statement_tail(scan, index + 2U) &&
+            !placeholder_scan_token_stops_expression_clause_search(scan, index + 2U)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_contains_deprecated_logical_operator_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return false;
+    }
+    for (size_t index = 2U; index + 1U < scan->token_count; ++index) {
+        if (scan->tokens[index].kind == MYLITE_SQL_TOKEN_OPERATOR &&
+            (scan->tokens[index].operator_kind == MYLITE_SQL_OPERATOR_LOGICAL_AND ||
+             scan->tokens[index].operator_kind == MYLITE_SQL_OPERATOR_LOGICAL_OR) &&
+            !placeholder_scan_token_is_incomplete_statement_tail(scan, index - 1U) &&
+            !placeholder_scan_token_stops_expression_clause_search(scan, index - 1U) &&
+            !placeholder_scan_token_is_incomplete_statement_tail(scan, index + 1U) &&
+            !placeholder_scan_token_stops_expression_clause_search(scan, index + 1U)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_contains_like_surface(const struct placeholder_statement_scan *scan) {
+    if (scan == NULL || placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return false;
+    }
+    for (size_t index = 2U; index + 1U < scan->token_count; ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, "LIKE") &&
+            !placeholder_scan_token_text_equals(scan, index - 1U, "SOUNDS") &&
+            !placeholder_scan_token_is_incomplete_statement_tail(scan, index - 1U) &&
+            !placeholder_scan_token_stops_expression_clause_search(scan, index - 1U) &&
+            !placeholder_scan_token_is_incomplete_statement_tail(scan, index + 1U) &&
+            !placeholder_scan_token_stops_expression_clause_search(scan, index + 1U)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_contains_like_escape_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return false;
+    }
+    for (size_t index = 2U; index + 1U < scan->token_count; ++index) {
+        if (!placeholder_scan_token_text_equals(scan, index, "ESCAPE") ||
+            placeholder_scan_token_is_incomplete_statement_tail(scan, index + 1U) ||
+            placeholder_scan_token_stops_expression_clause_search(scan, index + 1U)) {
+            continue;
+        }
+        for (size_t scan_index = index; scan_index > 0U; --scan_index) {
+            size_t previous_index = scan_index - 1U;
+
+            if (placeholder_scan_token_stops_expression_clause_search(scan, previous_index)) {
+                break;
+            }
+            if (placeholder_scan_token_text_equals(scan, previous_index, "LIKE") &&
+                previous_index > 1U && previous_index + 1U < index &&
+                !placeholder_scan_token_is_incomplete_statement_tail(scan, previous_index - 1U) &&
+                !placeholder_scan_token_stops_expression_clause_search(scan, previous_index - 1U) &&
+                !placeholder_scan_token_is_incomplete_statement_tail(scan, previous_index + 1U) &&
+                !placeholder_scan_token_stops_expression_clause_search(scan, previous_index + 1U)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_contains_not_like_surface(const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return false;
+    }
+    for (size_t index = 2U; index + 2U < scan->token_count; ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, "NOT") &&
+            placeholder_scan_token_text_equals(scan, index + 1U, "LIKE") &&
+            !placeholder_scan_token_is_incomplete_statement_tail(scan, index - 1U) &&
+            !placeholder_scan_token_stops_expression_clause_search(scan, index - 1U) &&
+            !placeholder_scan_token_is_incomplete_statement_tail(scan, index + 2U) &&
+            !placeholder_scan_token_stops_expression_clause_search(scan, index + 2U)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_contains_typed_temporal_literal_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return false;
+    }
+    for (size_t index = 0U; index + 1U < scan->token_count; ++index) {
+        if (scan->tokens[index].kind == MYLITE_SQL_TOKEN_TEMPORAL_LITERAL_INTRODUCER &&
+            scan->tokens[index + 1U].kind == MYLITE_SQL_TOKEN_STRING) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_contains_interval_expression_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return false;
+    }
+    for (size_t index = 1U; index + 2U < scan->token_count; ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, "INTERVAL") &&
+            !token_is_left_paren(&scan->tokens[index + 1U]) &&
+            !placeholder_scan_interval_expression_follows_parenthesized_separator(scan, index) &&
+            !placeholder_scan_token_is_incomplete_statement_tail(scan, index + 1U) &&
+            placeholder_scan_token_is_date_interval_unit(scan, index + 2U)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_interval_expression_follows_parenthesized_separator(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    int paren_depth = 0;
+
+    if (scan == NULL || index == 0U || !token_is_comma(&scan->tokens[index - 1U])) {
+        return false;
+    }
+    for (size_t scan_index = 0U; scan_index < index; ++scan_index) {
+        if (token_is_left_paren(&scan->tokens[scan_index])) {
+            ++paren_depth;
+        } else if (token_is_right_paren(&scan->tokens[scan_index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+        }
+    }
+    return paren_depth > 0;
+}
+
+static bool placeholder_scan_token_is_date_interval_unit(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return placeholder_scan_token_text_equals(scan, index, "YEAR") ||
+           placeholder_scan_token_text_equals(scan, index, "QUARTER") ||
+           placeholder_scan_token_text_equals(scan, index, "MONTH") ||
+           placeholder_scan_token_text_equals(scan, index, "WEEK") ||
+           placeholder_scan_token_text_equals(scan, index, "DAY") ||
+           placeholder_scan_token_text_equals(scan, index, "HOUR") ||
+           placeholder_scan_token_text_equals(scan, index, "MINUTE") ||
+           placeholder_scan_token_text_equals(scan, index, "SECOND") ||
+           placeholder_scan_token_text_equals(scan, index, "MICROSECOND") ||
+           placeholder_scan_token_text_equals(scan, index, "YEAR_MONTH") ||
+           placeholder_scan_token_text_equals(scan, index, "DAY_HOUR") ||
+           placeholder_scan_token_text_equals(scan, index, "DAY_MINUTE") ||
+           placeholder_scan_token_text_equals(scan, index, "DAY_SECOND") ||
+           placeholder_scan_token_text_equals(scan, index, "HOUR_MINUTE") ||
+           placeholder_scan_token_text_equals(scan, index, "HOUR_SECOND") ||
+           placeholder_scan_token_text_equals(scan, index, "MINUTE_SECOND") ||
+           placeholder_scan_token_text_equals(scan, index, "DAY_MICROSECOND") ||
+           placeholder_scan_token_text_equals(scan, index, "HOUR_MICROSECOND") ||
+           placeholder_scan_token_text_equals(scan, index, "MINUTE_MICROSECOND") ||
+           placeholder_scan_token_text_equals(scan, index, "SECOND_MICROSECOND");
 }
 
 static bool placeholder_scan_contains_scalar_in_surface(

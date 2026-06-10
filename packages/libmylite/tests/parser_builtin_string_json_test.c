@@ -1237,9 +1237,16 @@ static int test_pipes_as_concat_operator(void) {
     const struct mylite_sql_ast_node *add = NULL;
     const struct mylite_sql_ast_node *not_expression = NULL;
     const struct mylite_sql_ast_node *negative_concat = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
     int failures = 0;
 
-    failures += parser_test_parse_sql("SELECT 1||0;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT 1||0;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT,
+        "default pipes logical placeholder"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql_with_modes(

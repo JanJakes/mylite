@@ -138,12 +138,6 @@ static int test_syntax_errors(void) {
     failures += parser_test_parse_sql("SELECT NOT;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql("SELECT 1&&1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql("SELECT 1||0;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
     failures += parser_test_parse_sql(
         "CREATE DATABASE IF EXISTS app;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,

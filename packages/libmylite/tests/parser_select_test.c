@@ -4547,9 +4547,17 @@ static int test_select_inner_join_clause(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT l.id FROM lefts l, rights r JOIN extras e ON r.id = e.id;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT,
+        "mixed comma explicit join placeholder"
+    );
+    failures +=
+        parser_test_expect_child_count(statement, 0U, "mixed comma explicit join placeholder");
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT id FROM t STRAIGHT_JOIN other USING (id);",

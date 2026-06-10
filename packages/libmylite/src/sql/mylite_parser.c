@@ -347,6 +347,24 @@ static bool placeholder_scan_parenthesized_start_is_query_statement(
 static bool placeholder_scan_contains_parenthesized_table_reference_surface(
     const struct placeholder_statement_scan *scan
 );
+static bool placeholder_scan_contains_odbc_table_reference_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_odbc_escape_starts_table_reference(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_contains_mixed_comma_explicit_join_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_from_clause_contains_mixed_comma_explicit_join(
+    const struct placeholder_statement_scan *scan,
+    size_t from_index
+);
+static bool placeholder_scan_token_stops_table_reference_clause(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
 static bool placeholder_scan_parenthesized_table_reference_body_starts_at(
     const struct placeholder_statement_scan *scan,
     size_t left_paren_index
@@ -2378,7 +2396,9 @@ static enum placeholder_statement_kind classify_query_table_reference_placeholde
         !placeholder_scan_parentheses_are_balanced(scan, 0U)) {
         return PLACEHOLDER_STATEMENT_NONE;
     }
-    if (placeholder_scan_contains_parenthesized_table_reference_surface(scan)) {
+    if (placeholder_scan_contains_parenthesized_table_reference_surface(scan) ||
+        placeholder_scan_contains_odbc_table_reference_surface(scan) ||
+        placeholder_scan_contains_mixed_comma_explicit_join_surface(scan)) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
     return PLACEHOLDER_STATEMENT_NONE;
@@ -2432,6 +2452,135 @@ static bool placeholder_scan_contains_parenthesized_table_reference_surface(
         }
     }
     return false;
+}
+
+static bool placeholder_scan_contains_odbc_table_reference_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index + 3U < scan->token_count; ++index) {
+        bool saw_join = false;
+
+        if (!placeholder_scan_odbc_escape_starts_table_reference(scan, index) ||
+            !placeholder_scan_token_text_equals(scan, index, "{") ||
+            !placeholder_scan_token_text_equals(scan, index + 1U, "OJ")) {
+            continue;
+        }
+        for (size_t scan_index = index + 2U; scan_index < scan->token_count; ++scan_index) {
+            if (placeholder_scan_token_is_join_keyword(scan, scan_index)) {
+                saw_join = true;
+            }
+            if (placeholder_scan_token_text_equals(scan, scan_index, "}")) {
+                if (saw_join) {
+                    return true;
+                }
+                break;
+            }
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_odbc_escape_starts_table_reference(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    size_t previous = 0U;
+
+    if (scan == NULL || index == 0U) {
+        return false;
+    }
+    previous = index - 1U;
+    return placeholder_scan_token_text_equals(scan, previous, "FROM") ||
+           placeholder_scan_token_is_join_keyword(scan, previous) ||
+           token_is_comma(&scan->tokens[previous]);
+}
+
+static bool placeholder_scan_contains_mixed_comma_explicit_join_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    int paren_depth = 0;
+
+    if (scan == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < scan->token_count; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            continue;
+        }
+        if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+            continue;
+        }
+        if (paren_depth == 0 && placeholder_scan_token_text_equals(scan, index, "FROM") &&
+            placeholder_scan_from_clause_contains_mixed_comma_explicit_join(scan, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_from_clause_contains_mixed_comma_explicit_join(
+    const struct placeholder_statement_scan *scan,
+    size_t from_index
+) {
+    int paren_depth = 0;
+    bool saw_comma = false;
+    bool saw_join = false;
+
+    if (scan == NULL || from_index + 1U >= scan->token_count) {
+        return false;
+    }
+    for (size_t index = from_index + 1U; index < scan->token_count; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            continue;
+        }
+        if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+            continue;
+        }
+        if (paren_depth != 0) {
+            continue;
+        }
+        if (placeholder_scan_token_stops_table_reference_clause(scan, index)) {
+            break;
+        }
+        if (token_is_comma(&scan->tokens[index])) {
+            saw_comma = true;
+        } else if (placeholder_scan_token_is_join_keyword(scan, index)) {
+            saw_join = true;
+        }
+        if (saw_comma && saw_join) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_token_stops_table_reference_clause(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return placeholder_scan_token_text_equals(scan, index, "WHERE") ||
+           placeholder_scan_token_text_equals(scan, index, "GROUP") ||
+           placeholder_scan_token_text_equals(scan, index, "HAVING") ||
+           placeholder_scan_token_text_equals(scan, index, "WINDOW") ||
+           placeholder_scan_token_text_equals(scan, index, "ORDER") ||
+           placeholder_scan_token_text_equals(scan, index, "LIMIT") ||
+           placeholder_scan_token_text_equals(scan, index, "UNION") ||
+           placeholder_scan_token_text_equals(scan, index, "FOR") ||
+           placeholder_scan_token_text_equals(scan, index, "LOCK") ||
+           placeholder_scan_token_text_equals(scan, index, "INTO");
 }
 
 static bool placeholder_scan_parenthesized_table_reference_body_starts_at(

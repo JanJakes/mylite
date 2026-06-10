@@ -96,13 +96,14 @@ path. These parser placeholders do not implement broad scalar membership,
 quantified comparison, `VALUES` subquery, or lateral derived-table execution
 semantics.
 
-The parser-corpus parenthesized table-reference surface classifies recognized
-`FROM (` and `JOIN (` table-reference groups as explicit unsupported
-placeholders after normal parse failure, including parenthesized base tables,
-joined table references, and comma table-reference groups. Existing flat joins
-and derived-table sources keep their normal parser/runtime paths. These parser
-placeholders do not implement nested join or parenthesized table-reference
-execution semantics.
+The parser-corpus table-reference surface classifies recognized `FROM (` and
+`JOIN (` table-reference groups, ODBC `{ OJ ... }` join escapes, and mixed
+comma/explicit join lists as explicit unsupported placeholders after normal
+parse failure, including parenthesized base tables, joined table references,
+and comma table-reference groups. Existing flat joins and derived-table sources
+keep their normal parser/runtime paths. These parser placeholders do not
+implement nested join, parenthesized table-reference, ODBC escape, or mixed
+comma/explicit join execution semantics.
 
 The parser-corpus query expression-clause surface classifies recognized general
 expression syntax in query clauses as explicit unsupported placeholders after

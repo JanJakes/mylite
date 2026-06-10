@@ -81,6 +81,24 @@ expect_output \
     "2" \
     "USE ${DATABASE}; SELECT COUNT(*) FROM (t1);"
 
+expect_output \
+    "ODBC left outer join escape" \
+    "2" \
+    "USE ${DATABASE}; "\
+"SELECT COUNT(*) FROM { OJ t1 LEFT OUTER JOIN t2 ON t1.id=t2.id };"
+
+expect_output \
+    "mixed comma before explicit join" \
+    "4" \
+    "USE ${DATABASE}; "\
+"SELECT COUNT(*) FROM t1, t2 LEFT JOIN t3 ON t2.id=t3.id;"
+
+expect_output \
+    "mixed comma after explicit join" \
+    "4" \
+    "USE ${DATABASE}; "\
+"SELECT COUNT(*) FROM t2 LEFT JOIN t3 ON t2.id=t3.id, t1;"
+
 cleanup
 
 printf '%s\n' "mysql_parser_corpus_parenthesized_table_reference_surfaces: ok"

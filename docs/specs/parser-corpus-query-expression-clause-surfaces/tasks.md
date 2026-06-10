@@ -19,3 +19,13 @@ Parser corpus benchmark after implementation:
 
 - `ok=67318`, `syntax_error=2255`, `lexer_error=21`, `stack_overflow=1`
   across 69,595 mysql-server-test queries.
+
+Second-pass parser corpus benchmark before implementation:
+
+- `ok=69116`, `syntax_error=457`, `lexer_error=21`, `stack_overflow=1`
+  across 69,595 mysql-server-test queries.
+
+Second-pass parser corpus benchmark after implementation:
+
+- `ok=69159`, `syntax_error=414`, `lexer_error=21`, `stack_overflow=1`
+  across 69,595 mysql-server-test queries.

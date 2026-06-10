@@ -10,6 +10,7 @@ Primary MySQL references:
 - https://dev.mysql.com/doc/refman/8.4/en/expressions.html
 - https://dev.mysql.com/doc/refman/8.4/en/select.html
 - https://dev.mysql.com/doc/refman/8.4/en/comparison-operators.html
+- https://dev.mysql.com/doc/refman/8.4/en/json-search-functions.html
 - https://dev.mysql.com/doc/refman/8.4/en/group-by-modifiers.html
 
 ## MySQL 8.4.9 Runtime Observations
@@ -21,6 +22,11 @@ against MySQL 8.4.9:
 - operator-bearing function and arithmetic expressions are valid `ORDER BY`,
   `GROUP BY`, and `HAVING` operands;
 - row tuple comparisons such as `(a,b) = (1,2)` are valid predicates;
+- postfix `IS [NOT] NULL` / `IS UNKNOWN`, JSON `->` / `->>` column-path
+  predicates, ODBC expression escapes, qualified column-to-column `BETWEEN`,
+  qualified descriptor `IN` lists, `ROW(...)` comparisons, parenthesized
+  `MATCH(...) AGAINST(...)`, and string-literal `ORDER BY` keys in `VALUES`
+  statements are valid syntax;
 - subqueries may contain their own expression predicates;
 - multi-table `UPDATE` and ordered `DELETE` statements may contain expression
   assignments and predicates.
@@ -39,6 +45,18 @@ SELECT a, COUNT(*) FROM t1
   HAVING COUNT(*) >= 1 AND a > 0
   ORDER BY a + 0;
 SELECT a FROM t1 WHERE (a,b) = (1,2);
+SELECT COUNT(*) FROM t1 WHERE a=1 IS NOT NULL;
+SELECT COUNT(*) FROM t1 WHERE j->"$.id" = 5;
+SELECT COUNT(*) FROM t1 WHERE j->>"$.name" = "James";
+SELECT {fn CONCAT('a','b')};
+SELECT COUNT(*) FROM t1 LEFT JOIN t2 ON t1.a = t2.a
+  WHERE t1.a BETWEEN t2.b AND t1.b;
+SELECT COUNT(*) FROM t1 LEFT JOIN t2 ON t1.a = t2.a
+  WHERE t1.a IN(t2.a, t2.b);
+SELECT COUNT(*) FROM t1 WHERE ROW(1,2,'x')=ROW(a,b,c);
+SELECT x FROM ft GROUP BY x, MATCH(x) AGAINST ('abc')
+  HAVING MATCH(x) AGAINST ('abc') ORDER BY x;
+VALUES ROW(1),ROW(2) ORDER BY '1' DESC;
 SELECT a FROM t1
   WHERE a IN (SELECT a FROM t2 WHERE b + 1 > 20)
   ORDER BY a;
@@ -60,6 +78,16 @@ In scope:
 - arithmetic, bitwise, and logical expression operators in query clauses;
 - expression operators inside function arguments and aggregate arguments;
 - row tuple comparison and tuple `IN` surfaces;
+- postfix `IS` predicates over broader expression operands;
+- JSON column extraction operators `->` and `->>` when broad query-clause
+  expression planning is not yet available;
+- ODBC `{fn ...}`, `{d ...}`, `{t ...}`, and `{ts ...}` expression escapes;
+- qualified column-to-column `BETWEEN` and descriptor `IN` lists in joined
+  predicates;
+- `ROW(...)` comparison predicates in table-backed clauses;
+- parenthesized full-text `MATCH(column[, ...]) AGAINST(...)` expressions;
+- string-literal `ORDER BY` keys in otherwise unsupported `VALUES` statement
+  order clauses;
 - bare truth expressions in table-backed predicate clauses;
 - deterministic unsupported diagnostics instead of generic syntax errors for
   recognized expression-clause surfaces;
@@ -72,6 +100,13 @@ Out of scope:
   `GROUP BY`, `HAVING`, or `ORDER BY`;
 - row tuple comparison execution beyond the existing documented scalar
   row-constructor subset;
+- executable JSON extraction through query-clause predicates outside existing
+  documented JSON expression slices;
+- executable ODBC expression escape conversion;
+- executable column-to-column range or membership semantics beyond documented
+  descriptor predicates;
+- executable full-text search ranking or index lookup;
+- executable string-literal `VALUES` ordering semantics;
 - pure function-call query-clause admission without an expression operator or
   another recognized expression-clause signal;
 - broad multi-table DML execution beyond current MyLite support;
@@ -97,9 +132,24 @@ row_tuple ::= LPAREN expression COMMA expression_list RPAREN.
 expression ::= row_tuple comparison_operator row_tuple.
 expression ::= row_tuple IN LPAREN query_expression RPAREN.
 expression ::= row_tuple NOT IN LPAREN query_expression RPAREN.
+expression ::= ROW LPAREN expression COMMA expression_list RPAREN
+               comparison_operator
+               ROW LPAREN expression COMMA expression_list RPAREN.
+expression ::= expression IS NULL.
+expression ::= expression IS NOT NULL.
+expression ::= expression IS TRUE.
+expression ::= expression IS FALSE.
+expression ::= expression IS UNKNOWN.
+expression ::= qualified_identifier JSON_EXTRACT_OPERATOR string_literal.
+expression ::= qualified_identifier JSON_UNQUOTE_EXTRACT_OPERATOR string_literal.
+expression ::= ODBC_ESCAPE_START identifier expression ODBC_ESCAPE_END.
+expression ::= expression BETWEEN expression AND expression.
+expression ::= expression IN LPAREN expression_list RPAREN.
+expression ::= MATCH LPAREN identifier_list RPAREN AGAINST LPAREN expression RPAREN.
 
 update_assignment ::= qualified_identifier EQ expression.
 delete_order_key ::= expression order_direction_opt.
+values_order_key ::= expression order_direction_opt.
 ```
 
 This slice does not install the broad grammar above directly. MyLite's current
@@ -124,8 +174,10 @@ NULL semantics.
 Tests cover:
 
 - MySQL 8.4.9 expectations for arithmetic predicates, expression ordering and
-  grouping, tuple predicates, subquery expression predicates, multi-table
-  `UPDATE`, and ordered `DELETE`;
+  grouping, tuple predicates, postfix `IS`, JSON arrows, ODBC escapes,
+  qualified column-to-column range and membership predicates, `ROW(...)` comparisons,
+  parenthesized full-text `MATCH`, `VALUES` string order keys, subquery
+  expression predicates, multi-table `UPDATE`, and ordered `DELETE`;
 - parser placeholder acceptance for the representative expression-clause
   surfaces;
 - runtime unsupported diagnostics for recognized expression-clause surfaces;

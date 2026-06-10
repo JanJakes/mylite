@@ -52,10 +52,14 @@ esac
 
 cleanup
 run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE}; "\
-"CREATE TABLE t1 (a INT, b INT, c VARCHAR(20)); "\
-"CREATE TABLE t2 (a INT, b INT); "\
-"INSERT INTO t1 VALUES (1,2,'x'),(3,4,'y'); "\
-"INSERT INTO t2 VALUES (1,20),(3,40);" >/dev/null
+"CREATE TABLE t1 (a INT, b INT, c VARCHAR(20), j JSON); "\
+"CREATE TABLE t2 (a INT, b INT, c2 DATE, c3 TIME, c4 TIMESTAMP NULL); "\
+"CREATE TABLE ft (x TEXT, FULLTEXT KEY ft_x (x)) ENGINE=InnoDB; "\
+"INSERT INTO t1 VALUES (1,2,'x','{\"id\":5,\"name\":\"James\"}'),"\
+"(3,4,'y','{\"id\":7,\"name\":\"james\"}'); "\
+"INSERT INTO t2 VALUES (1,20,'2014-01-03','01:01:03','2014-01-03 01:01:01'),"\
+"(3,40,'2014-02-01','02:00:00','2014-02-01 01:01:01'); "\
+"INSERT INTO ft VALUES ('abc one'),('def two');" >/dev/null
 
 expect_output \
     "arithmetic predicate" \
@@ -80,6 +84,79 @@ expect_output \
     "row tuple comparison" \
     "1" \
     "USE ${DATABASE}; SELECT a FROM t1 WHERE (a,b) = (1,2);"
+
+expect_output \
+    "postfix IS predicate" \
+    "2" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE a=1 IS NOT NULL;"
+
+expect_output \
+    "JSON arrow predicate" \
+    "1" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE j->\"$.id\" = 5;"
+
+expect_output \
+    "JSON unquote arrow predicate" \
+    "1" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE j->>\"$.name\" = \"James\";"
+
+expect_output \
+    "ODBC scalar escape" \
+    "ab" \
+    "USE ${DATABASE}; SELECT {fn CONCAT('a','b')};"
+
+expect_output \
+    "column BETWEEN column bounds" \
+    "0" \
+    "USE ${DATABASE}; "\
+"SELECT COUNT(*) FROM t1 LEFT JOIN t2 ON t1.a = t2.a "\
+"WHERE t1.a BETWEEN t2.b AND t1.b;"
+
+expect_output \
+    "descriptor IN expression list" \
+    "2" \
+    "USE ${DATABASE}; "\
+"SELECT COUNT(*) FROM t1 LEFT JOIN t2 ON t1.a = t2.a "\
+"WHERE t1.a IN(t2.a, t2.b);"
+
+expect_output \
+    "row constructor comparison" \
+    "1" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE ROW(1,2,'x')=ROW(a,b,c);"
+
+expect_output \
+    "parenthesized fulltext match" \
+    "abc one" \
+    "USE ${DATABASE}; "\
+"SELECT x FROM ft GROUP BY x, MATCH(x) AGAINST ('abc') "\
+"HAVING MATCH(x) AGAINST ('abc') ORDER BY x;"
+
+expect_output \
+    "ODBC date escape BETWEEN" \
+    "1" \
+    "USE ${DATABASE}; "\
+"SELECT COUNT(*) FROM t1 LEFT JOIN t2 ON t1.a = t2.a "\
+"WHERE c2 BETWEEN {d'2014-01-01'} AND {d'2014-01-05'};"
+
+expect_output \
+    "ODBC time escape BETWEEN" \
+    "1" \
+    "USE ${DATABASE}; "\
+"SELECT COUNT(*) FROM t1 LEFT JOIN t2 ON t1.a = t2.a "\
+"WHERE c3 BETWEEN {t'01:01:01'} AND {t'01:01:05'};"
+
+expect_output \
+    "ODBC timestamp escape BETWEEN" \
+    "1" \
+    "USE ${DATABASE}; "\
+"SELECT COUNT(*) FROM t1 LEFT JOIN t2 ON t1.a = t2.a "\
+"WHERE c4 BETWEEN {ts'2014-01-01 01:01:01'} AND {ts'2014-01-05 01:01:01'};"
+
+expect_output \
+    "VALUES string order key" \
+    "1
+2" \
+    "VALUES ROW(1),ROW(2) ORDER BY '1' DESC;"
 
 expect_output \
     "subquery expression predicate" \

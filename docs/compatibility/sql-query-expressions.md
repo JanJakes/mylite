@@ -109,11 +109,16 @@ The parser-corpus query expression-clause surface classifies recognized general
 expression syntax in query clauses as explicit unsupported placeholders after
 normal parse failure. This includes arithmetic, bitwise, and logical operators,
 expression operators inside function or aggregate arguments in those clauses,
-table-backed row tuple predicates, and bare truth expressions in table-backed
-predicate clauses. The recognized clause positions are table-backed `WHERE`, `ON`,
-`GROUP BY`, `HAVING`, `ORDER BY`, DML assignment, and subquery expression
-positions. These parser placeholders do not implement broad table-backed
-expression planning or tuple predicate execution semantics.
+table-backed row tuple predicates, postfix `IS` predicates over broader
+expression operands, JSON `->` / `->>` column-path predicates, ODBC expression
+escapes, qualified column-to-column `BETWEEN`, qualified descriptor `IN` lists,
+table-backed `ROW(...)` comparisons, parenthesized `MATCH(...) AGAINST(...)`,
+string-literal `VALUES` order keys, and bare truth expressions in table-backed
+predicate clauses. The recognized clause positions are table-backed `WHERE`,
+`ON`, `GROUP BY`, `HAVING`, `ORDER BY`, `VALUES ORDER BY`, DML assignment, and
+subquery expression positions. These parser placeholders do not implement broad
+table-backed expression planning, JSON-arrow query predicates, ODBC escape
+conversion, full-text search, or tuple predicate execution semantics.
 
 The parser-corpus query function/subquery surface classifies recognized nested
 function-call and parenthesized query-expression syntax as explicit unsupported

@@ -208,9 +208,40 @@ static enum placeholder_statement_kind classify_utility_admin_placeholder_statem
 static enum placeholder_statement_kind classify_query_scalar_expression_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );
+static enum placeholder_statement_kind classify_query_table_reference_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+);
 static bool placeholder_scan_starts_query_statement(const struct placeholder_statement_scan *scan);
 static bool placeholder_scan_parenthesized_start_is_query_statement(
     const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_parenthesized_table_reference_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_parenthesized_table_reference_body_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t left_paren_index
+);
+static bool placeholder_scan_find_matching_right_paren(
+    const struct placeholder_statement_scan *scan,
+    size_t left_paren_index,
+    size_t *out_right_paren_index
+);
+static bool placeholder_scan_query_expression_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_starts_parenthesized_table_reference_context(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_is_join_keyword(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_is_table_reference_name(
+    const struct placeholder_statement_scan *scan,
+    size_t index
 );
 static bool placeholder_scan_contains_lateral_derived_table(
     const struct placeholder_statement_scan *scan
@@ -1331,6 +1362,9 @@ static enum placeholder_statement_kind classify_utility_admin_placeholder_statem
         PLACEHOLDER_STATEMENT_NONE) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
+    if (classify_query_table_reference_placeholder_statement(scan) != PLACEHOLDER_STATEMENT_NONE) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
     if (placeholder_scan_token_text_equals(scan, 0U, "SHOW")) {
         return classify_show_placeholder_statement(scan);
     }
@@ -1353,6 +1387,20 @@ static enum placeholder_statement_kind classify_query_scalar_expression_placehol
         placeholder_scan_contains_grouping_function(scan) ||
         placeholder_scan_contains_scalar_in_surface(scan) ||
         placeholder_scan_contains_quantified_subquery_surface(scan)) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
+    return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static enum placeholder_statement_kind classify_query_table_reference_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || scan->has_non_trailing_semicolon ||
+        !placeholder_scan_starts_query_statement(scan) ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U)) {
+        return PLACEHOLDER_STATEMENT_NONE;
+    }
+    if (placeholder_scan_contains_parenthesized_table_reference_surface(scan)) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
     return PLACEHOLDER_STATEMENT_NONE;
@@ -1390,6 +1438,127 @@ static bool placeholder_scan_parenthesized_start_is_query_statement(
                           placeholder_scan_token_text_equals(scan, index, "WITH") ||
                           placeholder_scan_token_text_equals(scan, index, "TABLE") ||
                           placeholder_scan_token_text_equals(scan, index, "VALUES"));
+}
+
+static bool placeholder_scan_contains_parenthesized_table_reference_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index + 1U < scan->token_count; ++index) {
+        if (placeholder_scan_token_starts_parenthesized_table_reference_context(scan, index) &&
+            token_is_left_paren(&scan->tokens[index + 1U]) &&
+            placeholder_scan_parenthesized_table_reference_body_starts_at(scan, index + 1U)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_parenthesized_table_reference_body_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t left_paren_index
+) {
+    size_t right_paren_index = 0U;
+    size_t first_index = left_paren_index + 1U;
+    int paren_depth = 0;
+    bool saw_reference_name = false;
+
+    if (!placeholder_scan_find_matching_right_paren(scan, left_paren_index, &right_paren_index) ||
+        right_paren_index <= first_index ||
+        placeholder_scan_query_expression_starts_at(scan, first_index)) {
+        return false;
+    }
+    for (size_t index = first_index; index < right_paren_index; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            continue;
+        }
+        if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+            continue;
+        }
+        if (paren_depth != 0) {
+            continue;
+        }
+        if (placeholder_scan_token_is_table_reference_name(scan, index)) {
+            saw_reference_name = true;
+        }
+        if (saw_reference_name && (token_is_comma(&scan->tokens[index]) ||
+                                   placeholder_scan_token_is_join_keyword(scan, index))) {
+            return true;
+        }
+    }
+    return saw_reference_name;
+}
+
+static bool placeholder_scan_find_matching_right_paren(
+    const struct placeholder_statement_scan *scan,
+    size_t left_paren_index,
+    size_t *out_right_paren_index
+) {
+    int paren_depth = 0;
+
+    if (scan == NULL || left_paren_index >= scan->token_count ||
+        !token_is_left_paren(&scan->tokens[left_paren_index])) {
+        return false;
+    }
+    for (size_t index = left_paren_index; index < scan->token_count; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+        } else if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+            if (paren_depth == 0) {
+                if (out_right_paren_index != NULL) {
+                    *out_right_paren_index = index;
+                }
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_query_expression_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return placeholder_scan_token_text_equals(scan, index, "SELECT") ||
+           placeholder_scan_token_text_equals(scan, index, "WITH") ||
+           placeholder_scan_token_text_equals(scan, index, "TABLE") ||
+           placeholder_scan_token_text_equals(scan, index, "VALUES");
+}
+
+static bool placeholder_scan_token_starts_parenthesized_table_reference_context(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return placeholder_scan_token_text_equals(scan, index, "FROM") ||
+           placeholder_scan_token_text_equals(scan, index, "JOIN") ||
+           placeholder_scan_token_text_equals(scan, index, "STRAIGHT_JOIN");
+}
+
+static bool placeholder_scan_token_is_join_keyword(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return placeholder_scan_token_text_equals(scan, index, "JOIN") ||
+           placeholder_scan_token_text_equals(scan, index, "STRAIGHT_JOIN");
+}
+
+static bool placeholder_scan_token_is_table_reference_name(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return placeholder_scan_token_is_identifier_like(scan, index) ||
+           placeholder_scan_token_text_equals(scan, index, "DUAL");
 }
 
 static bool placeholder_scan_contains_lateral_derived_table(

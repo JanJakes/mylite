@@ -86,6 +86,14 @@ The parser additionally admits selected generic/spatial function calls,
 `ROW(...)` constructors, parenthesized function values, and simple constant
 bitwise expressions in DML value positions as compatibility placeholders; forms
 outside the scalar evaluator fail at execution with explicit diagnostics.
+The parser-corpus SET and DML expression placeholder surface additionally
+admits recognized well-formed operator expressions in otherwise failed
+`INSERT` / `REPLACE` `VALUES`, duplicate-key update, and `UPDATE` assignment
+value positions as unsupported placeholders. This covers MySQL-valid
+arithmetic, bitwise, logical, and unary operator syntax after normal parsing
+fails, while preserving existing executable DML value paths and syntax errors
+for incomplete operator tails. See [parser corpus SET and DML expression
+placeholders](../specs/parser-corpus-set-dml-expression-placeholders/specs.md).
 
 The current temporal DML storage conversion admits canonical temporal strings
 plus a limited `DATE`, `DATETIME`, and `TIMESTAMP` string subset with a `T`

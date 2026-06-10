@@ -333,6 +333,22 @@ static bool placeholder_scan_token_is_expression_operator_surface(
     const struct placeholder_statement_scan *scan,
     size_t index
 );
+static bool placeholder_scan_expression_operator_surface_has_operand_context(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_is_unary_expression_operator_surface(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_can_start_expression_operand(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_can_end_expression_operand(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
 static bool placeholder_scan_statement_tail_is_obviously_incomplete(
     const struct placeholder_statement_scan *scan
 );
@@ -2258,6 +2274,11 @@ static bool placeholder_scan_contains_expression_operator_surface(
             placeholder_scan_expression_clause_contains_operator_surface(scan, index + 1U)) {
             return true;
         }
+        if ((placeholder_scan_token_text_equals(scan, index, "VALUES") ||
+             placeholder_scan_token_text_equals(scan, index, "VALUE")) &&
+            placeholder_scan_expression_clause_contains_operator_surface(scan, index + 1U)) {
+            return true;
+        }
         if (placeholder_scan_token_starts_duplicate_update_assignment_clause(scan, index) &&
             placeholder_scan_expression_clause_contains_operator_surface(scan, index + 1U)) {
             return true;
@@ -2298,7 +2319,8 @@ static bool placeholder_scan_expression_clause_contains_operator_surface(
             waiting_for_between_and = false;
             continue;
         }
-        if (placeholder_scan_token_is_expression_operator_surface(scan, index)) {
+        if (placeholder_scan_token_is_expression_operator_surface(scan, index) &&
+            placeholder_scan_expression_operator_surface_has_operand_context(scan, index)) {
             return true;
         }
     }
@@ -2325,6 +2347,7 @@ static bool placeholder_scan_token_is_expression_operator_surface(
     return token->kind == MYLITE_SQL_TOKEN_OPERATOR &&
            (token->operator_kind == MYLITE_SQL_OPERATOR_PLUS ||
             token->operator_kind == MYLITE_SQL_OPERATOR_MINUS ||
+            token->operator_kind == MYLITE_SQL_OPERATOR_STAR ||
             token->operator_kind == MYLITE_SQL_OPERATOR_SLASH ||
             token->operator_kind == MYLITE_SQL_OPERATOR_PERCENT ||
             token->operator_kind == MYLITE_SQL_OPERATOR_NOT ||
@@ -2334,6 +2357,70 @@ static bool placeholder_scan_token_is_expression_operator_surface(
             token->operator_kind == MYLITE_SQL_OPERATOR_BITWISE_XOR ||
             token->operator_kind == MYLITE_SQL_OPERATOR_BITWISE_AND ||
             token->operator_kind == MYLITE_SQL_OPERATOR_BITWISE_OR);
+}
+
+static bool placeholder_scan_expression_operator_surface_has_operand_context(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    if (scan == NULL || index >= scan->token_count ||
+        !placeholder_scan_token_can_start_expression_operand(scan, index + 1U)) {
+        return false;
+    }
+    if (placeholder_scan_token_is_unary_expression_operator_surface(scan, index) &&
+        (index == 0U || !placeholder_scan_token_can_end_expression_operand(scan, index - 1U))) {
+        return true;
+    }
+    return index > 0U && placeholder_scan_token_can_end_expression_operand(scan, index - 1U);
+}
+
+static bool placeholder_scan_token_is_unary_expression_operator_surface(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    const struct mylite_sql_token *token = NULL;
+
+    if (scan == NULL || index >= scan->token_count ||
+        scan->tokens[index].kind != MYLITE_SQL_TOKEN_OPERATOR) {
+        return false;
+    }
+    token = &scan->tokens[index];
+    return token->operator_kind == MYLITE_SQL_OPERATOR_PLUS ||
+           token->operator_kind == MYLITE_SQL_OPERATOR_MINUS ||
+           token->operator_kind == MYLITE_SQL_OPERATOR_NOT ||
+           token->operator_kind == MYLITE_SQL_OPERATOR_BITWISE_NOT;
+}
+
+static bool placeholder_scan_token_can_start_expression_operand(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    const struct mylite_sql_token *token = NULL;
+
+    if (scan == NULL || index >= scan->token_count || token_is_comma(&scan->tokens[index]) ||
+        token_is_right_paren(&scan->tokens[index]) ||
+        placeholder_scan_token_stops_expression_clause_search(scan, index)) {
+        return false;
+    }
+    token = &scan->tokens[index];
+    if (token->kind == MYLITE_SQL_TOKEN_OPERATOR) {
+        return placeholder_scan_token_is_unary_expression_operator_surface(scan, index);
+    }
+    return !placeholder_scan_token_is_incomplete_statement_tail(scan, index) ||
+           token_is_left_paren(token);
+}
+
+static bool placeholder_scan_token_can_end_expression_operand(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    if (scan == NULL || index >= scan->token_count || token_is_comma(&scan->tokens[index]) ||
+        token_is_left_paren(&scan->tokens[index]) ||
+        placeholder_scan_token_stops_expression_clause_search(scan, index) ||
+        placeholder_scan_token_is_incomplete_statement_tail(scan, index)) {
+        return false;
+    }
+    return scan->tokens[index].kind != MYLITE_SQL_TOKEN_OPERATOR;
 }
 
 static bool placeholder_scan_statement_tail_is_obviously_incomplete(
@@ -2379,6 +2466,8 @@ static bool placeholder_scan_token_is_incomplete_statement_tail(
         placeholder_scan_token_text_equals(scan, index, "AND") ||
         placeholder_scan_token_text_equals(scan, index, "OR") ||
         placeholder_scan_token_text_equals(scan, index, "XOR") ||
+        placeholder_scan_token_text_equals(scan, index, "DIV") ||
+        placeholder_scan_token_text_equals(scan, index, "MOD") ||
         placeholder_scan_token_text_equals(scan, index, "NOT") ||
         placeholder_scan_token_text_equals(scan, index, "IN") ||
         placeholder_scan_token_text_equals(scan, index, "IS") ||
@@ -3544,6 +3633,14 @@ static enum placeholder_statement_kind classify_set_placeholder_statement(
     if (placeholder_scan_token_text_equals(scan, 1U, "DEFAULT") &&
         placeholder_scan_token_text_equals(scan, 2U, "ROLE")) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
+    }
+    if (placeholder_scan_token_text_equals(scan, 1U, "TRANSACTION")) {
+        return PLACEHOLDER_STATEMENT_NONE;
+    }
+    if (!scan->has_non_trailing_semicolon && placeholder_scan_parentheses_are_balanced(scan, 0U) &&
+        !placeholder_scan_statement_tail_is_obviously_incomplete(scan) &&
+        placeholder_scan_contains_expression_operator_surface(scan)) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
     return PLACEHOLDER_STATEMENT_NONE;
 }

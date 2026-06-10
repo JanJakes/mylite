@@ -32,6 +32,8 @@ static int test_query_function_subquery_placeholders(void) {
         {.sql = "VALUES ROW((SELECT 1), 10)", .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "INSERT INTO t1 (a, b) VALUES (888, (SELECT a))",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
+        {.sql = "WITH c AS (SELECT id FROM t) UPDATE t SET id = 1",
+         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
     };
     int failures = 0;
 
@@ -42,7 +44,6 @@ static int test_query_function_subquery_placeholders(void) {
     failures += expect_syntax_error("SELECT ABS(1) +");
     failures += expect_syntax_error("REPLACE INTO t VALUES ((SELECT 1))");
     failures += expect_syntax_error("REPLACE INTO t SET id = (SELECT 1)");
-    failures += expect_syntax_error("WITH c AS (SELECT id FROM t) UPDATE t SET id = 1");
     for (size_t index = 0U; index < sizeof(placeholders) / sizeof(placeholders[0]); ++index) {
         failures += expect_statement_kind(placeholders[index]);
     }

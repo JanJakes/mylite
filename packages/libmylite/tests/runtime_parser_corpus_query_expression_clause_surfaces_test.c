@@ -113,6 +113,52 @@ static int test_query_expression_clause_surfaces(void) {
     );
     failures += execute_error(
         database,
+        "WITH qn AS (SELECT 1) SELECT * FROM qn",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "WITH RECURSIVE qn(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM qn WHERE n < 3) "
+        "SELECT * FROM qn",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "WITH cte AS (SELECT 1) (SELECT * FROM cte) LIMIT 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "WITH ids AS (SELECT id FROM t1) UPDATE t1 SET b = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "WITH doomed AS (SELECT id FROM t1) DELETE FROM t1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
         "UPDATE t1, t2 SET t1.b = t1.b + 1 WHERE t1.a = t2.a",
         (struct expected_sql_error){
             .code = mysql_error_parse,

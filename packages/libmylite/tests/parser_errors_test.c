@@ -1812,13 +1812,6 @@ static int test_syntax_errors(void) {
         parser_test_parse_sql("UPDATE t AS x SET id = 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "WITH c AS (SELECT id FROM t) UPDATE t SET id = 1;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
     return failures;
 }
 

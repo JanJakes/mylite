@@ -91,6 +91,7 @@ enum {
     placeholder_create_scan_token_limit = 12,
     create_table_partition_min_token_count = 6,
     create_table_select_min_token_count = 5,
+    cte_placeholder_min_token_count = 5,
     alter_table_partition_min_token_count = 5,
 };
 
@@ -303,6 +304,29 @@ static enum placeholder_statement_kind classify_admin_noop_placeholder_statement
 );
 static enum placeholder_statement_kind classify_query_surface_placeholder_statement(
     const struct placeholder_statement_scan *scan
+);
+static enum placeholder_statement_kind classify_cte_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_cte_clause_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t *out_query_index
+);
+static bool placeholder_scan_cte_definition_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t *index
+);
+static bool placeholder_scan_cte_column_list_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t *index
+);
+static bool placeholder_scan_cte_body_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t *index
+);
+static bool placeholder_scan_cte_query_statement_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
 );
 static enum placeholder_statement_kind classify_query_scalar_expression_placeholder_statement(
     const struct placeholder_statement_scan *scan
@@ -1639,7 +1663,7 @@ static bool parse_alter_table_algorithm_lock_option(
     if (!option_is_algorithm && !placeholder_scan_token_text_equals(scan, *index, "LOCK")) {
         return false;
     }
-    ++*index;
+    *index += 1U;
     if (*index < scan->token_count && token_is_equal_sign(&scan->tokens[*index])) {
         ++*index;
     }
@@ -2147,6 +2171,9 @@ static enum placeholder_statement_kind classify_admin_noop_placeholder_statement
 static enum placeholder_statement_kind classify_query_surface_placeholder_statement(
     const struct placeholder_statement_scan *scan
 ) {
+    if (classify_cte_placeholder_statement(scan) != PLACEHOLDER_STATEMENT_NONE) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
     if (classify_query_scalar_expression_placeholder_statement(scan) !=
         PLACEHOLDER_STATEMENT_NONE) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
@@ -2163,6 +2190,131 @@ static enum placeholder_statement_kind classify_query_surface_placeholder_statem
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
     return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static enum placeholder_statement_kind classify_cte_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t query_index = 0U;
+
+    if (scan == NULL || scan->has_non_trailing_semicolon ||
+        !placeholder_scan_token_text_equals(scan, 0U, "WITH") ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U)) {
+        return PLACEHOLDER_STATEMENT_NONE;
+    }
+    if (!placeholder_scan_cte_clause_is_supported(scan, &query_index) ||
+        !placeholder_scan_cte_query_statement_starts_at(scan, query_index)) {
+        return PLACEHOLDER_STATEMENT_NONE;
+    }
+    return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+}
+
+static bool placeholder_scan_cte_clause_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t *out_query_index
+) {
+    size_t index = 1U;
+
+    if (out_query_index != NULL) {
+        *out_query_index = 0U;
+    }
+    if (scan == NULL || scan->token_count < cte_placeholder_min_token_count ||
+        !placeholder_scan_token_text_equals(scan, 0U, "WITH")) {
+        return false;
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "RECURSIVE")) {
+        ++index;
+    }
+
+    while (index < scan->token_count) {
+        if (!placeholder_scan_cte_definition_is_supported(scan, &index)) {
+            return false;
+        }
+        if (index >= scan->token_count || !token_is_comma(&scan->tokens[index])) {
+            break;
+        }
+        ++index;
+    }
+
+    if (out_query_index != NULL) {
+        *out_query_index = index;
+    }
+    return index < scan->token_count;
+}
+
+static bool placeholder_scan_cte_definition_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t *index
+) {
+    if (scan == NULL || index == NULL || *index >= scan->token_count ||
+        !placeholder_scan_token_is_identifier_like(scan, *index)) {
+        return false;
+    }
+    ++*index;
+
+    if (!placeholder_scan_cte_column_list_is_supported(scan, index)) {
+        return false;
+    }
+    if (*index + 1U >= scan->token_count ||
+        !placeholder_scan_token_text_equals(scan, *index, "AS") ||
+        !token_is_left_paren(&scan->tokens[*index + 1U])) {
+        return false;
+    }
+    return placeholder_scan_cte_body_is_supported(scan, index);
+}
+
+static bool placeholder_scan_cte_column_list_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t *index
+) {
+    size_t column_list_right_index = 0U;
+
+    if (scan == NULL || index == NULL) {
+        return false;
+    }
+    if (*index >= scan->token_count || !token_is_left_paren(&scan->tokens[*index])) {
+        return true;
+    }
+    if (!placeholder_scan_find_matching_right_paren(scan, *index, &column_list_right_index)) {
+        return false;
+    }
+    *index = column_list_right_index + 1U;
+    return true;
+}
+
+static bool placeholder_scan_cte_body_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t *index
+) {
+    size_t body_left_index = 0U;
+    size_t body_right_index = 0U;
+
+    if (scan == NULL || index == NULL || *index + 1U >= scan->token_count) {
+        return false;
+    }
+    body_left_index = *index + 1U;
+    if (!placeholder_scan_find_matching_right_paren(scan, body_left_index, &body_right_index) ||
+        body_right_index <= body_left_index + 1U) {
+        return false;
+    }
+    if (!placeholder_scan_query_expression_starts_at(scan, body_left_index + 1U) &&
+        !create_table_select_parenthesized_query_starts_at(scan, body_left_index + 1U)) {
+        return false;
+    }
+    *index = body_right_index + 1U;
+    return true;
+}
+
+static bool placeholder_scan_cte_query_statement_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    if (placeholder_scan_query_expression_starts_at(scan, index) ||
+        create_table_select_parenthesized_query_starts_at(scan, index)) {
+        return true;
+    }
+    return placeholder_scan_token_text_equals(scan, index, "UPDATE") ||
+           placeholder_scan_token_text_equals(scan, index, "DELETE");
 }
 
 static enum placeholder_statement_kind classify_query_scalar_expression_placeholder_statement(

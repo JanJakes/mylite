@@ -4872,6 +4872,12 @@ static int apply_set_timestamp_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node
 );
+static int parse_set_timestamp_system_variable_arithmetic(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled,
+    uint64_t *out_magnitude
+);
 static int apply_set_time_zone_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node
@@ -30020,6 +30026,14 @@ int mylite_execution_utf8_sequence_width(
 
 bool mylite_execution_is_session_scalar_expression(const struct mylite_sql_ast_node *expression) {
     return is_session_scalar_expression(expression);
+}
+
+int mylite_execution_session_user_variable_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct session_scalar_cell *out_cell
+) {
+    return session_user_variable_value(database, node, out_cell);
 }
 
 int mylite_execution_set_unknown_column_reference_error(

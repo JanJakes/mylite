@@ -499,6 +499,11 @@ int mylite_execution_utf8_sequence_width(
     size_t *out_width
 );
 bool mylite_execution_is_session_scalar_expression(const struct mylite_sql_ast_node *expression);
+int mylite_execution_session_user_variable_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    struct session_scalar_cell *out_cell
+);
 bool mylite_execution_text_value_is_supported_string_key(const char *text, size_t text_length);
 const char *mylite_execution_scalar_pi_text(void);
 

@@ -74,13 +74,17 @@ use MyLite's current string-key collation, binary collations use SQLite
 trailing-space parity, and general coercibility remain deferred.
 
 The limited user-variable surface exposes handle-local `@name` values in
-no-source/`DUAL` scalar `SELECT` lists, `DO` expressions, and SQL-level
-prepared statement source/`USING` positions. Top-level supported
+no-source/`DUAL` scalar `SELECT` lists, `DO` expressions, SQL-level prepared
+statement source/`USING` positions, source-free `INSERT` / `REPLACE` value
+positions, and direct supported `UPDATE` assignment values. Top-level supported
 `SELECT ... INTO @var[, ...]` also assigns one selected row into session user
 variables with MySQL-compatible zero-row warnings and multi-row/count-mismatch
-errors. It does not make user variables available directly in descriptor
-predicates, ordering, grouping, DML assignment values, generated expressions, or
-arbitrary parameters.
+errors. Predicate value positions admit user variables in the parser, but
+descriptor predicate execution remains limited until predicate conversion
+handles session scalar cells with MySQL-compatible coercions and warnings. User
+variables are not available in ordering, grouping, generated expressions,
+identifier substitution, arbitrary parameters, or table-dependent expression
+planning.
 
 The parser-corpus query scalar expression surface admits `VALUES` query
 containers in `EXISTS` and scalar-subquery expression positions. It also

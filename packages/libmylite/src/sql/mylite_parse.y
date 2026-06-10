@@ -908,6 +908,9 @@ set_system_variable_value(A) ::= LPAREN(L) set_system_variable_value(B) RPAREN(R
 set_system_variable_value(A) ::= set_expression_value(B). {
     A = B;
 }
+set_system_variable_value(A) ::= variable_value_expression(B). {
+    A = B;
+}
 
 user_variable_set_value(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
@@ -1005,6 +1008,9 @@ user_variable_set_value(A) ::= LPAREN(L) user_variable_set_value(B) RPAREN(R). {
 user_variable_set_value(A) ::= set_expression_value(B). {
     A = B;
 }
+user_variable_set_value(A) ::= variable_value_expression(B). {
+    A = B;
+}
 
 set_expression_value(A) ::= set_function_value(B). {
     A = B;
@@ -1099,6 +1105,9 @@ set_function_value(A) ::= LOG10(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_LOG10_FUNCTION, B, R);
 }
+set_function_value(A) ::= insert_unix_timestamp_now(B). {
+    A = B;
+}
 set_function_value(A) ::= UNIX_TIMESTAMP(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION, B, R);
@@ -1115,6 +1124,38 @@ set_expression_literal(A) ::= DECIMAL(T). {
 }
 set_expression_literal(A) ::= FLOAT(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT);
+}
+
+variable_value_expression(A) ::= variable_value_head(B) PLUS(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_ADD, C);
+}
+variable_value_expression(A) ::= variable_value_head(B) MINUS(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_SUBTRACT, C);
+}
+variable_value_expression(A) ::= variable_value_head(B) STAR(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_MULTIPLY, C);
+}
+variable_value_expression(A) ::= variable_value_head(B) DIV(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE, C);
+}
+variable_value_expression(A) ::= variable_value_head(B) PERCENT(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_MODULO, C);
+}
+variable_value_expression(A) ::= variable_value_head(B) MOD(T) expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_MODULO, C);
+}
+
+variable_value_head(A) ::= SYSTEM_VARIABLE(T). {
+    A = mylite_sql_parser_make_system_variable(state, T);
+}
+variable_value_head(A) ::= user_variable(T). {
+    A = T;
 }
 
 user_variable(A) ::= USER_VARIABLE(T). {
@@ -4144,6 +4185,12 @@ insert_value(A) ::= HEX_LITERAL(T). {
 insert_value(A) ::= BIT_LITERAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
 }
+insert_value(A) ::= SYSTEM_VARIABLE(T). {
+    A = mylite_sql_parser_make_system_variable(state, T);
+}
+insert_value(A) ::= user_variable(T). {
+    A = T;
+}
 insert_value(A) ::= current_timestamp_value(T). {
     A = T;
 }
@@ -4208,6 +4255,9 @@ insert_value(A) ::= LPAREN(L) BITWISE_NOT(T) dml_bitwise_operand(B) RPAREN(R). {
 insert_value(A) ::= dml_bitwise_operand(B) BITWISE_OR(T) dml_bitwise_operand(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_BITWISE_OR, C);
+}
+insert_value(A) ::= variable_value_expression(B). {
+    A = B;
 }
 
 insert_unix_timestamp_value(A) ::= insert_unix_timestamp_now(B). {
@@ -4302,6 +4352,12 @@ update_value(A) ::= HEX_LITERAL(T). {
 }
 update_value(A) ::= BIT_LITERAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
+}
+update_value(A) ::= SYSTEM_VARIABLE(T). {
+    A = mylite_sql_parser_make_system_variable(state, T);
+}
+update_value(A) ::= user_variable(T). {
+    A = T;
 }
 update_value(A) ::= current_timestamp_value(T). {
     A = T;
@@ -4418,6 +4474,9 @@ update_value(A) ::= LPAREN(L) BITWISE_NOT(T) dml_bitwise_operand(B) RPAREN(R). {
 update_value(A) ::= dml_bitwise_operand(B) BITWISE_OR(T) dml_bitwise_operand(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_BITWISE_OR, C);
+}
+update_value(A) ::= variable_value_expression(B). {
+    A = B;
 }
 
 dml_function_call(A) ::= dml_function_token(T) LPAREN RPAREN(R). {
@@ -6524,6 +6583,12 @@ predicate_like_pattern(A) ::= CONCAT(T) LPAREN function_argument_list(B) RPAREN(
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_CONCAT_FUNCTION, B, R);
 }
+predicate_like_pattern(A) ::= SYSTEM_VARIABLE(T). {
+    A = mylite_sql_parser_make_system_variable(state, T);
+}
+predicate_like_pattern(A) ::= user_variable(T). {
+    A = T;
+}
 predicate_like_escape_opt(A) ::= . {
     A = NULL;
 }
@@ -6665,6 +6730,12 @@ predicate_in_value(A) ::= DECIMAL(T). {
 predicate_in_value(A) ::= FLOAT(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT);
 }
+predicate_in_value(A) ::= SYSTEM_VARIABLE(T). {
+    A = mylite_sql_parser_make_system_variable(state, T);
+}
+predicate_in_value(A) ::= user_variable(T). {
+    A = T;
+}
 
 predicate_range_value(A) ::= predicate_integer_value(V). {
     A = V;
@@ -6686,6 +6757,12 @@ predicate_range_value(A) ::= DECIMAL(T). {
 }
 predicate_range_value(A) ::= FLOAT(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT);
+}
+predicate_range_value(A) ::= SYSTEM_VARIABLE(T). {
+    A = mylite_sql_parser_make_system_variable(state, T);
+}
+predicate_range_value(A) ::= user_variable(T). {
+    A = T;
 }
 
 predicate_comparison_value(A) ::= predicate_integer_value(V). {
@@ -6745,6 +6822,12 @@ predicate_comparison_value(A) ::= DECIMAL(T). {
 }
 predicate_comparison_value(A) ::= FLOAT(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT);
+}
+predicate_comparison_value(A) ::= SYSTEM_VARIABLE(T). {
+    A = mylite_sql_parser_make_system_variable(state, T);
+}
+predicate_comparison_value(A) ::= user_variable(T). {
+    A = T;
 }
 
 predicate_row_scalar_expression(A) ::= IF(T) LPAREN expression(B) COMMA expression(C)
@@ -6998,6 +7081,12 @@ predicate_scalar_literal(A) ::= FALSE(T). {
 }
 predicate_scalar_literal(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
+}
+predicate_scalar_literal(A) ::= SYSTEM_VARIABLE(T). {
+    A = mylite_sql_parser_make_system_variable(state, T);
+}
+predicate_scalar_literal(A) ::= user_variable(T). {
+    A = T;
 }
 
 predicate_comparison_operator(A) ::= EQUAL(T). {

@@ -70,15 +70,18 @@ values, and single-table `UPDATE` assignments also admit a narrow source-free
 scalar value subset. The subset includes charset-introduced string, hex, and
 bit literals, standard `DATE` / `TIME` / `TIMESTAMP` literal introducers,
 supported `CAST()` / `CONVERT()` scalar forms, limited constant integer
-arithmetic for `INSERT` row values, `CONCAT()` / `CONCAT_WS()` with supported
-arguments, `REPEAT()`, selected control-flow, string, binary, numeric, JSON,
-and temporal scalar functions, and the previous `STR_TO_DATE()` /
-`SEC_TO_TIME()` forms. MyLite evaluates the scalar value first, then applies
-the target descriptor's existing storage conversion, strict diagnostics, and
-`IGNORE` / non-strict warning adjustment. This does not add column references,
-table-backed expressions, scalar subqueries in insert/replace values, spatial
-constructors, stored routines, loadable functions, arbitrary nested function
-forms outside the current scalar evaluator, or general DML expression planning.
+arithmetic for `INSERT` row values, direct user/system-variable values, limited
+variable-rooted arithmetic in `INSERT` / `REPLACE` values, `CONCAT()` /
+`CONCAT_WS()` with supported arguments including session user variables,
+`REPEAT()`, selected control-flow, string, binary, numeric, JSON, and temporal
+scalar functions, and the previous `STR_TO_DATE()` / `SEC_TO_TIME()` forms.
+MyLite evaluates the scalar value first, then applies the target descriptor's
+existing storage conversion, strict diagnostics, and `IGNORE` / non-strict
+warning adjustment. This does not add column references, table-backed
+expressions, scalar subqueries in insert/replace values, `UPDATE` variable
+arithmetic execution, spatial constructors, stored routines, loadable
+functions, arbitrary nested function forms outside the current scalar
+evaluator, or general DML expression planning.
 The parser additionally admits selected generic/spatial function calls,
 `ROW(...)` constructors, parenthesized function values, and simple constant
 bitwise expressions in DML value positions as compatibility placeholders; forms

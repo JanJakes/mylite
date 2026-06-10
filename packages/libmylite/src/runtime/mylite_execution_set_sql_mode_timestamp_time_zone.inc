@@ -66,6 +66,7 @@ static int apply_set_timestamp_value(
     const struct mylite_sql_ast_node *value_node
 ) {
     const struct mylite_sql_ast_node *literal_node = unwrap_parenthesized_expression(value_node);
+    bool handled = false;
     uint64_t magnitude = 0U;
     int rc = MYLITE_OK;
 
@@ -94,11 +95,23 @@ static int apply_set_timestamp_value(
     }
     if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL ||
         mylite_sql_ast_node_literal_kind(literal_node) != MYLITE_SQL_AST_LITERAL_INTEGER) {
-        set_unsupported_error(database, "SET timestamp supports only integer values");
-        return MYLITE_ERROR;
+        rc = parse_set_timestamp_system_variable_arithmetic(
+            database,
+            value_node,
+            &handled,
+            &magnitude
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (!handled) {
+            set_unsupported_error(database, "SET timestamp supports only integer values");
+            return MYLITE_ERROR;
+        }
+    } else {
+        rc = parse_unsigned_integer_literal(&literal_node->span, &magnitude);
     }
 
-    rc = parse_unsigned_integer_literal(&literal_node->span, &magnitude);
     if (rc != MYLITE_OK || magnitude > INT32_MAX) {
         char value_text[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
         size_t copied = value_node->span.length < sizeof(value_text) ? value_node->span.length
@@ -121,6 +134,62 @@ static int apply_set_timestamp_value(
 
     database->session.has_timestamp_override = true;
     database->session.timestamp_override = (int64_t)magnitude;
+    return MYLITE_OK;
+}
+
+static int parse_set_timestamp_system_variable_arithmetic(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled,
+    uint64_t *out_magnitude
+) {
+    const struct mylite_sql_ast_node *expression = unwrap_parenthesized_expression(value_node);
+    const struct mylite_sql_ast_node *left = NULL;
+    const struct mylite_sql_ast_node *right = NULL;
+    enum mylite_execution_system_variable_kind variable_kind =
+        MYLITE_EXECUTION_SYSTEM_VARIABLE_NONE;
+    uint64_t delta = 0U;
+    int64_t base = 0;
+    int rc = MYLITE_OK;
+
+    if (out_handled == NULL || out_magnitude == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    *out_magnitude = 0U;
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION ||
+        mylite_sql_ast_node_operator(expression) != MYLITE_SQL_AST_OPERATOR_ADD ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        return MYLITE_OK;
+    }
+
+    left = unwrap_parenthesized_expression(child_at(expression, 0U));
+    right = unwrap_parenthesized_expression(child_at(expression, 1U));
+    if (left == NULL || right == NULL || left->kind != MYLITE_SQL_AST_SYSTEM_VARIABLE ||
+        right->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(right) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return MYLITE_OK;
+    }
+
+    rc = resolve_session_system_variable(database, left, &variable_kind);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (variable_kind != MYLITE_EXECUTION_SYSTEM_VARIABLE_TIMESTAMP) {
+        return MYLITE_OK;
+    }
+
+    rc = parse_unsigned_integer_literal(&right->span, &delta);
+    if (rc != MYLITE_OK) {
+        return MYLITE_OK;
+    }
+    base = current_timestamp_epoch(database);
+    if (base < 0 || (uint64_t)base > UINT64_MAX - delta) {
+        return MYLITE_OK;
+    }
+
+    *out_magnitude = (uint64_t)base + delta;
+    *out_handled = true;
     return MYLITE_OK;
 }
 

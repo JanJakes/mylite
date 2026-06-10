@@ -523,6 +523,8 @@ static int string_length_session_scalar_argument_value(
         out_cell->value = out_cell->integer_text;
         return MYLITE_OK;
     }
+    case MYLITE_SQL_AST_USER_VARIABLE:
+        return mylite_execution_session_user_variable_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
         return mylite_execution_system_variable_value(database, expression, out_cell);
     default:

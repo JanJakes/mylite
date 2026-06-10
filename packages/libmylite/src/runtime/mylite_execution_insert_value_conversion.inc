@@ -229,6 +229,8 @@ static bool dml_value_is_constant_scalar_expression(
     case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
     case MYLITE_SQL_AST_ADDTIME_FUNCTION:
     case MYLITE_SQL_AST_TIMESTAMP_FUNCTION:
+    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+    case MYLITE_SQL_AST_USER_VARIABLE:
         return true;
     default:
         return false;

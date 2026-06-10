@@ -491,6 +491,24 @@ static bool undo_tablespace_placeholder_statement_is_supported(
 static bool ddl_zerofill_placeholder_statement_is_supported(
     const struct placeholder_statement_scan *scan
 );
+static bool ddl_extended_option_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static bool ddl_extended_option_placeholder_statement_is_candidate(
+    const struct placeholder_statement_scan *scan
+);
+static bool ddl_extended_option_scan_has_marker(const struct placeholder_statement_scan *scan);
+static bool ddl_check_expression_placeholder_scan_has_marker(
+    const struct placeholder_statement_scan *scan
+);
+static bool ddl_check_expression_placeholder_clause_has_marker(
+    const struct placeholder_statement_scan *scan,
+    size_t left_paren_index
+);
+static bool ddl_check_expression_in_list_marker_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t left_paren_index
+);
 static bool placeholder_scan_starts_create_table_statement(
     const struct placeholder_statement_scan *scan
 );
@@ -3164,6 +3182,9 @@ static enum placeholder_statement_kind classify_create_placeholder_statement(
     if (ddl_zerofill_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
+    if (ddl_extended_option_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
     if (create_table_select_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
@@ -3200,6 +3221,9 @@ static enum placeholder_statement_kind classify_alter_placeholder_statement(
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
     if (ddl_zerofill_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
+    if (ddl_extended_option_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
     if (placeholder_scan_token_text_equals(scan, 1U, "TABLE") &&
@@ -3300,6 +3324,159 @@ static bool ddl_zerofill_placeholder_statement_is_supported(
            placeholder_scan_parentheses_are_balanced(scan, 0U) &&
            (placeholder_scan_starts_create_table_statement(scan) ||
             placeholder_scan_starts_alter_table_statement(scan));
+}
+
+static bool ddl_extended_option_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    if (!ddl_extended_option_placeholder_statement_is_candidate(scan)) {
+        return false;
+    }
+    return ddl_extended_option_scan_has_marker(scan) ||
+           ddl_check_expression_placeholder_scan_has_marker(scan);
+}
+
+static bool ddl_extended_option_placeholder_statement_is_candidate(
+    const struct placeholder_statement_scan *scan
+) {
+    return scan != NULL && !scan->has_non_trailing_semicolon &&
+           !placeholder_scan_statement_tail_is_obviously_incomplete(scan) &&
+           placeholder_scan_parentheses_are_balanced(scan, 0U) &&
+           (placeholder_scan_starts_create_table_statement(scan) ||
+            placeholder_scan_starts_alter_table_statement(scan));
+}
+
+static bool ddl_extended_option_scan_has_marker(const struct placeholder_statement_scan *scan) {
+    static const char *const column_storage_values[] = {"DISK", "MEMORY"};
+    static const char *const column_format_values[] = {"FIXED", "DYNAMIC", "DEFAULT"};
+
+    if (placeholder_scan_contains_text(scan, "ENCRYPTION") ||
+        placeholder_scan_contains_text(scan, "SECONDARY_ENGINE") ||
+        placeholder_scan_contains_text(scan, "ENGINE_ATTRIBUTE") ||
+        placeholder_scan_contains_text(scan, "SECONDARY_ENGINE_ATTRIBUTE")) {
+        return true;
+    }
+    for (size_t index = 0U; index + 1U < scan->token_count; ++index) {
+        if ((placeholder_scan_token_text_equals(scan, index, "DATA") ||
+             placeholder_scan_token_text_equals(scan, index, "INDEX")) &&
+            placeholder_scan_token_text_equals(scan, index + 1U, "DIRECTORY")) {
+            return true;
+        }
+        if (placeholder_scan_token_text_equals(scan, index, "COLUMN_FORMAT") &&
+            placeholder_scan_token_text_equals_any(
+                scan,
+                index + 1U,
+                column_format_values,
+                sizeof(column_format_values) / sizeof(column_format_values[0])
+            )) {
+            return true;
+        }
+        if (placeholder_scan_token_text_equals(scan, index, "STORAGE") &&
+            placeholder_scan_token_text_equals_any(
+                scan,
+                index + 1U,
+                column_storage_values,
+                sizeof(column_storage_values) / sizeof(column_storage_values[0])
+            )) {
+            return true;
+        }
+        if (placeholder_scan_token_text_equals(scan, index, "NOT") &&
+            placeholder_scan_token_text_equals(scan, index + 1U, "SECONDARY")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool ddl_check_expression_placeholder_scan_has_marker(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || !placeholder_scan_contains_text(scan, "CHECK")) {
+        return false;
+    }
+    for (size_t index = 0U; index + 1U < scan->token_count; ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, "CHECK") &&
+            token_is_left_paren(&scan->tokens[index + 1U]) &&
+            ddl_check_expression_placeholder_clause_has_marker(scan, index + 1U)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool ddl_check_expression_placeholder_clause_has_marker(
+    const struct placeholder_statement_scan *scan,
+    size_t left_paren_index
+) {
+    int paren_depth = 0;
+
+    if (scan == NULL || left_paren_index >= scan->token_count ||
+        !token_is_left_paren(&scan->tokens[left_paren_index])) {
+        return false;
+    }
+    for (size_t index = left_paren_index + 1U; index < scan->token_count; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            continue;
+        }
+        if (token_is_right_paren(&scan->tokens[index])) {
+            if (paren_depth == 0) {
+                return false;
+            }
+            --paren_depth;
+            continue;
+        }
+        if (placeholder_scan_token_text_equals(scan, index, "INTERVAL") ||
+            placeholder_scan_token_text_equals(scan, index, "&&") ||
+            placeholder_scan_token_text_equals(scan, index, "||")) {
+            return true;
+        }
+        if (index + 1U < scan->token_count &&
+            placeholder_scan_token_text_equals(scan, index, "IN") &&
+            ddl_check_expression_in_list_marker_is_supported(scan, index + 1U)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool ddl_check_expression_in_list_marker_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t left_paren_index
+) {
+    int paren_depth = 0;
+    bool saw_item = false;
+    bool need_item = true;
+
+    if (scan == NULL || left_paren_index >= scan->token_count ||
+        !token_is_left_paren(&scan->tokens[left_paren_index])) {
+        return false;
+    }
+    for (size_t index = left_paren_index + 1U; index < scan->token_count; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            saw_item = true;
+            need_item = false;
+            continue;
+        }
+        if (token_is_right_paren(&scan->tokens[index])) {
+            if (paren_depth > 0) {
+                --paren_depth;
+                continue;
+            }
+            return saw_item && !need_item;
+        }
+        if (paren_depth == 0 && token_is_comma(&scan->tokens[index])) {
+            if (need_item) {
+                return false;
+            }
+            need_item = true;
+            continue;
+        }
+        saw_item = true;
+        need_item = false;
+    }
+    return false;
 }
 
 static bool placeholder_scan_starts_create_table_statement(

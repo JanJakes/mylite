@@ -2560,6 +2560,12 @@ alter_table_multi_first_action(A) ::=
         state,
         mylite_sql_parser_make_alter_table_alter_check_statement(state, A1, NULL, C, E));
 }
+alter_table_multi_first_action(A) ::=
+    ALTER(A1) CONSTRAINT identifier(C) check_enforcement_required(E) COMMA. {
+    A = mylite_sql_parser_make_alter_table_action_list(
+        state,
+        mylite_sql_parser_make_alter_table_alter_check_statement(state, A1, NULL, C, E));
+}
 alter_table_multi_first_action(A) ::= AUTO_INCREMENT(T) equal_opt INTEGER(V) COMMA. {
     A = mylite_sql_parser_make_alter_table_action_list(
         state,
@@ -2848,6 +2854,10 @@ alter_table_multi_action(A) ::= ALTER(A1) column_keyword_opt identifier(C) SET I
 alter_table_multi_action(A) ::= ALTER(A1) CHECK identifier(C) check_enforcement_required(E). {
     A = mylite_sql_parser_make_alter_table_alter_check_statement(state, A1, NULL, C, E);
 }
+alter_table_multi_action(A) ::=
+    ALTER(A1) CONSTRAINT identifier(C) check_enforcement_required(E). {
+    A = mylite_sql_parser_make_alter_table_alter_check_statement(state, A1, NULL, C, E);
+}
 alter_table_multi_action(A) ::= AUTO_INCREMENT(T) equal_opt INTEGER(V). {
     A = mylite_sql_parser_make_alter_table_auto_increment_statement(
         state,
@@ -3032,6 +3042,10 @@ alter_table_drop_check_statement(A) ::=
 
 alter_table_alter_check_statement(A) ::=
     ALTER(A1) TABLE table_name(T) ALTER CHECK identifier(C) check_enforcement_required(E). {
+    A = mylite_sql_parser_make_alter_table_alter_check_statement(state, A1, T, C, E);
+}
+alter_table_alter_check_statement(A) ::=
+    ALTER(A1) TABLE table_name(T) ALTER CONSTRAINT identifier(C) check_enforcement_required(E). {
     A = mylite_sql_parser_make_alter_table_alter_check_statement(state, A1, T, C, E);
 }
 
@@ -12326,6 +12340,9 @@ primary_key_definition(A) ::=
 named_primary_key_definition(A) ::= CONSTRAINT identifier primary_key_definition(P). {
     A = P;
 }
+named_primary_key_definition(A) ::= CONSTRAINT primary_key_definition(P). {
+    A = P;
+}
 
 primary_key_index_name_opt(A) ::= . {
     A = NULL;
@@ -12532,6 +12549,9 @@ check_enforcement_required(A) ::= NOT(N) ENFORCED. {
 }
 
 constraint_name_opt(A) ::= . {
+    A = NULL;
+}
+constraint_name_opt(A) ::= CONSTRAINT. {
     A = NULL;
 }
 constraint_name_opt(A) ::= CONSTRAINT identifier(B). {

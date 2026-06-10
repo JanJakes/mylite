@@ -151,6 +151,8 @@ static int test_query_scalar_expression_placeholders(void) {
         {.sql = "SELECT 1 <> SOME (SELECT 2)", .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT
         },
         {.sql = "SELECT 2 > ALL (SELECT 1)", .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
+        {.sql = "SELECT id FROM t WHERE id IN (DATABASE())",
+         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT * FROM t1 JOIN LATERAL (SELECT 1) AS dt ON TRUE",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
     };
@@ -164,11 +166,6 @@ static int test_query_scalar_expression_placeholders(void) {
         "SELECT id FROM t WHERE id IN (nn)",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         "malformed descriptor IN predicate"
-    );
-    failures += parse_status(
-        "SELECT id FROM t WHERE id IN (DATABASE())",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        "unsupported descriptor IN function operand"
     );
     return failures;
 }

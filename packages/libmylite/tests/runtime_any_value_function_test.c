@@ -325,7 +325,7 @@ static int test_any_value_errors_and_identifier_use(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(
@@ -334,7 +334,7 @@ static int test_any_value_errors_and_identifier_use(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(

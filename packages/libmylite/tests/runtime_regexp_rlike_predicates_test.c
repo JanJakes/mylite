@@ -494,7 +494,7 @@ static int test_regexp_predicate_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'DATABASE'",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(

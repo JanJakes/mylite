@@ -2467,7 +2467,7 @@ static int test_update_statement(void) {
 
     failures += parser_test_parse_sql(
         "UPDATE simple_lifecycle SET amount = UNIX_TIMESTAMP(1);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);

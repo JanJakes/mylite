@@ -347,7 +347,7 @@ static int test_row_count_function_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += expect_row_count(database, -1, "row count after integer argument error");
@@ -358,7 +358,7 @@ static int test_row_count_function_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += expect_row_count(database, -1, "row count after null argument error");
@@ -369,7 +369,7 @@ static int test_row_count_function_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += expect_row_count(database, -1, "row count after multiple arguments error");
@@ -405,7 +405,7 @@ static int test_row_count_function_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += expect_row_count(database, -1, "row count after limit error");

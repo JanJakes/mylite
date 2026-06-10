@@ -309,7 +309,7 @@ static int test_coalesce_function_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(
@@ -318,7 +318,7 @@ static int test_coalesce_function_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(
@@ -464,7 +464,7 @@ static int test_coalesce_function_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(
@@ -473,7 +473,7 @@ static int test_coalesce_function_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(
@@ -482,7 +482,7 @@ static int test_coalesce_function_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(
@@ -491,7 +491,7 @@ static int test_coalesce_function_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(
@@ -500,7 +500,7 @@ static int test_coalesce_function_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(
@@ -509,7 +509,7 @@ static int test_coalesce_function_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'LIMIT'",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(
@@ -518,7 +518,7 @@ static int test_coalesce_function_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'ORDER'",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_ok(database, "UPDATE t SET id = COALESCE(1,2)", NULL);

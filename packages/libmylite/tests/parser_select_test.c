@@ -1028,7 +1028,7 @@ static int test_select_where_predicates(void) {
 
     failures += parser_test_parse_sql(
         "SELECT id FROM simple_lifecycle WHERE id LIKE DATABASE();",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -1049,7 +1049,7 @@ static int test_select_where_predicates(void) {
 
     failures += parser_test_parse_sql(
         "SELECT id FROM simple_lifecycle WHERE id REGEXP DATABASE();",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -3516,7 +3516,7 @@ static int test_table_statement(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "TABLE simple_lifecycle ORDER BY FIELD(name, 'b', 'a');",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -3705,8 +3705,7 @@ static int test_values_statement(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql("VALUES ROW(1 + 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("VALUES ROW(ABS(1));", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("VALUES ROW(ABS(1));", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql("VALUES ROW(?);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);

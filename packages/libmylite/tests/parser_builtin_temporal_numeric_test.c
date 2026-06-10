@@ -264,8 +264,7 @@ static int test_cast_binary_expression(void) {
         );
     }
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT CAST('1' AS INT);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT CAST('1' AS INT);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
@@ -480,17 +479,11 @@ static int test_cast_binary_expression(void) {
         "convert char length compatibility expression"
     );
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT CONVERT('1', INTEGER);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SELECT CONVERT('1', INTEGER);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT CONVERT('ABC', BINARY, 1);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SELECT CONVERT('ABC', BINARY, 1);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "CREATE TABLE t (cast INT); SELECT cast FROM t;",
@@ -1190,29 +1183,21 @@ static int test_get_format_function(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parser_test_parse_sql("SELECT GET_FORMAT();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT GET_FORMAT();", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT GET_FORMAT(DATE);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT GET_FORMAT(DATE);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT GET_FORMAT(DATE, 'USA', 'extra');",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT GET_FORMAT(YEAR, 'USA');",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SELECT GET_FORMAT(YEAR, 'USA');", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT GET_FORMAT('DATE', 'USA');",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SELECT GET_FORMAT('DATE', 'USA');", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
@@ -1869,36 +1854,28 @@ static int test_timestampadd_second_function(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql("SELECT TIMESTAMPADD();", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql("SELECT TIMESTAMPADD(SECOND);", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
     failures +=
-        parser_test_parse_sql("SELECT TIMESTAMPADD();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT TIMESTAMPADD(SECOND);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT TIMESTAMPADD(SECOND, 1);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+        parser_test_parse_sql("SELECT TIMESTAMPADD(SECOND, 1);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT TIMESTAMPADD(SECOND, 1, '2008-01-02', 'extra');",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT TIMESTAMPADD('SECOND', 1, '2008-01-02');",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT TIMESTAMPADD(SQL_TSI_MICROSECOND, 1, '2008-01-02');",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -2012,33 +1989,31 @@ static int test_timestampdiff_function(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parser_test_parse_sql("SELECT TIMESTAMPDIFF();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT TIMESTAMPDIFF();", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT TIMESTAMPDIFF(DAY);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT TIMESTAMPDIFF(DAY);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT TIMESTAMPDIFF(DAY, '2008-01-01');",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT TIMESTAMPDIFF(DAY, '2008-01-01', '2008-01-02', 'extra');",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT TIMESTAMPDIFF('DAY', '2008-01-01', '2008-01-02');",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT TIMESTAMPDIFF(DAY_HOUR, '2008-01-01', '2008-01-02');",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -3315,35 +3290,27 @@ static int test_temporal_extract_functions(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql("SELECT DATE();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT DATE();", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT TIME();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT TIME();", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT HOUR();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT HOUR();", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT MICROSECOND();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT MICROSECOND();", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT QUARTER();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT QUARTER();", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT WEEK();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT WEEK('2008-01-02', 3, 4);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT QUARTER('2008-01-02', 'x');",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT EXTRACT();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT WEEK();", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures +=
-        parser_test_parse_sql("SELECT EXTRACT(YEAR);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+        parser_test_parse_sql("SELECT WEEK('2008-01-02', 3, 4);", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parser_test_parse_sql("SELECT QUARTER('2008-01-02', 'x');", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql("SELECT EXTRACT();", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql("SELECT EXTRACT(YEAR);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -5123,17 +5090,10 @@ static int test_any_value_function(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "SELECT ANY_VALUE(*) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures += parser_test_parse_sql("SELECT ANY_VALUE(*) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT ANY_VALUE(DISTINCT v) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SELECT ANY_VALUE(DISTINCT v) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -6006,8 +5966,7 @@ static int test_exp_log_power_functions(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parser_test_parse_sql("SELECT LOG(), LOG(1,2,3);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT LOG(), LOG(1,2,3);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=

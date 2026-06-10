@@ -559,7 +559,7 @@ static int test_scalar_div_overflow_and_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(

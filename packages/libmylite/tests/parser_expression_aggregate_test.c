@@ -388,8 +388,7 @@ static int test_version_function(void) {
     failures += parser_test_expect_span_text(first_expression, "VERSION", "bare version span");
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parser_test_parse_sql("SELECT VERSION() LIMIT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT VERSION() LIMIT 1;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -552,11 +551,8 @@ static int test_connection_id_function(void) {
         parser_test_expect_span_text(first_expression, "CONNECTION_ID", "bare connection id span");
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "SELECT CONNECTION_ID() LIMIT 1;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SELECT CONNECTION_ID() LIMIT 1;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -657,20 +653,13 @@ static int test_row_count_function(void) {
     failures += parser_test_expect_span_text(first_expression, "ROW_COUNT", "bare row count span");
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parser_test_parse_sql("SELECT ROW_COUNT(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT ROW_COUNT(1);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT ROW_COUNT(NULL);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT ROW_COUNT(NULL);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT ROW_COUNT(1, 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT ROW_COUNT(1, 2);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT ROW_COUNT() LIMIT 1;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures += parser_test_parse_sql("SELECT ROW_COUNT() LIMIT 1;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -812,11 +801,7 @@ static int test_found_rows_function(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "SELECT FOUND_ROWS() LIMIT 1;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures += parser_test_parse_sql("SELECT FOUND_ROWS() LIMIT 1;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -985,11 +970,8 @@ static int test_last_insert_id_function(void) {
         "last insert id arity span"
     );
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT LAST_INSERT_ID() LIMIT 1;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SELECT LAST_INSERT_ID() LIMIT 1;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -1774,47 +1756,29 @@ static int test_count_star_aggregate(void) {
         &result
     );
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT COUNT/**/(*) FROM DUAL;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SELECT COUNT/**/(*) FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT COUNT();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT COUNT();", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT COUNT(1.0);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT COUNT(1.0);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT COUNT('x');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT COUNT('x');", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql("SELECT COUNT(+TRUE);", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql("SELECT COUNT(-FALSE);", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql("SELECT COUNT(NOT TRUE);", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql("SELECT COUNT(id + 1) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures +=
-        parser_test_parse_sql("SELECT COUNT(+TRUE);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+        parser_test_parse_sql("SELECT COUNT(TRUE + 1) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT COUNT(-FALSE);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT COUNT(id, n) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT COUNT(NOT TRUE);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT COUNT(id + 1) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT COUNT(TRUE + 1) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT COUNT(id, n) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT COUNT(t.*) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT COUNT(t.*) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT COUNT (DISTINCT id) FROM t;",
@@ -1824,15 +1788,12 @@ static int test_count_star_aggregate(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT COUNT/**/(DISTINCT id) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT COUNT(DISTINCT *) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SELECT COUNT(DISTINCT *) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parser_test_parse_sql("SELECT COUNT(DISTINCT id, n) FROM t;", MYLITE_SQL_PARSE_OK, &result);
@@ -1884,7 +1845,7 @@ static int test_count_star_aggregate(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT COUNT(DISTINCT id + 1) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -2039,10 +2000,9 @@ static int test_min_max_aggregate(void) {
     failures +=
         parser_test_parse_sql("SELECT MIN (id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT MAX/**/(id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT MAX/**/(id) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT MIN();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT MIN();", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql("SELECT MAX(1);", MYLITE_SQL_PARSE_OK, &result);
     select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
@@ -2062,17 +2022,12 @@ static int test_min_max_aggregate(void) {
         "min null aggregate"
     );
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT MIN(id, n) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT MIN(id, n) FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql("SELECT MIN(*) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures +=
-        parser_test_parse_sql("SELECT MIN(*) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT MIN(DISTINCT id) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+        parser_test_parse_sql("SELECT MIN(DISTINCT id) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -2284,10 +2239,9 @@ static int test_sum_aggregate(void) {
     failures +=
         parser_test_parse_sql("SELECT SUM (id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT SUM/**/(id) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT SUM/**/(id) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT SUM();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT SUM();", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql("SELECT SUM(1);", MYLITE_SQL_PARSE_OK, &result);
     select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
@@ -2316,11 +2270,9 @@ static int test_sum_aggregate(void) {
         "sum identifier plus literal argument"
     );
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT SUM(id, n) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT SUM(id, n) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT SUM(*) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT SUM(*) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parser_test_parse_sql("SELECT SUM(DISTINCT id) FROM t;", MYLITE_SQL_PARSE_OK, &result);
@@ -2470,7 +2422,7 @@ static int test_avg_aggregate(void) {
     failures += parser_test_expect_span_text(first_expression, "AVG", "bare avg span");
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql("SELECT AVG();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT AVG();", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql("SELECT AVG(1);", MYLITE_SQL_PARSE_OK, &result);
     select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
@@ -2490,11 +2442,9 @@ static int test_avg_aggregate(void) {
         "avg null aggregate"
     );
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT AVG(id, n) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT AVG(id, n) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT AVG(*) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT AVG(*) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parser_test_parse_sql("SELECT AVG(DISTINCT id) FROM t;", MYLITE_SQL_PARSE_OK, &result);
@@ -2607,7 +2557,7 @@ static int test_bitwise_aggregate(void) {
 
     failures += parser_test_parse_sql(
         "SELECT BIT_AND (n), BIT_OR/**/(n), BIT_XOR /*x*/ (n) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -2631,7 +2581,7 @@ static int test_bitwise_aggregate(void) {
     failures += parser_test_expect_span_text(fourth_expression, "BIT_XOR", "bare bit_xor span");
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql("SELECT BIT_AND();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT BIT_AND();", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql("SELECT BIT_AND(1);", MYLITE_SQL_PARSE_OK, &result);
     select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
@@ -2651,20 +2601,13 @@ static int test_bitwise_aggregate(void) {
         "bit_or null aggregate"
     );
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT BIT_XOR(id, n) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SELECT BIT_XOR(id, n) FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql("SELECT BIT_AND(*) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures +=
-        parser_test_parse_sql("SELECT BIT_AND(*) FROM t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT BIT_XOR(DISTINCT id) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+        parser_test_parse_sql("SELECT BIT_XOR(DISTINCT id) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -2847,13 +2790,13 @@ static int test_group_concat_aggregate(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT GROUP_CONCAT(id SEPARATOR NULL) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT GROUP_CONCAT(id SEPARATOR 1) FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);

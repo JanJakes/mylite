@@ -620,11 +620,8 @@ static int test_current_role_function(void) {
         parser_test_expect_span_text(first_expression, "CURRENT_ROLE", "bare current role span");
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "SELECT CURRENT_ROLE() LIMIT 1;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SELECT CURRENT_ROLE() LIMIT 1;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -758,14 +755,13 @@ static int test_if_function(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql("SELECT IF();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT IF();", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT IF(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT IF(1);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT IF(1,2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT IF(1,2);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT IF(1,2,3,4);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT IF(1,2,3,4);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -1136,13 +1132,10 @@ static int test_coalesce_function(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql("SELECT COALESCE();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT COALESCE();", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "SELECT COALESCE(NULL, COALESCE());",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SELECT COALESCE(NULL, COALESCE());", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parser_test_parse_sql("SELECT COALESCE(1,,2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
@@ -1660,9 +1653,8 @@ static int test_reverse_function(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql("SELECT REVERSE();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    failures +=
-        parser_test_parse_sql("SELECT REVERSE('a', 'b');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT REVERSE();", MYLITE_SQL_PARSE_OK, &result);
+    failures += parser_test_parse_sql("SELECT REVERSE('a', 'b');", MYLITE_SQL_PARSE_OK, &result);
     failures +=
         parser_test_parse_sql("CREATE TABLE reverse(id INT);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
@@ -2304,10 +2296,9 @@ static int test_interval_function(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql("SELECT INTERVAL();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT INTERVAL();", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT INTERVAL(1);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT INTERVAL(1);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parser_test_parse_sql("SELECT INTERVAL(1, 2) FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);
@@ -2790,8 +2781,7 @@ static int test_json_construction_functions(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parser_test_parse_sql("SELECT JSON_ARRAY(*);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT JSON_ARRAY(*);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -3985,7 +3975,7 @@ static int test_char_function(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql("SELECT CHAR();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT CHAR();", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parser_test_parse_sql("SELECT CHAR(65 USING utf8mb4);", MYLITE_SQL_PARSE_OK, &result);
@@ -4119,19 +4109,11 @@ static int test_charset_collation_functions(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql("SELECT CHARSET();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    failures += parser_test_parse_sql(
-        "SELECT COLLATION('a', 'b');",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures += parser_test_parse_sql("SELECT CHARSET();", MYLITE_SQL_PARSE_OK, &result);
+    failures += parser_test_parse_sql("SELECT COLLATION('a', 'b');", MYLITE_SQL_PARSE_OK, &result);
+    failures += parser_test_parse_sql("SELECT COERCIBILITY();", MYLITE_SQL_PARSE_OK, &result);
     failures +=
-        parser_test_parse_sql("SELECT COERCIBILITY();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    failures += parser_test_parse_sql(
-        "SELECT COERCIBILITY('a', 'b');",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+        parser_test_parse_sql("SELECT COERCIBILITY('a', 'b');", MYLITE_SQL_PARSE_OK, &result);
 
     failures += parser_test_parse_sql(
         "DO CHARSET('abc'), COLLATION(NULL), COERCIBILITY(NULL);",
@@ -4712,10 +4694,9 @@ static int test_string_trim_functions(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql("SELECT TRIM();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT TRIM();", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT TRIM('a', 'b');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT TRIM('a', 'b');", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
@@ -4941,20 +4922,15 @@ static int test_string_slice_functions(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql("SELECT LEFT();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    failures += parser_test_parse_sql("SELECT LEFT('a');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    failures +=
-        parser_test_parse_sql("SELECT LEFT('a', 1, 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    failures += parser_test_parse_sql("SELECT RIGHT();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    failures += parser_test_parse_sql("SELECT RIGHT('a');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    failures +=
-        parser_test_parse_sql("SELECT RIGHT('a', 1, 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    failures +=
-        parser_test_parse_sql("SELECT SUBSTRING();", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    failures +=
-        parser_test_parse_sql("SELECT SUBSTRING('a');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    failures +=
-        parser_test_parse_sql("SELECT MID('a', 1, 2, 3);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT LEFT();", MYLITE_SQL_PARSE_OK, &result);
+    failures += parser_test_parse_sql("SELECT LEFT('a');", MYLITE_SQL_PARSE_OK, &result);
+    failures += parser_test_parse_sql("SELECT LEFT('a', 1, 2);", MYLITE_SQL_PARSE_OK, &result);
+    failures += parser_test_parse_sql("SELECT RIGHT();", MYLITE_SQL_PARSE_OK, &result);
+    failures += parser_test_parse_sql("SELECT RIGHT('a');", MYLITE_SQL_PARSE_OK, &result);
+    failures += parser_test_parse_sql("SELECT RIGHT('a', 1, 2);", MYLITE_SQL_PARSE_OK, &result);
+    failures += parser_test_parse_sql("SELECT SUBSTRING();", MYLITE_SQL_PARSE_OK, &result);
+    failures += parser_test_parse_sql("SELECT SUBSTRING('a');", MYLITE_SQL_PARSE_OK, &result);
+    failures += parser_test_parse_sql("SELECT MID('a', 1, 2, 3);", MYLITE_SQL_PARSE_OK, &result);
     failures += parser_test_parse_sql(
         "SELECT SUBSTRING ('abc', 1);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
@@ -5312,10 +5288,8 @@ static int test_string_padding_functions(void) {
         "space many argument error"
     );
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT REPEAT('a');", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    failures +=
-        parser_test_parse_sql("SELECT REPEAT('a', 1, 2);", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT REPEAT('a');", MYLITE_SQL_PARSE_OK, &result);
+    failures += parser_test_parse_sql("SELECT REPEAT('a', 1, 2);", MYLITE_SQL_PARSE_OK, &result);
 
     failures += parser_test_parse_sql(
         "DO LPAD('abc', 5, '0'), RPAD('abc', 5, '0'), REPEAT('x', 2), SPACE(2);",

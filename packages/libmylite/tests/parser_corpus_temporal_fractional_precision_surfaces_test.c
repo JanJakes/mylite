@@ -6,7 +6,7 @@
 static int test_temporal_column_precision_surfaces(void);
 static int test_temporal_function_precision_surfaces(void);
 static int test_temporal_cast_precision_surfaces(void);
-static int test_date_only_functions_stay_unadmitted(void);
+static int test_date_only_function_argument_placeholders(void);
 static int parse_ok(const char *sql);
 static int expect_temporal_precision(
     const struct mylite_sql_ast_node *node,
@@ -20,7 +20,7 @@ int main(void) {
     failures += test_temporal_column_precision_surfaces();
     failures += test_temporal_function_precision_surfaces();
     failures += test_temporal_cast_precision_surfaces();
-    failures += test_date_only_functions_stay_unadmitted();
+    failures += test_date_only_function_argument_placeholders();
 
     return failures == 0 ? 0 : 1;
 }
@@ -125,16 +125,15 @@ static int test_temporal_cast_precision_surfaces(void) {
     return failures;
 }
 
-static int test_date_only_functions_stay_unadmitted(void) {
+static int test_date_only_function_argument_placeholders(void) {
     struct mylite_sql_parse_result result;
     int failures = 0;
 
-    failures += parser_test_parse_sql("SELECT CURDATE(1)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT CURDATE(1)", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("SELECT CURRENT_DATE(1)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT CURRENT_DATE(1)", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("SELECT UTC_DATE(1)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SELECT UTC_DATE(1)", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

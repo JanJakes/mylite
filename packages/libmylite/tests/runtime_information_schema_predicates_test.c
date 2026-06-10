@@ -404,7 +404,7 @@ static int test_information_schema_predicates(void) {
                    "WHERE TABLE_SCHEMA IN (DATABASE())",
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'DATABASE'",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += expect_error(
@@ -414,7 +414,7 @@ static int test_information_schema_predicates(void) {
                    "WHERE TABLE_SCHEMA BETWEEN DATABASE() AND SCHEMA()",
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'DATABASE'",
+            .message_part = "utility statement is not supported",
         }
     );
 

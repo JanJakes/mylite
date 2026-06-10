@@ -906,7 +906,7 @@ static int test_date_sub_second_aliases_sql_modes_and_errors(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += expect_query(

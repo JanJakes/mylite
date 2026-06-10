@@ -556,7 +556,7 @@ static int test_table_statement_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "You have an error",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(
@@ -724,7 +724,7 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
     }
     failures += expect_int(mylite_errcode(database), expected.code, "error code");
     failures += expect_text(mylite_sqlstate(database), expected.sqlstate, "sqlstate");
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, "error message");
+    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
     return failures;
 }
 

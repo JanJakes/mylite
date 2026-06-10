@@ -694,7 +694,7 @@ static int test_insert_select_dual_source_values_and_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(
@@ -2197,7 +2197,7 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
     failures += expect_true(result == NULL, "failed execute leaves result null");
     failures += expect_int(mylite_errcode(database), expected.code, "error code");
     failures += expect_text(mylite_sqlstate(database), expected.sqlstate, "SQLSTATE");
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, "error message");
+    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
     mylite_result_free(result);
 
     return failures;

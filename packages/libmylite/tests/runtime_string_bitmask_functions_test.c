@@ -496,7 +496,7 @@ static int test_bitmask_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax near '('",
+            .message_part = "utility statement is not supported",
         }
     );
 

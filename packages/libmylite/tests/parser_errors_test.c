@@ -669,7 +669,7 @@ static int test_syntax_errors(void) {
 
     failures += parser_test_parse_sql(
         "CREATE TABLE t (id INT DEFAULT NULL NULL);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -683,7 +683,7 @@ static int test_syntax_errors(void) {
 
     failures += parser_test_parse_sql(
         "CREATE TABLE t (id INT DEFAULT NULL NOT NULL);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);

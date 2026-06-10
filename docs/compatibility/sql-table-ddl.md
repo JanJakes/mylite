@@ -43,6 +43,10 @@ diagnostic before catalog mutation, and `ZEROFILL`-containing `CREATE TABLE` /
 `TIME(0)`, `DATETIME(0)`, and `TIMESTAMP(0)` are accepted in supported column
 definition paths and normalize to the existing seconds-only descriptors;
 nonzero temporal fractional precision is rejected before schema mutation.
+Supported column definition paths accept MySQL dump-style ordering among
+`DEFAULT`, `NULL` / `NOT NULL`, inline key, and `AUTO_INCREMENT` attributes
+while preserving the current duplicate-attribute and explicit
+charset/collation ordering checks.
 
 | Feature | Status | Notes |
 | --- | --- | --- |

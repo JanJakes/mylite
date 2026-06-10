@@ -2350,6 +2350,7 @@ static int test_explicit_default_null_lifecycle(void) {
     static const char *const added_rows[] = {"1", NULL, "2", NULL};
     static const char *const omitted_added_rows[] = {"1", NULL, "2", NULL, "3", NULL};
     static const char *const renamed_column_row[] = {"renamed", "bigint", "YES", "", NULL, ""};
+    static const char *const supported_order_column[] = {"a", "int", "YES", "", NULL, ""};
     static const char *const blob_to_varchar_rows[] = {"payload"};
     static const char *const second_handle_rows[] = {NULL};
     char path[test_path_capacity];
@@ -2543,13 +2544,16 @@ static int test_explicit_default_null_lifecycle(void) {
             .message_part = "Invalid default value for 'a'",
         }
     );
-    failures += execute_error(
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE supported_order (a INT DEFAULT NULL NULL)");
+    failures += expect_query_values(
         database,
-        "CREATE TABLE unsupported_order (a INT DEFAULT NULL NULL)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM supported_order",
+            .values = supported_order_column,
+            .column_count = show_columns_field_count,
+            .row_count = 1U,
+            .context = "default null repeated nullable order",
         }
     );
     failures +=

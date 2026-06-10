@@ -64,6 +64,7 @@ struct expected_contains_query {
 };
 
 static int test_create_insert_metadata_and_persistence(void);
+static int test_create_column_attribute_order(void);
 static int test_integer_expression_defaults(void);
 static int test_alter_defaults(void);
 static int test_alter_column_set_default(void);
@@ -120,6 +121,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_create_insert_metadata_and_persistence();
+    failures += test_create_column_attribute_order();
     failures += test_integer_expression_defaults();
     failures += test_alter_defaults();
     failures += test_alter_column_set_default();
@@ -338,6 +340,186 @@ static int test_create_insert_metadata_and_persistence(void) {
             .column_count = default_projection_column_count,
             .row_count = 1U,
             .context = "reopened defaults persist",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static int test_create_column_attribute_order(void) {
+    static const char *const attr_order_columns[] = {
+        "id",
+        "int",
+        "NO",
+        "",
+        "7",
+        "",
+        "pk_before",
+        "int",
+        "NO",
+        "PRI",
+        "3",
+        "",
+        "uq_after",
+        "int",
+        "YES",
+        "UNI",
+        "6",
+        "",
+    };
+    static const char *const attr_order_row[] = {"7", "10", "6"};
+    static const char *const primary_after_columns[] = {"id", "int", "NO", "PRI", "4", ""};
+    static const char *const primary_after_row[] = {"4"};
+    static const char *const unique_before_columns[] = {"id", "int", "YES", "UNI", "5", ""};
+    static const char *const unique_before_row[] = {"5"};
+    static const char *const auto_increment_columns[] = {
+        "id",
+        "int",
+        "NO",
+        "PRI",
+        NULL,
+        "auto_increment",
+        "name",
+        "varchar(32)",
+        "NO",
+        "",
+        "",
+        "",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "column_attribute_order") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open attribute order");
+    failures += seed_schema(database);
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE attr_order ("
+        "id INT DEFAULT 7 NOT NULL, "
+        "pk_before INT PRIMARY KEY DEFAULT 3, "
+        "uq_after INT DEFAULT 6 UNIQUE KEY)"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM attr_order",
+            .values = attr_order_columns,
+            .column_count = show_columns_column_count,
+            .row_count = 3U,
+            .context = "SHOW COLUMNS legacy attribute order",
+        }
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO attr_order (pk_before) VALUES (10)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, pk_before, uq_after FROM attr_order",
+            .values = attr_order_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "legacy attribute order defaults materialize",
+        }
+    );
+    failures += expect_single_value_contains(
+        database,
+        (struct expected_contains_query){
+            .sql = "SHOW CREATE TABLE attr_order",
+            .needle = "`id` int NOT NULL DEFAULT '7'",
+            .context = "SHOW CREATE TABLE default before nullability normalized",
+        }
+    );
+
+    failures +=
+        execute_statement_ok(database, "CREATE TABLE primary_after (id INT DEFAULT 4 PRIMARY KEY)");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM primary_after",
+            .values = primary_after_columns,
+            .column_count = show_columns_column_count,
+            .row_count = 1U,
+            .context = "SHOW COLUMNS default before primary key",
+        }
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO primary_after () VALUES ()",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM primary_after",
+            .values = primary_after_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "default before primary key materializes",
+        }
+    );
+
+    failures +=
+        execute_statement_ok(database, "CREATE TABLE unique_before (id INT UNIQUE DEFAULT 5)");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM unique_before",
+            .values = unique_before_columns,
+            .column_count = show_columns_column_count,
+            .row_count = 1U,
+            .context = "SHOW COLUMNS unique before default",
+        }
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO unique_before () VALUES ()",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM unique_before",
+            .values = unique_before_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "unique before default materializes",
+        }
+    );
+
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE auto_increment_legacy ("
+        "id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, "
+        "name VARCHAR(32) DEFAULT '' NOT NULL)"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM auto_increment_legacy",
+            .values = auto_increment_columns,
+            .column_count = show_columns_column_count,
+            .row_count = 2U,
+            .context = "SHOW COLUMNS auto increment legacy order",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE invalid_default_null_order (id INT DEFAULT NULL NOT NULL)",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_default,
+            .sqlstate = "42000",
+            .message_part = "Invalid default value for 'id'",
         }
     );
 

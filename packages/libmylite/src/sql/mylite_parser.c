@@ -13102,20 +13102,6 @@ static int validate_legacy_column_attribute_order(
         return MYLITE_SQL_PARSE_OK;
     }
 
-    invalid_order = ((column_attribute_position_is_set(positions->nullability) &&
-                      column_attribute_position_is_set(positions->default_value) &&
-                      positions->nullability > positions->default_value) ||
-                     (column_attribute_position_is_set(positions->nullability) &&
-                      column_attribute_position_is_set(positions->primary_key) &&
-                      positions->nullability > positions->primary_key) ||
-                     (column_attribute_position_is_set(positions->default_value) &&
-                      column_attribute_position_is_set(positions->primary_key) &&
-                      positions->default_value > positions->primary_key)) != 0;
-    if (invalid_order) {
-        set_state_status(state, MYLITE_SQL_PARSE_SYNTAX_ERROR);
-        return MYLITE_SQL_PARSE_SYNTAX_ERROR;
-    }
-
     return MYLITE_SQL_PARSE_OK;
 }
 

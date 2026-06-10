@@ -2,6 +2,7 @@
 
 static int test_schema_lifecycle_statements(void);
 static int test_table_lifecycle_statements(void);
+static int test_legacy_column_attribute_order_statement(void);
 static int test_table_lifecycle_table_option_statements(void);
 static int test_table_lifecycle_bool_identifier_statements(void);
 static int test_alter_table_multi_action_statements(void);
@@ -32,6 +33,7 @@ int main(void) {
 
     failures += test_schema_lifecycle_statements();
     failures += test_table_lifecycle_statements();
+    failures += test_legacy_column_attribute_order_statement();
     failures += test_alter_table_multi_action_statements();
     failures += test_create_table_generated_column_statements();
     failures += test_create_table_comment_option_statements();
@@ -2854,6 +2856,93 @@ static int test_table_lifecycle_statements(void) {
         parser_test_child_at(parser_test_child_at(parser_test_child_at(statement, 0U), 1U), 0U),
         "amount",
         "second projection"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_legacy_column_attribute_order_statement(void) {
+    enum {
+        legacy_attribute_order_column_count = 5,
+    };
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *columns = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    int failures = 0;
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE legacy_attribute_order ("
+        "dn INT DEFAULT 7 NOT NULL, "
+        "pk_before INT PRIMARY KEY DEFAULT 3, "
+        "pk_after INT DEFAULT 4 PRIMARY KEY, "
+        "uq_before INT UNIQUE DEFAULT 5, "
+        "uq_after INT DEFAULT 6 UNIQUE KEY);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    columns = parser_test_child_at(statement, 1U);
+    failures += parser_test_expect_child_count(
+        columns,
+        legacy_attribute_order_column_count,
+        "legacy attribute order column list"
+    );
+    column = parser_test_child_at(columns, 0U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(column, 2U),
+        MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE,
+        "default before nullability default"
+    );
+    failures += parser_test_expect_nullability(
+        parser_test_child_at(column, 3U),
+        MYLITE_SQL_AST_NULLABILITY_NOT_NULL,
+        "default before nullability marker"
+    );
+    column = parser_test_child_at(columns, 1U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(column, 2U),
+        MYLITE_SQL_AST_INLINE_PRIMARY_KEY,
+        "primary before default key"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(column, 3U),
+        MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE,
+        "primary before default value"
+    );
+    column = parser_test_child_at(columns, 2U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(column, 2U),
+        MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE,
+        "default before primary value"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(column, 3U),
+        MYLITE_SQL_AST_INLINE_PRIMARY_KEY,
+        "default before primary key"
+    );
+    column = parser_test_child_at(columns, 3U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(column, 2U),
+        MYLITE_SQL_AST_INLINE_UNIQUE_KEY,
+        "unique before default key"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(column, 3U),
+        MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE,
+        "unique before default value"
+    );
+    column = parser_test_child_at(columns, 4U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(column, 2U),
+        MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE,
+        "default before unique value"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(column, 3U),
+        MYLITE_SQL_AST_INLINE_UNIQUE_KEY,
+        "default before unique key"
     );
     mylite_sql_parse_result_deinit(&result);
 

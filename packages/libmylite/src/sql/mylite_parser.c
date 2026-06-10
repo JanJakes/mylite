@@ -206,6 +206,18 @@ static enum placeholder_statement_kind classify_schema_security_placeholder_stat
 static enum placeholder_statement_kind classify_utility_admin_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );
+static enum placeholder_statement_kind classify_unsupported_utility_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+);
+static enum placeholder_statement_kind classify_utility_noop_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+);
+static enum placeholder_statement_kind classify_admin_noop_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+);
+static enum placeholder_statement_kind classify_query_surface_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+);
 static enum placeholder_statement_kind classify_query_scalar_expression_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );
@@ -387,6 +399,22 @@ static bool placeholder_scan_token_stops_predicate_clause_search(
 static bool placeholder_scan_contains_quantified_subquery_surface(
     const struct placeholder_statement_scan *scan
 );
+static bool placeholder_scan_contains_fulltext_match_against_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_match_column_list_without_parentheses_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t match_index
+);
+static bool placeholder_scan_match_column_name_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    size_t *out_next_index
+);
+static bool placeholder_scan_token_can_name_loose_identifier(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
 static bool placeholder_scan_parentheses_are_balanced(
     const struct placeholder_statement_scan *scan,
     size_t start_index
@@ -405,6 +433,19 @@ static enum placeholder_statement_kind classify_create_placeholder_statement(
 static enum placeholder_statement_kind classify_alter_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );
+static bool create_view_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static bool alter_view_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static bool view_placeholder_statement_has_query_body(
+    const struct placeholder_statement_scan *scan,
+    size_t view_index
+);
+static bool undo_tablespace_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
 static bool ddl_zerofill_placeholder_statement_is_supported(
     const struct placeholder_statement_scan *scan
 );
@@ -416,6 +457,13 @@ static bool placeholder_scan_starts_alter_table_statement(
 );
 static bool alter_table_partition_placeholder_statement_is_supported(
     const struct placeholder_statement_scan *scan
+);
+static bool alter_table_tablespace_file_operation_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static bool alter_table_tablespace_file_operation_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t operation_index
 );
 static size_t alter_table_partition_operation_start_index(
     const struct placeholder_statement_scan *scan
@@ -433,6 +481,25 @@ static bool placeholder_scan_token_text_equals_any(
     size_t index,
     const char *const *texts,
     size_t text_count
+);
+static bool load_xml_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static bool select_into_file_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static bool import_table_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static bool help_placeholder_statement_is_supported(const struct placeholder_statement_scan *scan);
+static bool lock_instance_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static bool unlock_instance_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static bool change_replication_source_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
 );
 static enum placeholder_statement_kind classify_drop_placeholder_statement(
     const struct placeholder_statement_scan *scan
@@ -1445,6 +1512,40 @@ static enum placeholder_statement_kind classify_schema_security_placeholder_stat
 static enum placeholder_statement_kind classify_utility_admin_placeholder_statement(
     const struct placeholder_statement_scan *scan
 ) {
+    enum placeholder_statement_kind kind;
+
+    kind = classify_unsupported_utility_placeholder_statement(scan);
+    if (kind != PLACEHOLDER_STATEMENT_NONE) {
+        return kind;
+    }
+    kind = classify_utility_noop_placeholder_statement(scan);
+    if (kind != PLACEHOLDER_STATEMENT_NONE) {
+        return kind;
+    }
+    kind = classify_admin_noop_placeholder_statement(scan);
+    if (kind != PLACEHOLDER_STATEMENT_NONE) {
+        return kind;
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "SET")) {
+        return classify_set_placeholder_statement(scan);
+    }
+    kind = classify_query_surface_placeholder_statement(scan);
+    if (kind != PLACEHOLDER_STATEMENT_NONE) {
+        return kind;
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "SHOW")) {
+        return classify_show_placeholder_statement(scan);
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "EXPLAIN")) {
+        return classify_explain_placeholder_statement(scan);
+    }
+
+    return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static enum placeholder_statement_kind classify_unsupported_utility_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+) {
     if (placeholder_scan_token_text_equals(scan, 0U, "XA") ||
         placeholder_scan_token_text_equals(scan, 0U, "HANDLER")) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
@@ -1453,10 +1554,49 @@ static enum placeholder_statement_kind classify_utility_admin_placeholder_statem
         placeholder_scan_token_text_equals(scan, 1U, "DIAGNOSTICS")) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
+    if (help_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "LOAD") &&
+        placeholder_scan_token_text_equals(scan, 1U, "DATA")) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
+    if (load_xml_placeholder_statement_is_supported(scan) ||
+        select_into_file_placeholder_statement_is_supported(scan) ||
+        import_table_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
+    return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static enum placeholder_statement_kind classify_utility_noop_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+) {
     if (placeholder_scan_token_text_equals(scan, 0U, "ANALYZE") &&
         placeholder_scan_token_text_equals(scan, 1U, "TABLE") &&
         placeholder_scan_contains_text(scan, "HISTOGRAM")) {
         return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "INSTALL") &&
+        (placeholder_scan_token_text_equals(scan, 1U, "COMPONENT") ||
+         placeholder_scan_token_text_equals(scan, 1U, "PLUGIN"))) {
+        return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "UNINSTALL") &&
+        (placeholder_scan_token_text_equals(scan, 1U, "COMPONENT") ||
+         placeholder_scan_token_text_equals(scan, 1U, "PLUGIN"))) {
+        return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
+    }
+    return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static enum placeholder_statement_kind classify_admin_noop_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+) {
+    if (lock_instance_placeholder_statement_is_supported(scan) ||
+        unlock_instance_placeholder_statement_is_supported(scan) ||
+        change_replication_source_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
     }
     if (placeholder_scan_token_text_equals(scan, 0U, "RESET") ||
         placeholder_scan_token_text_equals(scan, 0U, "FLUSH") ||
@@ -1473,23 +1613,12 @@ static enum placeholder_statement_kind classify_utility_admin_placeholder_statem
         placeholder_scan_token_text_equals(scan, 1U, "INDEX")) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
     }
-    if (placeholder_scan_token_text_equals(scan, 0U, "LOAD") &&
-        placeholder_scan_token_text_equals(scan, 1U, "DATA")) {
-        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
-    }
-    if (placeholder_scan_token_text_equals(scan, 0U, "SET")) {
-        return classify_set_placeholder_statement(scan);
-    }
-    if (placeholder_scan_token_text_equals(scan, 0U, "INSTALL") &&
-        (placeholder_scan_token_text_equals(scan, 1U, "COMPONENT") ||
-         placeholder_scan_token_text_equals(scan, 1U, "PLUGIN"))) {
-        return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
-    }
-    if (placeholder_scan_token_text_equals(scan, 0U, "UNINSTALL") &&
-        (placeholder_scan_token_text_equals(scan, 1U, "COMPONENT") ||
-         placeholder_scan_token_text_equals(scan, 1U, "PLUGIN"))) {
-        return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
-    }
+    return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static enum placeholder_statement_kind classify_query_surface_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+) {
     if (classify_query_scalar_expression_placeholder_statement(scan) !=
         PLACEHOLDER_STATEMENT_NONE) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
@@ -1505,13 +1634,6 @@ static enum placeholder_statement_kind classify_utility_admin_placeholder_statem
     if (classify_query_table_reference_placeholder_statement(scan) != PLACEHOLDER_STATEMENT_NONE) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
-    if (placeholder_scan_token_text_equals(scan, 0U, "SHOW")) {
-        return classify_show_placeholder_statement(scan);
-    }
-    if (placeholder_scan_token_text_equals(scan, 0U, "EXPLAIN")) {
-        return classify_explain_placeholder_statement(scan);
-    }
-
     return PLACEHOLDER_STATEMENT_NONE;
 }
 
@@ -1526,7 +1648,8 @@ static enum placeholder_statement_kind classify_query_scalar_expression_placehol
     if (placeholder_scan_contains_lateral_derived_table(scan) ||
         placeholder_scan_contains_grouping_function(scan) ||
         placeholder_scan_contains_scalar_in_surface(scan) ||
-        placeholder_scan_contains_quantified_subquery_surface(scan)) {
+        placeholder_scan_contains_quantified_subquery_surface(scan) ||
+        placeholder_scan_contains_fulltext_match_against_surface(scan)) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
     return PLACEHOLDER_STATEMENT_NONE;
@@ -2559,6 +2682,89 @@ static bool placeholder_scan_contains_quantified_subquery_surface(
     return false;
 }
 
+static bool placeholder_scan_contains_fulltext_match_against_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return false;
+    }
+    for (size_t index = 0U; index < scan->token_count; ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, "MATCH") &&
+            placeholder_scan_match_column_list_without_parentheses_is_supported(scan, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_match_column_list_without_parentheses_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t match_index
+) {
+    size_t index = match_index + 1U;
+    bool saw_column = false;
+    bool need_column = true;
+
+    if (scan == NULL || index >= scan->token_count || token_is_left_paren(&scan->tokens[index])) {
+        return false;
+    }
+    while (index < scan->token_count) {
+        size_t next_index = index;
+
+        if (need_column) {
+            if (!placeholder_scan_match_column_name_starts_at(scan, index, &next_index)) {
+                return false;
+            }
+            saw_column = true;
+            need_column = false;
+            index = next_index;
+            continue;
+        }
+        if (!token_is_comma(&scan->tokens[index])) {
+            break;
+        }
+        need_column = true;
+        ++index;
+    }
+    return saw_column && !need_column && index + 1U < scan->token_count &&
+           placeholder_scan_token_text_equals(scan, index, "AGAINST") &&
+           token_is_left_paren(&scan->tokens[index + 1U]) &&
+           placeholder_scan_parenthesized_operand_is_complete(scan, index + 1U);
+}
+
+static bool placeholder_scan_match_column_name_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    size_t *out_next_index
+) {
+    if (out_next_index != NULL) {
+        *out_next_index = index;
+    }
+    if (!placeholder_scan_token_can_name_loose_identifier(scan, index)) {
+        return false;
+    }
+    ++index;
+    while (placeholder_scan_token_text_equals(scan, index, ".") &&
+           placeholder_scan_token_can_name_loose_identifier(scan, index + 1U)) {
+        index += 2U;
+    }
+    if (out_next_index != NULL) {
+        *out_next_index = index;
+    }
+    return true;
+}
+
+static bool placeholder_scan_token_can_name_loose_identifier(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    if (scan == NULL || index >= scan->token_count) {
+        return false;
+    }
+    return placeholder_scan_token_is_identifier_like(scan, index) ||
+           scan->tokens[index].kind == MYLITE_SQL_TOKEN_KEYWORD;
+}
+
 static bool placeholder_scan_parentheses_are_balanced(
     const struct placeholder_statement_scan *scan,
     size_t start_index
@@ -2641,6 +2847,12 @@ static enum placeholder_statement_kind classify_create_placeholder_statement(
     if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE")) {
         return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
     }
+    if (undo_tablespace_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
+    }
+    if (create_view_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
     if (ddl_zerofill_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
@@ -2672,6 +2884,13 @@ static enum placeholder_statement_kind classify_alter_placeholder_statement(
     if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE")) {
         return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
     }
+    if (undo_tablespace_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
+    }
+    if (alter_view_placeholder_statement_is_supported(scan) ||
+        alter_table_tablespace_file_operation_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
     if (ddl_zerofill_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
@@ -2685,6 +2904,85 @@ static enum placeholder_statement_kind classify_alter_placeholder_statement(
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_STORED_PROGRAM;
     }
     return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static bool create_view_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    enum { create_view_scan_limit = 16 };
+
+    if (scan == NULL || scan->has_non_trailing_semicolon ||
+        !placeholder_scan_token_text_equals(scan, 0U, "CREATE") ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U) ||
+        placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return false;
+    }
+    for (size_t index = 1U; index < scan->token_count && index < create_view_scan_limit; ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, "VIEW")) {
+            return view_placeholder_statement_has_query_body(scan, index);
+        }
+        if (placeholder_scan_token_text_equals(scan, index, "TABLE") ||
+            placeholder_scan_token_text_equals(scan, index, "PROCEDURE") ||
+            placeholder_scan_token_text_equals(scan, index, "FUNCTION") ||
+            placeholder_scan_token_text_equals(scan, index, "TRIGGER") ||
+            placeholder_scan_token_text_equals(scan, index, "EVENT")) {
+            return false;
+        }
+    }
+    return false;
+}
+
+static bool alter_view_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    enum { alter_view_scan_limit = 16 };
+
+    if (scan == NULL || scan->has_non_trailing_semicolon ||
+        !placeholder_scan_token_text_equals(scan, 0U, "ALTER") ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U) ||
+        placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return false;
+    }
+    for (size_t index = 1U; index < scan->token_count && index < alter_view_scan_limit; ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, "VIEW")) {
+            return view_placeholder_statement_has_query_body(scan, index);
+        }
+        if (placeholder_scan_token_text_equals(scan, index, "TABLE") ||
+            placeholder_scan_token_text_equals(scan, index, "USER") ||
+            placeholder_scan_token_text_equals(scan, index, "INSTANCE") ||
+            placeholder_scan_token_text_equals(scan, index, "TABLESPACE") ||
+            placeholder_scan_token_text_equals(scan, index, "PROCEDURE") ||
+            placeholder_scan_token_text_equals(scan, index, "FUNCTION") ||
+            placeholder_scan_token_text_equals(scan, index, "EVENT")) {
+            return false;
+        }
+    }
+    return false;
+}
+
+static bool view_placeholder_statement_has_query_body(
+    const struct placeholder_statement_scan *scan,
+    size_t view_index
+) {
+    if (scan == NULL || view_index >= scan->token_count) {
+        return false;
+    }
+    for (size_t index = view_index + 1U; index < scan->token_count; ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, "AS") &&
+            create_table_select_query_starts_at(scan, index + 1U)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool undo_tablespace_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    return scan != NULL && scan->token_count > 3U &&
+           placeholder_scan_token_text_equals(scan, 1U, "UNDO") &&
+           placeholder_scan_token_text_equals(scan, 2U, "TABLESPACE") &&
+           !placeholder_scan_statement_tail_is_obviously_incomplete(scan);
 }
 
 static bool ddl_zerofill_placeholder_statement_is_supported(
@@ -2740,6 +3038,56 @@ static bool alter_table_partition_placeholder_statement_is_supported(
         return false;
     }
     return alter_table_partition_scan_has_operation(scan, operation_start_index);
+}
+
+static bool alter_table_tablespace_file_operation_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t operation_start_index = 0U;
+
+    if (scan == NULL || scan->token_count < alter_table_partition_min_token_count ||
+        !placeholder_scan_token_text_equals(scan, 1U, "TABLE") ||
+        !alter_table_partition_scan_has_balanced_parentheses(scan, 2U) ||
+        placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return false;
+    }
+    operation_start_index = alter_table_partition_operation_start_index(scan);
+    for (size_t index = operation_start_index; index + 1U < scan->token_count; ++index) {
+        if (alter_table_tablespace_file_operation_starts_at(scan, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool alter_table_tablespace_file_operation_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t operation_index
+) {
+    size_t index = operation_index + 1U;
+
+    if (scan == NULL || operation_index + 1U >= scan->token_count ||
+        (!placeholder_scan_token_text_equals(scan, operation_index, "DISCARD") &&
+         !placeholder_scan_token_text_equals(scan, operation_index, "IMPORT"))) {
+        return false;
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "TABLESPACE")) {
+        return true;
+    }
+    if (!placeholder_scan_token_text_equals(scan, index, "PARTITION") &&
+        !placeholder_scan_token_text_equals(scan, index, "SUBPARTITION")) {
+        return false;
+    }
+    ++index;
+    while (placeholder_scan_token_can_name_loose_identifier(scan, index)) {
+        ++index;
+        if (!token_is_comma(&scan->tokens[index])) {
+            break;
+        }
+        ++index;
+    }
+    return index < scan->token_count &&
+           placeholder_scan_token_text_equals(scan, index, "TABLESPACE");
 }
 
 static size_t alter_table_partition_operation_start_index(
@@ -2851,6 +3199,87 @@ static bool placeholder_scan_token_text_equals_any(
     return false;
 }
 
+static bool load_xml_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || scan->has_non_trailing_semicolon ||
+        !placeholder_scan_token_text_equals(scan, 0U, "LOAD") ||
+        !placeholder_scan_token_text_equals(scan, 1U, "XML") ||
+        placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return false;
+    }
+    return placeholder_scan_token_text_equals(scan, 2U, "INFILE") ||
+           (placeholder_scan_token_text_equals(scan, 2U, "LOCAL") &&
+            placeholder_scan_token_text_equals(scan, 3U, "INFILE"));
+}
+
+static bool select_into_file_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || scan->has_non_trailing_semicolon ||
+        !placeholder_scan_starts_query_statement(scan) ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U) ||
+        placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return false;
+    }
+    for (size_t index = 1U; index + 2U < scan->token_count; ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, "INTO") &&
+            (placeholder_scan_token_text_equals(scan, index + 1U, "OUTFILE") ||
+             placeholder_scan_token_text_equals(scan, index + 1U, "DUMPFILE")) &&
+            scan->tokens[index + 2U].kind == MYLITE_SQL_TOKEN_STRING) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool import_table_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    return scan != NULL && !scan->has_non_trailing_semicolon &&
+           placeholder_scan_token_text_equals(scan, 0U, "IMPORT") &&
+           placeholder_scan_token_text_equals(scan, 1U, "TABLE") &&
+           placeholder_scan_token_text_equals(scan, 2U, "FROM") && scan->token_count > 3U &&
+           scan->tokens[3U].kind == MYLITE_SQL_TOKEN_STRING &&
+           !placeholder_scan_statement_tail_is_obviously_incomplete(scan);
+}
+
+static bool help_placeholder_statement_is_supported(const struct placeholder_statement_scan *scan) {
+    return scan != NULL && !scan->has_non_trailing_semicolon &&
+           placeholder_scan_token_text_equals(scan, 0U, "HELP") && scan->token_count > 1U &&
+           !placeholder_scan_statement_tail_is_obviously_incomplete(scan);
+}
+
+static bool lock_instance_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    return scan != NULL && !scan->has_non_trailing_semicolon && scan->token_count == 4U &&
+           placeholder_scan_token_text_equals(scan, 0U, "LOCK") &&
+           placeholder_scan_token_text_equals(scan, 1U, "INSTANCE") &&
+           placeholder_scan_token_text_equals(scan, 2U, "FOR") &&
+           placeholder_scan_token_text_equals(scan, 3U, "BACKUP");
+}
+
+static bool unlock_instance_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    return scan != NULL && !scan->has_non_trailing_semicolon && scan->token_count == 2U &&
+           placeholder_scan_token_text_equals(scan, 0U, "UNLOCK") &&
+           placeholder_scan_token_text_equals(scan, 1U, "INSTANCE");
+}
+
+static bool change_replication_source_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    return scan != NULL && !scan->has_non_trailing_semicolon && scan->token_count > 4U &&
+           placeholder_scan_token_text_equals(scan, 0U, "CHANGE") &&
+           placeholder_scan_token_text_equals(scan, 1U, "REPLICATION") &&
+           placeholder_scan_token_text_equals(scan, 2U, "SOURCE") &&
+           placeholder_scan_token_text_equals(scan, 3U, "TO") &&
+           !placeholder_scan_statement_tail_is_obviously_incomplete(scan) &&
+           placeholder_scan_parentheses_are_balanced(scan, 0U);
+}
+
 static enum placeholder_statement_kind classify_drop_placeholder_statement(
     const struct placeholder_statement_scan *scan
 ) {
@@ -2860,6 +3289,9 @@ static enum placeholder_statement_kind classify_drop_placeholder_statement(
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
     }
     if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE")) {
+        return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
+    }
+    if (undo_tablespace_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
     }
     if (placeholder_scan_token_text_equals(scan, 1U, "FUNCTION") ||

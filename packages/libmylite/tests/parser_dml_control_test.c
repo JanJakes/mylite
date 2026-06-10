@@ -3071,8 +3071,14 @@ static int test_table_lock_statements(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql("UNLOCK;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures +=
-        parser_test_parse_sql("LOCK INSTANCE FOR BACKUP;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("LOCK INSTANCE FOR BACKUP;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT,
+        "lock instance placeholder"
+    );
+    failures += parser_test_expect_child_count(statement, 0U, "lock instance children");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

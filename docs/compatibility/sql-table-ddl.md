@@ -53,7 +53,7 @@ nonzero temporal fractional precision is rejected before schema mutation.
 | `TRUNCATE TABLE` | 🟡 | Limited persistent base-table `TRUNCATE [TABLE] table_name` for unqualified and schema-qualified descriptor targets; empties physical rows, preserves descriptors, resets the current auto-increment counter subset to `1`, reports zero affected rows, rejects tables participating in supported foreign-key descriptors, and follows the limited user-transaction implicit commit subset; no temporary tables, partitions, cascades, triggers, locks, privileges, or physical storage rebuild semantics |
 | Atomic DDL | 🟡 | Catalog descriptor rows and generated physical SQLite table/index changes commit or roll back atomically for the limited create/create-like/drop/rename/truncate and single-action alter rename/add-column/add-primary-key/add-index/add-check/drop-primary-key/drop-index/drop-check/alter-check/drop-column/rename-column/modify-column/change-column/comment/order-by/force subsets only |
 | Implicit commit boundaries | 🟡 | Limited MySQL-style implicit commit before current supported DDL/object lifecycle statements when a MyLite user transaction is active; no complete coverage for future DDL, administrative statements, locking statements, or full protocol state |
-| `IMPORT TABLE` | ❌ | Transportable tablespace import syntax, diagnostics |
+| `IMPORT TABLE` | ⚪ | Parsed as an unsupported utility statement returning `1064 / 42000`; no SDI import, transportable tablespace import, physical file access, or metadata mutation |
 
 ## CREATE TABLE and table options
 

@@ -22,7 +22,7 @@ Binary log, replica, source, and Group Replication statement compatibility.
 | `@@sql_slave_skip_counter` | 🟡 | Limited read-only deprecated alias for `@@sql_replica_skip_counter`; returns `0` for no-scope and `global` forms and emits deprecation warning `1287`; `session` and `local` scopes are rejected as global-only; no mutable state, relay-log event skipping, `START REPLICA` effects, channels, or GTID restrictions |
 | `SET sql_log_bin` | ❌ | Session binary logging toggle and privilege semantics |
 | `CHANGE REPLICATION FILTER` | ❌ | Replication filter syntax, diagnostics |
-| `CHANGE REPLICATION SOURCE TO` | ❌ | Source connection/channel options and diagnostics |
+| `CHANGE REPLICATION SOURCE TO` | ⚪ | Parsed and accepted as an embedded no-op with warning `1105`; no source connection/channel metadata, implicit commit, replication thread, or diagnostics beyond the no-op warning |
 | `RESET REPLICA` | ❌ | Replica metadata reset syntax |
 | `START REPLICA` | ❌ | Replica start variants |
 | `STOP REPLICA` | ❌ | Replica stop syntax and channel handling |

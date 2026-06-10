@@ -2660,14 +2660,32 @@ static int test_select_sql_calc_found_rows_clause(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT SQL_CALC_FOUND_ROWS DISTINCT n FROM simple_lifecycle;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT,
+        "sql calc before distinct modifier parsed"
+    );
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_select_calc_found_rows(statement),
+        "sql calc before distinct flag parsed"
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT SQL_CALC_FOUND_ROWS ALL n FROM simple_lifecycle;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DEFAULT,
+        "sql calc before all modifier parsed"
+    );
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_select_calc_found_rows(statement),
+        "sql calc before all flag parsed"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -2677,6 +2695,7 @@ static int test_select_sql_calc_found_rows_clause(void) {
 static int test_select_noop_modifier_clause(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
+    unsigned int actual_options = 0U;
     unsigned int expected_options =
         MYLITE_SQL_AST_SELECT_OPTION_HIGH_PRIORITY | MYLITE_SQL_AST_SELECT_OPTION_STRAIGHT_JOIN |
         MYLITE_SQL_AST_SELECT_OPTION_SQL_SMALL_RESULT |
@@ -2720,6 +2739,43 @@ static int test_select_noop_modifier_clause(void) {
     failures += parser_test_expect_true(
         mylite_sql_ast_node_select_calc_found_rows(statement),
         "table noop select sql calc flag"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT SQL_BIG_RESULT DISTINCT n FROM simple_lifecycle;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT,
+        "sql_big_result before distinct modifier"
+    );
+    actual_options = mylite_sql_ast_node_select_options(statement);
+    failures += parser_test_expect_true(
+        (actual_options & MYLITE_SQL_AST_SELECT_OPTION_SQL_BIG_RESULT) != 0U,
+        "sql_big_result before distinct option"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT SQL_SMALL_RESULT SQL_BUFFER_RESULT DISTINCT n FROM simple_lifecycle;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT,
+        "multiple result options before distinct modifier"
+    );
+    actual_options = mylite_sql_ast_node_select_options(statement);
+    failures += parser_test_expect_true(
+        (actual_options & (MYLITE_SQL_AST_SELECT_OPTION_SQL_SMALL_RESULT |
+                           MYLITE_SQL_AST_SELECT_OPTION_SQL_BUFFER_RESULT)) ==
+            (MYLITE_SQL_AST_SELECT_OPTION_SQL_SMALL_RESULT |
+             MYLITE_SQL_AST_SELECT_OPTION_SQL_BUFFER_RESULT),
+        "multiple result options before distinct flags"
     );
     mylite_sql_parse_result_deinit(&result);
 

@@ -25,3 +25,12 @@
       relevance.
 - [x] Commit, review with a subagent, amend if needed, push `main`, then
       continue to the next baseline slice.
+- [x] Revisit MySQL 8.4.9 result-option-before-duplicate modifier ordering
+      from the parser corpus, including `SQL_BIG_RESULT DISTINCT` and
+      `SQL_CALC_FOUND_ROWS DISTINCT` runtime probes.
+- [x] Implement a bounded parser retry that normalizes the documented leading
+      canonical-order result-option prefix before `ALL`, `DISTINCT`, or
+      `DISTINCTROW`.
+- [x] Extend parser, runtime, MySQL expectation, spec, and compatibility
+      coverage for the admitted compatibility ordering while keeping broader
+      modifier permutations and repeated modifiers deferred.

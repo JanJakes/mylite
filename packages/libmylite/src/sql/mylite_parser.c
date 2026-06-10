@@ -103,6 +103,11 @@ static enum mylite_sql_parse_status parse_sql_with_lemon_options(
     struct mylite_sql_parse_result *out_result,
     bool inject_parenthesized_row_constructors
 );
+static enum mylite_sql_parse_status try_parse_select_result_option_before_duplicate_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    bool *out_handled
+);
 static bool map_lexer_token(
     const struct mylite_sql_parser_state *state,
     const struct mylite_sql_lexer *lexer,
@@ -131,8 +136,7 @@ static bool should_inject_parenthesized_row_constructor(
     const struct parenthesized_row_constructor_injection *injection
 );
 static bool token_can_name_immediate_function(const struct mylite_sql_token *token);
-static bool lexer_parenthesized_expression_has_top_level_comma(
-    const struct mylite_sql_lexer *lexer
+static bool lexer_parenthesized_expression_has_top_level_comma(const struct mylite_sql_lexer *lexer
 );
 static struct mylite_sql_token make_synthetic_row_constructor_token(
     const struct mylite_sql_token *left_paren
@@ -168,6 +172,32 @@ static enum mylite_sql_parse_status scan_placeholder_statement_tokens(
     struct mylite_sql_token **out_tokens,
     size_t *out_token_count,
     bool *out_has_non_trailing_semicolon
+);
+static bool scan_can_retry_select_result_option_before_duplicate(
+    const struct placeholder_statement_scan *scan,
+    size_t *out_duplicate_index
+);
+static bool placeholder_scan_token_is_select_result_option(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_is_select_duplicate_modifier(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static enum mylite_sql_parse_status parse_select_result_option_before_duplicate_tokens(
+    struct mylite_sql_parse_config config,
+    const struct placeholder_statement_scan *scan,
+    size_t duplicate_index,
+    struct mylite_sql_parse_result *out_result
+);
+static enum mylite_sql_parse_status feed_select_modifier_reordered_token(
+    struct mylite_sql_parse_config config,
+    void *parser,
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_token_history *history,
+    bool *previous_token_was_dot,
+    const struct mylite_sql_token *token
 );
 static bool append_placeholder_statement_token(
     const struct mylite_sql_token *token,
@@ -757,6 +787,18 @@ enum mylite_sql_parse_status mylite_sql_parse(
     if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
         bool handled = false;
 
+        enum mylite_sql_parse_status modifier_status =
+            try_parse_select_result_option_before_duplicate_statement(config, out_result, &handled);
+
+        if (handled) {
+            status = modifier_status;
+            out_result->status = modifier_status;
+        }
+    }
+
+    if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
+        bool handled = false;
+
         enum mylite_sql_parse_status row_constructor_status =
             try_parse_parenthesized_row_constructor_statement(config, out_result, &handled);
 
@@ -956,6 +998,258 @@ const char *mylite_sql_parse_status_name(enum mylite_sql_parse_status status) {
     }
 
     return "unknown";
+}
+
+static enum mylite_sql_parse_status try_parse_select_result_option_before_duplicate_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    bool *out_handled
+) {
+    struct mylite_sql_token *tokens = NULL;
+    struct placeholder_statement_scan scan = {0};
+    struct mylite_sql_parse_result retry_result;
+    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+    size_t duplicate_index = 0U;
+
+    if (out_handled == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    *out_handled = false;
+
+    status = scan_placeholder_statement_tokens(
+        config,
+        &tokens,
+        &scan.token_count,
+        &scan.has_non_trailing_semicolon
+    );
+    if (status != MYLITE_SQL_PARSE_OK) {
+        free(tokens);
+        return status;
+    }
+    scan.tokens = tokens;
+    if (!scan_can_retry_select_result_option_before_duplicate(&scan, &duplicate_index)) {
+        free(tokens);
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    memset(&retry_result, 0, sizeof(retry_result));
+    status = parse_select_result_option_before_duplicate_tokens(
+        config,
+        &scan,
+        duplicate_index,
+        &retry_result
+    );
+    if (status == MYLITE_SQL_PARSE_OK) {
+        mylite_sql_ast_deinit(&result->ast);
+        *result = retry_result;
+        *out_handled = true;
+        free(tokens);
+        return status;
+    }
+
+    mylite_sql_parse_result_deinit(&retry_result);
+    free(tokens);
+    return MYLITE_SQL_PARSE_OK;
+}
+
+static bool scan_can_retry_select_result_option_before_duplicate(
+    const struct placeholder_statement_scan *scan,
+    size_t *out_duplicate_index
+) {
+    size_t index = 1U;
+
+    if (out_duplicate_index != NULL) {
+        *out_duplicate_index = 0U;
+    }
+    if (scan == NULL || scan->tokens == NULL || scan->has_non_trailing_semicolon ||
+        scan->token_count < 3U || !placeholder_scan_token_text_equals(scan, 0U, "SELECT") ||
+        !placeholder_scan_token_is_select_result_option(scan, index)) {
+        return false;
+    }
+    while (index < scan->token_count) {
+        if (!placeholder_scan_token_is_select_result_option(scan, index)) {
+            break;
+        }
+        ++index;
+    }
+    if (index >= scan->token_count ||
+        !placeholder_scan_token_is_select_duplicate_modifier(scan, index)) {
+        return false;
+    }
+    if (out_duplicate_index != NULL) {
+        *out_duplicate_index = index;
+    }
+    return true;
+}
+
+static bool placeholder_scan_token_is_select_result_option(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return placeholder_scan_token_text_equals(scan, index, "SQL_SMALL_RESULT") ||
+           placeholder_scan_token_text_equals(scan, index, "SQL_BIG_RESULT") ||
+           placeholder_scan_token_text_equals(scan, index, "SQL_BUFFER_RESULT") ||
+           placeholder_scan_token_text_equals(scan, index, "SQL_NO_CACHE") ||
+           placeholder_scan_token_text_equals(scan, index, "SQL_CALC_FOUND_ROWS");
+}
+
+static bool placeholder_scan_token_is_select_duplicate_modifier(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return placeholder_scan_token_text_equals(scan, index, "ALL") ||
+           placeholder_scan_token_text_equals(scan, index, "DISTINCT") ||
+           placeholder_scan_token_text_equals(scan, index, "DISTINCTROW");
+}
+
+static enum mylite_sql_parse_status parse_select_result_option_before_duplicate_tokens(
+    struct mylite_sql_parse_config config,
+    const struct placeholder_statement_scan *scan,
+    size_t duplicate_index,
+    struct mylite_sql_parse_result *out_result
+) {
+    struct mylite_sql_parser_state state;
+    struct mylite_sql_parser_token_history token_history = {0};
+    void *parser = NULL;
+    bool previous_token_was_dot = false;
+    struct mylite_sql_token eof_token = {
+        .kind = MYLITE_SQL_TOKEN_EOF,
+        .text = config.input == NULL ? NULL : config.input + config.length,
+        .offset = config.length,
+    };
+    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+
+    if (out_result == NULL || scan == NULL || scan->tokens == NULL ||
+        duplicate_index >= scan->token_count) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+
+    memset(out_result, 0, sizeof(*out_result));
+    out_result->status = MYLITE_SQL_PARSE_OK;
+    mylite_sql_ast_init(&out_result->ast);
+
+    state = (struct mylite_sql_parser_state){
+        .result = out_result,
+        .modes = config.modes,
+        .accepted = false,
+    };
+    parser = mylite_sql_lemonAlloc(malloc);
+    if (parser == NULL) {
+        out_result->status = MYLITE_SQL_PARSE_NOMEM;
+        return out_result->status;
+    }
+
+    status = feed_select_modifier_reordered_token(
+        config,
+        parser,
+        &state,
+        &token_history,
+        &previous_token_was_dot,
+        &scan->tokens[0]
+    );
+    if (status == MYLITE_SQL_PARSE_OK) {
+        status = feed_select_modifier_reordered_token(
+            config,
+            parser,
+            &state,
+            &token_history,
+            &previous_token_was_dot,
+            &scan->tokens[duplicate_index]
+        );
+    }
+    for (size_t index = 1U; status == MYLITE_SQL_PARSE_OK && index < duplicate_index; ++index) {
+        status = feed_select_modifier_reordered_token(
+            config,
+            parser,
+            &state,
+            &token_history,
+            &previous_token_was_dot,
+            &scan->tokens[index]
+        );
+    }
+    for (size_t index = duplicate_index + 1U;
+         status == MYLITE_SQL_PARSE_OK && index < scan->token_count;
+         ++index) {
+        status = feed_select_modifier_reordered_token(
+            config,
+            parser,
+            &state,
+            &token_history,
+            &previous_token_was_dot,
+            &scan->tokens[index]
+        );
+    }
+    if (status == MYLITE_SQL_PARSE_OK) {
+        status = feed_select_modifier_reordered_token(
+            config,
+            parser,
+            &state,
+            &token_history,
+            &previous_token_was_dot,
+            &eof_token
+        );
+    }
+
+    mylite_sql_lemonFree(parser, free);
+
+    if (out_result->status == MYLITE_SQL_PARSE_OK && status != MYLITE_SQL_PARSE_OK) {
+        out_result->status = status;
+    }
+    if (out_result->status == MYLITE_SQL_PARSE_OK && !state.accepted) {
+        out_result->status = MYLITE_SQL_PARSE_SYNTAX_ERROR;
+    }
+
+    return out_result->status;
+}
+
+static enum mylite_sql_parse_status feed_select_modifier_reordered_token(
+    struct mylite_sql_parse_config config,
+    void *parser,
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_token_history *history,
+    bool *previous_token_was_dot,
+    const struct mylite_sql_token *token
+) {
+    struct mylite_sql_parser_token_map token_map;
+    struct mylite_sql_lexer token_lexer;
+
+    if (parser == NULL || state == NULL || state->result == NULL || history == NULL ||
+        previous_token_was_dot == NULL || token == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+
+    token_lexer = (struct mylite_sql_lexer){
+        .input = config.input,
+        .length = config.length,
+        .offset = token->offset + token->length,
+        .modes = config.modes,
+    };
+    if (token_lexer.offset > config.length) {
+        token_lexer.offset = config.length;
+    }
+    if (!map_lexer_token(
+            state,
+            &token_lexer,
+            token,
+            *previous_token_was_dot,
+            history->previous_parser_token,
+            &token_map
+        )) {
+        record_parse_error(
+            state->result,
+            (struct mylite_sql_parse_error){
+                .status = MYLITE_SQL_PARSE_SYNTAX_ERROR,
+                .parser_token = -1,
+                .token = *token,
+            }
+        );
+        return state->result->status;
+    }
+
+    mylite_sql_lemon(parser, token_map.parser_token, *token, state);
+    *previous_token_was_dot = token_map.previous_token_was_dot;
+    update_parser_token_history(history, token_map.parser_token);
+    return state->result->status;
 }
 
 static enum mylite_sql_parse_status try_parse_parenthesized_row_constructor_statement(
@@ -13618,8 +13912,7 @@ static bool token_can_name_immediate_function(const struct mylite_sql_token *tok
            !token_text_equals(token, "JOIN");
 }
 
-static bool lexer_parenthesized_expression_has_top_level_comma(
-    const struct mylite_sql_lexer *lexer
+static bool lexer_parenthesized_expression_has_top_level_comma(const struct mylite_sql_lexer *lexer
 ) {
     struct mylite_sql_lexer lookahead;
     int paren_depth = 1;

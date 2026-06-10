@@ -191,6 +191,8 @@ distinct_aggregate_grouped=$(
         "USE ${DATABASE};
          SELECT DISTINCT HIGH_PRIORITY STRAIGHT_JOIN SQL_SMALL_RESULT SQL_BIG_RESULT
            SQL_BUFFER_RESULT n FROM t ORDER BY n;
+         SELECT SQL_BIG_RESULT DISTINCT n FROM t ORDER BY n;
+         SELECT SQL_SMALL_RESULT SQL_BUFFER_RESULT DISTINCT n FROM t ORDER BY n;
          SELECT SQL_SMALL_RESULT SQL_BIG_RESULT SQL_BUFFER_RESULT COUNT(*) FROM t
            WHERE n IS NOT NULL;
          SELECT SQL_SMALL_RESULT SQL_BIG_RESULT SQL_BUFFER_RESULT n, COUNT(*) FROM t
@@ -200,10 +202,53 @@ expect_value \
     "distinct aggregate grouped no-op modifiers" \
     "NULL
 10
+NULL
+10
+NULL
+10
 2
 NULL	1
 10	2" \
     "$distinct_aggregate_grouped"
+
+no_cache_before_distinct=$(
+    run_mysql \
+        "USE ${DATABASE};
+         SELECT SQL_NO_CACHE DISTINCT n FROM t WHERE n IS NOT NULL ORDER BY n;
+         SHOW COUNT(*) WARNINGS;
+         SHOW WARNINGS;"
+)
+expect_value \
+    "sql no-cache before distinct warning" \
+    "10
+1
+Warning	1681	'SQL_NO_CACHE' is deprecated and will be removed in a future release." \
+    "$no_cache_before_distinct"
+
+calc_before_distinct=$(
+    run_mysql \
+        "USE ${DATABASE};
+         SELECT SQL_CALC_FOUND_ROWS DISTINCT n FROM t WHERE n IS NOT NULL ORDER BY n LIMIT 1;
+         SHOW COUNT(*) WARNINGS;
+         SHOW WARNINGS;
+         SELECT FOUND_ROWS();"
+)
+expect_value \
+    "sql calc before distinct visible row" \
+    "10" \
+    "$(printf '%s\n' "$calc_before_distinct" | sed -n '1p')"
+expect_value \
+    "sql calc before distinct warning count" \
+    "1" \
+    "$(printf '%s\n' "$calc_before_distinct" | sed -n '2p')"
+expect_contains \
+    "sql calc before distinct warning" \
+    "$(printf '%s\n' "$calc_before_distinct" | sed -n '3p')" \
+    "Warning	1287	SQL_CALC_FOUND_ROWS is deprecated"
+expect_value \
+    "sql calc before distinct found rows" \
+    "1" \
+    "$(printf '%s\n' "$calc_before_distinct" | sed -n '4p')"
 
 source_selects=$(
     run_mysql \

@@ -154,9 +154,12 @@ static int test_scalar_noop_modifiers(void) {
 static int test_table_noop_modifiers(void) {
     static const char *const limited_rows[] = {"2", "3"};
     static const char *const distinct_rows[] = {"20", "30"};
+    static const char *const distinct_limited_rows[] = {"20"};
     static const char *const count_rows[] = {"4"};
     static const char *const calc_rows[] = {"1"};
     static const char *const grouped_values[] = {"20", "2", "30", "1"};
+    static const int sql_calc_codes[] = {1287};
+    static const char *const sql_calc_messages[] = {sql_calc_warning_message};
     static const int ordered_warning_codes[] = {1681, 1287};
     static const char *const calc_warning_messages[] = {
         sql_no_cache_warning_message,
@@ -197,6 +200,31 @@ static int test_table_noop_modifiers(void) {
     mylite_result_free(result);
     result = NULL;
 
+    failures += execute_ok(
+        database,
+        "SELECT SQL_BIG_RESULT DISTINCT n FROM t WHERE n IS NOT NULL ORDER BY n",
+        &result
+    );
+    failures += expect_rows(result, distinct_rows, 2U, 0U, "sql_big_result before distinct rows");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(
+        database,
+        "SELECT SQL_NO_CACHE DISTINCT n FROM t WHERE n IS NOT NULL ORDER BY n",
+        &result
+    );
+    failures += expect_rows(result, distinct_rows, 2U, 1U, "sql_no_cache before distinct rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_warning_rows(
+        database,
+        sql_no_cache_codes,
+        sql_no_cache_messages,
+        1U,
+        "sql_no_cache before distinct warning"
+    );
+
     failures += execute_ok(database, "SELECT SQL_NO_CACHE COUNT(*) FROM t", &result);
     failures += expect_rows(result, count_rows, 1U, 1U, "count sql_no_cache row");
     mylite_result_free(result);
@@ -233,6 +261,22 @@ static int test_table_noop_modifiers(void) {
         calc_warning_messages,
         2U,
         "sql_no_cache before sql_calc warning"
+    );
+
+    failures += execute_ok(
+        database,
+        "SELECT SQL_CALC_FOUND_ROWS DISTINCT n FROM t WHERE n IS NOT NULL ORDER BY n LIMIT 1",
+        &result
+    );
+    failures += expect_rows(result, distinct_limited_rows, 1U, 1U, "sql_calc before distinct rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_warning_rows(
+        database,
+        sql_calc_codes,
+        sql_calc_messages,
+        1U,
+        "sql_calc before distinct warning"
     );
 
     mylite_close(database);

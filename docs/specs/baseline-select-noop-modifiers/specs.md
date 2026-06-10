@@ -51,9 +51,13 @@ Runtime probes against MySQL 8.4.9 showed:
 - `SQL_NO_CACHE` warning rows are recorded before `SQL_CALC_FOUND_ROWS` and
   `FOUND_ROWS()` deprecation warnings when those modifiers/functions are used
   in the same accepted statement.
-- MySQL accepts many modifier permutations and duplicate no-op modifiers. This
-  phase intentionally admits only the canonical MyLite grammar below and defers
-  broader permutation compatibility.
+- MySQL accepts result-option modifiers such as `SQL_BIG_RESULT`,
+  `SQL_SMALL_RESULT`, `SQL_BUFFER_RESULT`, and `SQL_CALC_FOUND_ROWS` before
+  `DISTINCT` / `DISTINCTROW` / `ALL`, in addition to the canonical order.
+- MySQL accepts many broader modifier permutations and duplicate no-op
+  modifiers. This phase intentionally admits the canonical MyLite grammar below
+  plus the documented canonical-order result-option-before-duplicate
+  compatibility retry, and defers broader permutation compatibility.
 
 ## Ownership Boundaries
 
@@ -84,7 +88,7 @@ The admitted grammar is intentionally canonical and independently authored for
 MyLite. It is based on the observed MySQL feature surface and current MyLite
 parser structure, not copied from MySQL parser sources.
 
-The modifier sequence is:
+The core modifier sequence is canonical:
 
 ```text
 select_modifiers:
@@ -159,6 +163,32 @@ select_statement(A) ::=
 The implementation may reuse existing select-statement constructors internally,
 but the AST must expose enough state to distinguish each admitted modifier.
 
+For compatibility with MySQL-emitted statement text, the parser also accepts a
+narrow leading result-option prefix before the duplicate-mode modifier. When
+more than one result option appears in this prefix, the result options must use
+the same relative order as the canonical grammar:
+
+```text
+select_modifiers_compat:
+    result_option_prefix duplicate_modifier canonical_modifier_tail
+
+result_option_prefix:
+    sql_small_result_opt sql_big_result_opt sql_buffer_result_opt
+    sql_no_cache_opt sql_calc_found_rows_opt
+
+duplicate_modifier:
+    ALL
+  | DISTINCT
+  | DISTINCTROW
+```
+
+The accepted compatibility form is normalized into the same AST flags as the
+canonical form. The implementation may do this as a bounded parser retry over
+the initial token prefix rather than by expanding the Lemon grammar, because
+the broad order-independent modifier grammar is not worth the generated-parser
+state growth for this narrow slice. Arbitrary ordering inside the result-option
+prefix remains deferred with the rest of the broad modifier permutation surface.
+
 ## Supported Surface
 
 The no-op modifiers are admitted on existing MyLite-supported `SELECT` shapes:
@@ -171,6 +201,14 @@ The no-op modifiers are admitted on existing MyLite-supported `SELECT` shapes:
 - existing descriptor-backed source `SELECT` paths used by `CREATE TABLE ...
   SELECT`, `INSERT ... SELECT`, and `REPLACE ... SELECT`, except that
   `SQL_CALC_FOUND_ROWS` remains rejected for those source forms.
+
+The result-option-before-duplicate compatibility form is admitted on the same
+supported shapes as the equivalent canonical form. For example,
+`SELECT SQL_BIG_RESULT DISTINCT column FROM table` and
+`SELECT SQL_CALC_FOUND_ROWS DISTINCT column FROM table LIMIT n` are normalized
+to the canonical `SELECT DISTINCT SQL_BIG_RESULT ...` /
+`SELECT DISTINCT SQL_CALC_FOUND_ROWS ...` internal representation before
+planning.
 
 `SQL_CALC_FOUND_ROWS` is admitted only where the previous found-rows slice
 admits it: descriptor-backed column-list, wildcard, and limited `DISTINCT`
@@ -240,8 +278,8 @@ outer statement row-count and found-row state purposes.
 
 This phase must keep deterministic behavior for:
 
-- unsupported modifier permutations or repeated modifiers if the canonical
-  grammar does not admit them;
+- unsupported modifier permutations or repeated modifiers beyond the
+  canonical-order result-option-before-duplicate compatibility form;
 - `SQL_CALC_FOUND_ROWS` outside its existing supported subset;
 - `SQL_CALC_FOUND_ROWS` inside `CREATE TABLE ... SELECT`, `INSERT ... SELECT`,
   and `REPLACE ... SELECT`;
@@ -278,6 +316,8 @@ Add MySQL-runtime expectation coverage for:
 - `SQL_NO_CACHE` with `FOUND_ROWS()` warning order;
 - `SQL_NO_CACHE` with `SQL_CALC_FOUND_ROWS` warning order and found-row result;
 - canonical distinct, aggregate, and grouped forms with no-op modifiers;
+- result-option-before-duplicate forms such as `SQL_BIG_RESULT DISTINCT` and
+  `SQL_CALC_FOUND_ROWS DISTINCT`;
 - no-op modifiers in `CREATE TABLE ... SELECT`, `INSERT ... SELECT`, and
   `REPLACE ... SELECT` source selects, including `SQL_NO_CACHE` warnings;
 - existing row results, affected-row/result-row conventions, warning counts,
@@ -298,7 +338,10 @@ Update `COMPATIBILITY.md` and
 - limited `SQL_CALC_FOUND_ROWS`;
 - limited canonical no-op `HIGH_PRIORITY`, statement-level `STRAIGHT_JOIN`,
   `SQL_SMALL_RESULT`, `SQL_BIG_RESULT`, `SQL_BUFFER_RESULT`, and deprecated
-  no-op `SQL_NO_CACHE` with warning `1681`.
+  no-op `SQL_NO_CACHE` with warning `1681`;
+- the narrow canonical-order result-option-before-duplicate compatibility form for
+  `SQL_SMALL_RESULT`, `SQL_BIG_RESULT`, `SQL_BUFFER_RESULT`, `SQL_NO_CACHE`,
+  and `SQL_CALC_FOUND_ROWS` before `ALL`, `DISTINCT`, or `DISTINCTROW`.
 
 Do not claim full modifier permutations, repeated modifiers, joins, source
 optimizer behavior, locking, buffering, temporary-table strategy, query cache

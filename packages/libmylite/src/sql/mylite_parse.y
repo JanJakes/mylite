@@ -3807,6 +3807,21 @@ delete_statement(A) ::=
     delete_limit_clause_opt(L). {
     A = mylite_sql_parser_make_delete_statement(state, D, T, W, O, L);
 }
+delete_statement(A) ::=
+    DELETE(D) LOW_PRIORITY FROM delete_table_reference(T) where_clause_opt(W) order_clause_opt(O)
+    delete_limit_clause_opt(L). {
+    A = mylite_sql_parser_make_delete_statement(state, D, T, W, O, L);
+}
+delete_statement(A) ::=
+    DELETE(D) DELETE_QUICK_MODIFIER FROM delete_table_reference(T) where_clause_opt(W)
+    order_clause_opt(O) delete_limit_clause_opt(L). {
+    A = mylite_sql_parser_make_delete_statement(state, D, T, W, O, L);
+}
+delete_statement(A) ::=
+    DELETE(D) LOW_PRIORITY DELETE_QUICK_MODIFIER FROM delete_table_reference(T) where_clause_opt(W)
+    order_clause_opt(O) delete_limit_clause_opt(L). {
+    A = mylite_sql_parser_make_delete_statement(state, D, T, W, O, L);
+}
 delete_table_reference(A) ::= table_name(T) table_alias_opt(AL). {
     A = AL == NULL ? T : mylite_sql_parser_make_table_source(state, T, AL, NULL);
 }

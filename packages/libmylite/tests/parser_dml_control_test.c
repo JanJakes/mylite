@@ -2054,15 +2054,27 @@ static int test_delete_statement(void) {
 
     failures += parser_test_parse_sql(
         "DELETE l FROM lefts AS l JOIN rights AS r ON l.k = r.k ORDER BY l.id;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT,
+        "joined delete order placeholder"
     );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
         "DELETE l FROM lefts AS l JOIN rights AS r ON l.k = r.k LIMIT 1;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT,
+        "joined delete limit placeholder"
     );
     mylite_sql_parse_result_deinit(&result);
 

@@ -501,7 +501,7 @@ static int test_joined_delete_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(
@@ -510,7 +510,7 @@ static int test_joined_delete_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += expect_statement_ok(

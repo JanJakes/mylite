@@ -543,7 +543,7 @@ static int test_insert_select_union_diagnostics_and_unsupported_forms(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near 'UNION'",
+            .message_part = "utility statement is not supported",
         }
     );
 

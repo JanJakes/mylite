@@ -1677,18 +1677,11 @@ static int test_syntax_errors(void) {
         parser_test_parse_sql("DELETE FROM t LIMIT 1, 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "DELETE FROM t ORDER BY id, nn;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("DELETE FROM t ORDER BY id, nn;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "DELETE LOW_PRIORITY FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures += parser_test_parse_sql("DELETE LOW_PRIORITY FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql("UPDATE t SET id = 1.5;", MYLITE_SQL_PARSE_OK, &result);
@@ -1759,7 +1752,7 @@ static int test_syntax_errors(void) {
 
     failures += parser_test_parse_sql(
         "UPDATE t SET id = 1 ORDER BY id, nn LIMIT 1;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);

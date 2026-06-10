@@ -114,7 +114,7 @@ static bool map_lexer_token(
     const struct mylite_sql_lexer *lexer,
     const struct mylite_sql_token *token,
     bool previous_token_was_dot,
-    int previous_parser_token,
+    const struct mylite_sql_parser_token_history *history,
     struct mylite_sql_parser_token_map *out_map
 );
 static bool should_skip_select_lock_target_list(
@@ -338,6 +338,9 @@ static enum placeholder_statement_kind classify_query_function_subquery_placehol
     const struct placeholder_statement_scan *scan
 );
 static enum placeholder_statement_kind classify_query_table_reference_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+);
+static enum placeholder_statement_kind classify_dml_variant_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );
 static bool placeholder_scan_starts_query_statement(const struct placeholder_statement_scan *scan);
@@ -567,6 +570,84 @@ static bool placeholder_scan_left_paren_starts_function_arguments(
     size_t left_paren_index
 );
 static bool placeholder_scan_token_can_name_immediate_function(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_contains_dml_variant_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_delete_variant_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_delete_ignore_modifier_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_delete_multitable_target_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_delete_using_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_multikey_dml_order_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_user_variable_assignment_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_update_variant_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_update_has_joined_source_before_set(
+    const struct placeholder_statement_scan *scan,
+    size_t set_index
+);
+static bool placeholder_scan_update_has_using_join_before_set(
+    const struct placeholder_statement_scan *scan,
+    size_t set_index
+);
+static bool placeholder_scan_contains_insert_replace_variant_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_insert_identifier_value_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_parenthesized_values_contain_identifier(
+    const struct placeholder_statement_scan *scan,
+    size_t left_paren_index
+);
+static bool placeholder_scan_contains_insert_set_identifier_value_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_duplicate_identifier_assignment_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_replace_compound_select_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_find_top_level_keyword(
+    const struct placeholder_statement_scan *scan,
+    const char *keyword,
+    size_t *out_index
+);
+static bool placeholder_scan_find_top_level_keyword_after(
+    const struct placeholder_statement_scan *scan,
+    const char *keyword,
+    size_t start_index,
+    size_t *out_index
+);
+static bool placeholder_scan_token_is_assignment_operator(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static size_t placeholder_scan_delete_modifier_prefix_end(
+    const struct placeholder_statement_scan *scan,
+    bool *out_saw_ignore
+);
+static bool placeholder_scan_token_is_delete_modifier_keyword(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_can_start_dml_identifier_value(
     const struct placeholder_statement_scan *scan,
     size_t index
 );
@@ -810,6 +891,7 @@ static bool map_keyword_token(
     const struct mylite_sql_token *token,
     bool previous_token_was_dot,
     int previous_parser_token,
+    int token_before_previous_parser_token,
     bool has_immediate_left_paren,
     int *out_parser_token
 );
@@ -825,6 +907,10 @@ static bool map_operator_token(
 );
 static struct mylite_sql_ast_node *parser_child_at(struct mylite_sql_ast_node *node, size_t index);
 static bool previous_token_allows_select_noop_modifier(int previous_parser_token);
+static bool previous_token_allows_delete_quick_modifier(
+    int previous_parser_token,
+    int token_before_previous_parser_token
+);
 static bool token_text_equals(const struct mylite_sql_token *token, const char *text);
 static char ascii_upper(unsigned char byte);
 static bool is_parse_ok(const struct mylite_sql_parser_state *state);
@@ -1046,7 +1132,7 @@ static enum mylite_sql_parse_status parse_sql_with_lemon_options(
                 &lexer,
                 &token,
                 previous_token_was_dot,
-                token_history.previous_parser_token,
+                &token_history,
                 &token_map
             )) {
             record_parse_error(
@@ -1340,7 +1426,7 @@ static enum mylite_sql_parse_status feed_select_modifier_reordered_token(
             &token_lexer,
             token,
             *previous_token_was_dot,
-            history->previous_parser_token,
+            history,
             &token_map
         )) {
         record_parse_error(
@@ -2273,6 +2359,9 @@ static enum placeholder_statement_kind classify_query_surface_placeholder_statem
     if (classify_query_table_reference_placeholder_statement(scan) != PLACEHOLDER_STATEMENT_NONE) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
+    if (classify_dml_variant_placeholder_statement(scan) != PLACEHOLDER_STATEMENT_NONE) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
     return PLACEHOLDER_STATEMENT_NONE;
 }
 
@@ -2465,6 +2554,21 @@ static enum placeholder_statement_kind classify_query_table_reference_placeholde
     if (placeholder_scan_contains_parenthesized_table_reference_surface(scan) ||
         placeholder_scan_contains_odbc_table_reference_surface(scan) ||
         placeholder_scan_contains_mixed_comma_explicit_join_surface(scan)) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
+    return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static enum placeholder_statement_kind classify_dml_variant_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || scan->has_non_trailing_semicolon ||
+        !placeholder_scan_starts_query_statement(scan) ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U) ||
+        placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return PLACEHOLDER_STATEMENT_NONE;
+    }
+    if (placeholder_scan_contains_dml_variant_surface(scan)) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
     return PLACEHOLDER_STATEMENT_NONE;
@@ -3859,6 +3963,411 @@ static bool placeholder_scan_token_can_name_immediate_function(
            !placeholder_scan_token_text_equals(scan, index, "INSERT") &&
            !placeholder_scan_token_text_equals(scan, index, "REPLACE") &&
            !placeholder_scan_token_text_equals(scan, index, "JOIN");
+}
+
+static bool placeholder_scan_contains_dml_variant_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    if (placeholder_scan_token_text_equals(scan, 0U, "DELETE")) {
+        return placeholder_scan_contains_delete_variant_surface(scan);
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "UPDATE")) {
+        return placeholder_scan_contains_update_variant_surface(scan);
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "INSERT") ||
+        placeholder_scan_token_text_equals(scan, 0U, "REPLACE")) {
+        return placeholder_scan_contains_insert_replace_variant_surface(scan);
+    }
+    return false;
+}
+
+static bool placeholder_scan_contains_delete_variant_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    return placeholder_scan_contains_delete_ignore_modifier_surface(scan) ||
+           placeholder_scan_contains_delete_multitable_target_surface(scan) ||
+           placeholder_scan_contains_delete_using_surface(scan) ||
+           placeholder_scan_contains_multikey_dml_order_surface(scan) ||
+           placeholder_scan_contains_user_variable_assignment_surface(scan);
+}
+
+static bool placeholder_scan_contains_delete_ignore_modifier_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    bool saw_ignore = false;
+    size_t prefix_end = 0U;
+    size_t from_index = 0U;
+
+    if (scan == NULL || !placeholder_scan_token_text_equals(scan, 0U, "DELETE")) {
+        return false;
+    }
+    prefix_end = placeholder_scan_delete_modifier_prefix_end(scan, &saw_ignore);
+    return saw_ignore && prefix_end < scan->token_count &&
+           !placeholder_scan_token_is_delete_modifier_keyword(scan, prefix_end) &&
+           placeholder_scan_find_top_level_keyword_after(scan, "FROM", prefix_end, &from_index);
+}
+
+static bool placeholder_scan_contains_delete_multitable_target_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t target_start = 0U;
+    size_t from_index = 0U;
+
+    if (scan == NULL || !placeholder_scan_token_text_equals(scan, 0U, "DELETE") ||
+        !placeholder_scan_find_top_level_keyword(scan, "FROM", &from_index)) {
+        return false;
+    }
+    target_start = placeholder_scan_delete_modifier_prefix_end(scan, NULL);
+    if (from_index <= target_start || from_index + 1U >= scan->token_count ||
+        placeholder_scan_token_is_delete_modifier_keyword(scan, target_start)) {
+        return false;
+    }
+    return target_start < scan->token_count;
+}
+
+static bool placeholder_scan_contains_delete_using_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t from_index = 0U;
+    size_t using_index = 0U;
+
+    if (scan == NULL || !placeholder_scan_token_text_equals(scan, 0U, "DELETE")) {
+        return false;
+    }
+    from_index = placeholder_scan_delete_modifier_prefix_end(scan, NULL);
+    return placeholder_scan_token_text_equals(scan, from_index, "FROM") &&
+           placeholder_scan_find_top_level_keyword(scan, "USING", &using_index) &&
+           using_index > from_index + 1U && using_index + 1U < scan->token_count;
+}
+
+static bool placeholder_scan_contains_multikey_dml_order_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t order_index = 0U;
+    int paren_depth = 0;
+
+    if (scan == NULL ||
+        (!placeholder_scan_token_text_equals(scan, 0U, "DELETE") &&
+         !placeholder_scan_token_text_equals(scan, 0U, "UPDATE")) ||
+        !placeholder_scan_find_top_level_keyword(scan, "ORDER", &order_index) ||
+        !placeholder_scan_token_text_equals(scan, order_index + 1U, "BY")) {
+        return false;
+    }
+    for (size_t index = order_index + 2U; index < scan->token_count; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            continue;
+        }
+        if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+            continue;
+        }
+        if (paren_depth == 0 && placeholder_scan_token_text_equals(scan, index, "LIMIT")) {
+            return false;
+        }
+        if (paren_depth == 0 && token_is_comma(&scan->tokens[index])) {
+            return index > order_index + 2U && index + 1U < scan->token_count &&
+                   !placeholder_scan_token_text_equals(scan, index + 1U, "LIMIT");
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_contains_user_variable_assignment_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || !placeholder_scan_token_text_equals(scan, 0U, "DELETE")) {
+        return false;
+    }
+    for (size_t index = 1U; index < scan->token_count; ++index) {
+        if (placeholder_scan_token_is_assignment_operator(scan, index) && index > 0U &&
+            scan->tokens[index - 1U].kind == MYLITE_SQL_TOKEN_USER_VARIABLE) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_contains_update_variant_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t set_index = 0U;
+
+    if (scan == NULL || !placeholder_scan_token_text_equals(scan, 0U, "UPDATE") ||
+        !placeholder_scan_find_top_level_keyword(scan, "SET", &set_index) || set_index <= 1U ||
+        set_index + 1U >= scan->token_count) {
+        return false;
+    }
+    return placeholder_scan_update_has_joined_source_before_set(scan, set_index) ||
+           placeholder_scan_update_has_using_join_before_set(scan, set_index) ||
+           placeholder_scan_contains_multikey_dml_order_surface(scan);
+}
+
+static bool placeholder_scan_update_has_joined_source_before_set(
+    const struct placeholder_statement_scan *scan,
+    size_t set_index
+) {
+    size_t source_start = 1U;
+
+    if (placeholder_scan_token_text_equals(scan, source_start, "LOW_PRIORITY")) {
+        ++source_start;
+    }
+    if (placeholder_scan_token_text_equals(scan, source_start, "IGNORE")) {
+        ++source_start;
+    }
+    for (size_t index = source_start + 1U; index < set_index; ++index) {
+        if (token_is_comma(&scan->tokens[index])) {
+            return index > source_start && index + 1U < set_index &&
+                   !token_is_comma(&scan->tokens[index - 1U]) &&
+                   !token_is_comma(&scan->tokens[index + 1U]);
+        }
+        if (placeholder_scan_token_text_equals(scan, index, "JOIN") ||
+            placeholder_scan_token_text_equals(scan, index, "STRAIGHT_JOIN")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_update_has_using_join_before_set(
+    const struct placeholder_statement_scan *scan,
+    size_t set_index
+) {
+    bool saw_join = false;
+
+    for (size_t index = 1U; index < set_index; ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, "JOIN") ||
+            placeholder_scan_token_text_equals(scan, index, "STRAIGHT_JOIN")) {
+            saw_join = true;
+        }
+        if (saw_join && placeholder_scan_token_text_equals(scan, index, "USING")) {
+            return index + 1U < set_index;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_contains_insert_replace_variant_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    return placeholder_scan_contains_insert_identifier_value_surface(scan) ||
+           placeholder_scan_contains_insert_set_identifier_value_surface(scan) ||
+           placeholder_scan_contains_duplicate_identifier_assignment_surface(scan) ||
+           placeholder_scan_contains_replace_compound_select_surface(scan);
+}
+
+static bool placeholder_scan_contains_insert_identifier_value_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || !placeholder_scan_token_text_equals(scan, 0U, "INSERT")) {
+        return false;
+    }
+    for (size_t index = 1U; index < scan->token_count; ++index) {
+        if ((placeholder_scan_token_text_equals(scan, index, "VALUES") ||
+             placeholder_scan_token_text_equals(scan, index, "VALUE")) &&
+            index + 1U < scan->token_count && token_is_left_paren(&scan->tokens[index + 1U]) &&
+            placeholder_scan_parenthesized_values_contain_identifier(scan, index + 1U)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_parenthesized_values_contain_identifier(
+    const struct placeholder_statement_scan *scan,
+    size_t left_paren_index
+) {
+    size_t right_paren_index = 0U;
+    int paren_depth = 0;
+
+    if (!placeholder_scan_find_matching_right_paren(scan, left_paren_index, &right_paren_index) ||
+        right_paren_index <= left_paren_index + 1U ||
+        token_is_comma(&scan->tokens[right_paren_index - 1U])) {
+        return false;
+    }
+    for (size_t index = left_paren_index + 1U; index < right_paren_index; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            continue;
+        }
+        if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+            continue;
+        }
+        if (paren_depth == 0 && token_is_comma(&scan->tokens[index]) &&
+            index + 1U == right_paren_index) {
+            return false;
+        }
+        if (paren_depth == 0 &&
+            placeholder_scan_token_can_start_dml_identifier_value(scan, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_contains_insert_set_identifier_value_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t set_index = 0U;
+
+    if (scan == NULL || !placeholder_scan_token_text_equals(scan, 0U, "INSERT") ||
+        !placeholder_scan_find_top_level_keyword(scan, "SET", &set_index)) {
+        return false;
+    }
+    for (size_t index = set_index + 1U; index + 1U < scan->token_count; ++index) {
+        if (token_is_equal_sign(&scan->tokens[index]) &&
+            placeholder_scan_token_can_start_dml_identifier_value(scan, index + 1U)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_contains_duplicate_identifier_assignment_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t update_index = 0U;
+
+    if (scan == NULL || !placeholder_scan_token_text_equals(scan, 0U, "INSERT") ||
+        !placeholder_scan_find_top_level_keyword(scan, "UPDATE", &update_index) ||
+        update_index < 3U || !placeholder_scan_token_text_equals(scan, update_index - 1U, "KEY") ||
+        !placeholder_scan_token_text_equals(scan, update_index - 2U, "DUPLICATE") ||
+        !placeholder_scan_token_text_equals(scan, update_index - 3U, "ON")) {
+        return false;
+    }
+    for (size_t index = update_index + 1U; index + 1U < scan->token_count; ++index) {
+        if (token_is_equal_sign(&scan->tokens[index]) &&
+            placeholder_scan_token_can_start_dml_identifier_value(scan, index + 1U)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_contains_replace_compound_select_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t select_index = 0U;
+    size_t union_index = 0U;
+
+    return scan != NULL && placeholder_scan_token_text_equals(scan, 0U, "REPLACE") &&
+           placeholder_scan_find_top_level_keyword(scan, "SELECT", &select_index) &&
+           placeholder_scan_find_top_level_keyword_after(
+               scan,
+               "UNION",
+               select_index + 1U,
+               &union_index
+           ) &&
+           union_index + 1U < scan->token_count;
+}
+
+static bool placeholder_scan_find_top_level_keyword(
+    const struct placeholder_statement_scan *scan,
+    const char *keyword,
+    size_t *out_index
+) {
+    return placeholder_scan_find_top_level_keyword_after(scan, keyword, 0U, out_index);
+}
+
+static bool placeholder_scan_find_top_level_keyword_after(
+    const struct placeholder_statement_scan *scan,
+    const char *keyword,
+    size_t start_index,
+    size_t *out_index
+) {
+    int paren_depth = 0;
+
+    if (scan == NULL || keyword == NULL || out_index == NULL || start_index > scan->token_count) {
+        return false;
+    }
+    for (size_t index = start_index; index < scan->token_count; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            continue;
+        }
+        if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+            continue;
+        }
+        if (paren_depth == 0 && placeholder_scan_token_text_equals(scan, index, keyword)) {
+            *out_index = index;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_token_is_assignment_operator(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    const struct mylite_sql_token *token = NULL;
+
+    if (scan == NULL || index >= scan->token_count) {
+        return false;
+    }
+    token = &scan->tokens[index];
+    return token->kind == MYLITE_SQL_TOKEN_OPERATOR &&
+           token->operator_kind == MYLITE_SQL_OPERATOR_ASSIGN;
+}
+
+static size_t placeholder_scan_delete_modifier_prefix_end(
+    const struct placeholder_statement_scan *scan,
+    bool *out_saw_ignore
+) {
+    size_t index = 1U;
+
+    if (out_saw_ignore != NULL) {
+        *out_saw_ignore = false;
+    }
+    if (scan == NULL || !placeholder_scan_token_text_equals(scan, 0U, "DELETE")) {
+        return 0U;
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "LOW_PRIORITY")) {
+        ++index;
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "QUICK")) {
+        ++index;
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "IGNORE")) {
+        if (out_saw_ignore != NULL) {
+            *out_saw_ignore = true;
+        }
+        ++index;
+    }
+    return index;
+}
+
+static bool placeholder_scan_token_is_delete_modifier_keyword(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return placeholder_scan_token_text_equals(scan, index, "LOW_PRIORITY") ||
+           placeholder_scan_token_text_equals(scan, index, "QUICK") ||
+           placeholder_scan_token_text_equals(scan, index, "IGNORE");
+}
+
+static bool placeholder_scan_token_can_start_dml_identifier_value(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    if (scan == NULL || !placeholder_scan_token_is_identifier_like(scan, index)) {
+        return false;
+    }
+    if (index + 1U >= scan->token_count) {
+        return true;
+    }
+    return !token_is_left_paren(&scan->tokens[index + 1U]);
 }
 
 static bool placeholder_scan_contains_bare_truth_clause_surface(
@@ -14515,10 +15024,13 @@ static bool map_lexer_token(
     const struct mylite_sql_lexer *lexer,
     const struct mylite_sql_token *token,
     bool previous_token_was_dot,
-    int previous_parser_token,
+    const struct mylite_sql_parser_token_history *history,
     struct mylite_sql_parser_token_map *out_map
 ) {
     int parser_token = 0;
+    int previous_parser_token = history == NULL ? 0 : history->previous_parser_token;
+    int token_before_previous_parser_token =
+        history == NULL ? 0 : history->token_before_previous_parser_token;
 
     if (token == NULL || out_map == NULL) {
         return false;
@@ -14540,6 +15052,7 @@ static bool map_lexer_token(
                     token,
                     previous_token_was_dot,
                     previous_parser_token,
+                    token_before_previous_parser_token,
                     lexer_token_has_immediate_left_paren(lexer, token),
                     &parser_token
                 )) {
@@ -14826,6 +15339,7 @@ static bool map_keyword_token(
     const struct mylite_sql_token *token,
     bool previous_token_was_dot,
     int previous_parser_token,
+    int token_before_previous_parser_token,
     bool has_immediate_left_paren,
     int *out_parser_token
 ) {
@@ -15390,6 +15904,15 @@ static bool map_keyword_token(
         }
     }
 
+    if (previous_token_allows_delete_quick_modifier(
+            previous_parser_token,
+            token_before_previous_parser_token
+        ) &&
+        token_text_equals(token, "QUICK")) {
+        *out_parser_token = MYLITE_SQL_PARSE_DELETE_QUICK_MODIFIER;
+        return true;
+    }
+
     for (size_t index = 0U; index < sizeof(keyword_mappings) / sizeof(keyword_mappings[0]);
          ++index) {
         if (token_text_equals(token, keyword_mappings[index].keyword)) {
@@ -15537,6 +16060,15 @@ static bool previous_token_allows_select_noop_modifier(int previous_parser_token
     default:
         return false;
     }
+}
+
+static bool previous_token_allows_delete_quick_modifier(
+    int previous_parser_token,
+    int token_before_previous_parser_token
+) {
+    return previous_parser_token == MYLITE_SQL_PARSE_DELETE ||
+           (previous_parser_token == MYLITE_SQL_PARSE_LOW_PRIORITY &&
+            token_before_previous_parser_token == MYLITE_SQL_PARSE_DELETE);
 }
 
 static bool token_text_equals(const struct mylite_sql_token *token, const char *text) {

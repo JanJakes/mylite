@@ -595,6 +595,8 @@ static int test_delete_success_persistence_rename_and_drop(void) {
 }
 
 static int test_delete_diagnostics(void) {
+    static const char *const ids_2_3_4[] = {"2", "3", "4"};
+    static const char *const ids_1_3_4[] = {"1", "3", "4"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -803,7 +805,7 @@ static int test_delete_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(
@@ -824,23 +826,25 @@ static int test_delete_diagnostics(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += create_numbers_table(database, "delete_low_priority");
+    failures += expect_delete_remaining(
         database,
-        "DELETE LOW_PRIORITY FROM numbers WHERE id = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
+        "delete_low_priority",
+        1,
+        "DELETE LOW_PRIORITY FROM delete_low_priority WHERE id = 1",
+        ids_2_3_4,
+        sizeof(ids_2_3_4) / sizeof(ids_2_3_4[0]),
+        "DELETE LOW_PRIORITY no-op modifier"
     );
-    failures += execute_error(
+    failures += create_numbers_table(database, "delete_quick");
+    failures += expect_delete_remaining(
         database,
-        "DELETE QUICK FROM numbers WHERE id = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
+        "delete_quick",
+        1,
+        "DELETE QUICK FROM delete_quick WHERE id = 2",
+        ids_1_3_4,
+        sizeof(ids_1_3_4) / sizeof(ids_1_3_4[0]),
+        "DELETE QUICK no-op modifier"
     );
     failures += execute_error(
         database,
@@ -848,7 +852,7 @@ static int test_delete_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(
@@ -857,7 +861,7 @@ static int test_delete_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(
@@ -866,7 +870,7 @@ static int test_delete_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(

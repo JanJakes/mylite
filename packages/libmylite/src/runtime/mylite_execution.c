@@ -17516,6 +17516,12 @@ static int map_enum_label(
     struct enum_type_info *info,
     struct mylite_dynamic_string *descriptor
 );
+static int decode_enum_label_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *label_node,
+    char **out_text,
+    size_t *out_text_length
+);
 static int check_enum_label_unique(
     struct mylite_db *database,
     const char *text,
@@ -17554,6 +17560,12 @@ static int map_set_member(
     size_t member_index,
     struct set_type_info *info,
     struct mylite_dynamic_string *descriptor
+);
+static int decode_set_member_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *member_node,
+    char **out_text,
+    size_t *out_text_length
 );
 static int check_set_member_unique(
     struct mylite_db *database,

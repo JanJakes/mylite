@@ -573,14 +573,7 @@ static int map_enum_label(
         set_unsupported_error(database, "ENUM supports at most 255 labels in this build");
         return MYLITE_ERROR;
     }
-    rc = decode_sql_string_literal(
-        database,
-        label_node,
-        "ENUM labels support only string literals",
-        "ENUM labels do not support NUL bytes",
-        &text,
-        &text_length
-    );
+    rc = decode_enum_label_literal(database, label_node, &text, &text_length);
     if (rc == MYLITE_OK) {
         trim_trailing_ascii_spaces(text, &text_length);
     }
@@ -599,6 +592,60 @@ static int map_enum_label(
     }
 
     free(text);
+    return rc;
+}
+
+static int decode_enum_label_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *label_node,
+    char **out_text,
+    size_t *out_text_length
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_text_length == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    if (label_node == NULL || label_node->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(database, "ENUM labels support only string, hex, and bit literals");
+        return MYLITE_ERROR;
+    }
+
+    switch (mylite_sql_ast_node_literal_kind(label_node)) {
+    case MYLITE_SQL_AST_LITERAL_STRING:
+        rc = decode_sql_string_literal(
+            database,
+            label_node,
+            "ENUM labels support only string, hex, and bit literals",
+            "ENUM labels do not support NUL bytes",
+            &text,
+            &text_length
+        );
+        break;
+    case MYLITE_SQL_AST_LITERAL_HEX:
+        rc = decode_binary_hex_literal(database, label_node, &text, &text_length);
+        break;
+    case MYLITE_SQL_AST_LITERAL_BIT:
+        rc = decode_binary_bit_literal(database, &label_node->span, &text, &text_length);
+        break;
+    default:
+        set_unsupported_error(database, "ENUM labels support only string, hex, and bit literals");
+        rc = MYLITE_ERROR;
+        break;
+    }
+    if (rc == MYLITE_OK && text_length > 0U && memchr(text, '\0', text_length) != NULL) {
+        free(text);
+        set_unsupported_error(database, "ENUM labels do not support NUL bytes");
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        *out_text = text;
+        *out_text_length = text_length;
+    }
     return rc;
 }
 
@@ -777,14 +824,7 @@ static int map_set_member(
         set_unsupported_error(database, "SET supports at most 64 members in this build");
         return MYLITE_ERROR;
     }
-    rc = decode_sql_string_literal(
-        database,
-        member_node,
-        "SET members support only string literals",
-        "SET members do not support NUL bytes",
-        &text,
-        &text_length
-    );
+    rc = decode_set_member_literal(database, member_node, &text, &text_length);
     if (rc == MYLITE_OK) {
         trim_trailing_ascii_spaces(text, &text_length);
     }
@@ -811,6 +851,60 @@ static int map_set_member(
     }
 
     free(text);
+    return rc;
+}
+
+static int decode_set_member_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *member_node,
+    char **out_text,
+    size_t *out_text_length
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_text_length == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    if (member_node == NULL || member_node->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(database, "SET members support only string, hex, and bit literals");
+        return MYLITE_ERROR;
+    }
+
+    switch (mylite_sql_ast_node_literal_kind(member_node)) {
+    case MYLITE_SQL_AST_LITERAL_STRING:
+        rc = decode_sql_string_literal(
+            database,
+            member_node,
+            "SET members support only string, hex, and bit literals",
+            "SET members do not support NUL bytes",
+            &text,
+            &text_length
+        );
+        break;
+    case MYLITE_SQL_AST_LITERAL_HEX:
+        rc = decode_binary_hex_literal(database, member_node, &text, &text_length);
+        break;
+    case MYLITE_SQL_AST_LITERAL_BIT:
+        rc = decode_binary_bit_literal(database, &member_node->span, &text, &text_length);
+        break;
+    default:
+        set_unsupported_error(database, "SET members support only string, hex, and bit literals");
+        rc = MYLITE_ERROR;
+        break;
+    }
+    if (rc == MYLITE_OK && text_length > 0U && memchr(text, '\0', text_length) != NULL) {
+        free(text);
+        set_unsupported_error(database, "SET members do not support NUL bytes");
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        *out_text = text;
+        *out_text_length = text_length;
+    }
     return rc;
 }
 

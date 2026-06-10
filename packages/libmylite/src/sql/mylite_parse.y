@@ -36,6 +36,7 @@
 %right ON.
 %left EQUAL NULL_SAFE_EQUAL NOT_EQUAL LESS LESS_EQUAL GREATER GREATER_EQUAL IS LIKE REGEXP RLIKE
     BETWEEN.
+%left ESCAPE.
 %left BITWISE_OR.
 %left BITWISE_AND.
 %left LEFT_SHIFT RIGHT_SHIFT.
@@ -44,6 +45,9 @@
 %left BITWISE_XOR.
 %left CONCAT_OPERATOR.
 %left JSON_EXTRACT_OPERATOR JSON_UNQUOTE_EXTRACT_OPERATOR.
+%left COLUMN_BINARY_ATTRIBUTE.
+%left ASCII UNICODE.
+%left INTRODUCED_LITERAL_VALUE.
 %left COLLATE.
 %right UPLUS UMINUS BITWISE_NOT BINARY.
 
@@ -4561,13 +4565,48 @@ keyword_function_token(A) ::= GEOMETRYCOLLECTION(T). {
 keyword_function_token(A) ::= GEOMCOLLECTION(T). {
     A = T;
 }
-dml_constant_scalar_value(A) ::= charset_introducer STRING(T). {
+
+collated_literal_expression(A) ::= STRING(T) COLLATE(C) option_name(N). {
+    A = mylite_sql_parser_make_collate_expression(
+        state,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING),
+        C,
+        N);
+}
+collated_literal_expression(A) ::= HEX_LITERAL(T) COLLATE(C) option_name(N). {
+    A = mylite_sql_parser_make_collate_expression(
+        state,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX),
+        C,
+        N);
+}
+collated_literal_expression(A) ::= BIT_LITERAL(T) COLLATE(C) option_name(N). {
+    A = mylite_sql_parser_make_collate_expression(
+        state,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT),
+        C,
+        N);
+}
+
+dml_constant_scalar_value(A) ::= collated_literal_expression(V). {
+    A = V;
+}
+dml_constant_scalar_value(A) ::= charset_introducer STRING(T). [INTRODUCED_LITERAL_VALUE] {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
-dml_constant_scalar_value(A) ::= charset_introducer HEX_LITERAL(T). {
+dml_constant_scalar_value(A) ::= charset_introducer STRING(T) COLLATE option_name. {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+dml_constant_scalar_value(A) ::= charset_introducer HEX_LITERAL(T). [INTRODUCED_LITERAL_VALUE] {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
 }
-dml_constant_scalar_value(A) ::= charset_introducer BIT_LITERAL(T). {
+dml_constant_scalar_value(A) ::= charset_introducer HEX_LITERAL(T) COLLATE option_name. {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
+}
+dml_constant_scalar_value(A) ::= charset_introducer BIT_LITERAL(T). [INTRODUCED_LITERAL_VALUE] {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
+}
+dml_constant_scalar_value(A) ::= charset_introducer BIT_LITERAL(T) COLLATE option_name. {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
 }
 dml_constant_scalar_value(A) ::= TEMPORAL_LITERAL_INTRODUCER STRING(T). {
@@ -6517,6 +6556,16 @@ predicate_atom(A) ::= qualified_identifier(C) GREATER_EQUAL(O) predicate_compari
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL, V);
 }
+predicate_atom(A) ::= qualified_identifier(C) predicate_comparison_operator(O)
+        introduced_predicate_literal(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O.token, O.operator_kind, V);
+}
+predicate_atom(A) ::= qualified_identifier(C) predicate_comparison_operator(O)
+        binary_predicate_literal(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O.token, O.operator_kind, V);
+}
 predicate_atom(A) ::=
     qualified_identifier(C) LIKE(O) predicate_like_pattern(P) predicate_like_escape_opt(E). {
     A = mylite_sql_parser_make_like_comparison_predicate(
@@ -6570,8 +6619,78 @@ predicate_atom(A) ::=
                 .escape = E,
             }));
 }
+predicate_atom(A) ::= qualified_identifier(C) LIKE(O) introduced_predicate_literal(P). {
+    A = mylite_sql_parser_make_like_comparison_predicate(
+        state,
+        &(const struct mylite_sql_parser_like_comparison_predicate_request){
+            .left = C,
+            .operator_token = O,
+            .operator_kind = MYLITE_SQL_AST_OPERATOR_LIKE,
+            .right = P,
+            .escape = NULL,
+        });
+}
+predicate_atom(A) ::= qualified_identifier(C) NOT(N) LIKE(O) introduced_predicate_literal(P). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N,
+        mylite_sql_parser_make_like_comparison_predicate(
+            state,
+            &(const struct mylite_sql_parser_like_comparison_predicate_request){
+                .left = C,
+                .operator_token = O,
+                .operator_kind = MYLITE_SQL_AST_OPERATOR_LIKE,
+                .right = P,
+                .escape = NULL,
+            }));
+}
+
+introduced_predicate_literal(A) ::= charset_introducer STRING(T). [INTRODUCED_LITERAL_VALUE] {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+introduced_predicate_literal(A) ::= charset_introducer STRING(T) COLLATE option_name. {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+introduced_predicate_literal(A) ::= charset_introducer HEX_LITERAL(T). [INTRODUCED_LITERAL_VALUE] {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
+}
+introduced_predicate_literal(A) ::= charset_introducer HEX_LITERAL(T) COLLATE option_name. {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
+}
+introduced_predicate_literal(A) ::= charset_introducer BIT_LITERAL(T). [INTRODUCED_LITERAL_VALUE] {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
+}
+introduced_predicate_literal(A) ::= charset_introducer BIT_LITERAL(T) COLLATE option_name. {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
+}
+binary_predicate_literal(A) ::= BINARY(T) STRING(V). [BINARY] {
+    A = mylite_sql_parser_make_unary_binary_expression(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING));
+}
+binary_predicate_literal(A) ::= BINARY(T) HEX_LITERAL(V). [BINARY] {
+    A = mylite_sql_parser_make_unary_binary_expression(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_HEX));
+}
+binary_predicate_literal(A) ::= BINARY(T) BIT_LITERAL(V). [BINARY] {
+    A = mylite_sql_parser_make_unary_binary_expression(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_BIT));
+}
+binary_predicate_literal(A) ::= BINARY(T) introduced_predicate_literal(V). [BINARY] {
+    A = mylite_sql_parser_make_unary_binary_expression(state, T, V);
+}
 predicate_like_pattern(A) ::= STRING(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+predicate_like_pattern(A) ::= HEX_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
+}
+predicate_like_pattern(A) ::= BIT_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
 }
 predicate_like_pattern(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
@@ -6655,16 +6774,43 @@ predicate_atom(A) ::= qualified_identifier(C) BETWEEN(B) predicate_range_value(L
         predicate_range_value(U). {
     A = mylite_sql_parser_make_between_predicate(state, C, B, L, U);
 }
+predicate_atom(A) ::= qualified_identifier(C) BETWEEN(B) introduced_predicate_literal(L) AND
+        introduced_predicate_literal(U). {
+    A = mylite_sql_parser_make_between_predicate(state, C, B, L, U);
+}
+predicate_atom(A) ::= qualified_identifier(C) BETWEEN(B) binary_predicate_literal(L) AND
+        binary_predicate_literal(U). {
+    A = mylite_sql_parser_make_between_predicate(state, C, B, L, U);
+}
 predicate_atom(A) ::= qualified_identifier(C) NOT(N) BETWEEN(B) predicate_range_value(L) AND
         predicate_range_value(U). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N, mylite_sql_parser_make_between_predicate(state, C, B, L, U));
+}
+predicate_atom(A) ::= qualified_identifier(C) NOT(N) BETWEEN(B) introduced_predicate_literal(L)
+        AND introduced_predicate_literal(U). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N, mylite_sql_parser_make_between_predicate(state, C, B, L, U));
+}
+predicate_atom(A) ::= qualified_identifier(C) NOT(N) BETWEEN(B) binary_predicate_literal(L)
+        AND binary_predicate_literal(U). {
     A = mylite_sql_parser_make_not_predicate(
         state, N, mylite_sql_parser_make_between_predicate(state, C, B, L, U));
 }
 predicate_atom(A) ::= qualified_identifier(C) IN(I) LPAREN predicate_in_value_list(V) RPAREN(R). {
     A = mylite_sql_parser_make_in_predicate(state, C, I, V, R);
 }
+predicate_atom(A) ::= qualified_identifier(C) IN(I) LPAREN introduced_predicate_literal_list(V)
+        RPAREN(R). {
+    A = mylite_sql_parser_make_in_predicate(state, C, I, V, R);
+}
 predicate_atom(A) ::= qualified_identifier(C) NOT(N) IN(I) LPAREN predicate_in_value_list(V)
         RPAREN(R). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N, mylite_sql_parser_make_in_predicate(state, C, I, V, R));
+}
+predicate_atom(A) ::= qualified_identifier(C) NOT(N) IN(I) LPAREN
+        introduced_predicate_literal_list(V) RPAREN(R). {
     A = mylite_sql_parser_make_not_predicate(
         state, N, mylite_sql_parser_make_in_predicate(state, C, I, V, R));
 }
@@ -6706,6 +6852,14 @@ predicate_in_value_list(A) ::= predicate_in_value(V). {
     A = mylite_sql_parser_make_predicate_value_list(state, V);
 }
 predicate_in_value_list(A) ::= predicate_in_value_list(L) COMMA predicate_in_value(V). {
+    A = mylite_sql_parser_append_predicate_value(state, L, V);
+}
+
+introduced_predicate_literal_list(A) ::= introduced_predicate_literal(V). {
+    A = mylite_sql_parser_make_predicate_value_list(state, V);
+}
+introduced_predicate_literal_list(A) ::= introduced_predicate_literal_list(L) COMMA
+        introduced_predicate_literal(V). {
     A = mylite_sql_parser_append_predicate_value(state, L, V);
 }
 
@@ -7491,6 +7645,7 @@ scalar_predicate_value(A) ::= qualified_identifier(B). {
 scalar_predicate_value(A) ::= cast_convert_expression(B). {
     A = B;
 }
+
 scalar_predicate_value(A) ::= SYSTEM_VARIABLE(T). {
     A = mylite_sql_parser_make_system_variable(state, T);
 }
@@ -11669,6 +11824,9 @@ identifier(A) ::= BIT_COUNT(T). {
 identifier(A) ::= ASCII(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= UNICODE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= ORD(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -12525,8 +12683,26 @@ column_attribute_list_opt(A) ::= column_attribute_list(B). {
 column_attribute_list(A) ::= column_attribute(B). {
     A = mylite_sql_parser_make_column_attribute_list(state, B);
 }
+column_attribute_list(A) ::= BINARY(B) column_charset_shorthand_attribute(C). {
+    A = mylite_sql_parser_append_column_attribute(
+        state,
+        mylite_sql_parser_make_column_attribute_list(
+            state,
+            mylite_sql_parser_make_column_binary_collation_attribute(state, B)),
+        C);
+}
 column_attribute_list(A) ::= column_attribute_list(B) column_attribute(C). {
     A = mylite_sql_parser_append_column_attribute(state, B, C);
+}
+column_attribute_list(A) ::= column_attribute_list(L) BINARY(B)
+    column_charset_shorthand_attribute(C). {
+    A = mylite_sql_parser_append_column_attribute(
+        state,
+        mylite_sql_parser_append_column_attribute(
+            state,
+            L,
+            mylite_sql_parser_make_column_binary_collation_attribute(state, B)),
+        C);
 }
 
 column_attribute(A) ::= nullability(B). {
@@ -12556,6 +12732,21 @@ column_attribute(A) ::= CHARSET(C) BINARY(N). {
         C,
         mylite_sql_parser_make_identifier(state, N));
 }
+column_attribute(A) ::= column_charset_shorthand_attribute(B). {
+    A = B;
+}
+column_charset_shorthand_attribute(A) ::= ASCII(T). {
+    A = mylite_sql_parser_make_column_charset_attribute(
+        state,
+        T,
+        mylite_sql_parser_make_identifier(state, T));
+}
+column_charset_shorthand_attribute(A) ::= UNICODE(T). {
+    A = mylite_sql_parser_make_column_charset_attribute(
+        state,
+        T,
+        mylite_sql_parser_make_identifier(state, T));
+}
 column_attribute(A) ::= COLLATE(C) option_name(N). {
     A = mylite_sql_parser_make_column_collation_attribute(state, C, N);
 }
@@ -12565,7 +12756,7 @@ column_attribute(A) ::= COLLATE(C) BINARY(N). {
         C,
         mylite_sql_parser_make_identifier(state, N));
 }
-column_attribute(A) ::= BINARY(T). {
+column_attribute(A) ::= BINARY(T). [COLUMN_BINARY_ATTRIBUTE] {
     A = mylite_sql_parser_make_column_binary_collation_attribute(state, T);
 }
 column_attribute(A) ::= COMMENT(C) STRING(V). {
@@ -13055,22 +13246,40 @@ enum_type(A) ::= ENUM(T) LPAREN enum_label_list(L) RPAREN(R). {
     A = mylite_sql_parser_make_enum_type(state, T, L, R);
 }
 
-enum_label_list(A) ::= STRING(T). {
-    A = mylite_sql_parser_make_enum_label_list(state, T);
+enum_label(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
-enum_label_list(A) ::= enum_label_list(L) COMMA STRING(T). {
-    A = mylite_sql_parser_append_enum_label(state, L, T);
+enum_label(A) ::= HEX_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
+}
+enum_label(A) ::= BIT_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
+}
+enum_label_list(A) ::= enum_label(V). {
+    A = mylite_sql_parser_make_enum_label_list(state, V);
+}
+enum_label_list(A) ::= enum_label_list(L) COMMA enum_label(V). {
+    A = mylite_sql_parser_append_enum_label(state, L, V);
 }
 
 set_type(A) ::= SET(T) LPAREN set_member_list(L) RPAREN(R). {
     A = mylite_sql_parser_make_set_type(state, T, L, R);
 }
 
-set_member_list(A) ::= STRING(T). {
-    A = mylite_sql_parser_make_set_member_list(state, T);
+set_member(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
-set_member_list(A) ::= set_member_list(L) COMMA STRING(T). {
-    A = mylite_sql_parser_append_set_member(state, L, T);
+set_member(A) ::= HEX_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
+}
+set_member(A) ::= BIT_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
+}
+set_member_list(A) ::= set_member(V). {
+    A = mylite_sql_parser_make_set_member_list(state, V);
+}
+set_member_list(A) ::= set_member_list(L) COMMA set_member(V). {
+    A = mylite_sql_parser_append_set_member(state, L, V);
 }
 
 binary_string_type(A) ::= BINARY(T). {
@@ -13637,6 +13846,24 @@ column_default_value(A) ::= HEX_LITERAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
 }
 column_default_value(A) ::= BIT_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
+}
+column_default_value(A) ::= charset_introducer STRING(T). [INTRODUCED_LITERAL_VALUE] {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+column_default_value(A) ::= charset_introducer STRING(T) COLLATE option_name. {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+column_default_value(A) ::= charset_introducer HEX_LITERAL(T). [INTRODUCED_LITERAL_VALUE] {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
+}
+column_default_value(A) ::= charset_introducer HEX_LITERAL(T) COLLATE option_name. {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
+}
+column_default_value(A) ::= charset_introducer BIT_LITERAL(T). [INTRODUCED_LITERAL_VALUE] {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
+}
+column_default_value(A) ::= charset_introducer BIT_LITERAL(T) COLLATE option_name. {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
 }
 column_default_value(A) ::= current_timestamp_value(T). {

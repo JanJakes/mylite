@@ -46,6 +46,7 @@ struct mylite_sql_parse_error {
 struct column_attribute_positions {
     size_t charset;
     size_t collation;
+    size_t binary_collation;
     size_t comment;
     size_t nullability;
     size_t default_value;
@@ -527,6 +528,9 @@ static int validate_legacy_column_attribute_order(
     const struct column_attribute_positions *positions
 );
 static size_t column_charset_collation_position_limit(
+    const struct column_attribute_positions *positions
+);
+static bool column_attribute_charset_order_is_valid(
     const struct column_attribute_positions *positions
 );
 static bool legacy_column_attribute_precedes_charset_collation(
@@ -11261,6 +11265,7 @@ static int scan_column_attribute_positions(
     *out_positions = (struct column_attribute_positions){
         .charset = (size_t)-1,
         .collation = (size_t)-1,
+        .binary_collation = (size_t)-1,
         .comment = (size_t)-1,
         .nullability = (size_t)-1,
         .default_value = (size_t)-1,
@@ -11279,6 +11284,13 @@ static int scan_column_attribute_positions(
             rc = record_column_attribute_position(state, &out_positions->charset, position);
             break;
         case MYLITE_SQL_AST_COLUMN_BINARY_COLLATION_ATTRIBUTE:
+            rc =
+                record_column_attribute_position(state, &out_positions->binary_collation, position);
+            if (rc != MYLITE_SQL_PARSE_OK) {
+                break;
+            }
+            rc = record_column_attribute_position(state, &out_positions->collation, position);
+            break;
         case MYLITE_SQL_AST_COLUMN_COLLATION_ATTRIBUTE:
             rc = record_column_attribute_position(state, &out_positions->collation, position);
             break;
@@ -11350,9 +11362,7 @@ static int validate_legacy_column_attribute_order(
             return MYLITE_SQL_PARSE_OK;
         }
     }
-    if (column_attribute_position_is_set(positions->charset) &&
-        column_attribute_position_is_set(positions->collation) &&
-        positions->charset > positions->collation) {
+    if (!column_attribute_charset_order_is_valid(positions)) {
         invalid_order = true;
     }
     if (column_attribute_position_is_set(positions->generated) &&
@@ -11396,6 +11406,20 @@ static int validate_legacy_column_attribute_order(
     }
 
     return MYLITE_SQL_PARSE_OK;
+}
+
+static bool column_attribute_charset_order_is_valid(
+    const struct column_attribute_positions *positions
+) {
+    if (!column_attribute_position_is_set(positions->charset) ||
+        !column_attribute_position_is_set(positions->collation) ||
+        positions->charset <= positions->collation) {
+        return true;
+    }
+
+    return column_attribute_position_is_set(positions->binary_collation) &&
+           positions->binary_collation == positions->collation &&
+           positions->charset == positions->collation + 1U;
 }
 
 static size_t column_charset_collation_position_limit(
@@ -11628,12 +11652,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_enum_type(
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_enum_label_list(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_token label_token
+    struct mylite_sql_ast_node *label
 ) {
-    struct mylite_sql_ast_node *label =
-        mylite_sql_parser_make_literal(state, label_token, MYLITE_SQL_AST_LITERAL_STRING);
-    struct mylite_sql_ast_node *list =
-        make_node(state, MYLITE_SQL_AST_ENUM_LABEL_LIST, span_from_token(&label_token));
+    struct mylite_sql_ast_node *list = make_node(
+        state,
+        MYLITE_SQL_AST_ENUM_LABEL_LIST,
+        label == NULL ? (struct mylite_sql_source_span){0} : label->span
+    );
     if (list == NULL) {
         return NULL;
     }
@@ -11645,20 +11670,16 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_enum_label_list(
 struct mylite_sql_ast_node *mylite_sql_parser_append_enum_label(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *label_list,
-    struct mylite_sql_token label_token
+    struct mylite_sql_ast_node *label
 ) {
-    struct mylite_sql_ast_node *label = NULL;
-
     if (!is_parse_ok(state) || label_list == NULL) {
         return label_list;
     }
 
-    label = mylite_sql_parser_make_literal(state, label_token, MYLITE_SQL_AST_LITERAL_STRING);
     mylite_sql_ast_node_append_child(label_list, label);
-    mylite_sql_ast_node_set_span(
-        label_list,
-        span_join(label_list->span, span_from_token(&label_token))
-    );
+    if (label != NULL) {
+        mylite_sql_ast_node_set_span(label_list, span_join(label_list->span, label->span));
+    }
     return label_list;
 }
 
@@ -11681,12 +11702,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_set_type(
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_set_member_list(
     struct mylite_sql_parser_state *state,
-    struct mylite_sql_token member_token
+    struct mylite_sql_ast_node *member
 ) {
-    struct mylite_sql_ast_node *member =
-        mylite_sql_parser_make_literal(state, member_token, MYLITE_SQL_AST_LITERAL_STRING);
-    struct mylite_sql_ast_node *list =
-        make_node(state, MYLITE_SQL_AST_SET_MEMBER_LIST, span_from_token(&member_token));
+    struct mylite_sql_ast_node *list = make_node(
+        state,
+        MYLITE_SQL_AST_SET_MEMBER_LIST,
+        member == NULL ? (struct mylite_sql_source_span){0} : member->span
+    );
     if (list == NULL) {
         return NULL;
     }
@@ -11698,20 +11720,16 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_set_member_list(
 struct mylite_sql_ast_node *mylite_sql_parser_append_set_member(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *member_list,
-    struct mylite_sql_token member_token
+    struct mylite_sql_ast_node *member
 ) {
-    struct mylite_sql_ast_node *member = NULL;
-
     if (!is_parse_ok(state) || member_list == NULL) {
         return member_list;
     }
 
-    member = mylite_sql_parser_make_literal(state, member_token, MYLITE_SQL_AST_LITERAL_STRING);
     mylite_sql_ast_node_append_child(member_list, member);
-    mylite_sql_ast_node_set_span(
-        member_list,
-        span_join(member_list->span, span_from_token(&member_token))
-    );
+    if (member != NULL) {
+        mylite_sql_ast_node_set_span(member_list, span_join(member_list->span, member->span));
+    }
     return member_list;
 }
 
@@ -12780,6 +12798,7 @@ static bool map_keyword_token(
         {"TRUE", MYLITE_SQL_PARSE_TRUE},
         {"FALSE", MYLITE_SQL_PARSE_FALSE},
         {"FOUND_ROWS", MYLITE_SQL_PARSE_FOUND_ROWS},
+        {"UNICODE", MYLITE_SQL_PARSE_UNICODE},
         {"UNKNOWN", MYLITE_SQL_PARSE_UNKNOWN},
         {"NULL", MYLITE_SQL_PARSE_NULL},
         {"DUAL", MYLITE_SQL_PARSE_DUAL},

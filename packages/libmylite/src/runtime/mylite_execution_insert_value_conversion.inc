@@ -191,6 +191,7 @@ static bool dml_value_is_constant_scalar_expression(
     case MYLITE_SQL_AST_CONVERT_UNSIGNED_TYPE_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
+    case MYLITE_SQL_AST_COLLATE_EXPRESSION:
     case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
     case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
     case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION:
@@ -293,8 +294,7 @@ static bool dml_scalar_expression_child_is_syntax_metadata(
     if (value_node == NULL || child == NULL) {
         return false;
     }
-    if (value_node->kind == MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION &&
-        child_index == 1U) {
+    if (value_node->kind == MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION && child_index == 1U) {
         return true;
     }
     if (value_node->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION && child_index == 1U) {

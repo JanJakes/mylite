@@ -65,3 +65,18 @@ build/ci/packages/libmylite/mylite_benchmark \
 The CSV contains MySQL server-test statements, so parser benchmarks report
 syntax/lexer status counts instead of treating unsupported syntax as a benchmark
 failure.
+
+To inspect the remaining parser misses, add `--dump-parse-failures PATH` to a
+parse CSV benchmark:
+
+```sh
+build/ci/packages/libmylite/mylite_benchmark \
+  --csv build/perf-data/mysql-server-tests-queries.csv \
+  --csv-iterations 1 \
+  --only parse \
+  --dump-parse-failures build/perf-data/mysql-server-tests-parse-failures.tsv
+```
+
+The dump is tab-separated and includes the one-based CSV row number, parse
+status, error-token kind and position, escaped error-token text, and escaped SQL
+text. It is intended for local triage and is not required by CI.

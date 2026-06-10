@@ -48,6 +48,7 @@ enum benchmark_filter {
 struct benchmark_options {
     enum benchmark_filter filter;
     const char *csv_path;
+    const char *parse_failure_dump_path;
     size_t iterations;
     size_t csv_iterations;
     bool list_only;
@@ -317,6 +318,15 @@ static int benchmark_owned_parse_queries(
     size_t iterations,
     struct benchmark_measurement *out_measurement
 );
+static int dump_parse_failures(const struct owned_query_list *queries, const char *path);
+static void print_parse_failure_row(
+    FILE *file,
+    size_t query_index,
+    enum mylite_sql_parse_status status,
+    const struct mylite_sql_parse_result *result,
+    const struct owned_query *query
+);
+static void print_tsv_escaped_field(FILE *file, const char *text, size_t length);
 static void record_parse_status(
     struct benchmark_measurement *measurement,
     enum mylite_sql_parse_status status
@@ -366,6 +376,7 @@ int main(int argc, char **argv) {
     struct benchmark_options options = {
         .filter = benchmark_filter_all,
         .csv_path = NULL,
+        .parse_failure_dump_path = NULL,
         .iterations = default_iterations,
         .csv_iterations = default_csv_iterations,
         .list_only = false,
@@ -442,6 +453,15 @@ static int parse_option(
         out_options->csv_path = value;
         return 0;
     }
+    if (strcmp(argument, "--dump-parse-failures") == 0) {
+        const char *value = consume_option_value(argc, argv, index, "--dump-parse-failures");
+
+        if (value == NULL) {
+            return 1;
+        }
+        out_options->parse_failure_dump_path = value;
+        return 0;
+    }
     if (strcmp(argument, "--only") == 0) {
         const char *value = consume_option_value(argc, argv, index, "--only");
 
@@ -516,6 +536,7 @@ static void print_usage(const char *program_name, FILE *stream) {
     fprintf(
         stream,
         "usage: %s [--iterations N] [--csv PATH] [--csv-iterations N] "
+        "[--dump-parse-failures PATH] "
         "[--only all|lexer|parse|runtime] [--list]\n",
         program_name
     );
@@ -537,6 +558,12 @@ static bool filter_includes(enum benchmark_filter filter, enum benchmark_filter 
 
 static int run_benchmarks(const struct benchmark_options *options) {
     int rc = 0;
+
+    if (options->parse_failure_dump_path != NULL &&
+        (options->csv_path == NULL || !filter_includes(options->filter, benchmark_filter_parse))) {
+        fprintf(stderr, "--dump-parse-failures requires --csv and a parse benchmark filter\n");
+        return 1;
+    }
 
     puts("scenario,kind,iterations,queries,operations,ok,errors,tokens,bytes,total_ms,avg_us,"
          "ops_per_sec");
@@ -637,6 +664,13 @@ static int run_csv_benchmarks(const struct benchmark_options *options) {
             &measurement
         );
         print_parse_status_counts(&measurement);
+        if (options->parse_failure_dump_path != NULL) {
+            rc = dump_parse_failures(&queries, options->parse_failure_dump_path);
+            if (rc != 0) {
+                owned_query_list_deinit(&queries);
+                return rc;
+            }
+        }
     }
 
     owned_query_list_deinit(&queries);
@@ -974,6 +1008,85 @@ static int benchmark_owned_parse_queries(
     }
     out_measurement->elapsed_ns = monotonic_now_ns() - started;
     return 0;
+}
+
+static int dump_parse_failures(const struct owned_query_list *queries, const char *path) {
+    FILE *file = fopen(path, "wb");
+
+    if (file == NULL) {
+        fprintf(stderr, "%s: failed to open parse failure dump: %s\n", path, strerror(errno));
+        return 1;
+    }
+    for (size_t query_index = 0U; query_index < queries->count; ++query_index) {
+        struct mylite_sql_parse_result result = {0};
+        const struct owned_query *query = &queries->items[query_index];
+        enum mylite_sql_parse_status status = mylite_sql_parse(
+            (struct mylite_sql_parse_config){
+                .input = query->sql,
+                .length = query->length,
+                .modes = 0U,
+            },
+            &result
+        );
+
+        if (status != MYLITE_SQL_PARSE_OK) {
+            print_parse_failure_row(file, query_index + 1U, status, &result, query);
+        }
+        mylite_sql_parse_result_deinit(&result);
+    }
+    if (fclose(file) != 0) {
+        fprintf(stderr, "%s: failed to close parse failure dump\n", path);
+        return 1;
+    }
+    return 0;
+}
+
+static void print_parse_failure_row(
+    FILE *file,
+    size_t query_index,
+    enum mylite_sql_parse_status status,
+    const struct mylite_sql_parse_result *result,
+    const struct owned_query *query
+) {
+    fprintf(
+        file,
+        "%zu\t%s\t%s\t%zu\t%zu\t%zu\t",
+        query_index,
+        mylite_sql_parse_status_name(status),
+        mylite_sql_token_kind_name(result->error_token.kind),
+        result->error_token.offset,
+        result->error_token.line,
+        result->error_token.column
+    );
+    print_tsv_escaped_field(file, result->error_token.text, result->error_token.length);
+    fputc('\t', file);
+    print_tsv_escaped_field(file, query->sql, query->length);
+    fputc('\n', file);
+}
+
+static void print_tsv_escaped_field(FILE *file, const char *text, size_t length) {
+    if (text == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < length; ++index) {
+        switch (text[index]) {
+        case '\\':
+            fputs("\\\\", file);
+            break;
+        case '\t':
+            fputs("\\t", file);
+            break;
+        case '\n':
+            fputs("\\n", file);
+            break;
+        case '\r':
+            fputs("\\r", file);
+            break;
+        default:
+            fputc((unsigned char)text[index], file);
+            break;
+        }
+    }
 }
 
 static void record_parse_status(

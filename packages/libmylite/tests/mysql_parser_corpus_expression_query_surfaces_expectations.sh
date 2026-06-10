@@ -110,6 +110,19 @@ expect_output \
 "ROW(2, NULL) > ROW(1, 9);"
 
 expect_output \
+    "parenthesized row constructor comparison" \
+    "1	0	1" \
+    "USE ${DATABASE}; "\
+"SELECT (1, 2) = (1, 2), (1, 2) = (1, 3), (1, 2) <> (1, 3);"
+
+expect_output \
+    "parenthesized row constructor NULL comparison" \
+    "NULL	1	1" \
+    "USE ${DATABASE}; "\
+"SELECT (1, NULL) = (1, NULL), (1, NULL) <=> (1, NULL), "\
+"(2, NULL) > (1, 9);"
+
+expect_output \
     "row constructor NOT comparison" \
     "1	NULL" \
     "USE ${DATABASE}; "\
@@ -137,6 +150,13 @@ expect_error \
     21000 \
     "Operand should contain 1 column(s)" \
     "USE ${DATABASE}; SELECT ROW(1, 2);"
+
+expect_error \
+    "parenthesized row constructor plain scalar" \
+    1241 \
+    21000 \
+    "Operand should contain 1 column(s)" \
+    "USE ${DATABASE}; SELECT (1, 2);"
 
 expect_error \
     "row constructor arity mismatch" \

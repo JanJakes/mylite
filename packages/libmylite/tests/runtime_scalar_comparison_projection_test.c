@@ -422,6 +422,8 @@ static int test_scalar_comparison_warnings_and_diagnostics(void) {
 }
 
 static int test_scalar_comparison_overflow_and_unsupported_forms(void) {
+    static const char *const parenthesized_row_columns[] = {"(1,2)=(1,2)"};
+    static const char *const parenthesized_row_values[] = {"1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -437,6 +439,19 @@ static int test_scalar_comparison_overflow_and_unsupported_forms(void) {
     failures += execute_ok(database, "CREATE TABLE t(id INT)", NULL);
     failures += execute_ok(database, "INSERT INTO t VALUES (1), (2), (NULL)", NULL);
 
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT (1,2)=(1,2)",
+            .columns = parenthesized_row_columns,
+            .column_count = 1U,
+            .values = parenthesized_row_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "parenthesized row comparison value",
+        }
+    );
     failures += execute_error(
         database,
         "SELECT 3037000500*3037000500 = 1",
@@ -480,15 +495,6 @@ static int test_scalar_comparison_overflow_and_unsupported_forms(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "scalar projection",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT (1,2)=(1,2)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "near ','",
         }
     );
     failures += execute_error(

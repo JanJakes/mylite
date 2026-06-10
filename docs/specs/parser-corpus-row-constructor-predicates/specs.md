@@ -18,24 +18,28 @@ Runtime probes are verified against MySQL 8.4.9.
 
 MySQL row constructors are written as either `(expr, expr[, ...])` or
 `ROW(expr, expr[, ...])`; the forms are equivalent in comparison contexts.
-`ROW(1)` is a syntax error, and a multi-column row constructor used as a plain
-scalar result, such as `SELECT ROW(1,2)`, fails with `1241 / 21000`.
+`ROW(1)` is a syntax error, `(1)` remains an ordinary parenthesized expression,
+and a multi-column row constructor used as a plain scalar result, such as
+`SELECT ROW(1,2)` or `SELECT (1,2)`, fails with `1241 / 21000`.
 
 This slice supports:
 
 - parser acceptance for `ROW(expr, expr[, ...])` row constructor expressions
   with at least two elements through the existing keyword-function expression
   grammar;
-- parser acceptance for `ROW(...)` row constructor comparison operators `=`,
-  `<=>`, `<>`, `!=`, `<`, `<=`, `>`, and `>=` in no-source and `FROM DUAL`
-  scalar projections;
+- parser acceptance for parenthesized `(expr, expr[, ...])` row constructor
+  expressions with at least two elements through a targeted parser-driver retry
+  for `SELECT` statements that fail the normal grammar pass;
+- parser acceptance for `ROW(...)` and parenthesized row constructor comparison
+  operators `=`, `<=>`, `<>`, `!=`, `<`, `<=`, `>`, and `>=` in no-source and
+  `FROM DUAL` scalar projections;
 - scalar projection execution for keyword `NOT` around those admitted row
   constructor comparisons;
-- tableless scalar projection execution for `ROW(...)` constructor comparisons
-  when every row element is an existing scalar expression supported by MyLite's
-  scalar comparison evaluator, plus string literal and current scalar string
-  helper pairs compared with MyLite's current ASCII case-insensitive padded
-  string semantics;
+- tableless scalar projection execution for `ROW(...)` and parenthesized row
+  constructor comparisons when every row element is an existing scalar
+  expression supported by MyLite's scalar comparison evaluator, plus string
+  literal and current scalar string helper pairs compared with MyLite's current
+  ASCII case-insensitive padded string semantics;
 - MySQL-shaped arity diagnostics for row constructor comparisons with mismatched
   element counts;
 - MySQL-shaped syntax rejection for `ROW()` and `ROW(single_expr)`;
@@ -44,7 +48,6 @@ This slice supports:
 
 This slice does not implement:
 
-- parenthesized tuple constructors such as `(1,2)`;
 - tuple literal `IN` / `NOT IN`;
 - row constructors as ordinary scalar values beyond MySQL's operand-count
   diagnostic;
@@ -98,14 +101,21 @@ These snippets describe MyLite-owned Lemon grammar shape and do not copy MySQL
 grammar.
 
 ```lemon
-expression ::= ROW LPAREN function_argument_list RPAREN.
+row_constructor ::= ROW LPAREN function_argument_list RPAREN.
+row_constructor ::= LPAREN expression COMMA function_argument_list RPAREN.
+expression ::= row_constructor.
 expression ::= expression predicate_comparison_operator expression.
 ```
 
 The implementation reuses MyLite's existing keyword-function expression grammar
 and maps `ROW(...)` with at least two arguments to a dedicated row-constructor
-AST in the parser helper. This avoids expanding the already-large Lemon grammar
-while still giving runtime and future tuple planning a row-specific node kind.
+AST in the parser helper. The parenthesized tuple production above is the
+semantic shape: the implementation does not add that production directly to the
+main Lemon grammar. Instead, after a normal `SELECT` parse failure, the parser
+pre-scans for tuple-shaped parentheses and retries with a synthetic `ROW` token
+before matching parenthesized row constructors. `(expr)` keeps the ordinary
+parenthesized-expression AST. This avoids broad grammar expansion while still
+giving runtime and future tuple planning a row-specific node kind.
 
 ## Runtime Behavior
 
@@ -133,22 +143,23 @@ predicate-planner work:
 
 MySQL 8.4.9 expectations cover syntax, scalar projection results, NULL
 semantics, arity diagnostics, and standalone row-constructor diagnostics.
-MyLite parser tests cover AST shape for `ROW(...)`. Runtime tests cover
-executable tableless scalar comparison results.
+MyLite parser tests cover AST shape for `ROW(...)` and parenthesized tuple
+constructors. Runtime tests cover executable tableless scalar comparison
+results.
 
 The parser corpus benchmark over
 `build/perf-data/mysql-server-tests-queries.csv` must be rerun before commit.
-This slice keeps the parse count unchanged because `ROW(...)` already parsed as
-a generic function in the prior expression-query surface:
+The latest local benchmark after adding parenthesized tuple normalization was:
 
 ```text
-parse.csv.mysql_server_tests: queries=69595 ok=66406 errors=3189
-parse_status: lexer_error=21 syntax_error=3167 stack_overflow=1
+parse.csv.mysql_server_tests: queries=69595 ok=68997 errors=598
+parse_status: lexer_error=21 syntax_error=576 stack_overflow=1
 ```
 
 ## Compatibility Status
 
-This slice moves `ROW(...)` constructor comparisons from generic placeholder
-behavior to limited supported scalar behavior. Parenthesized tuple constructors,
-tuple `IN`, table-backed tuple predicates, and row subqueries remain documented
-incompatibilities until predicate planning grows tuple support.
+This slice moves `ROW(...)` and parenthesized tuple constructor comparisons
+from parser failures or generic placeholder behavior to limited supported
+scalar behavior. Tuple `IN`, table-backed tuple predicates, and row subqueries
+remain documented incompatibilities until predicate planning grows tuple
+support.

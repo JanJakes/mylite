@@ -42,7 +42,8 @@ The corpus contains keyword function calls that cannot be parsed by the generic
 slice admits targeted keyword-function placeholders:
 
 - `ROW(...)` row constructors in scalar expression positions, now refined by
-  the dedicated row-constructor predicate slice;
+  the dedicated row-constructor predicate slice, which also admits equivalent
+  parenthesized tuple constructors in the scalar-comparison subset;
 - `VALUES(column)` in nested expressions, such as duplicate-key update
   expressions;
 - `GROUPING(...)` used with `GROUP BY ... WITH ROLLUP`;
@@ -112,6 +113,10 @@ expression ::= keyword_function_token LPAREN RPAREN.
 expression ::= keyword_function_token LPAREN function_argument_list RPAREN.
 expression ::= CHAR LPAREN function_argument_list USING option_name RPAREN.
 ```
+
+Parenthesized tuple constructors are specified in the dedicated
+row-constructor predicate slice. They are not installed as a broad Lemon
+expression production in this slice.
 
 ```lemon
 group_key ::= INTEGER.

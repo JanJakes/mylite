@@ -44,6 +44,8 @@ static int test_expression_query_surfaces(void) {
     static const char *const scalar_rows[] = {"1", "0", "1"};
     static const char *const row_comparison_values[] = {"1", "0", "1"};
     static const char *const row_null_comparison_values[] = {NULL, "1", "1"};
+    static const char *const parenthesized_row_comparison_values[] = {"1", "0", "1"};
+    static const char *const parenthesized_row_null_comparison_values[] = {NULL, "1", "1"};
     static const char *const row_not_comparison_values[] = {"1", NULL};
     static const char *const row_string_comparison_values[] = {"1", "1", "1", "0", "1"};
     mylite_db *database = NULL;
@@ -115,6 +117,27 @@ static int test_expression_query_surfaces(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
+            .sql = "SELECT (1, 2) = (1, 2), (1, 2) = (1, 3), (1, 2) <> (1, 3)",
+            .values = parenthesized_row_comparison_values,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "parenthesized row constructor comparison",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT (1, NULL) = (1, NULL), "
+                   "(1, NULL) <=> (1, NULL), (2, NULL) > (1, 9)",
+            .values = parenthesized_row_null_comparison_values,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "parenthesized row constructor NULL comparison",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
             .sql = "SELECT NOT ROW(1, 2) = ROW(1, 3), "
                    "NOT ROW(1, NULL) = ROW(1, NULL)",
             .values = row_not_comparison_values,
@@ -142,6 +165,15 @@ static int test_expression_query_surfaces(void) {
             .code = mysql_error_operand_should_contain_one_column,
             .sqlstate = "21000",
             .message_part = "Operand should contain 2 column(s)",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT (1, 2)",
+        (struct expected_sql_error){
+            .code = mysql_error_operand_should_contain_one_column,
+            .sqlstate = "21000",
+            .message_part = "Operand should contain 1 column(s)",
         }
     );
     failures += execute_error(

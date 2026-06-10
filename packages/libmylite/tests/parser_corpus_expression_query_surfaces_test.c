@@ -61,6 +61,7 @@ static int test_keyword_function_placeholders(void) {
 
     failures += parse_ok("SELECT ROW(1, 2), VALUES(id), GROUPING(id), POINT(1, 1) FROM t");
     failures += parse_ok("SELECT ROW(1, 2) = ROW(1, 2), ROW(1, 2) <> ROW(1, 3)");
+    failures += parse_ok("SELECT (1, 2) = (1, 2), (1, NULL) <=> (1, NULL)");
     failures += parse_ok("SELECT NOT ROW(1, 2) = ROW(1, 3)");
     failures += parse_ok("SELECT GEOMETRYCOLLECTION(POINT(1,1)) FROM t");
     failures += parse_ok("SELECT CHAR(0x41 USING ucs2)");
@@ -86,6 +87,18 @@ static int test_keyword_function_placeholders(void) {
     failures +=
         parser_test_expect_node(expression, MYLITE_SQL_AST_ROW_CONSTRUCTOR, "ROW constructor");
     failures += parser_test_expect_span_text(expression, "ROW(1, 2)", "ROW constructor span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("SELECT (1, 2)", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        expression,
+        MYLITE_SQL_AST_ROW_CONSTRUCTOR,
+        "parenthesized row constructor"
+    );
+    failures +=
+        parser_test_expect_span_text(expression, "(1, 2)", "parenthesized row constructor span");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql("SELECT CHAR(0x41 USING ucs2)", MYLITE_SQL_PARSE_OK, &result);

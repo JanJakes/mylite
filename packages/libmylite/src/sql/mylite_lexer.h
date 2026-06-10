@@ -19,6 +19,7 @@ enum mylite_sql_keyword_flags {
 
 enum mylite_sql_token_flags {
     MYLITE_SQL_TOKEN_HAS_LEADING_SPACE = 1U << 0U,
+    MYLITE_SQL_TOKEN_SYNTHETIC_ROW_CONSTRUCTOR = 1U << 1U,
 };
 
 enum mylite_sql_token_kind {

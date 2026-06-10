@@ -620,7 +620,8 @@ static int apply_single_index_option(
             return rc;
         }
         if (text_equals_ascii_case_insensitive(option_name, "ALGORITHM") ||
-            text_equals_ascii_case_insensitive(option_name, "LOCK")) {
+            text_equals_ascii_case_insensitive(option_name, "LOCK") ||
+            text_equals_ascii_case_insensitive(option_name, "KEY_BLOCK_SIZE")) {
             return MYLITE_OK;
         }
     }

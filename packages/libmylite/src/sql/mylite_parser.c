@@ -378,6 +378,15 @@ static enum placeholder_statement_kind classify_create_placeholder_statement(
 static enum placeholder_statement_kind classify_alter_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );
+static bool ddl_zerofill_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_starts_create_table_statement(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_starts_alter_table_statement(
+    const struct placeholder_statement_scan *scan
+);
 static bool alter_table_partition_placeholder_statement_is_supported(
     const struct placeholder_statement_scan *scan
 );
@@ -2463,6 +2472,9 @@ static enum placeholder_statement_kind classify_create_placeholder_statement(
     if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE")) {
         return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
     }
+    if (ddl_zerofill_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
     if (create_table_select_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
@@ -2491,6 +2503,9 @@ static enum placeholder_statement_kind classify_alter_placeholder_statement(
     if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE")) {
         return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
     }
+    if (ddl_zerofill_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
     if (placeholder_scan_token_text_equals(scan, 1U, "TABLE") &&
         alter_table_partition_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
@@ -2501,6 +2516,45 @@ static enum placeholder_statement_kind classify_alter_placeholder_statement(
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_STORED_PROGRAM;
     }
     return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static bool ddl_zerofill_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    return scan != NULL && placeholder_scan_contains_text(scan, "ZEROFILL") &&
+           placeholder_scan_parentheses_are_balanced(scan, 0U) &&
+           (placeholder_scan_starts_create_table_statement(scan) ||
+            placeholder_scan_starts_alter_table_statement(scan));
+}
+
+static bool placeholder_scan_starts_create_table_statement(
+    const struct placeholder_statement_scan *scan
+) {
+    enum { create_table_scan_limit = 6 };
+
+    if (scan == NULL || !placeholder_scan_token_text_equals(scan, 0U, "CREATE")) {
+        return false;
+    }
+    for (size_t index = 1U; index < scan->token_count && index < create_table_scan_limit; ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, "TABLE")) {
+            return true;
+        }
+        if (placeholder_scan_token_text_equals(scan, index, "VIEW") ||
+            placeholder_scan_token_text_equals(scan, index, "PROCEDURE") ||
+            placeholder_scan_token_text_equals(scan, index, "FUNCTION") ||
+            placeholder_scan_token_text_equals(scan, index, "TRIGGER") ||
+            placeholder_scan_token_text_equals(scan, index, "EVENT")) {
+            return false;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_starts_alter_table_statement(
+    const struct placeholder_statement_scan *scan
+) {
+    return placeholder_scan_token_text_equals(scan, 0U, "ALTER") &&
+           placeholder_scan_token_text_equals(scan, 1U, "TABLE");
 }
 
 static bool alter_table_partition_placeholder_statement_is_supported(

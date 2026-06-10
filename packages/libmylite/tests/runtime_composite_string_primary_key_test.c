@@ -578,7 +578,7 @@ static int test_composite_string_primary_key_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "near '('",
+            .message_part = "PRIMARY KEY prefix key parts are not yet supported",
         }
     );
     failures += execute_error(

@@ -1539,7 +1539,7 @@ static int test_integer_display_width_lifecycle(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "utility statement is not supported",
         }
     );
 
@@ -1956,7 +1956,7 @@ static int test_bool_boolean_alias_lifecycle(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SQL syntax",
+            .message_part = "utility statement is not supported",
         }
     );
 

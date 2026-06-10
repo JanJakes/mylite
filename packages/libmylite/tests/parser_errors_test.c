@@ -901,8 +901,14 @@ static int test_syntax_errors(void) {
 
     failures += parser_test_parse_sql(
         "CREATE TABLE unsupported_alias_zerofill (c INT2 ZEROFILL);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT,
+        "alias zerofill placeholder"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -1013,8 +1019,14 @@ static int test_syntax_errors(void) {
 
     failures += parser_test_parse_sql(
         "CREATE TABLE unsupported_zerofill (c MEDIUMINT ZEROFILL);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT,
+        "integer zerofill placeholder"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -1055,8 +1067,14 @@ static int test_syntax_errors(void) {
 
     failures += parser_test_parse_sql(
         "CREATE TABLE unsupported_bool_zerofill (c BOOL ZEROFILL);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT,
+        "bool zerofill placeholder"
     );
     mylite_sql_parse_result_deinit(&result);
 

@@ -1223,6 +1223,11 @@ static int append_alter_table_primary_key_parts_from_ast(
         enum mylite_catalog_index_sort_direction sort_direction = index_part_sort_direction(part);
         char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
 
+        if (secondary_index_part_prefix_node(part) != NULL) {
+            set_unsupported_error(database, "PRIMARY KEY prefix key parts are not yet supported");
+            rc = MYLITE_ERROR;
+            break;
+        }
         if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
             set_unsupported_error(
                 database,

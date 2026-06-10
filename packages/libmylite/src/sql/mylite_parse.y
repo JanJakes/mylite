@@ -28,6 +28,7 @@
 %right DEFAULT.
 %right WITH.
 %right ASSIGN.
+%right KEY.
 %left OR.
 %left XOR.
 %left AND.
@@ -12096,6 +12097,13 @@ primary_key_part_list(A) ::= primary_key_part_list(B) COMMA primary_key_part(C).
 primary_key_part(A) ::= identifier(B) index_key_direction_opt(D). {
     A = mylite_sql_parser_make_secondary_index_part(state, B, NULL, D);
 }
+primary_key_part(A) ::= identifier(B) LPAREN INTEGER(L) RPAREN index_key_direction_opt(D). {
+    A = mylite_sql_parser_make_secondary_index_part(
+        state,
+        B,
+        mylite_sql_parser_make_literal(state, L, MYLITE_SQL_AST_LITERAL_INTEGER),
+        D);
+}
 primary_key_part(A) ::= functional_index_part(B). {
     A = B;
 }
@@ -12196,6 +12204,9 @@ index_option(A) ::= ALGORITHM(T) equal_opt alter_algorithm_value. {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 index_option(A) ::= LOCK(T) equal_opt alter_lock_value. {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+index_option(A) ::= KEY_BLOCK_SIZE(T) equal_opt INTEGER. {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 
@@ -12498,7 +12509,10 @@ column_attribute(A) ::= generated_column_clause(B). {
 column_attribute(A) ::= PRIMARY(P) KEY(K). {
     A = mylite_sql_parser_make_inline_primary_key(state, P, K);
 }
-column_attribute(A) ::= UNIQUE(U). {
+column_attribute(A) ::= KEY(K). {
+    A = mylite_sql_parser_make_inline_primary_key(state, K, K);
+}
+column_attribute(A) ::= UNIQUE(U). [KEY] {
     A = mylite_sql_parser_make_inline_unique_key(state, U, U);
 }
 column_attribute(A) ::= UNIQUE(U) KEY(K). {

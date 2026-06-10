@@ -60,6 +60,10 @@ static int apply_create_table_primary_key_definition(
         const struct mylite_sql_ast_node *column_node = secondary_index_part_column_node(part);
         enum mylite_catalog_index_sort_direction sort_direction = index_part_sort_direction(part);
 
+        if (secondary_index_part_prefix_node(part) != NULL) {
+            set_unsupported_error(database, "PRIMARY KEY prefix key parts are not yet supported");
+            return MYLITE_ERROR;
+        }
         if (column_node == NULL || column_node->kind != MYLITE_SQL_AST_IDENTIFIER) {
             set_unsupported_error(
                 database,

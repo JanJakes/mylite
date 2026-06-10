@@ -686,7 +686,7 @@ static int test_create_table_primary_key_statements(void) {
 
     failures += parser_test_parse_sql(
         "CREATE TABLE unsupported_pk_prefix (id INT, PRIMARY KEY (id(4)));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);

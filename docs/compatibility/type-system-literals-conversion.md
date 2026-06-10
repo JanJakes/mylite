@@ -73,6 +73,13 @@ or general transcoding.
 
 ## Numeric types
 
+`ZEROFILL` remains unsupported as numeric descriptor semantics: MyLite does not
+store the attribute, imply unsigned through that attribute, render `zerofill`
+metadata, or zero-pad numeric readback. Parser-corpus DDL compatibility admits
+`CREATE TABLE` and `ALTER TABLE` column-definition statements containing
+`ZEROFILL` as unsupported utility placeholders so they fail deterministically
+without catalog mutation instead of producing accidental syntax errors.
+
 | Feature | Status | Notes |
 | --- | --- | --- |
 | `TINYINT` | 🟡 | Limited DDL descriptors plus optional single explicit `SIGNED` or `UNSIGNED`, deprecated display width `0..255`, optional `DEFAULT NULL`, in-range decimal integer/`TRUE`/`FALSE` defaults, or limited parenthesized constant integer/`NULL` expression defaults, `ALTER TABLE ... MODIFY [COLUMN]` and `CHANGE [COLUMN]` descriptor replacement, integer/`NULL` `INSERT`/`REPLACE` row and `UPDATE` assignment conversion, text readback, descriptor-driven filtered `SELECT`/`DELETE`/`UPDATE` predicate conversion with MyLite's current descriptor-range literal check, and single-column sort support; only signed `TINYINT(1)` is persisted/rendered with width, other widths normalize away with warning 1681; no `ZEROFILL`, repeated/combined attributes, aliases, general expression defaults beyond the limited parenthesized constant integer subset, general expression semantics, compact physical storage, or protocol-grade result metadata |

@@ -710,6 +710,7 @@ enum mylite_sql_ast_node_kind {
     MYLITE_SQL_AST_SHOW_GRANTS_ACCOUNT = 701,
     MYLITE_SQL_AST_SHOW_GRANTS_ROLE_LIST = 702,
     MYLITE_SQL_AST_ROW_CONSTRUCTOR = 703,
+    MYLITE_SQL_AST_TRANSACTION_CHAIN_COMPLETION = 704,
 };
 
 enum mylite_sql_ast_literal_kind {

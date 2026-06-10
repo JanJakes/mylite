@@ -73,6 +73,7 @@ static int execute_start_transaction_statement(
         );
         if (rc == MYLITE_OK) {
             database->session.user_transaction_active = true;
+            database->session.active_transaction_isolation = effective_isolation;
             database->session.active_transaction_read_only =
                 effective_access_mode == MYLITE_TRANSACTION_ACCESS_READ_ONLY;
             clear_next_transaction_characteristics(database);
@@ -93,8 +94,16 @@ static int execute_start_transaction_statement(
     return finish_successful_result(database, result, out_result);
 }
 
-static int execute_commit_statement(struct mylite_db *database, mylite_result **out_result) {
+static int execute_commit_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
     mylite_result *result = NULL;
+    enum mylite_transaction_isolation chained_isolation = current_transaction_isolation(database);
+    enum mylite_transaction_access_mode chained_access_mode =
+        current_transaction_access_mode(database);
+    bool chain = transaction_completion_requests_chain(statement);
     int rc = mylite_result_create(&result);
 
     if (rc != MYLITE_OK) {
@@ -103,6 +112,10 @@ static int execute_commit_statement(struct mylite_db *database, mylite_result **
     }
 
     if (database->session.user_transaction_active) {
+        chained_isolation = database->session.active_transaction_isolation;
+        chained_access_mode = database->session.active_transaction_read_only
+                                  ? MYLITE_TRANSACTION_ACCESS_READ_ONLY
+                                  : MYLITE_TRANSACTION_ACCESS_READ_WRITE;
         rc = reconcile_persistent_auto_increment_high_waters(database);
         if (rc == MYLITE_OK) {
             rc = normalize_sqlite_control_rc(
@@ -117,6 +130,9 @@ static int execute_commit_statement(struct mylite_db *database, mylite_result **
             clear_persistent_auto_increment_high_waters(database);
         }
     }
+    if (rc == MYLITE_OK && chain) {
+        rc = begin_chained_transaction(database, chained_isolation, chained_access_mode);
+    }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
@@ -126,8 +142,16 @@ static int execute_commit_statement(struct mylite_db *database, mylite_result **
     return finish_successful_result(database, result, out_result);
 }
 
-static int execute_rollback_statement(struct mylite_db *database, mylite_result **out_result) {
+static int execute_rollback_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
     mylite_result *result = NULL;
+    enum mylite_transaction_isolation chained_isolation = current_transaction_isolation(database);
+    enum mylite_transaction_access_mode chained_access_mode =
+        current_transaction_access_mode(database);
+    bool chain = transaction_completion_requests_chain(statement);
     int rc = mylite_result_create(&result);
 
     if (rc != MYLITE_OK) {
@@ -136,6 +160,10 @@ static int execute_rollback_statement(struct mylite_db *database, mylite_result 
     }
 
     if (database->session.user_transaction_active) {
+        chained_isolation = database->session.active_transaction_isolation;
+        chained_access_mode = database->session.active_transaction_read_only
+                                  ? MYLITE_TRANSACTION_ACCESS_READ_ONLY
+                                  : MYLITE_TRANSACTION_ACCESS_READ_WRITE;
         rc =
             normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "ROLLBACK"));
         if (rc == MYLITE_OK) {
@@ -151,6 +179,9 @@ static int execute_rollback_statement(struct mylite_db *database, mylite_result 
             }
         }
     }
+    if (rc == MYLITE_OK && chain) {
+        rc = begin_chained_transaction(database, chained_isolation, chained_access_mode);
+    }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
         return rc;
@@ -158,6 +189,34 @@ static int execute_rollback_statement(struct mylite_db *database, mylite_result 
 
     mylite_result_set_affected_rows(result, 0);
     return finish_successful_result(database, result, out_result);
+}
+
+static bool transaction_completion_requests_chain(const struct mylite_sql_ast_node *statement) {
+    const struct mylite_sql_ast_node *completion = child_at(statement, 0U);
+
+    return completion != NULL && completion->kind == MYLITE_SQL_AST_TRANSACTION_CHAIN_COMPLETION;
+}
+
+static int begin_chained_transaction(
+    struct mylite_db *database,
+    enum mylite_transaction_isolation isolation,
+    enum mylite_transaction_access_mode access_mode
+) {
+    int rc = MYLITE_OK;
+
+    clear_session_table_locks(database);
+    rc = normalize_sqlite_control_rc(
+        database,
+        execute_sqlite_control_sql(database, "BEGIN IMMEDIATE")
+    );
+    if (rc == MYLITE_OK) {
+        database->session.user_transaction_active = true;
+        database->session.active_transaction_isolation = isolation;
+        database->session.active_transaction_read_only =
+            access_mode == MYLITE_TRANSACTION_ACCESS_READ_ONLY;
+        clear_next_transaction_characteristics(database);
+    }
+    return rc;
 }
 
 static int ensure_persistent_auto_increment_high_water_slot(

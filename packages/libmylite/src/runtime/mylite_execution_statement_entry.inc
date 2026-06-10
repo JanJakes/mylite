@@ -184,9 +184,9 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_START_TRANSACTION_STATEMENT:
         return execute_start_transaction_statement(database, statement, out_result);
     case MYLITE_SQL_AST_COMMIT_STATEMENT:
-        return execute_commit_statement(database, out_result);
+        return execute_commit_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ROLLBACK_STATEMENT:
-        return execute_rollback_statement(database, out_result);
+        return execute_rollback_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SAVEPOINT_STATEMENT:
         return execute_savepoint_statement(database, statement, out_result);
     case MYLITE_SQL_AST_ROLLBACK_TO_SAVEPOINT_STATEMENT:
@@ -1003,6 +1003,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_WRITE:
     case MYLITE_SQL_AST_TRANSACTION_ACCESS_READ_ONLY:
     case MYLITE_SQL_AST_TRANSACTION_CONSISTENT_SNAPSHOT:
+    case MYLITE_SQL_AST_TRANSACTION_CHAIN_COMPLETION:
     case MYLITE_SQL_AST_INSERT_LOW_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_INSERT_HIGH_PRIORITY_MODIFIER:
     case MYLITE_SQL_AST_INSERT_DELAYED_MODIFIER:

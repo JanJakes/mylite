@@ -179,6 +179,19 @@ struct mylite_sql_comparison_operator_tokens {
     enum mylite_sql_ast_operator operator_kind;
 };
 
+struct mylite_sql_transaction_completion {
+    struct mylite_sql_token last_token;
+    struct mylite_sql_token chain_start_token;
+    struct mylite_sql_token chain_end_token;
+    bool has_completion;
+    bool chain;
+};
+
+struct mylite_sql_transaction_control_tokens {
+    struct mylite_sql_token statement_token;
+    struct mylite_sql_token work_token;
+};
+
 void mylite_sql_parser_state_set_root(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *root
@@ -361,6 +374,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_control_statement
     struct mylite_sql_token first_token,
     struct mylite_sql_token last_token,
     struct mylite_sql_ast_node *characteristics
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_control_statement_with_completion(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_node_kind statement_kind,
+    struct mylite_sql_transaction_control_tokens tokens,
+    struct mylite_sql_transaction_completion completion
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_begin_immediate_statement(
     struct mylite_sql_parser_state *state,

@@ -51,7 +51,7 @@
 %left COLLATE.
 %right UPLUS UMINUS BITWISE_NOT BINARY.
 
-%fallback IDENTIFIER SAVEPOINT ENFORCED NO ACTION ALGORITHM COMMENT CASCADED DEFINER INVOKER
+%fallback IDENTIFIER SAVEPOINT CHAIN ENFORCED NO ACTION ALGORITHM COMMENT CASCADED DEFINER INVOKER
     DISK INSERT_METHOD LAST MEMORY MERGE NULLS RESPECT SECURITY SRID TABLESPACE TEMPTABLE
     UNDEFINED.
 
@@ -100,6 +100,9 @@
 %type dml_function_token { struct mylite_sql_token }
 %type keyword_function_token { struct mylite_sql_token }
 %type merge_insert_method { struct mylite_sql_ast_node * }
+%type transaction_completion { struct mylite_sql_transaction_completion }
+%type transaction_chain_completion { struct mylite_sql_transaction_completion }
+%type transaction_release_completion { struct mylite_sql_transaction_completion }
 
 input ::= statement_list(A). {
     mylite_sql_parser_state_set_root(state, A);
@@ -485,6 +488,16 @@ transaction_control_statement(A) ::= COMMIT(C) WORK(W). {
     A = mylite_sql_parser_make_transaction_control_statement(
         state, MYLITE_SQL_AST_COMMIT_STATEMENT, C, W, NULL);
 }
+transaction_control_statement(A) ::= COMMIT(C) transaction_completion(O). {
+    A = mylite_sql_parser_make_transaction_control_statement_with_completion(
+        state, MYLITE_SQL_AST_COMMIT_STATEMENT,
+        (struct mylite_sql_transaction_control_tokens){.statement_token = C}, O);
+}
+transaction_control_statement(A) ::= COMMIT(C) WORK(W) transaction_completion(O). {
+    A = mylite_sql_parser_make_transaction_control_statement_with_completion(
+        state, MYLITE_SQL_AST_COMMIT_STATEMENT,
+        (struct mylite_sql_transaction_control_tokens){.statement_token = C, .work_token = W}, O);
+}
 transaction_control_statement(A) ::= ROLLBACK(R). {
     A = mylite_sql_parser_make_transaction_control_statement(
         state, MYLITE_SQL_AST_ROLLBACK_STATEMENT, R, R, NULL);
@@ -492,6 +505,16 @@ transaction_control_statement(A) ::= ROLLBACK(R). {
 transaction_control_statement(A) ::= ROLLBACK(R) WORK(W). {
     A = mylite_sql_parser_make_transaction_control_statement(
         state, MYLITE_SQL_AST_ROLLBACK_STATEMENT, R, W, NULL);
+}
+transaction_control_statement(A) ::= ROLLBACK(R) transaction_completion(O). {
+    A = mylite_sql_parser_make_transaction_control_statement_with_completion(
+        state, MYLITE_SQL_AST_ROLLBACK_STATEMENT,
+        (struct mylite_sql_transaction_control_tokens){.statement_token = R}, O);
+}
+transaction_control_statement(A) ::= ROLLBACK(R) WORK(W) transaction_completion(O). {
+    A = mylite_sql_parser_make_transaction_control_statement_with_completion(
+        state, MYLITE_SQL_AST_ROLLBACK_STATEMENT,
+        (struct mylite_sql_transaction_control_tokens){.statement_token = R, .work_token = W}, O);
 }
 transaction_control_statement(A) ::= SAVEPOINT(S) identifier(N). {
     A = mylite_sql_parser_make_savepoint_control_statement(
@@ -504,6 +527,52 @@ transaction_control_statement(A) ::= ROLLBACK(R) rollback_work_opt TO rollback_s
 transaction_control_statement(A) ::= RELEASE(R) SAVEPOINT identifier(N). {
     A = mylite_sql_parser_make_savepoint_control_statement(
         state, MYLITE_SQL_AST_RELEASE_SAVEPOINT_STATEMENT, R, N);
+}
+
+transaction_completion(A) ::= transaction_chain_completion(C). {
+    A = C;
+}
+transaction_completion(A) ::= transaction_release_completion(R). {
+    A = R;
+}
+transaction_completion(A) ::= transaction_chain_completion(C) transaction_release_completion(R). {
+    A = C;
+    A.last_token = R.last_token;
+    A.has_completion = true;
+}
+
+transaction_chain_completion(A) ::= AND(S) CHAIN(C). {
+    A = (struct mylite_sql_transaction_completion){
+        .last_token = C,
+        .chain_start_token = S,
+        .chain_end_token = C,
+        .has_completion = true,
+        .chain = true,
+    };
+}
+transaction_chain_completion(A) ::= AND(S) NO CHAIN(C). {
+    A = (struct mylite_sql_transaction_completion){
+        .last_token = C,
+        .chain_start_token = S,
+        .chain_end_token = C,
+        .has_completion = true,
+        .chain = false,
+    };
+}
+
+transaction_release_completion(A) ::= RELEASE(R). {
+    A = (struct mylite_sql_transaction_completion){
+        .last_token = R,
+        .has_completion = true,
+        .chain = false,
+    };
+}
+transaction_release_completion(A) ::= NO RELEASE(R). {
+    A = (struct mylite_sql_transaction_completion){
+        .last_token = R,
+        .has_completion = true,
+        .chain = false,
+    };
 }
 
 start_transaction_characteristics_opt(A) ::= . {
@@ -2210,6 +2279,9 @@ show_like_clause_opt(A) ::= LIKE STRING(P). {
 }
 
 rename_table_statement(A) ::= RENAME(R) TABLE rename_table_pair_list(L). {
+    A = mylite_sql_parser_make_rename_table_statement(state, R, L);
+}
+rename_table_statement(A) ::= RENAME(R) TABLES rename_table_pair_list(L). {
     A = mylite_sql_parser_make_rename_table_statement(state, R, L);
 }
 

@@ -750,6 +750,37 @@ static enum placeholder_statement_kind classify_create_placeholder_statement(
 static enum placeholder_statement_kind classify_alter_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );
+static bool foreign_server_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static bool foreign_server_create_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static bool foreign_server_alter_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static bool foreign_server_drop_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static bool foreign_server_drop_name_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool alter_schema_unsupported_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static bool alter_schema_unsupported_encryption_option_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool alter_schema_unsupported_read_only_option_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool alter_schema_read_only_value_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
 static bool create_view_placeholder_statement_is_supported(
     const struct placeholder_statement_scan *scan
 );
@@ -4949,6 +4980,9 @@ static enum placeholder_statement_kind classify_create_placeholder_statement(
         placeholder_scan_token_text_equals(scan, 1U, "RESOURCE")) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
     }
+    if (foreign_server_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
+    }
     if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE")) {
         return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
     }
@@ -4989,6 +5023,9 @@ static enum placeholder_statement_kind classify_alter_placeholder_statement(
         placeholder_scan_token_text_equals(scan, 1U, "INSTANCE")) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
     }
+    if (foreign_server_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
+    }
     if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE")) {
         return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
     }
@@ -5009,12 +5046,175 @@ static enum placeholder_statement_kind classify_alter_placeholder_statement(
         alter_table_partition_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
+    if (alter_schema_unsupported_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
     if (placeholder_scan_token_text_equals(scan, 1U, "PROCEDURE") ||
         placeholder_scan_token_text_equals(scan, 1U, "FUNCTION") ||
         placeholder_scan_token_text_equals(scan, 1U, "EVENT")) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_STORED_PROGRAM;
     }
     return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static bool foreign_server_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || scan->has_non_trailing_semicolon ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U) ||
+        placeholder_scan_statement_tail_is_obviously_incomplete(scan) ||
+        !placeholder_scan_token_text_equals(scan, 1U, "SERVER")) {
+        return false;
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "CREATE")) {
+        return foreign_server_create_placeholder_statement_is_supported(scan);
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "ALTER")) {
+        return foreign_server_alter_placeholder_statement_is_supported(scan);
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "DROP")) {
+        return foreign_server_drop_placeholder_statement_is_supported(scan);
+    }
+    return false;
+}
+
+static bool foreign_server_create_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    enum { foreign_server_create_min_tokens = 8 };
+
+    bool saw_foreign_data_wrapper = false;
+    bool saw_options = false;
+
+    if (scan == NULL || scan->token_count < foreign_server_create_min_tokens) {
+        return false;
+    }
+    for (size_t index = 3U; index + 2U < scan->token_count; ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, "FOREIGN") &&
+            placeholder_scan_token_text_equals(scan, index + 1U, "DATA") &&
+            placeholder_scan_token_text_equals(scan, index + 2U, "WRAPPER")) {
+            saw_foreign_data_wrapper = true;
+        }
+        if (placeholder_scan_token_text_equals(scan, index, "OPTIONS")) {
+            saw_options = true;
+        }
+    }
+    return saw_foreign_data_wrapper && saw_options;
+}
+
+static bool foreign_server_alter_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    enum { foreign_server_alter_min_tokens = 5 };
+
+    if (scan == NULL || scan->token_count < foreign_server_alter_min_tokens) {
+        return false;
+    }
+    for (size_t index = 3U; index < scan->token_count; ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, "OPTIONS")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool foreign_server_drop_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    enum { foreign_server_drop_if_exists_tokens = 5 };
+
+    if (scan == NULL || scan->token_count < 3U) {
+        return false;
+    }
+    if (scan->token_count == 3U) {
+        return foreign_server_drop_name_is_supported(scan, 2U);
+    }
+    return scan->token_count == foreign_server_drop_if_exists_tokens &&
+           placeholder_scan_token_text_equals(scan, 2U, "IF") &&
+           placeholder_scan_token_text_equals(scan, 3U, "EXISTS") &&
+           foreign_server_drop_name_is_supported(scan, 4U);
+}
+
+static bool foreign_server_drop_name_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    if (scan == NULL || index >= scan->token_count ||
+        placeholder_scan_token_text_equals(scan, index, "IF") ||
+        placeholder_scan_token_text_equals(scan, index, "EXISTS")) {
+        return false;
+    }
+    return placeholder_scan_token_can_name_loose_identifier(scan, index) ||
+           scan->tokens[index].kind == MYLITE_SQL_TOKEN_STRING;
+}
+
+static bool alter_schema_unsupported_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || scan->has_non_trailing_semicolon ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U) ||
+        placeholder_scan_statement_tail_is_obviously_incomplete(scan) ||
+        !placeholder_scan_token_text_equals(scan, 0U, "ALTER") ||
+        (!placeholder_scan_token_text_equals(scan, 1U, "DATABASE") &&
+         !placeholder_scan_token_text_equals(scan, 1U, "SCHEMA"))) {
+        return false;
+    }
+    for (size_t index = 2U; index < scan->token_count; ++index) {
+        if (alter_schema_unsupported_encryption_option_starts_at(scan, index) ||
+            alter_schema_unsupported_read_only_option_starts_at(scan, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool alter_schema_unsupported_encryption_option_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    size_t value_index = index + 1U;
+
+    if (scan == NULL || index + 1U >= scan->token_count ||
+        !placeholder_scan_token_text_equals(scan, index, "ENCRYPTION")) {
+        return false;
+    }
+    if (token_is_equal_sign(&scan->tokens[value_index])) {
+        ++value_index;
+    }
+    if (value_index >= scan->token_count) {
+        return false;
+    }
+    return placeholder_scan_token_text_equals(scan, value_index, "DEFAULT") ||
+           scan->tokens[value_index].kind == MYLITE_SQL_TOKEN_STRING;
+}
+
+static bool alter_schema_unsupported_read_only_option_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    size_t value_index = index + 2U;
+
+    if (scan == NULL || index + 2U >= scan->token_count ||
+        !placeholder_scan_token_text_equals(scan, index, "READ") ||
+        !placeholder_scan_token_text_equals(scan, index + 1U, "ONLY")) {
+        return false;
+    }
+    if (token_is_equal_sign(&scan->tokens[value_index])) {
+        ++value_index;
+    }
+    return alter_schema_read_only_value_is_supported(scan, value_index);
+}
+
+static bool alter_schema_read_only_value_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    if (scan == NULL || index >= scan->token_count) {
+        return false;
+    }
+    return placeholder_scan_token_text_equals(scan, index, "DEFAULT") ||
+           placeholder_scan_token_text_equals(scan, index, "0") ||
+           placeholder_scan_token_text_equals(scan, index, "1");
 }
 
 static bool create_view_placeholder_statement_is_supported(
@@ -5550,6 +5750,9 @@ static enum placeholder_statement_kind classify_drop_placeholder_statement(
     if (placeholder_scan_token_text_equals(scan, 1U, "USER") ||
         placeholder_scan_token_text_equals(scan, 1U, "ROLE") ||
         placeholder_scan_token_text_equals(scan, 1U, "RESOURCE")) {
+        return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
+    }
+    if (foreign_server_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
     }
     if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE")) {
@@ -6476,6 +6679,39 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_begin_immediate_statement(
         begin_token,
         immediate_token,
         NULL
+    );
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_transaction_control_statement_with_completion(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_node_kind statement_kind,
+    struct mylite_sql_transaction_control_tokens tokens,
+    struct mylite_sql_transaction_completion completion
+) {
+    struct mylite_sql_token last_token =
+        completion.has_completion ? completion.last_token : tokens.statement_token;
+    struct mylite_sql_ast_node *chain_completion = NULL;
+
+    if (!completion.has_completion && tokens.work_token.text != NULL) {
+        last_token = tokens.work_token;
+    }
+    if (completion.chain) {
+        struct mylite_sql_source_span span = span_join(
+            span_from_token(&completion.chain_start_token),
+            span_from_token(&completion.chain_end_token)
+        );
+
+        chain_completion = make_node(state, MYLITE_SQL_AST_TRANSACTION_CHAIN_COMPLETION, span);
+        if (chain_completion == NULL) {
+            return NULL;
+        }
+    }
+    return mylite_sql_parser_make_transaction_control_statement(
+        state,
+        statement_kind,
+        tokens.statement_token,
+        last_token,
+        chain_completion
     );
 }
 
@@ -15509,6 +15745,7 @@ static bool map_keyword_token(
         {"THEN", MYLITE_SQL_PARSE_THEN},
         {"ELSE", MYLITE_SQL_PARSE_ELSE},
         {"END", MYLITE_SQL_PARSE_END},
+        {"CHAIN", MYLITE_SQL_PARSE_CHAIN},
         {"MOD", MYLITE_SQL_PARSE_MOD},
         {"DIV", MYLITE_SQL_PARSE_DIV},
         {"IGNORE", MYLITE_SQL_PARSE_IGNORE},

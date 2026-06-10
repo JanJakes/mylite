@@ -323,6 +323,8 @@ static void destroy_database_handle(struct mylite_db *database) {
         (void)sqlite3_exec(database->sqlite, "ROLLBACK", NULL, NULL, NULL);
         database->session.user_transaction_active = false;
         database->session.active_transaction_read_only = false;
+        database->session.active_transaction_isolation =
+            MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ;
     }
     free(database->session.savepoints);
     database->session.savepoints = NULL;
@@ -517,6 +519,7 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->next_transaction_isolation_from_system_variable = false;
     session->next_transaction_access_mode_from_system_variable = false;
     session->active_transaction_read_only = false;
+    session->active_transaction_isolation = MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ;
     session->savepoints = NULL;
     session->savepoint_count = 0U;
     session->savepoint_capacity = 0U;

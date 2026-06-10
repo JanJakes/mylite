@@ -200,6 +200,7 @@ struct mylite_session_state {
     enum mylite_transaction_access_mode session_transaction_access_mode;
     enum mylite_transaction_isolation next_transaction_isolation;
     enum mylite_transaction_access_mode next_transaction_access_mode;
+    enum mylite_transaction_isolation active_transaction_isolation;
     bool has_selected_schema;
     bool sql_mode_is_placeholder;
     bool time_zone_is_placeholder;

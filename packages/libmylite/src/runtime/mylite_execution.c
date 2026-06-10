@@ -4033,8 +4033,22 @@ static int execute_start_transaction_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
-static int execute_commit_statement(struct mylite_db *database, mylite_result **out_result);
-static int execute_rollback_statement(struct mylite_db *database, mylite_result **out_result);
+static int execute_commit_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_rollback_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static bool transaction_completion_requests_chain(const struct mylite_sql_ast_node *statement);
+static int begin_chained_transaction(
+    struct mylite_db *database,
+    enum mylite_transaction_isolation isolation,
+    enum mylite_transaction_access_mode access_mode
+);
 static int ensure_persistent_auto_increment_high_water_slot(
     struct mylite_db *database,
     const struct mylite_catalog_table_descriptor *table

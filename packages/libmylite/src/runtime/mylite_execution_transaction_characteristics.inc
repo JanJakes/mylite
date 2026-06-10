@@ -234,10 +234,8 @@ static int parse_set_transaction_isolation_value(
             return rc;
         }
         value = identifier;
-    } else if (
-        value_node->kind == MYLITE_SQL_AST_LITERAL &&
-        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING
-    ) {
+    } else if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
+               mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING) {
         rc = decode_set_transaction_string_value(
             database,
             value_node,
@@ -441,14 +439,12 @@ static const char *transaction_isolation_value_text(enum mylite_transaction_isol
     }
 }
 
-static const char *transaction_read_only_scalar_text(
-    enum mylite_transaction_access_mode access_mode
+static const char *transaction_read_only_scalar_text(enum mylite_transaction_access_mode access_mode
 ) {
     return access_mode == MYLITE_TRANSACTION_ACCESS_READ_ONLY ? "1" : "0";
 }
 
-static const char *transaction_read_only_show_text(
-    enum mylite_transaction_access_mode access_mode
+static const char *transaction_read_only_show_text(enum mylite_transaction_access_mode access_mode
 ) {
     return access_mode == MYLITE_TRANSACTION_ACCESS_READ_ONLY ? "ON" : "OFF";
 }
@@ -512,4 +508,5 @@ static void clear_next_transaction_characteristics(struct mylite_db *database) {
 
 static void clear_active_transaction_characteristics(struct mylite_db *database) {
     database->session.active_transaction_read_only = false;
+    database->session.active_transaction_isolation = MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ;
 }

@@ -166,9 +166,11 @@ without introducing durable server-startup state.
 
 ## Diagnostics And Limits
 
-- The baseline table is empty. MyLite does not implement `CREATE SERVER`,
-  `ALTER SERVER`, `DROP SERVER`, FEDERATED storage-engine connections, server
-  definition persistence, or server-definition privilege checks.
+- The baseline table is empty. MyLite does not implement persisted
+  `CREATE SERVER`, `ALTER SERVER`, or `DROP SERVER` effects, FEDERATED
+  storage-engine connections, server definition persistence, or
+  server-definition privilege checks. A later parser-corpus slice accepts
+  those DDL forms as server-only administrative no-ops with warning `1105`.
 - Writes to `mysql.servers` remain blocked by the built-in schema write guard
   before catalog mutation.
 - `SHOW CREATE TABLE mysql.servers` remains out of scope for this slice.

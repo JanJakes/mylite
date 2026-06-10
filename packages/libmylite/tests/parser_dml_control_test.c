@@ -2905,7 +2905,7 @@ static int test_transaction_control_statements(void) {
         "CREATE TABLE transaction ("
         "begin INT, immediate INT, commit INT, rollback INT, work INT, savepoint INT, "
         "isolation INT, level INT, committed INT, uncommitted INT, repeatable INT, "
-        "serializable INT, only INT);",
+        "serializable INT, only INT, chain INT);",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -2944,12 +2944,24 @@ static int test_transaction_control_statements(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql("END TRANSACTION;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("COMMIT AND CHAIN;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("COMMIT AND CHAIN;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(statement, MYLITE_SQL_AST_COMMIT_STATEMENT, "commit chain");
+    failures += parser_test_expect_child_count(statement, 1U, "commit chain children");
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 0U),
+        MYLITE_SQL_AST_TRANSACTION_CHAIN_COMPLETION,
+        "commit chain completion"
+    );
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parser_test_parse_sql("COMMIT TRANSACTION;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql("ROLLBACK RELEASE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("ROLLBACK RELEASE;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures +=
+        parser_test_expect_node(statement, MYLITE_SQL_AST_ROLLBACK_STATEMENT, "rollback release");
+    failures += parser_test_expect_child_count(statement, 0U, "rollback release children");
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parser_test_parse_sql("ROLLBACK TRANSACTION;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);

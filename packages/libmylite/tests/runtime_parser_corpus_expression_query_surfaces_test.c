@@ -7,7 +7,10 @@
 
 enum {
     mysql_error_parse = 1064,
+    mysql_error_operand_should_contain_one_column = 1241,
     mysql_error_regexp_character_set_mismatch = 3995,
+    row_not_comparison_column_count = 2,
+    row_string_comparison_column_count = 5,
 };
 
 struct expected_sql_error {
@@ -39,6 +42,10 @@ int main(void) {
 
 static int test_expression_query_surfaces(void) {
     static const char *const scalar_rows[] = {"1", "0", "1"};
+    static const char *const row_comparison_values[] = {"1", "0", "1"};
+    static const char *const row_null_comparison_values[] = {NULL, "1", "1"};
+    static const char *const row_not_comparison_values[] = {"1", NULL};
+    static const char *const row_string_comparison_values[] = {"1", "1", "1", "0", "1"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -78,9 +85,63 @@ static int test_expression_query_surfaces(void) {
         database,
         "SELECT ROW(1, 2)",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "support",
+            .code = mysql_error_operand_should_contain_one_column,
+            .sqlstate = "21000",
+            .message_part = "Operand should contain 1 column(s)",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW(1, 2) = ROW(1, 2), ROW(1, 2) = ROW(1, 3), "
+                   "ROW(1, 2) <> ROW(1, 3)",
+            .values = row_comparison_values,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "row constructor comparison",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW(1, NULL) = ROW(1, NULL), "
+                   "ROW(1, NULL) <=> ROW(1, NULL), ROW(2, NULL) > ROW(1, 9)",
+            .values = row_null_comparison_values,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "row constructor NULL comparison",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT NOT ROW(1, 2) = ROW(1, 3), "
+                   "NOT ROW(1, NULL) = ROW(1, NULL)",
+            .values = row_not_comparison_values,
+            .column_count = row_not_comparison_column_count,
+            .row_count = 1U,
+            .context = "row constructor NOT comparison",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW('b', 1) > ROW('a', 9), ROW('b', 1) = ROW('B', 1), "
+                   "ROW('b ', 1) = ROW('b', 1), ROW('b', 1) > ROW('B', 9), "
+                   "ROW('123', 1) = ROW(123, 1)",
+            .values = row_string_comparison_values,
+            .column_count = row_string_comparison_column_count,
+            .row_count = 1U,
+            .context = "row constructor string comparison",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ROW(1, 2) = ROW(1, 2, 3)",
+        (struct expected_sql_error){
+            .code = mysql_error_operand_should_contain_one_column,
+            .sqlstate = "21000",
+            .message_part = "Operand should contain 2 column(s)",
         }
     );
     failures += execute_error(

@@ -146,6 +146,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_GROUP_BY_ROLLUP_MODIFIER:
     case MYLITE_SQL_AST_SHOW_GRANTS_ACCOUNT:
     case MYLITE_SQL_AST_SHOW_GRANTS_ROLE_LIST:
+    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
         break;
     default:
         return execute_non_prepared_statement(database, context, statement, out_result);
@@ -476,6 +477,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
     case MYLITE_SQL_AST_SCALAR_SUBQUERY:
+    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CAST_CHAR_EXPRESSION:
     case MYLITE_SQL_AST_CAST_SIGNED_EXPRESSION:

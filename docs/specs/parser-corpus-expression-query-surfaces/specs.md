@@ -41,7 +41,8 @@ The corpus contains keyword function calls that cannot be parsed by the generic
 `IDENTIFIER(...)` rule because the function names are MySQL keywords. This
 slice admits targeted keyword-function placeholders:
 
-- `ROW(...)` row constructors in scalar expression positions;
+- `ROW(...)` row constructors in scalar expression positions, now refined by
+  the dedicated row-constructor predicate slice;
 - `VALUES(column)` in nested expressions, such as duplicate-key update
   expressions;
 - `GROUPING(...)` used with `GROUP BY ... WITH ROLLUP`;
@@ -143,9 +144,9 @@ work:
 - supported regexp predicates use the existing baseline regexp runtime, with
   scalar binary/binary matching case-sensitive and mixed binary/nonbinary
   non-`NULL` operands reporting MySQL's `3995 / HY000` character-set mismatch;
-- unsupported keyword functions, `CHAR(... USING ...)`, row constructors,
-  `GROUPING()`, and unsupported DISTINCT aggregate forms fail with explicit
-  diagnostics;
+- unsupported keyword functions, `CHAR(... USING ...)`, unsupported row
+  constructor contexts, `GROUPING()`, and unsupported DISTINCT aggregate forms
+  fail with explicit diagnostics;
 - expression group keys parse but execute only where the grouped executor
   already supports the expression shape.
 

@@ -74,6 +74,9 @@ static bool is_scalar_projection_expression_without_collate(
     if (is_scalar_comparison_projection_expression(expression)) {
         return true;
     }
+    if (is_row_constructor_projection_expression(expression)) {
+        return true;
+    }
     if (is_scalar_concat_projection_expression(expression)) {
         return true;
     }
@@ -120,6 +123,37 @@ static bool is_last_insert_id_set_projection_expression(const struct mylite_sql_
         return false;
     }
     return child_at(expression, 0U) != NULL;
+}
+
+static bool is_row_constructor_projection_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_ROW_CONSTRUCTOR) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        const struct mylite_sql_ast_node *left =
+            unwrap_parenthesized_expression(child_at(expression, 0U));
+        const struct mylite_sql_ast_node *right =
+            unwrap_parenthesized_expression(child_at(expression, 1U));
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        if (!is_scalar_comparison_operator(operator_kind)) {
+            return false;
+        }
+        return (left != NULL && left->kind == MYLITE_SQL_AST_ROW_CONSTRUCTOR) ||
+               (right != NULL && right->kind == MYLITE_SQL_AST_ROW_CONSTRUCTOR);
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
+        mylite_sql_ast_node_operator(expression) == MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT) {
+        return is_row_constructor_projection_expression(child_at(expression, 0U));
+    }
+    if (expression->kind == MYLITE_SQL_AST_NOT_PREDICATE) {
+        return is_row_constructor_projection_expression(child_at(expression, 0U));
+    }
+    return false;
 }
 
 static bool is_scalar_function_projection_expression(const struct mylite_sql_ast_node *expression) {

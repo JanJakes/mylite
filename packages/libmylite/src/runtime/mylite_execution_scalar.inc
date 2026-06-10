@@ -150,8 +150,7 @@ static int session_scalar_value(
                 expression,
                 (struct mylite_execution_temporal_fractional_precision_context){
                     .subject_name = "curtime",
-                    .unsupported_message =
-                        "fractional CURRENT_TIME precision is not supported",
+                    .unsupported_message = "fractional CURRENT_TIME precision is not supported",
                 }
             ) != MYLITE_OK) {
             return MYLITE_ERROR;
@@ -177,8 +176,7 @@ static int session_scalar_value(
                 expression,
                 (struct mylite_execution_temporal_fractional_precision_context){
                     .subject_name = "utc_timestamp",
-                    .unsupported_message =
-                        "fractional UTC_TIMESTAMP precision is not supported",
+                    .unsupported_message = "fractional UTC_TIMESTAMP precision is not supported",
                 }
             ) != MYLITE_OK) {
             return MYLITE_ERROR;
@@ -430,11 +428,19 @@ static int session_scalar_value(
         return last_insert_id_set_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_LITERAL:
         return literal_projection_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+        return row_constructor_scalar_value(database, expression, out_cell);
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
+        if (is_row_constructor_projection_expression(expression)) {
+            return row_constructor_scalar_value(database, expression, out_cell);
+        }
         return session_unary_scalar_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
         return session_binary_scalar_value(database, expression, out_cell);
     case MYLITE_SQL_AST_NOT_PREDICATE:
+        if (is_row_constructor_projection_expression(expression)) {
+            return row_constructor_scalar_value(database, expression, out_cell);
+        }
         return scalar_comparison_value(database, expression, out_cell);
     case MYLITE_SQL_AST_MOD_FUNCTION:
         return scalar_arithmetic_value(database, expression, out_cell);

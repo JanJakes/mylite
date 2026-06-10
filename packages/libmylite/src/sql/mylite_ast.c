@@ -1092,6 +1092,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "sysdate_argument_count_error";
     case MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION:
         return "parenthesized_expression";
+    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+        return "row_constructor";
     case MYLITE_SQL_AST_CREATE_TABLE_STATEMENT:
         return "create_table_statement";
     case MYLITE_SQL_AST_CREATE_TABLE_LIKE_STATEMENT:

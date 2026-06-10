@@ -8959,9 +8959,56 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_generic_function_with_window_
         return NULL;
     }
 
+    if (token_text_equals(&function_token, "ROW")) {
+        return mylite_sql_parser_make_row_constructor(
+            state,
+            function_token,
+            arguments,
+            right_paren
+        );
+    }
+
     function =
         mylite_sql_parser_make_generic_function(state, function_token, arguments, right_paren);
     return mylite_sql_parser_attach_function_window_clause(function, window_clause);
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_row_constructor(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token start_token,
+    struct mylite_sql_ast_node *arguments,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_ast_node *constructor = NULL;
+    struct mylite_sql_ast_node *argument = NULL;
+    size_t argument_count = 0U;
+
+    for (argument = arguments == NULL ? NULL : arguments->first_child; argument != NULL;
+         argument = argument->next_sibling) {
+        ++argument_count;
+    }
+    if (argument_count < 2U) {
+        set_state_status(state, MYLITE_SQL_PARSE_SYNTAX_ERROR);
+        return NULL;
+    }
+
+    constructor = make_node(
+        state,
+        MYLITE_SQL_AST_ROW_CONSTRUCTOR,
+        span_join(span_from_token(&start_token), span_from_token(&right_paren))
+    );
+    if (constructor == NULL) {
+        return NULL;
+    }
+
+    argument = arguments == NULL ? NULL : arguments->first_child;
+    while (argument != NULL) {
+        struct mylite_sql_ast_node *next = argument->next_sibling;
+
+        mylite_sql_ast_node_append_child(constructor, argument);
+        argument = next;
+    }
+    return constructor;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_function_argument_list(

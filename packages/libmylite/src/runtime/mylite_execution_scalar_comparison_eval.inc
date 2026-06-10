@@ -63,6 +63,95 @@ static int apply_scalar_comparison_numeric_operator(
     const struct scalar_arithmetic_value *right,
     struct scalar_arithmetic_value *out_value
 );
+static int row_constructor_comparison_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int row_constructor_not_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int row_constructor_collect_values(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *constructor,
+    struct row_constructor_scalar_values *out_values
+);
+static int row_constructor_collect_item_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct row_constructor_scalar_item *out_item
+);
+static int row_constructor_compare_truth(
+    struct mylite_db *database,
+    enum mylite_sql_ast_operator operator_kind,
+    const struct row_constructor_scalar_values *left,
+    const struct row_constructor_scalar_values *right,
+    enum row_constructor_scalar_truth *out_truth
+);
+static int row_constructor_equal_truth(
+    struct mylite_db *database,
+    const struct row_constructor_scalar_values *left,
+    const struct row_constructor_scalar_values *right,
+    enum row_constructor_scalar_truth *out_truth
+);
+static int row_constructor_null_safe_equal_truth(
+    struct mylite_db *database,
+    const struct row_constructor_scalar_values *left,
+    const struct row_constructor_scalar_values *right,
+    enum row_constructor_scalar_truth *out_truth
+);
+static int row_constructor_order_truth(
+    struct mylite_db *database,
+    enum mylite_sql_ast_operator operator_kind,
+    const struct row_constructor_scalar_values *left,
+    const struct row_constructor_scalar_values *right,
+    enum row_constructor_scalar_truth *out_truth
+);
+static int row_constructor_compare_items(
+    struct mylite_db *database,
+    const struct row_constructor_scalar_item *left,
+    const struct row_constructor_scalar_item *right,
+    bool *out_unknown,
+    int *out_comparison
+);
+static int row_constructor_compare_numeric_items(
+    struct mylite_db *database,
+    const struct row_constructor_scalar_item *left,
+    const struct row_constructor_scalar_item *right,
+    bool *out_unknown,
+    int *out_comparison
+);
+static int row_constructor_numeric_item_value(
+    struct mylite_db *database,
+    const struct row_constructor_scalar_item *item,
+    struct scalar_arithmetic_value *out_value
+);
+static int row_constructor_compare_text_items(
+    const struct row_constructor_scalar_item *left,
+    const struct row_constructor_scalar_item *right
+);
+static bool row_constructor_item_is_null(const struct row_constructor_scalar_item *item);
+static int row_constructor_set_scalar_result(
+    struct mylite_db *database,
+    const struct row_constructor_scalar_result *result,
+    struct session_scalar_cell *out_cell
+);
+static bool row_constructor_expression_is_constructor(const struct mylite_sql_ast_node *expression);
+static bool row_constructor_expression_uses_text_comparison(
+    const struct mylite_sql_ast_node *expression
+);
+static bool row_constructor_comparison_operator_is_supported(
+    enum mylite_sql_ast_operator operator_kind
+);
+static size_t row_constructor_warning_count(const struct row_constructor_scalar_values *values);
+static void row_constructor_values_deinit(struct row_constructor_scalar_values *values);
+static void set_row_constructor_operand_count_error(
+    struct mylite_db *database,
+    size_t expected_column_count
+);
+static void set_row_constructor_unsupported_error(struct mylite_db *database);
 static bool scalar_comparison_values_are_equal(
     const struct scalar_arithmetic_value *left,
     const struct scalar_arithmetic_value *right
@@ -115,6 +204,588 @@ static int scalar_comparison_value(
     out_cell->value = out_cell->integer_text;
     out_cell->staged_division_by_zero_warning_count = value.division_by_zero_warning_count;
     return MYLITE_OK;
+}
+
+static int row_constructor_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL) {
+        set_row_constructor_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_ROW_CONSTRUCTOR) {
+        set_row_constructor_operand_count_error(database, 1U);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
+        mylite_sql_ast_node_operator(expression) == MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT) {
+        return row_constructor_not_scalar_value(database, expression, out_cell);
+    }
+    if (expression->kind == MYLITE_SQL_AST_NOT_PREDICATE) {
+        return row_constructor_not_scalar_value(database, expression, out_cell);
+    }
+    if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return row_constructor_comparison_scalar_value(database, expression, out_cell);
+    }
+    set_row_constructor_unsupported_error(database);
+    return MYLITE_ERROR;
+}
+
+static int row_constructor_comparison_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *left_node =
+        unwrap_parenthesized_expression(child_at(expression, 0U));
+    const struct mylite_sql_ast_node *right_node =
+        unwrap_parenthesized_expression(child_at(expression, 1U));
+    struct row_constructor_scalar_values left = {0};
+    struct row_constructor_scalar_values right = {0};
+    struct row_constructor_scalar_result result = {
+        .truth = ROW_CONSTRUCTOR_SCALAR_UNKNOWN,
+        .warning_count = 0U,
+    };
+    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+    int rc = MYLITE_OK;
+
+    if (!row_constructor_comparison_operator_is_supported(operator_kind) ||
+        !row_constructor_expression_is_constructor(left_node) ||
+        !row_constructor_expression_is_constructor(right_node)) {
+        set_row_constructor_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = row_constructor_collect_values(database, left_node, &left);
+    if (rc == MYLITE_OK) {
+        rc = row_constructor_collect_values(database, right_node, &right);
+    }
+    if (rc == MYLITE_OK && left.count != right.count) {
+        set_row_constructor_operand_count_error(database, left.count);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        result.warning_count = row_constructor_warning_count(&left);
+        if (result.warning_count <= SIZE_MAX - row_constructor_warning_count(&right)) {
+            result.warning_count += row_constructor_warning_count(&right);
+        } else {
+            set_nomem_error(database);
+            rc = MYLITE_NOMEM;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = row_constructor_compare_truth(database, operator_kind, &left, &right, &result.truth);
+    }
+    if (rc == MYLITE_OK) {
+        rc = row_constructor_set_scalar_result(database, &result, out_cell);
+    }
+
+    row_constructor_values_deinit(&right);
+    row_constructor_values_deinit(&left);
+    return rc;
+}
+
+static int row_constructor_not_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct session_scalar_cell value = {0};
+    int written = 0;
+    int rc = row_constructor_scalar_value(database, child_at(expression, 0U), &value);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    out_cell->staged_division_by_zero_warning_count = value.staged_division_by_zero_warning_count;
+    if (value.value == NULL) {
+        session_scalar_cell_deinit(&value);
+        return MYLITE_OK;
+    }
+
+    written = snprintf(
+        out_cell->integer_text,
+        sizeof(out_cell->integer_text),
+        "%d",
+        strcmp(value.value, "0") == 0 ? 1 : 0
+    );
+    session_scalar_cell_deinit(&value);
+    if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+        set_runtime_error(database, "failed to format row constructor NOT value");
+        return MYLITE_ERROR;
+    }
+    out_cell->value = out_cell->integer_text;
+    return MYLITE_OK;
+}
+
+static int row_constructor_collect_values(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *constructor,
+    struct row_constructor_scalar_values *out_values
+) {
+    size_t value_index = 0U;
+
+    if (out_values == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_values = (struct row_constructor_scalar_values){0};
+    if (!row_constructor_expression_is_constructor(constructor)) {
+        set_row_constructor_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    out_values->count = mylite_sql_ast_node_child_count(constructor);
+    out_values->items = calloc(out_values->count, sizeof(*out_values->items));
+    if (out_values->items == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    for (const struct mylite_sql_ast_node *element = child_at(constructor, 0U); element != NULL;
+         element = element->next_sibling) {
+        int rc = row_constructor_collect_item_value(
+            database,
+            element,
+            &out_values->items[value_index]
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        ++value_index;
+    }
+    return MYLITE_OK;
+}
+
+static int row_constructor_collect_item_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct row_constructor_scalar_item *out_item
+) {
+    int rc = MYLITE_OK;
+
+    if (out_item == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_item = (struct row_constructor_scalar_item){0};
+    out_item->expression = unwrap_parenthesized_expression(expression);
+    out_item->uses_text_comparison =
+        row_constructor_expression_uses_text_comparison(out_item->expression);
+    if (out_item->uses_text_comparison) {
+        return session_scalar_value(database, out_item->expression, &out_item->text_cell);
+    }
+
+    rc = evaluate_scalar_comparison_numeric_expression(
+        database,
+        out_item->expression,
+        &out_item->numeric_value
+    );
+    if (rc == MYLITE_OK) {
+        out_item->has_numeric_value = true;
+    }
+    return rc;
+}
+
+static int row_constructor_compare_truth(
+    struct mylite_db *database,
+    enum mylite_sql_ast_operator operator_kind,
+    const struct row_constructor_scalar_values *left,
+    const struct row_constructor_scalar_values *right,
+    enum row_constructor_scalar_truth *out_truth
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+        return row_constructor_equal_truth(database, left, right, out_truth);
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+        return row_constructor_null_safe_equal_truth(database, left, right, out_truth);
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL: {
+        enum row_constructor_scalar_truth equality = ROW_CONSTRUCTOR_SCALAR_UNKNOWN;
+        int rc = row_constructor_equal_truth(database, left, right, &equality);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (equality == ROW_CONSTRUCTOR_SCALAR_UNKNOWN) {
+            *out_truth = ROW_CONSTRUCTOR_SCALAR_UNKNOWN;
+            return MYLITE_OK;
+        }
+        *out_truth = equality == ROW_CONSTRUCTOR_SCALAR_TRUE ? ROW_CONSTRUCTOR_SCALAR_FALSE
+                                                             : ROW_CONSTRUCTOR_SCALAR_TRUE;
+        return MYLITE_OK;
+    }
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+        return row_constructor_order_truth(database, operator_kind, left, right, out_truth);
+    default:
+        *out_truth = ROW_CONSTRUCTOR_SCALAR_UNKNOWN;
+        return MYLITE_OK;
+    }
+}
+
+static int row_constructor_equal_truth(
+    struct mylite_db *database,
+    const struct row_constructor_scalar_values *left,
+    const struct row_constructor_scalar_values *right,
+    enum row_constructor_scalar_truth *out_truth
+) {
+    bool saw_unknown = false;
+
+    for (size_t index = 0U; index < left->count; ++index) {
+        bool unknown = false;
+        int comparison = 0;
+        int rc = row_constructor_compare_items(
+            database,
+            &left->items[index],
+            &right->items[index],
+            &unknown,
+            &comparison
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (unknown) {
+            saw_unknown = true;
+        } else if (comparison != 0) {
+            *out_truth = ROW_CONSTRUCTOR_SCALAR_FALSE;
+            return MYLITE_OK;
+        }
+    }
+    *out_truth = saw_unknown ? ROW_CONSTRUCTOR_SCALAR_UNKNOWN : ROW_CONSTRUCTOR_SCALAR_TRUE;
+    return MYLITE_OK;
+}
+
+static int row_constructor_null_safe_equal_truth(
+    struct mylite_db *database,
+    const struct row_constructor_scalar_values *left,
+    const struct row_constructor_scalar_values *right,
+    enum row_constructor_scalar_truth *out_truth
+) {
+    for (size_t index = 0U; index < left->count; ++index) {
+        bool left_is_null = row_constructor_item_is_null(&left->items[index]);
+        bool right_is_null = row_constructor_item_is_null(&right->items[index]);
+        bool unknown = false;
+        int comparison = 0;
+        int rc = MYLITE_OK;
+
+        if (left_is_null || right_is_null) {
+            if (left_is_null != right_is_null) {
+                *out_truth = ROW_CONSTRUCTOR_SCALAR_FALSE;
+                return MYLITE_OK;
+            }
+            continue;
+        }
+
+        rc = row_constructor_compare_items(
+            database,
+            &left->items[index],
+            &right->items[index],
+            &unknown,
+            &comparison
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (unknown || comparison != 0) {
+            *out_truth = ROW_CONSTRUCTOR_SCALAR_FALSE;
+            return MYLITE_OK;
+        }
+    }
+    *out_truth = ROW_CONSTRUCTOR_SCALAR_TRUE;
+    return MYLITE_OK;
+}
+
+static int row_constructor_order_truth(
+    struct mylite_db *database,
+    enum mylite_sql_ast_operator operator_kind,
+    const struct row_constructor_scalar_values *left,
+    const struct row_constructor_scalar_values *right,
+    enum row_constructor_scalar_truth *out_truth
+) {
+    for (size_t index = 0U; index < left->count; ++index) {
+        bool unknown = false;
+        int comparison = 0;
+        int rc = row_constructor_compare_items(
+            database,
+            &left->items[index],
+            &right->items[index],
+            &unknown,
+            &comparison
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (unknown) {
+            *out_truth = ROW_CONSTRUCTOR_SCALAR_UNKNOWN;
+            return MYLITE_OK;
+        }
+        if (comparison == 0) {
+            continue;
+        }
+        if ((operator_kind == MYLITE_SQL_AST_OPERATOR_LESS && comparison < 0) ||
+            (operator_kind == MYLITE_SQL_AST_OPERATOR_LESS_EQUAL && comparison < 0) ||
+            (operator_kind == MYLITE_SQL_AST_OPERATOR_GREATER && comparison > 0) ||
+            (operator_kind == MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL && comparison > 0)) {
+            *out_truth = ROW_CONSTRUCTOR_SCALAR_TRUE;
+        } else {
+            *out_truth = ROW_CONSTRUCTOR_SCALAR_FALSE;
+        }
+        return MYLITE_OK;
+    }
+    *out_truth = (operator_kind == MYLITE_SQL_AST_OPERATOR_LESS_EQUAL ||
+                  operator_kind == MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL)
+                     ? ROW_CONSTRUCTOR_SCALAR_TRUE
+                     : ROW_CONSTRUCTOR_SCALAR_FALSE;
+    return MYLITE_OK;
+}
+
+static int row_constructor_compare_items(
+    struct mylite_db *database,
+    const struct row_constructor_scalar_item *left,
+    const struct row_constructor_scalar_item *right,
+    bool *out_unknown,
+    int *out_comparison
+) {
+    if (out_unknown == NULL || out_comparison == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_unknown = false;
+    *out_comparison = 0;
+    if (row_constructor_item_is_null(left) || row_constructor_item_is_null(right)) {
+        *out_unknown = true;
+        return MYLITE_OK;
+    }
+    if (left->uses_text_comparison && right->uses_text_comparison) {
+        *out_comparison = row_constructor_compare_text_items(left, right);
+        return MYLITE_OK;
+    }
+    return row_constructor_compare_numeric_items(
+        database,
+        left,
+        right,
+        out_unknown,
+        out_comparison
+    );
+}
+
+static int row_constructor_compare_numeric_items(
+    struct mylite_db *database,
+    const struct row_constructor_scalar_item *left,
+    const struct row_constructor_scalar_item *right,
+    bool *out_unknown,
+    int *out_comparison
+) {
+    struct scalar_arithmetic_value left_value = {0};
+    struct scalar_arithmetic_value right_value = {0};
+    int rc = row_constructor_numeric_item_value(database, left, &left_value);
+
+    if (rc == MYLITE_OK) {
+        rc = row_constructor_numeric_item_value(database, right, &right_value);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (left_value.is_null || right_value.is_null) {
+        *out_unknown = true;
+        return MYLITE_OK;
+    }
+    if (scalar_comparison_values_are_equal(&left_value, &right_value)) {
+        *out_comparison = 0;
+    } else if (scalar_comparison_numeric_result_is_true(
+                   MYLITE_SQL_AST_OPERATOR_LESS,
+                   &left_value,
+                   &right_value
+               )) {
+        *out_comparison = -1;
+    } else {
+        *out_comparison = 1;
+    }
+    return MYLITE_OK;
+}
+
+static int row_constructor_numeric_item_value(
+    struct mylite_db *database,
+    const struct row_constructor_scalar_item *item,
+    struct scalar_arithmetic_value *out_value
+) {
+    if (item == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (item->has_numeric_value) {
+        *out_value = item->numeric_value;
+        return MYLITE_OK;
+    }
+    return evaluate_scalar_comparison_numeric_expression(database, item->expression, out_value);
+}
+
+static int row_constructor_compare_text_items(
+    const struct row_constructor_scalar_item *left,
+    const struct row_constructor_scalar_item *right
+) {
+    const char *left_text = left->text_cell.value;
+    const char *right_text = right->text_cell.value;
+    size_t left_length = scalar_cell_text_length(&left->text_cell);
+    size_t right_length = scalar_cell_text_length(&right->text_cell);
+    size_t common_length = 0U;
+
+    while (left_length > 0U && left_text[left_length - 1U] == ' ') {
+        --left_length;
+    }
+    while (right_length > 0U && right_text[right_length - 1U] == ' ') {
+        --right_length;
+    }
+    common_length = left_length < right_length ? left_length : right_length;
+    for (size_t index = 0U; index < common_length; ++index) {
+        unsigned char left_byte = (unsigned char)ascii_lower((unsigned char)left_text[index]);
+        unsigned char right_byte = (unsigned char)ascii_lower((unsigned char)right_text[index]);
+
+        if (left_byte < right_byte) {
+            return -1;
+        }
+        if (left_byte > right_byte) {
+            return 1;
+        }
+    }
+    if (left_length == right_length) {
+        return 0;
+    }
+    return left_length < right_length ? -1 : 1;
+}
+
+static bool row_constructor_item_is_null(const struct row_constructor_scalar_item *item) {
+    if (item == NULL) {
+        return true;
+    }
+    if (item->uses_text_comparison) {
+        return item->text_cell.value == NULL;
+    }
+    return item->numeric_value.is_null;
+}
+
+static int row_constructor_set_scalar_result(
+    struct mylite_db *database,
+    const struct row_constructor_scalar_result *result,
+    struct session_scalar_cell *out_cell
+) {
+    int written = 0;
+
+    if (result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    out_cell->staged_division_by_zero_warning_count = result->warning_count;
+    if (result->truth == ROW_CONSTRUCTOR_SCALAR_UNKNOWN) {
+        return MYLITE_OK;
+    }
+
+    written = snprintf(
+        out_cell->integer_text,
+        sizeof(out_cell->integer_text),
+        "%d",
+        result->truth == ROW_CONSTRUCTOR_SCALAR_TRUE ? 1 : 0
+    );
+    if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+        set_runtime_error(database, "failed to format row constructor scalar value");
+        return MYLITE_ERROR;
+    }
+    out_cell->value = out_cell->integer_text;
+    return MYLITE_OK;
+}
+
+static bool row_constructor_expression_is_constructor(const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    return expression != NULL && expression->kind == MYLITE_SQL_AST_ROW_CONSTRUCTOR;
+}
+
+static bool row_constructor_expression_uses_text_comparison(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_STRING;
+    }
+    return (is_scalar_concat_projection_expression(expression) ||
+            is_string_scalar_function_projection_expression(expression)) != 0;
+}
+
+static bool row_constructor_comparison_operator_is_supported(
+    enum mylite_sql_ast_operator operator_kind
+) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static size_t row_constructor_warning_count(const struct row_constructor_scalar_values *values) {
+    size_t warning_count = 0U;
+
+    for (size_t index = 0U; values != NULL && index < values->count; ++index) {
+        if (values->items[index].uses_text_comparison) {
+            warning_count += values->items[index].text_cell.staged_division_by_zero_warning_count;
+        } else {
+            warning_count += values->items[index].numeric_value.division_by_zero_warning_count;
+        }
+    }
+    return warning_count;
+}
+
+static void row_constructor_values_deinit(struct row_constructor_scalar_values *values) {
+    if (values == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < values->count; ++index) {
+        session_scalar_cell_deinit(&values->items[index].text_cell);
+    }
+    free(values->items);
+    *values = (struct row_constructor_scalar_values){0};
+}
+
+static void set_row_constructor_operand_count_error(
+    struct mylite_db *database,
+    size_t expected_column_count
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Operand should contain %zu column(s)",
+        expected_column_count
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_operand_should_contain_one_column,
+        "21000",
+        message
+    );
+}
+
+static void set_row_constructor_unsupported_error(struct mylite_db *database) {
+    set_unsupported_error(database, "row constructor scalar predicates are not yet supported");
 }
 
 static int evaluate_scalar_comparison_expression(

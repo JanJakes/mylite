@@ -3734,6 +3734,30 @@ struct scalar_comparison_operation {
     int64_t right;
 };
 
+enum row_constructor_scalar_truth {
+    ROW_CONSTRUCTOR_SCALAR_FALSE = 0,
+    ROW_CONSTRUCTOR_SCALAR_TRUE = 1,
+    ROW_CONSTRUCTOR_SCALAR_UNKNOWN = 2,
+};
+
+struct row_constructor_scalar_item {
+    const struct mylite_sql_ast_node *expression;
+    struct session_scalar_cell text_cell;
+    struct scalar_arithmetic_value numeric_value;
+    bool uses_text_comparison;
+    bool has_numeric_value;
+};
+
+struct row_constructor_scalar_values {
+    struct row_constructor_scalar_item *items;
+    size_t count;
+};
+
+struct row_constructor_scalar_result {
+    enum row_constructor_scalar_truth truth;
+    size_t warning_count;
+};
+
 enum scalar_arithmetic_eval_frame_kind {
     SCALAR_ARITHMETIC_EVAL_ENTER = 1,
     SCALAR_ARITHMETIC_EVAL_APPLY = 2,
@@ -14305,6 +14329,11 @@ static int scalar_comparison_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int row_constructor_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int evaluate_scalar_comparison_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -15036,6 +15065,7 @@ static bool is_collate_projection_expression(const struct mylite_sql_ast_node *e
 static bool is_scalar_projection_expression_without_collate(
     const struct mylite_sql_ast_node *expression
 );
+static bool is_row_constructor_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_user_variable_assignment_projection_expression(
     const struct mylite_sql_ast_node *expression
 );

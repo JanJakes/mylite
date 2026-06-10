@@ -138,13 +138,21 @@ static int session_scalar_value_without_case(
     }
 
     switch (expression->kind) {
+    case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
+        return row_constructor_scalar_value(database, expression, out_cell);
     case MYLITE_SQL_AST_LITERAL:
         return literal_projection_value(database, expression, out_cell);
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
+        if (is_row_constructor_projection_expression(expression)) {
+            return row_constructor_scalar_value(database, expression, out_cell);
+        }
         return session_unary_scalar_value(database, expression, out_cell);
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
         return session_binary_scalar_value(database, expression, out_cell);
     case MYLITE_SQL_AST_NOT_PREDICATE:
+        if (is_row_constructor_projection_expression(expression)) {
+            return row_constructor_scalar_value(database, expression, out_cell);
+        }
         return scalar_comparison_value(database, expression, out_cell);
     case MYLITE_SQL_AST_MOD_FUNCTION:
         return scalar_arithmetic_value(database, expression, out_cell);
@@ -190,6 +198,9 @@ static int session_binary_scalar_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 ) {
+    if (is_row_constructor_projection_expression(expression)) {
+        return row_constructor_scalar_value(database, expression, out_cell);
+    }
     if (row_scalar_expression_is_concat_operator(expression)) {
         return scalar_concat_operator_value(database, expression, out_cell);
     }

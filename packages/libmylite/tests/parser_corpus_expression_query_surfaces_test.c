@@ -60,10 +60,14 @@ static int test_keyword_function_placeholders(void) {
     int failures = 0;
 
     failures += parse_ok("SELECT ROW(1, 2), VALUES(id), GROUPING(id), POINT(1, 1) FROM t");
+    failures += parse_ok("SELECT ROW(1, 2) = ROW(1, 2), ROW(1, 2) <> ROW(1, 3)");
+    failures += parse_ok("SELECT NOT ROW(1, 2) = ROW(1, 3)");
     failures += parse_ok("SELECT GEOMETRYCOLLECTION(POINT(1,1)) FROM t");
     failures += parse_ok("SELECT CHAR(0x41 USING ucs2)");
     failures +=
         parse_ok("INSERT INTO t VALUES (1, 2) ON DUPLICATE KEY UPDATE n = GREATEST(n, VALUES(n))");
+    failures += parser_test_parse_sql("SELECT ROW(1)", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql("SELECT GROUPING(id) FROM t", MYLITE_SQL_PARSE_OK, &result);
     select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
@@ -74,6 +78,14 @@ static int test_keyword_function_placeholders(void) {
         "GROUPING placeholder"
     );
     failures += parser_test_expect_span_text(expression, "GROUPING(id)", "GROUPING span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("SELECT ROW(1, 2)", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures +=
+        parser_test_expect_node(expression, MYLITE_SQL_AST_ROW_CONSTRUCTOR, "ROW constructor");
+    failures += parser_test_expect_span_text(expression, "ROW(1, 2)", "ROW constructor span");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql("SELECT CHAR(0x41 USING ucs2)", MYLITE_SQL_PARSE_OK, &result);

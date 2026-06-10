@@ -48,6 +48,29 @@ expect_success() {
     fi
 }
 
+expect_error() {
+    label=$1
+    code=$2
+    state=$3
+    message=$4
+    sql=$5
+    shift 5
+
+    set +e
+    output=$(run_mysql "$sql" "$@" 2>&1)
+    status_code=$?
+    set -e
+
+    if [ "$status_code" -eq 0 ]; then
+        fail "$label: expected error $code/$state, command succeeded with [$output]"
+    fi
+
+    case "$output" in
+        *"ERROR $code ($state)"*"$message"*) ;;
+        *) fail "$label: expected error $code/$state containing [$message], got [$output]" ;;
+    esac
+}
+
 cleanup() {
     run_mysql "DROP DATABASE IF EXISTS ${DATABASE};" >/dev/null 2>&1 || true
 }
@@ -74,8 +97,53 @@ expect_output \
 
 expect_output \
     "row constructor comparison" \
-    "1" \
-    "USE ${DATABASE}; SELECT ROW(1, 2) = ROW(1, 2);"
+    "1	0	1" \
+    "USE ${DATABASE}; "\
+"SELECT ROW(1, 2) = ROW(1, 2), ROW(1, 2) = ROW(1, 3), "\
+"ROW(1, 2) <> ROW(1, 3);"
+
+expect_output \
+    "row constructor NULL comparison" \
+    "NULL	1	1" \
+    "USE ${DATABASE}; "\
+"SELECT ROW(1, NULL) = ROW(1, NULL), ROW(1, NULL) <=> ROW(1, NULL), "\
+"ROW(2, NULL) > ROW(1, 9);"
+
+expect_output \
+    "row constructor NOT comparison" \
+    "1	NULL" \
+    "USE ${DATABASE}; "\
+"SELECT NOT ROW(1, 2) = ROW(1, 3), "\
+"NOT ROW(1, NULL) = ROW(1, NULL);"
+
+expect_output \
+    "row constructor string comparison" \
+    "1	1	1	0	1" \
+    "USE ${DATABASE}; "\
+"SELECT ROW('b', 1) > ROW('a', 9), ROW('b', 1) = ROW('B', 1), "\
+"ROW('b ', 1) = ROW('b', 1), ROW('b', 1) > ROW('B', 9), "\
+"ROW('123', 1) = ROW(123, 1);"
+
+expect_error \
+    "row constructor single argument" \
+    1064 \
+    42000 \
+    "syntax" \
+    "USE ${DATABASE}; SELECT ROW(1);"
+
+expect_error \
+    "row constructor plain scalar" \
+    1241 \
+    21000 \
+    "Operand should contain 1 column(s)" \
+    "USE ${DATABASE}; SELECT ROW(1, 2);"
+
+expect_error \
+    "row constructor arity mismatch" \
+    1241 \
+    21000 \
+    "Operand should contain 2 column(s)" \
+    "USE ${DATABASE}; SELECT ROW(1, 2) = ROW(1, 2, 3);"
 
 expect_success \
     "CHAR USING charset" \

@@ -310,15 +310,23 @@ static int test_locking_wait_options(void) {
     mylite_result_free(result);
     result = NULL;
 
-    failures += execute_error(
-        database,
-        "SELECT id FROM t FOR UPDATE OF t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
-        }
-    );
+    failures += execute_ok(database, "SELECT id FROM t ORDER BY id FOR UPDATE OF t", &result);
+    failures += expect_rows(result, all_rows, 4U, 0U, "for update of table rows");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures +=
+        execute_ok(database, "SELECT id FROM t AS lk ORDER BY id FOR SHARE OF lk NOWAIT", &result);
+    failures += expect_rows(result, all_rows, 4U, 0U, "for share of alias nowait rows");
+    mylite_result_free(result);
+    result = NULL;
+
+    failures +=
+        execute_ok(database, "SELECT id FROM t ORDER BY id FOR UPDATE OF t SKIP LOCKED", &result);
+    failures += expect_rows(result, all_rows, 4U, 0U, "for update of table skip locked rows");
+    mylite_result_free(result);
+    result = NULL;
+
     failures += execute_error(
         database,
         "SELECT id FROM t FOR UPDATE FOR SHARE",

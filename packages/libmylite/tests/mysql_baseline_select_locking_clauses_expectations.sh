@@ -176,11 +176,19 @@ accepted_locking_options=$(
         "USE ${DATABASE};
          SELECT id FROM t ORDER BY id FOR UPDATE NOWAIT;
          SELECT id FROM t ORDER BY id FOR SHARE SKIP LOCKED;
-         SELECT id FROM t ORDER BY id FOR UPDATE OF t;"
+         SELECT id FROM t ORDER BY id FOR UPDATE OF t;
+         SELECT id FROM t ORDER BY id FOR SHARE OF t NOWAIT;
+         SELECT id FROM t ORDER BY id FOR UPDATE OF t SKIP LOCKED;"
 )
 expect_value \
     "mysql accepted locking option forms" \
     "1
+2
+3
+1
+2
+3
+1
 2
 3
 1

@@ -10,11 +10,17 @@ The supported clauses are parsed, represented in the AST, and executed as
 embedded no-ops:
 
 - `FOR UPDATE`
+- `FOR UPDATE OF table_name[, ...]`
 - `FOR UPDATE NOWAIT`
+- `FOR UPDATE OF table_name[, ...] NOWAIT`
 - `FOR UPDATE SKIP LOCKED`
+- `FOR UPDATE OF table_name[, ...] SKIP LOCKED`
 - `FOR SHARE`
+- `FOR SHARE OF table_name[, ...]`
 - `FOR SHARE NOWAIT`
+- `FOR SHARE OF table_name[, ...] NOWAIT`
 - `FOR SHARE SKIP LOCKED`
+- `FOR SHARE OF table_name[, ...] SKIP LOCKED`
 - `LOCK IN SHARE MODE`
 
 MyLite does not yet implement explicit transactions, row locks, gap locks,
@@ -46,7 +52,9 @@ No MySQL or SQLite implementation source is used.
   the existing result and diagnostics behavior for their underlying statement;
   unsupported forms use existing parse or unsupported-statement diagnostics.
 - Lexer/parser/AST: owns recognition and preservation of the admitted locking
-  clause kind. It does not interpret table descriptors or lower to SQLite.
+  clause kind. It accepts optional `OF` target lists for `FOR UPDATE` and
+  `FOR SHARE`, but does not preserve target names in the AST, interpret table
+  descriptors, or lower targets to SQLite.
 - Runtime/analyzer/planner: validates where locking clauses are allowed for the
   current MyLite subset and otherwise ignores admitted clause kinds.
 - Catalog: descriptors remain authoritative for table, column, aggregate,
@@ -78,9 +86,18 @@ select_statement ::=
         limit_clause_opt select_locking_clause_opt.
 
 select_locking_clause_opt ::= .
-select_locking_clause_opt ::= FOR UPDATE select_lock_wait_opt.
-select_locking_clause_opt ::= FOR SHARE select_lock_wait_opt.
+select_locking_clause_opt ::= FOR UPDATE select_lock_target_opt select_lock_wait_opt.
+select_locking_clause_opt ::= FOR SHARE select_lock_target_opt select_lock_wait_opt.
 select_locking_clause_opt ::= LOCK IN SHARE MODE.
+
+select_lock_target_opt ::= .
+select_lock_target_opt ::= OF lock_target_name_list.
+
+lock_target_name_list ::= lock_target_name.
+lock_target_name_list ::= lock_target_name_list COMMA lock_target_name.
+
+lock_target_name ::= identifier.
+lock_target_name ::= lock_target_name DOT identifier.
 
 select_lock_wait_opt ::= .
 select_lock_wait_opt ::= NOWAIT.
@@ -90,6 +107,11 @@ select_lock_wait_opt ::= SKIP LOCKED.
 The clause appears after the currently supported `ORDER BY` and `LIMIT` tails.
 MyLite does not support `SELECT ... INTO`, so no additional `INTO` placement is
 introduced.
+
+The current implementation admits `OF` target lists in the parser driver and
+feeds only the locking kind and wait modifier into the Lemon grammar. This keeps
+the current no-op runtime independent of target-list storage while still
+rejecting malformed target lists such as missing targets or trailing separators.
 
 ## Supported Statements
 
@@ -135,8 +157,9 @@ not a claim that MyLite has MySQL row-locking semantics.
 
 This slice does not admit:
 
-- `FOR UPDATE OF table_name`;
-- `FOR SHARE OF table_name`;
+- semantic validation of `OF` target names against source table names or
+  aliases;
+- scoped locking behavior for `OF` targets;
 - multiple locking clauses in one query block;
 - locking clauses before `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, or `LIMIT`;
 - locking clauses in `CREATE TABLE ... SELECT`;
@@ -147,11 +170,11 @@ This slice does not admit:
   interactions.
 
 MySQL 8.4.9 accepts `NOWAIT`, `SKIP LOCKED`, and `OF table_name`; MyLite
-accepts `NOWAIT` and `SKIP LOCKED` as current embedded no-op wait modifiers,
-and intentionally leaves `OF table_name` unsupported until it has explicit
-transaction and locking semantics. MySQL also returns error `3569` for multiple
-locking clauses that apply to the same table; MyLite may reject repeated locking
-clauses as a syntax error for this narrow slice.
+accepts these as current embedded no-op locking options and intentionally
+defers target validation until it has explicit transaction and locking
+semantics. MySQL also returns error `3569` for multiple locking clauses that
+apply to the same table; MyLite may reject repeated locking clauses as a syntax
+error for this narrow slice.
 
 ## Diagnostics
 
@@ -160,7 +183,7 @@ Expected diagnostics:
 | Condition | Diagnostic |
 | --- | --- |
 | Syntax errors or unsupported clause placement | Existing parser syntax error `1064`, SQLSTATE `42000` |
-| `OF table_name` | Deterministic syntax or unsupported diagnostic |
+| Malformed `OF` target list | Existing parser syntax error `1064`, SQLSTATE `42000` |
 | Multiple locking clauses | Deterministic syntax or unsupported diagnostic; MySQL exact `3569` may be deferred |
 | `CREATE TABLE ... SELECT ... locking_clause` with one descriptor source table | Error `1746`, SQLSTATE `HY000`, message naming the source and target tables |
 | `CREATE TABLE ... SELECT ... locking_clause` with an existing target table | Existing target diagnostics or `IF NOT EXISTS` no-op note take precedence |
@@ -179,6 +202,8 @@ underlying statement already produces warnings, such as `SQL_NO_CACHE`,
   kind. Keep this internal to the SQL AST.
 - Do not add public result or handle fields.
 - Do not include locking-clause text in generated SQLite SQL.
+- Do not expose or validate `OF` target names until scoped locking semantics are
+  implemented.
 - Do not materialize extra rows in memory. The existing descriptor-built SQLite
   plans should run exactly as before.
 - Reject `CREATE TABLE ... SELECT` locking clauses before creating the target
@@ -200,8 +225,8 @@ Add MySQL-runtime expectation coverage for:
 - `INSERT ... SELECT ... FOR UPDATE` and
   `REPLACE ... SELECT ... FOR SHARE`;
 - `CREATE TABLE ... SELECT ... FOR UPDATE` rejection;
-- MySQL-accepted no-op `NOWAIT` and `SKIP LOCKED`, plus MyLite-deferred
-  `OF table`;
+- MySQL-accepted no-op `NOWAIT`, `SKIP LOCKED`, and `OF table` combinations;
+- malformed `OF` target lists;
 - multiple locking clauses and misplaced clauses.
 
 Add fast C tests under `packages/libmylite/tests/`, preferably a new
@@ -216,8 +241,8 @@ tests. Cover:
 - no result-set shape changes;
 - `CREATE TABLE ... SELECT ... FOR UPDATE` diagnostic and no target table
   creation side effect;
-- successful `NOWAIT` and `SKIP LOCKED` wait modifiers, and unsupported `OF`,
-  repeated clauses, and misplaced clauses;
+- successful `NOWAIT`, `SKIP LOCKED`, and `OF` target-list combinations, plus
+  malformed `OF` target lists, repeated clauses, and misplaced clauses;
 - existing parser/runtime lifecycle tests still pass.
 
 ## Compatibility Documentation

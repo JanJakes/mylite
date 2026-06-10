@@ -2922,10 +2922,84 @@ static int test_select_locking_clause(void) {
 
     failures += parser_test_parse_sql(
         "SELECT id FROM simple_lifecycle FOR UPDATE OF simple_lifecycle;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_select_locking_clause(statement) ==
+            MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_FOR_UPDATE,
+        "select for update of table"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM simple_lifecycle AS s FOR SHARE OF s NOWAIT;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_select_locking_clause(statement) ==
+            MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_FOR_SHARE,
+        "select for share of alias nowait"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM simple_lifecycle FOR UPDATE OF simple_lifecycle SKIP LOCKED;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_select_locking_clause(statement) ==
+            MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_FOR_UPDATE,
+        "select for update of table skip locked"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM simple_lifecycle FOR UPDATE OF app.simple_lifecycle NOWAIT;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_select_locking_clause(statement) ==
+            MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_FOR_UPDATE,
+        "select for update of qualified table nowait"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM simple_lifecycle FOR UPDATE OF;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM simple_lifecycle FOR UPDATE OF simple_lifecycle,;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM simple_lifecycle FOR UPDATE OF simple_lifecycle.;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM simple_lifecycle FOR UPDATE OF FROM;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parser_test_parse_sql(
         "SELECT id FROM simple_lifecycle FOR UPDATE FOR SHARE;",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,

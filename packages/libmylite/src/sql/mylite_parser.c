@@ -22,6 +22,11 @@ struct mylite_sql_parser_token_map {
     bool previous_token_was_dot;
 };
 
+struct mylite_sql_parser_token_history {
+    int previous_parser_token;
+    int token_before_previous_parser_token;
+};
+
 struct mylite_sql_token_kind_mapping {
     enum mylite_sql_token_kind kind;
     int parser_token;
@@ -93,6 +98,15 @@ static bool map_lexer_token(
     int previous_parser_token,
     struct mylite_sql_parser_token_map *out_map
 );
+static bool should_skip_select_lock_target_list(
+    const struct mylite_sql_token *token,
+    const struct mylite_sql_parser_token_history *history
+);
+static enum mylite_sql_parse_status skip_select_lock_target_list(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_sql_token *out_next_token
+);
+static bool token_can_be_select_lock_target_identifier(const struct mylite_sql_token *token);
 static bool map_direct_lexer_token(enum mylite_sql_token_kind kind, int *out_parser_token);
 static bool lexer_token_has_immediate_left_paren(
     const struct mylite_sql_lexer *lexer,
@@ -720,7 +734,7 @@ static enum mylite_sql_parse_status parse_sql_with_lemon(
     struct mylite_sql_lexer lexer;
     void *parser = NULL;
     bool previous_token_was_dot = false;
-    int previous_parser_token = 0;
+    struct mylite_sql_parser_token_history token_history = {0};
 
     if (out_result == NULL) {
         return MYLITE_SQL_PARSE_MISUSE;
@@ -780,12 +794,29 @@ static enum mylite_sql_parse_status parse_sql_with_lemon(
             break;
         }
 
+        /* Lock targets do not affect MyLite's embedded no-op locking behavior. */
+        if (should_skip_select_lock_target_list(&token, &token_history)) {
+            enum mylite_sql_parse_status status = skip_select_lock_target_list(&lexer, &token);
+
+            if (status != MYLITE_SQL_PARSE_OK) {
+                record_parse_error(
+                    out_result,
+                    (struct mylite_sql_parse_error){
+                        .status = status,
+                        .parser_token = 0,
+                        .token = token,
+                    }
+                );
+                break;
+            }
+        }
+
         if (!map_lexer_token(
                 &state,
                 &lexer,
                 &token,
                 previous_token_was_dot,
-                previous_parser_token,
+                token_history.previous_parser_token,
                 &token_map
             )) {
             record_parse_error(
@@ -801,7 +832,8 @@ static enum mylite_sql_parse_status parse_sql_with_lemon(
 
         mylite_sql_lemon(parser, token_map.parser_token, token, &state);
         previous_token_was_dot = token_map.previous_token_was_dot;
-        previous_parser_token = token_map.parser_token;
+        token_history.token_before_previous_parser_token = token_history.previous_parser_token;
+        token_history.previous_parser_token = token_map.parser_token;
 
         if (out_result->status != MYLITE_SQL_PARSE_OK || token.kind == MYLITE_SQL_TOKEN_EOF) {
             break;
@@ -13309,6 +13341,75 @@ static bool map_lexer_token(
         .previous_token_was_dot = parser_token == MYLITE_SQL_PARSE_DOT,
     };
     return true;
+}
+
+static bool should_skip_select_lock_target_list(
+    const struct mylite_sql_token *token,
+    const struct mylite_sql_parser_token_history *history
+) {
+    if (token == NULL || !token_text_equals(token, "OF")) {
+        return false;
+    }
+    if (history == NULL || history->token_before_previous_parser_token != MYLITE_SQL_PARSE_FOR) {
+        return false;
+    }
+    return history->previous_parser_token == MYLITE_SQL_PARSE_UPDATE ||
+           history->previous_parser_token == MYLITE_SQL_PARSE_SHARE;
+}
+
+static enum mylite_sql_parse_status skip_select_lock_target_list(
+    struct mylite_sql_lexer *lexer,
+    struct mylite_sql_token *out_next_token
+) {
+    bool expecting_identifier = true;
+
+    for (;;) {
+        if (mylite_sql_lexer_next(lexer, out_next_token) != 0) {
+            return MYLITE_SQL_PARSE_MISUSE;
+        }
+        if (is_comment_token(out_next_token->kind)) {
+            continue;
+        }
+        if (out_next_token->kind == MYLITE_SQL_TOKEN_ERROR) {
+            return MYLITE_SQL_PARSE_LEXER_ERROR;
+        }
+        if (out_next_token->kind == MYLITE_SQL_TOKEN_EOF) {
+            return expecting_identifier ? MYLITE_SQL_PARSE_SYNTAX_ERROR : MYLITE_SQL_PARSE_OK;
+        }
+
+        if (expecting_identifier) {
+            if (!token_can_be_select_lock_target_identifier(out_next_token)) {
+                return MYLITE_SQL_PARSE_SYNTAX_ERROR;
+            }
+            expecting_identifier = false;
+            continue;
+        }
+
+        if (out_next_token->kind == MYLITE_SQL_TOKEN_PUNCTUATION && out_next_token->length == 1U &&
+            (out_next_token->text[0] == '.' || out_next_token->text[0] == ',')) {
+            expecting_identifier = true;
+            continue;
+        }
+
+        return MYLITE_SQL_PARSE_OK;
+    }
+}
+
+static bool token_can_be_select_lock_target_identifier(const struct mylite_sql_token *token) {
+    if (token->kind == MYLITE_SQL_TOKEN_IDENTIFIER ||
+        token->kind == MYLITE_SQL_TOKEN_QUOTED_IDENTIFIER) {
+        return true;
+    }
+    if (token->kind != MYLITE_SQL_TOKEN_KEYWORD) {
+        return false;
+    }
+    if ((token->keyword_flags & MYLITE_SQL_KEYWORD_RESERVED) != 0U) {
+        return false;
+    }
+    return !token_text_equals(token, "FOR") && !token_text_equals(token, "LOCK") &&
+           !token_text_equals(token, "LOCKED") && !token_text_equals(token, "NOWAIT") &&
+           !token_text_equals(token, "SHARE") && !token_text_equals(token, "SKIP") &&
+           !token_text_equals(token, "UPDATE");
 }
 
 static bool map_direct_lexer_token(enum mylite_sql_token_kind kind, int *out_parser_token) {

@@ -27,3 +27,18 @@
       relevance.
 - [x] Commit, review with a subagent, amend if needed, push `main`, then
       continue to the next baseline slice.
+
+## Parser Corpus Target-List Extension
+
+- [x] Reclassify the current parser corpus locking-clause failures.
+- [x] Verify MySQL 8.4.9 accepts `FOR UPDATE` / `FOR SHARE` with `OF` target
+      lists combined with `NOWAIT` and `SKIP LOCKED`.
+- [x] Extend the no-op locking spec to admit optional `OF` target lists while
+      documenting deferred target validation and scoped locking behavior.
+- [x] Implement parser-driver target-list filtering so the existing Lemon
+      locking grammar and AST preserve only the current no-op locking kind.
+- [x] Add parser/runtime coverage for accepted target lists and malformed target
+      list syntax.
+- [x] Rerun the focused parser/runtime tests and MySQL expectation script.
+- [x] Rerun the parser corpus benchmark and update the failure count.
+- [x] Run release-gate checks, review the final diff, commit, and push.

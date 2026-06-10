@@ -116,6 +116,10 @@ expect_contains \
     "MERGE SHOW CREATE insert method" \
     "INSERT_METHOD=FIRST" \
     "USE ${DATABASE}; SHOW CREATE TABLE merge_space_t;"
+expect_success \
+    "MERGE empty union form" \
+    "USE ${DATABASE}; CREATE TABLE empty_merge_t (id INT) ENGINE=MERGE UNION=(); "\
+"ALTER TABLE empty_merge_t UNION=();"
 
 expect_success \
     "InnoDB tablespace and storage options" \
@@ -123,6 +127,15 @@ expect_success \
 "STORAGE DISK ENGINE=InnoDB; "\
 "ALTER TABLE opt_t TABLESPACE innodb_file_per_table STORAGE DISK, ENGINE=InnoDB; "\
 "ALTER TABLE opt_t STORAGE MEMORY;"
+expect_success \
+    "mixed storage and comment table options" \
+    "USE ${DATABASE}; CREATE TABLE opt_mix (id INT) COMMENT='old'; "\
+"ALTER TABLE opt_mix AVG_ROW_LENGTH=10 COMMENT='new' MIN_ROWS=1 ROW_FORMAT=COMPACT;"
+expect_contains \
+    "mixed storage and comment metadata" \
+    "new" \
+    "USE ${DATABASE}; SELECT TABLE_COMMENT, CREATE_OPTIONS FROM INFORMATION_SCHEMA.TABLES "\
+"WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'opt_mix';"
 
 expect_output \
     "inline invisible column metadata" \
@@ -180,6 +193,41 @@ expect_output \
     "hello" \
     "USE ${DATABASE}; SELECT TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES "\
 "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multi_t2';"
+expect_success \
+    "table-option-first drop column action" \
+    "USE ${DATABASE}; CREATE TABLE option_drop_t (id INT PRIMARY KEY, d INT) ENGINE=InnoDB; "\
+"ALTER TABLE option_drop_t ENGINE=InnoDB, DROP COLUMN d;"
+expect_output \
+    "table-option-first drop column metadata" \
+    "" \
+    "USE ${DATABASE}; SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "\
+"WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'option_drop_t' AND COLUMN_NAME = 'd';"
+expect_success \
+    "table-option-first modify column action" \
+    "USE ${DATABASE}; CREATE TABLE option_modify_t (id INT PRIMARY KEY, dl INT) ENGINE=InnoDB; "\
+"ALTER TABLE option_modify_t ENGINE=InnoDB, MODIFY dl CHAR(64);"
+expect_output \
+    "table-option-first modified column metadata" \
+    "char(64)" \
+    "USE ${DATABASE}; SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS "\
+"WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'option_modify_t' AND COLUMN_NAME = 'dl';"
+expect_success \
+    "table-option-first add column action" \
+    "USE ${DATABASE}; CREATE TABLE option_add_t (id INT PRIMARY KEY) ENGINE=InnoDB; "\
+"ALTER TABLE option_add_t ENGINE=MyISAM, ADD COLUMN c2 INT;"
+expect_output \
+    "table-option-first added column metadata" \
+    "c2" \
+    "USE ${DATABASE}; SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "\
+"WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'option_add_t' AND COLUMN_NAME = 'c2';"
+expect_success \
+    "table-option-first rename action" \
+    "USE ${DATABASE}; CREATE TABLE option_parent_t (id INT PRIMARY KEY) ENGINE=InnoDB; "\
+"ALTER TABLE option_parent_t ENGINE=InnoDB, RENAME TO option_parent0_t;"
+expect_output \
+    "table-option-first renamed table metadata" \
+    "option_parent0_t" \
+    "USE ${DATABASE}; SHOW TABLES LIKE 'option_parent0_t';"
 
 cleanup
 

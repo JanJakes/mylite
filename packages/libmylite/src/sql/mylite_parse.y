@@ -1598,6 +1598,9 @@ table_option(A) ::= STORAGE(T) DISK(V). {
 table_option(A) ::= UNION(T) equal_opt LPAREN table_name_list(L) RPAREN(R). {
     A = mylite_sql_parser_make_table_union_option(state, T, L, R);
 }
+table_option(A) ::= UNION(T) equal_opt LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_table_union_option(state, T, NULL, R);
+}
 table_option(A) ::= INSERT_METHOD(T) equal_opt merge_insert_method(V). {
     A = mylite_sql_parser_make_table_insert_method_option(state, T, V);
 }
@@ -3465,12 +3468,23 @@ alter_table_storage_statistics_option_list(A) ::= alter_table_storage_statistics
     A = mylite_sql_parser_make_table_option_list(state, O);
 }
 alter_table_storage_statistics_option_list(A) ::=
-    alter_table_storage_statistics_option_list(L) alter_table_storage_statistics_option(O). {
+    alter_table_storage_statistics_option_list(L) alter_table_storage_statistics_statement_option(O). {
     A = mylite_sql_parser_append_table_option(state, L, O);
 }
 alter_table_storage_statistics_option_list(A) ::=
-    alter_table_storage_statistics_option_list(L) COMMA alter_table_storage_statistics_option(O). {
+    alter_table_storage_statistics_option_list(L) COMMA
+    alter_table_storage_statistics_statement_option(O). {
     A = mylite_sql_parser_append_table_option(state, L, O);
+}
+
+alter_table_storage_statistics_statement_option(A) ::= alter_table_storage_statistics_option(O). {
+    A = O;
+}
+alter_table_storage_statistics_statement_option(A) ::= COMMENT(T) equal_opt STRING(V). {
+    A = mylite_sql_parser_make_table_comment_option(
+        state,
+        T,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING));
 }
 
 alter_table_storage_statistics_option(A) ::= ENGINE(E) equal_opt option_name(N). {
@@ -3546,6 +3560,9 @@ alter_table_storage_statistics_option(A) ::= STORAGE(T) DISK(V). {
 }
 alter_table_storage_statistics_option(A) ::= UNION(T) equal_opt LPAREN table_name_list(L) RPAREN(R). {
     A = mylite_sql_parser_make_table_union_option(state, T, L, R);
+}
+alter_table_storage_statistics_option(A) ::= UNION(T) equal_opt LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_table_union_option(state, T, NULL, R);
 }
 alter_table_storage_statistics_option(A) ::= INSERT_METHOD(T) equal_opt merge_insert_method(V). {
     A = mylite_sql_parser_make_table_insert_method_option(state, T, V);

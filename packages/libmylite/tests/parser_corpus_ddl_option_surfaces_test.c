@@ -22,6 +22,8 @@ static int test_table_option_placeholders(void) {
         "CREATE TABLE merge_t (id INT) ENGINE=MERGE UNION=(base_a,base_b) INSERT_METHOD=NO",
         "CREATE TABLE merge_space_t (id INT) ENGINE=MRG_MYISAM UNION (base_a) "
         "INSERT_METHOD=FIRST",
+        "CREATE TABLE empty_merge_t (id INT) ENGINE=MERGE UNION=()",
+        "CREATE TEMPORARY TABLE empty_temp_merge_t (id INT) ENGINE=MERGE UNION ()",
         "CREATE TABLE storage_t (id INT) INSERT_METHOD=LAST STORAGE MEMORY",
     };
     struct mylite_sql_parse_result result;
@@ -155,6 +157,14 @@ static int test_alter_table_multi_action_placeholders(void) {
         "ALTER TABLE t ADD COLUMN x INT, TABLESPACE innodb_file_per_table",
         "ALTER TABLE t ADD COLUMN y INT, STORAGE DISK",
         "ALTER TABLE t ADD COLUMN z INT, UNION=(base_a,base_b)",
+        "ALTER TABLE t UNION=()",
+        "ALTER TABLE t ENGINE=InnoDB, DROP COLUMN d",
+        "ALTER TABLE t ENGINE='InnoDB', MODIFY dl CHAR(64)",
+        "ALTER TABLE t ENGINE=MyISAM, ADD COLUMN c2 INT",
+        "ALTER TABLE t ENGINE='InnoDB', ALTER my_row_id SET INVISIBLE",
+        "ALTER TABLE parent ENGINE=InnoDB, RENAME TO parent0",
+        ("ALTER TABLE t AVG_ROW_LENGTH=0 CHECKSUM=0 COMMENT='' MIN_ROWS=0 "
+         "MAX_ROWS=0 PACK_KEYS=DEFAULT DELAY_KEY_WRITE=0 ROW_FORMAT=DEFAULT"),
     };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -182,6 +192,23 @@ static int test_alter_table_multi_action_placeholders(void) {
         parser_test_child_at(actions, 1U),
         MYLITE_SQL_AST_ALTER_TABLE_RENAME_STATEMENT,
         "rename multi-action placeholder"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "ALTER TABLE t ENGINE=InnoDB, DROP COLUMN d",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(result.root, 0U),
+        MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT,
+        "raw leading table option multi-action placeholder"
+    );
+    failures += parser_test_expect_child_count(
+        parser_test_child_at(result.root, 0U),
+        0U,
+        "raw leading table option multi-action child count"
     );
     mylite_sql_parse_result_deinit(&result);
 

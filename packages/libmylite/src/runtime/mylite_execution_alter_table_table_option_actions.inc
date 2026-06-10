@@ -81,6 +81,12 @@ static int plan_alter_table_storage_statistics(
         "%s",
         out_plan->original_table.row_format_option
     );
+    snprintf(
+        out_plan->comment,
+        sizeof(out_plan->comment),
+        "%s",
+        out_plan->original_table.comment
+    );
 
     table_option = child_at(table_options, 0U);
     while (rc == MYLITE_OK && table_option != NULL) {
@@ -90,6 +96,14 @@ static int plan_alter_table_storage_statistics(
                 table_option,
                 out_plan->target.table_name,
                 false
+            );
+        } else if (table_option->kind == MYLITE_SQL_AST_TABLE_COMMENT_OPTION) {
+            rc = decode_table_comment_option(
+                database,
+                table_option,
+                out_plan->target.table_name,
+                out_plan->comment,
+                sizeof(out_plan->comment)
             );
         } else if (create_table_storage_statistics_option_is_valid(table_option)) {
             rc = apply_table_storage_statistics_option(database, table_option, &option_plan);
@@ -138,6 +152,7 @@ static int plan_alter_table_storage_statistics(
         out_plan->table.max_rows != out_plan->original_table.max_rows ||
         out_plan->table.avg_row_length != out_plan->original_table.avg_row_length ||
         out_plan->table.delay_key_write != out_plan->original_table.delay_key_write;
+    out_plan->changes_comment = strcmp(out_plan->comment, out_plan->original_table.comment) != 0;
 
     return MYLITE_OK;
 }

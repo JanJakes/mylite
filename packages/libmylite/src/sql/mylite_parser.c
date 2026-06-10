@@ -78,6 +78,7 @@ enum placeholder_statement_kind {
     PLACEHOLDER_STATEMENT_UTILITY_NOOP = 3,
     PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY = 4,
     PLACEHOLDER_STATEMENT_EXPLAIN = 5,
+    PLACEHOLDER_STATEMENT_ALTER_TABLE_MULTI_ACTION_UNSUPPORTED = 6,
 };
 
 struct placeholder_statement_scan {
@@ -778,6 +779,13 @@ static bool alter_schema_unsupported_read_only_option_starts_at(
     size_t index
 );
 static bool alter_schema_read_only_value_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool alter_table_engine_first_multi_action_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static bool alter_table_engine_first_multi_action_starter_is_supported(
     const struct placeholder_statement_scan *scan,
     size_t index
 );
@@ -5039,6 +5047,9 @@ static enum placeholder_statement_kind classify_alter_placeholder_statement(
     if (ddl_zerofill_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
+    if (alter_table_engine_first_multi_action_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_ALTER_TABLE_MULTI_ACTION_UNSUPPORTED;
+    }
     if (ddl_extended_option_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
@@ -5215,6 +5226,63 @@ static bool alter_schema_read_only_value_is_supported(
     return placeholder_scan_token_text_equals(scan, index, "DEFAULT") ||
            placeholder_scan_token_text_equals(scan, index, "0") ||
            placeholder_scan_token_text_equals(scan, index, "1");
+}
+
+static bool alter_table_engine_first_multi_action_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t index = 2U;
+
+    if (scan == NULL || scan->has_non_trailing_semicolon ||
+        placeholder_scan_statement_tail_is_obviously_incomplete(scan) ||
+        !placeholder_scan_starts_alter_table_statement(scan) ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U) ||
+        !placeholder_scan_token_can_name_loose_identifier(scan, index)) {
+        return false;
+    }
+    ++index;
+    if (placeholder_scan_token_text_equals(scan, index, ".") &&
+        placeholder_scan_token_can_name_loose_identifier(scan, index + 1U)) {
+        index += 2U;
+    }
+    if (!placeholder_scan_token_text_equals(scan, index, "ENGINE")) {
+        return false;
+    }
+    ++index;
+    if (index < scan->token_count && token_is_equal_sign(&scan->tokens[index])) {
+        ++index;
+    }
+    if (index >= scan->token_count ||
+        (!placeholder_scan_token_can_name_loose_identifier(scan, index) &&
+         scan->tokens[index].kind != MYLITE_SQL_TOKEN_STRING)) {
+        return false;
+    }
+    ++index;
+    if (index >= scan->token_count || !token_is_comma(&scan->tokens[index])) {
+        return false;
+    }
+    return alter_table_engine_first_multi_action_starter_is_supported(scan, index + 1U);
+}
+
+static bool alter_table_engine_first_multi_action_starter_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    static const char *const starters[] = {
+        "ADD",
+        "ALTER",
+        "CHANGE",
+        "DROP",
+        "MODIFY",
+        "RENAME",
+    };
+
+    return placeholder_scan_token_text_equals_any(
+        scan,
+        index,
+        starters,
+        sizeof(starters) / sizeof(starters[0])
+    );
 }
 
 static bool create_view_placeholder_statement_is_supported(
@@ -5966,6 +6034,8 @@ static enum mylite_sql_ast_node_kind ast_kind_for_placeholder_statement(
         return MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT;
     case PLACEHOLDER_STATEMENT_EXPLAIN:
         return MYLITE_SQL_AST_EXPLAIN_STATEMENT;
+    case PLACEHOLDER_STATEMENT_ALTER_TABLE_MULTI_ACTION_UNSUPPORTED:
+        return MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT;
     case PLACEHOLDER_STATEMENT_NONE:
         break;
     }

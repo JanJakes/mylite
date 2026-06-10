@@ -1706,7 +1706,9 @@ struct planned_alter_table_storage_statistics {
     struct table_name_resolution target;
     struct mylite_catalog_table_descriptor original_table;
     struct mylite_catalog_table_descriptor table;
+    char comment[MYLITE_CATALOG_TABLE_COMMENT_CAPACITY];
     bool changes_descriptor;
+    bool changes_comment;
 };
 
 struct planned_alter_schema_default_charset_collation {

@@ -119,8 +119,8 @@ static int execute_alter_table_multi_action_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
-    const struct mylite_sql_ast_node *table_node = child_at(statement, 0U);
-    const struct mylite_sql_ast_node *actions = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *table_node = NULL;
+    const struct mylite_sql_ast_node *actions = NULL;
     const struct mylite_sql_ast_node *action = NULL;
     struct alter_table_multi_action_state state = {0};
     struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
@@ -133,6 +133,13 @@ static int execute_alter_table_multi_action_statement(
         set_nomem_error(database);
         return rc;
     }
+    if (mylite_sql_ast_node_child_count(statement) == 0U) {
+        mylite_result_free(result);
+        set_unsupported_error(database, "multi-action ALTER TABLE does not support this action");
+        return MYLITE_ERROR;
+    }
+    table_node = child_at(statement, 0U);
+    actions = child_at(statement, 1U);
     if (actions == NULL || actions->kind != MYLITE_SQL_AST_ALTER_TABLE_ACTION_LIST) {
         mylite_result_free(result);
         set_parse_error(database, NULL);

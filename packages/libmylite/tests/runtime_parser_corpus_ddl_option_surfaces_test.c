@@ -64,6 +64,18 @@ static int test_ddl_option_surfaces(void) {
         NULL,
         "INVISIBLE",
     };
+    static const char *const mixed_option_rows[] = {
+        "new",
+        "min_rows=1 avg_row_length=10 row_format=COMPACT",
+    };
+    static const char *const retained_column_rows[] = {
+        "d",
+        "int",
+        "YES",
+        "",
+        NULL,
+        "",
+    };
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -85,6 +97,24 @@ static int test_ddl_option_surfaces(void) {
         "ALTER TABLE option_t TABLESPACE innodb_file_per_table STORAGE DISK, ENGINE=InnoDB"
     );
     failures += execute_ok(database, "ALTER TABLE option_t STORAGE MEMORY");
+    failures += execute_ok(database, "CREATE TABLE empty_union_t (id INT)");
+    failures += execute_ok(database, "ALTER TABLE empty_union_t UNION=()");
+    failures += execute_ok(database, "CREATE TABLE option_mix (id INT) COMMENT='old'");
+    failures += execute_ok(
+        database,
+        "ALTER TABLE option_mix AVG_ROW_LENGTH=10 COMMENT='new' MIN_ROWS=1 ROW_FORMAT=COMPACT"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT TABLE_COMMENT, CREATE_OPTIONS FROM INFORMATION_SCHEMA.TABLES "
+                   "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'option_mix'",
+            .values = mixed_option_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "mixed storage and comment table options",
+        }
+    );
 
     failures += execute_ok(
         database,
@@ -173,6 +203,26 @@ static int test_ddl_option_surfaces(void) {
             .column_count = 1U,
             .row_count = 0U,
             .context = "unsupported multi-action rolls back rename",
+        }
+    );
+    failures += execute_ok(database, "CREATE TABLE option_action_t (id INT PRIMARY KEY, d INT)");
+    failures += execute_error(
+        database,
+        "ALTER TABLE option_action_t ENGINE=InnoDB, DROP COLUMN d",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "multi-action ALTER TABLE does not support this action",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW COLUMNS FROM option_action_t LIKE 'd'",
+            .values = retained_column_rows,
+            .column_count = show_columns_column_count,
+            .row_count = 1U,
+            .context = "unsupported leading table-option multi-action preserves columns",
         }
     );
 

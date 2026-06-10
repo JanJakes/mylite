@@ -302,7 +302,7 @@ static int alter_table_storage_statistics_from_plan(
     struct mylite_catalog_mutation mutation = {.active = false, .next_generation = 0U};
     int rc = MYLITE_OK;
 
-    if (!plan->changes_descriptor) {
+    if (!plan->changes_descriptor && !plan->changes_comment) {
         return MYLITE_OK;
     }
 
@@ -314,7 +314,7 @@ static int alter_table_storage_statistics_from_plan(
         rc = mylite_catalog_commit_mutation(database, &mutation);
     }
     if (rc != MYLITE_OK) {
-        set_internal_error_if_clear(database, rc, "failed to update table storage options");
+        set_internal_error_if_clear(database, rc, "failed to update table options");
         mylite_catalog_rollback_mutation(database, &mutation);
         return rc;
     }
@@ -330,15 +330,31 @@ static int alter_table_storage_statistics_in_mutation(
     if (plan == NULL) {
         return MYLITE_MISUSE;
     }
-    if (!plan->changes_descriptor) {
+    if (!plan->changes_descriptor && !plan->changes_comment) {
         return MYLITE_OK;
     }
-    return mylite_catalog_update_table_storage_statistics_in_mutation(
-        database,
-        mutation,
-        &plan->table,
-        NULL
-    );
+    if (plan->changes_descriptor) {
+        int rc = mylite_catalog_update_table_storage_statistics_in_mutation(
+            database,
+            mutation,
+            &plan->table,
+            NULL
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    if (plan->changes_comment) {
+        return mylite_catalog_update_table_comment_in_mutation(
+            database,
+            mutation,
+            plan->table.table_id,
+            plan->comment,
+            NULL
+        );
+    }
+    return MYLITE_OK;
 }
 
 static int plan_alter_schema_default_charset_collation(

@@ -471,7 +471,7 @@ static int test_update_unix_timestamp_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax near 'UNIX_TIMESTAMP'",
+            .message_part = "utility statement is not supported",
         }
     );
 

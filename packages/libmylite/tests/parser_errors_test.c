@@ -1586,11 +1586,8 @@ static int test_syntax_errors(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "SELECT id FROM t WHERE id + 1 = 2;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SELECT id FROM t WHERE id + 1 = 2;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=
@@ -1610,16 +1607,13 @@ static int test_syntax_errors(void) {
 
     failures += parser_test_parse_sql(
         "SELECT id FROM t WHERE id XOR nn = 2;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "SELECT id FROM t WHERE ! (id = 1);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SELECT id FROM t WHERE ! (id = 1);", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
@@ -1710,8 +1704,7 @@ static int test_syntax_errors(void) {
         parser_test_parse_sql("UPDATE t SET id = (2 + 3) * 4;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parser_test_parse_sql("UPDATE t SET id = -FALSE;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("UPDATE t SET id = -FALSE;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql("UPDATE t SET id = TRUE + 1;", MYLITE_SQL_PARSE_OK, &result);
@@ -1723,8 +1716,7 @@ static int test_syntax_errors(void) {
     failures += parser_test_parse_sql("UPDATE t SET id = 2 * 3;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parser_test_parse_sql("UPDATE t SET id = 1 / 2;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("UPDATE t SET id = 1 / 2;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql("UPDATE t SET id = other;", MYLITE_SQL_PARSE_OK, &result);

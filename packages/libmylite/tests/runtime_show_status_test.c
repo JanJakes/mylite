@@ -245,6 +245,47 @@ static int test_show_status_values_scopes_and_filters(void) {
         0U,
         "show status missing pattern"
     );
+    failures += expect_single_status_row(
+        database,
+        "SHOW STATUS WHERE Variable_name = 'Threads_connected'",
+        (struct expected_status_row){
+            .name = "Threads_connected",
+            .value = "1",
+        },
+        "show status where name"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS WHERE Variable_name LIKE 'Threads\\_%'",
+        expected_thread_rows,
+        sizeof(expected_thread_rows) / sizeof(expected_thread_rows[0]),
+        "show status where name like"
+    );
+    failures += expect_single_status_row(
+        database,
+        "SHOW STATUS WHERE Value = 'OFF'",
+        (struct expected_status_row){
+            .name = "Compression",
+            .value = "OFF",
+        },
+        "show status where value"
+    );
+    failures += expect_single_status_row(
+        database,
+        "SHOW STATUS WHERE Variable_name IN ('Threads_connected','missing')",
+        (struct expected_status_row){
+            .name = "Threads_connected",
+            .value = "1",
+        },
+        "show status where in"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS WHERE Variable_name = 'Compression'",
+        NULL,
+        0U,
+        "show global status where omits compression"
+    );
     failures += expect_diagnostics_row(database, "show status row count state");
 
     mylite_close(database);
@@ -332,15 +373,6 @@ static int test_show_status_diagnostics(void) {
     failures += execute_error(
         database,
         "SHOW FULL STATUS",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "You have an error in your SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SHOW STATUS WHERE Variable_name = 'Threads_connected'",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

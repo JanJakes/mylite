@@ -91,6 +91,56 @@ static int execute_show_binary_logs_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_binlog_events_statement(
+    struct mylite_db *database,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[show_binlog_events_result_column_count] = {
+        "Log_name",
+        "Pos",
+        "Event_type",
+        "Server_id",
+        "End_log_pos",
+        "Info",
+    };
+    static const char *const values[show_binlog_events_result_column_count] = {
+        show_binary_log_file_name,
+        show_binary_log_placeholder_position,
+        "Format_desc",
+        show_binlog_events_placeholder_server_id,
+        show_binlog_events_placeholder_end_log_pos,
+        show_binlog_events_placeholder_info,
+    };
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_binlog_events_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
 static int execute_show_replica_status_statement(
     struct mylite_db *database,
     mylite_result **out_result

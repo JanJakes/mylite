@@ -250,6 +250,7 @@ enum {
     show_privileges_result_column_count = 3,
     show_binary_log_status_result_column_count = 5,
     show_binary_logs_result_column_count = 3,
+    show_binlog_events_result_column_count = 6,
     show_replica_status_result_column_count = 60,
     show_replicas_result_column_count = 5,
     show_warnings_result_column_count = 3,
@@ -885,6 +886,9 @@ static const char *const show_grants_embedded_root_rows[] = {
 static const char *const show_binary_log_file_name = "binlog.000001";
 static const char *const show_binary_log_placeholder_position = "4";
 static const char *const show_binary_log_placeholder_file_size = "4";
+static const char *const show_binlog_events_placeholder_server_id = "1";
+static const char *const show_binlog_events_placeholder_end_log_pos = "127";
+static const char *const show_binlog_events_placeholder_info = "Server ver: 8.4.9, Binlog ver: 4";
 
 struct show_privileges_row {
     const char *privilege;
@@ -8500,6 +8504,10 @@ static int execute_show_binary_logs_statement(
     struct mylite_db *database,
     mylite_result **out_result
 );
+static int execute_show_binlog_events_statement(
+    struct mylite_db *database,
+    mylite_result **out_result
+);
 static int execute_show_replica_status_statement(
     struct mylite_db *database,
     mylite_result **out_result
@@ -14784,6 +14792,7 @@ static int append_show_status(
     struct mylite_db *database,
     mylite_result *result,
     const struct show_like_filter *filter,
+    const struct mylite_sql_ast_node *where_clause,
     bool global_scope,
     const struct mylite_execution_show_status_descriptor *descriptor
 );

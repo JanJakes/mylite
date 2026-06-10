@@ -587,6 +587,30 @@ static int test_show_events_empty_introspection_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "SHOW EVENTS FROM app WHERE Name = 'daily_event';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_EVENTS_STATEMENT,
+        "show events where"
+    );
+    failures += parser_test_expect_child_count(statement, 2U, "show events where child count");
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(statement, 0U),
+        "app",
+        "show events where schema"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 1U),
+        MYLITE_SQL_AST_WHERE_CLAUSE,
+        "events where clause"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parser_test_parse_sql("CREATE TABLE events (id INT);", MYLITE_SQL_PARSE_OK, &result);
     statement = parser_test_child_at(result.root, 0U);
@@ -612,13 +636,6 @@ static int test_show_events_empty_introspection_statements(void) {
 
     failures +=
         parser_test_parse_sql("SHOW EVENT FROM app;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
-        "SHOW EVENTS FROM app WHERE Name = 'daily_event';",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
@@ -712,6 +729,30 @@ static int test_show_open_tables_empty_introspection_statements(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "SHOW OPEN TABLES FROM app WHERE `Table` = 'open_table';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_OPEN_TABLES_STATEMENT,
+        "show open tables where"
+    );
+    failures += parser_test_expect_child_count(statement, 2U, "show open tables where child count");
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(statement, 0U),
+        "app",
+        "show open tables where schema"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 1U),
+        MYLITE_SQL_AST_WHERE_CLAUSE,
+        "open tables where clause"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parser_test_parse_sql("CREATE TABLE open (id INT);", MYLITE_SQL_PARSE_OK, &result);
     statement = parser_test_child_at(result.root, 0U);
     failures +=
@@ -732,13 +773,6 @@ static int test_show_open_tables_empty_introspection_statements(void) {
 
     failures += parser_test_parse_sql(
         "SHOW EXTENDED OPEN TABLES FROM app;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
-        "SHOW OPEN TABLES FROM app WHERE `Table` = 'open_table';",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );
@@ -1588,6 +1622,8 @@ static int test_show_binary_log_metadata_statements(void) {
         "SHOW BINARY LOGS LIKE '%';",
         "SHOW BINARY LOGS WHERE Log_name IS NOT NULL;",
         "SHOW BINARY LOGS LIMIT 1;",
+        "SHOW BINLOG EVENTS LIMIT 1;",
+        "SHOW BINLOG EVENTS IN 'binlog.000001';",
         "SHOW FULL BINARY LOG STATUS;",
         "SHOW FULL BINARY LOGS;",
         "SHOW MASTER STATUS;",
@@ -1653,6 +1689,34 @@ static int test_show_binary_log_metadata_statements(void) {
         parser_test_expect_child_count(statement, 0U, "lowercase show binary logs child count");
     failures +=
         parser_test_expect_span_text(statement, "show binary logs", "lowercase show binary logs");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("SHOW BINLOG EVENTS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_BINLOG_EVENTS_STATEMENT,
+        "show binlog events"
+    );
+    failures += parser_test_expect_child_count(statement, 0U, "show binlog events child count");
+    failures +=
+        parser_test_expect_span_text(statement, "SHOW BINLOG EVENTS", "show binlog events span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("show binlog events;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_BINLOG_EVENTS_STATEMENT,
+        "lowercase show binlog events"
+    );
+    failures +=
+        parser_test_expect_child_count(statement, 0U, "lowercase show binlog events child count");
+    failures += parser_test_expect_span_text(
+        statement,
+        "show binlog events",
+        "lowercase show binlog events"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql("CREATE TABLE logs (id INT);", MYLITE_SQL_PARSE_OK, &result);
@@ -2441,8 +2505,38 @@ static int test_show_status_statement(void) {
 
     failures += parser_test_parse_sql(
         "SHOW STATUS WHERE Variable_name = 'Threads_connected';",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_STATUS_STATEMENT,
+        "show status where"
+    );
+    failures += parser_test_expect_child_count(statement, 1U, "show status where child count");
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 0U),
+        MYLITE_SQL_AST_WHERE_CLAUSE,
+        "status where clause"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SHOW GLOBAL STATUS WHERE Value = '1';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(statement, 0U),
+        "GLOBAL",
+        "global status where scope"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 1U),
+        MYLITE_SQL_AST_WHERE_CLAUSE,
+        "scoped status where"
     );
     mylite_sql_parse_result_deinit(&result);
 

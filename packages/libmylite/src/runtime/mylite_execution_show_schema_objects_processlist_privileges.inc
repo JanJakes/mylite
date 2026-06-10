@@ -203,7 +203,8 @@ static int execute_show_events_statement(
     const struct mylite_sql_ast_node *first_child = child_at(statement, 0U);
     const struct mylite_sql_ast_node *second_child = child_at(statement, 1U);
     const struct mylite_sql_ast_node *schema_node = first_child;
-    const struct mylite_sql_ast_node *like_node = second_child;
+    const struct mylite_sql_ast_node *filter_node = second_child;
+    const struct mylite_sql_ast_node *like_node = NULL;
     struct show_like_filter filter = {
         .has_pattern = false,
         .pattern = NULL,
@@ -212,9 +213,14 @@ static int execute_show_events_statement(
     mylite_result *result = NULL;
     int rc = MYLITE_OK;
 
-    if (first_child != NULL && first_child->kind == MYLITE_SQL_AST_LITERAL) {
+    if (first_child != NULL &&
+        (first_child->kind == MYLITE_SQL_AST_LITERAL ||
+         first_child->kind == MYLITE_SQL_AST_WHERE_CLAUSE)) {
         schema_node = NULL;
-        like_node = first_child;
+        filter_node = first_child;
+    }
+    if (filter_node != NULL && filter_node->kind == MYLITE_SQL_AST_LITERAL) {
+        like_node = filter_node;
     }
     if (schema_node == NULL) {
         struct mylite_catalog_schema_descriptor schema = {0};
@@ -270,7 +276,8 @@ static int execute_show_open_tables_statement(
     const struct mylite_sql_ast_node *first_child = child_at(statement, 0U);
     const struct mylite_sql_ast_node *second_child = child_at(statement, 1U);
     const struct mylite_sql_ast_node *schema_node = first_child;
-    const struct mylite_sql_ast_node *like_node = second_child;
+    const struct mylite_sql_ast_node *filter_node = second_child;
+    const struct mylite_sql_ast_node *like_node = NULL;
     struct show_like_filter filter = {
         .has_pattern = false,
         .pattern = NULL,
@@ -279,9 +286,14 @@ static int execute_show_open_tables_statement(
     mylite_result *result = NULL;
     int rc = MYLITE_OK;
 
-    if (first_child != NULL && first_child->kind == MYLITE_SQL_AST_LITERAL) {
+    if (first_child != NULL &&
+        (first_child->kind == MYLITE_SQL_AST_LITERAL ||
+         first_child->kind == MYLITE_SQL_AST_WHERE_CLAUSE)) {
         schema_node = NULL;
-        like_node = first_child;
+        filter_node = first_child;
+    }
+    if (filter_node != NULL && filter_node->kind == MYLITE_SQL_AST_LITERAL) {
+        like_node = filter_node;
     }
     if (schema_node != NULL) {
         char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];

@@ -747,6 +747,8 @@ static int execute_show_status_statement(
     const struct mylite_sql_ast_node *first_child = child_at(statement, 0U);
     const struct mylite_sql_ast_node *scope = NULL;
     const struct mylite_sql_ast_node *like_pattern = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *filter_node = NULL;
     bool global_scope = false;
     struct show_like_filter filter = {
         .has_pattern = false,
@@ -758,9 +760,14 @@ static int execute_show_status_statement(
 
     if (first_child != NULL && first_child->kind == MYLITE_SQL_AST_IDENTIFIER) {
         scope = first_child;
-        like_pattern = child_at(statement, 1U);
+        filter_node = child_at(statement, 1U);
     } else {
-        like_pattern = first_child;
+        filter_node = first_child;
+    }
+    if (filter_node != NULL && filter_node->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+        where_clause = filter_node;
+    } else {
+        like_pattern = filter_node;
     }
     global_scope = show_variables_scope_is_global(scope);
 
@@ -786,6 +793,7 @@ static int execute_show_status_statement(
             database,
             result,
             &filter,
+            where_clause,
             global_scope,
             mylite_execution_show_status_descriptor_at(index)
         );
@@ -804,10 +812,13 @@ static int append_show_status(
     struct mylite_db *database,
     mylite_result *result,
     const struct show_like_filter *filter,
+    const struct mylite_sql_ast_node *where_clause,
     bool global_scope,
     const struct mylite_execution_show_status_descriptor *descriptor
 ) {
     const char *values[2] = {NULL, NULL};
+    struct show_variables_where_row row = {0};
+    bool where_matches = true;
     int rc = MYLITE_OK;
 
     if (!show_status_descriptor_visible(descriptor, global_scope)) {
@@ -819,9 +830,19 @@ static int append_show_status(
 
     values[0] = descriptor->name;
     values[1] = descriptor->value;
-    rc = mylite_result_append_text_row(result, values);
-    if (rc != MYLITE_OK) {
-        set_nomem_error(database);
+    if (where_clause != NULL) {
+        row.variable_name = values[0];
+        row.value = values[1];
+        rc = show_variables_where_clause_matches(database, where_clause, &row, &where_matches);
+    }
+    if (rc == MYLITE_OK && !where_matches) {
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
     }
 
     return rc;

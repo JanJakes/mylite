@@ -98,13 +98,16 @@ static int test_show_events_result_shape_schema_like_persistence_and_drop(void) 
         "SHOW EVENTS",
         "SHOW EVENTS LIKE '%'",
         "SHOW EVENTS LIKE 'daily\\_%'",
+        "SHOW EVENTS WHERE Name = 'daily'",
         "SHOW EVENTS FROM app",
         "SHOW EVENTS IN app",
         "SHOW EVENTS FROM app LIKE 'daily'",
+        "SHOW EVENTS FROM app WHERE Name = 'daily'",
         "SHOW EVENTS FROM other LIKE 'missing%'",
         "SHOW EVENTS FROM missing_schema",
         "SHOW EVENTS IN missing_schema",
         "SHOW EVENTS FROM missing_schema LIKE 'missing%'",
+        "SHOW EVENTS FROM missing_schema WHERE Name = 'missing'",
     };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -231,6 +234,15 @@ static int test_show_events_diagnostics_and_unsupported_forms(void) {
     );
     failures += execute_error(
         database,
+        "SHOW EVENTS WHERE Name = 'daily'",
+        (struct expected_sql_error){
+            .code = mysql_error_no_database_selected,
+            .sqlstate = "3D000",
+            .message_part = "No database selected",
+        }
+    );
+    failures += execute_error(
+        database,
         "SHOW EVENTS FROM _mylite_catalog",
         (struct expected_sql_error){
             .code = mysql_error_incorrect_database_name,
@@ -261,15 +273,6 @@ static int test_show_events_diagnostics_and_unsupported_forms(void) {
     failures += execute_error(
         database,
         "SHOW EVENT FROM app",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SHOW EVENTS FROM app WHERE Name = 'daily_event'",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

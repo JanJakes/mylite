@@ -51,8 +51,8 @@
 %left COLLATE.
 %right UPLUS UMINUS BITWISE_NOT BINARY.
 
-%fallback IDENTIFIER SAVEPOINT CHAIN ENFORCED NO ACTION ALGORITHM COMMENT CASCADED DEFINER INVOKER
-    DISK INSERT_METHOD LAST MEMORY MERGE NULLS RESPECT SECURITY SRID TABLESPACE TEMPTABLE
+%fallback IDENTIFIER SAVEPOINT BINLOG CHAIN ENFORCED NO ACTION ALGORITHM COMMENT CASCADED DEFINER
+    INVOKER DISK INSERT_METHOD LAST MEMORY MERGE NULLS RESPECT SECURITY SRID TABLESPACE TEMPTABLE
     UNDEFINED.
 
 %type integer_type_name { struct mylite_sql_integer_type_name_tokens }
@@ -291,6 +291,9 @@ statement(A) ::= show_binary_log_status_statement(B). {
     A = B;
 }
 statement(A) ::= show_binary_logs_statement(B). {
+    A = B;
+}
+statement(A) ::= show_binlog_events_statement(B). {
     A = B;
 }
 statement(A) ::= show_replica_status_statement(B). {
@@ -1891,24 +1894,34 @@ show_triggers_statement(A) ::= SHOW(S) FULL TRIGGERS(T) IN identifier(D) show_li
     A = mylite_sql_parser_make_show_triggers_statement(state, S, T, D, L);
 }
 
-show_events_statement(A) ::= SHOW(S) EVENTS(E) show_like_clause_opt(L). {
+show_events_statement(A) ::= SHOW(S) EVENTS(E) show_schema_object_filter_opt(L). {
     A = mylite_sql_parser_make_show_events_statement(state, S, E, NULL, L);
 }
-show_events_statement(A) ::= SHOW(S) EVENTS(E) FROM identifier(D) show_like_clause_opt(L). {
+show_events_statement(A) ::= SHOW(S) EVENTS(E) FROM identifier(D) show_schema_object_filter_opt(L). {
     A = mylite_sql_parser_make_show_events_statement(state, S, E, D, L);
 }
-show_events_statement(A) ::= SHOW(S) EVENTS(E) IN identifier(D) show_like_clause_opt(L). {
+show_events_statement(A) ::= SHOW(S) EVENTS(E) IN identifier(D) show_schema_object_filter_opt(L). {
     A = mylite_sql_parser_make_show_events_statement(state, S, E, D, L);
 }
 
-show_open_tables_statement(A) ::= SHOW(S) OPEN TABLES(T) show_like_clause_opt(L). {
+show_open_tables_statement(A) ::= SHOW(S) OPEN TABLES(T) show_schema_object_filter_opt(L). {
     A = mylite_sql_parser_make_show_open_tables_statement(state, S, T, NULL, L);
 }
-show_open_tables_statement(A) ::= SHOW(S) OPEN TABLES(T) FROM identifier(D) show_like_clause_opt(L). {
+show_open_tables_statement(A) ::= SHOW(S) OPEN TABLES(T) FROM identifier(D) show_schema_object_filter_opt(L). {
     A = mylite_sql_parser_make_show_open_tables_statement(state, S, T, D, L);
 }
-show_open_tables_statement(A) ::= SHOW(S) OPEN TABLES(T) IN identifier(D) show_like_clause_opt(L). {
+show_open_tables_statement(A) ::= SHOW(S) OPEN TABLES(T) IN identifier(D) show_schema_object_filter_opt(L). {
     A = mylite_sql_parser_make_show_open_tables_statement(state, S, T, D, L);
+}
+
+show_schema_object_filter_opt(A) ::= . {
+    A = NULL;
+}
+show_schema_object_filter_opt(A) ::= LIKE STRING(P). {
+    A = mylite_sql_parser_make_literal(state, P, MYLITE_SQL_AST_LITERAL_STRING);
+}
+show_schema_object_filter_opt(A) ::= WHERE(W) predicate(P). {
+    A = mylite_sql_parser_make_where_clause(state, W, P);
 }
 
 show_routine_status_statement(A) ::= SHOW(S) PROCEDURE STATUS(T) show_catalog_filter_opt(L). {
@@ -2135,6 +2148,9 @@ show_status_filter_opt(A) ::= . {
 show_status_filter_opt(A) ::= LIKE STRING(P). {
     A = mylite_sql_parser_make_literal(state, P, MYLITE_SQL_AST_LITERAL_STRING);
 }
+show_status_filter_opt(A) ::= WHERE(W) predicate(P). {
+    A = mylite_sql_parser_make_where_clause(state, W, P);
+}
 
 show_create_table_statement(A) ::= SHOW(S) CREATE TABLE table_name(T). {
     A = mylite_sql_parser_make_show_create_table_statement(state, S, T);
@@ -2179,6 +2195,10 @@ show_binary_log_status_statement(A) ::= SHOW(S) BINARY LOG STATUS(T). {
 
 show_binary_logs_statement(A) ::= SHOW(S) BINARY LOGS(L). {
     A = mylite_sql_parser_make_show_binary_logs_statement(state, S, L);
+}
+
+show_binlog_events_statement(A) ::= SHOW(S) BINLOG EVENTS(E). {
+    A = mylite_sql_parser_make_show_binlog_events_statement(state, S, E);
 }
 
 show_replica_status_statement(A) ::= SHOW(S) REPLICA STATUS(T). {

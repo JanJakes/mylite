@@ -9400,6 +9400,18 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_binary_logs_statement(
     );
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_binlog_events_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token events_token
+) {
+    return make_node(
+        state,
+        MYLITE_SQL_AST_SHOW_BINLOG_EVENTS_STATEMENT,
+        span_join(span_from_token(&show_token), span_from_token(&events_token))
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_replica_status_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,
@@ -15623,6 +15635,7 @@ static bool map_keyword_token(
         {"HAVING", MYLITE_SQL_PARSE_HAVING},
         {"ORDER", MYLITE_SQL_PARSE_ORDER},
         {"BY", MYLITE_SQL_PARSE_BY},
+        {"BINLOG", MYLITE_SQL_PARSE_BINLOG},
         {"BINARY", MYLITE_SQL_PARSE_BINARY},
         {"USING", MYLITE_SQL_PARSE_USING},
         {"BIT", MYLITE_SQL_PARSE_BIT},

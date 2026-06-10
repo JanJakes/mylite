@@ -17,6 +17,7 @@ enum {
     mysql_error_parse = 1064,
     show_binary_log_status_column_count = 5,
     show_binary_logs_column_count = 3,
+    show_binlog_events_column_count = 6,
     diagnostics_column_count = 2,
     test_path_capacity = 1024,
 };
@@ -63,6 +64,24 @@ static const char *const show_binary_logs_values[show_binary_logs_column_count] 
     "No",
 };
 
+static const char *const show_binlog_events_columns[show_binlog_events_column_count] = {
+    "Log_name",
+    "Pos",
+    "Event_type",
+    "Server_id",
+    "End_log_pos",
+    "Info",
+};
+
+static const char *const show_binlog_events_values[show_binlog_events_column_count] = {
+    "binlog.000001",
+    "4",
+    "Format_desc",
+    "1",
+    "127",
+    "Server ver: 8.4.9, Binlog ver: 4",
+};
+
 static const struct expected_show_result show_binary_log_status = {
     .sql = "SHOW BINARY LOG STATUS",
     .columns = show_binary_log_status_columns,
@@ -75,6 +94,13 @@ static const struct expected_show_result show_binary_logs = {
     .columns = show_binary_logs_columns,
     .values = show_binary_logs_values,
     .column_count = show_binary_logs_column_count,
+};
+
+static const struct expected_show_result show_binlog_events = {
+    .sql = "SHOW BINLOG EVENTS",
+    .columns = show_binlog_events_columns,
+    .values = show_binlog_events_values,
+    .column_count = show_binlog_events_column_count,
 };
 
 static int test_show_binary_log_metadata_results(void);
@@ -129,6 +155,7 @@ static int test_show_binary_log_metadata_results(void) {
         expect_int(mylite_open_memory(&database), MYLITE_OK, "open memory binary log metadata");
     failures += expect_show_binary_log_metadata(database, show_binary_log_status);
     failures += expect_show_binary_log_metadata(database, show_binary_logs);
+    failures += expect_show_binary_log_metadata(database, show_binlog_events);
 
     mylite_close(database);
     return failures;
@@ -168,6 +195,7 @@ static int test_show_binary_log_metadata_file_reopen_and_preamble(void) {
     sqlite_schema_generation = session->sqlite_schema_generation;
     failures += expect_show_binary_log_metadata(database, show_binary_log_status);
     failures += expect_show_binary_log_metadata(database, show_binary_logs);
+    failures += expect_show_binary_log_metadata(database, show_binlog_events);
     session = mylite_connection_session_state(database);
     failures += expect_int64(
         (int64_t)session->catalog_generation,
@@ -196,6 +224,7 @@ static int test_show_binary_log_metadata_file_reopen_and_preamble(void) {
     }
     failures += expect_show_binary_log_metadata(database, show_binary_log_status);
     failures += expect_show_binary_log_metadata(database, show_binary_logs);
+    failures += expect_show_binary_log_metadata(database, show_binlog_events);
 
     mylite_close(database);
     remove_related_files(path);
@@ -211,8 +240,10 @@ static int test_independent_show_binary_log_metadata_handles(void) {
     failures += expect_int(mylite_open_memory(&second), MYLITE_OK, "open second binary log handle");
     failures += expect_show_binary_log_metadata(first, show_binary_log_status);
     failures += expect_show_binary_log_metadata(first, show_binary_logs);
+    failures += expect_show_binary_log_metadata(first, show_binlog_events);
     failures += expect_show_binary_log_metadata(second, show_binary_log_status);
     failures += expect_show_binary_log_metadata(second, show_binary_logs);
+    failures += expect_show_binary_log_metadata(second, show_binlog_events);
 
     mylite_close(first);
     mylite_close(second);
@@ -253,6 +284,18 @@ static int test_show_binary_log_metadata_unsupported_diagnostics(void) {
         },
         {
             .sql = "SHOW BINARY LOGS LIMIT 1",
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        },
+        {
+            .sql = "SHOW BINLOG EVENTS LIMIT 1",
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        },
+        {
+            .sql = "SHOW BINLOG EVENTS IN 'binlog.000001'",
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "You have an error in your SQL syntax",

@@ -87,13 +87,16 @@ static int test_show_open_tables_result_shape_schema_like_persistence_and_drop(v
         "SHOW OPEN TABLES",
         "SHOW OPEN TABLES LIKE '%'",
         "SHOW OPEN TABLES LIKE 'open\\_%'",
+        "SHOW OPEN TABLES WHERE `Table` = 'opened'",
         "SHOW OPEN TABLES FROM app",
         "SHOW OPEN TABLES IN app",
         "SHOW OPEN TABLES FROM app LIKE 'open_table'",
+        "SHOW OPEN TABLES FROM app WHERE `Table` = 'opened'",
         "SHOW OPEN TABLES FROM other LIKE 'missing%'",
         "SHOW OPEN TABLES FROM missing_schema",
         "SHOW OPEN TABLES IN missing_schema",
         "SHOW OPEN TABLES FROM missing_schema LIKE 'missing%'",
+        "SHOW OPEN TABLES FROM missing_schema WHERE `Table` = 'missing'",
     };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -261,15 +264,6 @@ static int test_show_open_tables_diagnostics_and_unsupported_forms(void) {
     failures += execute_error(
         database,
         "SHOW EXTENDED OPEN TABLES FROM app",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SHOW OPEN TABLES FROM app WHERE `Table` = 'opened'",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

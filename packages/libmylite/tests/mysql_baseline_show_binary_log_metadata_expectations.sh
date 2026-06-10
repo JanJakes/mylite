@@ -87,6 +87,18 @@ if [ "$logs_row_count" -lt 1 ]; then
     fail "SHOW BINARY LOGS expected at least one live MySQL row"
 fi
 
+events_header=$(run_mysql_with_headers 'SHOW BINLOG EVENTS LIMIT 1;' | sed -n '1p')
+expect_value \
+    "SHOW BINLOG EVENTS header" \
+    "$(printf '%b' 'Log_name\tPos\tEvent_type\tServer_id\tEnd_log_pos\tInfo')" \
+    "$events_header"
+
+first_event=$(run_mysql 'SHOW BINLOG EVENTS LIMIT 1;')
+expect_value \
+    "SHOW BINLOG EVENTS first event" \
+    "$(printf '%b' 'binlog.000001\t4\tFormat_desc\t1\t127\tServer ver: 8.4.9, Binlog ver: 4')" \
+    "$first_event"
+
 status_diagnostics=$(run_mysql 'SHOW BINARY LOG STATUS; SELECT ROW_COUNT(), @@warning_count, @@error_count;' | tail -n 1)
 expect_value \
     "SHOW BINARY LOG STATUS diagnostics" \
@@ -98,6 +110,12 @@ expect_value \
     "SHOW BINARY LOGS diagnostics" \
     "$(printf '%b' '-1\t0\t0')" \
     "$logs_diagnostics"
+
+events_diagnostics=$(run_mysql 'SHOW BINLOG EVENTS LIMIT 1; SELECT ROW_COUNT(), @@warning_count, @@error_count;' | tail -n 1)
+expect_value \
+    "SHOW BINLOG EVENTS diagnostics" \
+    "$(printf '%b' '-1\t0\t0')" \
+    "$events_diagnostics"
 
 expect_error \
     "SHOW BINARY LOG STATUS LIKE syntax" \

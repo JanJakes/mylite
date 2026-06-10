@@ -93,6 +93,42 @@ static int test_scalar_predicate_surfaces(void) {
             .message_part = "support",
         }
     );
+    failures += execute_error(
+        database,
+        "SELECT EXISTS (VALUES ROW(1))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "support",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT 1 IN (1, 2)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT 1 = ANY (SELECT 1)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT * FROM t JOIN LATERAL (SELECT 1) AS dt ON TRUE",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
 
     mylite_close(database);
     return failures;

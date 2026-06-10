@@ -5945,6 +5945,9 @@ predicate_primary(A) ::= LPAREN(L) predicate(B) RPAREN(R). {
 predicate_atom(A) ::= EXISTS(E) LPAREN select_statement(S) RPAREN(R). {
     A = mylite_sql_parser_make_exists_predicate(state, E, S, R);
 }
+predicate_atom(A) ::= EXISTS(E) LPAREN values_statement(S) RPAREN(R). {
+    A = mylite_sql_parser_make_exists_predicate(state, E, S, R);
+}
 predicate_atom(A) ::= LPAREN(L) select_statement(S) RPAREN(R) IS(I) NULL(N). {
     A = mylite_sql_parser_make_is_null_predicate(
         state,
@@ -6603,6 +6606,14 @@ predicate_atom(A) ::= qualified_identifier(C) IN(I) LPAREN select_statement(S) R
     A = mylite_sql_parser_make_in_predicate(state, C, I, S, R);
 }
 predicate_atom(A) ::= qualified_identifier(C) NOT(N) IN(I) LPAREN select_statement(S)
+        RPAREN(R). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N, mylite_sql_parser_make_in_predicate(state, C, I, S, R));
+}
+predicate_atom(A) ::= qualified_identifier(C) IN(I) LPAREN values_statement(S) RPAREN(R). {
+    A = mylite_sql_parser_make_in_predicate(state, C, I, S, R);
+}
+predicate_atom(A) ::= qualified_identifier(C) NOT(N) IN(I) LPAREN values_statement(S)
         RPAREN(R). {
     A = mylite_sql_parser_make_not_predicate(
         state, N, mylite_sql_parser_make_in_predicate(state, C, I, S, R));
@@ -7349,7 +7360,13 @@ expression(A) ::= LPAREN(L) expression(B) RPAREN(R). {
 expression(A) ::= LPAREN(L) select_statement(B) RPAREN(R). {
     A = mylite_sql_parser_make_scalar_subquery_expression(state, L, B, R);
 }
+expression(A) ::= LPAREN(L) values_statement(B) RPAREN(R). {
+    A = mylite_sql_parser_make_scalar_subquery_expression(state, L, B, R);
+}
 expression(A) ::= EXISTS(E) LPAREN select_statement(B) RPAREN(R). {
+    A = mylite_sql_parser_make_exists_predicate(state, E, B, R);
+}
+expression(A) ::= EXISTS(E) LPAREN values_statement(B) RPAREN(R). {
     A = mylite_sql_parser_make_exists_predicate(state, E, B, R);
 }
 expression(A) ::= expression(B) BETWEEN(T) scalar_predicate_value(L)

@@ -72,6 +72,30 @@ expect_output \
 "NOT EXISTS (SELECT 1 FROM t WHERE id = 7);"
 
 expect_output \
+    "scalar IN expressions" \
+    "1	1" \
+    "USE ${DATABASE}; SELECT 1 IN (1, 2), 3 NOT IN (1, 2);"
+
+expect_output \
+    "VALUES subquery expression containers" \
+    "1	1" \
+    "USE ${DATABASE}; SELECT EXISTS (VALUES ROW(1)), (VALUES ROW(1));"
+
+expect_output \
+    "quantified subquery comparisons" \
+    "1	1	1" \
+    "USE ${DATABASE}; SELECT 1 = ANY (SELECT 1), "\
+"1 <> SOME (SELECT 2), 2 > ALL (SELECT 1);"
+
+expect_output \
+    "lateral derived table" \
+    "2
+3
+4" \
+    "USE ${DATABASE}; SELECT dt.v FROM t JOIN LATERAL "\
+"(SELECT t.id + 1 AS v) AS dt ON TRUE ORDER BY dt.v;"
+
+expect_output \
     "WHERE predicate baseline" \
     "1	alpha
 2	beta" \

@@ -586,13 +586,116 @@ static int test_comments(void) {
             0U
         ),
     };
+    const struct expected_token version_comment_with_inner_comment[] = {
+        make_expected_token(
+            MYLITE_SQL_TOKEN_KEYWORD,
+            "SELECT",
+            MYLITE_SQL_OPERATOR_NONE,
+            MYLITE_SQL_LEXER_ERROR_NONE,
+            MYLITE_SQL_KEYWORD_RESERVED
+        ),
+        make_expected_token(
+            MYLITE_SQL_TOKEN_INTEGER,
+            "1",
+            MYLITE_SQL_OPERATOR_NONE,
+            MYLITE_SQL_LEXER_ERROR_NONE,
+            0U
+        ),
+        make_expected_token(
+            MYLITE_SQL_TOKEN_VERSION_COMMENT,
+            "/*!99999 /* */ */",
+            MYLITE_SQL_OPERATOR_NONE,
+            MYLITE_SQL_LEXER_ERROR_NONE,
+            0U
+        ),
+        make_expected_token(
+            MYLITE_SQL_TOKEN_PUNCTUATION,
+            ";",
+            MYLITE_SQL_OPERATOR_NONE,
+            MYLITE_SQL_LEXER_ERROR_NONE,
+            0U
+        ),
+        make_expected_token(
+            MYLITE_SQL_TOKEN_EOF,
+            "",
+            MYLITE_SQL_OPERATOR_NONE,
+            MYLITE_SQL_LEXER_ERROR_NONE,
+            0U
+        ),
+    };
+    const struct expected_token ordinary_nested_comment_remains_flat[] = {
+        make_expected_token(
+            MYLITE_SQL_TOKEN_KEYWORD,
+            "SELECT",
+            MYLITE_SQL_OPERATOR_NONE,
+            MYLITE_SQL_LEXER_ERROR_NONE,
+            MYLITE_SQL_KEYWORD_RESERVED
+        ),
+        make_expected_token(
+            MYLITE_SQL_TOKEN_INTEGER,
+            "1",
+            MYLITE_SQL_OPERATOR_NONE,
+            MYLITE_SQL_LEXER_ERROR_NONE,
+            0U
+        ),
+        make_expected_token(
+            MYLITE_SQL_TOKEN_COMMENT,
+            "/* outer /* inner */",
+            MYLITE_SQL_OPERATOR_NONE,
+            MYLITE_SQL_LEXER_ERROR_NONE,
+            0U
+        ),
+        make_expected_token(
+            MYLITE_SQL_TOKEN_OPERATOR,
+            "*",
+            MYLITE_SQL_OPERATOR_STAR,
+            MYLITE_SQL_LEXER_ERROR_NONE,
+            0U
+        ),
+        make_expected_token(
+            MYLITE_SQL_TOKEN_OPERATOR,
+            "/",
+            MYLITE_SQL_OPERATOR_SLASH,
+            MYLITE_SQL_LEXER_ERROR_NONE,
+            0U
+        ),
+        make_expected_token(
+            MYLITE_SQL_TOKEN_PUNCTUATION,
+            ";",
+            MYLITE_SQL_OPERATOR_NONE,
+            MYLITE_SQL_LEXER_ERROR_NONE,
+            0U
+        ),
+        make_expected_token(
+            MYLITE_SQL_TOKEN_EOF,
+            "",
+            MYLITE_SQL_OPERATOR_NONE,
+            MYLITE_SQL_LEXER_ERROR_NONE,
+            0U
+        ),
+    };
+    int failures = 0;
 
-    return expect_sequence(
+    failures += expect_sequence(
         "SELECT 1--2; SELECT 1 -- comment\n+2; SELECT /*!80409 STRAIGHT_JOIN */ 1 /*+ HINT */;",
         0U,
         expected,
         sizeof(expected) / sizeof(expected[0])
     );
+    failures += expect_sequence(
+        "SELECT 1 /*!99999 /* */ */;",
+        0U,
+        version_comment_with_inner_comment,
+        sizeof(version_comment_with_inner_comment) / sizeof(version_comment_with_inner_comment[0])
+    );
+    failures += expect_sequence(
+        "SELECT 1 /* outer /* inner */ */;",
+        0U,
+        ordinary_nested_comment_remains_flat,
+        sizeof(ordinary_nested_comment_remains_flat) /
+            sizeof(ordinary_nested_comment_remains_flat[0])
+    );
+    return failures;
 }
 
 static int test_whitespace(void) {

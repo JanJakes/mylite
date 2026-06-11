@@ -93,7 +93,8 @@ The lexer recognizes MySQL's three ordinary comment forms:
 Block comments are not nested. An unterminated block comment is a lexical
 error. Executable comments (`/*! ... */`, optionally with a five- or six-digit
 version gate) and optimizer hints (`/*+ ... */`) are returned as distinct token
-kinds so the parser can later decide whether to tokenize their body.
+kinds. The parser expands executable comments whose version gate applies to the
+fixed MySQL 8.4.9 compatibility target.
 
 ## Literals
 
@@ -302,8 +303,7 @@ classification, or heap ownership should be required.
 
 ## Known Gaps
 
-- The lexer records executable and hint comments but does not recursively lex
-  comment bodies.
+- Optimizer hint comments remain no-op comments; hint payloads are not parsed.
 - Unicode identifier validation is deliberately permissive at the lexer layer.
 - The lexer classifies keywords but does not resolve context-sensitive keyword
   use.

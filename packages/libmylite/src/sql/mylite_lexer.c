@@ -35,6 +35,17 @@ static bool scan_comment(
     unsigned int flags,
     struct mylite_sql_token *out_token
 );
+static bool starts_line_comment(const struct mylite_sql_lexer *lexer);
+static void scan_line_comment_body(struct mylite_sql_lexer *lexer);
+static enum mylite_sql_token_kind block_comment_token_kind(const struct mylite_sql_lexer *lexer);
+static bool scan_block_comment_body(
+    struct mylite_sql_lexer *lexer,
+    enum mylite_sql_token_kind kind
+);
+static bool starts_block_comment(const struct mylite_sql_lexer *lexer);
+static bool ends_block_comment(const struct mylite_sql_lexer *lexer);
+static void scan_inner_block_comment_body(struct mylite_sql_lexer *lexer);
+static void advance_two(struct mylite_sql_lexer *lexer);
 static bool scan_word(
     struct mylite_sql_lexer *lexer,
     unsigned int flags,
@@ -1339,38 +1350,87 @@ static bool scan_comment(
     assert(lexer != NULL);
     assert(out_token != NULL);
 
-    if (peek_at(lexer, 0U) == '#' || (peek_at(lexer, 0U) == '-' && peek_at(lexer, 1U) == '-')) {
-        while (lexer->offset < lexer->length) {
-            unsigned char byte = peek_at(lexer, 0U);
-            if (byte == '\n' || byte == '\r') {
-                break;
-            }
-            advance_one(lexer);
-        }
+    if (starts_line_comment(lexer)) {
+        scan_line_comment_body(lexer);
         set_token(lexer, out_token, kind, start);
         return true;
     }
 
-    if (peek_at(lexer, 2U) == '!') {
-        kind = MYLITE_SQL_TOKEN_VERSION_COMMENT;
-    } else if (peek_at(lexer, 2U) == '+') {
-        kind = MYLITE_SQL_TOKEN_HINT_COMMENT;
-    }
-
-    advance_one(lexer);
-    advance_one(lexer);
-    while (lexer->offset < lexer->length) {
-        if (peek_at(lexer, 0U) == '*' && peek_at(lexer, 1U) == '/') {
-            advance_one(lexer);
-            advance_one(lexer);
-            set_token(lexer, out_token, kind, start);
-            return true;
-        }
-        advance_one(lexer);
+    kind = block_comment_token_kind(lexer);
+    advance_two(lexer);
+    if (scan_block_comment_body(lexer, kind)) {
+        set_token(lexer, out_token, kind, start);
+        return true;
     }
 
     set_error_token(lexer, out_token, MYLITE_SQL_LEXER_ERROR_UNTERMINATED_COMMENT, start);
     return true;
+}
+
+static bool starts_line_comment(const struct mylite_sql_lexer *lexer) {
+    return peek_at(lexer, 0U) == '#' || (peek_at(lexer, 0U) == '-' && peek_at(lexer, 1U) == '-');
+}
+
+static void scan_line_comment_body(struct mylite_sql_lexer *lexer) {
+    while (lexer->offset < lexer->length) {
+        unsigned char byte = peek_at(lexer, 0U);
+        if (byte == '\n' || byte == '\r') {
+            break;
+        }
+        advance_one(lexer);
+    }
+}
+
+static enum mylite_sql_token_kind block_comment_token_kind(const struct mylite_sql_lexer *lexer) {
+    if (peek_at(lexer, 2U) == '!') {
+        return MYLITE_SQL_TOKEN_VERSION_COMMENT;
+    }
+    if (peek_at(lexer, 2U) == '+') {
+        return MYLITE_SQL_TOKEN_HINT_COMMENT;
+    }
+    return MYLITE_SQL_TOKEN_COMMENT;
+}
+
+static bool scan_block_comment_body(
+    struct mylite_sql_lexer *lexer,
+    enum mylite_sql_token_kind kind
+) {
+    while (lexer->offset < lexer->length) {
+        if (kind == MYLITE_SQL_TOKEN_VERSION_COMMENT && starts_block_comment(lexer)) {
+            scan_inner_block_comment_body(lexer);
+            continue;
+        }
+        if (ends_block_comment(lexer)) {
+            advance_two(lexer);
+            return true;
+        }
+        advance_one(lexer);
+    }
+    return false;
+}
+
+static bool starts_block_comment(const struct mylite_sql_lexer *lexer) {
+    return peek_at(lexer, 0U) == '/' && peek_at(lexer, 1U) == '*';
+}
+
+static bool ends_block_comment(const struct mylite_sql_lexer *lexer) {
+    return peek_at(lexer, 0U) == '*' && peek_at(lexer, 1U) == '/';
+}
+
+static void scan_inner_block_comment_body(struct mylite_sql_lexer *lexer) {
+    advance_two(lexer);
+    while (lexer->offset < lexer->length) {
+        if (ends_block_comment(lexer)) {
+            advance_two(lexer);
+            break;
+        }
+        advance_one(lexer);
+    }
+}
+
+static void advance_two(struct mylite_sql_lexer *lexer) {
+    advance_one(lexer);
+    advance_one(lexer);
 }
 
 static bool scan_word(

@@ -1265,6 +1265,49 @@ static int test_comments_are_skipped(void) {
         &result
     );
     mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql("SELECT 1 /*!80000 + 1 */;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql("SELECT 1 /*!80409 + 1 */;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql("SELECT 1 /*!80410 + 1 */;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql("SELECT 1 /*!99999 /* */ */;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql("SELECT 2 /*!12345 /* */ */;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql("SELECT /*! 9 */;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql(
+        "SELECT /*!99999 9 */ AS skipped_payload_value;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql(
+        "SELECT 1 /* outer /* inner */ */ AS ordinary_nested;",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql(
+        "WITH cte AS (SELECT 0 /*! ) */ SELECT * FROM cte a, cte b;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql(
+        "WITH cte AS /*! ( */ SELECT 0) SELECT * FROM cte a, cte b;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql(
+        "ALTER TABLE child ADD CONSTRAINT c2 FOREIGN KEY (fk) REFERENCES parent /*! (id) */ "
+        "/*!40008 ON DELETE SET NULL */;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "INSERT /*+ SET_VAR(sort_buffer_size=262144) */ INTO t VALUES (1);",
         MYLITE_SQL_PARSE_OK,

@@ -71,6 +71,12 @@ The CSV contains MySQL server-test statements, so parser benchmarks report
 syntax/lexer status counts instead of treating unsupported syntax as a benchmark
 failure.
 
+The CSV is a flattened statement corpus, not a single guaranteed MySQL session.
+By default, each row is parsed with the default lexer mode mask. To diagnose
+mode-sensitive parser gaps, add `--csv-replay-sql-mode`; this tracks recognized
+session `SET sql_mode` changes across rows, but its score is not directly
+comparable to the default standalone-row corpus score.
+
 To inspect the remaining parser misses, add `--dump-parse-failures PATH` to a
 parse CSV benchmark:
 

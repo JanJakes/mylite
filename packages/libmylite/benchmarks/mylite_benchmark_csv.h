@@ -6,6 +6,7 @@
 struct mylite_benchmark_owned_query {
     char *sql;
     size_t length;
+    unsigned int modes;
 };
 
 struct mylite_benchmark_owned_query_list {

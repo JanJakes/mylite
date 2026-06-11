@@ -1,6 +1,7 @@
 #include <mylite/mylite.h>
 
 #include "mylite_benchmark_csv.h"
+#include "mylite_benchmark_sql_mode.h"
 #include "sql/mylite_lexer.h"
 #include "sql/mylite_parser.h"
 
@@ -49,6 +50,7 @@ struct benchmark_options {
     const char *parse_failure_dump_path;
     size_t iterations;
     size_t csv_iterations;
+    bool csv_replay_sql_mode;
     bool list_only;
     bool show_usage;
 };
@@ -288,7 +290,13 @@ static int benchmark_owned_lexer_queries(
     size_t iterations,
     struct benchmark_measurement *out_measurement
 );
-static int lex_query(const char *sql, size_t length, size_t *out_token_count, bool *out_has_error);
+static int lex_query(
+    const char *sql,
+    size_t length,
+    unsigned int modes,
+    size_t *out_token_count,
+    bool *out_has_error
+);
 static int benchmark_parse_queries(
     struct borrowed_query_list queries,
     size_t iterations,
@@ -335,6 +343,7 @@ int main(int argc, char **argv) {
         .parse_failure_dump_path = NULL,
         .iterations = default_iterations,
         .csv_iterations = default_csv_iterations,
+        .csv_replay_sql_mode = false,
         .list_only = false,
         .show_usage = false,
     };
@@ -407,6 +416,10 @@ static int parse_option(
             return 1;
         }
         out_options->csv_path = value;
+        return 0;
+    }
+    if (strcmp(argument, "--csv-replay-sql-mode") == 0) {
+        out_options->csv_replay_sql_mode = true;
         return 0;
     }
     if (strcmp(argument, "--dump-parse-failures") == 0) {
@@ -492,7 +505,7 @@ static void print_usage(const char *program_name, FILE *stream) {
     fprintf(
         stream,
         "usage: %s [--iterations N] [--csv PATH] [--csv-iterations N] "
-        "[--dump-parse-failures PATH] "
+        "[--csv-replay-sql-mode] [--dump-parse-failures PATH] "
         "[--only all|lexer|parse|runtime] [--list]\n",
         program_name
     );
@@ -587,6 +600,13 @@ static int run_csv_benchmarks(const struct benchmark_options *options) {
 
     if (rc != 0) {
         return rc;
+    }
+    if (options->csv_replay_sql_mode) {
+        rc = mylite_benchmark_assign_sql_modes(&queries);
+        if (rc != 0) {
+            mylite_benchmark_owned_query_list_deinit(&queries);
+            return rc;
+        }
     }
     if (filter_includes(options->filter, benchmark_filter_lexer)) {
         struct benchmark_measurement measurement = {0};
@@ -827,7 +847,7 @@ static int benchmark_lexer_queries(
             const struct benchmark_query *query = &queries.items[query_index];
             bool has_error = false;
             size_t token_count = 0U;
-            int rc = lex_query(query->sql, query->length, &token_count, &has_error);
+            int rc = lex_query(query->sql, query->length, 0U, &token_count, &has_error);
 
             if (rc != 0) {
                 return rc;
@@ -858,7 +878,7 @@ static int benchmark_owned_lexer_queries(
             const struct mylite_benchmark_owned_query *query = &queries->items[query_index];
             bool has_error = false;
             size_t token_count = 0U;
-            int rc = lex_query(query->sql, query->length, &token_count, &has_error);
+            int rc = lex_query(query->sql, query->length, query->modes, &token_count, &has_error);
 
             if (rc != 0) {
                 return rc;
@@ -877,7 +897,13 @@ static int benchmark_owned_lexer_queries(
     return 0;
 }
 
-static int lex_query(const char *sql, size_t length, size_t *out_token_count, bool *out_has_error) {
+static int lex_query(
+    const char *sql,
+    size_t length,
+    unsigned int modes,
+    size_t *out_token_count,
+    bool *out_has_error
+) {
     struct mylite_sql_lexer lexer = {0};
     struct mylite_sql_token token = {0};
 
@@ -888,7 +914,7 @@ static int lex_query(const char *sql, size_t length, size_t *out_token_count, bo
         (struct mylite_sql_lexer_config){
             .input = sql,
             .length = length,
-            .modes = 0U,
+            .modes = modes,
         }
     );
     for (;;) {
@@ -951,7 +977,7 @@ static int benchmark_owned_parse_queries(
                 (struct mylite_sql_parse_config){
                     .input = query->sql,
                     .length = query->length,
-                    .modes = 0U,
+                    .modes = query->modes,
                 },
                 &result
             );
@@ -983,7 +1009,7 @@ static int dump_parse_failures(
             (struct mylite_sql_parse_config){
                 .input = query->sql,
                 .length = query->length,
-                .modes = 0U,
+                .modes = query->modes,
             },
             &result
         );

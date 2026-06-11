@@ -589,14 +589,12 @@ static int test_show_full_columns_diagnostics_and_independent_handles(void) {
             .message_part = "SHOW COLUMNS WHERE does not support XOR predicates",
         }
     );
-    failures += execute_error(
+    failures += expect_show_full_columns_result(
         first,
         "SHOW EXTENDED FULL COLUMNS FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
+        full_numbers_rows,
+        sizeof(full_numbers_rows) / sizeof(full_numbers_rows[0]),
+        "show extended full columns"
     );
 
     failures += execute_statement_ok(second, "CREATE DATABASE app");

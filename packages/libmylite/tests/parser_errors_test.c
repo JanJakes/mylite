@@ -407,12 +407,10 @@ static int test_syntax_errors(void) {
         parser_test_parse_sql("SHOW PLUGINS FROM mysql;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parser_test_parse_sql("SHOW ENGINE InnoDB MUTEX;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SHOW ENGINE InnoDB MUTEX;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures +=
-        parser_test_parse_sql("SHOW ENGINE InnoDB LOGS;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("SHOW ENGINE InnoDB LOGS;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
@@ -429,11 +427,8 @@ static int test_syntax_errors(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "SHOW EXTENDED FULL COLUMNS FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SHOW EXTENDED FULL COLUMNS FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
@@ -468,11 +463,8 @@ static int test_syntax_errors(void) {
         parser_test_parse_sql("SHOW FULL CREATE TABLE t;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "SHOW EXTENDED COLUMNS FROM t;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SHOW EXTENDED COLUMNS FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
@@ -489,16 +481,16 @@ static int test_syntax_errors(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql("DESCRIBE t id;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("DESCRIBE t id;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql("DESCRIBE SELECT 1;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("DESCRIBE SELECT 1;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql("EXPLAIN t id;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("EXPLAIN t id;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql("EXPLAIN t 'i%';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
+    failures += parser_test_parse_sql("EXPLAIN t 'i%';", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures +=

@@ -582,13 +582,11 @@ static int test_show_index_diagnostics_and_unsupported_forms(void) {
         }
     );
 
-    failures += execute_error(
+    failures += expect_show_index_empty_result(
         database,
-        "SHOW EXTENDED INDEX FROM no_keys",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_show_index_empty_result){
+            .sql = "SHOW EXTENDED INDEX FROM no_keys",
+            .context = "show extended index no-index table",
         }
     );
     failures += expect_show_index_empty_result(

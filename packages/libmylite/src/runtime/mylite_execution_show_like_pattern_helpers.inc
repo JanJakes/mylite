@@ -14,6 +14,15 @@ static int decode_show_like_pattern(
         return MYLITE_ERROR;
     }
     *out_pattern = NULL;
+    if (pattern_node != NULL && pattern_node->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        char identifier[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+
+        rc = copy_identifier_text(pattern_node, identifier, sizeof(identifier), database);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return duplicate_text(database, identifier, out_pattern);
+    }
     if (pattern_node == NULL || pattern_node->kind != MYLITE_SQL_AST_LITERAL ||
         mylite_sql_ast_node_literal_kind(pattern_node) != MYLITE_SQL_AST_LITERAL_STRING) {
         set_unsupported_error(database, "SHOW LIKE supports only string literal patterns");

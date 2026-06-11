@@ -948,13 +948,143 @@ static bool unlock_instance_placeholder_statement_is_supported(
 static bool change_replication_source_placeholder_statement_is_supported(
     const struct placeholder_statement_scan *scan
 );
+static enum mylite_sql_parse_status try_parse_admin_set_residual_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    const struct placeholder_statement_scan *scan,
+    bool *out_handled
+);
+static enum mylite_sql_parse_status try_parse_plural_table_maintenance_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    const struct placeholder_statement_scan *scan,
+    bool *out_handled
+);
+static enum mylite_sql_parse_status try_parse_describe_explain_table_filter_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    const struct placeholder_statement_scan *scan,
+    bool *out_handled
+);
+static enum mylite_sql_parse_status try_parse_show_extended_metadata_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    const struct placeholder_statement_scan *scan,
+    bool *out_handled
+);
+static bool scan_show_extended_metadata_statement(
+    const struct placeholder_statement_scan *scan,
+    bool *out_full_columns,
+    bool *out_columns_statement,
+    bool *out_index_statement,
+    size_t *out_index
+);
+static enum mylite_sql_parse_status parse_show_extended_metadata_tail(
+    struct mylite_sql_parser_state *state,
+    const struct placeholder_statement_scan *scan,
+    bool columns_statement,
+    size_t *index,
+    struct mylite_sql_ast_node **out_schema_name,
+    struct mylite_sql_ast_node **out_filter
+);
+static struct mylite_sql_ast_node *make_show_extended_metadata_statement(
+    struct mylite_sql_parser_state *state,
+    const struct placeholder_statement_scan *scan,
+    bool full_columns,
+    bool index_statement,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *schema_name,
+    struct mylite_sql_ast_node *filter
+);
+static enum mylite_sql_parse_status try_parse_set_system_variable_assign_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    const struct placeholder_statement_scan *scan,
+    bool *out_handled
+);
+static enum mylite_sql_parse_status init_scanned_statement_parse(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    struct mylite_sql_parser_state *out_state
+);
+static enum mylite_sql_parse_status finish_scanned_statement_parse(
+    struct mylite_sql_parse_result *result,
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *statement
+);
+static struct mylite_sql_ast_node *placeholder_parse_table_name(
+    struct mylite_sql_parser_state *state,
+    const struct placeholder_statement_scan *scan,
+    size_t *index
+);
+static struct mylite_sql_ast_node *placeholder_parse_table_name_list(
+    struct mylite_sql_parser_state *state,
+    const struct placeholder_statement_scan *scan,
+    size_t *index
+);
+static struct mylite_sql_ast_node *placeholder_parse_show_like_filter(
+    struct mylite_sql_parser_state *state,
+    const struct placeholder_statement_scan *scan,
+    size_t *index
+);
+static struct mylite_sql_ast_node *placeholder_parse_set_system_variable_value(
+    struct mylite_sql_parser_state *state,
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_is_set_system_variable_scalar_value(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_is_dot(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_is_show_columns_keyword(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_is_show_index_keyword(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_is_schema_keyword(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
 static enum placeholder_statement_kind classify_drop_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );
 static enum placeholder_statement_kind classify_set_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );
+static enum placeholder_statement_kind classify_set_leading_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+);
+static bool set_placeholder_scan_contains_unsupported_residual(
+    const struct placeholder_statement_scan *scan
+);
+static bool set_placeholder_token_requires_unsupported_utility(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    bool saw_assignment_operator
+);
+static bool set_placeholder_assignment_value_starts_unsupported_surface(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool set_placeholder_assigned_token_is_unsupported_surface(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    bool saw_assignment_operator
+);
 static enum placeholder_statement_kind classify_show_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+);
+static enum placeholder_statement_kind classify_describe_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+);
+static bool show_engine_logs_mutex_placeholder_statement_is_supported(
     const struct placeholder_statement_scan *scan
 );
 static enum placeholder_statement_kind classify_explain_placeholder_statement(
@@ -962,8 +1092,7 @@ static enum placeholder_statement_kind classify_explain_placeholder_statement(
 );
 static bool placeholder_explain_statement_start_is_supported(
     const struct placeholder_statement_scan *scan,
-    size_t index,
-    bool analyze
+    size_t index
 );
 static bool placeholder_scan_contains_text(
     const struct placeholder_statement_scan *scan,
@@ -2106,6 +2235,11 @@ static enum mylite_sql_parse_status try_parse_placeholder_statement(
         free(tokens);
         return status;
     }
+    status = try_parse_admin_set_residual_statement(config, result, &scan, out_handled);
+    if (*out_handled) {
+        free(tokens);
+        return status;
+    }
 
     kind = classify_placeholder_statement(&scan);
     if (kind == PLACEHOLDER_STATEMENT_NONE ||
@@ -2123,6 +2257,678 @@ static enum mylite_sql_parse_status try_parse_placeholder_statement(
     *out_handled = true;
     free(tokens);
     return status;
+}
+
+static enum mylite_sql_parse_status try_parse_admin_set_residual_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    const struct placeholder_statement_scan *scan,
+    bool *out_handled
+) {
+    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+
+    if (out_handled == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    *out_handled = false;
+    status = try_parse_plural_table_maintenance_statement(config, result, scan, out_handled);
+    if (*out_handled) {
+        return status;
+    }
+    status = try_parse_describe_explain_table_filter_statement(config, result, scan, out_handled);
+    if (*out_handled) {
+        return status;
+    }
+    status = try_parse_show_extended_metadata_statement(config, result, scan, out_handled);
+    if (*out_handled) {
+        return status;
+    }
+    return try_parse_set_system_variable_assign_statement(config, result, scan, out_handled);
+}
+
+static enum mylite_sql_parse_status try_parse_plural_table_maintenance_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    const struct placeholder_statement_scan *scan,
+    bool *out_handled
+) {
+    struct mylite_sql_parser_state state;
+    struct mylite_sql_ast_node *table_names = NULL;
+    struct mylite_sql_ast_node *statement = NULL;
+    enum mylite_sql_ast_node_kind statement_kind;
+    size_t index = 1U;
+
+    if (out_handled == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    *out_handled = false;
+    if (scan == NULL || scan->has_non_trailing_semicolon ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U) ||
+        placeholder_scan_statement_tail_is_obviously_incomplete(scan) ||
+        (!placeholder_scan_token_text_equals(scan, 0U, "ANALYZE") &&
+         !placeholder_scan_token_text_equals(scan, 0U, "OPTIMIZE"))) {
+        return MYLITE_SQL_PARSE_OK;
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "NO_WRITE_TO_BINLOG") ||
+        placeholder_scan_token_text_equals(scan, index, "LOCAL")) {
+        ++index;
+    }
+    if (!placeholder_scan_token_text_equals(scan, index, "TABLES")) {
+        return MYLITE_SQL_PARSE_OK;
+    }
+    ++index;
+
+    if (init_scanned_statement_parse(config, result, &state) != MYLITE_SQL_PARSE_OK) {
+        *out_handled = true;
+        return result->status;
+    }
+    table_names = placeholder_parse_table_name_list(&state, scan, &index);
+    if (table_names == NULL || index != scan->token_count) {
+        result->status = table_names == NULL && result->status != MYLITE_SQL_PARSE_OK
+                             ? result->status
+                             : MYLITE_SQL_PARSE_SYNTAX_ERROR;
+        *out_handled = true;
+        return result->status;
+    }
+
+    statement_kind = placeholder_scan_token_text_equals(scan, 0U, "ANALYZE")
+                         ? MYLITE_SQL_AST_ANALYZE_TABLE_STATEMENT
+                         : MYLITE_SQL_AST_OPTIMIZE_TABLE_STATEMENT;
+    statement = mylite_sql_parser_make_table_maintenance_statement(
+        &state,
+        statement_kind,
+        scan->tokens[0],
+        table_names
+    );
+    *out_handled = true;
+    return finish_scanned_statement_parse(result, &state, statement);
+}
+
+static enum mylite_sql_parse_status try_parse_describe_explain_table_filter_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    const struct placeholder_statement_scan *scan,
+    bool *out_handled
+) {
+    struct mylite_sql_parser_state state;
+    struct mylite_sql_ast_node *table_name = NULL;
+    struct mylite_sql_ast_node *filter = NULL;
+    struct mylite_sql_ast_node *statement = NULL;
+    size_t index = 1U;
+
+    if (out_handled == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    *out_handled = false;
+    if (scan == NULL || scan->has_non_trailing_semicolon ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U) ||
+        placeholder_scan_statement_tail_is_obviously_incomplete(scan) ||
+        (!placeholder_scan_token_text_equals(scan, 0U, "DESCRIBE") &&
+         !placeholder_scan_token_text_equals(scan, 0U, "DESC") &&
+         !placeholder_scan_token_text_equals(scan, 0U, "EXPLAIN"))) {
+        return MYLITE_SQL_PARSE_OK;
+    }
+    if (!placeholder_scan_token_is_identifier_like(scan, index)) {
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    if (init_scanned_statement_parse(config, result, &state) != MYLITE_SQL_PARSE_OK) {
+        *out_handled = true;
+        return result->status;
+    }
+    table_name = placeholder_parse_table_name(&state, scan, &index);
+    if (table_name == NULL || index >= scan->token_count) {
+        result->status = table_name == NULL && result->status != MYLITE_SQL_PARSE_OK
+                             ? result->status
+                             : MYLITE_SQL_PARSE_SYNTAX_ERROR;
+        *out_handled = true;
+        return result->status;
+    }
+    if (scan->tokens[index].kind == MYLITE_SQL_TOKEN_STRING) {
+        filter = mylite_sql_parser_make_literal(
+            &state,
+            scan->tokens[index],
+            MYLITE_SQL_AST_LITERAL_STRING
+        );
+    } else if (placeholder_scan_token_is_identifier_like(scan, index)) {
+        filter = mylite_sql_parser_make_identifier(&state, scan->tokens[index]);
+    } else {
+        result->status = MYLITE_SQL_PARSE_SYNTAX_ERROR;
+        *out_handled = true;
+        return result->status;
+    }
+    ++index;
+    if (filter == NULL || index != scan->token_count) {
+        if (filter == NULL) {
+            result->status =
+                result->status == MYLITE_SQL_PARSE_OK ? MYLITE_SQL_PARSE_NOMEM : result->status;
+        } else {
+            result->status = MYLITE_SQL_PARSE_SYNTAX_ERROR;
+        }
+        *out_handled = true;
+        return result->status;
+    }
+
+    statement = mylite_sql_parser_make_show_columns_statement(
+        &state,
+        scan->tokens[0],
+        table_name,
+        NULL,
+        filter
+    );
+    *out_handled = true;
+    return finish_scanned_statement_parse(result, &state, statement);
+}
+
+static enum mylite_sql_parse_status try_parse_show_extended_metadata_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    const struct placeholder_statement_scan *scan,
+    bool *out_handled
+) {
+    struct mylite_sql_parser_state state;
+    struct mylite_sql_ast_node *table_name = NULL;
+    struct mylite_sql_ast_node *schema_name = NULL;
+    struct mylite_sql_ast_node *filter = NULL;
+    struct mylite_sql_ast_node *statement = NULL;
+    bool full_columns = false;
+    bool index_statement = false;
+    bool columns_statement = false;
+    size_t index = 0U;
+    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+
+    if (out_handled == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    *out_handled = false;
+    if (!scan_show_extended_metadata_statement(
+            scan,
+            &full_columns,
+            &columns_statement,
+            &index_statement,
+            &index
+        )) {
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    if (init_scanned_statement_parse(config, result, &state) != MYLITE_SQL_PARSE_OK) {
+        *out_handled = true;
+        return result->status;
+    }
+    table_name = placeholder_parse_table_name(&state, scan, &index);
+    if (table_name == NULL) {
+        result->status =
+            result->status == MYLITE_SQL_PARSE_OK ? MYLITE_SQL_PARSE_SYNTAX_ERROR : result->status;
+        *out_handled = true;
+        return result->status;
+    }
+    status = parse_show_extended_metadata_tail(
+        &state,
+        scan,
+        columns_statement,
+        &index,
+        &schema_name,
+        &filter
+    );
+    if (status != MYLITE_SQL_PARSE_OK) {
+        *out_handled = true;
+        return status;
+    }
+    if (index != scan->token_count) {
+        result->status = MYLITE_SQL_PARSE_SYNTAX_ERROR;
+        *out_handled = true;
+        return result->status;
+    }
+
+    statement = make_show_extended_metadata_statement(
+        &state,
+        scan,
+        full_columns,
+        index_statement,
+        table_name,
+        schema_name,
+        filter
+    );
+    *out_handled = true;
+    return finish_scanned_statement_parse(result, &state, statement);
+}
+
+static bool scan_show_extended_metadata_statement(
+    const struct placeholder_statement_scan *scan,
+    bool *out_full_columns,
+    bool *out_columns_statement,
+    bool *out_index_statement,
+    size_t *out_index
+) {
+    enum {
+        show_extended_min_token_count = 5,
+    };
+
+    bool full_columns = false;
+    bool columns_statement = false;
+    bool index_statement = false;
+    size_t keyword_index = 2U;
+
+    if (out_full_columns == NULL || out_columns_statement == NULL || out_index_statement == NULL ||
+        out_index == NULL) {
+        return false;
+    }
+    *out_full_columns = false;
+    *out_columns_statement = false;
+    *out_index_statement = false;
+    *out_index = 0U;
+    if (scan == NULL || scan->has_non_trailing_semicolon ||
+        scan->token_count < show_extended_min_token_count ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U) ||
+        placeholder_scan_statement_tail_is_obviously_incomplete(scan) ||
+        !placeholder_scan_token_text_equals(scan, 0U, "SHOW") ||
+        !placeholder_scan_token_text_equals(scan, 1U, "EXTENDED")) {
+        return false;
+    }
+    if (placeholder_scan_token_text_equals(scan, keyword_index, "FULL")) {
+        full_columns = true;
+        ++keyword_index;
+    }
+    columns_statement = placeholder_scan_token_is_show_columns_keyword(scan, keyword_index);
+    index_statement =
+        !full_columns && placeholder_scan_token_is_show_index_keyword(scan, keyword_index);
+    if ((!columns_statement && !index_statement) ||
+        !placeholder_scan_token_is_schema_keyword(scan, keyword_index + 1U)) {
+        return false;
+    }
+
+    *out_full_columns = full_columns;
+    *out_columns_statement = columns_statement;
+    *out_index_statement = index_statement;
+    *out_index = keyword_index + 2U;
+    return true;
+}
+
+static enum mylite_sql_parse_status parse_show_extended_metadata_tail(
+    struct mylite_sql_parser_state *state,
+    const struct placeholder_statement_scan *scan,
+    bool columns_statement,
+    size_t *index,
+    struct mylite_sql_ast_node **out_schema_name,
+    struct mylite_sql_ast_node **out_filter
+) {
+    struct mylite_sql_parse_result *result = state == NULL ? NULL : state->result;
+
+    if (state == NULL || result == NULL || scan == NULL || index == NULL ||
+        out_schema_name == NULL || out_filter == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    *out_schema_name = NULL;
+    *out_filter = NULL;
+    if (placeholder_scan_token_is_schema_keyword(scan, *index)) {
+        ++*index;
+        if (!placeholder_scan_token_is_identifier_like(scan, *index)) {
+            result->status = MYLITE_SQL_PARSE_SYNTAX_ERROR;
+            return result->status;
+        }
+        *out_schema_name = mylite_sql_parser_make_identifier(state, scan->tokens[*index]);
+        if (*out_schema_name == NULL) {
+            result->status =
+                result->status == MYLITE_SQL_PARSE_OK ? MYLITE_SQL_PARSE_NOMEM : result->status;
+            return result->status;
+        }
+        ++*index;
+    }
+    if (columns_statement) {
+        size_t filter_index = *index;
+        *out_filter = placeholder_parse_show_like_filter(state, scan, index);
+        if (result->status != MYLITE_SQL_PARSE_OK) {
+            return result->status;
+        }
+        if (*out_filter == NULL && placeholder_scan_token_text_equals(scan, filter_index, "LIKE")) {
+            result->status = MYLITE_SQL_PARSE_SYNTAX_ERROR;
+            return result->status;
+        }
+    }
+    return result->status;
+}
+
+static struct mylite_sql_ast_node *make_show_extended_metadata_statement(
+    struct mylite_sql_parser_state *state,
+    const struct placeholder_statement_scan *scan,
+    bool full_columns,
+    bool index_statement,
+    struct mylite_sql_ast_node *table_name,
+    struct mylite_sql_ast_node *schema_name,
+    struct mylite_sql_ast_node *filter
+) {
+    if (index_statement) {
+        return mylite_sql_parser_make_show_index_statement(
+            state,
+            scan->tokens[0],
+            table_name,
+            schema_name,
+            NULL
+        );
+    }
+    if (full_columns) {
+        return mylite_sql_parser_make_show_full_columns_statement(
+            state,
+            scan->tokens[0],
+            table_name,
+            schema_name,
+            filter
+        );
+    }
+    return mylite_sql_parser_make_show_columns_statement(
+        state,
+        scan->tokens[0],
+        table_name,
+        schema_name,
+        filter
+    );
+}
+
+static enum mylite_sql_parse_status try_parse_set_system_variable_assign_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    const struct placeholder_statement_scan *scan,
+    bool *out_handled
+) {
+    struct mylite_sql_parser_state state;
+    struct mylite_sql_ast_node *target = NULL;
+    struct mylite_sql_ast_node *value = NULL;
+    struct mylite_sql_ast_node *assignment = NULL;
+    struct mylite_sql_ast_node *assignment_list = NULL;
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (out_handled == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    *out_handled = false;
+    if (scan == NULL || scan->has_non_trailing_semicolon || scan->token_count != 4U ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U) ||
+        placeholder_scan_statement_tail_is_obviously_incomplete(scan) ||
+        !placeholder_scan_token_text_equals(scan, 0U, "SET") ||
+        scan->tokens[1].kind != MYLITE_SQL_TOKEN_SYSTEM_VARIABLE ||
+        !placeholder_scan_token_is_assignment_operator(scan, 2U) ||
+        !placeholder_scan_token_is_set_system_variable_scalar_value(scan, 3U)) {
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    if (init_scanned_statement_parse(config, result, &state) != MYLITE_SQL_PARSE_OK) {
+        *out_handled = true;
+        return result->status;
+    }
+    target = mylite_sql_parser_make_set_system_variable_target(
+        &state,
+        NULL,
+        mylite_sql_parser_make_system_variable(&state, scan->tokens[1])
+    );
+    if (target == NULL) {
+        result->status =
+            result->status == MYLITE_SQL_PARSE_OK ? MYLITE_SQL_PARSE_NOMEM : result->status;
+        *out_handled = true;
+        return result->status;
+    }
+    value = placeholder_parse_set_system_variable_value(&state, scan, 3U);
+    if (value == NULL) {
+        result->status =
+            result->status == MYLITE_SQL_PARSE_OK ? MYLITE_SQL_PARSE_NOMEM : result->status;
+        *out_handled = true;
+        return result->status;
+    }
+    assignment = mylite_sql_parser_make_set_assignment(&state, target, scan->tokens[2], value);
+    if (assignment == NULL) {
+        result->status =
+            result->status == MYLITE_SQL_PARSE_OK ? MYLITE_SQL_PARSE_NOMEM : result->status;
+        *out_handled = true;
+        return result->status;
+    }
+    assignment_list = mylite_sql_parser_make_set_assignment_list(&state, assignment);
+    if (assignment_list == NULL) {
+        result->status =
+            result->status == MYLITE_SQL_PARSE_OK ? MYLITE_SQL_PARSE_NOMEM : result->status;
+        *out_handled = true;
+        return result->status;
+    }
+    statement = mylite_sql_parser_make_set_statement(&state, scan->tokens[0], assignment_list);
+    *out_handled = true;
+    return finish_scanned_statement_parse(result, &state, statement);
+}
+
+static enum mylite_sql_parse_status init_scanned_statement_parse(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    struct mylite_sql_parser_state *out_state
+) {
+    if (result == NULL || out_state == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    mylite_sql_ast_deinit(&result->ast);
+    memset(result, 0, sizeof(*result));
+    result->status = MYLITE_SQL_PARSE_OK;
+    mylite_sql_ast_init(&result->ast);
+    *out_state = (struct mylite_sql_parser_state){
+        .result = result,
+        .modes = config.modes,
+        .accepted = true,
+    };
+    return result->status;
+}
+
+static enum mylite_sql_parse_status finish_scanned_statement_parse(
+    struct mylite_sql_parse_result *result,
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *statement
+) {
+    struct mylite_sql_ast_node *script = NULL;
+
+    if (result == NULL || state == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    if (statement == NULL) {
+        result->status = MYLITE_SQL_PARSE_NOMEM;
+        return result->status;
+    }
+    script = mylite_sql_parser_make_script_with_statement(state, statement);
+    if (script == NULL) {
+        result->status = MYLITE_SQL_PARSE_NOMEM;
+        return result->status;
+    }
+    mylite_sql_parser_state_set_root(state, script);
+    return result->status;
+}
+
+static struct mylite_sql_ast_node *placeholder_parse_table_name(
+    struct mylite_sql_parser_state *state,
+    const struct placeholder_statement_scan *scan,
+    size_t *index
+) {
+    struct mylite_sql_ast_node *table_name = NULL;
+    struct mylite_sql_ast_node *schema_name = NULL;
+
+    if (state == NULL || scan == NULL || index == NULL ||
+        !placeholder_scan_token_is_identifier_like(scan, *index)) {
+        return NULL;
+    }
+    table_name = mylite_sql_parser_make_identifier(state, scan->tokens[*index]);
+    ++*index;
+    if (placeholder_scan_token_is_dot(scan, *index)) {
+        ++*index;
+        if (!placeholder_scan_token_is_identifier_like(scan, *index)) {
+            return NULL;
+        }
+        schema_name = table_name;
+        table_name = mylite_sql_parser_make_qualified_identifier(
+            state,
+            schema_name,
+            mylite_sql_parser_make_identifier(state, scan->tokens[*index])
+        );
+        ++*index;
+    }
+    return table_name;
+}
+
+static struct mylite_sql_ast_node *placeholder_parse_table_name_list(
+    struct mylite_sql_parser_state *state,
+    const struct placeholder_statement_scan *scan,
+    size_t *index
+) {
+    struct mylite_sql_ast_node *table_name = placeholder_parse_table_name(state, scan, index);
+    struct mylite_sql_ast_node *table_names = NULL;
+
+    if (table_name == NULL) {
+        return NULL;
+    }
+    table_names = mylite_sql_parser_make_table_name_list(state, table_name);
+    while (index != NULL && *index < scan->token_count) {
+        if (!token_is_comma(&scan->tokens[*index])) {
+            return NULL;
+        }
+        ++*index;
+        table_name = placeholder_parse_table_name(state, scan, index);
+        if (table_name == NULL) {
+            return NULL;
+        }
+        table_names = mylite_sql_parser_append_table_name(state, table_names, table_name);
+    }
+    return table_names;
+}
+
+static struct mylite_sql_ast_node *placeholder_parse_show_like_filter(
+    struct mylite_sql_parser_state *state,
+    const struct placeholder_statement_scan *scan,
+    size_t *index
+) {
+    if (scan == NULL || index == NULL || *index >= scan->token_count ||
+        !placeholder_scan_token_text_equals(scan, *index, "LIKE")) {
+        return NULL;
+    }
+    ++*index;
+    if (*index >= scan->token_count || scan->tokens[*index].kind != MYLITE_SQL_TOKEN_STRING) {
+        return NULL;
+    }
+    ++*index;
+    return mylite_sql_parser_make_literal(
+        state,
+        scan->tokens[*index - 1U],
+        MYLITE_SQL_AST_LITERAL_STRING
+    );
+}
+
+static struct mylite_sql_ast_node *placeholder_parse_set_system_variable_value(
+    struct mylite_sql_parser_state *state,
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    const struct mylite_sql_token *token = NULL;
+
+    if (state == NULL || scan == NULL || index >= scan->token_count) {
+        return NULL;
+    }
+    token = &scan->tokens[index];
+    if (placeholder_scan_token_text_equals(scan, index, "DEFAULT")) {
+        return mylite_sql_parser_make_set_default_value(state, *token);
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "TRUE") ||
+        placeholder_scan_token_text_equals(scan, index, "ON")) {
+        return mylite_sql_parser_make_literal(state, *token, MYLITE_SQL_AST_LITERAL_TRUE);
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "FALSE") ||
+        placeholder_scan_token_text_equals(scan, index, "OFF")) {
+        return mylite_sql_parser_make_literal(state, *token, MYLITE_SQL_AST_LITERAL_FALSE);
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "NULL")) {
+        return mylite_sql_parser_make_literal(state, *token, MYLITE_SQL_AST_LITERAL_NULL);
+    }
+    if (token->kind == MYLITE_SQL_TOKEN_INTEGER) {
+        return mylite_sql_parser_make_literal(state, *token, MYLITE_SQL_AST_LITERAL_INTEGER);
+    }
+    if (token->kind == MYLITE_SQL_TOKEN_DECIMAL) {
+        return mylite_sql_parser_make_literal(state, *token, MYLITE_SQL_AST_LITERAL_DECIMAL);
+    }
+    if (token->kind == MYLITE_SQL_TOKEN_FLOAT) {
+        return mylite_sql_parser_make_literal(state, *token, MYLITE_SQL_AST_LITERAL_FLOAT);
+    }
+    if (token->kind == MYLITE_SQL_TOKEN_STRING) {
+        return mylite_sql_parser_make_literal(state, *token, MYLITE_SQL_AST_LITERAL_STRING);
+    }
+    if (token->kind == MYLITE_SQL_TOKEN_HEX_LITERAL) {
+        return mylite_sql_parser_make_literal(state, *token, MYLITE_SQL_AST_LITERAL_HEX);
+    }
+    if (token->kind == MYLITE_SQL_TOKEN_BIT_LITERAL) {
+        return mylite_sql_parser_make_literal(state, *token, MYLITE_SQL_AST_LITERAL_BIT);
+    }
+    if (placeholder_scan_token_is_identifier_like(scan, index) ||
+        placeholder_scan_token_text_equals(scan, index, "UTC") ||
+        placeholder_scan_token_text_equals(scan, index, "SYSTEM") ||
+        placeholder_scan_token_text_equals(scan, index, "SERIALIZABLE") ||
+        placeholder_scan_token_text_equals(scan, index, "BINARY")) {
+        return mylite_sql_parser_make_identifier(state, *token);
+    }
+    return NULL;
+}
+
+static bool placeholder_scan_token_is_set_system_variable_scalar_value(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    const struct mylite_sql_token *token = NULL;
+
+    if (scan == NULL || index >= scan->token_count) {
+        return false;
+    }
+    token = &scan->tokens[index];
+    return placeholder_scan_token_text_equals(scan, index, "DEFAULT") ||
+           placeholder_scan_token_text_equals(scan, index, "TRUE") ||
+           placeholder_scan_token_text_equals(scan, index, "ON") ||
+           placeholder_scan_token_text_equals(scan, index, "FALSE") ||
+           placeholder_scan_token_text_equals(scan, index, "OFF") ||
+           placeholder_scan_token_text_equals(scan, index, "NULL") ||
+           token->kind == MYLITE_SQL_TOKEN_INTEGER || token->kind == MYLITE_SQL_TOKEN_DECIMAL ||
+           token->kind == MYLITE_SQL_TOKEN_FLOAT || token->kind == MYLITE_SQL_TOKEN_STRING ||
+           token->kind == MYLITE_SQL_TOKEN_HEX_LITERAL ||
+           token->kind == MYLITE_SQL_TOKEN_BIT_LITERAL ||
+           placeholder_scan_token_is_identifier_like(scan, index) ||
+           placeholder_scan_token_text_equals(scan, index, "UTC") ||
+           placeholder_scan_token_text_equals(scan, index, "SYSTEM") ||
+           placeholder_scan_token_text_equals(scan, index, "SERIALIZABLE") ||
+           placeholder_scan_token_text_equals(scan, index, "BINARY");
+}
+
+static bool placeholder_scan_token_is_dot(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    const struct mylite_sql_token *token = NULL;
+
+    if (scan == NULL || index >= scan->token_count) {
+        return false;
+    }
+    token = &scan->tokens[index];
+    return token->kind == MYLITE_SQL_TOKEN_PUNCTUATION && token->length == 1U &&
+           token->text != NULL && token->text[0] == '.';
+}
+
+static bool placeholder_scan_token_is_show_columns_keyword(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return placeholder_scan_token_text_equals(scan, index, "COLUMNS") ||
+           placeholder_scan_token_text_equals(scan, index, "FIELDS");
+}
+
+static bool placeholder_scan_token_is_show_index_keyword(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return placeholder_scan_token_text_equals(scan, index, "INDEX") ||
+           placeholder_scan_token_text_equals(scan, index, "INDEXES") ||
+           placeholder_scan_token_text_equals(scan, index, "KEYS");
+}
+
+static bool placeholder_scan_token_is_schema_keyword(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return placeholder_scan_token_text_equals(scan, index, "FROM") ||
+           placeholder_scan_token_text_equals(scan, index, "IN");
 }
 
 static enum mylite_sql_parse_status scan_placeholder_statement_tokens(
@@ -2819,6 +3625,10 @@ static enum placeholder_statement_kind classify_utility_admin_placeholder_statem
     }
     if (placeholder_scan_token_text_equals(scan, 0U, "SHOW")) {
         return classify_show_placeholder_statement(scan);
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "DESCRIBE") ||
+        placeholder_scan_token_text_equals(scan, 0U, "DESC")) {
+        return classify_describe_placeholder_statement(scan);
     }
     if (placeholder_scan_token_text_equals(scan, 0U, "EXPLAIN")) {
         return classify_explain_placeholder_statement(scan);
@@ -6490,6 +7300,31 @@ static enum placeholder_statement_kind classify_drop_placeholder_statement(
 static enum placeholder_statement_kind classify_set_placeholder_statement(
     const struct placeholder_statement_scan *scan
 ) {
+    enum placeholder_statement_kind leading_kind = classify_set_leading_placeholder_statement(scan);
+    bool statement_is_complete = false;
+
+    if (leading_kind != PLACEHOLDER_STATEMENT_NONE) {
+        return leading_kind;
+    }
+    if (placeholder_scan_token_text_equals(scan, 1U, "TRANSACTION")) {
+        return PLACEHOLDER_STATEMENT_NONE;
+    }
+    statement_is_complete = !scan->has_non_trailing_semicolon &&
+                            placeholder_scan_parentheses_are_balanced(scan, 0U) &&
+                            !placeholder_scan_statement_tail_is_obviously_incomplete(scan);
+    if (!statement_is_complete) {
+        return PLACEHOLDER_STATEMENT_NONE;
+    }
+    if (placeholder_scan_contains_expression_operator_surface(scan) ||
+        set_placeholder_scan_contains_unsupported_residual(scan)) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
+    return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static enum placeholder_statement_kind classify_set_leading_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+) {
     if (placeholder_scan_token_text_equals(scan, 1U, "PASSWORD") ||
         placeholder_scan_token_text_equals(scan, 1U, "ROLE") ||
         placeholder_scan_token_text_equals(scan, 1U, "RESOURCE") ||
@@ -6511,20 +7346,115 @@ static enum placeholder_statement_kind classify_set_placeholder_statement(
         placeholder_scan_token_text_equals(scan, 2U, "ROLE")) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
     }
-    if (placeholder_scan_token_text_equals(scan, 1U, "TRANSACTION")) {
-        return PLACEHOLDER_STATEMENT_NONE;
-    }
-    if (!scan->has_non_trailing_semicolon && placeholder_scan_parentheses_are_balanced(scan, 0U) &&
-        !placeholder_scan_statement_tail_is_obviously_incomplete(scan) &&
-        placeholder_scan_contains_expression_operator_surface(scan)) {
-        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
-    }
     return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static bool set_placeholder_scan_contains_unsupported_residual(
+    const struct placeholder_statement_scan *scan
+) {
+    bool saw_assignment_operator = false;
+
+    for (size_t index = 1U; index < scan->token_count; ++index) {
+        const struct mylite_sql_token *token = &scan->tokens[index];
+        bool is_assignment_operator = token_is_equal_sign(token) ||
+                                      placeholder_scan_token_is_assignment_operator(scan, index);
+
+        if (set_placeholder_token_requires_unsupported_utility(
+                scan,
+                index,
+                saw_assignment_operator
+            )) {
+            return true;
+        }
+        if (is_assignment_operator) {
+            saw_assignment_operator = true;
+        }
+    }
+    return false;
+}
+
+static bool set_placeholder_token_requires_unsupported_utility(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    bool saw_assignment_operator
+) {
+    const struct mylite_sql_token *token = &scan->tokens[index];
+
+    if (placeholder_scan_token_text_equals(scan, index, "PERSIST") ||
+        placeholder_scan_token_text_equals(scan, index, "PERSIST_ONLY")) {
+        return true;
+    }
+    if (token->kind == MYLITE_SQL_TOKEN_QUOTED_IDENTIFIER) {
+        return true;
+    }
+    if (token->kind == MYLITE_SQL_TOKEN_STRING && index > 1U &&
+        scan->tokens[index - 1U].kind == MYLITE_SQL_TOKEN_STRING) {
+        return true;
+    }
+    if (token->kind == MYLITE_SQL_TOKEN_SYSTEM_VARIABLE && index > 1U &&
+        (token_is_equal_sign(&scan->tokens[index - 1U]) ||
+         placeholder_scan_token_is_assignment_operator(scan, index - 1U))) {
+        return true;
+    }
+    if (set_placeholder_assignment_value_starts_unsupported_surface(scan, index)) {
+        return true;
+    }
+    return set_placeholder_assigned_token_is_unsupported_surface(
+        scan,
+        index,
+        saw_assignment_operator
+    );
+}
+
+static bool set_placeholder_assignment_value_starts_unsupported_surface(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    if (!token_is_equal_sign(&scan->tokens[index]) &&
+        !placeholder_scan_token_is_assignment_operator(scan, index)) {
+        return false;
+    }
+    return placeholder_scan_token_text_equals(scan, index + 1U, "EXISTS") ||
+           placeholder_scan_token_text_equals(scan, index + 1U, "FROM_UNIXTIME") ||
+           placeholder_scan_token_text_equals(scan, index + 1U, "CHAR") ||
+           placeholder_scan_token_text_equals(scan, index + 1U, "LEFT") ||
+           placeholder_scan_token_text_equals(scan, index + 1U, "DEBUG");
+}
+
+static bool set_placeholder_assigned_token_is_unsupported_surface(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    bool saw_assignment_operator
+) {
+    const struct mylite_sql_token *token = &scan->tokens[index];
+
+    if (!saw_assignment_operator) {
+        return false;
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "SELECT") ||
+        placeholder_scan_token_text_equals(scan, index, "IN") ||
+        placeholder_scan_token_text_equals(scan, index, "EXISTS") ||
+        placeholder_scan_token_text_equals(scan, index, "FROM_UNIXTIME")) {
+        return true;
+    }
+    return token->kind == MYLITE_SQL_TOKEN_PUNCTUATION && token->length == 1U &&
+           token->text != NULL && token->text[0] == '.';
 }
 
 static enum placeholder_statement_kind classify_show_placeholder_statement(
     const struct placeholder_statement_scan *scan
 ) {
+    if (show_engine_logs_mutex_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
+    if (!scan->has_non_trailing_semicolon && placeholder_scan_parentheses_are_balanced(scan, 0U) &&
+        !placeholder_scan_statement_tail_is_obviously_incomplete(scan) &&
+        placeholder_scan_contains_text(scan, "WHERE") &&
+        (placeholder_scan_token_text_equals(scan, 1U, "TRIGGERS") ||
+         (placeholder_scan_token_text_equals(scan, 1U, "OPEN") &&
+          placeholder_scan_token_text_equals(scan, 2U, "TABLES")))) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
     if (placeholder_scan_token_text_equals(scan, 1U, "CREATE")) {
         if (placeholder_scan_token_text_equals(scan, 2U, "FUNCTION") ||
             placeholder_scan_token_text_equals(scan, 2U, "TRIGGER") ||
@@ -6547,17 +7477,44 @@ static enum placeholder_statement_kind classify_show_placeholder_statement(
     return PLACEHOLDER_STATEMENT_NONE;
 }
 
+static enum placeholder_statement_kind classify_describe_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || scan->token_count < 2U || scan->has_non_trailing_semicolon ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U) ||
+        placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return PLACEHOLDER_STATEMENT_NONE;
+    }
+    if (placeholder_explain_statement_start_is_supported(scan, 1U)) {
+        return PLACEHOLDER_STATEMENT_EXPLAIN;
+    }
+    return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static bool show_engine_logs_mutex_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || scan->token_count != 4U || scan->has_non_trailing_semicolon ||
+        !placeholder_scan_token_text_equals(scan, 0U, "SHOW") ||
+        !placeholder_scan_token_text_equals(scan, 1U, "ENGINE") ||
+        !placeholder_scan_token_is_identifier_like(scan, 2U) ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U) ||
+        placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return false;
+    }
+    return placeholder_scan_token_text_equals(scan, 3U, "LOGS") ||
+           placeholder_scan_token_text_equals(scan, 3U, "MUTEX");
+}
+
 static enum placeholder_statement_kind classify_explain_placeholder_statement(
     const struct placeholder_statement_scan *scan
 ) {
     size_t statement_index = 1U;
-    bool analyze = false;
 
     if (scan == NULL || scan->token_count < 2U) {
         return PLACEHOLDER_STATEMENT_NONE;
     }
     if (placeholder_scan_token_text_equals(scan, statement_index, "ANALYZE")) {
-        analyze = true;
         ++statement_index;
     }
     if (placeholder_scan_token_text_equals(scan, statement_index, "FORMAT")) {
@@ -6570,7 +7527,7 @@ static enum placeholder_statement_kind classify_explain_placeholder_statement(
     if (statement_index >= scan->token_count) {
         return PLACEHOLDER_STATEMENT_NONE;
     }
-    if (!placeholder_explain_statement_start_is_supported(scan, statement_index, analyze)) {
+    if (!placeholder_explain_statement_start_is_supported(scan, statement_index)) {
         return PLACEHOLDER_STATEMENT_NONE;
     }
     return PLACEHOLDER_STATEMENT_EXPLAIN;
@@ -6578,17 +7535,13 @@ static enum placeholder_statement_kind classify_explain_placeholder_statement(
 
 static bool placeholder_explain_statement_start_is_supported(
     const struct placeholder_statement_scan *scan,
-    size_t index,
-    bool analyze
+    size_t index
 ) {
     if (placeholder_scan_token_text_equals(scan, index, "SELECT") ||
         placeholder_scan_token_text_equals(scan, index, "TABLE") ||
         placeholder_scan_token_text_equals(scan, index, "WITH") ||
         placeholder_scan_token_text_equals(scan, index, "(")) {
         return true;
-    }
-    if (analyze) {
-        return false;
     }
     return placeholder_scan_token_text_equals(scan, index, "VALUES") ||
            placeholder_scan_token_text_equals(scan, index, "INSERT") ||

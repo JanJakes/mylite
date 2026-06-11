@@ -432,14 +432,12 @@ static int test_show_columns_diagnostics_and_unsupported_forms(void) {
         }
     );
 
-    failures += execute_error(
+    failures += expect_show_columns_result(
         database,
         "SHOW EXTENDED COLUMNS FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
+        numbers_rows,
+        sizeof(numbers_rows) / sizeof(numbers_rows[0]),
+        "show extended columns"
     );
     failures += execute_error(
         database,
@@ -531,24 +529,14 @@ static int test_show_columns_diagnostics_and_unsupported_forms(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_show_columns_result(
         database,
         "DESCRIBE numbers id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
+        single_column_rows,
+        sizeof(single_column_rows) / sizeof(single_column_rows[0]),
+        "describe identifier filter"
     );
-    failures += execute_error(
-        database,
-        "DESCRIBE SELECT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
-    );
+    failures += execute_statement_ok(database, "DESCRIBE SELECT 1");
 
     mylite_close(database);
     remove_related_files(path);

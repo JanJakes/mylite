@@ -1,3 +1,11 @@
+static bool show_columns_statement_uses_identifier_filter(
+    const struct mylite_sql_ast_node *statement
+) {
+    return statement != NULL && statement->span.text != NULL &&
+           (text_has_ascii_case_insensitive_prefix(statement->span.text, "DESC") ||
+            text_has_ascii_case_insensitive_prefix(statement->span.text, "EXPLAIN"));
+}
+
 static int execute_show_columns_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -446,7 +454,13 @@ static int load_show_columns_key_metadata(
         return MYLITE_OK;
     }
 
-    rc = mylite_execution_load_primary_key_info(database, table->table_id, columns, column_count, primary_key);
+    rc = mylite_execution_load_primary_key_info(
+        database,
+        table->table_id,
+        columns,
+        column_count,
+        primary_key
+    );
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_index_infos(
             database,
@@ -504,7 +518,9 @@ static int resolve_show_columns_filter_nodes(
         if (child == NULL) {
             continue;
         }
-        if (child->kind == MYLITE_SQL_AST_LITERAL) {
+        if (child->kind == MYLITE_SQL_AST_LITERAL ||
+            (child->kind == MYLITE_SQL_AST_IDENTIFIER &&
+             show_columns_statement_uses_identifier_filter(statement))) {
             if (out_nodes->like != NULL || out_nodes->where != NULL) {
                 set_runtime_error(database, "invalid SHOW COLUMNS filter");
                 return MYLITE_ERROR;

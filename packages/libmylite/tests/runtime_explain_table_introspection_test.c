@@ -53,6 +53,12 @@ static const char *const single_column_rows[][explain_column_count] = {
     {"id", "int", "NO", "", NULL, ""},
 };
 
+static const char *const id_i_iu_rows[][explain_column_count] = {
+    {"id", "int", "NO", "", NULL, ""},
+    {"i", "int", "YES", "", NULL, ""},
+    {"iu", "int unsigned", "YES", "", NULL, ""},
+};
+
 static const char *const pair_column_rows[][explain_column_count] = {
     {"id", "int", "NO", "", NULL, ""},
     {"value", "bigint", "YES", "", NULL, ""},
@@ -254,23 +260,19 @@ static int test_explain_diagnostics_and_unsupported_forms(void) {
         }
     );
 
-    failures += execute_error(
+    failures += expect_explain_result(
         database,
         "EXPLAIN numbers id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
+        single_column_rows,
+        sizeof(single_column_rows) / sizeof(single_column_rows[0]),
+        "explain identifier filter"
     );
-    failures += execute_error(
+    failures += expect_explain_result(
         database,
         "EXPLAIN numbers 'i%'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
-        }
+        id_i_iu_rows,
+        sizeof(id_i_iu_rows) / sizeof(id_i_iu_rows[0]),
+        "explain string filter"
     );
     failures += execute_error(
         database,

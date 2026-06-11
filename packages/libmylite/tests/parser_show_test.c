@@ -499,14 +499,14 @@ static int test_show_triggers_empty_introspection_statements(void) {
 
     failures += parser_test_parse_sql(
         "SHOW TRIGGERS FROM app WHERE `Table` = 'account';",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
         "SHOW TRIGGERS FROM app LIKE 'account' WHERE `Table` = 'account';",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -780,7 +780,7 @@ static int test_show_open_tables_empty_introspection_statements(void) {
 
     failures += parser_test_parse_sql(
         "SHOW OPEN TABLES FROM app LIKE 'open%' WHERE `Table` = 'open_table';",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -2176,11 +2176,8 @@ static int test_show_index_empty_introspection_statements(void) {
     failures += parser_test_parse_sql("SHOW INDEX;", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "SHOW EXTENDED INDEX FROM numbers;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SHOW EXTENDED INDEX FROM numbers;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(

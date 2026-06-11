@@ -131,6 +131,33 @@ static int test_parenthesized_table_reference_surfaces(void) {
             .message_part = "utility statement is not supported",
         }
     );
+    failures += execute_error(
+        database,
+        "SELECT * FROM (( t1 JOIN t2 ON TRUE ))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT * FROM (( t1, t2 ))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT * FROM t1 LEFT JOIN t2 LEFT JOIN t3 ON t2.id = t3.id ON t1.id = t3.id",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
 
     mylite_close(database);
     return failures;

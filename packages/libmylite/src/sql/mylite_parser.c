@@ -440,6 +440,16 @@ static bool placeholder_scan_parenthesized_start_is_query_statement(
 static bool placeholder_scan_contains_parenthesized_table_reference_surface(
     const struct placeholder_statement_scan *scan
 );
+static bool placeholder_scan_parenthesized_table_reference_body_has_surface(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+);
+static bool placeholder_scan_parenthesized_group_has_table_reference_name(
+    const struct placeholder_statement_scan *scan,
+    size_t left_paren_index,
+    size_t right_paren_index
+);
 static bool placeholder_scan_contains_odbc_table_reference_surface(
     const struct placeholder_statement_scan *scan
 );
@@ -450,7 +460,14 @@ static bool placeholder_scan_odbc_escape_starts_table_reference(
 static bool placeholder_scan_contains_mixed_comma_explicit_join_surface(
     const struct placeholder_statement_scan *scan
 );
+static bool placeholder_scan_contains_delayed_join_condition_surface(
+    const struct placeholder_statement_scan *scan
+);
 static bool placeholder_scan_from_clause_contains_mixed_comma_explicit_join(
+    const struct placeholder_statement_scan *scan,
+    size_t from_index
+);
+static bool placeholder_scan_from_clause_contains_delayed_join_condition(
     const struct placeholder_statement_scan *scan,
     size_t from_index
 );
@@ -4270,7 +4287,8 @@ static enum placeholder_statement_kind classify_query_table_reference_placeholde
     }
     if (placeholder_scan_contains_parenthesized_table_reference_surface(scan) ||
         placeholder_scan_contains_odbc_table_reference_surface(scan) ||
-        placeholder_scan_contains_mixed_comma_explicit_join_surface(scan)) {
+        placeholder_scan_contains_mixed_comma_explicit_join_surface(scan) ||
+        placeholder_scan_contains_delayed_join_condition_surface(scan)) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
     return PLACEHOLDER_STATEMENT_NONE;
@@ -4414,6 +4432,34 @@ static bool placeholder_scan_contains_mixed_comma_explicit_join_surface(
     return false;
 }
 
+static bool placeholder_scan_contains_delayed_join_condition_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    int paren_depth = 0;
+
+    if (scan == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < scan->token_count; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            continue;
+        }
+        if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+            continue;
+        }
+        if (paren_depth == 0 && placeholder_scan_token_text_equals(scan, index, "FROM") &&
+            placeholder_scan_from_clause_contains_delayed_join_condition(scan, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool placeholder_scan_from_clause_contains_mixed_comma_explicit_join(
     const struct placeholder_statement_scan *scan,
     size_t from_index
@@ -4455,6 +4501,49 @@ static bool placeholder_scan_from_clause_contains_mixed_comma_explicit_join(
     return false;
 }
 
+static bool placeholder_scan_from_clause_contains_delayed_join_condition(
+    const struct placeholder_statement_scan *scan,
+    size_t from_index
+) {
+    int paren_depth = 0;
+    size_t joins_before_condition = 0U;
+
+    if (scan == NULL || from_index + 1U >= scan->token_count) {
+        return false;
+    }
+    for (size_t index = from_index + 1U; index < scan->token_count; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            continue;
+        }
+        if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+            continue;
+        }
+        if (paren_depth != 0) {
+            continue;
+        }
+        if (placeholder_scan_token_stops_table_reference_clause(scan, index)) {
+            break;
+        }
+        if (placeholder_scan_token_text_equals(scan, index, "ON") ||
+            placeholder_scan_token_text_equals(scan, index, "USING")) {
+            joins_before_condition = 0U;
+            continue;
+        }
+        if (placeholder_scan_token_is_join_keyword(scan, index)) {
+            ++joins_before_condition;
+            if (joins_before_condition > 1U) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 static bool placeholder_scan_token_stops_table_reference_clause(
     const struct placeholder_statement_scan *scan,
     size_t index
@@ -4477,28 +4566,51 @@ static bool placeholder_scan_parenthesized_table_reference_body_starts_at(
 ) {
     size_t right_paren_index = 0U;
     size_t first_index = left_paren_index + 1U;
-    int paren_depth = 0;
-    bool saw_reference_name = false;
 
     if (!placeholder_scan_find_matching_right_paren(scan, left_paren_index, &right_paren_index) ||
         right_paren_index <= first_index ||
         placeholder_scan_query_expression_starts_at(scan, first_index)) {
         return false;
     }
-    for (size_t index = first_index; index < right_paren_index; ++index) {
+    return placeholder_scan_parenthesized_table_reference_body_has_surface(
+        scan,
+        first_index,
+        right_paren_index
+    );
+}
+
+static bool placeholder_scan_parenthesized_table_reference_body_has_surface(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+) {
+    bool saw_reference_name = false;
+
+    if (scan == NULL || start_index >= end_index || end_index > scan->token_count ||
+        placeholder_scan_query_expression_starts_at(scan, start_index)) {
+        return false;
+    }
+    for (size_t index = start_index; index < end_index; ++index) {
         if (token_is_left_paren(&scan->tokens[index])) {
-            ++paren_depth;
+            size_t right_paren_index = 0U;
+
+            if (!placeholder_scan_find_matching_right_paren(scan, index, &right_paren_index) ||
+                right_paren_index >= end_index) {
+                return false;
+            }
+            if (!placeholder_scan_parenthesized_group_has_table_reference_name(
+                    scan,
+                    index,
+                    right_paren_index
+                )) {
+                return false;
+            }
+            saw_reference_name = true;
+            index = right_paren_index;
             continue;
         }
         if (token_is_right_paren(&scan->tokens[index])) {
-            --paren_depth;
-            if (paren_depth < 0) {
-                return false;
-            }
-            continue;
-        }
-        if (paren_depth != 0) {
-            continue;
+            return false;
         }
         if (placeholder_scan_token_is_table_reference_name(scan, index)) {
             saw_reference_name = true;
@@ -4509,6 +4621,43 @@ static bool placeholder_scan_parenthesized_table_reference_body_starts_at(
         }
     }
     return saw_reference_name;
+}
+
+static bool placeholder_scan_parenthesized_group_has_table_reference_name(
+    const struct placeholder_statement_scan *scan,
+    size_t left_paren_index,
+    size_t right_paren_index
+) {
+    size_t start_index = left_paren_index + 1U;
+    size_t end_index = right_paren_index;
+
+    if (scan == NULL || left_paren_index >= scan->token_count ||
+        right_paren_index > scan->token_count || right_paren_index <= left_paren_index ||
+        !token_is_left_paren(&scan->tokens[left_paren_index])) {
+        return false;
+    }
+
+    while (start_index < end_index && token_is_left_paren(&scan->tokens[start_index])) {
+        size_t nested_right_index = 0U;
+
+        if (!placeholder_scan_find_matching_right_paren(scan, start_index, &nested_right_index) ||
+            nested_right_index != end_index - 1U) {
+            break;
+        }
+        ++start_index;
+        --end_index;
+    }
+
+    if (start_index >= end_index ||
+        placeholder_scan_query_expression_starts_at(scan, start_index)) {
+        return false;
+    }
+    for (size_t index = start_index; index < end_index; ++index) {
+        if (placeholder_scan_token_is_table_reference_name(scan, index)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool placeholder_scan_find_matching_right_paren(

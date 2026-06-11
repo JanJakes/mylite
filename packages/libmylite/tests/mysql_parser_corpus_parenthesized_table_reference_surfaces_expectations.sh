@@ -82,6 +82,21 @@ expect_output \
     "USE ${DATABASE}; SELECT COUNT(*) FROM (t1);"
 
 expect_output \
+    "doubly parenthesized base table reference" \
+    "2" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM ((t1));"
+
+expect_output \
+    "doubly parenthesized inner join" \
+    "4" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM ((t1 JOIN t2 ON TRUE));"
+
+expect_output \
+    "doubly parenthesized comma group" \
+    "4" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM ((t1, t2));"
+
+expect_output \
     "ODBC left outer join escape" \
     "2" \
     "USE ${DATABASE}; "\
@@ -98,6 +113,13 @@ expect_output \
     "4" \
     "USE ${DATABASE}; "\
 "SELECT COUNT(*) FROM t2 LEFT JOIN t3 ON t2.id=t3.id, t1;"
+
+expect_output \
+    "delayed outer join condition" \
+    "2" \
+    "USE ${DATABASE}; "\
+"SELECT COUNT(*) FROM t1 LEFT JOIN t2 LEFT JOIN t3 "\
+"ON t2.id=t3.id ON t1.id=t3.id;"
 
 cleanup
 

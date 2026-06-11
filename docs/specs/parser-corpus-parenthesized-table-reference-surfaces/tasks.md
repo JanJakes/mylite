@@ -11,8 +11,15 @@
 - [x] Update compatibility documentation.
 - [x] Rerun focused tests and parser corpus benchmark.
 - [x] Review, fix findings, commit, push, and continue to the next bucket.
+- [x] Follow-up: classify repeated parenthesized table references, nested comma
+  groups, and delayed nested join conditions from the residual corpus.
 
 Parser corpus benchmark after implementation:
 
 - `ok=69116`, `syntax_error=457`, `lexer_error=21`, `stack_overflow=1`
+  across 69,595 mysql-server-test queries.
+
+Parser corpus benchmark after the residual follow-up:
+
+- `ok=69447`, `syntax_error=126`, `lexer_error=21`, `stack_overflow=1`
   across 69,595 mysql-server-test queries.

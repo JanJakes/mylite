@@ -57,17 +57,28 @@ In scope:
 - parenthesized base table references, such as `FROM (t1)` or
   `JOIN (t2) ON ...`, classified as explicit unsupported placeholders after
   normal parse failure;
+- repeated parenthesized base table references, such as `FROM ((t1))`,
+  classified as explicit unsupported placeholders after normal parse failure;
 - parenthesized joined table references, such as
   `(t1 JOIN t2 ON ...) JOIN t3 ON ...`, classified as explicit unsupported
+  placeholders after normal parse failure;
+- repeated parenthesized joined table references, such as
+  `FROM ((t1 JOIN t2 ON TRUE))`, classified as explicit unsupported
   placeholders after normal parse failure;
 - parenthesized comma table-reference lists, such as
   `t1 LEFT JOIN (t2, t3) ON ...`, classified as explicit unsupported
   placeholders after normal parse failure;
+- nested parenthesized comma table-reference lists, such as
+  `FROM ((t1, t2))` and `FROM ((t1, (t2, t3)))`, classified as explicit
+  unsupported placeholders after normal parse failure;
 - ODBC `{ OJ ... }` join escapes classified as explicit unsupported
   placeholders after normal parse failure;
 - mixed comma/explicit join lists, such as
   `t1, t2 LEFT JOIN t3 ON ...` and `t2 LEFT JOIN t3 ON ..., t1`, classified as
   explicit unsupported placeholders after normal parse failure;
+- delayed nested join condition chains, such as
+  `t1 LEFT JOIN t2 LEFT JOIN t3 ON ... ON ...`, classified as explicit
+  unsupported placeholders after normal parse failure;
 - deterministic unsupported diagnostics instead of generic parse errors for
   recognized table-reference groups;
 - parser corpus movement measurement over
@@ -82,6 +93,7 @@ Out of scope:
   join, such as `t1 LEFT JOIN (t2, t3) ON ...`;
 - executable ODBC `{ OJ ... }` join escapes;
 - executable mixed comma/explicit join precedence;
+- executable delayed nested join condition chains;
 - general table-reference aliases on parenthesized join groups;
 - lateral derived tables and table functions;
 - broader join condition expressions beyond existing MyLite join support.

@@ -10,6 +10,8 @@ struct expected_statement {
 static int test_admin_noop_statement_forms(void);
 static int test_unsupported_stored_program_statement_forms(void);
 static int test_call_argument_forms(void);
+static int test_flush_script_form(void);
+static int test_removed_flush_forms_rejected(void);
 static int expect_statement_kind(struct expected_statement expected);
 static int expect_parse_status(
     const char *sql,
@@ -23,6 +25,8 @@ int main(void) {
     failures += test_admin_noop_statement_forms();
     failures += test_unsupported_stored_program_statement_forms();
     failures += test_call_argument_forms();
+    failures += test_flush_script_form();
+    failures += test_removed_flush_forms_rejected();
 
     return failures == 0 ? 0 : 1;
 }
@@ -57,6 +61,26 @@ static int test_admin_noop_statement_forms(void) {
         {.sql = "RESET MASTER", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
         {.sql = "RESET PERSIST max_connections", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
         {.sql = "FLUSH PRIVILEGES", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {.sql = "FLUSH STATUS", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {.sql = "FLUSH OPTIMIZER_COSTS", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {.sql = "FLUSH USER_RESOURCES", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {.sql = "FLUSH LOGS", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {.sql = "FLUSH BINARY LOGS", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {.sql = "FLUSH ENGINE LOGS", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {.sql = "FLUSH ERROR LOGS", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {.sql = "FLUSH GENERAL LOGS", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {.sql = "FLUSH SLOW LOGS", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {.sql = "FLUSH RELAY LOGS", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {.sql = "FLUSH RELAY LOGS FOR CHANNEL channel1", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT
+        },
+        {.sql = "FLUSH TABLE", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {.sql = "FLUSH TABLES", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {.sql = "FLUSH TABLES mysql.events", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {.sql = "FLUSH TABLE export FOR EXPORT", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {.sql = "FLUSH TABLES wp_options, wp_posts WITH READ LOCK",
+         .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {.sql = "FLUSH TABLE WITH READ LOCK", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {.sql = "FLUSH TABLES WITH READ LOCK", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
         {
             .sql = "PURGE BINARY LOGS TO 'bin.000001'",
             .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT,
@@ -172,6 +196,43 @@ static int test_call_argument_forms(void) {
     failures += parser_test_expect_child_count(statement, 2U, "call argument child count");
     mylite_sql_parse_result_deinit(&result);
 
+    return failures;
+}
+
+static int test_flush_script_form(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *first = NULL;
+    const struct mylite_sql_ast_node *second = NULL;
+    int failures =
+        parser_test_parse_sql("FLUSH TABLES;\nUNLOCK TABLES", MYLITE_SQL_PARSE_OK, &result);
+
+    failures += parser_test_expect_child_count(result.root, 2U, "flush/unlock script count");
+    first = parser_test_child_at(result.root, 0U);
+    second = parser_test_child_at(result.root, 1U);
+    failures += parser_test_expect_node(first, MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT, "flush tables");
+    failures += parser_test_expect_span_text(first, "FLUSH TABLES", "flush tables statement span");
+    failures +=
+        parser_test_expect_node(second, MYLITE_SQL_AST_UNLOCK_TABLES_STATEMENT, "unlock tables");
+    failures += parser_test_expect_span_text(second, "UNLOCK TABLES", "unlock tables span");
+    mylite_sql_parse_result_deinit(&result);
+    return failures;
+}
+
+static int test_removed_flush_forms_rejected(void) {
+    int failures = 0;
+
+    failures +=
+        expect_parse_status("FLUSH HOSTS", MYLITE_SQL_PARSE_SYNTAX_ERROR, "removed FLUSH HOSTS");
+    failures += expect_parse_status(
+        "FLUSH QUERY CACHE",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "removed FLUSH QUERY CACHE"
+    );
+    failures += expect_parse_status(
+        "FLUSH TABLES, STATUS",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "FLUSH TABLES cannot be mixed with flush options"
+    );
     return failures;
 }
 

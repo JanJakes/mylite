@@ -463,6 +463,9 @@ statement(A) ::= transaction_control_statement(B). {
 statement(A) ::= table_lock_statement(B). {
     A = B;
 }
+statement(A) ::= flush_admin_noop_statement(B). {
+    A = B;
+}
 statement(A) ::= table_maintenance_statement(B). {
     A = B;
 }
@@ -715,6 +718,52 @@ lock_table_type(A) ::= READ(R) LOCAL(L). {
 lock_table_type(A) ::= WRITE(W). {
     A = mylite_sql_parser_make_lock_table_type(
         state, MYLITE_SQL_AST_LOCK_TABLE_WRITE_LOCK, W, W);
+}
+
+flush_admin_noop_statement(A) ::= FLUSH(F) PRIVILEGES(P). {
+    A = mylite_sql_parser_make_admin_noop_statement(state, F, P);
+}
+flush_admin_noop_statement(A) ::= FLUSH(F) STATUS(S). {
+    A = mylite_sql_parser_make_admin_noop_statement(state, F, S);
+}
+flush_admin_noop_statement(A) ::= FLUSH(F) OPTIMIZER_COSTS(O). {
+    A = mylite_sql_parser_make_admin_noop_statement(state, F, O);
+}
+flush_admin_noop_statement(A) ::= FLUSH(F) USER_RESOURCES(U). {
+    A = mylite_sql_parser_make_admin_noop_statement(state, F, U);
+}
+flush_admin_noop_statement(A) ::= FLUSH(F) LOGS(L). {
+    A = mylite_sql_parser_make_admin_noop_statement(state, F, L);
+}
+flush_admin_noop_statement(A) ::= FLUSH(F) BINARY LOGS(L). {
+    A = mylite_sql_parser_make_admin_noop_statement(state, F, L);
+}
+flush_admin_noop_statement(A) ::= FLUSH(F) ENGINE LOGS(L). {
+    A = mylite_sql_parser_make_admin_noop_statement(state, F, L);
+}
+flush_admin_noop_statement(A) ::= FLUSH(F) ERROR LOGS(L). {
+    A = mylite_sql_parser_make_admin_noop_statement(state, F, L);
+}
+flush_admin_noop_statement(A) ::= FLUSH(F) GENERAL LOGS(L). {
+    A = mylite_sql_parser_make_admin_noop_statement(state, F, L);
+}
+flush_admin_noop_statement(A) ::= FLUSH(F) SLOW LOGS(L). {
+    A = mylite_sql_parser_make_admin_noop_statement(state, F, L);
+}
+flush_admin_noop_statement(A) ::= FLUSH(F) RELAY LOGS(L). {
+    A = mylite_sql_parser_make_admin_noop_statement(state, F, L);
+}
+flush_admin_noop_statement(A) ::= FLUSH(F) TABLE(T). {
+    A = mylite_sql_parser_make_admin_noop_statement(state, F, T);
+}
+flush_admin_noop_statement(A) ::= FLUSH(F) TABLES(T). {
+    A = mylite_sql_parser_make_admin_noop_statement(state, F, T);
+}
+flush_admin_noop_statement(A) ::= FLUSH(F) TABLE WITH READ LOCK(L). {
+    A = mylite_sql_parser_make_admin_noop_statement(state, F, L);
+}
+flush_admin_noop_statement(A) ::= FLUSH(F) TABLES WITH READ LOCK(L). {
+    A = mylite_sql_parser_make_admin_noop_statement(state, F, L);
 }
 
 table_maintenance_statement(A) ::=

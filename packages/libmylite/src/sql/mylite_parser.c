@@ -488,6 +488,27 @@ static enum placeholder_statement_kind classify_utility_noop_placeholder_stateme
 static enum placeholder_statement_kind classify_admin_noop_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );
+static bool flush_placeholder_statement_is_supported(const struct placeholder_statement_scan *scan);
+static bool flush_placeholder_option_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t *index
+);
+static bool flush_placeholder_table_option_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t table_index
+);
+static bool flush_placeholder_table_name_list_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t *index
+);
+static bool flush_placeholder_table_name_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t *index
+);
+static bool flush_placeholder_table_name_part_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
 static enum placeholder_statement_kind classify_query_surface_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );
@@ -4654,8 +4675,10 @@ static enum placeholder_statement_kind classify_admin_noop_placeholder_statement
         change_replication_source_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
     }
+    if (flush_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
+    }
     if (placeholder_scan_token_text_equals(scan, 0U, "RESET") ||
-        placeholder_scan_token_text_equals(scan, 0U, "FLUSH") ||
         placeholder_scan_token_text_equals(scan, 0U, "PURGE") ||
         placeholder_scan_token_text_equals(scan, 0U, "KILL") ||
         placeholder_scan_token_text_equals(scan, 0U, "CACHE") ||
@@ -4670,6 +4693,174 @@ static enum placeholder_statement_kind classify_admin_noop_placeholder_statement
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
     }
     return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static bool flush_placeholder_statement_is_supported(const struct placeholder_statement_scan *scan
+) {
+    size_t index = 1U;
+
+    if (scan == NULL || scan->token_count < 2U ||
+        !placeholder_scan_token_text_equals(scan, 0U, "FLUSH")) {
+        return false;
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "NO_WRITE_TO_BINLOG") ||
+        placeholder_scan_token_text_equals(scan, index, "LOCAL")) {
+        ++index;
+    }
+    if (index >= scan->token_count) {
+        return false;
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "TABLE") ||
+        placeholder_scan_token_text_equals(scan, index, "TABLES")) {
+        return flush_placeholder_table_option_is_supported(scan, index);
+    }
+    for (;;) {
+        if (!flush_placeholder_option_is_supported(scan, &index)) {
+            return false;
+        }
+        if (index == scan->token_count) {
+            return true;
+        }
+        if (!token_is_comma(&scan->tokens[index])) {
+            return false;
+        }
+        ++index;
+        if (index == scan->token_count) {
+            return false;
+        }
+    }
+}
+
+static bool flush_placeholder_option_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t *index
+) {
+    if (scan == NULL || index == NULL || *index >= scan->token_count) {
+        return false;
+    }
+    if (placeholder_scan_token_text_equals(scan, *index, "BINARY") ||
+        placeholder_scan_token_text_equals(scan, *index, "ENGINE") ||
+        placeholder_scan_token_text_equals(scan, *index, "ERROR") ||
+        placeholder_scan_token_text_equals(scan, *index, "GENERAL") ||
+        placeholder_scan_token_text_equals(scan, *index, "SLOW")) {
+        if (!placeholder_scan_token_text_equals(scan, *index + 1U, "LOGS")) {
+            return false;
+        }
+        *index += 2U;
+        return true;
+    }
+    if (placeholder_scan_token_text_equals(scan, *index, "RELAY")) {
+        if (!placeholder_scan_token_text_equals(scan, *index + 1U, "LOGS")) {
+            return false;
+        }
+        *index += 2U;
+        if (placeholder_scan_token_text_equals(scan, *index, "FOR") &&
+            placeholder_scan_token_text_equals(scan, *index + 1U, "CHANNEL")) {
+            size_t channel_index = *index + 2U;
+
+            if (channel_index >= scan->token_count ||
+                (!placeholder_scan_token_is_identifier_like(scan, channel_index) &&
+                 !token_is_string_literal(&scan->tokens[channel_index]))) {
+                return false;
+            }
+            *index += 3U;
+        }
+        return true;
+    }
+    if (placeholder_scan_token_text_equals(scan, *index, "LOGS") ||
+        placeholder_scan_token_text_equals(scan, *index, "PRIVILEGES") ||
+        placeholder_scan_token_text_equals(scan, *index, "OPTIMIZER_COSTS") ||
+        placeholder_scan_token_text_equals(scan, *index, "STATUS") ||
+        placeholder_scan_token_text_equals(scan, *index, "USER_RESOURCES")) {
+        ++*index;
+        return true;
+    }
+    return false;
+}
+
+static bool flush_placeholder_table_option_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t table_index
+) {
+    size_t index = table_index + 1U;
+
+    if (scan == NULL || table_index >= scan->token_count) {
+        return false;
+    }
+    if (index == scan->token_count) {
+        return true;
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "WITH") &&
+        placeholder_scan_token_text_equals(scan, index + 1U, "READ") &&
+        placeholder_scan_token_text_equals(scan, index + 2U, "LOCK")) {
+        return index + 3U == scan->token_count;
+    }
+    if (!flush_placeholder_table_name_list_is_supported(scan, &index)) {
+        return false;
+    }
+    if (index == scan->token_count) {
+        return true;
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "WITH") &&
+        placeholder_scan_token_text_equals(scan, index + 1U, "READ") &&
+        placeholder_scan_token_text_equals(scan, index + 2U, "LOCK")) {
+        return index + 3U == scan->token_count;
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "FOR") &&
+        placeholder_scan_token_text_equals(scan, index + 1U, "EXPORT")) {
+        return index + 2U == scan->token_count;
+    }
+    return false;
+}
+
+static bool flush_placeholder_table_name_list_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t *index
+) {
+    if (!flush_placeholder_table_name_is_supported(scan, index)) {
+        return false;
+    }
+    while (*index < scan->token_count && token_is_comma(&scan->tokens[*index])) {
+        ++*index;
+        if (!flush_placeholder_table_name_is_supported(scan, index)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool flush_placeholder_table_name_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t *index
+) {
+    if (scan == NULL || index == NULL ||
+        !flush_placeholder_table_name_part_is_supported(scan, *index)) {
+        return false;
+    }
+    ++*index;
+    while (placeholder_scan_token_text_equals(scan, *index, ".") &&
+           flush_placeholder_table_name_part_is_supported(scan, *index + 1U)) {
+        *index += 2U;
+    }
+    return true;
+}
+
+static bool flush_placeholder_table_name_part_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    const struct mylite_sql_token *token = NULL;
+
+    if (scan == NULL || index >= scan->token_count ||
+        placeholder_scan_token_text_equals(scan, index, ".") ||
+        placeholder_scan_token_text_equals(scan, index, "WITH") ||
+        placeholder_scan_token_text_equals(scan, index, "FOR")) {
+        return false;
+    }
+    token = &scan->tokens[index];
+    return token->kind == MYLITE_SQL_TOKEN_IDENTIFIER ||
+           token->kind == MYLITE_SQL_TOKEN_QUOTED_IDENTIFIER ||
+           token->kind == MYLITE_SQL_TOKEN_KEYWORD;
 }
 
 static enum placeholder_statement_kind classify_query_surface_placeholder_statement(
@@ -13280,6 +13471,18 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_raw_statement(
     return make_node(state, statement_kind, span);
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_admin_noop_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token first_token,
+    struct mylite_sql_token last_token
+) {
+    return mylite_sql_parser_make_raw_statement(
+        state,
+        MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT,
+        span_join(span_from_token(&first_token), span_from_token(&last_token))
+    );
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_engines_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,
@@ -19950,6 +20153,7 @@ static bool map_keyword_token(
         {"ROLLBACK", MYLITE_SQL_PARSE_ROLLBACK},
         {"SAVEPOINT", MYLITE_SQL_PARSE_SAVEPOINT},
         {"RELEASE", MYLITE_SQL_PARSE_RELEASE},
+        {"FLUSH", MYLITE_SQL_PARSE_FLUSH},
         {"UNLOCK", MYLITE_SQL_PARSE_UNLOCK},
         {"WRITE", MYLITE_SQL_PARSE_WRITE},
         {"ANALYZE", MYLITE_SQL_PARSE_ANALYZE},

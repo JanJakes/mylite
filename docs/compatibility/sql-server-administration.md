@@ -8,7 +8,7 @@ Server lifecycle, process control, instance administration, and embedded server-
 | `BINLOG` | ⚪ | Parsed and accepted as an embedded no-op with warning `1105`; no binary-log file state or replication side effects |
 | `CACHE INDEX` | ⚪ | Parsed and accepted as an embedded no-op with warning `1105`; no key-cache state |
 | `CLONE` | ⚪ | Parsed and accepted as an embedded no-op with warning `1105`; no local or remote clone side effects |
-| `FLUSH` | ⚪ | Parsed and accepted as an embedded no-op with warning `1105`; no logs, privileges, caches, tables, hosts, optimizer costs, status, or user-resource side effects |
+| `FLUSH` | ⚪ | MySQL 8.4 documented forms are parsed and accepted as embedded no-ops with warning `1105`; no logs, privileges, caches, tables, optimizer costs, status, or user-resource side effects |
 | `KILL` | ⚪ | Parsed and accepted as an embedded no-op with warning `1105`; no connection/query kill behavior |
 | `LOAD INDEX INTO CACHE` | ⚪ | Parsed and accepted as an embedded no-op with warning `1105`; no key-cache preloading |
 | `LOCK INSTANCE FOR BACKUP` | ⚪ | Parsed and accepted as an embedded no-op with warning `1105`; no backup lock, metadata lock, or privilege behavior |

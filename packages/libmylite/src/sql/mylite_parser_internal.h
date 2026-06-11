@@ -1082,6 +1082,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_raw_statement(
     enum mylite_sql_ast_node_kind statement_kind,
     struct mylite_sql_source_span span
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_admin_noop_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token first_token,
+    struct mylite_sql_token last_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_engines_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,

@@ -77,6 +77,7 @@ static int test_admin_noop_warning_surface(void) {
         "SET @@PERSIST.max_connections = 200",
         "RESET MASTER",
         "FLUSH PRIVILEGES",
+        "FLUSH TABLES",
         "PURGE BINARY LOGS TO 'bin.000001'",
         "KILL QUERY @thread_id",
         "CACHE INDEX t USE key_cache",

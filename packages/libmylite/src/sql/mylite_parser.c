@@ -503,6 +503,27 @@ static bool placeholder_scan_token_is_table_reference_name(
 static bool placeholder_scan_contains_query_expression_clause_surface(
     const struct placeholder_statement_scan *scan
 );
+static bool placeholder_scan_contains_query_final_tail_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_compound_query_final_tail_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_select_limit_into_locking_permutation(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_top_level_token_starts_set_operation(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_top_level_token_starts_final_query_tail(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_into_user_variable_list_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t into_index
+);
 static bool placeholder_scan_contains_json_arrow_surface(
     const struct placeholder_statement_scan *scan
 );
@@ -783,6 +804,27 @@ static bool placeholder_scan_update_has_using_join_before_set(
 static bool placeholder_scan_contains_insert_replace_variant_surface(
     const struct placeholder_statement_scan *scan
 );
+static bool placeholder_scan_contains_insert_row_alias_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_insert_row_constructor_list_end(
+    const struct placeholder_statement_scan *scan,
+    size_t values_index,
+    size_t *out_end_index
+);
+static bool placeholder_scan_insert_row_alias_tail_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t alias_index
+);
+static bool placeholder_scan_token_can_name_insert_row_alias(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_insert_row_alias_column_list_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t left_paren_index,
+    size_t *out_end_index
+);
 static bool placeholder_scan_contains_insert_identifier_value_surface(
     const struct placeholder_statement_scan *scan
 );
@@ -795,6 +837,14 @@ static bool placeholder_scan_contains_insert_set_identifier_value_surface(
 );
 static bool placeholder_scan_contains_duplicate_identifier_assignment_surface(
     const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_duplicate_qualified_assignment_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_qualified_identifier_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    size_t *out_end_index
 );
 static bool placeholder_scan_contains_replace_compound_select_surface(
     const struct placeholder_statement_scan *scan
@@ -5052,7 +5102,8 @@ static bool placeholder_scan_contains_parenthesized_query_expression_surface(
 static bool placeholder_scan_contains_query_expression_clause_surface(
     const struct placeholder_statement_scan *scan
 ) {
-    if (placeholder_scan_contains_odbc_expression_escape_surface(scan) ||
+    if (placeholder_scan_contains_query_final_tail_surface(scan) ||
+        placeholder_scan_contains_odbc_expression_escape_surface(scan) ||
         placeholder_scan_contains_postfix_is_predicate_surface(scan) ||
         placeholder_scan_contains_between_expression_surface(scan) ||
         placeholder_scan_contains_row_constructor_predicate_surface(scan) ||
@@ -5069,6 +5120,165 @@ static bool placeholder_scan_contains_query_expression_clause_surface(
            placeholder_scan_contains_row_tuple_predicate_surface(scan) ||
            placeholder_scan_contains_descriptor_in_list_surface(scan) ||
            placeholder_scan_contains_bare_truth_clause_surface(scan);
+}
+
+static bool placeholder_scan_contains_query_final_tail_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || placeholder_scan_statement_tail_is_obviously_incomplete(scan) ||
+        !placeholder_scan_starts_query_statement(scan)) {
+        return false;
+    }
+    return placeholder_scan_contains_compound_query_final_tail_surface(scan) ||
+           placeholder_scan_contains_select_limit_into_locking_permutation(scan);
+}
+
+static bool placeholder_scan_contains_compound_query_final_tail_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    int paren_depth = 0;
+    bool saw_set_operation = false;
+
+    if (scan == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < scan->token_count; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            continue;
+        }
+        if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+            continue;
+        }
+        if (paren_depth != 0) {
+            continue;
+        }
+        if (placeholder_scan_top_level_token_starts_set_operation(scan, index)) {
+            saw_set_operation = true;
+            continue;
+        }
+        if (saw_set_operation &&
+            placeholder_scan_top_level_token_starts_final_query_tail(scan, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_contains_select_limit_into_locking_permutation(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t limit_index = 0U;
+    size_t into_index = 0U;
+    size_t locking_index = 0U;
+    size_t locking_end_index = 0U;
+
+    if (scan == NULL || !placeholder_scan_token_text_equals(scan, 0U, "SELECT") ||
+        !placeholder_scan_find_top_level_keyword(scan, "LIMIT", &limit_index)) {
+        return false;
+    }
+    if (placeholder_scan_find_top_level_keyword_after(
+            scan,
+            "INTO",
+            limit_index + 1U,
+            &into_index
+        ) &&
+        placeholder_scan_into_user_variable_list_is_complete(scan, into_index)) {
+        return true;
+    }
+    for (size_t index = limit_index + 1U; index < scan->token_count; ++index) {
+        if (!placeholder_scan_token_starts_select_locking_clause(scan, index) ||
+            !scan_select_locking_clause_end(scan, index, &locking_end_index)) {
+            continue;
+        }
+        locking_index = index;
+        if (locking_end_index < scan->token_count &&
+            placeholder_scan_token_text_equals(scan, locking_end_index, "INTO") &&
+            placeholder_scan_into_user_variable_list_is_complete(scan, locking_end_index)) {
+            return true;
+        }
+        if (placeholder_scan_find_top_level_keyword_after(
+                scan,
+                "INTO",
+                locking_index + 1U,
+                &into_index
+            ) &&
+            placeholder_scan_into_user_variable_list_is_complete(scan, into_index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_top_level_token_starts_set_operation(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return placeholder_scan_token_text_equals(scan, index, "UNION") ||
+           placeholder_scan_token_text_equals(scan, index, "EXCEPT") ||
+           placeholder_scan_token_text_equals(scan, index, "INTERSECT");
+}
+
+static bool placeholder_scan_top_level_token_starts_final_query_tail(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    size_t locking_end_index = 0U;
+
+    if (placeholder_scan_token_text_equals(scan, index, "ORDER") &&
+        placeholder_scan_token_text_equals(scan, index + 1U, "BY") &&
+        !placeholder_scan_token_is_incomplete_statement_tail(scan, index + 2U)) {
+        return true;
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "LIMIT") &&
+        !placeholder_scan_token_is_incomplete_statement_tail(scan, index + 1U)) {
+        return true;
+    }
+    if (placeholder_scan_into_user_variable_list_is_complete(scan, index)) {
+        return true;
+    }
+    if (!scan_select_locking_clause_end(scan, index, &locking_end_index) ||
+        locking_end_index <= index) {
+        return false;
+    }
+    return locking_end_index >= scan->token_count ||
+           placeholder_scan_into_user_variable_list_is_complete(scan, locking_end_index);
+}
+
+static bool placeholder_scan_into_user_variable_list_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t into_index
+) {
+    bool need_variable = true;
+    bool saw_variable = false;
+
+    if (scan == NULL || !placeholder_scan_token_text_equals(scan, into_index, "INTO")) {
+        return false;
+    }
+    for (size_t index = into_index + 1U; index < scan->token_count; ++index) {
+        if (!need_variable && (placeholder_scan_token_starts_select_locking_clause(scan, index) ||
+                               placeholder_scan_token_text_equals(scan, index, "ORDER") ||
+                               placeholder_scan_token_text_equals(scan, index, "LIMIT"))) {
+            return saw_variable;
+        }
+        if (need_variable) {
+            if (scan->tokens[index].kind != MYLITE_SQL_TOKEN_USER_VARIABLE) {
+                return false;
+            }
+            need_variable = false;
+            saw_variable = true;
+            continue;
+        }
+        if (!token_is_comma(&scan->tokens[index])) {
+            return false;
+        }
+        need_variable = true;
+    }
+    return saw_variable && !need_variable;
 }
 
 static bool placeholder_scan_contains_json_arrow_surface(
@@ -6503,10 +6713,155 @@ static bool placeholder_scan_update_has_using_join_before_set(
 static bool placeholder_scan_contains_insert_replace_variant_surface(
     const struct placeholder_statement_scan *scan
 ) {
-    return placeholder_scan_contains_insert_identifier_value_surface(scan) ||
+    return placeholder_scan_contains_insert_row_alias_surface(scan) ||
+           placeholder_scan_contains_insert_identifier_value_surface(scan) ||
            placeholder_scan_contains_insert_set_identifier_value_surface(scan) ||
            placeholder_scan_contains_duplicate_identifier_assignment_surface(scan) ||
+           placeholder_scan_contains_duplicate_qualified_assignment_surface(scan) ||
            placeholder_scan_contains_replace_compound_select_surface(scan);
+}
+
+static bool placeholder_scan_contains_insert_row_alias_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || !placeholder_scan_token_text_equals(scan, 0U, "INSERT")) {
+        return false;
+    }
+    for (size_t index = 1U; index < scan->token_count; ++index) {
+        size_t alias_index = 0U;
+        size_t row_list_end_index = 0U;
+
+        if ((!placeholder_scan_token_text_equals(scan, index, "VALUES") &&
+             !placeholder_scan_token_text_equals(scan, index, "VALUE")) ||
+            !placeholder_scan_insert_row_constructor_list_end(scan, index, &row_list_end_index)) {
+            continue;
+        }
+        alias_index = row_list_end_index;
+        if (placeholder_scan_token_text_equals(scan, alias_index, "AS")) {
+            ++alias_index;
+        }
+        if (placeholder_scan_insert_row_alias_tail_is_complete(scan, alias_index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_insert_row_constructor_list_end(
+    const struct placeholder_statement_scan *scan,
+    size_t values_index,
+    size_t *out_end_index
+) {
+    bool saw_constructor = false;
+    size_t index = values_index + 1U;
+
+    if (scan == NULL || out_end_index == NULL || index >= scan->token_count) {
+        return false;
+    }
+    for (;;) {
+        size_t left_paren_index = index;
+        size_t right_paren_index = 0U;
+
+        if (placeholder_scan_token_text_equals(scan, index, "ROW")) {
+            left_paren_index = index + 1U;
+        }
+        if (left_paren_index >= scan->token_count ||
+            !token_is_left_paren(&scan->tokens[left_paren_index]) ||
+            !placeholder_scan_find_matching_right_paren(
+                scan,
+                left_paren_index,
+                &right_paren_index
+            )) {
+            return false;
+        }
+        saw_constructor = true;
+        index = right_paren_index + 1U;
+        if (index >= scan->token_count) {
+            break;
+        }
+        if (!token_is_comma(&scan->tokens[index])) {
+            break;
+        }
+        ++index;
+        if (index >= scan->token_count) {
+            return false;
+        }
+    }
+
+    *out_end_index = index;
+    return saw_constructor;
+}
+
+static bool placeholder_scan_insert_row_alias_tail_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t alias_index
+) {
+    size_t tail_index = alias_index + 1U;
+
+    if (!placeholder_scan_token_can_name_insert_row_alias(scan, alias_index)) {
+        return false;
+    }
+    if (tail_index >= scan->token_count) {
+        return true;
+    }
+    if (token_is_left_paren(&scan->tokens[tail_index]) &&
+        !placeholder_scan_insert_row_alias_column_list_is_complete(scan, tail_index, &tail_index)) {
+        return false;
+    }
+    if (tail_index >= scan->token_count) {
+        return true;
+    }
+    return placeholder_scan_token_starts_duplicate_update_assignment_clause(scan, tail_index + 3U);
+}
+
+static bool placeholder_scan_token_can_name_insert_row_alias(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    if (scan == NULL || index >= scan->token_count ||
+        placeholder_scan_token_is_incomplete_statement_tail(scan, index)) {
+        return false;
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "ON") ||
+        placeholder_scan_token_text_equals(scan, index, "WHERE") ||
+        placeholder_scan_token_text_equals(scan, index, "ORDER") ||
+        placeholder_scan_token_text_equals(scan, index, "LIMIT")) {
+        return false;
+    }
+    return placeholder_scan_token_can_name_loose_identifier(scan, index);
+}
+
+static bool placeholder_scan_insert_row_alias_column_list_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t left_paren_index,
+    size_t *out_end_index
+) {
+    size_t right_paren_index = 0U;
+    bool need_column = true;
+
+    if (scan == NULL || out_end_index == NULL ||
+        !placeholder_scan_find_matching_right_paren(scan, left_paren_index, &right_paren_index) ||
+        right_paren_index <= left_paren_index + 1U) {
+        return false;
+    }
+    for (size_t index = left_paren_index + 1U; index < right_paren_index; ++index) {
+        if (need_column) {
+            if (!placeholder_scan_token_can_name_loose_identifier(scan, index)) {
+                return false;
+            }
+            need_column = false;
+            continue;
+        }
+        if (!token_is_comma(&scan->tokens[index])) {
+            return false;
+        }
+        need_column = true;
+    }
+    if (need_column) {
+        return false;
+    }
+    *out_end_index = right_paren_index + 1U;
+    return true;
 }
 
 static bool placeholder_scan_contains_insert_identifier_value_surface(
@@ -6599,6 +6954,70 @@ static bool placeholder_scan_contains_duplicate_identifier_assignment_surface(
         }
     }
     return false;
+}
+
+static bool placeholder_scan_contains_duplicate_qualified_assignment_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t update_index = 0U;
+
+    if (scan == NULL || !placeholder_scan_token_text_equals(scan, 0U, "INSERT") ||
+        !placeholder_scan_find_top_level_keyword(scan, "UPDATE", &update_index) ||
+        update_index < 3U || !placeholder_scan_token_text_equals(scan, update_index - 1U, "KEY") ||
+        !placeholder_scan_token_text_equals(scan, update_index - 2U, "DUPLICATE") ||
+        !placeholder_scan_token_text_equals(scan, update_index - 3U, "ON")) {
+        return false;
+    }
+    for (size_t index = update_index + 1U; index + 1U < scan->token_count; ++index) {
+        size_t lhs_start_index = update_index + 1U;
+        size_t lhs_end_index = 0U;
+        size_t rhs_end_index = 0U;
+
+        if (!token_is_equal_sign(&scan->tokens[index])) {
+            continue;
+        }
+        for (size_t scan_index = index; scan_index > update_index + 1U; --scan_index) {
+            size_t previous_index = scan_index - 1U;
+
+            if (token_is_comma(&scan->tokens[previous_index])) {
+                lhs_start_index = scan_index;
+                break;
+            }
+        }
+        if (index > update_index + 1U &&
+            placeholder_scan_qualified_identifier_starts_at(
+                scan,
+                lhs_start_index,
+                &lhs_end_index
+            ) &&
+            lhs_end_index == index) {
+            return true;
+        }
+        if (placeholder_scan_qualified_identifier_starts_at(scan, index + 1U, &rhs_end_index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_qualified_identifier_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    size_t *out_end_index
+) {
+    if (out_end_index != NULL) {
+        *out_end_index = index;
+    }
+    if (scan == NULL || index + 2U >= scan->token_count ||
+        !placeholder_scan_token_can_name_loose_identifier(scan, index) ||
+        !placeholder_scan_token_text_equals(scan, index + 1U, ".") ||
+        !placeholder_scan_token_can_name_loose_identifier(scan, index + 2U)) {
+        return false;
+    }
+    if (out_end_index != NULL) {
+        *out_end_index = index + 3U;
+    }
+    return true;
 }
 
 static bool placeholder_scan_contains_replace_compound_select_surface(

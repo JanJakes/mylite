@@ -4,8 +4,10 @@ static int test_parenthesized_query_expressions(void);
 static int test_query_block_set_operands(void);
 static int test_view_query_expression_bodies(void);
 static int test_derived_values_aliases(void);
+static int test_query_final_tail_placeholders(void);
 static int test_natural_and_using_joins(void);
 static int test_window_null_treatment(void);
+static int expect_unsupported_statement(const char *sql);
 static int parse_ok(const char *sql);
 static int parse_status(
     const char *sql,
@@ -20,6 +22,7 @@ int main(void) {
     failures += test_query_block_set_operands();
     failures += test_view_query_expression_bodies();
     failures += test_derived_values_aliases();
+    failures += test_query_final_tail_placeholders();
     failures += test_natural_and_using_joins();
     failures += test_window_null_treatment();
 
@@ -179,6 +182,36 @@ static int test_derived_values_aliases(void) {
     return failures;
 }
 
+static int test_query_final_tail_placeholders(void) {
+    int failures = 0;
+
+    failures += expect_unsupported_statement("SELECT 1 UNION SELECT 1 LIMIT 0");
+    failures += expect_unsupported_statement("select id from t1 union all select 99 order by 1");
+    failures += expect_unsupported_statement("SELECT 1 FROM DUAL LIMIT 1 INTO @var FOR UPDATE");
+    failures += expect_unsupported_statement("SELECT 1 FROM DUAL LIMIT 1 FOR UPDATE INTO @var");
+    failures += expect_unsupported_statement("SELECT 1 UNION SELECT 1 FOR UPDATE INTO @var");
+    failures +=
+        expect_unsupported_statement("SELECT 1 UNION SELECT 1 FROM DUAL INTO @var FOR UPDATE");
+
+    failures += parse_status(
+        "SELECT 1 UNION SELECT 1 LIMIT",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "incomplete compound LIMIT"
+    );
+    failures += parse_status(
+        "SELECT 1 FROM DUAL LIMIT 1 INTO",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "incomplete SELECT INTO tail"
+    );
+    failures += parse_status(
+        "SELECT 1 UNION SELECT 1 FOR UPDATE OF",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "incomplete compound locking tail"
+    );
+
+    return failures;
+}
+
 static int test_natural_and_using_joins(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -265,6 +298,19 @@ static int test_window_null_treatment(void) {
         "NTH_VALUE FROM FIRST"
     );
 
+    return failures;
+}
+
+static int expect_unsupported_statement(const char *sql) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = parser_test_parse_sql(sql, MYLITE_SQL_PARSE_OK, &result);
+
+    statement = parser_test_child_at(result.root, 0U);
+    failures +=
+        parser_test_expect_node(statement, MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT, sql);
+    failures += parser_test_expect_child_count(statement, 0U, sql);
+    mylite_sql_parse_result_deinit(&result);
     return failures;
 }
 

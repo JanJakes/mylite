@@ -117,6 +117,23 @@ static int test_dml_variant_surfaces(void) {
     );
     failures += execute_error(
         database,
+        "INSERT INTO t VALUES() AS n ON DUPLICATE KEY UPDATE v = 1",
+        unsupported
+    );
+    failures += execute_error(database, "INSERT INTO t VALUES(1, 10) AS n", unsupported);
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES(1, 10) AS n(id_alias, v_alias) "
+        "ON DUPLICATE KEY UPDATE v = n.v_alias",
+        unsupported
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t SELECT * FROM t AS source ON DUPLICATE KEY UPDATE t.v = source.v",
+        unsupported
+    );
+    failures += execute_error(
+        database,
         "REPLACE INTO t SELECT id, v FROM u UNION ALL SELECT id, v FROM t",
         unsupported
     );

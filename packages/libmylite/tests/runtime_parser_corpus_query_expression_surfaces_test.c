@@ -163,6 +163,60 @@ static int test_query_expression_surfaces(void) {
     );
     failures += execute_error(
         database,
+        "SELECT 1 UNION SELECT 1 LIMIT 0",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "select id from t1 union all select 99 order by 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT 1 FROM DUAL LIMIT 1 INTO @var FOR UPDATE",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT 1 FROM DUAL LIMIT 1 FOR UPDATE INTO @var",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT 1 UNION SELECT 1 FOR UPDATE INTO @var",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT 1 UNION SELECT 1 FROM DUAL INTO @var FOR UPDATE",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT LEAD(id) IGNORE NULLS OVER (ORDER BY id) FROM t1",
         (struct expected_sql_error){
             .code = mysql_error_not_supported_yet,

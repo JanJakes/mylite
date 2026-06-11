@@ -82,6 +82,16 @@ static int test_dml_variant_placeholders(void) {
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "INSERT INTO t VALUES (1) ON DUPLICATE KEY UPDATE v = v",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
+        {.sql = "INSERT INTO t VALUES() AS n ON DUPLICATE KEY UPDATE v = 1",
+         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
+        {.sql = "INSERT INTO t VALUES(1, 10) AS n",
+         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
+        {.sql = "INSERT INTO t VALUES(1, 10) AS n(id_alias, v_alias) "
+                "ON DUPLICATE KEY UPDATE v = n.v_alias",
+         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
+        {.sql = "INSERT INTO t SELECT * FROM t AS source "
+                "ON DUPLICATE KEY UPDATE t.v = source.v",
+         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "REPLACE INTO t SELECT id, v FROM u UNION ALL SELECT id, v FROM s",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
     };
@@ -128,6 +138,16 @@ static int test_dml_variant_malformed_tails(void) {
         "INSERT INTO t (id, v) VALUES (id,)",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         "incomplete insert identifier value list"
+    );
+    failures += parse_status(
+        "INSERT INTO t VALUES(1) AS",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "incomplete insert row alias"
+    );
+    failures += parse_status(
+        "INSERT INTO t VALUES(1) AS n(",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "incomplete insert row alias column list"
     );
     failures += parse_status(
         "REPLACE INTO t SELECT id FROM",

@@ -190,6 +190,42 @@ expect_output \
 "SELECT ROW_COUNT(), @@warning_count, CONCAT(id, ':', v) FROM t WHERE id = 1;" \
     "$DATABASE"
 
+run_mysql \
+    "DROP TABLE IF EXISTS empty_ok; "\
+"CREATE TABLE empty_ok (f1 INT DEFAULT 7); "\
+"INSERT INTO empty_ok VALUES() AS f2 ON DUPLICATE KEY UPDATE f1 = 1;" \
+    "$DATABASE" >/dev/null
+expect_output \
+    "empty values row alias" \
+    "7	1" \
+    "SELECT f1, @@warning_count FROM empty_ok;" \
+    "$DATABASE"
+
+reset_tables
+expect_output \
+    "values row alias without duplicate tail" \
+    "4:40	0" \
+    "INSERT INTO t VALUES (4, 40, 400, '2000-01-04', '2000-01-04') AS n; "\
+"SELECT CONCAT(id, ':', v), @@warning_count FROM t WHERE id = 4;" \
+    "$DATABASE"
+
+reset_tables
+expect_output \
+    "duplicate update row alias value" \
+    "2	0	1:77" \
+    "INSERT INTO t VALUES (1, 77, 700, '2000-01-01', '2000-01-01') AS n "\
+"ON DUPLICATE KEY UPDATE v = n.v; "\
+"SELECT ROW_COUNT(), @@warning_count, CONCAT(id, ':', v) FROM t WHERE id = 1;" \
+    "$DATABASE"
+
+reset_tables
+expect_output \
+    "insert select duplicate source alias value" \
+    "0	0	3" \
+    "INSERT INTO t SELECT * FROM t AS source ON DUPLICATE KEY UPDATE t.v = source.v; "\
+"SELECT ROW_COUNT(), @@warning_count, COUNT(*) FROM t;" \
+    "$DATABASE"
+
 reset_tables
 expect_output \
     "replace compound select source" \

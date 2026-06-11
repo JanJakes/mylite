@@ -175,6 +175,41 @@ expect_success \
     "straight join using parses" \
     "USE ${DATABASE}; SELECT shared, t1.id, t2.id FROM t1 STRAIGHT_JOIN t2 USING (shared);"
 
+expect_success \
+    "compound query limit tail parses" \
+    "USE ${DATABASE}; SELECT 1 UNION SELECT 1 LIMIT 0;"
+
+expect_output \
+    "compound query order ordinal tail" \
+    "1
+2
+99" \
+    "USE ${DATABASE}; SELECT id FROM t1 WHERE id IS NOT NULL UNION ALL SELECT 99 ORDER BY 1;"
+
+expect_output \
+    "select limit into before locking" \
+    "1" \
+    "USE ${DATABASE}; SET @var = NULL; SELECT 1 FROM DUAL LIMIT 1 INTO @var FOR UPDATE; "\
+"SELECT @var;"
+
+expect_output \
+    "select limit locking before into" \
+    "1" \
+    "USE ${DATABASE}; SET @var = NULL; SELECT 1 FROM DUAL LIMIT 1 FOR UPDATE INTO @var; "\
+"SELECT @var;"
+
+expect_output \
+    "compound locking before into" \
+    "1" \
+    "USE ${DATABASE}; SET @var = NULL; SELECT 1 UNION SELECT 1 FOR UPDATE INTO @var; "\
+"SELECT @var;"
+
+expect_output \
+    "compound into before locking" \
+    "1" \
+    "USE ${DATABASE}; SET @var = NULL; SELECT 1 UNION SELECT 1 FROM DUAL INTO @var FOR UPDATE; "\
+"SELECT @var;"
+
 cleanup
 
 printf '%s\n' "mysql_parser_corpus_query_expression_surfaces_expectations: ok"

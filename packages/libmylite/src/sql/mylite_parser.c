@@ -8574,7 +8574,14 @@ static bool placeholder_scan_token_is_identifier_like(
     token = &scan->tokens[index];
     return token->kind == MYLITE_SQL_TOKEN_IDENTIFIER ||
            token->kind == MYLITE_SQL_TOKEN_QUOTED_IDENTIFIER ||
+           placeholder_scan_token_text_equals(scan, index, "CURRENT") ||
+           placeholder_scan_token_text_equals(scan, index, "LOCKED") ||
+           placeholder_scan_token_text_equals(scan, index, "NOWAIT") ||
+           placeholder_scan_token_text_equals(scan, index, "SESSION_USER") ||
+           placeholder_scan_token_text_equals(scan, index, "SKIP") ||
+           placeholder_scan_token_text_equals(scan, index, "SYSTEM_USER") ||
            placeholder_scan_token_text_equals(scan, index, "TRADITIONAL") ||
+           placeholder_scan_token_text_equals(scan, index, "USER") ||
            placeholder_scan_token_text_equals(scan, index, "JSON") ||
            placeholder_scan_token_text_equals(scan, index, "TREE") ||
            placeholder_scan_token_text_equals(scan, index, "CSV");
@@ -19165,10 +19172,8 @@ static bool span_text_matches_ignore_space_function_name(const struct mylite_sql
         "GROUP_CONCAT",
         "MAX",
         "MIN",
-        "SESSION_USER",
         "SUM",
         "SYSDATE",
-        "SYSTEM_USER",
     };
 
     for (size_t index = 0U; index < sizeof(function_names) / sizeof(function_names[0]); ++index) {

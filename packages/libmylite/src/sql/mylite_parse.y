@@ -11799,6 +11799,9 @@ identifier(A) ::= WEIGHT_STRING(T). {
 identifier(A) ::= CURRENT_ROLE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= CURRENT(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= DO(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -12277,6 +12280,15 @@ identifier(A) ::= ROLLUP(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= SHARE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SKIP(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= LOCKED(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= NOWAIT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CHARACTER(T). {

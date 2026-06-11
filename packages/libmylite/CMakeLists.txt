@@ -252,6 +252,10 @@ if(BUILD_TESTING)
     tests/parser_corpus_admin_set_residuals_test.c
   )
   mylite_add_parser_test(
+    mylite_parser_corpus_nonreserved_identifier_residuals_test
+    tests/parser_corpus_nonreserved_identifier_residuals_test.c
+  )
+  mylite_add_parser_test(
     mylite_parser_corpus_set_dml_expression_placeholders_test
     tests/parser_corpus_set_dml_expression_placeholders_test.c
   )
@@ -396,6 +400,17 @@ if(BUILD_TESTING)
     PRIVATE MyLite::mylite
   )
   mylite_configure_c_target(mylite_runtime_parser_corpus_admin_set_residuals_test)
+  add_executable(
+    mylite_runtime_parser_corpus_nonreserved_identifier_residuals_test
+    tests/runtime_parser_corpus_nonreserved_identifier_residuals_test.c
+  )
+  target_link_libraries(
+    mylite_runtime_parser_corpus_nonreserved_identifier_residuals_test
+    PRIVATE MyLite::mylite
+  )
+  mylite_configure_c_target(
+    mylite_runtime_parser_corpus_nonreserved_identifier_residuals_test
+  )
   add_executable(
     mylite_runtime_parser_corpus_set_dml_expression_placeholders_test
     tests/runtime_parser_corpus_set_dml_expression_placeholders_test.c
@@ -5902,6 +5917,10 @@ if(BUILD_TESTING)
     COMMAND mylite_parser_corpus_admin_set_residuals_test
   )
   add_test(
+    NAME libmylite.parser.corpus_nonreserved_identifier_residuals
+    COMMAND mylite_parser_corpus_nonreserved_identifier_residuals_test
+  )
+  add_test(
     NAME libmylite.parser.corpus_set_dml_expression_placeholders
     COMMAND mylite_parser_corpus_set_dml_expression_placeholders_test
   )
@@ -6004,6 +6023,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.parser_corpus_admin_set_residuals
     COMMAND mylite_runtime_parser_corpus_admin_set_residuals_test
+  )
+  add_test(
+    NAME libmylite.runtime.parser_corpus_nonreserved_identifier_residuals
+    COMMAND mylite_runtime_parser_corpus_nonreserved_identifier_residuals_test
   )
   add_test(
     NAME libmylite.runtime.parser_corpus_set_dml_expression_placeholders

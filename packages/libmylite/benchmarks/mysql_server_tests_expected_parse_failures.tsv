@@ -1,0 +1,24 @@
+# query_index	status	error_token_kind	reason
+508	syntax_error	eof	incomplete ALTER TABLE corpus artifact
+509	syntax_error	eof	incomplete ALTER TABLE corpus artifact
+4944	syntax_error	decimal	malformed numeric literal corpus artifact
+5913	syntax_error	identifier	non-SQL character-set fixture artifact before SET NAMES
+13627	syntax_error	keyword	removed SHOW SLAVE STATUS syntax rejected by MySQL 8.4.9
+13636	syntax_error	keyword	removed SHOW MASTER STATUS syntax rejected by MySQL 8.4.9
+13637	syntax_error	keyword	removed SHOW SLAVE HOSTS syntax rejected by MySQL 8.4.9
+13982	syntax_error	string	double-quoted identifiers require ANSI_QUOTES mode
+25476	syntax_error	keyword	removed FLUSH HOSTS syntax rejected by MySQL 8.4
+31125	syntax_error	eof	incomplete ALTER TABLE corpus artifact
+34739	syntax_error	keyword	LOCK TABLES LOW_PRIORITY WRITE rejected by MySQL 8.4.9
+39753	syntax_error	string	double-quoted table identifiers require ANSI_QUOTES mode
+40672	syntax_error	string	double-quoted column identifiers require ANSI_QUOTES mode
+41097	syntax_error	string	double-quoted table identifiers require ANSI_QUOTES mode
+41401	syntax_error	eof	incomplete ALTER TABLE corpus artifact
+50207	syntax_error	string	double-quoted table identifiers require ANSI_QUOTES mode
+50208	syntax_error	string	double-quoted table identifiers require ANSI_QUOTES mode
+50209	syntax_error	string	double-quoted table identifiers require ANSI_QUOTES mode
+50258	syntax_error	keyword	removed SHOW SLAVE HOSTS syntax rejected by MySQL 8.4.9
+50270	syntax_error	keyword	removed SHOW MASTER STATUS syntax rejected by MySQL 8.4.9
+50271	syntax_error	keyword	removed SHOW SLAVE STATUS syntax rejected by MySQL 8.4.9
+57509	syntax_error	string	double-quoted column identifiers require ANSI_QUOTES mode
+65286	syntax_error	string	double-quoted column identifiers require ANSI_QUOTES mode

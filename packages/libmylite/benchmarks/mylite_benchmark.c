@@ -1,6 +1,7 @@
 #include <mylite/mylite.h>
 
 #include "mylite_benchmark_csv.h"
+#include "mylite_benchmark_parse_expectations.h"
 #include "mylite_benchmark_sql_mode.h"
 #include "sql/mylite_lexer.h"
 #include "sql/mylite_parser.h"
@@ -48,6 +49,7 @@ struct benchmark_options {
     enum benchmark_filter filter;
     const char *csv_path;
     const char *parse_failure_dump_path;
+    const char *expected_parse_failures_path;
     size_t iterations;
     size_t csv_iterations;
     bool csv_replay_sql_mode;
@@ -73,6 +75,14 @@ struct benchmark_measurement {
     size_t error_count;
     size_t token_count;
     size_t parse_status_counts[parse_status_bucket_count];
+};
+
+struct expected_parse_failure_summary {
+    size_t total_count;
+    size_t matched_count;
+    size_t unexpected_count;
+    size_t mismatched_count;
+    size_t missing_count;
 };
 
 struct runtime_scenario {
@@ -311,6 +321,21 @@ static int dump_parse_failures(
     const struct mylite_benchmark_owned_query_list *queries,
     const char *path
 );
+static int report_expected_parse_failures(
+    const struct mylite_benchmark_owned_query_list *queries,
+    const char *path
+);
+static int classify_expected_parse_failures(
+    const struct mylite_benchmark_owned_query_list *queries,
+    const struct mylite_benchmark_expected_parse_failure_list *expectations,
+    struct expected_parse_failure_summary *out_summary
+);
+static void print_parse_expectation_mismatch(
+    const struct mylite_benchmark_expected_parse_failure *expectation,
+    size_t query_index,
+    enum mylite_sql_parse_status status,
+    enum mylite_sql_token_kind token_kind
+);
 static void print_parse_failure_row(
     FILE *file,
     size_t query_index,
@@ -341,6 +366,7 @@ int main(int argc, char **argv) {
         .filter = benchmark_filter_all,
         .csv_path = NULL,
         .parse_failure_dump_path = NULL,
+        .expected_parse_failures_path = NULL,
         .iterations = default_iterations,
         .csv_iterations = default_csv_iterations,
         .csv_replay_sql_mode = false,
@@ -431,6 +457,15 @@ static int parse_option(
         out_options->parse_failure_dump_path = value;
         return 0;
     }
+    if (strcmp(argument, "--expected-parse-failures") == 0) {
+        const char *value = consume_option_value(argc, argv, index, "--expected-parse-failures");
+
+        if (value == NULL) {
+            return 1;
+        }
+        out_options->expected_parse_failures_path = value;
+        return 0;
+    }
     if (strcmp(argument, "--only") == 0) {
         const char *value = consume_option_value(argc, argv, index, "--only");
 
@@ -506,6 +541,7 @@ static void print_usage(const char *program_name, FILE *stream) {
         stream,
         "usage: %s [--iterations N] [--csv PATH] [--csv-iterations N] "
         "[--csv-replay-sql-mode] [--dump-parse-failures PATH] "
+        "[--expected-parse-failures PATH] "
         "[--only all|lexer|parse|runtime] [--list]\n",
         program_name
     );
@@ -531,6 +567,11 @@ static int run_benchmarks(const struct benchmark_options *options) {
     if (options->parse_failure_dump_path != NULL &&
         (options->csv_path == NULL || !filter_includes(options->filter, benchmark_filter_parse))) {
         fprintf(stderr, "--dump-parse-failures requires --csv and a parse benchmark filter\n");
+        return 1;
+    }
+    if (options->expected_parse_failures_path != NULL &&
+        (options->csv_path == NULL || !filter_includes(options->filter, benchmark_filter_parse))) {
+        fprintf(stderr, "--expected-parse-failures requires --csv and a parse benchmark filter\n");
         return 1;
     }
 
@@ -642,6 +683,13 @@ static int run_csv_benchmarks(const struct benchmark_options *options) {
         print_parse_status_counts(&measurement);
         if (options->parse_failure_dump_path != NULL) {
             rc = dump_parse_failures(&queries, options->parse_failure_dump_path);
+            if (rc != 0) {
+                mylite_benchmark_owned_query_list_deinit(&queries);
+                return rc;
+            }
+        }
+        if (options->expected_parse_failures_path != NULL) {
+            rc = report_expected_parse_failures(&queries, options->expected_parse_failures_path);
             if (rc != 0) {
                 mylite_benchmark_owned_query_list_deinit(&queries);
                 return rc;
@@ -1024,6 +1072,126 @@ static int dump_parse_failures(
         return 1;
     }
     return 0;
+}
+
+static int report_expected_parse_failures(
+    const struct mylite_benchmark_owned_query_list *queries,
+    const char *path
+) {
+    struct mylite_benchmark_expected_parse_failure_list expectations = {0};
+    struct expected_parse_failure_summary summary = {0};
+    int rc = mylite_benchmark_load_expected_parse_failures(path, &expectations);
+
+    if (rc != 0) {
+        return rc;
+    }
+    rc = classify_expected_parse_failures(queries, &expectations, &summary);
+    printf(
+        "# expected_parse_failures total=%zu matched=%zu unexpected=%zu mismatched=%zu "
+        "missing=%zu\n",
+        summary.total_count,
+        summary.matched_count,
+        summary.unexpected_count,
+        summary.mismatched_count,
+        summary.missing_count
+    );
+    mylite_benchmark_expected_parse_failure_list_deinit(&expectations);
+    return rc;
+}
+
+static int classify_expected_parse_failures(
+    const struct mylite_benchmark_owned_query_list *queries,
+    const struct mylite_benchmark_expected_parse_failure_list *expectations,
+    struct expected_parse_failure_summary *out_summary
+) {
+    bool *seen = NULL;
+
+    out_summary->total_count = expectations->count;
+    if (expectations->count > 0U) {
+        seen = (bool *)calloc(expectations->count, sizeof(*seen));
+        if (seen == NULL) {
+            fprintf(stderr, "out of memory while classifying expected parse failures\n");
+            return 1;
+        }
+    }
+    for (size_t query_index = 0U; query_index < queries->count; ++query_index) {
+        struct mylite_sql_parse_result result = {0};
+        const struct mylite_benchmark_owned_query *query = &queries->items[query_index];
+        size_t one_based_query_index = query_index + 1U;
+        const struct mylite_benchmark_expected_parse_failure *expectation =
+            mylite_benchmark_expected_parse_failure_find(expectations, one_based_query_index);
+        enum mylite_sql_parse_status status = mylite_sql_parse(
+            (struct mylite_sql_parse_config){
+                .input = query->sql,
+                .length = query->length,
+                .modes = query->modes,
+            },
+            &result
+        );
+
+        if (status != MYLITE_SQL_PARSE_OK) {
+            if (expectation == NULL) {
+                ++out_summary->unexpected_count;
+                print_parse_failure_row(stderr, one_based_query_index, status, &result, query);
+            } else {
+                size_t expectation_index = (size_t)(expectation - expectations->items);
+
+                seen[expectation_index] = true;
+                if (mylite_benchmark_expected_parse_failure_matches(
+                        expectation,
+                        status,
+                        result.error_token.kind
+                    )) {
+                    ++out_summary->matched_count;
+                } else {
+                    ++out_summary->mismatched_count;
+                    print_parse_expectation_mismatch(
+                        expectation,
+                        one_based_query_index,
+                        status,
+                        result.error_token.kind
+                    );
+                }
+            }
+        }
+        mylite_sql_parse_result_deinit(&result);
+    }
+    for (size_t index = 0U; index < expectations->count; ++index) {
+        if (!seen[index]) {
+            ++out_summary->missing_count;
+            fprintf(
+                stderr,
+                "expected parse failure is now missing: query=%zu status=%s token=%s reason=%s\n",
+                expectations->items[index].query_index,
+                expectations->items[index].status_name,
+                expectations->items[index].token_kind_name,
+                expectations->items[index].reason
+            );
+        }
+    }
+    free(seen);
+    return out_summary->unexpected_count == 0U && out_summary->mismatched_count == 0U &&
+                   out_summary->missing_count == 0U
+               ? 0
+               : 1;
+}
+
+static void print_parse_expectation_mismatch(
+    const struct mylite_benchmark_expected_parse_failure *expectation,
+    size_t query_index,
+    enum mylite_sql_parse_status status,
+    enum mylite_sql_token_kind token_kind
+) {
+    fprintf(
+        stderr,
+        "expected parse failure mismatch: query=%zu expected=%s/%s actual=%s/%s reason=%s\n",
+        query_index,
+        expectation->status_name,
+        expectation->token_kind_name,
+        mylite_sql_parse_status_name(status),
+        mylite_sql_token_kind_name(token_kind),
+        expectation->reason
+    );
 }
 
 static void print_parse_failure_row(

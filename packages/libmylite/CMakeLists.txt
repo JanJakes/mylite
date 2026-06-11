@@ -172,13 +172,26 @@ endif()
 mylite_configure_c_target(mylite)
 
 add_executable(mylite_benchmark EXCLUDE_FROM_ALL
+  benchmarks/mylite_benchmark_csv.c
   benchmarks/mylite_benchmark.c
 )
 target_link_libraries(mylite_benchmark PRIVATE MyLite::mylite)
-target_include_directories(mylite_benchmark PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_include_directories(mylite_benchmark PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
 mylite_configure_c_target(mylite_benchmark)
 
 if(BUILD_TESTING)
+  add_executable(mylite_benchmark_csv_loader_test
+    benchmarks/mylite_benchmark_csv.c
+    tests/benchmark_csv_loader_test.c
+  )
+  target_include_directories(mylite_benchmark_csv_loader_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks"
+  )
+  mylite_configure_c_target(mylite_benchmark_csv_loader_test)
+
   add_executable(mylite_lexer_test
     tests/lexer_test.c
   )
@@ -5870,6 +5883,7 @@ if(BUILD_TESTING)
   )
   mylite_configure_c_target(mylite_runtime_sqlite_bootstrap_test)
 
+  add_test(NAME libmylite.benchmark.csv_loader COMMAND mylite_benchmark_csv_loader_test)
   add_test(NAME libmylite.lexer COMMAND mylite_lexer_test)
   add_test(NAME libmylite.parser.core COMMAND mylite_parser_core_test)
   add_test(

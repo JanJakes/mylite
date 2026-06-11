@@ -39,6 +39,11 @@ The WordPress SQLite integration project publishes a MySQL server-test query
 CSV. It is not checked into this repository because it is an external generated
 dataset and is several megabytes.
 
+The file uses one SQL statement per nonempty row. Rows are usually double-quoted
+and may contain physical newlines. Inside quoted rows, the benchmark loader
+accepts both doubled `""` quotes and MySQL-style backslash-escaped `\"` quotes,
+matching the generated corpus format.
+
 Fetch it into the build tree:
 
 ```sh

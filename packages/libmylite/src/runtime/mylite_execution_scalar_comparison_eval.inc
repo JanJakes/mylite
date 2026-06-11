@@ -9,6 +9,11 @@ static int evaluate_scalar_comparison_like_expression(
     const struct mylite_sql_ast_node *expression,
     struct scalar_arithmetic_value *out_value
 );
+static int evaluate_scalar_comparison_sounds_like_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_value *out_value
+);
 static int evaluate_scalar_comparison_regexp_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -1008,6 +1013,13 @@ static int evaluate_scalar_comparison_enter_frame(
         }
         return rc;
     }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE) {
+        rc = evaluate_scalar_comparison_sounds_like_expression(database, expression, &value);
+        if (rc == MYLITE_OK) {
+            rc = scalar_arithmetic_value_stack_push(database, value_stack, value);
+        }
+        return rc;
+    }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_REGEXP ||
         operator_kind == MYLITE_SQL_AST_OPERATOR_RLIKE) {
         rc = evaluate_scalar_comparison_regexp_expression(database, expression, &value);
@@ -1136,6 +1148,55 @@ static int evaluate_scalar_comparison_like_expression(
 
     session_scalar_cell_deinit(&pattern);
     session_scalar_cell_deinit(&value);
+    return rc;
+}
+
+static int evaluate_scalar_comparison_sounds_like_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_arithmetic_value *out_value
+) {
+    struct session_scalar_cell left = {0};
+    struct session_scalar_cell right = {0};
+    size_t left_length = 0U;
+    size_t right_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = (struct scalar_arithmetic_value){.is_null = false, .integer = 0};
+    if (expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION ||
+        mylite_sql_ast_node_operator(expression) != MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        set_scalar_comparison_unsupported_error(database);
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_execution_scalar_soundex_argument_result_value(
+        database,
+        child_at(expression, 0U),
+        &left
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_execution_scalar_soundex_argument_result_value(
+            database,
+            child_at(expression, 1U),
+            &right
+        );
+    }
+    if (rc == MYLITE_OK && (left.value == NULL || right.value == NULL)) {
+        out_value->is_null = true;
+    } else if (rc == MYLITE_OK) {
+        left_length = scalar_cell_text_length(&left);
+        right_length = scalar_cell_text_length(&right);
+        out_value->integer =
+            left_length == right_length && memcmp(left.value, right.value, left_length) == 0 ? 1
+                                                                                            : 0;
+    }
+
+    session_scalar_cell_deinit(&right);
+    session_scalar_cell_deinit(&left);
     return rc;
 }
 

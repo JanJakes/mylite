@@ -183,6 +183,59 @@ int mylite_execution_scalar_soundex_function_value(
     return soundex_function_value(database, expression, out_cell);
 }
 
+int mylite_execution_scalar_soundex_argument_result_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    struct session_scalar_cell *out_cell
+) {
+    struct session_scalar_cell argument_cell = {0};
+    char *owned_text = NULL;
+    const char *text = NULL;
+    size_t text_length = 0U;
+    size_t result_length = 0U;
+    bool is_null = false;
+    bool helper_called = false;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+
+    rc = evaluate_soundex_scalar_argument(
+        database,
+        argument,
+        &argument_cell,
+        &owned_text,
+        &text,
+        &text_length,
+        &is_null
+    );
+    if (rc == MYLITE_OK && !is_null) {
+        helper_called = true;
+        rc = mylite_string_soundex_value(
+            database,
+            text,
+            text_length,
+            &out_cell->owned_text,
+            &result_length
+        );
+    }
+    if (rc == MYLITE_NOMEM) {
+        mylite_execution_set_nomem_error(database);
+    } else if (helper_called && rc != MYLITE_OK) {
+        mylite_execution_set_runtime_error(database, "invalid UTF-8 value in SOUNDEX()");
+    } else if (out_cell->owned_text != NULL) {
+        out_cell->value = out_cell->owned_text;
+        out_cell->value_size = result_length;
+        out_cell->has_value_size = true;
+    }
+
+    free(owned_text);
+    mylite_execution_session_scalar_cell_deinit(&argument_cell);
+    return rc;
+}
+
 int mylite_execution_scalar_quote_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -928,15 +981,6 @@ static int soundex_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 ) {
-    struct session_scalar_cell argument_cell = {0};
-    char *owned_text = NULL;
-    const char *text = NULL;
-    size_t text_length = 0U;
-    size_t result_length = 0U;
-    bool is_null = false;
-    bool helper_called = false;
-    int rc = MYLITE_OK;
-
     if (out_cell == NULL) {
         return MYLITE_MISUSE;
     }
@@ -948,37 +992,11 @@ static int soundex_function_value(
         return MYLITE_ERROR;
     }
 
-    rc = evaluate_soundex_scalar_argument(
+    return mylite_execution_scalar_soundex_argument_result_value(
         database,
         mylite_execution_child_at(expression, 0U),
-        &argument_cell,
-        &owned_text,
-        &text,
-        &text_length,
-        &is_null
+        out_cell
     );
-    if (rc == MYLITE_OK && !is_null) {
-        helper_called = true;
-        rc = mylite_string_soundex_value(
-            database,
-            text,
-            text_length,
-            &out_cell->owned_text,
-            &result_length
-        );
-        (void)result_length;
-    }
-    if (rc == MYLITE_NOMEM) {
-        mylite_execution_set_nomem_error(database);
-    } else if (helper_called && rc != MYLITE_OK) {
-        mylite_execution_set_runtime_error(database, "invalid UTF-8 value in SOUNDEX()");
-    } else if (out_cell->owned_text != NULL) {
-        out_cell->value = out_cell->owned_text;
-    }
-
-    free(owned_text);
-    mylite_execution_session_scalar_cell_deinit(&argument_cell);
-    return rc;
 }
 
 static int evaluate_soundex_scalar_argument(

@@ -82,6 +82,16 @@ static int plan_select_predicate_leaf_node(
             out_predicate,
             &node_index
         );
+    } else if (predicate_node_is_sounds_like_expression(predicate_node)) {
+        rc = plan_sounds_like_truth_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate,
+            &node_index
+        );
     } else if (predicate_node_is_scalar_literal_expression(predicate_node)) {
         rc = plan_scalar_literal_truth_predicate(
             database,
@@ -285,6 +295,16 @@ static int plan_select_predicate_leaf_node_without_exists(
             out_predicate,
             &node_index
         );
+    } else if (predicate_node_is_sounds_like_expression(predicate_node)) {
+        rc = plan_sounds_like_truth_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_predicate,
+            &node_index
+        );
     } else if (predicate_node_is_scalar_literal_expression(predicate_node)) {
         rc = plan_scalar_literal_truth_predicate(
             database,
@@ -426,6 +446,7 @@ static bool planned_predicate_kind_for_operator(
     case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
     case MYLITE_SQL_AST_OPERATOR_LIKE_BINARY:
+    case MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE:
     case MYLITE_SQL_AST_OPERATOR_REGEXP:
     case MYLITE_SQL_AST_OPERATOR_RLIKE:
     case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:
@@ -1707,6 +1728,56 @@ static int plan_row_scalar_function_comparison_predicate(
 
     *out_handled = false;
     return MYLITE_OK;
+}
+
+static bool predicate_node_is_sounds_like_expression(const struct mylite_sql_ast_node *node) {
+    node = unwrap_parenthesized_predicate(node);
+    return node != NULL && node->kind == MYLITE_SQL_AST_BINARY_EXPRESSION &&
+           mylite_sql_ast_node_operator(node) == MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE &&
+           mylite_sql_ast_node_child_count(node) == 2U;
+}
+
+static int plan_sounds_like_truth_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_ROW_SCALAR_TRUTH,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_NONE,
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = MYLITE_OK;
+
+    node.row_scalar_expression = calloc(1U, sizeof(*node.row_scalar_expression));
+    if (node.row_scalar_expression == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = plan_row_scalar_expression(
+        database,
+        predicate_node,
+        true,
+        source_context,
+        NULL,
+        table_columns,
+        table_column_count,
+        node.row_scalar_expression
+    );
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(node.row_scalar_expression);
+        free(node.row_scalar_expression);
+    }
+    return rc;
 }
 
 static int plan_row_scalar_expression_comparison_predicate(

@@ -127,6 +127,9 @@ static bool select_statement_is_row_scalar_projection_attempt(
              (has_row_source && row_scalar_expression_contains_conversion_expression(expression)) ||
              (has_row_source && row_scalar_expression_is_concat_operator(expression)) ||
              (has_row_source &&
+              row_scalar_control_flow_condition_operator(expression) ==
+                  MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE) ||
+             (has_row_source &&
               row_scalar_expression_contains_date_interval_second_function(expression)) ||
              row_scalar_expression_contains_statement_time_function(expression) ||
              (has_row_source && row_scalar_expression_contains_control_flow_function(expression)) ||

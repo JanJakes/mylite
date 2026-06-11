@@ -279,6 +279,18 @@ static int plan_row_scalar_special_expression(
             out_expression
         );
     }
+    if (row_scalar_control_flow_condition_operator(expression) ==
+        MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE) {
+        return plan_row_scalar_sounds_like_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (row_scalar_control_flow_condition_operator(expression) == MYLITE_SQL_AST_OPERATOR_LIKE) {
         return plan_row_scalar_like_predicate_expression(
             database,

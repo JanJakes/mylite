@@ -4,8 +4,9 @@
 
 This phase adds a narrow MySQL-compatible `SOUNDEX(str)` string function slice.
 The supported surface covers no-source scalar `SELECT`, `SELECT ... FROM DUAL`,
-`DO`, and single-table row-scalar `SELECT` projection. The operator form
-`expr SOUNDS LIKE expr` remains outside this slice.
+`DO`, and single-table row-scalar `SELECT` projection. The follow-up
+`baseline-sounds-like-operator` slice adds limited `expr SOUNDS LIKE expr`
+support over the current `SOUNDEX()` operand envelope.
 
 Core supported behavior:
 
@@ -154,7 +155,6 @@ descriptor column families for the string argument are:
 
 The following remain outside this phase:
 
-- `expr SOUNDS LIKE expr`;
 - `WHERE SOUNDEX(column) ...`, `HAVING SOUNDEX(...) ...`, expression
   `ORDER BY`, grouping, distinct expression rows, and aggregate arguments;
 - DML assignment values such as `UPDATE t SET c = SOUNDEX(v)`;
@@ -268,6 +268,6 @@ The implementation must add:
 ## Compatibility Documentation
 
 `COMPATIBILITY.md` and `docs/compatibility/functions-string.md` must move
-`SOUNDEX()` from unsupported to limited support, explicitly leaving
-`SOUNDS LIKE`, general expression placement, binary metadata parity, and full
-collation behavior unsupported.
+`SOUNDEX()` from unsupported to limited support, explicitly leaving general
+expression placement, binary metadata parity, and full collation behavior
+unsupported.

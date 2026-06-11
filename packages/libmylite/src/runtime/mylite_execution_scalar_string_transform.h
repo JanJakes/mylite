@@ -34,6 +34,11 @@ int mylite_execution_scalar_soundex_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+int mylite_execution_scalar_soundex_argument_result_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    struct session_scalar_cell *out_cell
+);
 int mylite_execution_scalar_quote_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

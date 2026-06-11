@@ -628,6 +628,7 @@ static int plan_select_predicate_ast_node(
                             (options != NULL && options->allow_date_format_numeric_predicate &&
                              predicate_node_is_date_format_numeric_predicate_expression(current)) ||
                             predicate_node_is_temporal_extract_expression(current) ||
+                            predicate_node_is_sounds_like_expression(current) ||
                             predicate_node_is_scalar_literal_expression(current) ||
                             current->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE ||
                             current->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE ||
@@ -681,6 +682,7 @@ static int plan_select_predicate_ast_node_without_exists(
                             (options != NULL && options->allow_date_format_numeric_predicate &&
                              predicate_node_is_date_format_numeric_predicate_expression(current)) ||
                             predicate_node_is_temporal_extract_expression(current) ||
+                            predicate_node_is_sounds_like_expression(current) ||
                             predicate_node_is_scalar_literal_expression(current) ||
                             current->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE ||
                             current->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE ||

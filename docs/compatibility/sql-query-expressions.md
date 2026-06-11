@@ -148,13 +148,14 @@ metadata. See [parser corpus function expression placeholders](../specs/parser-c
 
 The parser-corpus expression operator and temporal placeholder surface
 additionally classifies recognized well-formed scalar `&&` / default-mode
-`||`, expression-level `NOT LIKE`, `LIKE ... ESCAPE`, `SOUNDS LIKE`, typed
-temporal literal introducers, and `INTERVAL value unit` syntax in otherwise
-failed query statements as explicit unsupported placeholders. Existing
-normally parsed scalar, descriptor predicate, and temporal-function paths are
-unchanged. These placeholders do not implement broad expression planning,
-phonetic matching, general interval arithmetic, or expression metadata. See
-[parser corpus expression operator and temporal surfaces](../specs/parser-corpus-expression-operator-temporal-surfaces/specs.md).
+`||`, expression-level `NOT LIKE`, `LIKE ... ESCAPE`, `SOUNDS LIKE` outside
+the current limited operator envelope, typed temporal literal introducers, and
+`INTERVAL value unit` syntax in otherwise failed query statements as explicit
+unsupported placeholders. Existing normally parsed scalar, descriptor
+predicate, limited `SOUNDS LIKE`, and temporal-function paths are unchanged.
+These placeholders do not implement broad expression planning, general interval
+arithmetic, or expression metadata. See [parser corpus expression operator and
+temporal surfaces](../specs/parser-corpus-expression-operator-temporal-surfaces/specs.md).
 
 The parser-corpus expression residual surface additionally classifies
 recognized complete `DO` function-expression residuals, decimal-left and

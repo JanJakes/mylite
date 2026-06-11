@@ -47,12 +47,14 @@ it misses common corpus shapes:
 - expression-level `LIKE ... ESCAPE ...`;
 - table-backed predicate `column LIKE column` and `column LIKE column ESCAPE`
   admission;
-- `SOUNDS LIKE` expression admission.
+- `SOUNDS LIKE` expression admission outside the later limited executable
+  baseline.
 
 This slice recognizes these well-formed surfaces after normal parser failure.
 Executable `LIKE` support remains limited to the existing descriptor and scalar
-envelopes. Unsupported newly admitted forms fail with explicit unsupported
-diagnostics rather than syntax errors.
+envelopes, and executable `SOUNDS LIKE` support is covered by the later
+`baseline-sounds-like-operator` slice. Unsupported newly admitted forms fail
+with explicit unsupported diagnostics rather than syntax errors.
 
 ### Typed Temporal Literals In Predicates
 
@@ -133,5 +135,6 @@ query movement.
 This slice improves parser compatibility by converting recognized expression
 operator and temporal literal syntax failures into explicit unsupported
 placeholders. It does not implement full MySQL expression planning, full
-collation-aware `LIKE`, phonetic `SOUNDS LIKE` execution, broad typed temporal
-literal semantics, general interval arithmetic, or expression metadata.
+collation-aware `LIKE`, broad `SOUNDS LIKE` execution outside the later limited
+baseline, broad typed temporal literal semantics, general interval arithmetic,
+or expression metadata.

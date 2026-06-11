@@ -96,6 +96,13 @@ expect_output \
 "SOUNDEX('éébc'), SOUNDEX('🙂abc'), SOUNDEX('🙂bcd');" \
     "$DATABASE"
 
+expect_output \
+    "sounds like scalar results" \
+    "1	0	NULL	NULL	1" \
+    "SELECT 'mood' SOUNDS LIKE 'mud', 'mood' SOUNDS LIKE 'xyz', "\
+"'abc' SOUNDS LIKE NULL, NULL SOUNDS LIKE 'abc', TRUE SOUNDS LIKE '1';" \
+    "$DATABASE"
+
 run_mysql \
     "CREATE TABLE strings (id INT, v VARCHAR(32), txt TEXT, i INT, d DECIMAL(8,2)); "\
 "INSERT INTO strings VALUES "\
@@ -110,6 +117,20 @@ expect_output \
     "$table_projection_expected" \
     "SELECT id, SOUNDEX(v), SOUNDEX(txt), SOUNDEX(i), SOUNDEX(d) "\
 "FROM strings ORDER BY id;" \
+    "$DATABASE"
+
+sounds_like_projection_expected=$(printf '1\t1\t1\t1\t1\n2\t0\t0\tNULL\tNULL\n3\tNULL\tNULL\t1\t1')
+expect_output \
+    "sounds like table projection" \
+    "$sounds_like_projection_expected" \
+    "SELECT id, v SOUNDS LIKE 'Rupert', txt SOUNDS LIKE 'Quadratically', "\
+"i SOUNDS LIKE '123', d SOUNDS LIKE '-12.30' FROM strings ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "sounds like table predicate" \
+    "1" \
+    "SELECT id FROM strings WHERE v SOUNDS LIKE 'Robert' ORDER BY id;" \
     "$DATABASE"
 
 expect_output \

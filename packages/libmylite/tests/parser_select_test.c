@@ -92,6 +92,11 @@ static int test_select_where_predicates(void) {
             MYLITE_SQL_AST_COMPARISON_PREDICATE,
         },
         {
+            "SELECT id FROM simple_lifecycle WHERE id SOUNDS LIKE '1';",
+            MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE,
+            MYLITE_SQL_AST_BINARY_EXPRESSION,
+        },
+        {
             "SELECT id FROM simple_lifecycle WHERE id LIKE BINARY '1%';",
             MYLITE_SQL_AST_OPERATOR_LIKE_BINARY,
             MYLITE_SQL_AST_COMPARISON_PREDICATE,

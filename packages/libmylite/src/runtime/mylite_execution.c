@@ -15217,6 +15217,7 @@ static bool scalar_comparison_projection_node_is_admitted(
     const struct mylite_sql_ast_node *expression,
     struct scalar_arithmetic_node_stack *stack
 );
+static bool is_scalar_sounds_like_operand_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_regexp_comparison_operand_expression(
     const struct mylite_sql_ast_node *expression
 );
@@ -20097,6 +20098,16 @@ static int plan_row_scalar_function_comparison_predicate(
     size_t *out_node_index,
     bool *out_handled
 );
+static bool predicate_node_is_sounds_like_expression(const struct mylite_sql_ast_node *node);
+static int plan_sounds_like_truth_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
 static int plan_row_scalar_expression_comparison_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
@@ -23479,6 +23490,15 @@ static int plan_row_scalar_simple_case_equality_condition(
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_like_predicate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_sounds_like_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     bool has_source,

@@ -2160,6 +2160,10 @@ static bool scalar_comparison_projection_node_is_admitted(
         return is_scalar_regexp_comparison_operand_expression(child_at(expression, 0U)) &&
                is_scalar_regexp_comparison_operand_expression(child_at(expression, 1U));
     }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE) {
+        return is_scalar_sounds_like_operand_expression(child_at(expression, 0U)) &&
+               is_scalar_sounds_like_operand_expression(child_at(expression, 1U));
+    }
     if (is_scalar_logical_projection_expression(child_at(expression, 0U)) ||
         is_scalar_logical_projection_expression(child_at(expression, 1U))) {
         return is_scalar_logical_projection_expression(expression);
@@ -2168,6 +2172,18 @@ static bool scalar_comparison_projection_node_is_admitted(
         return false;
     }
     return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
+}
+
+static bool is_scalar_sounds_like_operand_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return true;
+    }
+    return mylite_execution_soundex_scalar_argument_is_admitted(expression);
 }
 
 static bool is_scalar_regexp_comparison_operand_expression(
@@ -2289,6 +2305,7 @@ static bool is_scalar_comparison_operator(enum mylite_sql_ast_operator operator_
     case MYLITE_SQL_AST_OPERATOR_GREATER:
     case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE:
     case MYLITE_SQL_AST_OPERATOR_REGEXP:
     case MYLITE_SQL_AST_OPERATOR_RLIKE:
         return true;

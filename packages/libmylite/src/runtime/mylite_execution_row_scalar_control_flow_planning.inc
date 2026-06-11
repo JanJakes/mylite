@@ -735,6 +735,59 @@ static int plan_row_scalar_like_predicate_expression(
     return rc;
 }
 
+static int plan_row_scalar_sounds_like_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    operator_kind = row_scalar_control_flow_condition_operator(expression);
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE) {
+        set_unsupported_error(database, "row-scalar SELECT supports only SOUNDS LIKE predicates");
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(2U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE;
+    out_expression->argument_count = 2U;
+    out_expression->arithmetic_operator = MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE;
+    out_expression->like_uses_escape = false;
+
+    rc = plan_row_scalar_soundex_argument(
+        database,
+        child_at(expression, 0U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_expression->arguments[0]
+    );
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_soundex_argument(
+            database,
+            child_at(expression, 1U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_expression->arguments[1]
+        );
+    }
+    return rc;
+}
+
 static int plan_row_scalar_leaf_like_predicate_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -1017,6 +1070,7 @@ static bool row_scalar_control_flow_logical_operator_is_supported(
     case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
     case MYLITE_SQL_AST_OPERATOR_LIKE_BINARY:
+    case MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE:
     case MYLITE_SQL_AST_OPERATOR_REGEXP:
     case MYLITE_SQL_AST_OPERATOR_RLIKE:
     case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:
@@ -1066,6 +1120,7 @@ static bool row_scalar_control_flow_comparison_operator_is_supported(
     case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
     case MYLITE_SQL_AST_OPERATOR_LIKE:
     case MYLITE_SQL_AST_OPERATOR_LIKE_BINARY:
+    case MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE:
     case MYLITE_SQL_AST_OPERATOR_REGEXP:
     case MYLITE_SQL_AST_OPERATOR_RLIKE:
     case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:

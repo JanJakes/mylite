@@ -1392,6 +1392,32 @@ static int append_row_scalar_like_predicate_expression_sql(
     operator_kind = expression->arithmetic_operator;
 
     rc = mylite_dynamic_string_append_char(string, '(');
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE) {
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, "_mylite_soundex(");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_control_flow_argument_sql(
+                string,
+                &expression->arguments[0],
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, ") = _mylite_soundex(");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_control_flow_argument_sql(
+                string,
+                &expression->arguments[1],
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, "))");
+        }
+        return rc;
+    }
     if (rc == MYLITE_OK) {
         rc = append_row_scalar_control_flow_argument_sql(
             string,
@@ -1448,6 +1474,32 @@ static int append_row_scalar_leaf_like_predicate_expression_sql(
     operator_kind = expression->arithmetic_operator;
 
     rc = mylite_dynamic_string_append_char(string, '(');
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE) {
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, "_mylite_soundex(");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_control_flow_leaf_argument_sql(
+                string,
+                &expression->arguments[0],
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, ") = _mylite_soundex(");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_control_flow_leaf_argument_sql(
+                string,
+                &expression->arguments[1],
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, "))");
+        }
+        return rc;
+    }
     if (rc == MYLITE_OK) {
         rc = append_row_scalar_control_flow_leaf_argument_sql(
             string,

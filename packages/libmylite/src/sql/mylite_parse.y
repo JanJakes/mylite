@@ -35,8 +35,8 @@
 %left AND.
 %right NOT.
 %right ON.
-%left EQUAL NULL_SAFE_EQUAL NOT_EQUAL LESS LESS_EQUAL GREATER GREATER_EQUAL IS LIKE REGEXP RLIKE
-    BETWEEN.
+%left EQUAL NULL_SAFE_EQUAL NOT_EQUAL LESS LESS_EQUAL GREATER GREATER_EQUAL IS LIKE SOUNDS REGEXP
+    RLIKE BETWEEN.
 %left ESCAPE.
 %left BITWISE_OR.
 %left BITWISE_AND.
@@ -6859,6 +6859,10 @@ predicate_atom(A) ::=
             .escape = E,
         });
 }
+predicate_atom(A) ::= qualified_identifier(C) SOUNDS(O) LIKE predicate_like_pattern(P). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE, P);
+}
 predicate_atom(A) ::=
     qualified_identifier(C) NOT(N) LIKE(O) predicate_like_pattern(P) predicate_like_escape_opt(E). {
     A = mylite_sql_parser_make_not_predicate(
@@ -11376,6 +11380,10 @@ expression(A) ::= expression(B) LIKE(T) expression(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_LIKE, C);
 }
+expression(A) ::= expression(B) SOUNDS(T) LIKE expression(C). [LIKE] {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE, C);
+}
 expression(A) ::= expression(B) REGEXP(T) expression(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_REGEXP, C);
@@ -11714,6 +11722,9 @@ identifier(A) ::= QUOTE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= SOUNDEX(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SOUNDS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= LPAD(T). {

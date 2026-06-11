@@ -49,7 +49,6 @@ static int test_expression_operator_temporal_placeholders(void) {
     failures += execute_error(database, "SELECT 'a%' LIKE 'a!%' ESCAPE '!'", unsupported);
     failures += execute_error(database, "SELECT '1998-01-01' + INTERVAL 1 DAY", unsupported);
     failures += execute_error(database, "SELECT TIME'10:10:10' + INTERVAL .6 SECOND", unsupported);
-    failures += execute_error(database, "SELECT 'mood' SOUNDS LIKE 'mud'", unsupported);
     failures += execute_error(
         database,
         "SELECT COUNT(*) FROM t WHERE d IN (DATE'2024-01-01', DATE'2024-01-03')",

@@ -772,6 +772,7 @@ enum mylite_sql_ast_operator {
     MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT = 40,
     MYLITE_SQL_AST_OPERATOR_CONCAT = 41,
     MYLITE_SQL_AST_OPERATOR_LIKE_BINARY = 42,
+    MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE = 43,
 };
 
 enum mylite_sql_ast_integer_type {

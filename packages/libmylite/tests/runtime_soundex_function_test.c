@@ -118,6 +118,14 @@ static int test_no_source_dual_and_do_soundex(void) {
     };
     static const char *const columns_dual[] = {"a", "b"};
     static const char *const values_dual[] = {"A120", "A120"};
+    static const char *const columns_sounds_like[] = {
+        "match_value",
+        "miss_value",
+        "null_left",
+        "null_right",
+        "true_value",
+    };
+    static const char *const values_sounds_like[] = {"1", "0", NULL, NULL, "1"};
     static const char *const columns_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_after_select[] = {"-1", "0"};
     static const char *const values_after_do[] = {"0", "0"};
@@ -162,6 +170,21 @@ static int test_no_source_dual_and_do_soundex(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT 'mood' SOUNDS LIKE 'mud' AS match_value, "
+                   "'mood' SOUNDS LIKE 'xyz' AS miss_value, "
+                   "NULL SOUNDS LIKE 'abc' AS null_left, "
+                   "'abc' SOUNDS LIKE NULL AS null_right, "
+                   "TRUE SOUNDS LIKE '1' AS true_value",
+            .columns = columns_sounds_like,
+            .column_count = sizeof(columns_sounds_like) / sizeof(columns_sounds_like[0]),
+            .values = values_sounds_like,
+            .row_count = 1U,
+            .context = "no-source sounds like values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT ROW_COUNT(), @@warning_count",
             .columns = columns_status,
             .column_count = sizeof(columns_status) / sizeof(columns_status[0]),
@@ -171,7 +194,8 @@ static int test_no_source_dual_and_do_soundex(void) {
         }
     );
 
-    failures += execute_ok(database, "DO SOUNDEX('abc'), SOUNDEX(NULL)", &result);
+    failures +=
+        execute_ok(database, "DO SOUNDEX('abc'), SOUNDEX(NULL), 'mood' SOUNDS LIKE 'mud'", &result);
     if (failures == 0) {
         failures += expect_size(mylite_result_column_count(result), 0U, "soundex do columns");
         failures += expect_size(mylite_result_row_count(result), 0U, "soundex do rows");
@@ -216,6 +240,27 @@ static int test_table_backed_soundex_and_reopen(void) {
     };
     static const char *const columns_limited[] = {"id", "sv"};
     static const char *const values_limited[] = {"1", "R163"};
+    static const char *const columns_sounds_like[] = {
+        "id",
+        "sv_match",
+        "txt_match",
+        "i_match",
+        "d_match",
+    };
+    static const char *const values_sounds_like[] = {
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "2",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+    };
+    static const char *const columns_predicate[] = {"id"};
+    static const char *const values_predicate[] = {"1"};
     static const char *const columns_labels[] = {"SOUNDEX(v)", "code"};
     static const char *const values_labels[] = {"R163", "R163"};
     static const char *const columns_reopen[] = {"id", "sv"};
@@ -268,6 +313,31 @@ static int test_table_backed_soundex_and_reopen(void) {
             .values = values_limited,
             .row_count = 1U,
             .context = "table soundex envelope",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v SOUNDS LIKE 'Rupert' AS sv_match, "
+                   "txt SOUNDS LIKE 'Quadratically' AS txt_match, "
+                   "i SOUNDS LIKE '123' AS i_match, "
+                   "d SOUNDS LIKE '-12.30' AS d_match FROM t ORDER BY id",
+            .columns = columns_sounds_like,
+            .column_count = sizeof(columns_sounds_like) / sizeof(columns_sounds_like[0]),
+            .values = values_sounds_like,
+            .row_count = 2U,
+            .context = "table sounds like values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE v SOUNDS LIKE 'Rupert' ORDER BY id",
+            .columns = columns_predicate,
+            .column_count = sizeof(columns_predicate) / sizeof(columns_predicate[0]),
+            .values = values_predicate,
+            .row_count = 1U,
+            .context = "table sounds like predicate",
         }
     );
     failures += expect_query(
@@ -360,6 +430,15 @@ static int test_soundex_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT missing SOUNDS LIKE 'abc'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'field list'",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT SOUNDEX(missing) FROM t",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
@@ -397,7 +476,27 @@ static int test_soundex_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT b SOUNDS LIKE 'abc' FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "row-scalar SELECT SOUNDEX() does not support binary string or BIT columns",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT SOUNDEX(f) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "row-scalar SELECT SOUNDEX() does not support approximate numeric columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT f SOUNDS LIKE 'abc' FROM t",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

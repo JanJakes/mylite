@@ -42,8 +42,6 @@ static int test_expression_operator_temporal_placeholders(void) {
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT 1%2 - INTERVAL 1^1 SECOND | 1%2 - INTERVAL 1^1 SECOND",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "SELECT 'mood' SOUNDS LIKE 'mud'",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT COUNT(*) FROM t WHERE d IN (DATE'2024-01-01', DATE'2024-01-03')",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
     };

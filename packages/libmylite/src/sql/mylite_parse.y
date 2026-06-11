@@ -8066,7 +8066,7 @@ window_function_expression(A) ::= LAST_VALUE(T) LPAREN expression(B) RPAREN
         W);
 }
 window_function_expression(A) ::= NTH_VALUE(T) LPAREN expression(B) COMMA expression(C) RPAREN
-                  window_null_treatment_opt(NT) over_clause(W). {
+                  window_from_first_opt window_null_treatment_opt(NT) over_clause(W). {
     A = mylite_sql_parser_make_window_function_with_clause_and_null_treatment(
         state,
         T,
@@ -8075,6 +8075,9 @@ window_function_expression(A) ::= NTH_VALUE(T) LPAREN expression(B) COMMA expres
         NT,
         W);
 }
+
+window_from_first_opt ::= .
+window_from_first_opt ::= FROM FIRST.
 
 window_null_treatment_opt(A) ::= . {
     A = NULL;

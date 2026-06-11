@@ -39,6 +39,7 @@ int main(void) {
 static int test_aggregate_window_surfaces(void) {
     static const char *const supported_sum_rows[] = {"30"};
     static const char *const supported_group_concat_rows[] = {"ann|bob"};
+    static const char *const nth_from_first_rows[] = {"1", "1", "2", "1"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -80,6 +81,17 @@ static int test_aggregate_window_surfaces(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "existing supported GROUP_CONCAT subset",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, NTH_VALUE(id, 1) FROM FIRST OVER (ORDER BY id) "
+                   "FROM numbers ORDER BY id",
+            .values = nth_from_first_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "NTH_VALUE FROM FIRST",
         }
     );
 

@@ -268,6 +268,7 @@ static int test_window_null_treatment(void) {
     failures += parse_ok("SELECT FIRST_VALUE(id) RESPECT NULLS OVER (ORDER BY id) FROM t");
     failures += parse_ok("SELECT LAST_VALUE(id) IGNORE NULLS OVER (ORDER BY id) FROM t");
     failures += parse_ok("SELECT NTH_VALUE(id, 1) RESPECT NULLS OVER (ORDER BY id) FROM t");
+    failures += parse_ok("SELECT NTH_VALUE(id, 1) FROM FIRST OVER (ORDER BY id) FROM t");
     failures += parse_ok("SELECT LAG(id, 1, 0) IGNORE NULLS OVER (ORDER BY id) FROM t");
     failures += parse_ok("SELECT LEAD(id) RESPECT NULLS OVER (ORDER BY id) FROM t");
 

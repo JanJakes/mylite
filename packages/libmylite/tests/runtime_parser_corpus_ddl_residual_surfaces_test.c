@@ -91,6 +91,30 @@ static int test_executable_ddl_aliases(void) {
         "g INT GENERATED ALWAYS AS ((c + c)) VIRTUAL NOT NULL, "
         "PRIMARY KEY (pk)) ENGINE=InnoDB AUTO_INCREMENT=30 DEFAULT CHARSET=utf8mb4"
     );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE repeated_nullability (a INT NOT NULL NULL, b INT NULL NOT NULL)"
+    );
+    failures += expect_query_single_value(
+        database,
+        &(const struct expected_single_value){
+            .sql = "SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'repeated_nullability' "
+                   "AND COLUMN_NAME = 'a'",
+            .value = "YES",
+            .context = "last repeated NULL makes column nullable",
+        }
+    );
+    failures += expect_query_single_value(
+        database,
+        &(const struct expected_single_value){
+            .sql = "SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'repeated_nullability' "
+                   "AND COLUMN_NAME = 'b'",
+            .value = "NO",
+            .context = "last repeated NOT NULL makes column not nullable",
+        }
+    );
 
     mylite_close(database);
     return failures;
@@ -149,6 +173,17 @@ static int test_ddl_residual_runtime(void) {
                    "AND TABLE_NAME = 'reorder_t' AND COLUMN_NAME = 'new_col'",
             .value = "0",
             .context = "alter order placeholder does not add column",
+        }
+    );
+    failures +=
+        execute_error(database, "CREATE TABLE binlog_tail (f1 INT) START TRANSACTION", unsupported);
+    failures += expect_query_single_value(
+        database,
+        &(const struct expected_single_value){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'binlog_tail'",
+            .value = "0",
+            .context = "create table start transaction placeholder does not create table",
         }
     );
     failures += execute_error(database, "ALTER TABLE reorder_t REORGANIZE PARTITION", unsupported);

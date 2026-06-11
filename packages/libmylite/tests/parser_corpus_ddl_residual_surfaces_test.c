@@ -44,6 +44,11 @@ static int test_executable_ddl_aliases(void) {
             .kind = MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
         },
         {
+            .sql = "CREATE TABLE repeated_nullability ("
+                   "a INT NOT NULL NULL, ts TIMESTAMP(6) NOT NULL NULL DEFAULT 0)",
+            .kind = MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+        },
+        {
             .sql = "CREATE INDEX e_index TYPE btree ON t1(e)",
             .kind = MYLITE_SQL_AST_CREATE_INDEX_STATEMENT,
         },
@@ -99,6 +104,10 @@ static int test_ddl_residual_placeholders(void) {
             .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT,
         },
         {
+            .sql = "CREATE TABLE binlog_tail (f1 INT) START TRANSACTION",
+            .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT,
+        },
+        {
             .sql = "ALTER TABLE t MODIFY COLUMN c1 FLOAT(10.3), DROP CHECK t_chk_1, "
                    "ADD CONSTRAINT CHECK(c1 > 10.1) ENFORCED",
             .kind = MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT,
@@ -141,6 +150,16 @@ static int test_ddl_residual_malformed_tails(void) {
         "ALTER TABLE t ADD COLUMN new_col INT, ORDER BY",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         "incomplete alter table order by action"
+    );
+    failures += parse_status(
+        "CREATE TABLE bad_binlog_tail (f1 INT) START",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "incomplete create table start transaction option"
+    );
+    failures += parse_status(
+        "CREATE TABLE bad_binlog_tail START TRANSACTION",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "missing create table definition before start transaction option"
     );
 
     return failures;

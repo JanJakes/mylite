@@ -1045,6 +1045,10 @@ static bool placeholder_scan_interval_expression_follows_parenthesized_separator
     const struct placeholder_statement_scan *scan,
     size_t index
 );
+static bool placeholder_scan_interval_value_binary_expression_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
 static bool placeholder_scan_token_is_date_interval_unit(
     const struct placeholder_statement_scan *scan,
     size_t index
@@ -1186,6 +1190,9 @@ static bool ddl_residual_scan_has_foreign_key_set_default_action(
     const struct placeholder_statement_scan *scan
 );
 static bool ddl_residual_scan_has_alter_table_order_by_action(
+    const struct placeholder_statement_scan *scan
+);
+static bool ddl_residual_scan_has_create_table_start_transaction_option(
     const struct placeholder_statement_scan *scan
 );
 static bool ddl_check_expression_placeholder_scan_has_marker(
@@ -8180,12 +8187,7 @@ static bool placeholder_scan_contains_interval_expression_surface(
         if (placeholder_scan_token_text_equals(scan, index, "INTERVAL") &&
             index + 4U < scan->token_count && !token_is_left_paren(&scan->tokens[index + 1U]) &&
             !placeholder_scan_interval_expression_follows_parenthesized_separator(scan, index) &&
-            !placeholder_scan_token_is_incomplete_statement_tail(scan, index + 1U) &&
-            scan->tokens[index + 2U].kind == MYLITE_SQL_TOKEN_OPERATOR &&
-            (scan->tokens[index + 2U].operator_kind == MYLITE_SQL_OPERATOR_LEFT_SHIFT ||
-             scan->tokens[index + 2U].operator_kind == MYLITE_SQL_OPERATOR_RIGHT_SHIFT) &&
-            !placeholder_scan_token_is_incomplete_statement_tail(scan, index + 3U) &&
-            placeholder_scan_token_is_date_interval_unit(scan, index + 4U)) {
+            placeholder_scan_interval_value_binary_expression_is_complete(scan, index)) {
             return true;
         }
         if (placeholder_scan_token_text_equals(scan, index, "INTERVAL") &&
@@ -8220,6 +8222,30 @@ static bool placeholder_scan_interval_expression_follows_parenthesized_separator
         }
     }
     return paren_depth > 0;
+}
+
+static bool placeholder_scan_interval_value_binary_expression_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    const struct mylite_sql_token *operator_token = NULL;
+
+    if (scan == NULL || index + 4U >= scan->token_count ||
+        placeholder_scan_token_is_incomplete_statement_tail(scan, index + 1U) ||
+        placeholder_scan_token_is_incomplete_statement_tail(scan, index + 3U) ||
+        !placeholder_scan_token_is_date_interval_unit(scan, index + 4U)) {
+        return false;
+    }
+
+    operator_token = &scan->tokens[index + 2U];
+    if (operator_token->kind != MYLITE_SQL_TOKEN_OPERATOR) {
+        return false;
+    }
+    return operator_token->operator_kind == MYLITE_SQL_OPERATOR_PLUS ||
+           operator_token->operator_kind == MYLITE_SQL_OPERATOR_MINUS ||
+           operator_token->operator_kind == MYLITE_SQL_OPERATOR_BITWISE_XOR ||
+           operator_token->operator_kind == MYLITE_SQL_OPERATOR_LEFT_SHIFT ||
+           operator_token->operator_kind == MYLITE_SQL_OPERATOR_RIGHT_SHIFT;
 }
 
 static bool placeholder_scan_token_is_date_interval_unit(
@@ -8991,7 +9017,8 @@ static bool ddl_residual_placeholder_statement_is_supported(
     return ddl_residual_scan_has_fulltext_parser_clause(scan) ||
            ddl_residual_scan_has_generated_column_surface(scan) ||
            ddl_residual_scan_has_foreign_key_set_default_action(scan) ||
-           ddl_residual_scan_has_alter_table_order_by_action(scan);
+           ddl_residual_scan_has_alter_table_order_by_action(scan) ||
+           ddl_residual_scan_has_create_table_start_transaction_option(scan);
 }
 
 static bool ddl_residual_placeholder_statement_is_candidate(
@@ -9108,6 +9135,22 @@ static bool ddl_residual_scan_has_alter_table_order_by_action(
             continue;
         }
         return placeholder_scan_token_can_name_loose_identifier(scan, index + 3U);
+    }
+    return false;
+}
+
+static bool ddl_residual_scan_has_create_table_start_transaction_option(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || !placeholder_scan_starts_create_table_statement(scan)) {
+        return false;
+    }
+    for (size_t index = 0U; index + 1U < scan->token_count; ++index) {
+        if (index > 0U && token_is_right_paren(&scan->tokens[index - 1U]) &&
+            placeholder_scan_token_text_equals(scan, index, "START") &&
+            placeholder_scan_token_text_equals(scan, index + 1U, "TRANSACTION")) {
+            return true;
+        }
     }
     return false;
 }
@@ -18368,7 +18411,7 @@ static int scan_column_attribute_positions(
             }
             break;
         case MYLITE_SQL_AST_NULLABILITY:
-            rc = record_column_attribute_position(state, &out_positions->nullability, position);
+            out_positions->nullability = position;
             break;
         case MYLITE_SQL_AST_COLUMN_DEFAULT_NULL:
         case MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE:

@@ -37,7 +37,7 @@ static int plan_column(
         }
     }
     if (rc == MYLITE_OK) {
-        nullability_node = child_with_kind(column_node, MYLITE_SQL_AST_NULLABILITY);
+        nullability_node = last_column_nullability_node(column_node);
         visibility_node = child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_VISIBILITY_ATTRIBUTE);
         out_column->nullability = mylite_sql_ast_node_nullability(nullability_node);
         out_column->is_nullable = column_is_nullable(nullability_node);
@@ -91,6 +91,21 @@ static const struct mylite_sql_ast_node *last_column_default_node(
         child = child->next_sibling;
     }
     return default_node;
+}
+
+static const struct mylite_sql_ast_node *last_column_nullability_node(
+    const struct mylite_sql_ast_node *column_node
+) {
+    const struct mylite_sql_ast_node *child = child_at(column_node, 2U);
+    const struct mylite_sql_ast_node *nullability_node = NULL;
+
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_NULLABILITY) {
+            nullability_node = child;
+        }
+        child = child->next_sibling;
+    }
+    return nullability_node;
 }
 
 static int apply_column_comment_attributes(
@@ -199,7 +214,6 @@ static int validate_column_attributes(
     const struct planned_column *column
 ) {
     const struct mylite_sql_ast_node *child = child_at(column_node, 2U);
-    size_t nullability_count = 0U;
     size_t primary_key_count = 0U;
     size_t auto_increment_count = 0U;
     size_t on_update_count = 0U;
@@ -212,13 +226,11 @@ static int validate_column_attributes(
     int rc = MYLITE_OK;
 
     while (child != NULL) {
-        if (child->kind == MYLITE_SQL_AST_NULLABILITY) {
-            ++nullability_count;
-            previous_attribute_allows_check_enforcement = false;
-        } else if (child->kind == MYLITE_SQL_AST_INLINE_PRIMARY_KEY) {
+        if (child->kind == MYLITE_SQL_AST_INLINE_PRIMARY_KEY) {
             ++primary_key_count;
             previous_attribute_allows_check_enforcement = false;
-        } else if (child->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_NULL ||
+        } else if (child->kind == MYLITE_SQL_AST_NULLABILITY ||
+                   child->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_NULL ||
                    child->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE ||
                    child->kind == MYLITE_SQL_AST_INLINE_UNIQUE_KEY ||
                    child->kind == MYLITE_SQL_AST_COLUMN_COMMENT_ATTRIBUTE) {
@@ -262,7 +274,6 @@ static int validate_column_attributes(
     }
 
     if (column_attribute_counts_have_duplicates(
-            nullability_count,
             primary_key_count,
             auto_increment_count,
             on_update_count,
@@ -293,7 +304,6 @@ static int validate_column_attributes(
 }
 
 static bool column_attribute_counts_have_duplicates(
-    size_t nullability_count,
     size_t primary_key_count,
     size_t auto_increment_count,
     size_t on_update_count,
@@ -301,9 +311,8 @@ static bool column_attribute_counts_have_duplicates(
     size_t collation_count,
     size_t generated_count
 ) {
-    return (nullability_count > 1U || primary_key_count > 1U || auto_increment_count > 1U ||
-            on_update_count > 1U || charset_count > 1U || collation_count > 1U ||
-            generated_count > 1U) != 0;
+    return (primary_key_count > 1U || auto_increment_count > 1U || on_update_count > 1U ||
+            charset_count > 1U || collation_count > 1U || generated_count > 1U) != 0;
 }
 
 static int validate_generated_column_attributes(

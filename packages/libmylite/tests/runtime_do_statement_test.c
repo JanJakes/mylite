@@ -116,7 +116,7 @@ static int test_do_statement_values_and_file_safety(void) {
         (struct expected_statement){
             .sql = "DO 1, NULL, TRUE, IF(0,5,6), IFNULL(NULL,7), COALESCE(NULL,8), "
                    "NULLIF(9,9), ISNULL(NULL), 1+2, 5 DIV 2, 5%2, 1=1, 1<=>NULL, "
-                   "NOT 0 AND 1, 1 XOR 0, 1 IS TRUE, NULL IS UNKNOWN, "
+                   "NOT 0 AND 1, !0 * 5, 1 XOR 0, 1 IS TRUE, NULL IS UNKNOWN, "
                    "CASE WHEN 1 THEN 10 ELSE 11 END, CASE 2 WHEN 1 THEN 11 WHEN 2 THEN 12 END, "
                    "VERSION(), ROW_COUNT(), @@warning_count",
             .warning_count = 0U,
@@ -348,15 +348,6 @@ static int test_do_statement_unsupported_forms(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "DO supports only session scalar values",
-        }
-    );
-    failures += execute_error(
-        database,
-        "DO !0",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "near '!'",
         }
     );
     failures += execute_error(

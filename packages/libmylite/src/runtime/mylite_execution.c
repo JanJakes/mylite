@@ -21243,6 +21243,10 @@ static int plan_select_order(
     bool allow_rand_order,
     struct planned_select_order *out_order
 );
+static int validate_single_table_dml_order_clause(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause
+);
 static int plan_select_order_item_list(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *order_items,

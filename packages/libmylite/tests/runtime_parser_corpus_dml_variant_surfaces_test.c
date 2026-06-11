@@ -44,6 +44,11 @@ static int test_dml_variant_surfaces(void) {
         .sqlstate = "42000",
         .message_part = "utility statement is not supported",
     };
+    struct expected_sql_error unsupported_order_expression = {
+        .code = mysql_error_parse,
+        .sqlstate = "42000",
+        .message_part = "ORDER BY supports only",
+    };
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -103,12 +108,22 @@ static int test_dml_variant_surfaces(void) {
     );
     failures += execute_error(database, "DELETE t.*, u.* FROM t, u WHERE t.id = u.id", unsupported);
     failures += execute_error(database, "DELETE FROM t ORDER BY id, v DESC LIMIT 1", unsupported);
+    failures += execute_error(
+        database,
+        "DELETE FROM t ORDER BY (@@GLOBAL.INIT_FILE) ASC LIMIT 1",
+        unsupported_order_expression
+    );
     failures +=
         execute_error(database, "UPDATE IGNORE t, u SET t.v = u.v WHERE t.id = u.id", unsupported);
     failures +=
         execute_error(database, "UPDATE t LEFT JOIN u USING(id) SET t.v = u.v", unsupported);
     failures +=
         execute_error(database, "UPDATE t SET v = 10 ORDER BY id, v DESC LIMIT 1", unsupported);
+    failures += execute_error(
+        database,
+        "UPDATE t SET v = 10 ORDER BY (@@GLOBAL.INIT_FILE) ASC LIMIT 1",
+        unsupported_order_expression
+    );
     failures += execute_error(database, "INSERT INTO t (id, v) VALUES (id, v)", unsupported);
     failures += execute_error(
         database,

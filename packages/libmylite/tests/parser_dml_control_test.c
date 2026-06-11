@@ -1924,6 +1924,31 @@ static int test_delete_statement(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "DELETE FROM simple_lifecycle ORDER BY (@@GLOBAL.INIT_FILE) ASC LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    order_clause = parser_test_child_at(statement, 1U);
+    limit_clause = parser_test_child_at(statement, 2U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(order_clause, 0U),
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "delete expression order key"
+    );
+    failures += parser_test_expect_order_direction(
+        parser_test_child_at(order_clause, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_ASC,
+        "delete expression order direction"
+    );
+    failures += parser_test_expect_node(
+        limit_clause,
+        MYLITE_SQL_AST_LIMIT_CLAUSE,
+        "delete expression order limit"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "DELETE FROM simple_lifecycle WHERE id = FALSE LIMIT 1;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -2629,6 +2654,31 @@ static int test_update_statement(void) {
     failures += parser_test_expect_true(
         parser_test_child_at(limit_clause, 1U) == NULL,
         "update limit has no offset"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "UPDATE simple_lifecycle SET amount = 1 ORDER BY (@@GLOBAL.INIT_FILE) ASC LIMIT 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    order_clause = parser_test_child_at(statement, 2U);
+    limit_clause = parser_test_child_at(statement, 3U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(order_clause, 0U),
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "update expression order key"
+    );
+    failures += parser_test_expect_order_direction(
+        parser_test_child_at(order_clause, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_ASC,
+        "update expression order direction"
+    );
+    failures += parser_test_expect_node(
+        limit_clause,
+        MYLITE_SQL_AST_LIMIT_CLAUSE,
+        "update expression order limit"
     );
     mylite_sql_parse_result_deinit(&result);
 

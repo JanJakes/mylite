@@ -33,6 +33,11 @@ static int test_expression_residual_runtime(void) {
         .sqlstate = "42000",
         .message_part = "utility statement is not supported",
     };
+    struct expected_sql_error unsupported_do = {
+        .code = mysql_error_parse,
+        .sqlstate = "42000",
+        .message_part = "DO supports only",
+    };
     int failures = 0;
 
     failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open database");
@@ -47,7 +52,7 @@ static int test_expression_residual_runtime(void) {
         "DO COUNT(DISTINCT ROUND(CAST(SLEEP(0) AS DECIMAL), NULL))",
         unsupported
     );
-    failures += execute_error(database, "DO (!(SECOND(0xb16beeb7)))", unsupported);
+    failures += execute_error(database, "DO (!(SECOND(0xb16beeb7)))", unsupported_do);
     failures += execute_error(
         database,
         "SELECT \"1900-01-01 00:00:00\" + INTERVAL 1<<20 HOUR",
@@ -55,7 +60,6 @@ static int test_expression_residual_runtime(void) {
     );
     failures += execute_error(database, "SELECT * FROM t WHERE a = CURRENT_TIME", unsupported);
     failures += execute_error(database, "SELECT * FROM t WHERE a = CURRENT_DATE", unsupported);
-    failures += execute_error(database, "SELECT !0 * 5 AS x FROM DUAL", unsupported);
     failures +=
         execute_error(database, "SELECT _latin1'B' BETWEEN _latin1'a' AND _latin1'c'", unsupported);
     failures += execute_error(

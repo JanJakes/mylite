@@ -531,6 +531,32 @@ static int test_select_expression_list(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql("SELECT !1 + 1, NOT 1 + 1;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    logical = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_operator(
+        logical,
+        MYLITE_SQL_AST_OPERATOR_ADD,
+        "bang binds tighter than addition"
+    );
+    failures += parser_test_expect_operator(
+        parser_test_child_at(logical, 0U),
+        MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT,
+        "bang left operand"
+    );
+    logical = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+    failures += parser_test_expect_operator(
+        logical,
+        MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT,
+        "keyword not keeps lower precedence"
+    );
+    failures += parser_test_expect_operator(
+        parser_test_child_at(logical, 0U),
+        MYLITE_SQL_AST_OPERATOR_ADD,
+        "keyword not operand"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parser_test_parse_sql(
         "SELECT 1 IS TRUE, 0 IS FALSE, NULL IS UNKNOWN, 1 IS NOT TRUE, "
         "1 IS NULL, 1 IS NOT NULL, NOT 1 IS TRUE, 1 = 1 IS TRUE, "

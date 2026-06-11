@@ -111,6 +111,9 @@ static int plan_single_table_update(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = validate_single_table_dml_order_clause(database, clauses.order_clause);
+    }
+    if (rc == MYLITE_OK) {
         rc = plan_select_order(
             database,
             clauses.order_clause,

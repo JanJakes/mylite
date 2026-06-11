@@ -1,3 +1,28 @@
+static int validate_single_table_dml_order_clause(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause
+) {
+    const struct mylite_sql_ast_node *order_key = NULL;
+
+    if (order_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (order_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
+        set_unsupported_error(database, "ORDER BY supports only descriptor columns");
+        return MYLITE_ERROR;
+    }
+
+    order_key = unwrap_parenthesized_expression(child_at(order_clause, 0U));
+    if (order_key != NULL &&
+        (order_key->kind == MYLITE_SQL_AST_IDENTIFIER ||
+         order_key->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        return MYLITE_OK;
+    }
+
+    set_unsupported_error(database, "ORDER BY supports only descriptor columns");
+    return MYLITE_ERROR;
+}
+
 static int plan_select_order(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *order_clause,

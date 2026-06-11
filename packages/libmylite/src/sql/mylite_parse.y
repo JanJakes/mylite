@@ -51,7 +51,7 @@
 %right STRING.
 %left INTRODUCED_LITERAL_VALUE.
 %left COLLATE.
-%right UPLUS UMINUS BITWISE_NOT BINARY.
+%right UPLUS UMINUS LOGICAL_NOT BITWISE_NOT BINARY.
 
 %fallback IDENTIFIER SAVEPOINT BINLOG CHAIN ENFORCED NO ACTION ALGORITHM COMMENT CASCADED DEFINER
     INVOKER DISK INSERT_METHOD LAST MEMORY MERGE NULLS RESPECT SECURITY SRID TABLESPACE TEMPTABLE
@@ -7508,7 +7508,7 @@ predicate_comparison_operator(A) ::= GREATER_EQUAL(T). {
 order_clause_opt(A) ::= . {
     A = NULL;
 }
-order_clause_opt(A) ::= ORDER(O) BY qualified_identifier(K) order_direction_opt(D). {
+order_clause_opt(A) ::= ORDER(O) BY expression(K) order_direction_opt(D). {
     A = mylite_sql_parser_make_order_by_clause(state, O, K, D);
 }
 
@@ -7594,6 +7594,9 @@ select_order_key(A) ::= BINARY(T) STRING(V). [BINARY] {
         state, T, mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING));
 }
 select_order_key(A) ::= predicate_collate_expression(K). {
+    A = K;
+}
+select_order_key(A) ::= window_function_expression(K). {
     A = K;
 }
 select_order_key(A) ::=
@@ -7935,10 +7938,14 @@ expression(A) ::= BINARY(T) expression(V). [BINARY] {
 expression(A) ::= expression(V) COLLATE(C) option_name(N). {
     A = mylite_sql_parser_make_collate_expression(state, V, C, N);
 }
-expression(A) ::= ROW_NUMBER(T) LPAREN RPAREN over_clause(W). {
+expression(A) ::= window_function_expression(B). {
+    A = B;
+}
+
+window_function_expression(A) ::= ROW_NUMBER(T) LPAREN RPAREN over_clause(W). {
     A = mylite_sql_parser_make_row_number_window_function_with_clause(state, T, W);
 }
-expression(A) ::= RANK(T) LPAREN RPAREN over_clause(W). {
+window_function_expression(A) ::= RANK(T) LPAREN RPAREN over_clause(W). {
     A = mylite_sql_parser_make_window_function_with_clause(
         state,
         T,
@@ -7946,7 +7953,7 @@ expression(A) ::= RANK(T) LPAREN RPAREN over_clause(W). {
         (struct mylite_sql_window_function_arguments){0},
         W);
 }
-expression(A) ::= DENSE_RANK(T) LPAREN RPAREN over_clause(W). {
+window_function_expression(A) ::= DENSE_RANK(T) LPAREN RPAREN over_clause(W). {
     A = mylite_sql_parser_make_window_function_with_clause(
         state,
         T,
@@ -7954,7 +7961,7 @@ expression(A) ::= DENSE_RANK(T) LPAREN RPAREN over_clause(W). {
         (struct mylite_sql_window_function_arguments){0},
         W);
 }
-expression(A) ::= PERCENT_RANK(T) LPAREN RPAREN over_clause(W). {
+window_function_expression(A) ::= PERCENT_RANK(T) LPAREN RPAREN over_clause(W). {
     A = mylite_sql_parser_make_window_function_with_clause(
         state,
         T,
@@ -7962,7 +7969,7 @@ expression(A) ::= PERCENT_RANK(T) LPAREN RPAREN over_clause(W). {
         (struct mylite_sql_window_function_arguments){0},
         W);
 }
-expression(A) ::= CUME_DIST(T) LPAREN RPAREN over_clause(W). {
+window_function_expression(A) ::= CUME_DIST(T) LPAREN RPAREN over_clause(W). {
     A = mylite_sql_parser_make_window_function_with_clause(
         state,
         T,
@@ -7970,7 +7977,7 @@ expression(A) ::= CUME_DIST(T) LPAREN RPAREN over_clause(W). {
         (struct mylite_sql_window_function_arguments){0},
         W);
 }
-expression(A) ::= NTILE(T) LPAREN expression(B) RPAREN over_clause(W). {
+window_function_expression(A) ::= NTILE(T) LPAREN expression(B) RPAREN over_clause(W). {
     A = mylite_sql_parser_make_window_function_with_clause(
         state,
         T,
@@ -7978,7 +7985,7 @@ expression(A) ::= NTILE(T) LPAREN expression(B) RPAREN over_clause(W). {
         (struct mylite_sql_window_function_arguments){.count = 1U, .items = {B}},
         W);
 }
-expression(A) ::= LAG(T) LPAREN expression(B) RPAREN
+window_function_expression(A) ::= LAG(T) LPAREN expression(B) RPAREN
                   window_null_treatment_opt(NT) over_clause(W). {
     A = mylite_sql_parser_make_window_function_with_clause_and_null_treatment(
         state,
@@ -7988,7 +7995,7 @@ expression(A) ::= LAG(T) LPAREN expression(B) RPAREN
         NT,
         W);
 }
-expression(A) ::= LAG(T) LPAREN expression(B) COMMA expression(C) RPAREN
+window_function_expression(A) ::= LAG(T) LPAREN expression(B) COMMA expression(C) RPAREN
                   window_null_treatment_opt(NT) over_clause(W). {
     A = mylite_sql_parser_make_window_function_with_clause_and_null_treatment(
         state,
@@ -7998,7 +8005,7 @@ expression(A) ::= LAG(T) LPAREN expression(B) COMMA expression(C) RPAREN
         NT,
         W);
 }
-expression(A) ::= LAG(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) RPAREN
+window_function_expression(A) ::= LAG(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) RPAREN
                   window_null_treatment_opt(NT) over_clause(W). {
     A = mylite_sql_parser_make_window_function_with_clause_and_null_treatment(
         state,
@@ -8008,7 +8015,7 @@ expression(A) ::= LAG(T) LPAREN expression(B) COMMA expression(C) COMMA expressi
         NT,
         W);
 }
-expression(A) ::= LEAD(T) LPAREN expression(B) RPAREN
+window_function_expression(A) ::= LEAD(T) LPAREN expression(B) RPAREN
                   window_null_treatment_opt(NT) over_clause(W). {
     A = mylite_sql_parser_make_window_function_with_clause_and_null_treatment(
         state,
@@ -8018,7 +8025,7 @@ expression(A) ::= LEAD(T) LPAREN expression(B) RPAREN
         NT,
         W);
 }
-expression(A) ::= LEAD(T) LPAREN expression(B) COMMA expression(C) RPAREN
+window_function_expression(A) ::= LEAD(T) LPAREN expression(B) COMMA expression(C) RPAREN
                   window_null_treatment_opt(NT) over_clause(W). {
     A = mylite_sql_parser_make_window_function_with_clause_and_null_treatment(
         state,
@@ -8028,7 +8035,7 @@ expression(A) ::= LEAD(T) LPAREN expression(B) COMMA expression(C) RPAREN
         NT,
         W);
 }
-expression(A) ::= LEAD(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) RPAREN
+window_function_expression(A) ::= LEAD(T) LPAREN expression(B) COMMA expression(C) COMMA expression(D) RPAREN
                   window_null_treatment_opt(NT) over_clause(W). {
     A = mylite_sql_parser_make_window_function_with_clause_and_null_treatment(
         state,
@@ -8038,7 +8045,7 @@ expression(A) ::= LEAD(T) LPAREN expression(B) COMMA expression(C) COMMA express
         NT,
         W);
 }
-expression(A) ::= FIRST_VALUE(T) LPAREN expression(B) RPAREN
+window_function_expression(A) ::= FIRST_VALUE(T) LPAREN expression(B) RPAREN
                   window_null_treatment_opt(NT) over_clause(W). {
     A = mylite_sql_parser_make_window_function_with_clause_and_null_treatment(
         state,
@@ -8048,7 +8055,7 @@ expression(A) ::= FIRST_VALUE(T) LPAREN expression(B) RPAREN
         NT,
         W);
 }
-expression(A) ::= LAST_VALUE(T) LPAREN expression(B) RPAREN
+window_function_expression(A) ::= LAST_VALUE(T) LPAREN expression(B) RPAREN
                   window_null_treatment_opt(NT) over_clause(W). {
     A = mylite_sql_parser_make_window_function_with_clause_and_null_treatment(
         state,
@@ -8058,7 +8065,7 @@ expression(A) ::= LAST_VALUE(T) LPAREN expression(B) RPAREN
         NT,
         W);
 }
-expression(A) ::= NTH_VALUE(T) LPAREN expression(B) COMMA expression(C) RPAREN
+window_function_expression(A) ::= NTH_VALUE(T) LPAREN expression(B) COMMA expression(C) RPAREN
                   window_null_treatment_opt(NT) over_clause(W). {
     A = mylite_sql_parser_make_window_function_with_clause_and_null_treatment(
         state,
@@ -11257,6 +11264,10 @@ expression(A) ::= MINUS(T) expression(B). [UMINUS] {
         state, T, MYLITE_SQL_AST_OPERATOR_NEGATIVE, B);
 }
 expression(A) ::= NOT(T) expression(B). [NOT] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT, B);
+}
+expression(A) ::= LOGICAL_NOT(T) expression(B). [LOGICAL_NOT] {
     A = mylite_sql_parser_make_unary_expression(
         state, T, MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT, B);
 }

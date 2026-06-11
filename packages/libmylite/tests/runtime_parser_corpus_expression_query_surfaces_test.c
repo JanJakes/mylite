@@ -48,6 +48,7 @@ static int test_expression_query_surfaces(void) {
     static const char *const parenthesized_row_null_comparison_values[] = {NULL, "1", "1"};
     static const char *const row_not_comparison_values[] = {"1", NULL};
     static const char *const row_string_comparison_values[] = {"1", "1", "1", "0", "1"};
+    static const char *const logical_not_values[] = {"5", "1", "0"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -80,6 +81,16 @@ static int test_expression_query_surfaces(void) {
             .code = mysql_error_regexp_character_set_mismatch,
             .sqlstate = "HY000",
             .message_part = "cannot be used in conjunction",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT !0 * 5, !1 + 1, NOT 1 + 1",
+            .values = logical_not_values,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "logical not operator precedence",
         }
     );
 

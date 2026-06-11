@@ -121,6 +121,15 @@ static int test_aggregate_window_surfaces(void) {
     );
     failures += execute_error(
         database,
+        "SELECT id FROM numbers ORDER BY RANK() OVER (ORDER BY a DESC,b,c)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "ORDER BY supports only",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT SUM(c/d) FROM numbers",
         (struct expected_sql_error){
             .code = mysql_error_parse,

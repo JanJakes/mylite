@@ -19,7 +19,7 @@ enum {
     and_column_count = 7,
     or_column_count = 6,
     xor_column_count = 7,
-    not_column_count = 6,
+    not_column_count = 9,
     precedence_column_count = 9,
     operand_column_count = 8,
     comparison_column_count = 4,
@@ -126,8 +126,11 @@ static int test_scalar_logical_values_and_file_safety(void) {
         "NOT -1",
         "NOT TRUE",
         "NOT FALSE",
+        "!1",
+        "!0",
+        "!NULL",
     };
-    static const char *const not_values[] = {"0", "1", NULL, "0", "0", "1"};
+    static const char *const not_values[] = {"0", "1", NULL, "0", "0", "1", "0", "1", NULL};
     static const char *const precedence_columns[] = {
         "1<2 AND 2<3",
         "1<2 AND 2>3",
@@ -242,7 +245,8 @@ static int test_scalar_logical_values_and_file_safety(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT NOT 10, NOT 0, NOT NULL, NOT -1, NOT TRUE, NOT FALSE",
+            .sql = "SELECT NOT 10, NOT 0, NOT NULL, NOT -1, NOT TRUE, NOT FALSE, "
+                   "!1, !0, !NULL",
             .columns = not_columns,
             .column_count = not_column_count,
             .values = not_values,
@@ -547,15 +551,6 @@ static int test_scalar_logical_overflow_and_unsupported_forms(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "utility statement is not supported",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT !1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
         }
     );
     failures += execute_error(

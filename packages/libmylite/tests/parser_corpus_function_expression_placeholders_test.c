@@ -41,8 +41,6 @@ static int test_function_expression_placeholders(void) {
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "UPDATE t1 SET a = DATE_ADD(NULL, INTERVAL 1 DAY)",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "DELETE FROM t2 WHERE fld3 = 'd%' ORDER BY RAND()",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT mysqltest.f1()", .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
     };
     int failures = 0;
@@ -58,6 +56,7 @@ static int test_function_expression_placeholders(void) {
     failures += expect_syntax_error("SELECT ROW_NUMBER()");
     failures += expect_syntax_error("VALUES ROW(1) WHERE TRUE");
     failures += expect_syntax_error("DELETE FROM t2 WHERE fld3 = 'd%' ORDER BY");
+    failures += parse_ok("DELETE FROM t2 WHERE fld3 = 'd%' ORDER BY RAND()");
 
     for (size_t index = 0U; index < sizeof(placeholders) / sizeof(placeholders[0]); ++index) {
         failures += expect_statement_kind(placeholders[index]);

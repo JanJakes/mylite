@@ -102,6 +102,11 @@ ordering, joined-update forms with modifiers or `USING`, identifier value
 positions in `INSERT`, duplicate-key assignments that read a target column, and
 compound-source `REPLACE ... SELECT`. See [parser corpus DML variant
 surfaces](../specs/parser-corpus-dml-variant-surfaces/specs.md).
+The parser-corpus order-expression residual slice additionally admits
+single-table `DELETE` and `UPDATE` expression order keys into the normal parser
+and runtime path, so valid MySQL syntax receives MyLite's explicit unsupported
+ordering diagnostic unless it fits the documented one-column descriptor order
+subset. See [parser corpus order expression residuals](../specs/parser-corpus-order-expression-residuals/specs.md).
 
 The current temporal DML storage conversion admits canonical temporal strings
 plus a limited `DATE`, `DATETIME`, and `TIMESTAMP` string subset with a `T`

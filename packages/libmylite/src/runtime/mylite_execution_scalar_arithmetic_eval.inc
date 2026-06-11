@@ -163,6 +163,10 @@ static int evaluate_scalar_arithmetic_apply_unary_frame(
     if (value.is_null || operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE) {
         return scalar_arithmetic_value_stack_push(database, value_stack, value);
     }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT) {
+        value.integer = scalar_arithmetic_truth_value(&value) ? 0 : 1;
+        return scalar_arithmetic_value_stack_push(database, value_stack, value);
+    }
     if (operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
         set_scalar_arithmetic_unsupported_error(database);
         return MYLITE_ERROR;
@@ -194,7 +198,8 @@ static int evaluate_scalar_arithmetic_enter_frame(
         int rc = MYLITE_OK;
 
         if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
-            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT) {
             set_scalar_arithmetic_unsupported_error(database);
             return MYLITE_ERROR;
         }

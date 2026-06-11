@@ -1987,7 +1987,8 @@ static bool scalar_arithmetic_projection_node_is_admitted(
         enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
 
         if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
-            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT) {
             return false;
         }
         return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
@@ -2459,7 +2460,8 @@ static bool scalar_arithmetic_attempt_node_is_admitted(
         enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
 
         if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
-            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT) {
             return false;
         }
         return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));

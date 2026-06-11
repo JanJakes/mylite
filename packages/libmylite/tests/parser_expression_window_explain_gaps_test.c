@@ -121,6 +121,7 @@ static int test_window_grammar_forms(void) {
         "SELECT GROUP_CONCAT(name ORDER BY id DESC SEPARATOR '|') OVER w "
         "FROM numbers WINDOW w AS (ORDER BY id)",
         "SELECT COUNT(*) OVER () + SUM(value) OVER () FROM numbers",
+        "SELECT * FROM numbers ORDER BY RANK() OVER (ORDER BY a DESC,b,c)",
     };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;

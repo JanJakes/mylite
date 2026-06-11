@@ -736,6 +736,44 @@ static int test_if_function(void) {
     failures += parser_test_expect_node(nested, MYLITE_SQL_AST_IF_FUNCTION, "inner nested if");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "SELECT t1.a,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,\n"
+        "IF((ROUND(t1.a,2)=1), 2,0)))))))))))))))))))))))))))))) + 1\n"
+        "FROM t1",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parser_test_parse_sql("SELECT IF(1, 2 + 3, 'x');", MYLITE_SQL_PARSE_OK, &result);
     first_expression = parser_test_child_at(
         parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),

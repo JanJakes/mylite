@@ -3,6 +3,7 @@
 %token_type { struct mylite_sql_token }
 %default_type { struct mylite_sql_ast_node * }
 %extra_argument { struct mylite_sql_parser_state *state }
+%stack_size 512
 
 %include {
 #define YYNOERRORRECOVERY 1

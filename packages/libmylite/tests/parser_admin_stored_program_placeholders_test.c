@@ -93,6 +93,14 @@ static int test_unsupported_stored_program_statement_forms(void) {
             .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,
         },
         {
+            .sql = "SET sql_mode = default; CREATE PROCEDURE p() BEGIN DECLARE y INT; END",
+            .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,
+        },
+        {
+            .sql = "DROP PROCEDURE IF EXISTS p; CREATE PROCEDURE p() SELECT 1; CALL p()",
+            .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,
+        },
+        {
             .sql = "CREATE FUNCTION f() RETURNS INT RETURN 1",
             .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,
         },
@@ -112,8 +120,17 @@ static int test_unsupported_stored_program_statement_forms(void) {
             .sql = "ALTER FUNCTION f SQL SECURITY INVOKER",
             .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,
         },
+        {
+            .sql = "ALTER DEFINER=mysqltest_u1@localhost EVENT e1 ON SCHEDULE EVERY 1 HOUR",
+            .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,
+        },
         {.sql = "ALTER EVENT e DISABLE", .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT
         },
+        {
+            .sql = "SIGNAL SQLSTATE '01000'",
+            .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,
+        },
+        {.sql = "RESIGNAL", .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT},
         {
             .sql = "DROP FUNCTION IF EXISTS f",
             .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,
@@ -137,6 +154,8 @@ static int test_unsupported_stored_program_statement_forms(void) {
     for (size_t index = 0U; index < sizeof(statements) / sizeof(statements[0]); ++index) {
         failures += expect_statement_kind(statements[index]);
     }
+    failures +=
+        expect_parse_status("END IF", MYLITE_SQL_PARSE_SYNTAX_ERROR, "body-only END IF fragment");
     return failures;
 }
 

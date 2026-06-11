@@ -381,6 +381,33 @@ static enum placeholder_statement_kind classify_placeholder_statement(
 static enum placeholder_statement_kind classify_schema_security_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );
+static enum placeholder_statement_kind classify_stored_program_script_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_stored_program_statement_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_create_stored_program_statement_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_alter_stored_program_statement_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_drop_stored_program_statement_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_show_stored_program_statement_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_is_stored_program_object_keyword(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
 static enum placeholder_statement_kind classify_utility_admin_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );
@@ -4021,6 +4048,11 @@ static enum placeholder_statement_kind classify_placeholder_statement(
         return kind;
     }
 
+    kind = classify_stored_program_script_placeholder_statement(scan);
+    if (kind != PLACEHOLDER_STATEMENT_NONE) {
+        return kind;
+    }
+
     return classify_utility_admin_placeholder_statement(scan);
 }
 
@@ -4049,6 +4081,112 @@ static enum placeholder_statement_kind classify_schema_security_placeholder_stat
     }
 
     return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static enum placeholder_statement_kind classify_stored_program_script_placeholder_statement(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || scan->token_count == 0U ||
+        placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return PLACEHOLDER_STATEMENT_NONE;
+    }
+    for (size_t index = 0U; index < scan->token_count; ++index) {
+        if (placeholder_scan_stored_program_statement_starts_at(scan, index)) {
+            return PLACEHOLDER_STATEMENT_UNSUPPORTED_STORED_PROGRAM;
+        }
+    }
+    return PLACEHOLDER_STATEMENT_NONE;
+}
+
+static bool placeholder_scan_stored_program_statement_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    if (placeholder_scan_token_text_equals(scan, index, "SIGNAL") ||
+        placeholder_scan_token_text_equals(scan, index, "RESIGNAL")) {
+        return true;
+    }
+    return placeholder_scan_create_stored_program_statement_starts_at(scan, index) ||
+           placeholder_scan_alter_stored_program_statement_starts_at(scan, index) ||
+           placeholder_scan_drop_stored_program_statement_starts_at(scan, index) ||
+           placeholder_scan_show_stored_program_statement_starts_at(scan, index);
+}
+
+static bool placeholder_scan_create_stored_program_statement_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    size_t limit = 0U;
+
+    if (!placeholder_scan_token_text_equals(scan, index, "CREATE")) {
+        return false;
+    }
+    limit = index + placeholder_create_scan_token_limit;
+    if (limit > scan->token_count) {
+        limit = scan->token_count;
+    }
+    for (size_t scan_index = index + 1U; scan_index < limit; ++scan_index) {
+        if (placeholder_scan_token_is_stored_program_object_keyword(scan, scan_index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_alter_stored_program_statement_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    size_t limit = 0U;
+
+    if (!placeholder_scan_token_text_equals(scan, index, "ALTER")) {
+        return false;
+    }
+    if (placeholder_scan_token_text_equals(scan, index + 1U, "PROCEDURE") ||
+        placeholder_scan_token_text_equals(scan, index + 1U, "FUNCTION") ||
+        placeholder_scan_token_text_equals(scan, index + 1U, "EVENT")) {
+        return true;
+    }
+    if (!placeholder_scan_token_text_equals(scan, index + 1U, "DEFINER")) {
+        return false;
+    }
+    limit = index + placeholder_create_scan_token_limit;
+    if (limit > scan->token_count) {
+        limit = scan->token_count;
+    }
+    for (size_t scan_index = index + 2U; scan_index < limit; ++scan_index) {
+        if (placeholder_scan_token_text_equals(scan, scan_index, "EVENT")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_drop_stored_program_statement_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return placeholder_scan_token_text_equals(scan, index, "DROP") &&
+           placeholder_scan_token_is_stored_program_object_keyword(scan, index + 1U);
+}
+
+static bool placeholder_scan_show_stored_program_statement_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return placeholder_scan_token_text_equals(scan, index, "SHOW") &&
+           placeholder_scan_token_text_equals(scan, index + 1U, "CREATE") &&
+           placeholder_scan_token_is_stored_program_object_keyword(scan, index + 2U);
+}
+
+static bool placeholder_scan_token_is_stored_program_object_keyword(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return placeholder_scan_token_text_equals(scan, index, "PROCEDURE") ||
+           placeholder_scan_token_text_equals(scan, index, "FUNCTION") ||
+           placeholder_scan_token_text_equals(scan, index, "TRIGGER") ||
+           placeholder_scan_token_text_equals(scan, index, "EVENT");
 }
 
 static enum placeholder_statement_kind classify_utility_admin_placeholder_statement(

@@ -26,6 +26,7 @@ enum {
     ascii_char_display_length = 5,
     ascii_text_display_length = 65535,
     wordpress_legacy_column_count = 5,
+    ordered_collations_column_count = 6,
     binary_attrs_column_count = 9,
     binary_attrs_projection_count = 7,
     binary_alter_projection_count = 8,
@@ -775,6 +776,26 @@ static int test_wordpress_legacy_charset_metadata(void) {
         "cp1251",
         "cp1251_general_ci",
     };
+    static const char *const ordered_collation_metadata[] = {
+        "legacy_utf8",
+        "utf8mb3",
+        "utf8mb3_unicode_ci",
+        "legacy_latin1",
+        "latin1",
+        "latin1_swedish_ci",
+        "current_utf8",
+        "utf8mb4",
+        "utf8mb4_general_ci",
+        "default_utf8",
+        "utf8mb4",
+        "utf8mb4_bin",
+        "commented_utf8",
+        "utf8mb4",
+        "utf8mb4_bin",
+        "unique_utf8",
+        "utf8mb4",
+        "utf8mb4_bin",
+    };
     static const char *const set_utf8_values[] = {
         "utf8mb3",
         "utf8mb3",
@@ -825,6 +846,55 @@ static int test_wordpress_legacy_charset_metadata(void) {
         database,
         "SHOW CREATE TABLE wp_legacy",
         "`e` varchar(50) CHARACTER SET utf8mb3 COLLATE utf8mb3_unicode_ci"
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE ordered_collations("
+        "legacy_utf8 VARCHAR(255) NOT NULL COLLATE utf8_unicode_ci, "
+        "legacy_latin1 VARCHAR(100) NOT NULL COLLATE latin1_swedish_ci, "
+        "current_utf8 VARCHAR(200) NOT NULL COLLATE utf8mb4_general_ci, "
+        "default_utf8 VARCHAR(10) DEFAULT '' COLLATE utf8mb4_bin, "
+        "commented_utf8 VARCHAR(10) COMMENT 'x' COLLATE utf8mb4_bin, "
+        "unique_utf8 VARCHAR(10) UNIQUE KEY COLLATE utf8mb4_bin, "
+        "KEY (legacy_utf8))"
+    );
+    failures += expect_column_character_metadata(
+        database,
+        "ordered_collations",
+        ordered_collation_metadata,
+        ordered_collations_column_count,
+        "ordered collation column metadata"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE ordered_collations",
+        "`legacy_utf8` varchar(255) CHARACTER SET utf8mb3 COLLATE utf8mb3_unicode_ci NOT NULL"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE ordered_collations",
+        "`legacy_latin1` varchar(100) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE ordered_collations",
+        "`current_utf8` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE ordered_collations",
+        "`default_utf8` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT ''"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE ordered_collations",
+        "`commented_utf8` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL "
+        "COMMENT 'x'"
+    );
+    failures += expect_show_create_contains(
+        database,
+        "SHOW CREATE TABLE ordered_collations",
+        "`unique_utf8` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL"
     );
     failures += execute_statement_ok(
         database,
@@ -971,6 +1041,12 @@ static int test_column_charset_collation_diagnostics(void) {
         database,
         "CREATE TABLE bad_national(v NCHAR(2) CHARACTER SET utf8mb4)",
         (struct expected_sql_error){mysql_error_parse, "42000", "NATIONAL character columns"}
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE enum_default_collation(a ENUM('Y', 'N') DEFAULT 'N' "
+        "COLLATE utf8mb4_unicode_ci)",
+        (struct expected_sql_error){mysql_error_parse, "42000", "CHAR, VARCHAR, and TEXT"}
     );
 
     mylite_close(database);

@@ -56,9 +56,10 @@ In scope:
   order accepted by MySQL for the currently supported column-definition subset;
 - preserving duplicate-attribute rejection;
 - preserving the existing parser guard that explicit column
-  `CHARACTER SET` / `CHARSET` and `COLLATE` attributes must precede legacy
+  `CHARACTER SET` / `CHARSET` attributes must precede legacy
   nullability/default/key/comment/auto-increment attributes in MyLite's admitted
-  subset;
+  subset, while the later collation-order slice relaxes `COLLATE` placement for
+  MySQL-accepted forms;
 - applying the same parser behavior to `CREATE TABLE`, temporary table DDL, and
   supported `ALTER TABLE` column replacement/addition grammar because they
   share the same column-definition parser;
@@ -118,7 +119,7 @@ Tests cover:
 - MySQL 8.4.9 expectation probes for default-before-nullability and inline key
   order variants;
 - parser acceptance of the representative order variants and preserved
-  rejection of charset/collation-after-legacy-attribute forms;
+  rejection of `CHARACTER SET` / `CHARSET` after legacy attributes;
 - runtime `CREATE TABLE` / `SHOW COLUMNS` / `SHOW CREATE TABLE` behavior for
   supported variants;
 - parser corpus benchmark counts before and after the slice.

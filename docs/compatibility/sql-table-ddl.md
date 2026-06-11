@@ -53,8 +53,12 @@ definition paths and normalize to the existing seconds-only descriptors;
 nonzero temporal fractional precision is rejected before schema mutation.
 Supported column definition paths accept MySQL dump-style ordering among
 `DEFAULT`, `NULL` / `NOT NULL`, inline key, and `AUTO_INCREMENT` attributes
-while preserving the current duplicate-attribute and explicit
-charset/collation ordering checks.
+while preserving duplicate-attribute checks, preserving MySQL-compatible
+ordering restrictions for explicit `CHARACTER SET` / `CHARSET`, and admitting
+MySQL-accepted `COLLATE` placement after legacy column attributes such as
+nullability, defaults, inline keys, and comments. Parser admission also covers
+`ENUM` / `SET` `DEFAULT ... COLLATE` orderings, but executable `ENUM` / `SET`
+charset/collation metadata remains unsupported.
 
 | Feature | Status | Notes |
 | --- | --- | --- |

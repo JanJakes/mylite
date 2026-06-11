@@ -4340,6 +4340,24 @@ static int test_column_charset_collation_attribute_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "CREATE TABLE column_collation_after_nullability ("
+        "v VARCHAR(10) NOT NULL COLLATE utf8mb4_bin, "
+        "t TEXT NULL COLLATE latin1_swedish_ci);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE enum_default_before_collation ("
+        "a ENUM('Y', 'N') DEFAULT 'N' COLLATE utf8mb4_unicode_ci, "
+        "b SET('one', 'two') DEFAULT 'one' COLLATE utf8mb4_bin);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "CREATE TABLE column_comment ("
         "a INT COMMENT 'alpha', "
         "b VARCHAR(5) CHARACTER SET ascii COMMENT 'bee' NOT NULL, "
@@ -4445,6 +4463,17 @@ static int test_column_charset_collation_attribute_statements(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "CREATE TABLE column_collation_after_legacy_attributes ("
+        "defaulted VARCHAR(10) DEFAULT '' COLLATE utf8mb4_bin, "
+        "commented VARCHAR(10) COMMENT 'x' COLLATE utf8mb4_bin, "
+        "primary_value VARCHAR(10) PRIMARY KEY COLLATE utf8mb4_bin, "
+        "unique_value VARCHAR(10) UNIQUE KEY COLLATE utf8mb4_bin);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "CREATE TABLE column_collation_before_charset ("
         "v VARCHAR(10) COLLATE utf8mb4_bin CHARACTER SET utf8mb4);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
@@ -4463,14 +4492,6 @@ static int test_column_charset_collation_attribute_statements(void) {
     failures += parser_test_parse_sql(
         "CREATE TABLE column_charset_after_unique ("
         "v VARCHAR(10) UNIQUE CHARACTER SET utf8mb4);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
-        "CREATE TABLE column_collation_after_unique_key ("
-        "v VARCHAR(10) UNIQUE KEY COLLATE utf8mb4_bin);",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         &result
     );

@@ -124,6 +124,65 @@ expect_error \
     "USE ${DATABASE}; CREATE TABLE invalid_default_null_order "\
 "(id INT DEFAULT NULL NOT NULL);"
 
+expect_output \
+    "collate after not null" \
+    "$(printf '%b' 'c\tvarchar(255)\tNO\tMUL\tNULL\t')" \
+    "USE ${DATABASE}; "\
+"CREATE TABLE collate_after_not_null ("\
+"c VARCHAR(255) NOT NULL COLLATE utf8mb4_unicode_ci, "\
+"INDEX (c)); "\
+"SHOW COLUMNS FROM collate_after_not_null;"
+
+enum_default_columns=$(printf '%b' "a\tenum('Y','N')\tYES\t\tN\t")
+expect_output \
+    "enum default before collate" \
+    "$enum_default_columns" \
+    "USE ${DATABASE}; "\
+"CREATE TABLE enum_default_before_collate ("\
+"a ENUM('Y', 'N') DEFAULT 'N' COLLATE utf8mb4_unicode_ci); "\
+"SHOW COLUMNS FROM enum_default_before_collate;"
+
+expect_output \
+    "legacy collations after not null" \
+    "$(printf '%b' 'col1\tvarchar(100)\tNO\t\tNULL\t\ncol2\tvarchar(200)\tNO\t\tNULL\t')" \
+    "USE ${DATABASE}; "\
+"CREATE TABLE legacy_collations ("\
+"col1 VARCHAR(100) NOT NULL COLLATE latin1_swedish_ci, "\
+"col2 VARCHAR(200) NOT NULL COLLATE utf8mb4_general_ci); "\
+"SHOW COLUMNS FROM legacy_collations;"
+
+expect_output \
+    "varchar default before collate" \
+    "$(printf '%b' 'v\tvarchar(10)\tYES\t\t\t')" \
+    "USE ${DATABASE}; "\
+"CREATE TABLE varchar_default_before_collate ("\
+"v VARCHAR(10) DEFAULT '' COLLATE utf8mb4_bin); "\
+"SHOW COLUMNS FROM varchar_default_before_collate;"
+
+expect_output \
+    "inline key before collate" \
+    "$(printf '%b' 'v\tvarchar(10)\tYES\tUNI\tNULL\t')" \
+    "USE ${DATABASE}; "\
+"CREATE TABLE inline_key_before_collate ("\
+"v VARCHAR(10) UNIQUE KEY COLLATE utf8mb4_bin); "\
+"SHOW COLUMNS FROM inline_key_before_collate;"
+
+expect_error \
+    "comment before charset rejected" \
+    1064 \
+    42000 \
+    "syntax" \
+    "USE ${DATABASE}; CREATE TABLE bad_comment_charset "\
+"(v VARCHAR(10) COMMENT 'x' CHARACTER SET utf8mb4);"
+
+expect_error \
+    "not null before charset rejected" \
+    1064 \
+    42000 \
+    "syntax" \
+    "USE ${DATABASE}; CREATE TABLE bad_null_charset "\
+"(v VARCHAR(10) NOT NULL CHARACTER SET utf8mb4);"
+
 cleanup
 
 printf '%s\n' "mysql_parser_corpus_create_table_attribute_order_expectations: ok"

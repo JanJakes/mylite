@@ -1409,15 +1409,16 @@ static int validate_legacy_column_attribute_order(
     struct mylite_sql_parser_state *state,
     const struct column_attribute_positions *positions
 );
-static size_t column_charset_collation_position_limit(
-    const struct column_attribute_positions *positions
-);
 static bool column_attribute_charset_order_is_valid(
     const struct column_attribute_positions *positions
 );
-static bool legacy_column_attribute_precedes_charset_collation(
+static bool legacy_column_attribute_precedes_charset(
+    const struct column_attribute_positions *positions
+);
+static bool column_attribute_position_precedes(size_t position, size_t limit);
+static bool legacy_column_attribute_precedes_position(
     const struct column_attribute_positions *positions,
-    size_t charset_collation_limit
+    size_t limit
 );
 static bool column_attribute_position_is_set(size_t position);
 
@@ -17847,7 +17848,6 @@ static int validate_legacy_column_attribute_order(
     const struct column_attribute_positions *positions
 ) {
     bool invalid_order = false;
-    size_t charset_collation_limit = column_charset_collation_position_limit(positions);
 
     if (column_attribute_position_is_set(positions->auto_increment)) {
         if (!column_attribute_position_is_set(positions->charset) &&
@@ -17873,7 +17873,7 @@ static int validate_legacy_column_attribute_order(
           positions->comment < positions->generated))) {
         invalid_order = true;
     }
-    if (legacy_column_attribute_precedes_charset_collation(positions, charset_collation_limit)) {
+    if (legacy_column_attribute_precedes_charset(positions)) {
         invalid_order = true;
     }
     if (invalid_order) {
@@ -17901,42 +17901,30 @@ static bool column_attribute_charset_order_is_valid(
            positions->charset == positions->collation + 1U;
 }
 
-static size_t column_charset_collation_position_limit(
+static bool legacy_column_attribute_precedes_charset(
     const struct column_attribute_positions *positions
 ) {
-    size_t limit = (size_t)-1;
-
-    if (column_attribute_position_is_set(positions->charset)) {
-        limit = positions->charset;
-    }
-    if (column_attribute_position_is_set(positions->collation) &&
-        (!column_attribute_position_is_set(limit) || positions->collation > limit)) {
-        limit = positions->collation;
-    }
-
-    return limit;
-}
-
-static bool legacy_column_attribute_precedes_charset_collation(
-    const struct column_attribute_positions *positions,
-    size_t charset_collation_limit
-) {
-    if (!column_attribute_position_is_set(charset_collation_limit)) {
+    if (positions == NULL || !column_attribute_position_is_set(positions->charset)) {
         return false;
     }
 
-    return ((column_attribute_position_is_set(positions->nullability) &&
-             positions->nullability < charset_collation_limit) ||
-            (column_attribute_position_is_set(positions->default_value) &&
-             positions->default_value < charset_collation_limit) ||
-            (column_attribute_position_is_set(positions->primary_key) &&
-             positions->primary_key < charset_collation_limit) ||
-            (column_attribute_position_is_set(positions->unique_key) &&
-             positions->unique_key < charset_collation_limit) ||
-            (column_attribute_position_is_set(positions->comment) &&
-             positions->comment < charset_collation_limit) ||
-            (column_attribute_position_is_set(positions->auto_increment) &&
-             positions->auto_increment < charset_collation_limit)) != 0;
+    return legacy_column_attribute_precedes_position(positions, positions->charset);
+}
+
+static bool column_attribute_position_precedes(size_t position, size_t limit) {
+    return column_attribute_position_is_set(position) && position < limit;
+}
+
+static bool legacy_column_attribute_precedes_position(
+    const struct column_attribute_positions *positions,
+    size_t limit
+) {
+    return column_attribute_position_precedes(positions->nullability, limit) ||
+           column_attribute_position_precedes(positions->default_value, limit) ||
+           column_attribute_position_precedes(positions->primary_key, limit) ||
+           column_attribute_position_precedes(positions->unique_key, limit) ||
+           column_attribute_position_precedes(positions->comment, limit) ||
+           column_attribute_position_precedes(positions->auto_increment, limit);
 }
 
 static bool column_attribute_position_is_set(size_t position) {

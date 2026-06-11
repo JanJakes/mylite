@@ -374,6 +374,7 @@ static bool token_is_left_paren(const struct mylite_sql_token *token);
 static bool token_is_right_paren(const struct mylite_sql_token *token);
 static bool token_is_comma(const struct mylite_sql_token *token);
 static bool token_is_equal_sign(const struct mylite_sql_token *token);
+static bool token_is_string_literal(const struct mylite_sql_token *token);
 static enum placeholder_statement_kind classify_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );
@@ -565,6 +566,25 @@ static bool placeholder_scan_in_predicate_has_operand_context(
     const struct placeholder_statement_scan *scan,
     size_t in_index
 );
+static bool placeholder_scan_contains_literal_left_predicate_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_literal_left_comparison_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t literal_index
+);
+static bool placeholder_scan_literal_left_between_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t literal_index
+);
+static bool placeholder_scan_literal_left_in_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t literal_index
+);
+static bool placeholder_scan_literal_predicate_has_clause_context(
+    const struct placeholder_statement_scan *scan,
+    size_t literal_index
+);
 static bool placeholder_scan_tokens_contain_qualified_identifier(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
@@ -614,6 +634,13 @@ static bool placeholder_scan_contains_query_function_subquery_surface(
 );
 static bool placeholder_scan_contains_any_function_call_surface(
     const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_quoted_function_call_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_quoted_function_call_has_expression_context(
+    const struct placeholder_statement_scan *scan,
+    size_t function_name_index
 );
 static bool placeholder_scan_contains_parameter_marker(const struct placeholder_statement_scan *scan
 );
@@ -698,6 +725,9 @@ static bool placeholder_scan_contains_identifier_in_list_residual_surface(
     const struct placeholder_statement_scan *scan
 );
 static bool placeholder_scan_contains_insert_keyword_group_function_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_group_by_user_variable_assignment_surface(
     const struct placeholder_statement_scan *scan
 );
 static bool placeholder_scan_function_call_has_four_arguments(
@@ -886,6 +916,11 @@ static bool placeholder_scan_token_can_start_bare_truth_expression(
 static bool placeholder_scan_bare_truth_expression_is_simple(
     const struct placeholder_statement_scan *scan,
     size_t expression_index
+);
+static bool placeholder_scan_bare_truth_expression_is_qualified_identifier(
+    const struct placeholder_statement_scan *scan,
+    size_t expression_index,
+    size_t stop_index
 );
 static bool placeholder_scan_contains_lateral_derived_table(
     const struct placeholder_statement_scan *scan
@@ -3966,6 +4001,11 @@ static bool token_is_equal_sign(const struct mylite_sql_token *token) {
             token->operator_kind == MYLITE_SQL_OPERATOR_EQUAL);
 }
 
+static bool token_is_string_literal(const struct mylite_sql_token *token) {
+    return token != NULL && (token->kind == MYLITE_SQL_TOKEN_STRING ||
+                             token->kind == MYLITE_SQL_TOKEN_NATIONAL_STRING);
+}
+
 static enum placeholder_statement_kind classify_placeholder_statement(
     const struct placeholder_statement_scan *scan
 ) {
@@ -4782,6 +4822,7 @@ static bool placeholder_scan_contains_query_function_subquery_surface(
         return false;
     }
     return placeholder_scan_contains_any_function_call_surface(scan) ||
+           placeholder_scan_contains_quoted_function_call_surface(scan) ||
            placeholder_scan_contains_nested_function_call_surface(scan) ||
            placeholder_scan_contains_named_window_function_surface(scan) ||
            placeholder_scan_contains_parenthesized_query_expression_surface(scan);
@@ -4803,6 +4844,46 @@ static bool placeholder_scan_contains_any_function_call_surface(
         }
     }
     return false;
+}
+
+static bool placeholder_scan_contains_quoted_function_call_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || placeholder_scan_contains_parameter_marker(scan) ||
+        placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return false;
+    }
+    for (size_t index = 1U; index < scan->token_count; ++index) {
+        if (token_is_left_paren(&scan->tokens[index]) && index > 0U &&
+            scan->tokens[index - 1U].kind == MYLITE_SQL_TOKEN_QUOTED_IDENTIFIER &&
+            placeholder_scan_quoted_function_call_has_expression_context(scan, index - 1U) &&
+            placeholder_scan_function_call_is_complete(scan, index - 1U, index, true)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_quoted_function_call_has_expression_context(
+    const struct placeholder_statement_scan *scan,
+    size_t function_name_index
+) {
+    size_t previous_index = 0U;
+
+    if (scan == NULL || function_name_index == 0U) {
+        return false;
+    }
+    previous_index = function_name_index - 1U;
+    return placeholder_scan_token_text_equals(scan, previous_index, "SELECT") ||
+           placeholder_scan_token_text_equals(scan, previous_index, "DISTINCT") ||
+           placeholder_scan_token_text_equals(scan, previous_index, "DISTINCTROW") ||
+           placeholder_scan_token_text_equals(scan, previous_index, "ALL") ||
+           placeholder_scan_token_text_equals(scan, previous_index, "BY") ||
+           placeholder_scan_token_starts_predicate_clause(scan, previous_index) ||
+           token_is_comma(&scan->tokens[previous_index]) ||
+           token_is_left_paren(&scan->tokens[previous_index]) ||
+           placeholder_scan_token_is_assignment_operator(scan, previous_index) ||
+           scan->tokens[previous_index].kind == MYLITE_SQL_TOKEN_OPERATOR;
 }
 
 static bool placeholder_scan_contains_parameter_marker(const struct placeholder_statement_scan *scan
@@ -5119,6 +5200,8 @@ static bool placeholder_scan_contains_query_expression_clause_surface(
            placeholder_scan_contains_expression_operator_surface(scan) ||
            placeholder_scan_contains_row_tuple_predicate_surface(scan) ||
            placeholder_scan_contains_descriptor_in_list_surface(scan) ||
+           placeholder_scan_contains_literal_left_predicate_surface(scan) ||
+           placeholder_scan_contains_group_by_user_variable_assignment_surface(scan) ||
            placeholder_scan_contains_bare_truth_clause_surface(scan);
 }
 
@@ -5546,6 +5629,120 @@ static bool placeholder_scan_in_predicate_has_operand_context(
     return placeholder_scan_token_can_end_expression_operand(scan, in_index - 1U);
 }
 
+static bool placeholder_scan_contains_literal_left_predicate_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return false;
+    }
+    for (size_t index = 1U; index + 1U < scan->token_count; ++index) {
+        if (!token_is_string_literal(&scan->tokens[index]) ||
+            !placeholder_scan_literal_predicate_has_clause_context(scan, index)) {
+            continue;
+        }
+        if (placeholder_scan_literal_left_comparison_is_complete(scan, index) ||
+            placeholder_scan_literal_left_between_is_complete(scan, index) ||
+            placeholder_scan_literal_left_in_is_complete(scan, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_literal_left_comparison_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t literal_index
+) {
+    size_t right_index = literal_index + 2U;
+
+    if (scan == NULL || right_index >= scan->token_count ||
+        !placeholder_scan_token_is_comparison_operator(scan, literal_index + 1U) ||
+        placeholder_scan_token_is_incomplete_statement_tail(scan, right_index) ||
+        placeholder_scan_token_stops_expression_clause_search(scan, right_index)) {
+        return false;
+    }
+    return placeholder_scan_token_can_name_loose_identifier(scan, right_index);
+}
+
+static bool placeholder_scan_literal_left_between_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t literal_index
+) {
+    int paren_depth = 0;
+    size_t lower_start_index = literal_index + 2U;
+
+    if (scan == NULL || lower_start_index >= scan->token_count ||
+        !placeholder_scan_token_text_equals(scan, literal_index + 1U, "BETWEEN") ||
+        !placeholder_scan_token_can_start_expression_operand(scan, lower_start_index)) {
+        return false;
+    }
+    for (size_t index = lower_start_index + 1U; index + 1U < scan->token_count; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            continue;
+        }
+        if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+            continue;
+        }
+        if (paren_depth != 0) {
+            continue;
+        }
+        if (placeholder_scan_token_stops_expression_clause_search(scan, index)) {
+            return false;
+        }
+        if (placeholder_scan_token_text_equals(scan, index, "AND") &&
+            placeholder_scan_token_can_start_expression_operand(scan, index + 1U) &&
+            (placeholder_scan_tokens_contain_identifier_like(scan, lower_start_index, index) ||
+             placeholder_scan_token_can_name_loose_identifier(scan, index + 1U))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_literal_left_in_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t literal_index
+) {
+    size_t left_paren_index = literal_index + 2U;
+    size_t right_paren_index = 0U;
+
+    return scan != NULL && left_paren_index < scan->token_count &&
+           placeholder_scan_token_text_equals(scan, literal_index + 1U, "IN") &&
+           token_is_left_paren(&scan->tokens[left_paren_index]) &&
+           placeholder_scan_find_matching_right_paren(scan, left_paren_index, &right_paren_index) &&
+           placeholder_scan_parenthesized_operand_is_complete(scan, left_paren_index) &&
+           placeholder_scan_tokens_contain_identifier_like(
+               scan,
+               left_paren_index + 1U,
+               right_paren_index
+           );
+}
+
+static bool placeholder_scan_literal_predicate_has_clause_context(
+    const struct placeholder_statement_scan *scan,
+    size_t literal_index
+) {
+    if (scan == NULL || literal_index == 0U) {
+        return false;
+    }
+    for (size_t scan_index = literal_index; scan_index > 0U; --scan_index) {
+        size_t previous_index = scan_index - 1U;
+
+        if (placeholder_scan_token_starts_predicate_clause(scan, previous_index)) {
+            return true;
+        }
+        if (placeholder_scan_token_stops_predicate_clause_search(scan, previous_index)) {
+            return false;
+        }
+    }
+    return false;
+}
+
 static bool placeholder_scan_tokens_contain_qualified_identifier(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
@@ -5879,6 +6076,7 @@ static bool placeholder_scan_contains_expression_residual_surface(
            placeholder_scan_contains_identifier_between_residual_surface(scan) ||
            placeholder_scan_contains_identifier_in_list_residual_surface(scan) ||
            placeholder_scan_contains_insert_keyword_group_function_surface(scan) ||
+           placeholder_scan_contains_group_by_user_variable_assignment_surface(scan) ||
            placeholder_scan_contains_charset_introducer_string_surface(scan) ||
            placeholder_scan_contains_current_temporal_keyword_surface(scan);
 }
@@ -6098,6 +6296,49 @@ static bool placeholder_scan_contains_insert_keyword_group_function_surface(
             continue;
         }
         return true;
+    }
+    return false;
+}
+
+static bool placeholder_scan_contains_group_by_user_variable_assignment_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t group_index = 0U;
+    int paren_depth = 0;
+
+    if (scan == NULL || placeholder_scan_statement_tail_is_obviously_incomplete(scan) ||
+        !placeholder_scan_token_text_equals(scan, 0U, "SELECT") ||
+        !placeholder_scan_find_top_level_keyword(scan, "GROUP", &group_index) ||
+        !placeholder_scan_token_text_equals(scan, group_index + 1U, "BY")) {
+        return false;
+    }
+    for (size_t index = group_index + 2U; index < scan->token_count; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            continue;
+        }
+        if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+            continue;
+        }
+        if (paren_depth != 0) {
+            continue;
+        }
+        if (placeholder_scan_token_text_equals(scan, index, "HAVING") ||
+            placeholder_scan_token_text_equals(scan, index, "ORDER") ||
+            placeholder_scan_token_text_equals(scan, index, "LIMIT") ||
+            placeholder_scan_token_text_equals(scan, index, "UNION")) {
+            return false;
+        }
+        if (placeholder_scan_token_is_assignment_operator(scan, index) &&
+            index > group_index + 2U &&
+            scan->tokens[index - 1U].kind == MYLITE_SQL_TOKEN_USER_VARIABLE &&
+            placeholder_scan_token_can_start_expression_operand(scan, index + 1U)) {
+            return true;
+        }
     }
     return false;
 }
@@ -7195,7 +7436,12 @@ static bool placeholder_scan_bare_truth_expression_is_simple(
     for (size_t index = expression_index; index < scan->token_count; ++index) {
         if (paren_depth == 0 && index > expression_index &&
             placeholder_scan_token_stops_predicate_clause_search(scan, index)) {
-            return expression_token_count == 1U;
+            return expression_token_count == 1U ||
+                   placeholder_scan_bare_truth_expression_is_qualified_identifier(
+                       scan,
+                       expression_index,
+                       index
+                   );
         }
         if (token_is_left_paren(&scan->tokens[index])) {
             ++paren_depth;
@@ -7216,7 +7462,40 @@ static bool placeholder_scan_bare_truth_expression_is_simple(
         }
         ++expression_token_count;
     }
-    return expression_token_count == 1U;
+    return expression_token_count == 1U ||
+           placeholder_scan_bare_truth_expression_is_qualified_identifier(
+               scan,
+               expression_index,
+               scan->token_count
+           );
+}
+
+static bool placeholder_scan_bare_truth_expression_is_qualified_identifier(
+    const struct placeholder_statement_scan *scan,
+    size_t expression_index,
+    size_t stop_index
+) {
+    bool need_identifier = true;
+    size_t token_count = 0U;
+
+    if (scan == NULL || stop_index <= expression_index + 2U || stop_index > scan->token_count) {
+        return false;
+    }
+    for (size_t index = expression_index; index < stop_index; ++index) {
+        if (need_identifier) {
+            if (!placeholder_scan_token_is_identifier_like(scan, index)) {
+                return false;
+            }
+            need_identifier = false;
+        } else {
+            if (!placeholder_scan_token_text_equals(scan, index, ".")) {
+                return false;
+            }
+            need_identifier = true;
+        }
+        ++token_count;
+    }
+    return token_count >= 3U && !need_identifier;
 }
 
 static bool placeholder_scan_contains_lateral_derived_table(

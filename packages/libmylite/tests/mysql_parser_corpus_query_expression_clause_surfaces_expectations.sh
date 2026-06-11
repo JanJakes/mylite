@@ -38,6 +38,29 @@ expect_output() {
     fi
 }
 
+expect_error() {
+    label=$1
+    code=$2
+    state=$3
+    message=$4
+    sql=$5
+    shift 5
+
+    set +e
+    output=$(run_mysql "$sql" "$@" 2>&1)
+    status_code=$?
+    set -e
+
+    if [ "$status_code" -eq 0 ]; then
+        fail "$label: expected error $code/$state, command succeeded with [$output]"
+    fi
+
+    case "$output" in
+        *"ERROR $code ($state)"*"$message"*) ;;
+        *) fail "$label: expected error $code/$state containing [$message], got [$output]" ;;
+    esac
+}
+
 cleanup() {
     run_mysql "DROP DATABASE IF EXISTS ${DATABASE};" >/dev/null 2>&1 || true
 }
@@ -52,13 +75,23 @@ esac
 
 cleanup
 run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE}; "\
-"CREATE TABLE t1 (a INT, b INT, c VARCHAR(20), j JSON); "\
-"CREATE TABLE t2 (a INT, b INT, c2 DATE, c3 TIME, c4 TIMESTAMP NULL); "\
+"CREATE TABLE t1 (a INT, b INT, c VARCHAR(20), j JSON, col_varchar_10 VARCHAR(10)); "\
+"CREATE TABLE t2 (a INT, b INT, c2 DATE, c3 TIME, c4 TIMESTAMP NULL, "\
+"pk INT, col_int_key INT, col_varchar_10_key VARCHAR(10)); "\
+"CREATE TABLE t_dates (f1 DATE, f2 DATETIME, f3 DATE, a DATETIME, "\
+"value DECIMAL(30,0)); "\
 "CREATE TABLE ft (x TEXT, FULLTEXT KEY ft_x (x)) ENGINE=InnoDB; "\
-"INSERT INTO t1 VALUES (1,2,'x','{\"id\":5,\"name\":\"James\"}'),"\
-"(3,4,'y','{\"id\":7,\"name\":\"james\"}'); "\
-"INSERT INTO t2 VALUES (1,20,'2014-01-03','01:01:03','2014-01-03 01:01:01'),"\
-"(3,40,'2014-02-01','02:00:00','2014-02-01 01:01:01'); "\
+"CREATE VIEW v_dates AS SELECT DATE '2005-02-02' AS f1; "\
+"INSERT INTO t1 VALUES (1,2,'x','{\"id\":5,\"name\":\"James\"}','k1'),"\
+"(3,4,'y','{\"id\":7,\"name\":\"james\"}','k2'); "\
+"INSERT INTO t2 VALUES (1,20,'2014-01-03','01:01:03','2014-01-03 01:01:01',"\
+"1,10,'k1'),"\
+"(3,40,'2014-02-01','02:00:00','2014-02-01 01:01:01',0,20,'k2'); "\
+"INSERT INTO t_dates VALUES "\
+"('2001-01-01','2001-04-10 12:34:56','2001-05-01',"\
+"'2010-02-01 09:31:02',100000000000000000000002),"\
+"('2001-01-01','2001-03-01 00:00:00','2001-03-20',"\
+"'2010-02-02 00:00:00',5); "\
 "INSERT INTO ft VALUES ('abc one'),('def two');" >/dev/null
 
 expect_output \
@@ -164,6 +197,71 @@ expect_output \
 3" \
     "USE ${DATABASE}; "\
 "SELECT a FROM t1 WHERE a IN (SELECT a FROM t2 WHERE b + 1 > 20) ORDER BY a;"
+
+expect_output \
+    "string literal left BETWEEN datetime and string" \
+    "2001-04-10 12:34:56
+2001-03-01 00:00:00" \
+    "USE ${DATABASE}; "\
+"SELECT f2 FROM t_dates "\
+"WHERE '2001-04-10 12:34:56' BETWEEN f2 AND '01-05-01';"
+
+expect_output \
+    "string literal left BETWEEN descriptor bounds" \
+    "2001-03-01 00:00:00	2001-03-20" \
+    "USE ${DATABASE}; "\
+"SELECT f2, f3 FROM t_dates WHERE '01-03-10' BETWEEN f2 AND f3;"
+
+expect_output \
+    "string literal left IN descriptor list" \
+    "4" \
+    "USE ${DATABASE}; "\
+"SELECT COUNT(*) FROM t_dates,t2 WHERE '01-01-01' IN (f1, '01-02-03');"
+
+expect_output \
+    "string literal left equality predicate" \
+    "1" \
+    "USE ${DATABASE}; "\
+"SELECT COUNT(*) FROM t_dates WHERE '100000000000000000000002' = value;"
+
+expect_output \
+    "string literal left less-or-equal predicate" \
+    "2" \
+    "USE ${DATABASE}; "\
+"SELECT COUNT(*) FROM t_dates WHERE '2010-02-01 09:31:02.0' <= a;"
+
+expect_output \
+    "string literal left greater-or-equal predicate" \
+    "1" \
+    "USE ${DATABASE}; "\
+"SELECT COUNT(*) FROM t_dates WHERE '2010-02-01 09:31:02.0' >= a;"
+
+expect_output \
+    "dotted date string equality against view column" \
+    "1" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM v_dates WHERE '2005.02.02'=f1;"
+
+expect_output \
+    "group by user-variable assignment" \
+    "1
+NULL" \
+    "USE ${DATABASE}; SET @a := 1; SET @b := NULL; "\
+"SELECT 1 FROM t_dates GROUP BY @b := @a, @b; SELECT @b;"
+
+expect_error \
+    "quoted missing function call parses before resolution" \
+    1305 \
+    42000 \
+    "FUNCTION ${DATABASE}.foo does not exist" \
+    "USE ${DATABASE}; SELECT \`foo\` ();"
+
+expect_output \
+    "distinct joined order with qualified bare truth predicate" \
+    "10" \
+    "USE ${DATABASE}; "\
+"SELECT DISTINCT t2.col_int_key FROM t1 LEFT JOIN t2 "\
+"ON t1.col_varchar_10 = t2.col_varchar_10_key "\
+"WHERE t2.pk ORDER BY t2.col_int_key;"
 
 expect_output \
     "multi-table update expression assignment" \

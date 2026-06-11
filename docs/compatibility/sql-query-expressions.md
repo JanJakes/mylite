@@ -113,20 +113,26 @@ table-backed row tuple predicates, postfix `IS` predicates over broader
 expression operands, JSON `->` / `->>` column-path predicates, ODBC expression
 escapes, qualified column-to-column `BETWEEN`, qualified descriptor `IN` lists,
 table-backed `ROW(...)` comparisons, parenthesized `MATCH(...) AGAINST(...)`,
-string-literal `VALUES` order keys, and bare truth expressions in table-backed
-predicate clauses. The recognized clause positions are table-backed `WHERE`,
-`ON`, `GROUP BY`, `HAVING`, `ORDER BY`, `VALUES ORDER BY`, DML assignment, and
+string-literal `VALUES` order keys, string-literal-left comparison /
+`BETWEEN` / `IN` predicates, grouped user-variable assignment keys, qualified
+bare truth expressions, and bare truth expressions in table-backed predicate
+clauses. The recognized clause positions are table-backed `WHERE`, `ON`,
+`GROUP BY`, `HAVING`, `ORDER BY`, `VALUES ORDER BY`, DML assignment, and
 subquery expression positions. These parser placeholders do not implement broad
 table-backed expression planning, JSON-arrow query predicates, ODBC escape
-conversion, full-text search, or tuple predicate execution semantics.
+conversion, full-text search, tuple predicate execution semantics, or
+user-variable assignment side effects. See [parser corpus literal-left query
+residuals](../specs/parser-corpus-literal-left-query-residuals/specs.md).
 
 The parser-corpus query function/subquery surface classifies recognized nested
 function-call and parenthesized query-expression syntax as explicit unsupported
 placeholders after normal parse failure. This includes nested function
 projection and ordering expressions in table-backed contexts, scalar subqueries
 in projection, ordering, `VALUES`, and `INSERT` value positions, and named
-aggregate-window expressions. These parser placeholders do not implement broad
-function execution, general scalar subqueries, table functions, or aggregate
+aggregate-window expressions. It also admits quoted function names with
+whitespace before `(` as placeholders in expression context. These parser
+placeholders do not implement broad function execution, stored/loadable
+function resolution, general scalar subqueries, table functions, or aggregate
 window execution semantics.
 
 The parser-corpus function-expression placeholder surface additionally

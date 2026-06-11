@@ -213,6 +213,98 @@ static int test_query_expression_clause_surfaces(void) {
     );
     failures += execute_error(
         database,
+        "select f2 from t1 where '2001-04-10 12:34:56' between f2 and '01-05-01'",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "select f2, f3 from t1 where '01-03-10' between f2 and f3",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "select * from t1,t2 where '01-01-01' in (f1, '01-02-03')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT * FROM t1 WHERE '100000000000000000000002' = value",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT * FROM t1 WHERE '2010-02-01 09:31:02.0' <= a",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT * FROM t1 WHERE '2010-02-01 09:31:02.0' >= a",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "select * from v1 where '2005.02.02'=f1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT 1 FROM t1 GROUP BY @b := @a, @b",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "select `foo` ()",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DISTINCT t2.col_int_key FROM t1 LEFT JOIN t2 "
+        "ON t1.col_varchar_10 = t2.col_varchar_10_key "
+        "WHERE t2.pk ORDER BY t2.col_int_key",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
         "WITH qn AS (SELECT 1) SELECT * FROM qn",
         (struct expected_sql_error){
             .code = mysql_error_parse,

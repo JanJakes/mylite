@@ -988,9 +988,16 @@ static int test_create_table_foreign_key_statements(void) {
     failures += parser_test_parse_sql(
         "CREATE TABLE child (parent_id INT, FOREIGN KEY (parent_id) REFERENCES parent (id) "
         "ON DELETE SET DEFAULT);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT,
+        "foreign key set default placeholder"
+    );
+    failures += parser_test_expect_child_count(statement, 0U, "foreign key set default children");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -2006,9 +2013,17 @@ static int test_alter_table_add_foreign_key_statements(void) {
     failures += parser_test_parse_sql(
         "ALTER TABLE child ADD CONSTRAINT fk FOREIGN KEY (parent_id) REFERENCES parent (id) "
         "ON UPDATE SET DEFAULT;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT,
+        "alter foreign key set default placeholder"
+    );
+    failures +=
+        parser_test_expect_child_count(statement, 0U, "alter foreign key set default children");
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

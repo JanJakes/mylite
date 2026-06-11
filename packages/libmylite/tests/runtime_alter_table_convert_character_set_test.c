@@ -485,6 +485,7 @@ static int test_convert_success_metadata_persistence_and_preamble(void) {
 }
 
 static int test_convert_diagnostics(void) {
+    static const char *const default_collate_table_collation_value[] = {"utf8mb4_bin"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -657,13 +658,22 @@ static int test_convert_diagnostics(void) {
             .message_part = "near 'DEFAULT'",
         }
     );
-    failures += execute_error(
+    failures += expect_convert_ok(
         database,
-        "ALTER TABLE target CONVERT TO CHARACTER SET DEFAULT COLLATE utf8mb4_bin",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "near 'COLLATE'",
+        (struct expected_statement){
+            .sql = "ALTER TABLE target CONVERT TO CHARACTER SET DEFAULT COLLATE utf8mb4_bin",
+            .context = "convert default charset with explicit collation",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT TABLE_COLLATION FROM INFORMATION_SCHEMA.TABLES "
+                   "WHERE TABLE_SCHEMA='app' AND TABLE_NAME='target'",
+            .values = default_collate_table_collation_value,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "default charset explicit collation table metadata",
         }
     );
 

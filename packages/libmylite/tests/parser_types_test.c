@@ -1683,6 +1683,9 @@ static int test_approximate_type_statements(void) {
         approximate_unsigned_float_column = 8,
         approximate_scaled_float_column = 9,
         approximate_scaled_double_column = 10,
+        approximate_signed_float_column = 11,
+        approximate_scaled_real_column = 12,
+        approximate_scaled_double_precision_column = 13,
     };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -1693,7 +1696,8 @@ static int test_approximate_type_statements(void) {
     failures += parser_test_parse_sql(
         "CREATE TABLE approximate_types (a FLOAT, b FLOAT(24), c FLOAT(25), "
         "d FLOAT4, e FLOAT8, f DOUBLE, g DOUBLE PRECISION, h REAL, i FLOAT UNSIGNED, "
-        "j FLOAT(10,2), k DOUBLE(10,2));",
+        "j FLOAT(10,2), k DOUBLE(10,2), l FLOAT SIGNED, m REAL(7,4), "
+        "n DOUBLE PRECISION(8,3));",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -1792,6 +1796,33 @@ static int test_approximate_type_statements(void) {
         0,
         "scaled double column type"
     );
+    failures += parser_test_expect_approximate_type(
+        parser_test_child_at(parser_test_child_at(columns, approximate_signed_float_column), 1U),
+        MYLITE_SQL_AST_APPROXIMATE_TYPE_FLOAT,
+        NULL,
+        NULL,
+        0,
+        "signed float column type"
+    );
+    failures += parser_test_expect_approximate_type(
+        parser_test_child_at(parser_test_child_at(columns, approximate_scaled_real_column), 1U),
+        MYLITE_SQL_AST_APPROXIMATE_TYPE_REAL,
+        "7",
+        "4",
+        0,
+        "scaled real column type"
+    );
+    failures += parser_test_expect_approximate_type(
+        parser_test_child_at(
+            parser_test_child_at(columns, approximate_scaled_double_precision_column),
+            1U
+        ),
+        MYLITE_SQL_AST_APPROXIMATE_TYPE_DOUBLE,
+        "8",
+        "3",
+        0,
+        "scaled double precision column type"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
@@ -1864,19 +1895,6 @@ static int test_approximate_type_statements(void) {
         parser_test_child_at(parser_test_child_at(parser_test_child_at(statement, 1U), 0U), 1U),
         MYLITE_SQL_AST_LITERAL_FLOAT,
         "approximate update value"
-    );
-    mylite_sql_parse_result_deinit(&result);
-
-    failures += parser_test_parse_sql(
-        "CREATE TABLE bad_approximate (c FLOAT SIGNED);",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
-    mylite_sql_parse_result_deinit(&result);
-    failures += parser_test_parse_sql(
-        "CREATE TABLE bad_approximate_scale (c REAL(7,4));",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
     );
     mylite_sql_parse_result_deinit(&result);
 

@@ -3256,6 +3256,13 @@ alter_table_default_charset_collation_option(A) ::=
     A = mylite_sql_parser_make_table_charset_option(state, C, N);
 }
 alter_table_default_charset_collation_option(A) ::=
+    default_opt CHARACTER(C) SET equal_opt BINARY(N). {
+    A = mylite_sql_parser_make_table_charset_option(
+        state,
+        C,
+        mylite_sql_parser_make_identifier(state, N));
+}
+alter_table_default_charset_collation_option(A) ::=
     default_opt COLLATE(C) equal_opt option_name(N). {
     A = mylite_sql_parser_make_table_collation_option(state, C, N);
 }
@@ -3323,30 +3330,38 @@ alter_table_convert_character_set_statement(A) ::=
             O));
 }
 alter_table_convert_character_set_statement(A) ::=
-    ALTER(A1) TABLE table_name(T) CONVERT TO CHARACTER(C) SET DEFAULT(D). {
+    ALTER(A1) TABLE table_name(T) CONVERT TO CHARACTER(C) SET DEFAULT(D)
+    convert_character_set_collate_opt(O). {
     A = mylite_sql_parser_make_alter_table_convert_character_set_statement(
         state,
         A1,
         T,
-        mylite_sql_parser_make_table_option_list(
+        mylite_sql_parser_append_table_option(
             state,
-            mylite_sql_parser_make_table_charset_option(
+            mylite_sql_parser_make_table_option_list(
                 state,
-                C,
-                mylite_sql_parser_make_identifier(state, D))));
+                mylite_sql_parser_make_table_charset_option(
+                    state,
+                    C,
+                    mylite_sql_parser_make_identifier(state, D))),
+            O));
 }
 alter_table_convert_character_set_statement(A) ::=
-    ALTER(A1) TABLE table_name(T) CONVERT TO CHARSET(C) DEFAULT(D). {
+    ALTER(A1) TABLE table_name(T) CONVERT TO CHARSET(C) DEFAULT(D)
+    convert_character_set_collate_opt(O). {
     A = mylite_sql_parser_make_alter_table_convert_character_set_statement(
         state,
         A1,
         T,
-        mylite_sql_parser_make_table_option_list(
+        mylite_sql_parser_append_table_option(
             state,
-            mylite_sql_parser_make_table_charset_option(
-            state,
-            C,
-            mylite_sql_parser_make_identifier(state, D))));
+            mylite_sql_parser_make_table_option_list(
+                state,
+                mylite_sql_parser_make_table_charset_option(
+                    state,
+                    C,
+                    mylite_sql_parser_make_identifier(state, D))),
+            O));
 }
 
 alter_table_multi_convert_character_set_action(A) ::=
@@ -3407,29 +3422,37 @@ alter_table_multi_convert_character_set_action(A) ::=
                     mylite_sql_parser_make_identifier(state, N))),
             O));
 }
-alter_table_multi_convert_character_set_action(A) ::= CONVERT TO CHARACTER(C) SET DEFAULT(D). {
+alter_table_multi_convert_character_set_action(A) ::= CONVERT TO CHARACTER(C) SET DEFAULT(D)
+    convert_character_set_collate_opt(O). {
     A = mylite_sql_parser_make_alter_table_convert_character_set_statement(
         state,
         C,
         NULL,
-        mylite_sql_parser_make_table_option_list(
+        mylite_sql_parser_append_table_option(
             state,
-            mylite_sql_parser_make_table_charset_option(
+            mylite_sql_parser_make_table_option_list(
                 state,
-                C,
-                mylite_sql_parser_make_identifier(state, D))));
+                mylite_sql_parser_make_table_charset_option(
+                    state,
+                    C,
+                    mylite_sql_parser_make_identifier(state, D))),
+            O));
 }
-alter_table_multi_convert_character_set_action(A) ::= CONVERT TO CHARSET(C) DEFAULT(D). {
+alter_table_multi_convert_character_set_action(A) ::= CONVERT TO CHARSET(C) DEFAULT(D)
+    convert_character_set_collate_opt(O). {
     A = mylite_sql_parser_make_alter_table_convert_character_set_statement(
         state,
         C,
         NULL,
-        mylite_sql_parser_make_table_option_list(
+        mylite_sql_parser_append_table_option(
             state,
-            mylite_sql_parser_make_table_charset_option(
+            mylite_sql_parser_make_table_option_list(
                 state,
-                C,
-                mylite_sql_parser_make_identifier(state, D))));
+                mylite_sql_parser_make_table_charset_option(
+                    state,
+                    C,
+                    mylite_sql_parser_make_identifier(state, D))),
+            O));
 }
 
 convert_character_set_collate_opt(A) ::= . {
@@ -12566,6 +12589,9 @@ index_type_opt(A) ::= index_type_option(B). {
 index_type_option(A) ::= USING(U) identifier(T). {
     A = mylite_sql_parser_make_index_type_option(state, U, T);
 }
+index_type_option(A) ::= TYPE(T) identifier(V). {
+    A = mylite_sql_parser_make_index_type_option(state, T, V);
+}
 
 index_option_list_opt(A) ::= . {
     A = NULL;
@@ -13479,6 +13505,17 @@ binary_string_type(A) ::= CHAR(T) LPAREN INTEGER(L) RPAREN BYTE(B). {
             .has_length = 1,
         });
 }
+binary_string_type(A) ::= VARCHAR(T) LPAREN INTEGER(L) RPAREN BYTE(B). {
+    A = mylite_sql_parser_make_binary_string_type(
+        state,
+        (struct mylite_sql_binary_string_type_tokens){
+            .type_token = T,
+            .length_token = L,
+            .end_token = B,
+            .binary_string_type = MYLITE_SQL_AST_BINARY_STRING_TYPE_VARBINARY,
+            .has_length = 1,
+        });
+}
 binary_string_type(A) ::= binary_string_type_name(T). {
     A = mylite_sql_parser_make_binary_string_type(state, T);
 }
@@ -13548,6 +13585,14 @@ binary_string_type_name(A) ::= LONG(T) VARBINARY(V). {
     A = (struct mylite_sql_binary_string_type_tokens){
         .type_token = T,
         .end_token = V,
+        .binary_string_type = MYLITE_SQL_AST_BINARY_STRING_TYPE_MEDIUMBLOB,
+        .has_length = 0,
+    };
+}
+binary_string_type_name(A) ::= LONG(T) BYTE(B). {
+    A = (struct mylite_sql_binary_string_type_tokens){
+        .type_token = T,
+        .end_token = B,
         .binary_string_type = MYLITE_SQL_AST_BINARY_STRING_TYPE_MEDIUMBLOB,
         .has_length = 0,
     };
@@ -13702,6 +13747,22 @@ approximate_type(A) ::= DOUBLE(D) PRECISION(P) approximate_unsigned_opt(U). {
             .is_unsigned = U.is_unsigned,
         });
 }
+approximate_type(A) ::= DOUBLE(D) PRECISION LPAREN INTEGER(P) COMMA INTEGER(S) RPAREN(R)
+    approximate_unsigned_opt(U). {
+    A = mylite_sql_parser_make_approximate_type(
+        state,
+        (struct mylite_sql_approximate_type_tokens){
+            .type_token = D,
+            .precision_token = P,
+            .scale_token = S,
+            .end_token = U.attribute_token.text == NULL ? R : U.attribute_token,
+            .attribute_token = U.attribute_token,
+            .approximate_type = MYLITE_SQL_AST_APPROXIMATE_TYPE_DOUBLE,
+            .has_precision = 1,
+            .has_scale = 1,
+            .is_unsigned = U.is_unsigned,
+        });
+}
 approximate_type(A) ::= REAL(T) approximate_unsigned_opt(U). {
     A = mylite_sql_parser_make_approximate_type(
         state,
@@ -13710,6 +13771,22 @@ approximate_type(A) ::= REAL(T) approximate_unsigned_opt(U). {
             .end_token = U.attribute_token.text == NULL ? T : U.attribute_token,
             .attribute_token = U.attribute_token,
             .approximate_type = MYLITE_SQL_AST_APPROXIMATE_TYPE_REAL,
+            .is_unsigned = U.is_unsigned,
+        });
+}
+approximate_type(A) ::= REAL(T) LPAREN INTEGER(P) COMMA INTEGER(S) RPAREN(R)
+    approximate_unsigned_opt(U). {
+    A = mylite_sql_parser_make_approximate_type(
+        state,
+        (struct mylite_sql_approximate_type_tokens){
+            .type_token = T,
+            .precision_token = P,
+            .scale_token = S,
+            .end_token = U.attribute_token.text == NULL ? R : U.attribute_token,
+            .attribute_token = U.attribute_token,
+            .approximate_type = MYLITE_SQL_AST_APPROXIMATE_TYPE_REAL,
+            .has_precision = 1,
+            .has_scale = 1,
             .is_unsigned = U.is_unsigned,
         });
 }
@@ -13741,6 +13818,12 @@ approximate_unsigned_opt(A) ::= UNSIGNED(U). {
     A = (struct mylite_sql_approximate_type_tokens){
         .attribute_token = U,
         .is_unsigned = 1,
+    };
+}
+approximate_unsigned_opt(A) ::= SIGNED(S). {
+    A = (struct mylite_sql_approximate_type_tokens){
+        .attribute_token = S,
+        .is_unsigned = 0,
     };
 }
 
@@ -13821,6 +13904,25 @@ year_type(A) ::= YEAR(T) LPAREN INTEGER(W) RPAREN(R). {
             .type_token = T,
             .width_token = W,
             .end_token = R,
+            .has_width = 1,
+        });
+}
+year_type(A) ::= YEAR(T) UNSIGNED(U). {
+    A = mylite_sql_parser_make_year_type(
+        state,
+        (struct mylite_sql_year_type_tokens){
+            .type_token = T,
+            .end_token = U,
+            .has_width = 0,
+        });
+}
+year_type(A) ::= YEAR(T) LPAREN INTEGER(W) RPAREN UNSIGNED(U). {
+    A = mylite_sql_parser_make_year_type(
+        state,
+        (struct mylite_sql_year_type_tokens){
+            .type_token = T,
+            .width_token = W,
+            .end_token = U,
             .has_width = 1,
         });
 }

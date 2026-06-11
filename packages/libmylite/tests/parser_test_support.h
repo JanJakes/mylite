@@ -14,7 +14,7 @@ enum {
     bool_alias_column_count = 3,
     integer_default_column_count = 5,
     decimal_column_count = 6,
-    approximate_column_count = 11,
+    approximate_column_count = 14,
     year_column_count = 3,
     date_column_count = 3,
     datetime_column_count = 3,

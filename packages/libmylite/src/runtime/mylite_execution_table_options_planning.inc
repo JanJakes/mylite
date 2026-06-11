@@ -102,12 +102,13 @@ static int validate_alter_table_default_charset_collation_options(
         table_option = table_option->next_sibling;
     }
     if (rc == MYLITE_OK) {
-        rc = validate_table_charset_collation_option_values(
+        rc = validate_table_charset_collation_option_values_with_binary(
             database,
             has_charset,
             charset_name,
             has_collation,
-            collation_name
+            collation_name,
+            true
         );
     }
 
@@ -1681,6 +1682,14 @@ static int copy_default_collation_for_charset(
     const struct mylite_execution_catalog_character_set *charset =
         character_set_by_name(charset_name);
 
+    if (charset_name_is_binary(charset_name)) {
+        if (sizeof("binary") > default_collation_size) {
+            set_runtime_error(database, "schema collation descriptor is too small");
+            return MYLITE_ERROR;
+        }
+        memcpy(default_collation, "binary", sizeof("binary"));
+        return MYLITE_OK;
+    }
     if (charset == NULL) {
         set_unknown_character_set_error(database, charset_name);
         return MYLITE_ERROR;
@@ -1738,6 +1747,14 @@ static int copy_normalized_charset_name(
     const struct mylite_execution_catalog_character_set *charset =
         character_set_by_name(charset_name);
 
+    if (charset_name_is_binary(charset_name)) {
+        if (sizeof("binary") > destination_size) {
+            set_runtime_error(database, "schema charset descriptor is too small");
+            return MYLITE_ERROR;
+        }
+        memcpy(destination, "binary", sizeof("binary"));
+        return MYLITE_OK;
+    }
     if (charset == NULL) {
         set_unknown_character_set_error(database, charset_name);
         return MYLITE_ERROR;
@@ -1759,6 +1776,14 @@ static int copy_normalized_collation_name(
 ) {
     const struct mylite_execution_catalog_collation *collation = collation_by_name(collation_name);
 
+    if (collation_name_is_binary(collation_name)) {
+        if (sizeof("binary") > destination_size) {
+            set_runtime_error(database, "schema collation descriptor is too small");
+            return MYLITE_ERROR;
+        }
+        memcpy(destination, "binary", sizeof("binary"));
+        return MYLITE_OK;
+    }
     if (collation == NULL) {
         set_unknown_collation_error(database, collation_name);
         return MYLITE_ERROR;

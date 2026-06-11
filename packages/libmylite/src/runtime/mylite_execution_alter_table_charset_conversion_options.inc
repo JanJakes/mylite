@@ -100,7 +100,7 @@ static int apply_alter_table_default_charset_collation_options(
             rc = apply_table_charset_option(
                 database,
                 table_option,
-                false,
+                true,
                 plan->default_charset,
                 sizeof(plan->default_charset)
             );
@@ -108,7 +108,7 @@ static int apply_alter_table_default_charset_collation_options(
             rc = apply_table_collation_option(
                 database,
                 table_option,
-                false,
+                true,
                 plan->default_collation,
                 sizeof(plan->default_collation)
             );
@@ -236,10 +236,6 @@ static int apply_alter_table_convert_character_set_options(
         return MYLITE_ERROR;
     }
     if (table_charset_option_is_default_keyword(charset_option)) {
-        if (collation_option != NULL) {
-            set_parse_error(database, NULL);
-            return MYLITE_ERROR;
-        }
         rc = apply_alter_table_convert_character_set_default(database, plan);
     } else {
         rc = copy_table_charset_option_name(

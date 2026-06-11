@@ -219,6 +219,31 @@ static bool placeholder_scan_token_starts_select_lock_wait(
     const struct placeholder_statement_scan *scan,
     size_t index
 );
+static enum mylite_sql_parse_status try_parse_legacy_create_index_type_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    bool *out_handled
+);
+static bool scan_can_retry_legacy_create_index_type(
+    const struct placeholder_statement_scan *scan,
+    size_t *out_type_index
+);
+static bool scan_legacy_create_index_type_prefix(
+    const struct placeholder_statement_scan *scan,
+    size_t after_index_name,
+    size_t *out_type_index
+);
+static bool scan_legacy_create_index_type_suffix(
+    const struct placeholder_statement_scan *scan,
+    size_t after_index_name,
+    size_t *out_type_index
+);
+static enum mylite_sql_parse_status parse_legacy_create_index_type_tokens(
+    struct mylite_sql_parse_config config,
+    const struct placeholder_statement_scan *scan,
+    size_t type_index,
+    struct mylite_sql_parse_result *out_result
+);
 static enum mylite_sql_parse_status try_parse_placeholder_statement(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
@@ -255,6 +280,15 @@ static enum mylite_sql_parse_status feed_select_modifier_reordered_token(
     struct mylite_sql_parser_token_history *history,
     bool *previous_token_was_dot,
     const struct mylite_sql_token *token
+);
+static enum mylite_sql_parse_status feed_token_with_parser_token_override(
+    struct mylite_sql_parse_config config,
+    void *parser,
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_token_history *history,
+    bool *previous_token_was_dot,
+    const struct mylite_sql_token *token,
+    int parser_token_override
 );
 static bool append_placeholder_statement_token(
     const struct mylite_sql_token *token,
@@ -935,6 +969,25 @@ static bool ddl_extended_option_placeholder_statement_is_candidate(
     const struct placeholder_statement_scan *scan
 );
 static bool ddl_extended_option_scan_has_marker(const struct placeholder_statement_scan *scan);
+static bool ddl_residual_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static bool ddl_residual_placeholder_statement_is_candidate(
+    const struct placeholder_statement_scan *scan
+);
+static bool ddl_residual_scan_has_fulltext_parser_clause(
+    const struct placeholder_statement_scan *scan
+);
+static bool ddl_residual_scan_has_generated_column_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool ddl_generated_column_clause_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t generated_index
+);
+static bool ddl_residual_scan_has_foreign_key_set_default_action(
+    const struct placeholder_statement_scan *scan
+);
 static bool ddl_check_expression_placeholder_scan_has_marker(
     const struct placeholder_statement_scan *scan
 );
@@ -950,6 +1003,9 @@ static bool placeholder_scan_starts_create_table_statement(
     const struct placeholder_statement_scan *scan
 );
 static bool placeholder_scan_starts_alter_table_statement(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_starts_create_index_statement(
     const struct placeholder_statement_scan *scan
 );
 static bool alter_table_partition_placeholder_statement_is_supported(
@@ -1319,6 +1375,18 @@ enum mylite_sql_parse_status mylite_sql_parse(
 
     if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
         bool handled = false;
+
+        enum mylite_sql_parse_status legacy_index_status =
+            try_parse_legacy_create_index_type_statement(config, out_result, &handled);
+
+        if (handled) {
+            status = legacy_index_status;
+            out_result->status = legacy_index_status;
+        }
+    }
+
+    if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
+        bool handled = false;
         enum mylite_sql_parse_status placeholder_status =
             try_parse_placeholder_statement(config, out_result, &handled);
 
@@ -1558,6 +1626,11 @@ static enum mylite_sql_parse_status try_parse_select_result_option_before_duplic
 
     mylite_sql_parse_result_deinit(&retry_result);
     free(tokens);
+    if (status != MYLITE_SQL_PARSE_SYNTAX_ERROR) {
+        result->status = status;
+        *out_handled = true;
+        return status;
+    }
     return MYLITE_SQL_PARSE_OK;
 }
 
@@ -1719,12 +1792,39 @@ static enum mylite_sql_parse_status feed_select_modifier_reordered_token(
     bool *previous_token_was_dot,
     const struct mylite_sql_token *token
 ) {
+    return feed_token_with_parser_token_override(
+        config,
+        parser,
+        state,
+        history,
+        previous_token_was_dot,
+        token,
+        0
+    );
+}
+
+static enum mylite_sql_parse_status feed_token_with_parser_token_override(
+    struct mylite_sql_parse_config config,
+    void *parser,
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_token_history *history,
+    bool *previous_token_was_dot,
+    const struct mylite_sql_token *token,
+    int parser_token_override
+) {
     struct mylite_sql_parser_token_map token_map;
     struct mylite_sql_lexer token_lexer;
 
     if (parser == NULL || state == NULL || state->result == NULL || history == NULL ||
         previous_token_was_dot == NULL || token == NULL) {
         return MYLITE_SQL_PARSE_MISUSE;
+    }
+
+    if (parser_token_override > 0) {
+        mylite_sql_lemon(parser, parser_token_override, *token, state);
+        *previous_token_was_dot = false;
+        update_parser_token_history(history, parser_token_override);
+        return state->result->status;
     }
 
     token_lexer = (struct mylite_sql_lexer){
@@ -2246,6 +2346,200 @@ static bool placeholder_scan_token_starts_select_lock_wait(
     return placeholder_scan_token_text_equals(scan, index, "NOWAIT") ||
            (placeholder_scan_token_text_equals(scan, index, "SKIP") &&
             placeholder_scan_token_text_equals(scan, index + 1U, "LOCKED"));
+}
+
+static enum mylite_sql_parse_status try_parse_legacy_create_index_type_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    bool *out_handled
+) {
+    struct mylite_sql_token *tokens = NULL;
+    struct placeholder_statement_scan scan = {0};
+    struct mylite_sql_parse_result retry_result;
+    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+    size_t type_index = 0U;
+
+    if (out_handled == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    *out_handled = false;
+
+    status = scan_placeholder_statement_tokens(
+        config,
+        &tokens,
+        &scan.token_count,
+        &scan.has_non_trailing_semicolon
+    );
+    if (status != MYLITE_SQL_PARSE_OK) {
+        free(tokens);
+        return status;
+    }
+    scan.tokens = tokens;
+    if (!scan_can_retry_legacy_create_index_type(&scan, &type_index)) {
+        free(tokens);
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    memset(&retry_result, 0, sizeof(retry_result));
+    status = parse_legacy_create_index_type_tokens(config, &scan, type_index, &retry_result);
+    if (status == MYLITE_SQL_PARSE_OK) {
+        mylite_sql_ast_deinit(&result->ast);
+        *result = retry_result;
+        *out_handled = true;
+        free(tokens);
+        return status;
+    }
+
+    mylite_sql_parse_result_deinit(&retry_result);
+    free(tokens);
+    return MYLITE_SQL_PARSE_OK;
+}
+
+static bool scan_can_retry_legacy_create_index_type(
+    const struct placeholder_statement_scan *scan,
+    size_t *out_type_index
+) {
+    enum { legacy_create_index_type_min_token_count = 7U };
+
+    size_t index = 1U;
+    size_t after_index_name = 0U;
+
+    if (out_type_index != NULL) {
+        *out_type_index = 0U;
+    }
+    if (scan == NULL || scan->tokens == NULL || scan->has_non_trailing_semicolon ||
+        scan->token_count < legacy_create_index_type_min_token_count ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U) ||
+        !placeholder_scan_token_text_equals(scan, 0U, "CREATE")) {
+        return false;
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "UNIQUE")) {
+        ++index;
+    }
+    if (!placeholder_scan_token_text_equals(scan, index, "INDEX") ||
+        !placeholder_scan_token_can_name_loose_identifier(scan, index + 1U)) {
+        return false;
+    }
+
+    after_index_name = index + 2U;
+    return scan_legacy_create_index_type_prefix(scan, after_index_name, out_type_index) ||
+           scan_legacy_create_index_type_suffix(scan, after_index_name, out_type_index);
+}
+
+static bool scan_legacy_create_index_type_prefix(
+    const struct placeholder_statement_scan *scan,
+    size_t after_index_name,
+    size_t *out_type_index
+) {
+    if (!placeholder_scan_token_text_equals(scan, after_index_name, "TYPE") ||
+        !placeholder_scan_token_can_name_loose_identifier(scan, after_index_name + 1U) ||
+        !placeholder_scan_token_text_equals(scan, after_index_name + 2U, "ON")) {
+        return false;
+    }
+    if (out_type_index != NULL) {
+        *out_type_index = after_index_name;
+    }
+    return true;
+}
+
+static bool scan_legacy_create_index_type_suffix(
+    const struct placeholder_statement_scan *scan,
+    size_t after_index_name,
+    size_t *out_type_index
+) {
+    size_t index = after_index_name;
+    size_t right_paren_index = 0U;
+
+    if (!placeholder_scan_token_text_equals(scan, index, "ON")) {
+        return false;
+    }
+    ++index;
+    if (!placeholder_scan_match_column_name_starts_at(scan, index, &index) ||
+        !token_is_left_paren(&scan->tokens[index]) ||
+        !placeholder_scan_find_matching_right_paren(scan, index, &right_paren_index)) {
+        return false;
+    }
+    index = right_paren_index + 1U;
+    if (!placeholder_scan_token_text_equals(scan, index, "TYPE") ||
+        !placeholder_scan_token_can_name_loose_identifier(scan, index + 1U)) {
+        return false;
+    }
+    if (out_type_index != NULL) {
+        *out_type_index = index;
+    }
+    return true;
+}
+
+static enum mylite_sql_parse_status parse_legacy_create_index_type_tokens(
+    struct mylite_sql_parse_config config,
+    const struct placeholder_statement_scan *scan,
+    size_t type_index,
+    struct mylite_sql_parse_result *out_result
+) {
+    struct mylite_sql_parser_state state;
+    struct mylite_sql_parser_token_history token_history = {0};
+    void *parser = NULL;
+    bool previous_token_was_dot = false;
+    struct mylite_sql_token eof_token = {
+        .kind = MYLITE_SQL_TOKEN_EOF,
+        .text = config.input == NULL ? NULL : config.input + config.length,
+        .offset = config.length,
+    };
+    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+
+    if (out_result == NULL || scan == NULL || scan->tokens == NULL ||
+        type_index >= scan->token_count) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+
+    memset(out_result, 0, sizeof(*out_result));
+    out_result->status = MYLITE_SQL_PARSE_OK;
+    mylite_sql_ast_init(&out_result->ast);
+
+    state = (struct mylite_sql_parser_state){
+        .result = out_result,
+        .modes = config.modes,
+        .accepted = false,
+    };
+    parser = mylite_sql_lemonAlloc(malloc);
+    if (parser == NULL) {
+        out_result->status = MYLITE_SQL_PARSE_NOMEM;
+        return out_result->status;
+    }
+
+    for (size_t index = 0U; status == MYLITE_SQL_PARSE_OK && index < scan->token_count; ++index) {
+        status = feed_token_with_parser_token_override(
+            config,
+            parser,
+            &state,
+            &token_history,
+            &previous_token_was_dot,
+            &scan->tokens[index],
+            index == type_index ? MYLITE_SQL_PARSE_USING : 0
+        );
+    }
+    if (status == MYLITE_SQL_PARSE_OK) {
+        status = feed_token_with_parser_token_override(
+            config,
+            parser,
+            &state,
+            &token_history,
+            &previous_token_was_dot,
+            &eof_token,
+            0
+        );
+    }
+
+    mylite_sql_lemonFree(parser, free);
+
+    if (out_result->status == MYLITE_SQL_PARSE_OK && status != MYLITE_SQL_PARSE_OK) {
+        out_result->status = status;
+    }
+    if (out_result->status == MYLITE_SQL_PARSE_OK && !state.accepted) {
+        out_result->status = MYLITE_SQL_PARSE_SYNTAX_ERROR;
+    }
+
+    return out_result->status;
 }
 
 static enum mylite_sql_parse_status try_parse_placeholder_statement(
@@ -6902,6 +7196,9 @@ static enum placeholder_statement_kind classify_create_placeholder_statement(
     if (ddl_extended_option_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
+    if (ddl_residual_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
     if (create_table_select_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
@@ -6947,6 +7244,9 @@ static enum placeholder_statement_kind classify_alter_placeholder_statement(
         return PLACEHOLDER_STATEMENT_ALTER_TABLE_MULTI_ACTION_UNSUPPORTED;
     }
     if (ddl_extended_option_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
+    }
+    if (ddl_residual_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
     if (placeholder_scan_token_text_equals(scan, 1U, "TABLE") &&
@@ -7331,6 +7631,102 @@ static bool ddl_extended_option_scan_has_marker(const struct placeholder_stateme
     return false;
 }
 
+static bool ddl_residual_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    if (!ddl_residual_placeholder_statement_is_candidate(scan)) {
+        return false;
+    }
+    return ddl_residual_scan_has_fulltext_parser_clause(scan) ||
+           ddl_residual_scan_has_generated_column_surface(scan) ||
+           ddl_residual_scan_has_foreign_key_set_default_action(scan);
+}
+
+static bool ddl_residual_placeholder_statement_is_candidate(
+    const struct placeholder_statement_scan *scan
+) {
+    return scan != NULL && !scan->has_non_trailing_semicolon &&
+           !placeholder_scan_statement_tail_is_obviously_incomplete(scan) &&
+           placeholder_scan_parentheses_are_balanced(scan, 0U) &&
+           (placeholder_scan_starts_create_table_statement(scan) ||
+            placeholder_scan_starts_alter_table_statement(scan) ||
+            placeholder_scan_starts_create_index_statement(scan));
+}
+
+static bool ddl_residual_scan_has_fulltext_parser_clause(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || !placeholder_scan_contains_text(scan, "FULLTEXT")) {
+        return false;
+    }
+    for (size_t index = 0U; index + 2U < scan->token_count; ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, "WITH") &&
+            placeholder_scan_token_text_equals(scan, index + 1U, "PARSER") &&
+            placeholder_scan_token_can_name_loose_identifier(scan, index + 2U)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool ddl_residual_scan_has_generated_column_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || !placeholder_scan_starts_create_table_statement(scan)) {
+        return false;
+    }
+    for (size_t index = 0U; index + 3U < scan->token_count; ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, "GENERATED") &&
+            ddl_generated_column_clause_is_complete(scan, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool ddl_generated_column_clause_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t generated_index
+) {
+    size_t left_paren_index = generated_index + 3U;
+    size_t right_paren_index = 0U;
+
+    if (scan == NULL || generated_index + 4U >= scan->token_count ||
+        !placeholder_scan_token_text_equals(scan, generated_index + 1U, "ALWAYS") ||
+        !placeholder_scan_token_text_equals(scan, generated_index + 2U, "AS") ||
+        !token_is_left_paren(&scan->tokens[left_paren_index]) ||
+        !placeholder_scan_find_matching_right_paren(scan, left_paren_index, &right_paren_index) ||
+        right_paren_index <= left_paren_index + 1U ||
+        placeholder_scan_token_is_incomplete_statement_tail(scan, right_paren_index - 1U)) {
+        return false;
+    }
+    return right_paren_index + 1U >= scan->token_count ||
+           placeholder_scan_token_text_equals(scan, right_paren_index + 1U, "VIRTUAL") ||
+           placeholder_scan_token_text_equals(scan, right_paren_index + 1U, "STORED") ||
+           placeholder_scan_token_text_equals(scan, right_paren_index + 1U, "NOT") ||
+           placeholder_scan_token_text_equals(scan, right_paren_index + 1U, "NULL") ||
+           token_is_comma(&scan->tokens[right_paren_index + 1U]) ||
+           token_is_right_paren(&scan->tokens[right_paren_index + 1U]);
+}
+
+static bool ddl_residual_scan_has_foreign_key_set_default_action(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || !placeholder_scan_contains_text(scan, "FOREIGN")) {
+        return false;
+    }
+    for (size_t index = 0U; index + 3U < scan->token_count; ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, "ON") &&
+            (placeholder_scan_token_text_equals(scan, index + 1U, "DELETE") ||
+             placeholder_scan_token_text_equals(scan, index + 1U, "UPDATE")) &&
+            placeholder_scan_token_text_equals(scan, index + 2U, "SET") &&
+            placeholder_scan_token_text_equals(scan, index + 3U, "DEFAULT")) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool ddl_check_expression_placeholder_scan_has_marker(
     const struct placeholder_statement_scan *scan
 ) {
@@ -7450,6 +7846,22 @@ static bool placeholder_scan_starts_alter_table_statement(
 ) {
     return placeholder_scan_token_text_equals(scan, 0U, "ALTER") &&
            placeholder_scan_token_text_equals(scan, 1U, "TABLE");
+}
+
+static bool placeholder_scan_starts_create_index_statement(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t index = 1U;
+
+    if (scan == NULL || !placeholder_scan_token_text_equals(scan, 0U, "CREATE")) {
+        return false;
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "UNIQUE") ||
+        placeholder_scan_token_text_equals(scan, index, "FULLTEXT") ||
+        placeholder_scan_token_text_equals(scan, index, "SPATIAL")) {
+        ++index;
+    }
+    return placeholder_scan_token_text_equals(scan, index, "INDEX");
 }
 
 static bool alter_table_partition_placeholder_statement_is_supported(

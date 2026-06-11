@@ -894,14 +894,10 @@ static int test_year_diagnostics(void) {
             .message_part = "Field 'y' doesn't have a default value",
         }
     );
-    failures += execute_error(
+    failures += expect_statement_result(
         database,
-        "CREATE TABLE unsupported_attr (y YEAR UNSIGNED)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "near 'UNSIGNED'",
-        }
+        "CREATE TABLE year_unsigned_alias (y YEAR UNSIGNED, y4 YEAR(4) UNSIGNED)",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 1U}
     );
 
     mylite_close(database);

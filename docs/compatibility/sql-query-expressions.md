@@ -150,6 +150,18 @@ unchanged. These placeholders do not implement broad expression planning,
 phonetic matching, general interval arithmetic, or expression metadata. See
 [parser corpus expression operator and temporal surfaces](../specs/parser-corpus-expression-operator-temporal-surfaces/specs.md).
 
+The parser-corpus expression residual surface additionally classifies
+recognized complete `DO` function-expression residuals, decimal-left and
+parenthesized predicate-result comparisons, symbolic-`!` arithmetic over
+`FROM DUAL`, shift operators inside interval arithmetic, parenthesized `LIKE`
+operands, all-identifier `BETWEEN` bounds, mixed identifier `IN` lists,
+four-argument `INSERT(...)` group keys, function group keys with `WITH ROLLUP`,
+charset introducer string literals, bare `CURRENT_DATE` / `CURRENT_TIME`
+predicate operands, and `INTERVAL(expr) unit` syntax as unsupported
+placeholders after normal parse failure. Malformed function argument lists and
+incomplete expression tails remain syntax errors. See [parser corpus expression
+residual surfaces](../specs/parser-corpus-expression-residual-surfaces/specs.md).
+
 The parser-corpus SELECT clause residual slice adds targeted parser repairs for
 literal `LIMIT` tails on no-source and `DUAL` scalar SELECT forms and repeated
 trailing locking clauses. It also classifies recognized constant top-level

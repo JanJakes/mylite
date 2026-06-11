@@ -32,8 +32,15 @@ static int test_executable_ddl_aliases(void) {
         {
             .sql = "CREATE TABLE type_aliases ("
                    "d DOUBLE PRECISION(42,12), r REAL(42,12), "
-                   "f FLOAT(58,0) SIGNED, y YEAR UNSIGNED, y4 YEAR(4) UNSIGNED, "
+                   "f FLOAT(58,0) SIGNED, fw FLOAT(10.3), "
+                   "y YEAR UNSIGNED, y4 YEAR(4) UNSIGNED, "
                    "vb VARCHAR(10) BYTE, lb LONG BYTE)",
+            .kind = MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+        },
+        {
+            .sql = "CREATE TABLE duplicate_defaults ("
+                   "a INT DEFAULT 1 DEFAULT 2, b INT DEFAULT NULL DEFAULT 5, "
+                   "c INT DEFAULT 6 DEFAULT NULL, d CHAR(4) DEFAULT 'a' DEFAULT 'b')",
             .kind = MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
         },
         {
@@ -87,6 +94,15 @@ static int test_ddl_residual_placeholders(void) {
                    "a INT, FOREIGN KEY (a) REFERENCES parent(a) ON DELETE SET DEFAULT)",
             .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT,
         },
+        {
+            .sql = "ALTER TABLE t ADD COLUMN new_col INT, ORDER BY payoutid,bandid",
+            .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT,
+        },
+        {
+            .sql = "ALTER TABLE t MODIFY COLUMN c1 FLOAT(10.3), DROP CHECK t_chk_1, "
+                   "ADD CONSTRAINT CHECK(c1 > 10.1) ENFORCED",
+            .kind = MYLITE_SQL_AST_ALTER_TABLE_MULTI_ACTION_STATEMENT,
+        },
     };
     int failures = 0;
 
@@ -120,6 +136,11 @@ static int test_ddl_residual_malformed_tails(void) {
         "CREATE TABLE bad_fk (a INT, FOREIGN KEY (a) REFERENCES parent(a) ON DELETE SET)",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         "incomplete foreign key action"
+    );
+    failures += parse_status(
+        "ALTER TABLE t ADD COLUMN new_col INT, ORDER BY",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "incomplete alter table order by action"
     );
 
     return failures;

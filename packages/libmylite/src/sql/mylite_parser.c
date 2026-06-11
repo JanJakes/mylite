@@ -1185,6 +1185,9 @@ static bool ddl_generated_column_clause_is_complete(
 static bool ddl_residual_scan_has_foreign_key_set_default_action(
     const struct placeholder_statement_scan *scan
 );
+static bool ddl_residual_scan_has_alter_table_order_by_action(
+    const struct placeholder_statement_scan *scan
+);
 static bool ddl_check_expression_placeholder_scan_has_marker(
     const struct placeholder_statement_scan *scan
 );
@@ -8987,7 +8990,8 @@ static bool ddl_residual_placeholder_statement_is_supported(
     }
     return ddl_residual_scan_has_fulltext_parser_clause(scan) ||
            ddl_residual_scan_has_generated_column_surface(scan) ||
-           ddl_residual_scan_has_foreign_key_set_default_action(scan);
+           ddl_residual_scan_has_foreign_key_set_default_action(scan) ||
+           ddl_residual_scan_has_alter_table_order_by_action(scan);
 }
 
 static bool ddl_residual_placeholder_statement_is_candidate(
@@ -9071,6 +9075,39 @@ static bool ddl_residual_scan_has_foreign_key_set_default_action(
             placeholder_scan_token_text_equals(scan, index + 3U, "DEFAULT")) {
             return true;
         }
+    }
+    return false;
+}
+
+static bool ddl_residual_scan_has_alter_table_order_by_action(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t start_index = 0U;
+    int paren_depth = 0;
+
+    if (scan == NULL || !placeholder_scan_starts_alter_table_statement(scan)) {
+        return false;
+    }
+
+    start_index = alter_table_partition_operation_start_index(scan);
+    for (size_t index = start_index; index + 3U < scan->token_count; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            continue;
+        }
+        if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+            continue;
+        }
+        if (paren_depth != 0 || !token_is_comma(&scan->tokens[index]) ||
+            !placeholder_scan_token_text_equals(scan, index + 1U, "ORDER") ||
+            !placeholder_scan_token_text_equals(scan, index + 2U, "BY")) {
+            continue;
+        }
+        return placeholder_scan_token_can_name_loose_identifier(scan, index + 3U);
     }
     return false;
 }
@@ -9337,7 +9374,7 @@ static bool alter_table_partition_scan_has_operation(
             placeholder_scan_token_text_equals(scan, index + 1U, "PARTITIONING")) {
             return true;
         }
-        if (index + 2U < scan->token_count &&
+        if (index + 1U < scan->token_count &&
             placeholder_scan_token_text_equals(scan, index + 1U, "PARTITION") &&
             placeholder_scan_token_text_equals_any(
                 scan,
@@ -9345,7 +9382,11 @@ static bool alter_table_partition_scan_has_operation(
                 partition_action_prefixes,
                 sizeof(partition_action_prefixes) / sizeof(partition_action_prefixes[0])
             )) {
-            return true;
+            if (placeholder_scan_token_text_equals(scan, index, "ADD") ||
+                placeholder_scan_token_text_equals(scan, index, "REORGANIZE")) {
+                return true;
+            }
+            return index + 2U < scan->token_count;
         }
     }
     return false;

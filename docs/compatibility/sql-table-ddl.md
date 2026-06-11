@@ -43,20 +43,23 @@ diagnostic before catalog mutation, and `ZEROFILL`-containing `CREATE TABLE` /
 `ALTER TABLE` column-definition statements as unsupported utility placeholders.
 Parser-corpus DDL residual surfaces additionally admit selected MySQL aliases
 such as scaled `DOUBLE PRECISION`, scaled `REAL`, approximate `SIGNED`,
-`YEAR UNSIGNED`, `VARCHAR(n) BYTE`, `LONG BYTE`, and legacy index `TYPE`
-clauses through existing descriptor/index paths, while complete unsupported
-`FULLTEXT ... WITH PARSER`, generated-column residual, and foreign-key
-`SET DEFAULT` DDL forms return deterministic unsupported utility diagnostics
+decimal-looking `FLOAT(10.3)`, `YEAR UNSIGNED`, `VARCHAR(n) BYTE`, `LONG BYTE`,
+and legacy index `TYPE` clauses through existing descriptor/index paths, while
+complete unsupported `FULLTEXT ... WITH PARSER`, generated-column residual,
+foreign-key `SET DEFAULT`, and comma-tail `ALTER TABLE ... ADD COLUMN ...,
+ORDER BY ...` DDL forms return deterministic unsupported utility diagnostics
 instead of accidental syntax failures.
 `TIME(0)`, `DATETIME(0)`, and `TIMESTAMP(0)` are accepted in supported column
 definition paths and normalize to the existing seconds-only descriptors;
 nonzero temporal fractional precision is rejected before schema mutation.
 Supported column definition paths accept MySQL dump-style ordering among
 `DEFAULT`, `NULL` / `NOT NULL`, inline key, and `AUTO_INCREMENT` attributes
-while preserving duplicate-attribute checks, preserving MySQL-compatible
-ordering restrictions for explicit `CHARACTER SET` / `CHARSET`, and admitting
-MySQL-accepted `COLLATE` placement after legacy column attributes such as
-nullability, defaults, inline keys, and comments. Parser admission also covers
+while preserving duplicate-attribute checks for non-default attributes,
+preserving MySQL-compatible ordering restrictions for explicit `CHARACTER SET`
+/ `CHARSET`, and admitting MySQL-accepted `COLLATE` placement after legacy
+column attributes such as nullability, defaults, inline keys, and comments.
+Repeated `DEFAULT` clauses in supported column-definition paths use the final
+default as the effective descriptor default. Parser admission also covers
 `ENUM` / `SET` `DEFAULT ... COLLATE` orderings, but executable `ENUM` / `SET`
 charset/collation metadata remains unsupported.
 

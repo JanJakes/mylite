@@ -8,7 +8,7 @@
 enum {
     mysql_error_parse = 1064,
     alias_column_count = 1,
-    alias_row_count = 7,
+    alias_row_count = 8,
 };
 
 struct expected_sql_error {
@@ -17,11 +17,24 @@ struct expected_sql_error {
     const char *message_part;
 };
 
+struct expected_single_value {
+    const char *sql;
+    const char *value;
+    const char *context;
+};
+
 static int test_executable_ddl_aliases(void);
 static int test_ddl_residual_runtime(void);
+static int test_duplicate_column_defaults(void);
 static int execute_statement_ok(mylite_db *database, const char *sql);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_alias_column_types(mylite_db *database);
+static int expect_duplicate_default_metadata(mylite_db *database);
+static int expect_duplicate_default_insert_values(mylite_db *database);
+static int expect_query_single_value(
+    mylite_db *database,
+    const struct expected_single_value *expected
+);
 static int expect_result_value(
     const mylite_result *result,
     size_t row,
@@ -39,6 +52,7 @@ int main(void) {
 
     failures += test_executable_ddl_aliases();
     failures += test_ddl_residual_runtime();
+    failures += test_duplicate_column_defaults();
 
     return failures == 0 ? 0 : 1;
 }
@@ -59,6 +73,7 @@ static int test_executable_ddl_aliases(void) {
         database,
         "CREATE TABLE type_aliases ("
         "d DOUBLE PRECISION(42,12), r REAL(42,12), f FLOAT(58,0) SIGNED, "
+        "fw FLOAT(10.3), "
         "y YEAR UNSIGNED, y4 YEAR(4) UNSIGNED, vb VARCHAR(10) BYTE, lb LONG BYTE)"
     );
     failures += expect_alias_column_types(database);
@@ -100,6 +115,7 @@ static int test_ddl_residual_runtime(void) {
     failures += execute_statement_ok(database, "USE app");
     failures += execute_statement_ok(database, "CREATE TABLE ft_parser (a TEXT)");
     failures += execute_statement_ok(database, "CREATE TABLE parent (a INT PRIMARY KEY)");
+    failures += execute_statement_ok(database, "CREATE TABLE reorder_t (payoutid INT, bandid INT)");
     failures += execute_error(
         database,
         "CREATE TABLE ft_parser (a TEXT, FULLTEXT(a) WITH PARSER simple_parser)",
@@ -121,6 +137,47 @@ static int test_ddl_residual_runtime(void) {
         "a INT, FOREIGN KEY (a) REFERENCES parent(a) ON DELETE SET DEFAULT)",
         unsupported
     );
+    failures += execute_error(
+        database,
+        "ALTER TABLE reorder_t ADD COLUMN new_col INT, ORDER BY payoutid,bandid",
+        unsupported
+    );
+    failures += expect_query_single_value(
+        database,
+        &(const struct expected_single_value){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'reorder_t' AND COLUMN_NAME = 'new_col'",
+            .value = "0",
+            .context = "alter order placeholder does not add column",
+        }
+    );
+    failures += execute_error(database, "ALTER TABLE reorder_t REORGANIZE PARTITION", unsupported);
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_duplicate_column_defaults(void) {
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open defaults database");
+    if (failures != 0) {
+        return failures;
+    }
+
+    failures += execute_statement_ok(database, "CREATE DATABASE app");
+    failures += execute_statement_ok(database, "USE app");
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE duplicate_defaults ("
+        "a INT DEFAULT 1 DEFAULT 2, b INT DEFAULT NULL DEFAULT 5, "
+        "c INT DEFAULT 6 DEFAULT NULL, d CHAR(4) DEFAULT 'a' DEFAULT 'b')"
+    );
+    failures += expect_duplicate_default_metadata(database);
+    failures += execute_statement_ok(database, "INSERT INTO duplicate_defaults () VALUES ()");
+    failures += expect_duplicate_default_insert_values(database);
 
     mylite_close(database);
     return failures;
@@ -169,6 +226,7 @@ static int expect_alias_column_types(mylite_db *database) {
         "double(42,12)",
         "double(42,12)",
         "float(58,0)",
+        "float",
         "year",
         "year",
         "varbinary(10)",
@@ -188,6 +246,58 @@ static int expect_alias_column_types(mylite_db *database) {
     for (size_t row = 0U; row < sizeof(expected) / sizeof(expected[0]); ++row) {
         failures += expect_result_value(result, row, 0U, expected[row], "alias column type");
     }
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_duplicate_default_metadata(mylite_db *database) {
+    static const char *const expected_names[] = {"a", "b", "c", "d"};
+    static const char *const expected_defaults[] = {"2", "5", NULL, "b"};
+    static const char query[] =
+        "SELECT COLUMN_NAME, COLUMN_DEFAULT FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'duplicate_defaults' "
+        "ORDER BY ORDINAL_POSITION";
+    mylite_result *result = NULL;
+    int rc = mylite_execute(database, query, sizeof(query) - 1U, &result);
+    int failures = 0;
+
+    failures += expect_int(rc, MYLITE_OK, "duplicate default metadata query");
+    failures += expect_size(mylite_result_column_count(result), 2U, "duplicate default columns");
+    failures += expect_size(mylite_result_row_count(result), 4U, "duplicate default rows");
+    for (size_t row = 0U; row < sizeof(expected_names) / sizeof(expected_names[0]); ++row) {
+        failures +=
+            expect_result_value(result, row, 0U, expected_names[row], "duplicate default name");
+        failures +=
+            expect_result_value(result, row, 1U, expected_defaults[row], "duplicate default value");
+    }
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_duplicate_default_insert_values(mylite_db *database) {
+    return expect_query_single_value(
+        database,
+        &(const struct expected_single_value){
+            .sql = "SELECT CONCAT(IFNULL(a,'N'), ':', IFNULL(b,'N'), ':', IFNULL(c,'N'), ':', d) "
+                   "FROM duplicate_defaults",
+            .value = "2:5:N:b",
+            .context = "duplicate default inserted row",
+        }
+    );
+}
+
+static int expect_query_single_value(
+    mylite_db *database,
+    const struct expected_single_value *expected
+) {
+    mylite_result *result = NULL;
+    int rc = mylite_execute(database, expected->sql, strlen(expected->sql), &result);
+    int failures = 0;
+
+    failures += expect_int(rc, MYLITE_OK, expected->context);
+    failures += expect_size(mylite_result_column_count(result), 1U, expected->context);
+    failures += expect_size(mylite_result_row_count(result), 1U, expected->context);
+    failures += expect_result_value(result, 0U, 0U, expected->value, expected->context);
     mylite_result_free(result);
     return failures;
 }

@@ -35,12 +35,16 @@ static int test_alter_table_partition_placeholder_forms(void) {
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "ALTER TABLE t ADD PARTITION PARTITIONS 2",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
+        {.sql = "ALTER TABLE t ADD PARTITION", .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT
+        },
         {.sql = "ALTER TABLE t ADD PARTITION (PARTITION p1 VALUES LESS THAN (10))",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "ALTER TABLE t DROP PARTITION p0",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "ALTER TABLE t REORGANIZE PARTITION p0 INTO "
                 "(PARTITION p0 VALUES LESS THAN (10))",
+         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
+        {.sql = "ALTER TABLE t REORGANIZE PARTITION",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "ALTER TABLE t REBUILD PARTITION p0",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
@@ -75,9 +79,9 @@ static int test_alter_table_partition_incomplete_forms(void) {
     int failures = 0;
 
     failures += expect_parse_status(
-        "ALTER TABLE t ADD PARTITION",
+        "ALTER TABLE t DROP PARTITION",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        "incomplete ADD PARTITION remains syntax error"
+        "incomplete DROP PARTITION remains syntax error"
     );
     failures += expect_parse_status(
         "ALTER TABLE t PARTITION BY",

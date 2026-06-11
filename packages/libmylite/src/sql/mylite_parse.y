@@ -13891,6 +13891,11 @@ approximate_precision_opt(A) ::= LPAREN INTEGER(P) COMMA INTEGER(S) RPAREN(R). {
         .has_scale = 1,
     };
 }
+approximate_precision_opt(A) ::= LPAREN DECIMAL RPAREN(R). {
+    A = (struct mylite_sql_approximate_type_tokens){
+        .end_token = R,
+    };
+}
 
 approximate_unsigned_opt(A) ::= . {
     A = (struct mylite_sql_approximate_type_tokens){0};
@@ -14147,15 +14152,24 @@ nullability(A) ::= NOT(N) NULL(T). {
         state, MYLITE_SQL_AST_NULLABILITY_NOT_NULL, N, T);
 }
 
-column_default(A) ::= DEFAULT(D) NULL(N) column_default_null_repeat_opt. {
+column_default(A) ::= DEFAULT(D) NULL(N). {
     A = mylite_sql_parser_make_column_default_null(state, D, N);
+}
+column_default(A) ::= DEFAULT NULL DEFAULT(D) NULL(N). {
+    A = mylite_sql_parser_make_column_default_null(state, D, N);
+}
+column_default(A) ::= DEFAULT NULL DEFAULT(D) column_default_value(V). {
+    A = mylite_sql_parser_make_column_default_value(state, D, V);
 }
 column_default(A) ::= DEFAULT(D) column_default_value(V). {
     A = mylite_sql_parser_make_column_default_value(state, D, V);
 }
-
-column_default_null_repeat_opt ::= . [DEFAULT]
-column_default_null_repeat_opt ::= DEFAULT NULL.
+column_default(A) ::= DEFAULT column_default_value DEFAULT(D) NULL(N). {
+    A = mylite_sql_parser_make_column_default_null(state, D, N);
+}
+column_default(A) ::= DEFAULT column_default_value DEFAULT(D) column_default_value(V). {
+    A = mylite_sql_parser_make_column_default_value(state, D, V);
+}
 
 column_default_value(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);

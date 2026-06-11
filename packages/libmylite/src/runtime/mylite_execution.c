@@ -16987,6 +16987,9 @@ static int plan_column(
     const struct mylite_sql_ast_node *column_node,
     struct planned_column *out_column
 );
+static const struct mylite_sql_ast_node *last_column_default_node(
+    const struct mylite_sql_ast_node *column_node
+);
 static int validate_column_attributes(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *column_node,
@@ -16994,7 +16997,6 @@ static int validate_column_attributes(
 );
 static bool column_attribute_counts_have_duplicates(
     size_t nullability_count,
-    size_t default_count,
     size_t primary_key_count,
     size_t auto_increment_count,
     size_t on_update_count,

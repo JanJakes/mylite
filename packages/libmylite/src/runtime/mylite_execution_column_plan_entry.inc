@@ -62,11 +62,7 @@ static int plan_column(
         );
     }
     if (rc == MYLITE_OK) {
-        out_column->default_node = child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_DEFAULT_NULL);
-        if (out_column->default_node == NULL) {
-            out_column->default_node =
-                child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE);
-        }
+        out_column->default_node = last_column_default_node(column_node);
         out_column->on_update_current_timestamp =
             child_with_kind(column_node, MYLITE_SQL_AST_COLUMN_ON_UPDATE_CURRENT_TIMESTAMP) != NULL;
         rc = validate_column_default(database, out_column->default_node, out_column);
@@ -79,6 +75,22 @@ static int plan_column(
     }
 
     return rc;
+}
+
+static const struct mylite_sql_ast_node *last_column_default_node(
+    const struct mylite_sql_ast_node *column_node
+) {
+    const struct mylite_sql_ast_node *child = child_at(column_node, 2U);
+    const struct mylite_sql_ast_node *default_node = NULL;
+
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_NULL ||
+            child->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE) {
+            default_node = child;
+        }
+        child = child->next_sibling;
+    }
+    return default_node;
 }
 
 static int apply_column_comment_attributes(
@@ -188,7 +200,6 @@ static int validate_column_attributes(
 ) {
     const struct mylite_sql_ast_node *child = child_at(column_node, 2U);
     size_t nullability_count = 0U;
-    size_t default_count = 0U;
     size_t primary_key_count = 0U;
     size_t auto_increment_count = 0U;
     size_t on_update_count = 0U;
@@ -204,14 +215,12 @@ static int validate_column_attributes(
         if (child->kind == MYLITE_SQL_AST_NULLABILITY) {
             ++nullability_count;
             previous_attribute_allows_check_enforcement = false;
-        } else if (child->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_NULL ||
-                   child->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE) {
-            ++default_count;
-            previous_attribute_allows_check_enforcement = false;
         } else if (child->kind == MYLITE_SQL_AST_INLINE_PRIMARY_KEY) {
             ++primary_key_count;
             previous_attribute_allows_check_enforcement = false;
-        } else if (child->kind == MYLITE_SQL_AST_INLINE_UNIQUE_KEY ||
+        } else if (child->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_NULL ||
+                   child->kind == MYLITE_SQL_AST_COLUMN_DEFAULT_VALUE ||
+                   child->kind == MYLITE_SQL_AST_INLINE_UNIQUE_KEY ||
                    child->kind == MYLITE_SQL_AST_COLUMN_COMMENT_ATTRIBUTE) {
             previous_attribute_allows_check_enforcement = false;
         } else if (child->kind == MYLITE_SQL_AST_COLUMN_AUTO_INCREMENT) {
@@ -254,7 +263,6 @@ static int validate_column_attributes(
 
     if (column_attribute_counts_have_duplicates(
             nullability_count,
-            default_count,
             primary_key_count,
             auto_increment_count,
             on_update_count,
@@ -286,7 +294,6 @@ static int validate_column_attributes(
 
 static bool column_attribute_counts_have_duplicates(
     size_t nullability_count,
-    size_t default_count,
     size_t primary_key_count,
     size_t auto_increment_count,
     size_t on_update_count,
@@ -294,9 +301,9 @@ static bool column_attribute_counts_have_duplicates(
     size_t collation_count,
     size_t generated_count
 ) {
-    return (nullability_count > 1U || default_count > 1U || primary_key_count > 1U ||
-            auto_increment_count > 1U || on_update_count > 1U || charset_count > 1U ||
-            collation_count > 1U || generated_count > 1U) != 0;
+    return (nullability_count > 1U || primary_key_count > 1U || auto_increment_count > 1U ||
+            on_update_count > 1U || charset_count > 1U || collation_count > 1U ||
+            generated_count > 1U) != 0;
 }
 
 static int validate_generated_column_attributes(

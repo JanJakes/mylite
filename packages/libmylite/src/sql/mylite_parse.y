@@ -4404,20 +4404,12 @@ insert_value(A) ::= dml_function_call(B). {
 insert_value(A) ::= ROW(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_generic_function(state, T, B, R);
 }
-insert_value(A) ::= LPAREN(L) dml_function_call(B) RPAREN(R). {
+insert_value(A) ::= LPAREN(L) dml_parenthesized_scalar_value(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
 }
 insert_value(A) ::= BITWISE_NOT(T) dml_bitwise_operand(B). [BITWISE_NOT] {
     A = mylite_sql_parser_make_unary_expression(
         state, T, MYLITE_SQL_AST_OPERATOR_BITWISE_NOT, B);
-}
-insert_value(A) ::= LPAREN(L) BITWISE_NOT(T) dml_bitwise_operand(B) RPAREN(R). {
-    A = mylite_sql_parser_make_parenthesized_expression(
-        state,
-        L,
-        mylite_sql_parser_make_unary_expression(
-            state, T, MYLITE_SQL_AST_OPERATOR_BITWISE_NOT, B),
-        R);
 }
 insert_value(A) ::= dml_bitwise_operand(B) BITWISE_OR(T) dml_bitwise_operand(C). {
     A = mylite_sql_parser_make_binary_expression(
@@ -4623,20 +4615,12 @@ update_value(A) ::= dml_function_call(B). {
 update_value(A) ::= ROW(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_generic_function(state, T, B, R);
 }
-update_value(A) ::= LPAREN(L) dml_function_call(B) RPAREN(R). {
+update_value(A) ::= LPAREN(L) dml_parenthesized_scalar_value(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);
 }
 update_value(A) ::= BITWISE_NOT(T) dml_bitwise_operand(B). [BITWISE_NOT] {
     A = mylite_sql_parser_make_unary_expression(
         state, T, MYLITE_SQL_AST_OPERATOR_BITWISE_NOT, B);
-}
-update_value(A) ::= LPAREN(L) BITWISE_NOT(T) dml_bitwise_operand(B) RPAREN(R). {
-    A = mylite_sql_parser_make_parenthesized_expression(
-        state,
-        L,
-        mylite_sql_parser_make_unary_expression(
-            state, T, MYLITE_SQL_AST_OPERATOR_BITWISE_NOT, B),
-        R);
 }
 update_value(A) ::= dml_bitwise_operand(B) BITWISE_OR(T) dml_bitwise_operand(C). {
     A = mylite_sql_parser_make_binary_expression(
@@ -4644,6 +4628,74 @@ update_value(A) ::= dml_bitwise_operand(B) BITWISE_OR(T) dml_bitwise_operand(C).
 }
 update_value(A) ::= variable_value_expression(B). {
     A = B;
+}
+
+dml_parenthesized_scalar_value(A) ::= INTEGER(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
+}
+dml_parenthesized_scalar_value(A) ::= DECIMAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL);
+}
+dml_parenthesized_scalar_value(A) ::= FLOAT(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT);
+}
+dml_parenthesized_scalar_value(A) ::= PLUS(P) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+dml_parenthesized_scalar_value(A) ::= PLUS(P) DECIMAL(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL));
+}
+dml_parenthesized_scalar_value(A) ::= PLUS(P) FLOAT(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT));
+}
+dml_parenthesized_scalar_value(A) ::= MINUS(M) INTEGER(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+dml_parenthesized_scalar_value(A) ::= MINUS(M) DECIMAL(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL));
+}
+dml_parenthesized_scalar_value(A) ::= MINUS(M) FLOAT(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT));
+}
+dml_parenthesized_scalar_value(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
+}
+dml_parenthesized_scalar_value(A) ::= TRUE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_TRUE);
+}
+dml_parenthesized_scalar_value(A) ::= FALSE(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
+}
+dml_parenthesized_scalar_value(A) ::= string_text_literal(V). {
+    A = V;
+}
+dml_parenthesized_scalar_value(A) ::= HEX_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
+}
+dml_parenthesized_scalar_value(A) ::= BIT_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
+}
+dml_parenthesized_scalar_value(A) ::= dml_constant_scalar_value(B). {
+    A = B;
+}
+dml_parenthesized_scalar_value(A) ::= dml_function_call(B). {
+    A = B;
+}
+dml_parenthesized_scalar_value(A) ::= BITWISE_NOT(T) dml_bitwise_operand(B). [BITWISE_NOT] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_BITWISE_NOT, B);
 }
 
 dml_function_call(A) ::= dml_function_token(T) LPAREN RPAREN(R). {
@@ -4795,6 +4847,10 @@ dml_constant_scalar_value(A) ::= REGEXP_REPLACE(T) LPAREN expression(B) COMMA ex
     COMMA expression(D) RPAREN(R). {
     A = mylite_sql_parser_make_three_argument_function(
         state, T, MYLITE_SQL_AST_REGEXP_REPLACE_FUNCTION, B, C, D, R);
+}
+dml_constant_scalar_value(A) ::= REGEXP_SUBSTR(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_REGEXP_SUBSTR_FUNCTION, B, R);
 }
 dml_constant_scalar_value(A) ::= STR_TO_DATE(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(

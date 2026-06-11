@@ -95,6 +95,8 @@ static int test_scalar_expression_insert_replace_update(void) {
         "00:01:00",
         "2",
     };
+    static const char *const regexp_inserted_row[] = {"3", "7", "b"};
+    static const char *const regexp_updated_row[] = {"3", "9", "y"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -242,6 +244,38 @@ static int test_scalar_expression_insert_replace_update(void) {
             .column_count = scalar_expression_column_count,
             .row_count = 1U,
             .context = "update scalar expression row",
+        }
+    );
+    failures += expect_dml_result(
+        database,
+        "INSERT INTO exprs(id, i, v, b, d, f, js, dt, tm, flag) VALUES "
+        "(3, (7), REGEXP_SUBSTR('abc', 'b', 1), X'4546', 0, 0, JSON_OBJECT(), "
+        "'2024-01-01', '00:00:00', 0)",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, i, v FROM exprs WHERE id = 3",
+            .values = regexp_inserted_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "insert REGEXP_SUBSTR parenthesized scalar row",
+        }
+    );
+    failures += expect_dml_result(
+        database,
+        "UPDATE exprs SET v = REGEXP_SUBSTR('xyz', 'y', 1), i = ('9') WHERE id = 3",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, i, v FROM exprs WHERE id = 3",
+            .values = regexp_updated_row,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "update REGEXP_SUBSTR parenthesized scalar row",
         }
     );
 

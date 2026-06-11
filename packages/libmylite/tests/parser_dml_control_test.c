@@ -841,6 +841,8 @@ static int test_insert_modifier_statements(void) {
     const size_t priority_ignore_child_count = 5U;
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *row = NULL;
+    const struct mylite_sql_ast_node *value = NULL;
     int failures = 0;
 
     failures += parser_test_parse_sql(
@@ -1052,6 +1054,32 @@ static int test_insert_modifier_statements(void) {
         ),
         MYLITE_SQL_AST_LITERAL_NULL,
         "insert unix timestamp null delta"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "INSERT INTO app.simple_lifecycle (id, name) VALUES "
+        "((7), REGEXP_SUBSTR('abc', 'b', 1));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    row = parser_test_child_at(parser_test_child_at(statement, 2U), 0U);
+    value = parser_test_child_at(row, 0U);
+    failures += parser_test_expect_node(
+        value,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "insert parenthesized value"
+    );
+    failures += parser_test_expect_literal(
+        parser_test_child_at(value, 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "insert parenthesized integer"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(row, 1U),
+        MYLITE_SQL_AST_REGEXP_SUBSTR_FUNCTION,
+        "insert REGEXP_SUBSTR value"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -1442,6 +1470,29 @@ static int test_insert_on_duplicate_key_update_statement(void) {
         parser_test_child_at(assignment, 1U),
         MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION,
         "duplicate scalar convert assignment"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "INSERT INTO simple_lifecycle VALUES (1) "
+        "ON DUPLICATE KEY UPDATE amount = (REGEXP_SUBSTR('abc', 'b', 1));",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    clause = parser_test_child_at(statement, 3U);
+    assignments = parser_test_child_at(clause, 0U);
+    assignment = parser_test_child_at(assignments, 0U);
+    value = parser_test_child_at(assignment, 1U);
+    failures += parser_test_expect_node(
+        value,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "duplicate parenthesized REGEXP_SUBSTR assignment"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(value, 0U),
+        MYLITE_SQL_AST_REGEXP_SUBSTR_FUNCTION,
+        "duplicate REGEXP_SUBSTR assignment"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -2241,6 +2292,7 @@ static int test_delete_statement(void) {
 }
 
 static int test_update_statement(void) {
+    const size_t scalar_assignment_count = 5U;
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *assignment_list = NULL;
@@ -2252,6 +2304,7 @@ static int test_update_statement(void) {
     const struct mylite_sql_ast_node *hint_list = NULL;
     const struct mylite_sql_ast_node *hint = NULL;
     const struct mylite_sql_ast_node *name_list = NULL;
+    const struct mylite_sql_ast_node *value = NULL;
     int failures = 0;
 
     failures += parser_test_parse_sql(
@@ -2486,27 +2539,48 @@ static int test_update_statement(void) {
 
     failures += parser_test_parse_sql(
         "UPDATE simple_lifecycle SET "
-        "name = _utf8mb4'abc', "
+        "name = _utf8mb4'abc', title = ('plain'), "
         "created_at = STR_TO_DATE('2024-05-06 07:08:09', '%Y-%m-%d %H:%i:%s'), "
-        "elapsed = SEC_TO_TIME(3661);",
+        "elapsed = SEC_TO_TIME(3661), slug = REGEXP_SUBSTR('abc', 'b', 1);",
         MYLITE_SQL_PARSE_OK,
         &result
     );
     statement = parser_test_child_at(result.root, 0U);
     assignment_list = parser_test_child_at(statement, 1U);
-    failures +=
-        parser_test_expect_child_count(assignment_list, 3U, "update scalar assignment count");
+    failures += parser_test_expect_child_count(
+        assignment_list,
+        scalar_assignment_count,
+        "update scalar assignment count"
+    );
     assignment = parser_test_child_at(assignment_list, 1U);
+    value = parser_test_child_at(assignment, 1U);
+    failures += parser_test_expect_node(
+        value,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "update parenthesized string assignment"
+    );
+    failures += parser_test_expect_literal(
+        parser_test_child_at(value, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "update parenthesized string"
+    );
+    assignment = parser_test_child_at(assignment_list, 2U);
     failures += parser_test_expect_node(
         parser_test_child_at(assignment, 1U),
         MYLITE_SQL_AST_STR_TO_DATE_FUNCTION,
         "update STR_TO_DATE assignment"
     );
-    assignment = parser_test_child_at(assignment_list, 2U);
+    assignment = parser_test_child_at(assignment_list, 3U);
     failures += parser_test_expect_node(
         parser_test_child_at(assignment, 1U),
         MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION,
         "update SEC_TO_TIME assignment"
+    );
+    assignment = parser_test_child_at(assignment_list, 4U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(assignment, 1U),
+        MYLITE_SQL_AST_REGEXP_SUBSTR_FUNCTION,
+        "update REGEXP_SUBSTR assignment"
     );
     mylite_sql_parse_result_deinit(&result);
 

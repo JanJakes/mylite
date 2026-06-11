@@ -30,6 +30,11 @@ static int validate_regexp_string_function_argument_count(
     struct mylite_db *database,
     const struct regexp_string_function_call_shape *shape
 );
+static int validate_regexp_string_function_position_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_is_null
+);
 static enum planned_regexp_string_function_kind regexp_string_function_kind(
     enum mylite_sql_ast_node_kind kind
 );
@@ -423,6 +428,7 @@ static int regexp_string_function_value(
     struct session_scalar_cell value_cell = {0};
     struct session_scalar_cell pattern_cell = {0};
     struct session_scalar_cell replacement_cell = {0};
+    bool position_is_null = false;
     char *owned_value = NULL;
     char *owned_pattern = NULL;
     char *owned_replacement = NULL;
@@ -481,6 +487,14 @@ static int regexp_string_function_value(
             &pattern_is_null
         );
     }
+    if (rc == MYLITE_OK && shape.kind == PLANNED_REGEXP_STRING_FUNCTION_SUBSTR &&
+        shape.child_count == 3U) {
+        rc = validate_regexp_string_function_position_argument(
+            database,
+            regexp_string_function_argument_at(expression, 2U),
+            &position_is_null
+        );
+    }
     if (rc == MYLITE_OK && shape.kind == PLANNED_REGEXP_STRING_FUNCTION_REPLACE) {
         rc = evaluate_regexp_like_text_argument(
             database,
@@ -494,7 +508,9 @@ static int regexp_string_function_value(
             &replacement_is_null
         );
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && position_is_null) {
+        out_cell->value = NULL;
+    } else if (rc == MYLITE_OK) {
         rc = regexp_string_result_value(
             database,
             shape.kind,
@@ -524,15 +540,31 @@ static int validate_regexp_string_function_argument_count(
     struct mylite_db *database,
     const struct regexp_string_function_call_shape *shape
 ) {
-    if (shape->kind == PLANNED_REGEXP_STRING_FUNCTION_INSTR ||
-        shape->kind == PLANNED_REGEXP_STRING_FUNCTION_SUBSTR) {
+    if (shape->kind == PLANNED_REGEXP_STRING_FUNCTION_INSTR) {
         if (shape->child_count == 2U) {
             return MYLITE_OK;
         }
         if (shape->child_count > 2U) {
             mylite_execution_set_unsupported_error(
                 database,
-                "REGEXP_INSTR() and REGEXP_SUBSTR() optional arguments are not supported"
+                "REGEXP_INSTR() optional arguments are not supported"
+            );
+        } else {
+            mylite_execution_set_native_function_parameter_count_error(
+                database,
+                regexp_string_function_name(shape->kind)
+            );
+        }
+        return MYLITE_ERROR;
+    }
+    if (shape->kind == PLANNED_REGEXP_STRING_FUNCTION_SUBSTR) {
+        if (shape->child_count == 2U || shape->child_count == 3U) {
+            return MYLITE_OK;
+        }
+        if (shape->child_count > 3U) {
+            mylite_execution_set_unsupported_error(
+                database,
+                "REGEXP_SUBSTR() optional arguments are not supported"
             );
         } else {
             mylite_execution_set_native_function_parameter_count_error(
@@ -559,6 +591,45 @@ static int validate_regexp_string_function_argument_count(
 
     mylite_execution_set_parse_error(database);
     return MYLITE_ERROR;
+}
+
+static int validate_regexp_string_function_position_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_is_null
+) {
+    int64_t position = 1;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_is_null = false;
+
+    rc = mylite_execution_string_slice_signed_integer_value(
+        database,
+        expression,
+        "REGEXP_SUBSTR() supports only integer, boolean, and NULL position literals",
+        "REGEXP_SUBSTR() position literals must fit the signed 64-bit range",
+        &position,
+        &is_null
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_null) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (position != 1) {
+        mylite_execution_set_unsupported_error(
+            database,
+            "REGEXP_SUBSTR() supports only optional position 1"
+        );
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
 }
 
 static enum planned_regexp_string_function_kind regexp_string_function_kind(

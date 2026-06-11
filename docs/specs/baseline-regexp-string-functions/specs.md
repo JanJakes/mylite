@@ -25,12 +25,13 @@ The supported surface is deliberately narrow:
 - `REGEXP_REPLACE()` replaces all matches, matching MySQL's default occurrence
   behavior.
 
-Deferred surfaces include optional `pos`, `occurrence`, `return_option`, and
-`match_type` arguments; binary-string regex semantics; non-ASCII collations;
-nested functions beyond already admitted scalar/session helpers; predicates;
-DML assignments; ordering/grouping expressions; subqueries except already
-admitted no-source/`DUAL` scalar subqueries; parameters; and arbitrary
-expressions.
+Deferred surfaces include optional `pos` values other than the source-free
+scalar/DML `1` subset, `occurrence`, `return_option`, and `match_type`
+arguments; binary-string regex semantics; non-ASCII collations; nested
+functions beyond already admitted scalar/session helpers; predicates; DML
+assignments outside the constant descriptor-backed value subset;
+ordering/grouping expressions; subqueries except already admitted
+no-source/`DUAL` scalar subqueries; parameters; and arbitrary expressions.
 
 The official MySQL 8.4 regular-expression function documentation is the syntax
 reference, with behavior pinned by local MySQL 8.4.9 runtime probes:
@@ -84,10 +85,11 @@ expression(A) ::= REGEXP_REPLACE(T) LPAREN RPAREN(R).
 
 The non-empty argument-list productions create function AST nodes. The zero
 argument productions create argument-count error AST nodes. Runtime validation
-admits exactly two arguments for `REGEXP_INSTR()` and `REGEXP_SUBSTR()` and
-exactly three for `REGEXP_REPLACE()`; longer optional-argument forms are parsed
-so they can return deterministic unsupported diagnostics until the optional
-slice is implemented.
+admits exactly two arguments for `REGEXP_INSTR()` and `REGEXP_SUBSTR()`, plus
+the source-free scalar/DML `REGEXP_SUBSTR(expr, pat, 1)` subset, and exactly
+three for `REGEXP_REPLACE()`; longer optional-argument forms are parsed so they
+can return deterministic unsupported diagnostics until the optional slice is
+implemented.
 
 ## Semantics
 
@@ -136,6 +138,9 @@ diagnostic for the corresponding function name.
 
 Unsupported optional argument forms return deterministic MyLite-specific
 unsupported diagnostics until the optional-argument slice is implemented.
+`REGEXP_SUBSTR(expr, pat, 1)` is accepted in source-free scalar and supported
+DML value contexts because it is equivalent to MySQL's default starting
+position. A `NULL` third argument returns `NULL`.
 
 Pattern and value diagnostics follow the existing baseline regex module:
 

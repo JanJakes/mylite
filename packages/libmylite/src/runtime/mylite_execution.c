@@ -19515,6 +19515,12 @@ static int format_decimal_digits(
     uint64_t scale,
     struct planned_value *out_value
 );
+
+struct string_literal_decode_messages {
+    const char *unsupported;
+    const char *nul;
+};
+
 static int decode_sql_string_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal_node,
@@ -19531,6 +19537,20 @@ static int decode_sql_string_literal_with_policy(
     bool allow_nul,
     char **out_text,
     size_t *out_text_length
+);
+static int append_decoded_sql_string_literal_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal_node,
+    struct mylite_dynamic_string *string,
+    const struct string_literal_decode_messages *messages,
+    bool allow_nul
+);
+static int append_decoded_sql_string_literal_span(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal_node,
+    struct mylite_dynamic_string *string,
+    const struct string_literal_decode_messages *messages,
+    bool allow_nul
 );
 static int append_decoded_sql_string_escape(
     struct mylite_db *database,

@@ -878,6 +878,7 @@ static int test_literal_categories(void) {
     enum { expected_literal_item_count = 5 };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *literal = NULL;
     int failures = 0;
 
     failures += parser_test_parse_sql(
@@ -916,6 +917,34 @@ static int test_literal_categories(void) {
         MYLITE_SQL_AST_LITERAL_NATIONAL_STRING,
         "national literal"
     );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("SELECT 'ab' 'cd' 'ef';", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    literal = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures +=
+        parser_test_expect_literal(literal, MYLITE_SQL_AST_LITERAL_STRING, "concatenated literal");
+    failures +=
+        parser_test_expect_span_text(literal, "'ab' 'cd' 'ef'", "concatenated literal span");
+    failures += parser_test_expect_child_count(literal, 3U, "concatenated literal segments");
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(literal, 0U),
+        "'ab'",
+        "first literal segment"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(literal, 1U),
+        "'cd'",
+        "second literal segment"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(literal, 2U),
+        "'ef'",
+        "third literal segment"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("SELECT 'a' N'b';", MYLITE_SQL_PARSE_SYNTAX_ERROR, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql("SELECT * FROM DUAL;", MYLITE_SQL_PARSE_OK, &result);

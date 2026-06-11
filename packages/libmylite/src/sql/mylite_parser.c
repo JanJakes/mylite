@@ -15759,6 +15759,39 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_literal(
     return literal;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_append_string_literal_segment(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_token segment
+) {
+    struct mylite_sql_ast_node *right =
+        mylite_sql_parser_make_literal(state, segment, MYLITE_SQL_AST_LITERAL_STRING);
+    struct mylite_sql_ast_node *literal = left;
+
+    if (right == NULL) {
+        return NULL;
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_STRING) {
+        mylite_sql_parser_state_syntax_error(state, MYLITE_SQL_PARSE_STRING, segment);
+        return NULL;
+    }
+    if (literal->first_child == NULL) {
+        struct mylite_sql_ast_node *first = literal;
+
+        literal = make_node(state, MYLITE_SQL_AST_LITERAL, span_join(first->span, right->span));
+        if (literal == NULL) {
+            return NULL;
+        }
+        mylite_sql_ast_node_set_literal_kind(literal, MYLITE_SQL_AST_LITERAL_STRING);
+        mylite_sql_ast_node_append_child(literal, first);
+    } else {
+        mylite_sql_ast_node_set_span(literal, span_join(literal->span, right->span));
+    }
+    mylite_sql_ast_node_append_child(literal, right);
+    return literal;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_dml_default_value(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token token

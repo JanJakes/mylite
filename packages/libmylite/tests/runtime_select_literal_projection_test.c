@@ -93,6 +93,8 @@ static int test_literal_projection_values_and_file_safety(void) {
     static const char *const columns_parenthesized[] =
         {"1", "NULL", "(TRUE)", "(FALSE)", "2", "(-3)"};
     static const char *const values_parenthesized[] = {"1", NULL, "1", "0", "2", "-3"};
+    static const char *const columns_adjacent_string[] = {"a"};
+    static const char *const values_adjacent_string[] = {"ab"};
     static const char *const column_row_count[] = {"ROW_COUNT()"};
     static const char *const value_negative_one[] = {"-1"};
     char path[test_path_capacity];
@@ -157,6 +159,17 @@ static int test_literal_projection_values_and_file_safety(void) {
             .values = values_zero,
             .row_count = 1U,
             .context = "signed zero normalization",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 'a' 'b'",
+            .columns = columns_adjacent_string,
+            .column_count = 1U,
+            .values = values_adjacent_string,
+            .row_count = 1U,
+            .context = "adjacent string literal projection",
         }
     );
     failures += expect_query(

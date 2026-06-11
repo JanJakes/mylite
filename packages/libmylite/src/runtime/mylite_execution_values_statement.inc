@@ -163,6 +163,7 @@ static int validate_values_statement_value(
         return validate_values_integer_literal(database, value);
     }
     if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_NATIONAL_STRING ||
         literal_kind == MYLITE_SQL_AST_LITERAL_NULL ||
         literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
         literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
@@ -589,7 +590,8 @@ static int values_statement_value_cell(
         out_cell->value = "0";
         return MYLITE_OK;
     }
-    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_NATIONAL_STRING) {
         int rc = decode_sql_string_literal_with_policy(
             database,
             value,

@@ -62,11 +62,13 @@ static int copy_scalar_projection_column_name(
             return copy_source_span_text(database, &unwrapped->span, out_text);
         }
         if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+            const struct mylite_sql_ast_node *label_literal =
+                unwrapped->first_child == NULL ? unwrapped : unwrapped->first_child;
             size_t text_length = 0U;
 
             return decode_sql_string_literal_with_policy(
                 database,
-                unwrapped,
+                label_literal,
                 "SELECT string literal labels support only ordinary string literals",
                 "SELECT string literal labels do not support NUL bytes",
                 true,

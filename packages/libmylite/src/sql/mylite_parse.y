@@ -47,6 +47,8 @@
 %left JSON_EXTRACT_OPERATOR JSON_UNQUOTE_EXTRACT_OPERATOR.
 %left COLUMN_BINARY_ATTRIBUTE.
 %left ASCII UNICODE.
+%left STRING_LITERAL_REDUCE.
+%right STRING.
 %left INTRODUCED_LITERAL_VALUE.
 %left COLLATE.
 %right UPLUS UMINUS BITWISE_NOT BINARY.
@@ -4341,8 +4343,8 @@ insert_value(A) ::= TRUE(T). {
 insert_value(A) ::= FALSE(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
 }
-insert_value(A) ::= STRING(T). {
-    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+insert_value(A) ::= string_text_literal(V). {
+    A = V;
 }
 insert_value(A) ::= HEX_LITERAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
@@ -4509,8 +4511,8 @@ update_value(A) ::= TRUE(T). {
 update_value(A) ::= FALSE(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
 }
-update_value(A) ::= STRING(T). {
-    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+update_value(A) ::= string_text_literal(V). {
+    A = V;
 }
 update_value(A) ::= HEX_LITERAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
@@ -4727,10 +4729,10 @@ keyword_function_token(A) ::= GEOMCOLLECTION(T). {
     A = T;
 }
 
-collated_literal_expression(A) ::= STRING(T) COLLATE(C) option_name(N). {
+collated_literal_expression(A) ::= ordinary_string_literal(V) COLLATE(C) option_name(N). {
     A = mylite_sql_parser_make_collate_expression(
         state,
-        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING),
+        V,
         C,
         N);
 }
@@ -5517,8 +5519,8 @@ values_value(A) ::= MINUS(M) INTEGER(T). {
         state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
         mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER));
 }
-values_value(A) ::= STRING(T). {
-    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+values_value(A) ::= string_text_literal(V). {
+    A = V;
 }
 values_value(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
@@ -11410,11 +11412,8 @@ literal(A) ::= DECIMAL(T). {
 literal(A) ::= FLOAT(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT);
 }
-literal(A) ::= STRING(T). {
-    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
-}
-literal(A) ::= NATIONAL_STRING(T). {
-    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NATIONAL_STRING);
+literal(A) ::= string_text_literal(V). {
+    A = V;
 }
 literal(A) ::= HEX_LITERAL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
@@ -11430,6 +11429,20 @@ literal(A) ::= FALSE(T). {
 }
 literal(A) ::= NULL(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
+}
+
+string_text_literal(A) ::= ordinary_string_literal(V). [STRING_LITERAL_REDUCE] {
+    A = V;
+}
+string_text_literal(A) ::= NATIONAL_STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NATIONAL_STRING);
+}
+
+ordinary_string_literal(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+ordinary_string_literal(A) ::= ordinary_string_literal(B) STRING(T). {
+    A = mylite_sql_parser_append_string_literal_segment(state, B, T);
 }
 
 count_literal(A) ::= INTEGER(T). {

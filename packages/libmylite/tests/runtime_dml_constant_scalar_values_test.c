@@ -119,6 +119,8 @@ static int test_constant_scalar_insert_replace_update(void) {
         "2024-05-07 08:09:10",
         "00:00:59",
     };
+    static const char *const string_literal_rows[] = {"3", "Cote d'Ivoire", "ab"};
+    static const char *const values_literal_rows[] = {"ab", "c"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -223,6 +225,37 @@ static int test_constant_scalar_insert_replace_update(void) {
             .column_count = scalar_row_column_count,
             .row_count = 1U,
             .context = "update scalar row",
+        }
+    );
+    failures += expect_dml_result(
+        database,
+        "INSERT INTO scalars(id, v, b, i, d, f, js, dt, tm) VALUES ("
+        "3, 'ab' 'cd', N'xy', 0, 0, 0, NULL, NULL, NULL)",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_dml_result(
+        database,
+        "UPDATE scalars SET v = N'Cote d\\'Ivoire', b = 'a' 'b' WHERE id = 3",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, b FROM scalars WHERE id = 3",
+            .values = string_literal_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "adjacent and national string DML values",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "VALUES ROW('a' 'b', N'c')",
+            .values = values_literal_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "adjacent and national VALUES literals",
         }
     );
 

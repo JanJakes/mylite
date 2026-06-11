@@ -26,11 +26,8 @@ static int decode_sql_string_literal_with_policy(
     char **out_text,
     size_t *out_text_length
 ) {
+    const struct string_literal_decode_messages messages = {unsupported_message, nul_message};
     struct mylite_dynamic_string string;
-    const char *text = NULL;
-    size_t length = 0U;
-    char quote = '\0';
-    bool allow_backslash = false;
     int rc = MYLITE_OK;
 
     if (unsupported_message == NULL || nul_message == NULL || out_text == NULL ||
@@ -39,44 +36,15 @@ static int decode_sql_string_literal_with_policy(
     }
     *out_text = NULL;
     *out_text_length = 0U;
-    if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL ||
-        mylite_sql_ast_node_literal_kind(literal_node) != MYLITE_SQL_AST_LITERAL_STRING) {
-        set_unsupported_error(database, unsupported_message);
-        return MYLITE_ERROR;
-    }
-
-    text = literal_node->span.text;
-    length = literal_node->span.length;
-    if (text == NULL || length < 2U) {
-        set_runtime_error(database, "invalid string literal");
-        return MYLITE_ERROR;
-    }
-
-    quote = text[0];
-    allow_backslash = true;
-    if (session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES)) {
-        allow_backslash = false;
-    }
     mylite_dynamic_string_init(&string);
-    for (size_t index = 1U; rc == MYLITE_OK && index + 1U < length; ++index) {
-        char byte = text[index];
 
-        if (byte == quote && index + 2U < length && text[index + 1U] == quote) {
-            rc = mylite_dynamic_string_append_char(&string, quote);
-            ++index;
-        } else if (allow_backslash && byte == '\\' && index + 2U < length) {
-            ++index;
-            rc = append_decoded_sql_string_escape(
-                database,
-                &string,
-                text[index],
-                nul_message,
-                allow_nul
-            );
-        } else {
-            rc = mylite_dynamic_string_append_char(&string, byte);
-        }
-    }
+    rc = append_decoded_sql_string_literal_node(
+        database,
+        literal_node,
+        &string,
+        &messages,
+        allow_nul
+    );
     if (rc == MYLITE_OK && string.text == NULL) {
         rc = mylite_dynamic_string_append(&string, "");
     }
@@ -91,6 +59,112 @@ static int decode_sql_string_literal_with_policy(
         set_nomem_error(database);
     }
     mylite_dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int append_decoded_sql_string_literal_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal_node,
+    struct mylite_dynamic_string *string,
+    const struct string_literal_decode_messages *messages,
+    bool allow_nul
+) {
+    const struct mylite_sql_ast_node *segment = NULL;
+
+    if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(database, messages->unsupported);
+        return MYLITE_ERROR;
+    }
+    if (literal_node->first_child == NULL) {
+        return append_decoded_sql_string_literal_span(
+            database,
+            literal_node,
+            string,
+            messages,
+            allow_nul
+        );
+    }
+    if (mylite_sql_ast_node_literal_kind(literal_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(database, messages->unsupported);
+        return MYLITE_ERROR;
+    }
+
+    segment = literal_node->first_child;
+    while (segment != NULL) {
+        int rc = append_decoded_sql_string_literal_span(
+            database,
+            segment,
+            string,
+            messages,
+            allow_nul
+        );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        segment = segment->next_sibling;
+    }
+    return MYLITE_OK;
+}
+
+static int append_decoded_sql_string_literal_span(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *literal_node,
+    struct mylite_dynamic_string *string,
+    const struct string_literal_decode_messages *messages,
+    bool allow_nul
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    const char *text = NULL;
+    size_t length = 0U;
+    size_t quote_index = 0U;
+    char quote = '\0';
+    bool allow_backslash = false;
+    int rc = MYLITE_OK;
+
+    if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(database, messages->unsupported);
+        return MYLITE_ERROR;
+    }
+    literal_kind = mylite_sql_ast_node_literal_kind(literal_node);
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_STRING &&
+        literal_kind != MYLITE_SQL_AST_LITERAL_NATIONAL_STRING) {
+        set_unsupported_error(database, messages->unsupported);
+        return MYLITE_ERROR;
+    }
+
+    text = literal_node->span.text;
+    length = literal_node->span.length;
+    quote_index = literal_kind == MYLITE_SQL_AST_LITERAL_NATIONAL_STRING ? 1U : 0U;
+    if (text == NULL || length < quote_index + 2U) {
+        set_runtime_error(database, "invalid string literal");
+        return MYLITE_ERROR;
+    }
+
+    quote = text[quote_index];
+    allow_backslash = true;
+    if (session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES)) {
+        allow_backslash = false;
+    }
+    for (size_t index = quote_index + 1U; rc == MYLITE_OK && index + 1U < length; ++index) {
+        char byte = text[index];
+
+        if (byte == quote && index + 2U < length && text[index + 1U] == quote) {
+            rc = mylite_dynamic_string_append_char(string, quote);
+            ++index;
+        } else if (allow_backslash && byte == '\\' && index + 2U < length) {
+            ++index;
+            rc = append_decoded_sql_string_escape(
+                database,
+                string,
+                text[index],
+                messages->nul,
+                allow_nul
+            );
+        } else {
+            rc = mylite_dynamic_string_append_char(string, byte);
+        }
+    }
     return rc;
 }
 

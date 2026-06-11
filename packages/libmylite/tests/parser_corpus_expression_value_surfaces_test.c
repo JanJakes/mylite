@@ -67,13 +67,16 @@ static int test_dml_expression_values(void) {
         "INSERT INTO t1 VALUES ((ST_PointFromText('POINT(10 10)')))",
         "INSERT INTO t1 VALUES (~0, -1 | 0, ROW(1, 2))",
         "INSERT INTO t1 VALUES (REPLACE('abc', 'b', 'B'), REGEXP_REPLACE('abc', 'b', 'B'))",
+        "INSERT INTO t1 VALUES ('ab' 'cd', N'xy')",
         "INSERT INTO t1 VALUES (CONNECTION_ID(), LAST_INSERT_ID(), UUID())",
         "INSERT INTO t1 SET g = ST_GeomFromText('POINT(1 1)')",
         "REPLACE INTO t1 VALUES (POINT(1, 1), ST_SRID(ST_GeomFromText('POINT(0 0)')))",
         "REPLACE INTO t1 VALUES (ROW_COUNT(), FOUND_ROWS(), LAST_INSERT_ID(9))",
         "UPDATE t1 SET g = ST_GeomFromText('POINT(1 1)') WHERE id = 1",
+        "UPDATE t1 SET v = 'a' 'b', n = N'c' WHERE id = 1",
         "UPDATE t1 SET v = REPLACE(v, 'a', 'A'), n = CONNECTION_ID() WHERE id = 1",
         "UPDATE t1 SET n = ~0 WHERE id = 1",
+        "VALUES ROW('a' 'b', N'c')",
         "INSERT INTO t1 VALUES (1) ON DUPLICATE KEY UPDATE g = ST_PointFromText('POINT(0 0)')",
     };
     int failures = 0;

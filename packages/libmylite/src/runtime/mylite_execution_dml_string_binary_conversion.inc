@@ -179,7 +179,8 @@ static int decode_dml_character_literal(
     }
 
     literal_kind = mylite_sql_ast_node_literal_kind(literal);
-    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_NATIONAL_STRING) {
         if (value_node != literal) {
             set_unsupported_error(database, unsupported_message);
             return MYLITE_ERROR;
@@ -320,7 +321,8 @@ static int decode_binary_string_literal(
             out_byte_count
         );
     }
-    if (mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING) {
+    if (mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING ||
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NATIONAL_STRING) {
         return decode_sql_string_literal_with_policy(
             database,
             value_node,
@@ -370,9 +372,8 @@ static int decode_binary_bit_literal(
         span->text[1] == '\'' && span->text[span->length - 1U] == '\'') {
         bit_start = 2U;
         bit_end = span->length - 1U;
-    } else if (
-        span->length >= 3U && span->text[0] == '0' && (span->text[1] == 'b' || span->text[1] == 'B')
-    ) {
+    } else if (span->length >= 3U && span->text[0] == '0' &&
+               (span->text[1] == 'b' || span->text[1] == 'B')) {
         bit_start = 2U;
         bit_end = span->length;
     } else {
@@ -610,11 +611,14 @@ static int convert_bit_literal(
     }
     if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
         (mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING ||
+         mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NATIONAL_STRING ||
          mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_HEX)) {
         char *bytes = NULL;
         size_t byte_count = 0U;
 
-        if (mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING) {
+        if (mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING ||
+            mylite_sql_ast_node_literal_kind(value_node) ==
+                MYLITE_SQL_AST_LITERAL_NATIONAL_STRING) {
             rc = decode_sql_string_literal_with_policy(
                 database,
                 value_node,
@@ -836,9 +840,8 @@ static int parse_bit_literal_magnitude(
         span->text[1] == '\'' && span->text[span->length - 1U] == '\'') {
         bit_start = 2U;
         bit_end = span->length - 1U;
-    } else if (
-        span->length >= 3U && span->text[0] == '0' && (span->text[1] == 'b' || span->text[1] == 'B')
-    ) {
+    } else if (span->length >= 3U && span->text[0] == '0' &&
+               (span->text[1] == 'b' || span->text[1] == 'B')) {
         bit_start = 2U;
         bit_end = span->length;
     } else {

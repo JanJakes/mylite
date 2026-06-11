@@ -340,9 +340,12 @@ static int test_connection_id_function_independent_handles(void) {
 }
 
 static int test_connection_id_function_unsupported_forms(void) {
+    char connection_id_text[connection_id_text_capacity];
     char path[test_path_capacity];
+    const char *connection_id_values[] = {connection_id_text};
     mylite_db *database = NULL;
     mylite_result *result = NULL;
+    uint64_t connection_id = 0U;
     int failures = 0;
 
     if (make_test_path(path, sizeof(path), "unsupported") != 0) {
@@ -429,15 +432,25 @@ static int test_connection_id_function_unsupported_forms(void) {
             .message_part = "SELECT supports only descriptor-backed table reads",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT CONNECTION_ID() LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+    failures += execute_ok(database, "SELECT CONNECTION_ID() LIMIT 1", &result);
+    failures += capture_connection_id(
+        result,
+        "connection id with limit",
+        &connection_id,
+        connection_id_text,
+        sizeof(connection_id_text)
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = (const char *const[]){"CONNECTION_ID()"},
+            .values = connection_id_values,
+            .count = 1U,
+            .context = "connection id with limit",
         }
     );
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_error(
         database,
         "SELECT CONNECTION_ID() FROM t",

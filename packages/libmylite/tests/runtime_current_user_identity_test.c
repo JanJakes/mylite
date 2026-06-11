@@ -481,33 +481,42 @@ static int test_current_user_identity_unsupported_forms(void) {
             .message_part = "SELECT supports only descriptor-backed table reads",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT USER() LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+    failures += execute_ok(database, "SELECT USER() LIMIT 1", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = (const char *const[]){"USER()"},
+            .values = (const char *const[]){"root@%"},
+            .count = 1U,
+            .context = "user with limit",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT CURRENT_USER LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "SELECT CURRENT_USER LIMIT 1", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = (const char *const[]){"CURRENT_USER"},
+            .values = (const char *const[]){"root@%"},
+            .count = 1U,
+            .context = "current user keyword with limit",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT SESSION_USER() LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "SELECT SESSION_USER() LIMIT 1", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = (const char *const[]){"SESSION_USER()"},
+            .values = (const char *const[]){"root@%"},
+            .count = 1U,
+            .context = "session user with limit",
         }
     );
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_error(
         database,
         "SELECT SESSION_USER() FROM t",
@@ -931,15 +940,18 @@ static int test_current_role_function_unsupported_forms(void) {
             .message_part = "SELECT supports only descriptor-backed table reads",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT CURRENT_ROLE() LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+    failures += execute_ok(database, "SELECT CURRENT_ROLE() LIMIT 1", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = (const char *const[]){"CURRENT_ROLE()"},
+            .values = (const char *const[]){"NONE"},
+            .count = 1U,
+            .context = "current role with limit",
         }
     );
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_error(
         database,
         "SELECT CURRENT_ROLE() + 1",

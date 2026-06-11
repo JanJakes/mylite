@@ -164,6 +164,61 @@ static enum mylite_sql_parse_status try_parse_parenthesized_row_constructor_stat
 static bool scan_can_retry_parenthesized_row_constructors(
     const struct placeholder_statement_scan *scan
 );
+static enum mylite_sql_parse_status try_parse_tableless_select_limit_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    bool *out_handled
+);
+static bool scan_can_retry_tableless_select_limit(
+    const struct placeholder_statement_scan *scan,
+    size_t *out_limit_index
+);
+static bool tableless_select_limit_tail_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t limit_index
+);
+static bool select_limit_tail_token_is_integer(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool parsed_select_accepts_tableless_limit(struct mylite_sql_ast_node *statement);
+static struct mylite_sql_ast_node *make_select_limit_clause_from_tail(
+    struct mylite_sql_parser_state *state,
+    const struct placeholder_statement_scan *scan,
+    size_t limit_index
+);
+static enum mylite_sql_parse_status try_parse_repeated_select_locking_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    bool *out_handled
+);
+static bool scan_can_retry_repeated_select_locking(
+    const struct placeholder_statement_scan *scan,
+    size_t *out_prefix_length
+);
+static bool scan_select_locking_clause_sequence(
+    const struct placeholder_statement_scan *scan,
+    size_t first_index,
+    size_t *out_second_index
+);
+static bool scan_select_locking_clause_end(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t *out_end_index
+);
+static bool placeholder_scan_token_starts_select_locking_clause(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_lock_target_list_end(
+    const struct placeholder_statement_scan *scan,
+    size_t target_index,
+    size_t *out_end_index
+);
+static bool placeholder_scan_token_starts_select_lock_wait(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
 static enum mylite_sql_parse_status try_parse_placeholder_statement(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,
@@ -458,6 +513,24 @@ static bool placeholder_scan_parenthesized_list_contains_top_level_comma(
 );
 static bool placeholder_scan_contains_string_order_key_surface(
     const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_contains_constant_order_key_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_token_is_constant_order_key_surface(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_contains_having_residual_surface(
+    const struct placeholder_statement_scan *scan
+);
+static bool placeholder_scan_having_clause_contains_residual(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index
+);
+static bool placeholder_scan_having_in_predicate_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t in_index
 );
 static bool placeholder_scan_contains_query_function_subquery_surface(
     const struct placeholder_statement_scan *scan
@@ -1043,6 +1116,30 @@ enum mylite_sql_parse_status mylite_sql_parse(
 
     if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
         bool handled = false;
+
+        enum mylite_sql_parse_status tableless_limit_status =
+            try_parse_tableless_select_limit_statement(config, out_result, &handled);
+
+        if (handled) {
+            status = tableless_limit_status;
+            out_result->status = tableless_limit_status;
+        }
+    }
+
+    if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
+        bool handled = false;
+
+        enum mylite_sql_parse_status locking_status =
+            try_parse_repeated_select_locking_statement(config, out_result, &handled);
+
+        if (handled) {
+            status = locking_status;
+            out_result->status = locking_status;
+        }
+    }
+
+    if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
+        bool handled = false;
         enum mylite_sql_parse_status placeholder_status =
             try_parse_placeholder_statement(config, out_result, &handled);
 
@@ -1544,6 +1641,432 @@ static bool scan_can_retry_parenthesized_row_constructors(
         }
     }
     return false;
+}
+
+static enum mylite_sql_parse_status try_parse_tableless_select_limit_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    bool *out_handled
+) {
+    struct mylite_sql_token *tokens = NULL;
+    struct placeholder_statement_scan scan = {0};
+    struct mylite_sql_parse_result prefix_result;
+    struct mylite_sql_ast_node *limit_clause = NULL;
+    struct mylite_sql_ast_node *statement = NULL;
+    struct mylite_sql_parser_state state;
+    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+    size_t limit_index = 0U;
+
+    if (out_handled == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    *out_handled = false;
+
+    status = scan_placeholder_statement_tokens(
+        config,
+        &tokens,
+        &scan.token_count,
+        &scan.has_non_trailing_semicolon
+    );
+    if (status != MYLITE_SQL_PARSE_OK) {
+        free(tokens);
+        return status;
+    }
+    scan.tokens = tokens;
+    if (!scan_can_retry_tableless_select_limit(&scan, &limit_index)) {
+        free(tokens);
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    memset(&prefix_result, 0, sizeof(prefix_result));
+    status = parse_sql_with_lemon(
+        (struct mylite_sql_parse_config){
+            .input = config.input,
+            .length = scan.tokens[limit_index].offset,
+            .modes = config.modes,
+        },
+        &prefix_result
+    );
+    if (status != MYLITE_SQL_PARSE_OK) {
+        mylite_sql_parse_result_deinit(&prefix_result);
+        free(tokens);
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    statement = parser_child_at(prefix_result.root, 0U);
+    if (!parsed_select_accepts_tableless_limit(statement)) {
+        mylite_sql_parse_result_deinit(&prefix_result);
+        free(tokens);
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    state = (struct mylite_sql_parser_state){
+        .result = &prefix_result,
+        .modes = config.modes,
+        .accepted = true,
+    };
+    limit_clause = make_select_limit_clause_from_tail(&state, &scan, limit_index);
+    if (limit_clause == NULL) {
+        mylite_sql_parse_result_deinit(&prefix_result);
+        free(tokens);
+        return MYLITE_SQL_PARSE_NOMEM;
+    }
+    mylite_sql_ast_node_append_child(statement, limit_clause);
+    mylite_sql_ast_node_set_span(statement, span_join(statement->span, limit_clause->span));
+    mylite_sql_ast_node_set_span(prefix_result.root, statement->span);
+
+    mylite_sql_ast_deinit(&result->ast);
+    *result = prefix_result;
+    *out_handled = true;
+    free(tokens);
+    return MYLITE_SQL_PARSE_OK;
+}
+
+static bool scan_can_retry_tableless_select_limit(
+    const struct placeholder_statement_scan *scan,
+    size_t *out_limit_index
+) {
+    size_t limit_index = 0U;
+
+    if (out_limit_index != NULL) {
+        *out_limit_index = 0U;
+    }
+    if (scan == NULL || scan->tokens == NULL || scan->has_non_trailing_semicolon ||
+        !placeholder_scan_token_text_equals(scan, 0U, "SELECT") ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U) ||
+        !placeholder_scan_find_top_level_keyword(scan, "LIMIT", &limit_index) ||
+        !tableless_select_limit_tail_is_supported(scan, limit_index)) {
+        return false;
+    }
+    if (out_limit_index != NULL) {
+        *out_limit_index = limit_index;
+    }
+    return true;
+}
+
+static bool tableless_select_limit_tail_is_supported(
+    const struct placeholder_statement_scan *scan,
+    size_t limit_index
+) {
+    size_t tail_count = 0U;
+
+    if (scan == NULL || limit_index >= scan->token_count) {
+        return false;
+    }
+    tail_count = scan->token_count - limit_index;
+    if (tail_count == 2U) {
+        return select_limit_tail_token_is_integer(scan, limit_index + 1U);
+    }
+    if (tail_count != 4U || !select_limit_tail_token_is_integer(scan, limit_index + 1U)) {
+        return false;
+    }
+    return (placeholder_scan_token_text_equals(scan, limit_index + 2U, "OFFSET") &&
+            select_limit_tail_token_is_integer(scan, limit_index + 3U)) ||
+           (token_is_comma(&scan->tokens[limit_index + 2U]) &&
+            select_limit_tail_token_is_integer(scan, limit_index + 3U));
+}
+
+static bool select_limit_tail_token_is_integer(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return scan != NULL && index < scan->token_count &&
+           scan->tokens[index].kind == MYLITE_SQL_TOKEN_INTEGER;
+}
+
+static bool parsed_select_accepts_tableless_limit(struct mylite_sql_ast_node *statement) {
+    struct mylite_sql_ast_node *source = NULL;
+
+    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        return false;
+    }
+    source = parser_child_at(statement, 1U);
+    return source == NULL || source->kind == MYLITE_SQL_AST_FROM_DUAL;
+}
+
+static struct mylite_sql_ast_node *make_select_limit_clause_from_tail(
+    struct mylite_sql_parser_state *state,
+    const struct placeholder_statement_scan *scan,
+    size_t limit_index
+) {
+    struct mylite_sql_ast_node *first = NULL;
+    struct mylite_sql_ast_node *second = NULL;
+
+    if (state == NULL || scan == NULL ||
+        !tableless_select_limit_tail_is_supported(scan, limit_index)) {
+        return NULL;
+    }
+    first = mylite_sql_parser_make_literal(
+        state,
+        scan->tokens[limit_index + 1U],
+        MYLITE_SQL_AST_LITERAL_INTEGER
+    );
+    if (first == NULL) {
+        return NULL;
+    }
+    if (scan->token_count - limit_index == 2U) {
+        return mylite_sql_parser_make_limit_clause(state, scan->tokens[limit_index], first, NULL);
+    }
+    second = mylite_sql_parser_make_literal(
+        state,
+        scan->tokens[limit_index + 3U],
+        MYLITE_SQL_AST_LITERAL_INTEGER
+    );
+    if (second == NULL) {
+        return NULL;
+    }
+    if (placeholder_scan_token_text_equals(scan, limit_index + 2U, "OFFSET")) {
+        return mylite_sql_parser_make_limit_clause(state, scan->tokens[limit_index], first, second);
+    }
+    return mylite_sql_parser_make_limit_clause(state, scan->tokens[limit_index], second, first);
+}
+
+static enum mylite_sql_parse_status try_parse_repeated_select_locking_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    bool *out_handled
+) {
+    struct mylite_sql_token *tokens = NULL;
+    struct placeholder_statement_scan scan = {0};
+    struct mylite_sql_parse_result prefix_result;
+    struct mylite_sql_ast_node *statement = NULL;
+    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+    size_t prefix_length = 0U;
+
+    if (out_handled == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    *out_handled = false;
+
+    status = scan_placeholder_statement_tokens(
+        config,
+        &tokens,
+        &scan.token_count,
+        &scan.has_non_trailing_semicolon
+    );
+    if (status != MYLITE_SQL_PARSE_OK) {
+        free(tokens);
+        return status;
+    }
+    scan.tokens = tokens;
+    if (!scan_can_retry_repeated_select_locking(&scan, &prefix_length)) {
+        free(tokens);
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    memset(&prefix_result, 0, sizeof(prefix_result));
+    status = parse_sql_with_lemon(
+        (struct mylite_sql_parse_config){
+            .input = config.input,
+            .length = prefix_length,
+            .modes = config.modes,
+        },
+        &prefix_result
+    );
+    if (status != MYLITE_SQL_PARSE_OK) {
+        mylite_sql_parse_result_deinit(&prefix_result);
+        free(tokens);
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    statement = parser_child_at(prefix_result.root, 0U);
+    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT ||
+        mylite_sql_ast_node_select_locking_clause(statement) ==
+            MYLITE_SQL_AST_SELECT_LOCKING_CLAUSE_NONE) {
+        mylite_sql_parse_result_deinit(&prefix_result);
+        free(tokens);
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    mylite_sql_ast_node_set_span(
+        statement,
+        (struct mylite_sql_source_span){
+            .text = config.input,
+            .length = config.length,
+            .offset = 0U,
+            .line = 1U,
+            .column = 1U,
+        }
+    );
+    mylite_sql_ast_node_set_span(prefix_result.root, statement->span);
+
+    mylite_sql_ast_deinit(&result->ast);
+    *result = prefix_result;
+    *out_handled = true;
+    free(tokens);
+    return MYLITE_SQL_PARSE_OK;
+}
+
+static bool scan_can_retry_repeated_select_locking(
+    const struct placeholder_statement_scan *scan,
+    size_t *out_prefix_length
+) {
+    int paren_depth = 0;
+
+    if (out_prefix_length != NULL) {
+        *out_prefix_length = 0U;
+    }
+    if (scan == NULL || scan->tokens == NULL || scan->has_non_trailing_semicolon ||
+        !placeholder_scan_starts_query_statement(scan) ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U)) {
+        return false;
+    }
+    for (size_t index = 0U; index < scan->token_count; ++index) {
+        size_t second_index = 0U;
+
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            continue;
+        }
+        if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+            continue;
+        }
+        if (paren_depth != 0 || !placeholder_scan_token_starts_select_locking_clause(scan, index)) {
+            continue;
+        }
+        if (scan_select_locking_clause_sequence(scan, index, &second_index)) {
+            if (out_prefix_length != NULL) {
+                *out_prefix_length = scan->tokens[second_index].offset;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool scan_select_locking_clause_sequence(
+    const struct placeholder_statement_scan *scan,
+    size_t first_index,
+    size_t *out_second_index
+) {
+    size_t index = first_index;
+    size_t clause_count = 0U;
+
+    if (out_second_index != NULL) {
+        *out_second_index = 0U;
+    }
+    while (index < scan->token_count) {
+        size_t end_index = 0U;
+
+        if (!placeholder_scan_token_starts_select_locking_clause(scan, index) ||
+            !scan_select_locking_clause_end(scan, index, &end_index) || end_index <= index) {
+            return false;
+        }
+        ++clause_count;
+        if (clause_count == 2U && out_second_index != NULL) {
+            *out_second_index = index;
+        }
+        index = end_index;
+    }
+    return clause_count > 1U;
+}
+
+static bool scan_select_locking_clause_end(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t *out_end_index
+) {
+    size_t index = start_index;
+
+    if (scan == NULL || out_end_index == NULL || start_index >= scan->token_count) {
+        return false;
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "FOR") &&
+        (placeholder_scan_token_text_equals(scan, index + 1U, "UPDATE") ||
+         placeholder_scan_token_text_equals(scan, index + 1U, "SHARE"))) {
+        index += 2U;
+        if (placeholder_scan_token_text_equals(scan, index, "OF") &&
+            !placeholder_scan_lock_target_list_end(scan, index + 1U, &index)) {
+            return false;
+        }
+        if (placeholder_scan_token_text_equals(scan, index, "NOWAIT")) {
+            ++index;
+        } else if (placeholder_scan_token_text_equals(scan, index, "SKIP") &&
+                   placeholder_scan_token_text_equals(scan, index + 1U, "LOCKED")) {
+            index += 2U;
+        }
+        *out_end_index = index;
+        return true;
+    }
+    if (placeholder_scan_token_text_equals(scan, index, "LOCK") &&
+        placeholder_scan_token_text_equals(scan, index + 1U, "IN") &&
+        placeholder_scan_token_text_equals(scan, index + 2U, "SHARE") &&
+        placeholder_scan_token_text_equals(scan, index + 3U, "MODE")) {
+        *out_end_index = index + 4U;
+        return true;
+    }
+    return false;
+}
+
+static bool placeholder_scan_token_starts_select_locking_clause(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return (placeholder_scan_token_text_equals(scan, index, "FOR") &&
+            (placeholder_scan_token_text_equals(scan, index + 1U, "UPDATE") ||
+             placeholder_scan_token_text_equals(scan, index + 1U, "SHARE"))) ||
+           (placeholder_scan_token_text_equals(scan, index, "LOCK") &&
+            placeholder_scan_token_text_equals(scan, index + 1U, "IN") &&
+            placeholder_scan_token_text_equals(scan, index + 2U, "SHARE") &&
+            placeholder_scan_token_text_equals(scan, index + 3U, "MODE"));
+}
+
+static bool placeholder_scan_lock_target_list_end(
+    const struct placeholder_statement_scan *scan,
+    size_t target_index,
+    size_t *out_end_index
+) {
+    bool expecting_identifier = true;
+    size_t index = target_index;
+
+    if (scan == NULL || out_end_index == NULL || target_index >= scan->token_count) {
+        return false;
+    }
+    for (; index < scan->token_count; ++index) {
+        const struct mylite_sql_token *token = &scan->tokens[index];
+
+        if (!expecting_identifier &&
+            (placeholder_scan_token_starts_select_locking_clause(scan, index) ||
+             placeholder_scan_token_starts_select_lock_wait(scan, index))) {
+            *out_end_index = index;
+            return true;
+        }
+        if (expecting_identifier) {
+            if (!token_can_be_select_lock_target_identifier(token)) {
+                return false;
+            }
+            expecting_identifier = false;
+            continue;
+        }
+        if (token_is_comma(token)) {
+            expecting_identifier = true;
+            continue;
+        }
+        if (placeholder_scan_token_text_equals(scan, index, ".")) {
+            expecting_identifier = true;
+            continue;
+        }
+        *out_end_index = index;
+        return true;
+    }
+    if (expecting_identifier) {
+        return false;
+    }
+    *out_end_index = index;
+    return true;
+}
+
+static bool placeholder_scan_token_starts_select_lock_wait(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return placeholder_scan_token_text_equals(scan, index, "NOWAIT") ||
+           (placeholder_scan_token_text_equals(scan, index, "SKIP") &&
+            placeholder_scan_token_text_equals(scan, index + 1U, "LOCKED"));
 }
 
 static enum mylite_sql_parse_status try_parse_placeholder_statement(
@@ -3224,7 +3747,9 @@ static bool placeholder_scan_contains_query_expression_clause_surface(
         placeholder_scan_contains_postfix_is_predicate_surface(scan) ||
         placeholder_scan_contains_between_expression_surface(scan) ||
         placeholder_scan_contains_row_constructor_predicate_surface(scan) ||
-        placeholder_scan_contains_string_order_key_surface(scan)) {
+        placeholder_scan_contains_string_order_key_surface(scan) ||
+        placeholder_scan_contains_constant_order_key_surface(scan) ||
+        placeholder_scan_contains_having_residual_surface(scan)) {
         return true;
     }
     if (!placeholder_scan_has_table_backed_or_dml_context(scan)) {
@@ -3621,6 +4146,131 @@ static bool placeholder_scan_contains_string_order_key_surface(
         }
     }
     return false;
+}
+
+static bool placeholder_scan_contains_constant_order_key_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    int paren_depth = 0;
+
+    if (scan == NULL || placeholder_scan_statement_tail_is_obviously_incomplete(scan) ||
+        !placeholder_scan_starts_query_statement(scan)) {
+        return false;
+    }
+    for (size_t index = 0U; index + 2U < scan->token_count; ++index) {
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            continue;
+        }
+        if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+            continue;
+        }
+        if (paren_depth == 0 && placeholder_scan_token_text_equals(scan, index, "ORDER") &&
+            placeholder_scan_token_text_equals(scan, index + 1U, "BY") &&
+            placeholder_scan_token_is_constant_order_key_surface(scan, index + 2U)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_token_is_constant_order_key_surface(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    const struct mylite_sql_token *token = NULL;
+
+    if (scan == NULL || index >= scan->token_count) {
+        return false;
+    }
+    token = &scan->tokens[index];
+    return token->kind == MYLITE_SQL_TOKEN_STRING ||
+           token->kind == MYLITE_SQL_TOKEN_NATIONAL_STRING ||
+           token->kind == MYLITE_SQL_TOKEN_USER_VARIABLE ||
+           token->kind == MYLITE_SQL_TOKEN_SYSTEM_VARIABLE ||
+           placeholder_scan_token_text_equals(scan, index, "NULL") ||
+           placeholder_scan_token_text_equals(scan, index, "TRUE") ||
+           placeholder_scan_token_text_equals(scan, index, "FALSE");
+}
+
+static bool placeholder_scan_contains_having_residual_surface(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t having_index = 0U;
+
+    if (scan == NULL || placeholder_scan_statement_tail_is_obviously_incomplete(scan) ||
+        !placeholder_scan_find_top_level_keyword(scan, "HAVING", &having_index)) {
+        return false;
+    }
+    return placeholder_scan_having_clause_contains_residual(scan, having_index + 1U);
+}
+
+static bool placeholder_scan_having_clause_contains_residual(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index
+) {
+    int paren_depth = 0;
+
+    if (scan == NULL || start_index >= scan->token_count) {
+        return false;
+    }
+    for (size_t index = start_index; index < scan->token_count; ++index) {
+        if (paren_depth == 0 && index > start_index &&
+            placeholder_scan_token_stops_expression_clause_search(scan, index)) {
+            return false;
+        }
+        if (token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            continue;
+        }
+        if (token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+            continue;
+        }
+        if (paren_depth != 0) {
+            continue;
+        }
+        if (placeholder_scan_token_is_comparison_operator(scan, index) && index > start_index &&
+            placeholder_scan_token_can_end_expression_operand(scan, index - 1U) &&
+            placeholder_scan_token_can_start_expression_operand(scan, index + 1U)) {
+            return true;
+        }
+        if (placeholder_scan_having_in_predicate_is_complete(scan, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_having_in_predicate_is_complete(
+    const struct placeholder_statement_scan *scan,
+    size_t in_index
+) {
+    size_t operand_index = 0U;
+    size_t right_paren_index = 0U;
+
+    if (scan == NULL || in_index == 0U || in_index + 1U >= scan->token_count ||
+        !placeholder_scan_token_text_equals(scan, in_index, "IN")) {
+        return false;
+    }
+    operand_index = in_index - 1U;
+    if (placeholder_scan_token_text_equals(scan, operand_index, "NOT")) {
+        if (operand_index == 0U) {
+            return false;
+        }
+        --operand_index;
+    }
+    return placeholder_scan_token_can_end_expression_operand(scan, operand_index) &&
+           token_is_left_paren(&scan->tokens[in_index + 1U]) &&
+           placeholder_scan_find_matching_right_paren(scan, in_index + 1U, &right_paren_index) &&
+           placeholder_scan_parenthesized_operand_is_complete(scan, in_index + 1U);
 }
 
 static bool placeholder_scan_has_table_backed_or_dml_context(

@@ -222,6 +222,7 @@ static int test_literal_projection_values_and_file_safety(void) {
 }
 
 static int test_literal_projection_diagnostics_and_table_selects(void) {
+    static const char *const column_literal_one[] = {"1"};
     static const char *const column_one[] = {"one"};
     static const char *const column_test[] = {"test"};
     static const char *const column_id[] = {"id"};
@@ -259,22 +260,26 @@ static int test_literal_projection_diagnostics_and_table_selects(void) {
             .message_part = "near 'ORDER'",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT 1 LIMIT 0",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "near 'LIMIT'",
+        (struct expected_query){
+            .sql = "SELECT 1 LIMIT 0",
+            .columns = column_literal_one,
+            .column_count = 1U,
+            .values = NULL,
+            .row_count = 0U,
+            .context = "literal limit zero",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT 1 LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "near 'LIMIT'",
+        (struct expected_query){
+            .sql = "SELECT 1 LIMIT 1",
+            .columns = column_literal_one,
+            .column_count = 1U,
+            .values = value_one,
+            .row_count = 1U,
+            .context = "literal limit one",
         }
     );
     failures += execute_error(

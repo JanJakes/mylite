@@ -3058,7 +3058,7 @@ static int test_select_locking_clause(void) {
 
     failures += parser_test_parse_sql(
         "SELECT id FROM simple_lifecycle FOR UPDATE FOR SHARE;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);
@@ -4722,7 +4722,7 @@ static int test_select_item_alias_clause(void) {
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT n AS 'x' FROM numbers ORDER BY 'x';",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        MYLITE_SQL_PARSE_OK,
         &result
     );
     mylite_sql_parse_result_deinit(&result);

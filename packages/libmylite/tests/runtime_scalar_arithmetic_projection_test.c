@@ -506,13 +506,15 @@ static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
             .message_part = "near 'WHERE'",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT 1+2 LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "near 'LIMIT'",
+        (struct expected_query){
+            .sql = "SELECT 1+2 LIMIT 1",
+            .columns = (const char *const[]){"1+2"},
+            .column_count = 1U,
+            .values = (const char *const[]){"3"},
+            .row_count = 1U,
+            .context = "arithmetic with limit",
         }
     );
     failures += execute_error(

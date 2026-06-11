@@ -462,13 +462,15 @@ static int test_if_function_unsupported_forms(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT IF(1,2,3) LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT IF(1,2,3) LIMIT 1",
+            .columns = (const char *const[]){"IF(1,2,3)"},
+            .column_count = 1U,
+            .values = (const char *const[]){"2"},
+            .row_count = 1U,
+            .context = "if with limit",
         }
     );
     failures += execute_error(

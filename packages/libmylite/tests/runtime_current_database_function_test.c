@@ -328,15 +328,18 @@ static int test_current_database_unsupported_forms(void) {
             .message_part = "syntax",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT DATABASE() LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+    failures += execute_ok(database, "SELECT DATABASE() LIMIT 1", &result);
+    failures += expect_current_result(
+        result,
+        (struct expected_current_result){
+            .columns = (const char *const[]){"DATABASE()"},
+            .values = (const char *const[]){"app"},
+            .count = 1U,
+            .context = "selected schema with limit",
         }
     );
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_error(
         database,
         "SELECT DATABASE() FROM t",

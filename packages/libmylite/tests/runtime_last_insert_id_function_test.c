@@ -880,15 +880,18 @@ static int test_last_insert_id_unsupported_forms(void) {
     );
     mylite_result_free(result);
     result = NULL;
-    failures += execute_error(
-        database,
-        "SELECT LAST_INSERT_ID() LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+    failures += execute_ok(database, "SELECT LAST_INSERT_ID() LIMIT 1", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = (const char *const[]){"LAST_INSERT_ID()"},
+            .values = last_insert_id_alias_values,
+            .count = 1U,
+            .context = "last insert id with limit",
         }
     );
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "USE app");
     failures += execute_statement_ok(database, "CREATE TABLE t (id INT)");

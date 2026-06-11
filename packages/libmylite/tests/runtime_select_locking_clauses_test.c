@@ -327,15 +327,10 @@ static int test_locking_wait_options(void) {
     mylite_result_free(result);
     result = NULL;
 
-    failures += execute_error(
-        database,
-        "SELECT id FROM t FOR UPDATE FOR SHARE",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
-        }
-    );
+    failures += execute_ok(database, "SELECT id FROM t FOR UPDATE FOR SHARE", &result);
+    failures += expect_rows(result, all_rows, 4U, 0U, "repeated locking clauses rows");
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_error(
         database,
         "SELECT id FROM t FOR UPDATE ORDER BY id",

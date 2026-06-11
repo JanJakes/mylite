@@ -374,6 +374,7 @@ static int test_version_function_independent_handles(void) {
 }
 
 static int test_version_function_unsupported_forms(void) {
+    static const char *const version_limit_values[] = {MYLITE_MYSQL_SERVER_VERSION_STRING};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -440,15 +441,18 @@ static int test_version_function_unsupported_forms(void) {
             .message_part = "SELECT supports only descriptor-backed table reads",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT VERSION() LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+    failures += execute_ok(database, "SELECT VERSION() LIMIT 1", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = (const char *const[]){"VERSION()"},
+            .values = version_limit_values,
+            .count = 1U,
+            .context = "version with limit",
         }
     );
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_error(
         database,
         "SELECT VERSION() FROM t",
@@ -724,6 +728,7 @@ static int test_version_system_variable_independent_handles(void) {
 
 static int test_version_system_variable_scope_and_errors(void) {
     mylite_db *database = NULL;
+    mylite_result *result = NULL;
     int failures = 0;
 
     failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open version errors memory");
@@ -809,15 +814,18 @@ static int test_version_system_variable_scope_and_errors(void) {
             .message_part = "signed 64-bit +, binary -, and * arithmetic",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT @@version LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
+    failures += execute_ok(database, "SELECT @@version LIMIT 1", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = (const char *const[]){"@@version"},
+            .values = (const char *const[]){MYLITE_MYSQL_SERVER_VERSION_STRING},
+            .count = 1U,
+            .context = "version system variable with limit",
         }
     );
+    mylite_result_free(result);
+    result = NULL;
 
     mylite_close(database);
     return failures;

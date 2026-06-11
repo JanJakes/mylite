@@ -65,10 +65,12 @@ static int plan_select(
     if (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_DERIVED) {
         const struct mylite_sql_ast_node *inner_statement = child_at(from_clause, 0U);
 
-        if (inner_statement != NULL &&
-            inner_statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT &&
+        if (inner_statement != NULL && inner_statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT &&
             inner_statement->kind != MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT) {
-            set_unsupported_error(database, "SELECT derived tables support only SELECT query blocks");
+            set_unsupported_error(
+                database,
+                "SELECT derived tables support only SELECT query blocks"
+            );
             return MYLITE_ERROR;
         }
     }
@@ -2444,7 +2446,7 @@ static int plan_row_scalar_select(
         if (rc == MYLITE_OK) {
             item_source_context = &source_context;
         }
-    } else if (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
+    } else if (from_clause == NULL || from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
         rc = collect_row_scalar_select_clauses(
             database,
             select_statement_optional_clause_start(statement),
@@ -2990,12 +2992,18 @@ static int plan_row_scalar_select_tableless_filter(
     const struct row_scalar_select_clauses *clauses,
     struct planned_row_scalar_select *out_plan
 ) {
-    if (clauses->order_clause != NULL || clauses->limit_clause != NULL) {
+    int rc = MYLITE_OK;
+
+    if (clauses->order_clause != NULL) {
         set_unsupported_error(
             database,
-            "row-scalar SELECT FROM DUAL supports only scalar-literal or EXISTS WHERE filtering"
+            "tableless row-scalar SELECT supports only WHERE filtering and LIMIT"
         );
         return MYLITE_ERROR;
+    }
+    rc = plan_select_limit(database, clauses->limit_clause, &out_plan->limit);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
     if (clauses->where_clause == NULL) {
         return MYLITE_OK;

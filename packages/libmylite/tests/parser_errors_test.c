@@ -89,11 +89,7 @@ static int test_syntax_errors(void) {
     failures += parser_test_parse_sql("SELECT USER() LIMIT 1;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
-    failures += parser_test_parse_sql(
-        "SELECT CURRENT_USER LIMIT 1;",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        &result
-    );
+    failures += parser_test_parse_sql("SELECT CURRENT_USER LIMIT 1;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql("SELECT MOD();", MYLITE_SQL_PARSE_OK, &result);

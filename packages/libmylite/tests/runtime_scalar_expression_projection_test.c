@@ -1454,13 +1454,15 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT 1, IF(1,2,3) LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT 1, IF(1,2,3) LIMIT 1",
+            .columns = (const char *const[]){"1", "IF(1,2,3)"},
+            .column_count = 2U,
+            .values = (const char *const[]){"1", "2"},
+            .row_count = 1U,
+            .context = "mixed scalar with limit",
         }
     );
     failures += execute_error(

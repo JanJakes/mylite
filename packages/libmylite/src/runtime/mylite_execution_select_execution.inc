@@ -94,7 +94,8 @@ static bool select_statement_is_row_scalar_projection_attempt(
         select_list_is_wildcard(select_list)) {
         return false;
     }
-    if (has_dual_source && select_statement_optional_clause_start(statement) != NULL) {
+    if ((from_clause == NULL || has_dual_source) &&
+        select_statement_optional_clause_start(statement) != NULL) {
         return true;
     }
 

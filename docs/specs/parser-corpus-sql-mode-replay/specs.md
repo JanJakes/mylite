@@ -55,6 +55,13 @@ Global or persisted assignments such as `SET GLOBAL sql_mode = ...`,
 the current benchmark session mode. Unknown, invalid, unsupported, or
 nonconstant mode values leave the current benchmark mode unchanged.
 
+If a row that starts with `SET` parses under the current replayed mode but does
+not produce a recognized `sql_mode` effect, the annotator makes one recovery
+parse under default lexer mode and applies only recognized session `sql_mode`
+assignments from that second parse. This models MySQL 8.4.9 behavior observed
+for clear/reset statements such as `SET @@SQL_MODE=""` after `ANSI_QUOTES` is
+active without making ordinary non-`SET` statements mode-insensitive.
+
 The assigned mode for a query is the mode in effect before that query executes.
 If the query is a session-affecting `SET sql_mode` statement, its effect applies
 to later queries.
@@ -86,6 +93,8 @@ The focused C test covers:
 - ignoring global assignments;
 - user-variable save/restore;
 - `sys.LIST_ADD`, `sys.LIST_DROP`, and `CONCAT` mode mutations;
+- recovery for double-quoted empty `sql_mode` clears while `ANSI_QUOTES` is
+  active;
 - parsing an ANSI-quoted identifier statement with the assigned mode.
 
 The default corpus benchmark must be rerun after implementation to preserve the

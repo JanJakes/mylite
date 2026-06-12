@@ -62,6 +62,8 @@ static int test_sql_mode_replay(void) {
         query_set_zero,
         query_set_ansi,
         query_select_ansi,
+        query_clear_ansi_with_double_quoted_empty,
+        query_call_after_ansi_clear,
     };
 
     static const char csv[] = "SET SQL_MODE='ANSI_QUOTES'\n"
@@ -83,7 +85,10 @@ static int test_sql_mode_replay(void) {
                               "SET SQL_MODE=DEFAULT\n"
                               "SET SQL_MODE=0\n"
                               "SET SQL_MODE=ANSI\n"
-                              "SELECT * FROM \"ansi\"\n";
+                              "SELECT * FROM \"ansi\"\n"
+                              "SET @@SQL_MODE=\"\"\n"
+                              "CALL mtr.add_suppression(\"Found wrong key definition in #sql.* "
+                              "Please do \\\"ALTER TABLE `#sql.*` FORCE \\\" to fix it!\")\n";
     struct mylite_benchmark_owned_query_list queries = {0};
     int failures = load_and_assign(csv, &queries);
 
@@ -247,11 +252,28 @@ static int test_sql_mode_replay(void) {
             .context = "ANSI combination expansion",
         }
     );
+    failures += expect_modes(
+        &queries,
+        &(struct sql_mode_expectation){
+            .index = query_clear_ansi_with_double_quoted_empty,
+            .modes = ansi | ignore_space | pipes,
+            .context = "double-quoted clear starts in ANSI mode",
+        }
+    );
+    failures += expect_modes(
+        &queries,
+        &(struct sql_mode_expectation){
+            .index = query_call_after_ansi_clear,
+            .modes = 0U,
+            .context = "double-quoted clear reset mode",
+        }
+    );
     failures += expect_parse_ok(&queries, query_create_quoted, "ANSI quoted CREATE TABLE");
     failures += expect_parse_ok(&queries, query_select_full, "ANSI quoted SELECT");
     failures += expect_parse_ok(&queries, query_mod_call, "IGNORE_SPACE function call");
     failures += expect_parse_ok(&queries, query_pipe_concat, "PIPES_AS_CONCAT expression");
     failures += expect_parse_ok(&queries, query_select_ansi, "ANSI combination quoted SELECT");
+    failures += expect_parse_ok(&queries, query_call_after_ansi_clear, "CALL after ANSI clear");
 
     mylite_benchmark_owned_query_list_deinit(&queries);
     return failures;

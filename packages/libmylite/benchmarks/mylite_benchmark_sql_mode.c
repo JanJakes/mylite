@@ -36,15 +36,27 @@ static int apply_query_sql_mode_effect(
     struct sql_mode_context *context,
     const struct mylite_benchmark_owned_query *query
 );
-static void apply_set_statement(
+static bool apply_parsed_query_sql_mode_effect(
+    struct sql_mode_context *context,
+    const struct mylite_sql_parse_result *result,
+    bool allow_placeholder_forms
+);
+static int apply_query_sql_mode_effect_with_modes(
+    struct sql_mode_context *context,
+    const struct mylite_benchmark_owned_query *query,
+    unsigned int modes,
+    bool allow_placeholder_forms,
+    bool *out_applied
+);
+static bool apply_set_statement(
     struct sql_mode_context *context,
     const struct mylite_sql_ast_node *statement
 );
-static void apply_placeholder_sql_mode_statement(
+static bool apply_placeholder_sql_mode_statement(
     struct sql_mode_context *context,
     const struct mylite_sql_ast_node *statement
 );
-static void apply_set_assignment(
+static bool apply_set_assignment(
     struct sql_mode_context *context,
     const struct mylite_sql_ast_node *assignment
 );
@@ -114,6 +126,7 @@ static const char *trim_span(const char *text, size_t *length);
 static bool span_contains_token_ci(const struct mylite_sql_source_span *span, const char *token);
 static bool text_contains_token_ci(const char *text, size_t length, const char *token);
 static bool token_equals_ci(const char *text, size_t length, const char *expected);
+static bool query_starts_with_keyword(const char *text, size_t length, const char *keyword);
 static bool is_identifier_byte(char byte);
 static char ascii_lower(char byte);
 
@@ -161,58 +174,100 @@ static int apply_query_sql_mode_effect(
     struct sql_mode_context *context,
     const struct mylite_benchmark_owned_query *query
 ) {
+    bool applied = false;
+
+    if (apply_query_sql_mode_effect_with_modes(context, query, context->modes, true, &applied) !=
+        0) {
+        return 1;
+    }
+    if (applied || context->modes == 0U ||
+        !query_starts_with_keyword(query->sql, query->length, "set")) {
+        return 0;
+    }
+
+    return apply_query_sql_mode_effect_with_modes(context, query, 0U, false, &applied);
+}
+
+static int apply_query_sql_mode_effect_with_modes(
+    struct sql_mode_context *context,
+    const struct mylite_benchmark_owned_query *query,
+    unsigned int modes,
+    bool allow_placeholder_forms,
+    bool *out_applied
+) {
     struct mylite_sql_parse_result result = {0};
-    enum mylite_sql_parse_status status = mylite_sql_parse(
+    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+
+    status = mylite_sql_parse(
         (struct mylite_sql_parse_config){
             .input = query->sql,
             .length = query->length,
-            .modes = context->modes,
+            .modes = modes,
         },
         &result
     );
-
+    if (out_applied != NULL) {
+        *out_applied = false;
+    }
     if (status == MYLITE_SQL_PARSE_NOMEM || status == MYLITE_SQL_PARSE_MISUSE) {
         fprintf(stderr, "failed to parse CSV query while assigning SQL modes\n");
         mylite_sql_parse_result_deinit(&result);
         return 1;
     }
-    if (status == MYLITE_SQL_PARSE_OK && result.root != NULL &&
-        result.root->kind == MYLITE_SQL_AST_SCRIPT && result.root->first_child != NULL &&
-        result.root->first_child->next_sibling == NULL) {
-        const struct mylite_sql_ast_node *statement = result.root->first_child;
+    if (status == MYLITE_SQL_PARSE_OK) {
+        bool applied =
+            apply_parsed_query_sql_mode_effect(context, &result, allow_placeholder_forms);
 
-        if (statement->kind == MYLITE_SQL_AST_SET_STATEMENT) {
-            apply_set_statement(context, statement);
-        } else {
-            apply_placeholder_sql_mode_statement(context, statement);
+        if (out_applied != NULL) {
+            *out_applied = applied;
         }
     }
     mylite_sql_parse_result_deinit(&result);
     return 0;
 }
 
-static void apply_set_statement(
+static bool apply_parsed_query_sql_mode_effect(
+    struct sql_mode_context *context,
+    const struct mylite_sql_parse_result *result,
+    bool allow_placeholder_forms
+) {
+    const struct mylite_sql_ast_node *statement = NULL;
+
+    if (result == NULL || result->root == NULL || result->root->kind != MYLITE_SQL_AST_SCRIPT ||
+        result->root->first_child == NULL || result->root->first_child->next_sibling != NULL) {
+        return false;
+    }
+    statement = result->root->first_child;
+    if (statement->kind == MYLITE_SQL_AST_SET_STATEMENT) {
+        return apply_set_statement(context, statement);
+    }
+    return allow_placeholder_forms && apply_placeholder_sql_mode_statement(context, statement);
+}
+
+static bool apply_set_statement(
     struct sql_mode_context *context,
     const struct mylite_sql_ast_node *statement
 ) {
     const struct mylite_sql_ast_node *assignment_list = NULL;
     const struct mylite_sql_ast_node *assignment = NULL;
+    bool applied = false;
 
     if (statement == NULL || statement->kind != MYLITE_SQL_AST_SET_STATEMENT) {
-        return;
+        return false;
     }
     assignment_list = child_at(statement, 0U);
     if (assignment_list == NULL || assignment_list->kind != MYLITE_SQL_AST_SET_ASSIGNMENT_LIST) {
-        return;
+        return false;
     }
     assignment = child_at(assignment_list, 0U);
     while (assignment != NULL) {
-        apply_set_assignment(context, assignment);
+        applied = apply_set_assignment(context, assignment) || applied;
         assignment = assignment->next_sibling;
     }
+    return applied;
 }
 
-static void apply_placeholder_sql_mode_statement(
+static bool apply_placeholder_sql_mode_statement(
     struct sql_mode_context *context,
     const struct mylite_sql_ast_node *statement
 ) {
@@ -224,19 +279,20 @@ static void apply_placeholder_sql_mode_statement(
         span_is_global_or_persist_target(&statement->span) ||
         !collect_sql_mode_tokens(statement->span.text, statement->span.length, &modes, &found) ||
         !found) {
-        return;
+        return false;
     }
     if (span_contains_token_ci(&statement->span, "list_add")) {
         context->modes |= modes;
-        return;
+        return true;
     }
     if (span_contains_token_ci(&statement->span, "list_drop")) {
         context->modes &= ~modes;
-        return;
+        return true;
     }
+    return false;
 }
 
-static void apply_set_assignment(
+static bool apply_set_assignment(
     struct sql_mode_context *context,
     const struct mylite_sql_ast_node *assignment
 ) {
@@ -246,7 +302,7 @@ static void apply_set_assignment(
     char variable_name[sql_mode_user_variable_name_capacity];
 
     if (assignment == NULL || assignment->kind != MYLITE_SQL_AST_SET_ASSIGNMENT) {
-        return;
+        return false;
     }
     target = child_at(assignment, 0U);
     value = child_at(assignment, 1U);
@@ -254,14 +310,16 @@ static void apply_set_assignment(
         user_variable_name(target, variable_name, sizeof(variable_name)) &&
         evaluate_sql_mode_value(context, value, &modes)) {
         save_user_variable(context, variable_name, modes);
-        return;
+        return true;
     }
     if (!target_is_session_sql_mode(target)) {
-        return;
+        return false;
     }
     if (evaluate_sql_mode_value(context, value, &modes)) {
         context->modes = modes;
+        return true;
     }
+    return false;
 }
 
 static bool evaluate_sql_mode_value(
@@ -669,6 +727,26 @@ static bool token_equals_ci(const char *text, size_t length, const char *expecte
         }
     }
     return true;
+}
+
+static bool query_starts_with_keyword(const char *text, size_t length, const char *keyword) {
+    size_t keyword_length = keyword == NULL ? 0U : strlen(keyword);
+    size_t index = 0U;
+    bool right_boundary = false;
+
+    if (text == NULL || keyword == NULL || keyword_length == 0U) {
+        return false;
+    }
+    while (index < length && (text[index] == ' ' || text[index] == '\t' || text[index] == '\r' ||
+                              text[index] == '\n')) {
+        ++index;
+    }
+    if (index + keyword_length > length) {
+        return false;
+    }
+    right_boundary =
+        index + keyword_length == length || !is_identifier_byte(text[index + keyword_length]);
+    return right_boundary && token_equals_ci(&text[index], keyword_length, keyword);
 }
 
 static bool is_identifier_byte(char byte) {

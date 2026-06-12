@@ -573,7 +573,18 @@ static int session_user_variable_value(
         return MYLITE_OK;
     }
 
-    out_cell->value = variable->value;
+    if (variable->value_size == SIZE_MAX) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_cell->owned_text = (char *)malloc(variable->value_size + 1U);
+    if (out_cell->owned_text == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(out_cell->owned_text, variable->value, variable->value_size);
+    out_cell->owned_text[variable->value_size] = '\0';
+    out_cell->value = out_cell->owned_text;
     out_cell->value_size = variable->value_size;
     out_cell->has_value_size = true;
     return MYLITE_OK;

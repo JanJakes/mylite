@@ -4297,6 +4297,11 @@ static int user_variable_assignment_expression_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int copy_user_variable_assignment_result_cell(
+    struct mylite_db *database,
+    struct session_scalar_cell *out_cell,
+    const struct session_scalar_cell *value
+);
 static int append_user_variable_assignment_deprecation_warning(struct mylite_db *database);
 static int copy_user_variable_name(
     struct mylite_db *database,

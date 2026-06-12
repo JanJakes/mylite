@@ -819,10 +819,47 @@ static int user_variable_assignment_expression_value(
         rc = append_user_variable_assignment_deprecation_warning(database);
     }
     if (rc == MYLITE_OK) {
-        copy_session_scalar_cell(out_cell, &value);
+        rc = copy_user_variable_assignment_result_cell(database, out_cell, &value);
     }
     session_scalar_cell_deinit(&value);
     return rc;
+}
+
+static int copy_user_variable_assignment_result_cell(
+    struct mylite_db *database,
+    struct session_scalar_cell *out_cell,
+    const struct session_scalar_cell *value
+) {
+    size_t value_size = 0U;
+    char *owned_text = NULL;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    copy_session_scalar_cell(out_cell, value);
+    if (value == NULL || value->value == NULL) {
+        return MYLITE_OK;
+    }
+
+    value_size = value->has_value_size ? value->value_size : strlen(value->value);
+    if (value_size == SIZE_MAX) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    owned_text = (char *)malloc(value_size + 1U);
+    if (owned_text == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(owned_text, value->value, value_size);
+    owned_text[value_size] = '\0';
+
+    out_cell->owned_text = owned_text;
+    out_cell->value = out_cell->owned_text;
+    out_cell->value_size = value_size;
+    out_cell->has_value_size = true;
+    return MYLITE_OK;
 }
 
 static int append_user_variable_assignment_deprecation_warning(struct mylite_db *database) {

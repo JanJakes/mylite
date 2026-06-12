@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #ifdef _WIN32
+#  include <Windows.h>
 #  include <bcrypt.h>
 #else
 #  include <fcntl.h>

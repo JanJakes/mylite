@@ -28,6 +28,11 @@
 #  endif
 #endif
 
+#if !defined(_WIN32) && !defined(__APPLE__) && !defined(__FreeBSD__) && !defined(__OpenBSD__) &&   \
+    !defined(__NetBSD__) && !defined(__DragonFly__)
+#  define MYLITE_RANDOM_BYTES_HAS_URANDOM_FALLBACK 1
+#endif
+
 enum {
     mysql_error_random_bytes_length_out_of_range = 1690,
     mysql_warning_truncated_incorrect_integer = 1292,
@@ -68,7 +73,9 @@ static int fill_random_bytes_arc4random(unsigned char *bytes, size_t length);
 #  ifdef __linux__
 static int fill_random_bytes_getrandom(unsigned char *bytes, size_t length, bool *out_unavailable);
 #  endif
+#  ifdef MYLITE_RANDOM_BYTES_HAS_URANDOM_FALLBACK
 static int fill_random_bytes_from_urandom(unsigned char *bytes, size_t length);
+#  endif
 #endif
 static void format_warning_input(
     const void *input,
@@ -495,6 +502,7 @@ static int fill_random_bytes_getrandom(unsigned char *bytes, size_t length, bool
 }
 #  endif
 
+#  ifdef MYLITE_RANDOM_BYTES_HAS_URANDOM_FALLBACK
 static int fill_random_bytes_from_urandom(unsigned char *bytes, size_t length) {
     size_t offset = 0U;
     int descriptor = open("/dev/urandom", O_RDONLY);
@@ -521,6 +529,7 @@ static int fill_random_bytes_from_urandom(unsigned char *bytes, size_t length) {
     close(descriptor);
     return MYLITE_OK;
 }
+#  endif
 #endif
 
 static bool warning_input_byte_is_printable(unsigned char byte) {

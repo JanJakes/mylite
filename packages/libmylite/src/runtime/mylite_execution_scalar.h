@@ -257,6 +257,11 @@ int mylite_execution_scalar_crc32_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+int mylite_execution_scalar_digest_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 int mylite_execution_scalar_hex_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

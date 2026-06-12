@@ -1314,6 +1314,22 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "crc32_function";
     case MYLITE_SQL_AST_CRC32_ARGUMENT_COUNT_ERROR:
         return "crc32_argument_count_error";
+    case MYLITE_SQL_AST_MD5_FUNCTION:
+        return "md5_function";
+    case MYLITE_SQL_AST_MD5_ARGUMENT_COUNT_ERROR:
+        return "md5_argument_count_error";
+    case MYLITE_SQL_AST_SHA_FUNCTION:
+        return "sha_function";
+    case MYLITE_SQL_AST_SHA_ARGUMENT_COUNT_ERROR:
+        return "sha_argument_count_error";
+    case MYLITE_SQL_AST_SHA1_FUNCTION:
+        return "sha1_function";
+    case MYLITE_SQL_AST_SHA1_ARGUMENT_COUNT_ERROR:
+        return "sha1_argument_count_error";
+    case MYLITE_SQL_AST_SHA2_FUNCTION:
+        return "sha2_function";
+    case MYLITE_SQL_AST_SHA2_ARGUMENT_COUNT_ERROR:
+        return "sha2_argument_count_error";
     case MYLITE_SQL_AST_HEX_FUNCTION:
         return "hex_function";
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:

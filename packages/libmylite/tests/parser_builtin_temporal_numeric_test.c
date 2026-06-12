@@ -30,6 +30,7 @@ static int test_bit_count_function(void);
 static int test_numeric_format_truncate_crc32_functions(void);
 static int test_hex_function(void);
 static int test_base64_functions(void);
+static int test_digest_functions(void);
 static int test_unhex_function(void);
 static int test_pi_function(void);
 static int test_rand_function(void);
@@ -69,6 +70,7 @@ int main(void) {
     failures += test_numeric_format_truncate_crc32_functions();
     failures += test_hex_function();
     failures += test_base64_functions();
+    failures += test_digest_functions();
     failures += test_unhex_function();
     failures += test_pi_function();
     failures += test_rand_function();
@@ -4521,6 +4523,169 @@ static int test_base64_functions(void) {
         select,
         MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
         "base64 identifiers"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_digest_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parser_test_parse_sql(
+        "SELECT MD5('abc'), SHA(col), SHA1(X'616263'), SHA2(v,256) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(expression, MYLITE_SQL_AST_MD5_FUNCTION, "md5 function");
+    failures += parser_test_expect_span_text(expression, "MD5('abc')", "md5 span");
+    failures += parser_test_expect_literal(
+        parser_test_child_at(expression, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "md5 string"
+    );
+    expression = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+    failures += parser_test_expect_node(expression, MYLITE_SQL_AST_SHA_FUNCTION, "sha function");
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression, 0U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "sha column"
+    );
+    expression = parser_test_child_at(parser_test_child_at(select_list, 2U), 0U);
+    failures += parser_test_expect_node(expression, MYLITE_SQL_AST_SHA1_FUNCTION, "sha1 function");
+    failures += parser_test_expect_literal(
+        parser_test_child_at(expression, 0U),
+        MYLITE_SQL_AST_LITERAL_HEX,
+        "sha1 hex literal"
+    );
+    expression = parser_test_child_at(parser_test_child_at(select_list, 3U), 0U);
+    failures += parser_test_expect_node(expression, MYLITE_SQL_AST_SHA2_FUNCTION, "sha2 function");
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression, 0U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "sha2 column"
+    );
+    failures += parser_test_expect_literal(
+        parser_test_child_at(expression, 1U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "sha2 length"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(select, 1U),
+        MYLITE_SQL_AST_FROM_TABLE,
+        "digest from table"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT MD5 ('a'), (SHA2('a',0)) FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(expression, MYLITE_SQL_AST_MD5_FUNCTION, "spaced md5");
+    failures += parser_test_expect_span_text(expression, "MD5 ('a')", "spaced md5 span");
+    expression = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+    failures += parser_test_expect_node(
+        expression,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "parenthesized sha2"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression, 0U),
+        MYLITE_SQL_AST_SHA2_FUNCTION,
+        "wrapped sha2"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT MD5(), SHA('a','b'), SHA1(), SHA2('a'), SHA2('a',256,512);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        expression,
+        MYLITE_SQL_AST_MD5_ARGUMENT_COUNT_ERROR,
+        "md5 empty argument count error"
+    );
+    expression = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+    failures += parser_test_expect_node(
+        expression,
+        MYLITE_SQL_AST_SHA_ARGUMENT_COUNT_ERROR,
+        "sha extra argument count error"
+    );
+    expression = parser_test_child_at(parser_test_child_at(select_list, 2U), 0U);
+    failures += parser_test_expect_node(
+        expression,
+        MYLITE_SQL_AST_SHA1_ARGUMENT_COUNT_ERROR,
+        "sha1 empty argument count error"
+    );
+    expression = parser_test_child_at(parser_test_child_at(select_list, 3U), 0U);
+    failures += parser_test_expect_node(
+        expression,
+        MYLITE_SQL_AST_SHA2_ARGUMENT_COUNT_ERROR,
+        "sha2 missing length argument count error"
+    );
+    expression = parser_test_child_at(parser_test_child_at(select_list, 4U), 0U);
+    failures += parser_test_expect_node(
+        expression,
+        MYLITE_SQL_AST_SHA2_ARGUMENT_COUNT_ERROR,
+        "sha2 extra argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "DO MD5('abc'), SHA(NULL), SHA1('abc'), SHA2('abc',256);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    expression_list = parser_test_child_at(statement, 0U);
+    failures += parser_test_expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "digest do");
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression_list, 0U),
+        MYLITE_SQL_AST_MD5_FUNCTION,
+        "do md5"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression_list, 1U),
+        MYLITE_SQL_AST_SHA_FUNCTION,
+        "do sha"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression_list, 2U),
+        MYLITE_SQL_AST_SHA1_FUNCTION,
+        "do sha1"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression_list, 3U),
+        MYLITE_SQL_AST_SHA2_FUNCTION,
+        "do sha2"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE digest_names (md5 INT, sha INT, sha1 INT, sha2 INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        select,
+        MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+        "digest identifiers"
     );
     mylite_sql_parse_result_deinit(&result);
 

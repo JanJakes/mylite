@@ -477,6 +477,432 @@ static bool base64_column_descriptor_is_supported(
     return false;
 }
 
+static int plan_row_scalar_digest_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *argument = NULL;
+    const struct mylite_sql_ast_node *length_argument = NULL;
+    struct row_scalar_digest_ast_arguments digest_arguments = {0};
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    rc = validate_row_scalar_digest_expression_arity(database, expression);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    if (expression->kind == MYLITE_SQL_AST_SHA2_FUNCTION) {
+        length_argument = unwrap_parenthesized_expression(child_at(expression, 1U));
+    }
+    if (argument != NULL && (argument->kind == MYLITE_SQL_AST_IDENTIFIER ||
+                             argument->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        if (!has_source) {
+            return mylite_execution_set_unknown_column_reference_error(database, argument);
+        }
+        digest_arguments.function_expression = expression;
+        digest_arguments.argument = argument;
+        digest_arguments.length_argument = length_argument;
+        return plan_row_scalar_digest_column_expression(
+            database,
+            &digest_arguments,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+
+    return plan_row_scalar_digest_constant_expression(database, expression, out_expression);
+}
+
+static int validate_row_scalar_digest_expression_arity(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    size_t child_count = 0U;
+    const char *function_name = row_scalar_digest_error_function_name(expression);
+
+    if (function_name == NULL || expression == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_MD5_ARGUMENT_COUNT_ERROR ||
+        expression->kind == MYLITE_SQL_AST_SHA_ARGUMENT_COUNT_ERROR ||
+        expression->kind == MYLITE_SQL_AST_SHA1_ARGUMENT_COUNT_ERROR ||
+        expression->kind == MYLITE_SQL_AST_SHA2_ARGUMENT_COUNT_ERROR) {
+        set_native_function_parameter_count_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+
+    child_count = mylite_sql_ast_node_child_count(expression);
+    if (expression->kind == MYLITE_SQL_AST_SHA2_FUNCTION) {
+        if (child_count != 2U) {
+            set_native_function_parameter_count_error(database, function_name);
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
+    if (child_count != 1U) {
+        set_native_function_parameter_count_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_digest_column_expression(
+    struct mylite_db *database,
+    const struct row_scalar_digest_ast_arguments *arguments,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    size_t source_index = 0U;
+    bool length_is_null = false;
+    int rc = MYLITE_OK;
+
+    if (arguments == NULL || arguments->function_expression == NULL ||
+        arguments->argument == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = resolve_descriptor_column_reference_with_source_index(
+        database,
+        arguments->argument,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT digest functions support only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column,
+        &source_index
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!digest_column_descriptor_is_supported(database, &column)) {
+        return MYLITE_ERROR;
+    }
+
+    out_expression->argument_count =
+        arguments->function_expression->kind == MYLITE_SQL_AST_SHA2_FUNCTION ? 2U : 1U;
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(out_expression->argument_count, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    if (arguments->function_expression->kind == MYLITE_SQL_AST_SHA2_FUNCTION) {
+        rc = plan_row_scalar_sha2_length_argument(
+            database,
+            arguments->length_argument,
+            &out_expression->arguments[1],
+            &length_is_null
+        );
+        if (rc != MYLITE_OK) {
+            planned_row_scalar_expression_deinit(out_expression);
+            return rc;
+        }
+        if (length_is_null) {
+            planned_row_scalar_expression_deinit(out_expression);
+            out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+            out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
+            return MYLITE_OK;
+        }
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_DIGEST;
+    out_expression->digest_kind =
+        row_scalar_digest_kind_from_ast(arguments->function_expression->kind);
+    out_expression->arguments[0].kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->arguments[0].column = column;
+    out_expression->arguments[0].column_has_source_index =
+        select_source_context_is_joined(source_context);
+    out_expression->arguments[0].column_source_index = source_index;
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_digest_constant_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct session_scalar_cell cell = {0};
+    int rc = MYLITE_OK;
+
+    if (!is_digest_projection_expression(expression)) {
+        set_unsupported_error(
+            database,
+            "digest functions support only string, hex, integer, boolean, NULL, supported "
+            "session scalar, and descriptor column arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_execution_scalar_digest_function_value(database, expression, &cell);
+    if (rc == MYLITE_OK) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+        if (cell.value == NULL) {
+            out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
+        } else {
+            rc = copy_text_value(database, cell.value, &out_expression->value);
+        }
+    }
+    session_scalar_cell_deinit(&cell);
+    return rc;
+}
+
+static bool digest_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
+        return true;
+    }
+    if (column_descriptor_is_string_family(column) ||
+        column_descriptor_is_binary_string_family(column)) {
+        return true;
+    }
+
+    set_unsupported_error(
+        database,
+        "digest functions support only integer, nonbinary string, and binary string columns"
+    );
+    return false;
+}
+
+static int plan_row_scalar_sha2_length_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    struct planned_row_scalar_expression *out_expression,
+    bool *out_is_null
+) {
+    enum mylite_digest_algorithm algorithm = MYLITE_DIGEST_ALGORITHM_SHA256;
+    int64_t value = 0;
+
+    if (out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_is_null = false;
+    if (!sha2_length_literal_algorithm(argument, &algorithm, &value, out_is_null)) {
+        set_unsupported_error(
+            database,
+            "row-scalar SELECT SHA2() supports only hash lengths 224, 256, 384, 512, 0, "
+            "FALSE, or NULL"
+        );
+        return MYLITE_ERROR;
+    }
+    if (*out_is_null) {
+        return MYLITE_OK;
+    }
+
+    (void)algorithm;
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+    out_expression->value = (struct planned_value){.is_null = false, .integer = value};
+    return MYLITE_OK;
+}
+
+static bool sha2_length_literal_algorithm(
+    const struct mylite_sql_ast_node *literal,
+    enum mylite_digest_algorithm *out_algorithm,
+    int64_t *out_value,
+    bool *out_is_null
+) {
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+
+    literal = unwrap_parenthesized_expression(literal);
+    if (literal == NULL || out_algorithm == NULL || out_value == NULL || out_is_null == NULL) {
+        return false;
+    }
+    *out_is_null = false;
+    if (literal->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(literal);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            return false;
+        }
+        literal = unwrap_parenthesized_expression(child_at(literal, 0U));
+        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+            return false;
+        }
+    }
+    if (literal->kind != MYLITE_SQL_AST_LITERAL) {
+        return false;
+    }
+
+    switch (mylite_sql_ast_node_literal_kind(literal)) {
+    case MYLITE_SQL_AST_LITERAL_NULL:
+        *out_is_null = true;
+        return true;
+    case MYLITE_SQL_AST_LITERAL_FALSE:
+        return sha2_length_value_from_magnitude(0U, false, out_algorithm, out_value);
+    case MYLITE_SQL_AST_LITERAL_TRUE:
+        return false;
+    case MYLITE_SQL_AST_LITERAL_INTEGER:
+        if (parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK) {
+            return false;
+        }
+        return sha2_length_value_from_magnitude(
+            magnitude,
+            is_negative,
+            out_algorithm,
+            out_value
+        );
+    default:
+        break;
+    }
+    return false;
+}
+
+static bool sha2_length_value_from_magnitude(
+    uint64_t magnitude,
+    bool is_negative,
+    enum mylite_digest_algorithm *out_algorithm,
+    int64_t *out_value
+) {
+    if (is_negative || out_algorithm == NULL || out_value == NULL) {
+        return false;
+    }
+    switch (magnitude) {
+    case MYLITE_DIGEST_SHA2_LENGTH_DEFAULT:
+        *out_algorithm = MYLITE_DIGEST_ALGORITHM_SHA256;
+        *out_value = MYLITE_DIGEST_SHA2_LENGTH_DEFAULT;
+        return true;
+    case MYLITE_DIGEST_SHA2_LENGTH_SHA224:
+        *out_algorithm = MYLITE_DIGEST_ALGORITHM_SHA224;
+        *out_value = MYLITE_DIGEST_SHA2_LENGTH_SHA224;
+        return true;
+    case MYLITE_DIGEST_SHA2_LENGTH_SHA256:
+        *out_algorithm = MYLITE_DIGEST_ALGORITHM_SHA256;
+        *out_value = MYLITE_DIGEST_SHA2_LENGTH_SHA256;
+        return true;
+    case MYLITE_DIGEST_SHA2_LENGTH_SHA384:
+        *out_algorithm = MYLITE_DIGEST_ALGORITHM_SHA384;
+        *out_value = MYLITE_DIGEST_SHA2_LENGTH_SHA384;
+        return true;
+    case MYLITE_DIGEST_SHA2_LENGTH_SHA512:
+        *out_algorithm = MYLITE_DIGEST_ALGORITHM_SHA512;
+        *out_value = MYLITE_DIGEST_SHA2_LENGTH_SHA512;
+        return true;
+    default:
+        break;
+    }
+    return false;
+}
+
+static enum planned_row_scalar_digest_kind row_scalar_digest_kind_from_ast(
+    enum mylite_sql_ast_node_kind ast_kind
+) {
+    switch (ast_kind) {
+    case MYLITE_SQL_AST_MD5_FUNCTION:
+        return PLANNED_ROW_SCALAR_DIGEST_MD5;
+    case MYLITE_SQL_AST_SHA_FUNCTION:
+        return PLANNED_ROW_SCALAR_DIGEST_SHA;
+    case MYLITE_SQL_AST_SHA1_FUNCTION:
+        return PLANNED_ROW_SCALAR_DIGEST_SHA1;
+    case MYLITE_SQL_AST_SHA2_FUNCTION:
+        return PLANNED_ROW_SCALAR_DIGEST_SHA2;
+    default:
+        break;
+    }
+    return PLANNED_ROW_SCALAR_DIGEST_NONE;
+}
+
+static const char *row_scalar_digest_error_function_name(
+    const struct mylite_sql_ast_node *expression
+) {
+    if (expression == NULL) {
+        return NULL;
+    }
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_MD5_FUNCTION:
+    case MYLITE_SQL_AST_MD5_ARGUMENT_COUNT_ERROR:
+        return "MD5";
+    case MYLITE_SQL_AST_SHA_FUNCTION:
+    case MYLITE_SQL_AST_SHA_ARGUMENT_COUNT_ERROR:
+        return "SHA";
+    case MYLITE_SQL_AST_SHA1_FUNCTION:
+    case MYLITE_SQL_AST_SHA1_ARGUMENT_COUNT_ERROR:
+        return "SHA1";
+    case MYLITE_SQL_AST_SHA2_FUNCTION:
+    case MYLITE_SQL_AST_SHA2_ARGUMENT_COUNT_ERROR:
+        return "SHA2";
+    default:
+        break;
+    }
+    return NULL;
+}
+
+static const char *row_scalar_digest_sql_function_name(
+    enum planned_row_scalar_digest_kind digest_kind
+) {
+    switch (digest_kind) {
+    case PLANNED_ROW_SCALAR_DIGEST_MD5:
+        return "_mylite_md5";
+    case PLANNED_ROW_SCALAR_DIGEST_SHA:
+        return "_mylite_sha";
+    case PLANNED_ROW_SCALAR_DIGEST_SHA1:
+        return "_mylite_sha1";
+    case PLANNED_ROW_SCALAR_DIGEST_SHA2:
+        return "_mylite_sha2";
+    case PLANNED_ROW_SCALAR_DIGEST_NONE:
+        break;
+    }
+    return NULL;
+}
+
+static enum mylite_digest_algorithm row_scalar_digest_algorithm(
+    const struct planned_row_scalar_expression *expression
+) {
+    if (expression == NULL) {
+        return MYLITE_DIGEST_ALGORITHM_SHA512;
+    }
+    switch (expression->digest_kind) {
+    case PLANNED_ROW_SCALAR_DIGEST_MD5:
+        return MYLITE_DIGEST_ALGORITHM_MD5;
+    case PLANNED_ROW_SCALAR_DIGEST_SHA:
+    case PLANNED_ROW_SCALAR_DIGEST_SHA1:
+        return MYLITE_DIGEST_ALGORITHM_SHA1;
+    case PLANNED_ROW_SCALAR_DIGEST_SHA2:
+        if (expression->argument_count == 2U && expression->arguments != NULL &&
+            expression->arguments[1].kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE &&
+            !expression->arguments[1].value.is_null) {
+            switch (expression->arguments[1].value.integer) {
+            case MYLITE_DIGEST_SHA2_LENGTH_DEFAULT:
+            case MYLITE_DIGEST_SHA2_LENGTH_SHA256:
+                return MYLITE_DIGEST_ALGORITHM_SHA256;
+            case MYLITE_DIGEST_SHA2_LENGTH_SHA224:
+                return MYLITE_DIGEST_ALGORITHM_SHA224;
+            case MYLITE_DIGEST_SHA2_LENGTH_SHA384:
+                return MYLITE_DIGEST_ALGORITHM_SHA384;
+            case MYLITE_DIGEST_SHA2_LENGTH_SHA512:
+                return MYLITE_DIGEST_ALGORITHM_SHA512;
+            default:
+                break;
+            }
+        }
+        return MYLITE_DIGEST_ALGORITHM_SHA512;
+    case PLANNED_ROW_SCALAR_DIGEST_NONE:
+        break;
+    }
+    return MYLITE_DIGEST_ALGORITHM_SHA512;
+}
+
 static int plan_row_scalar_uuid_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -874,6 +1300,23 @@ static int plan_row_scalar_binary_string_expression(
     *out_handled = true;
 
     switch (expression->kind) {
+    case MYLITE_SQL_AST_MD5_FUNCTION:
+    case MYLITE_SQL_AST_MD5_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SHA_FUNCTION:
+    case MYLITE_SQL_AST_SHA_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SHA1_FUNCTION:
+    case MYLITE_SQL_AST_SHA1_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SHA2_FUNCTION:
+    case MYLITE_SQL_AST_SHA2_ARGUMENT_COUNT_ERROR:
+        return plan_row_scalar_digest_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
     case MYLITE_SQL_AST_UUID_FUNCTION:
     case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_IS_UUID_FUNCTION:

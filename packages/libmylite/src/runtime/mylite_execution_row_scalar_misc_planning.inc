@@ -1175,6 +1175,14 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_TO_BASE64_FUNCTION ||
             current->kind == MYLITE_SQL_AST_FROM_BASE64_FUNCTION ||
             current->kind == MYLITE_SQL_AST_UNHEX_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_MD5_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_MD5_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_SHA_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_SHA_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_SHA1_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_SHA1_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_SHA2_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_SHA2_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_UUID_FUNCTION ||
             current->kind == MYLITE_SQL_AST_IS_UUID_FUNCTION ||
             current->kind == MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION ||

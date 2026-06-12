@@ -6,6 +6,7 @@
 #include "mylite_date_format.h"
 #include "mylite_date_interval_second.h"
 #include "mylite_datediff.h"
+#include "mylite_digest.h"
 #include "mylite_group_concat_aggregate.h"
 #include "mylite_integer_arithmetic.h"
 #include "mylite_json_functions.h"
@@ -270,6 +271,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = initialize_string_function_registration_surface(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_digest_functions(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_uuid_functions(sqlite);

@@ -496,6 +496,23 @@ static int session_scalar_value(
         return mylite_execution_scalar_bit_count_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_CRC32_FUNCTION:
         return mylite_execution_scalar_crc32_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_MD5_FUNCTION:
+    case MYLITE_SQL_AST_SHA_FUNCTION:
+    case MYLITE_SQL_AST_SHA1_FUNCTION:
+    case MYLITE_SQL_AST_SHA2_FUNCTION:
+        return mylite_execution_scalar_digest_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_MD5_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "MD5");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_SHA_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "SHA");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_SHA1_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "SHA1");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_SHA2_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "SHA2");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_HEX_FUNCTION:
         return mylite_execution_scalar_hex_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:

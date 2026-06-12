@@ -203,6 +203,19 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_base64_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         return append_row_scalar_unhex_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST: {
+        const char *function_name = row_scalar_digest_sql_function_name(expression->digest_kind);
+
+        if (function_name == NULL) {
+            return MYLITE_ERROR;
+        }
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            function_name,
+            expression,
+            next_parameter
+        );
+    }
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
         return append_row_scalar_registered_function_expression_sql(
             string,
@@ -537,6 +550,7 @@ static int append_row_scalar_window_function_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_KEYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SET:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
@@ -773,6 +787,7 @@ static int append_row_scalar_conversion_base_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
@@ -933,6 +948,8 @@ static int append_row_scalar_non_concat_expression_sql(
         break;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
         return append_row_scalar_collate_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST:
+        return append_row_scalar_expression_sql(string, expression, next_parameter);
     }
     return append_row_scalar_non_control_flow_expression_sql(string, expression, next_parameter);
 }
@@ -1047,6 +1064,8 @@ static int append_row_scalar_non_control_flow_expression_sql(
             expression,
             next_parameter
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST:
+        return append_row_scalar_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
         return append_row_scalar_registered_function_expression_sql(
             string,
@@ -1247,6 +1266,7 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:

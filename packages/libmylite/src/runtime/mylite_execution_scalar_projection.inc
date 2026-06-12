@@ -215,6 +215,9 @@ static bool is_string_scalar_function_projection_expression(
     if (is_binary_string_projection_expression(expression)) {
         return true;
     }
+    if (is_digest_projection_expression(expression)) {
+        return true;
+    }
     if (is_format_truncate_projection_expression(expression)) {
         return true;
     }
@@ -538,6 +541,28 @@ static bool is_crc32_projection_expression(const struct mylite_sql_ast_node *exp
         return false;
     }
     return child_at(expression, 0U) != NULL;
+}
+
+static bool is_digest_projection_expression(const struct mylite_sql_ast_node *expression) {
+    size_t child_count = 0U;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    child_count = mylite_sql_ast_node_child_count(expression);
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_MD5_FUNCTION:
+    case MYLITE_SQL_AST_SHA_FUNCTION:
+    case MYLITE_SQL_AST_SHA1_FUNCTION:
+        return child_count == 1U && child_at(expression, 0U) != NULL;
+    case MYLITE_SQL_AST_SHA2_FUNCTION:
+        return child_count == 2U && child_at(expression, 0U) != NULL &&
+               child_at(expression, 1U) != NULL;
+    default:
+        break;
+    }
+    return false;
 }
 
 static bool is_binary_string_projection_expression(const struct mylite_sql_ast_node *expression) {

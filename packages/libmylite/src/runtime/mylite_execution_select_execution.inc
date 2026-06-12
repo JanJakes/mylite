@@ -1678,6 +1678,9 @@ static int populate_row_scalar_expression_result_column_descriptor(
             }
         );
         return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST:
+        populate_row_scalar_digest_result_column_descriptor(database, expression, descriptor);
+        return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         populate_scalar_binary_numeric_result_column_descriptor(
             descriptor,
@@ -2013,6 +2016,7 @@ static int populate_window_value_function_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
@@ -2213,6 +2217,27 @@ static int populate_row_scalar_conversion_result_column_descriptor(
     }
 
     return MYLITE_ERROR;
+}
+
+static void populate_row_scalar_digest_result_column_descriptor(
+    const struct mylite_db *database,
+    const struct planned_row_scalar_expression *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    const enum mylite_digest_algorithm algorithm = row_scalar_digest_algorithm(expression);
+    const uint64_t display_length =
+        (uint64_t)mylite_digest_hex_length(algorithm) *
+        scalar_connection_max_bytes_per_character(database);
+
+    populate_scalar_connection_string_result_column_descriptor(
+        database,
+        descriptor,
+        (struct scalar_connection_string_result_column_shape){
+            .display_length = display_length,
+            .extra_flags = 0U,
+            .nullable = true,
+        }
+    );
 }
 
 static int populate_row_scalar_date_interval_second_result_column_descriptor(

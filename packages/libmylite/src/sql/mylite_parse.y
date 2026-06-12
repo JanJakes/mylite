@@ -4972,6 +4972,22 @@ dml_constant_scalar_value(A) ::= JSON_VALID(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_JSON_VALID_FUNCTION, B, R);
 }
+dml_constant_scalar_value(A) ::= MD5(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_MD5_FUNCTION, B, R);
+}
+dml_constant_scalar_value(A) ::= SHA(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_SHA_FUNCTION, B, R);
+}
+dml_constant_scalar_value(A) ::= SHA1(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_SHA1_FUNCTION, B, R);
+}
+dml_constant_scalar_value(A) ::= SHA2(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_SHA2_FUNCTION, B, C, R);
+}
 dml_constant_scalar_value(A) ::= HEX(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_HEX_FUNCTION, B, R);
@@ -7318,6 +7334,23 @@ row_scalar_string_predicate_expression(A) ::= UNHEX(T) LPAREN expression(B) RPAR
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_UNHEX_FUNCTION, B, R);
 }
+row_scalar_string_predicate_expression(A) ::= MD5(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_MD5_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= SHA(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_SHA_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= SHA1(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_SHA1_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= SHA2(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_SHA2_FUNCTION, B, C, R);
+}
 row_scalar_string_predicate_expression(A) ::= LOWER(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_LOWER_FUNCTION, B, R);
@@ -9270,6 +9303,22 @@ expression(A) ::= CRC32(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_CRC32_FUNCTION, B, R);
 }
+expression(A) ::= MD5(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_MD5_FUNCTION, B, R);
+}
+expression(A) ::= SHA(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_SHA_FUNCTION, B, R);
+}
+expression(A) ::= SHA1(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_SHA1_FUNCTION, B, R);
+}
+expression(A) ::= SHA2(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_SHA2_FUNCTION, B, C, R);
+}
 expression(A) ::= HEX(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_HEX_FUNCTION, B, R);
@@ -9920,6 +9969,48 @@ expression(A) ::= CRC32(T) LPAREN expression(B) COMMA function_argument_list(C) 
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_CRC32_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= MD5(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_MD5_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= MD5(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_MD5_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= SHA(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SHA_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= SHA(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SHA_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= SHA1(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SHA1_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= SHA1(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SHA1_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= SHA2(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SHA2_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= SHA2(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SHA2_ARGUMENT_COUNT_ERROR, B, R);
+}
+expression(A) ::=
+    SHA2(T) LPAREN expression(B) COMMA expression(C) COMMA function_argument_list(D) RPAREN(R). {
+    (void)B;
+    (void)C;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_SHA2_ARGUMENT_COUNT_ERROR, D, R);
 }
 expression(A) ::= HEX(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -11977,6 +12068,18 @@ identifier(A) ::= CONV(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= CRC32(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= MD5(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SHA(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SHA1(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= SHA2(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= HEX(T). {

@@ -280,6 +280,14 @@ static const char *argument_count_error_node_function_name(
         return "BIT_COUNT";
     case MYLITE_SQL_AST_CRC32_ARGUMENT_COUNT_ERROR:
         return "CRC32";
+    case MYLITE_SQL_AST_MD5_ARGUMENT_COUNT_ERROR:
+        return "MD5";
+    case MYLITE_SQL_AST_SHA_ARGUMENT_COUNT_ERROR:
+        return "SHA";
+    case MYLITE_SQL_AST_SHA1_ARGUMENT_COUNT_ERROR:
+        return "SHA1";
+    case MYLITE_SQL_AST_SHA2_ARGUMENT_COUNT_ERROR:
+        return "SHA2";
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:
         return "HEX";
     case MYLITE_SQL_AST_TO_BASE64_ARGUMENT_COUNT_ERROR:

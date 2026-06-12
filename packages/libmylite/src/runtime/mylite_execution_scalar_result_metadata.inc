@@ -4,6 +4,14 @@ static int populate_scalar_binary_literal_result_column_descriptor(
     const struct mylite_sql_ast_node *literal,
     struct mylite_result_column_descriptor *descriptor
 );
+static void populate_scalar_digest_result_column_descriptor(
+    const struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
+static enum mylite_digest_algorithm scalar_digest_result_algorithm(
+    const struct mylite_sql_ast_node *expression
+);
 
 static int make_scalar_result_column_descriptor(
     struct mylite_db *database,
@@ -118,8 +126,7 @@ static int populate_scalar_literal_result_column_descriptor(
             descriptor
         );
     }
-    if (literal_kind == MYLITE_SQL_AST_LITERAL_HEX ||
-        literal_kind == MYLITE_SQL_AST_LITERAL_BIT) {
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_HEX || literal_kind == MYLITE_SQL_AST_LITERAL_BIT) {
         return populate_scalar_binary_literal_result_column_descriptor(
             database,
             literal,
@@ -246,6 +253,12 @@ static int populate_scalar_function_result_column_descriptor(
             }
         );
         return MYLITE_OK;
+    case MYLITE_SQL_AST_MD5_FUNCTION:
+    case MYLITE_SQL_AST_SHA_FUNCTION:
+    case MYLITE_SQL_AST_SHA1_FUNCTION:
+    case MYLITE_SQL_AST_SHA2_FUNCTION:
+        populate_scalar_digest_result_column_descriptor(database, expression, descriptor);
+        return MYLITE_OK;
     case MYLITE_SQL_AST_UUID_FUNCTION:
         populate_uuid_string_result_column_descriptor(descriptor, true);
         return MYLITE_OK;
@@ -350,6 +363,60 @@ static int populate_scalar_function_result_column_descriptor(
     default:
         return MYLITE_OK;
     }
+}
+
+static void populate_scalar_digest_result_column_descriptor(
+    const struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    const enum mylite_digest_algorithm algorithm = scalar_digest_result_algorithm(expression);
+    const uint64_t display_length = (uint64_t)mylite_digest_hex_length(algorithm) *
+                                    scalar_connection_max_bytes_per_character(database);
+
+    populate_scalar_connection_string_result_column_descriptor(
+        database,
+        descriptor,
+        (struct scalar_connection_string_result_column_shape){
+            .display_length = display_length,
+            .extra_flags = 0U,
+            .nullable = true,
+        }
+    );
+}
+
+static enum mylite_digest_algorithm scalar_digest_result_algorithm(
+    const struct mylite_sql_ast_node *expression
+) {
+    enum mylite_digest_algorithm algorithm = MYLITE_DIGEST_ALGORITHM_SHA256;
+    bool length_is_null = false;
+    int64_t value = 0;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return MYLITE_DIGEST_ALGORITHM_SHA256;
+    }
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_MD5_FUNCTION:
+        return MYLITE_DIGEST_ALGORITHM_MD5;
+    case MYLITE_SQL_AST_SHA_FUNCTION:
+    case MYLITE_SQL_AST_SHA1_FUNCTION:
+        return MYLITE_DIGEST_ALGORITHM_SHA1;
+    case MYLITE_SQL_AST_SHA2_FUNCTION:
+        if (sha2_length_literal_algorithm(
+                child_at(expression, 1U),
+                &algorithm,
+                &value,
+                &length_is_null
+            ) &&
+            !length_is_null) {
+            return algorithm;
+        }
+        return MYLITE_DIGEST_ALGORITHM_SHA256;
+    default:
+        break;
+    }
+    return MYLITE_DIGEST_ALGORITHM_SHA256;
 }
 
 static void populate_scalar_temporal_string_result_column_descriptor(
@@ -499,9 +566,7 @@ static int scalar_binary_literal_byte_count(
         if ((span->text[0] == 'b' || span->text[0] == 'B') && span->text[1] == '\'' &&
             span->text[span->length - 1U] == '\'') {
             bit_count = span->length - 3U;
-        } else if (
-            span->text[0] == '0' && (span->text[1] == 'b' || span->text[1] == 'B')
-        ) {
+        } else if (span->text[0] == '0' && (span->text[1] == 'b' || span->text[1] == 'B')) {
             bit_count = span->length - 2U;
         } else {
             set_parse_error(database, NULL);

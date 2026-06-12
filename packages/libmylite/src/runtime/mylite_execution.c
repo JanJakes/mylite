@@ -12,6 +12,7 @@
 #include "mylite_date_interval_second.h"
 #include "mylite_datediff.h"
 #include "mylite_diagnostics.h"
+#include "mylite_digest.h"
 #include "mylite_dynamic_string.h"
 #include "mylite_execution_catalog.h"
 #include "mylite_execution_diagnostics.h"
@@ -2515,6 +2516,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR = 85,
     PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN = 86,
     PLANNED_ROW_SCALAR_EXPRESSION_COLLATE = 87,
+    PLANNED_ROW_SCALAR_EXPRESSION_DIGEST = 88,
 };
 
 enum row_scalar_control_flow_bind_mode {
@@ -2573,6 +2575,20 @@ enum planned_row_scalar_conversion_kind {
     PLANNED_ROW_SCALAR_CONVERSION_USING_CHARSET = 6,
 };
 
+enum planned_row_scalar_digest_kind {
+    PLANNED_ROW_SCALAR_DIGEST_NONE = 0,
+    PLANNED_ROW_SCALAR_DIGEST_MD5 = 1,
+    PLANNED_ROW_SCALAR_DIGEST_SHA = 2,
+    PLANNED_ROW_SCALAR_DIGEST_SHA1 = 3,
+    PLANNED_ROW_SCALAR_DIGEST_SHA2 = 4,
+};
+
+struct row_scalar_digest_ast_arguments {
+    const struct mylite_sql_ast_node *function_expression;
+    const struct mylite_sql_ast_node *argument;
+    const struct mylite_sql_ast_node *length_argument;
+};
+
 enum {
     planned_row_scalar_conversion_step_capacity = 8,
 };
@@ -2611,6 +2627,7 @@ struct planned_row_scalar_expression {
     enum planned_string_bitmask_function_kind string_bitmask_kind;
     enum planned_regexp_string_function_kind regexp_string_kind;
     enum planned_row_scalar_conversion_kind conversion_kind;
+    enum planned_row_scalar_digest_kind digest_kind;
     enum planned_window_function_kind window_function_kind;
     enum mylite_temporal_extract_kind temporal_extract_kind;
     enum mylite_sql_ast_operator operator_kind;
@@ -12338,6 +12355,11 @@ static int populate_row_scalar_conversion_result_column_descriptor(
     const struct planned_row_scalar_expression *expression,
     struct mylite_result_column_descriptor *descriptor
 );
+static void populate_row_scalar_digest_result_column_descriptor(
+    const struct mylite_db *database,
+    const struct planned_row_scalar_expression *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
 static int populate_row_scalar_date_interval_second_result_column_descriptor(
     struct mylite_db *database,
     const struct planned_row_scalar_expression *expression,
@@ -15128,6 +15150,7 @@ static bool is_exp_log_power_projection_expression(const struct mylite_sql_ast_n
 static bool is_base_conversion_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_bit_count_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_crc32_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_digest_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_hex_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_base64_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_unhex_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -23370,6 +23393,66 @@ static int plan_row_scalar_binary_string_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression,
     bool *out_handled
+);
+static int plan_row_scalar_digest_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int validate_row_scalar_digest_expression_arity(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
+static int plan_row_scalar_digest_column_expression(
+    struct mylite_db *database,
+    const struct row_scalar_digest_ast_arguments *arguments,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_digest_constant_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
+static bool digest_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
+static int plan_row_scalar_sha2_length_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    struct planned_row_scalar_expression *out_expression,
+    bool *out_is_null
+);
+static bool sha2_length_literal_algorithm(
+    const struct mylite_sql_ast_node *literal,
+    enum mylite_digest_algorithm *out_algorithm,
+    int64_t *out_value,
+    bool *out_is_null
+);
+static bool sha2_length_value_from_magnitude(
+    uint64_t magnitude,
+    bool is_negative,
+    enum mylite_digest_algorithm *out_algorithm,
+    int64_t *out_value
+);
+static enum planned_row_scalar_digest_kind row_scalar_digest_kind_from_ast(
+    enum mylite_sql_ast_node_kind ast_kind
+);
+static const char *row_scalar_digest_error_function_name(
+    const struct mylite_sql_ast_node *expression
+);
+static const char *row_scalar_digest_sql_function_name(
+    enum planned_row_scalar_digest_kind digest_kind
+);
+static enum mylite_digest_algorithm row_scalar_digest_algorithm(
+    const struct planned_row_scalar_expression *expression
 );
 static int plan_row_scalar_char_argument(
     struct mylite_db *database,

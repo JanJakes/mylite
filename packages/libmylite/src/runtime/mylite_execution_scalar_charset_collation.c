@@ -1253,6 +1253,13 @@ static int scalar_expression_base_charset_collation_metadata(
         *out_charset = mylite_execution_national_character_set_name();
         *out_collation = mylite_execution_national_collation_name();
         return MYLITE_OK;
+    case MYLITE_SQL_AST_MD5_FUNCTION:
+    case MYLITE_SQL_AST_SHA_FUNCTION:
+    case MYLITE_SQL_AST_SHA1_FUNCTION:
+    case MYLITE_SQL_AST_SHA2_FUNCTION:
+        *out_charset = database->session.character_set_connection;
+        *out_collation = database->session.collation_connection;
+        return MYLITE_OK;
     default:
         break;
     }

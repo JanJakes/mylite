@@ -44,6 +44,8 @@ static int plan_row_scalar_non_control_flow_expression(
     struct planned_row_scalar_expression *out_expression
 ) {
     const char *top_level_only_message = NULL;
+    bool handled = false;
+    int binary_rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
@@ -109,6 +111,19 @@ static int plan_row_scalar_non_control_flow_expression(
     if (top_level_only_message != NULL) {
         set_unsupported_error(database, top_level_only_message);
         return MYLITE_ERROR;
+    }
+    binary_rc = plan_row_scalar_binary_string_expression(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        out_expression,
+        &handled
+    );
+    if (binary_rc != MYLITE_OK || handled) {
+        return binary_rc;
     }
     if (!ast_subtree_has_column_reference(expression) &&
         is_scalar_projection_expression(expression)) {

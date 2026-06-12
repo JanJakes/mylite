@@ -531,6 +531,30 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_FROM_BASE64_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "FROM_BASE64");
         return MYLITE_ERROR;
+    case MYLITE_SQL_AST_COMPRESS_FUNCTION:
+        return mylite_execution_scalar_compress_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_COMPRESS_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "COMPRESS");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
+        return mylite_execution_scalar_uncompress_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_UNCOMPRESS_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "UNCOMPRESS");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
+        return mylite_execution_scalar_uncompressed_length_function_value(
+            database,
+            expression,
+            out_cell
+        );
+    case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "UNCOMPRESSED_LENGTH");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
+        return mylite_execution_scalar_random_bytes_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_RANDOM_BYTES_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "RANDOM_BYTES");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_UNHEX_FUNCTION:
         return mylite_execution_scalar_unhex_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:

@@ -9319,6 +9319,22 @@ expression(A) ::= SHA2(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_SHA2_FUNCTION, B, C, R);
 }
+expression(A) ::= COMPRESS(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_COMPRESS_FUNCTION, B, R);
+}
+expression(A) ::= UNCOMPRESS(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_UNCOMPRESS_FUNCTION, B, R);
+}
+expression(A) ::= UNCOMPRESSED_LENGTH(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION, B, R);
+}
+expression(A) ::= RANDOM_BYTES(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION, B, R);
+}
 expression(A) ::= HEX(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_HEX_FUNCTION, B, R);
@@ -10011,6 +10027,42 @@ expression(A) ::=
     (void)C;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_SHA2_ARGUMENT_COUNT_ERROR, D, R);
+}
+expression(A) ::= COMPRESS(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_COMPRESS_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= COMPRESS(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_COMPRESS_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= UNCOMPRESS(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_UNCOMPRESS_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= UNCOMPRESS(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_UNCOMPRESS_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= UNCOMPRESSED_LENGTH(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= UNCOMPRESSED_LENGTH(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= RANDOM_BYTES(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_RANDOM_BYTES_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= RANDOM_BYTES(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_RANDOM_BYTES_ARGUMENT_COUNT_ERROR, C, R);
 }
 expression(A) ::= HEX(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -12080,6 +12132,18 @@ identifier(A) ::= SHA1(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= SHA2(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= COMPRESS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= UNCOMPRESS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= UNCOMPRESSED_LENGTH(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= RANDOM_BYTES(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= HEX(T). {

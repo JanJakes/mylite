@@ -477,6 +477,94 @@ static bool base64_column_descriptor_is_supported(
     return false;
 }
 
+static int plan_row_scalar_registered_one_argument_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *argument = NULL;
+    const char *function_name = NULL;
+    enum planned_row_scalar_expression_kind expression_kind =
+        PLANNED_ROW_SCALAR_EXPRESSION_NONE;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_native_function_parameter_count_error(database, "native");
+        return MYLITE_ERROR;
+    }
+
+    function_name = registered_one_argument_function_name(expression->kind);
+    expression_kind = registered_one_argument_expression_kind(expression->kind);
+    if (function_name == NULL || expression_kind == PLANNED_ROW_SCALAR_EXPRESSION_NONE) {
+        set_unsupported_error(database, "registered one-argument function is unsupported");
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(1U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    out_expression->kind = expression_kind;
+    out_expression->argument_count = 1U;
+    rc = plan_row_scalar_non_concat_expression(
+        database,
+        argument,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        false,
+        &out_expression->arguments[0]
+    );
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(out_expression);
+    }
+    return rc;
+}
+
+static enum planned_row_scalar_expression_kind registered_one_argument_expression_kind(
+    enum mylite_sql_ast_node_kind ast_kind
+) {
+    switch (ast_kind) {
+    case MYLITE_SQL_AST_COMPRESS_FUNCTION:
+        return PLANNED_ROW_SCALAR_EXPRESSION_COMPRESS;
+    case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
+        return PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS;
+    case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
+        return PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH;
+    case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
+        return PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES;
+    default:
+        break;
+    }
+    return PLANNED_ROW_SCALAR_EXPRESSION_NONE;
+}
+
+static const char *registered_one_argument_function_name(enum mylite_sql_ast_node_kind ast_kind) {
+    switch (ast_kind) {
+    case MYLITE_SQL_AST_COMPRESS_FUNCTION:
+        return "COMPRESS";
+    case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
+        return "UNCOMPRESS";
+    case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
+        return "UNCOMPRESSED_LENGTH";
+    case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
+        return "RANDOM_BYTES";
+    default:
+        break;
+    }
+    return NULL;
+}
+
 static int plan_row_scalar_digest_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -1344,6 +1432,19 @@ static int plan_row_scalar_binary_string_expression(
     case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
     case MYLITE_SQL_AST_FROM_BASE64_FUNCTION:
         return plan_row_scalar_base64_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    case MYLITE_SQL_AST_COMPRESS_FUNCTION:
+    case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
+    case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
+        return plan_row_scalar_registered_one_argument_expression(
             database,
             expression,
             has_source,

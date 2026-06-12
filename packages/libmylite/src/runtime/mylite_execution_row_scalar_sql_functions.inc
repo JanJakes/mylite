@@ -115,17 +115,12 @@ static int append_row_scalar_registered_function_expression_sql(
         if (argument_index != 0U) {
             rc = mylite_dynamic_string_append(string, ", ");
         }
-        if (rc == MYLITE_OK && expression->arguments[argument_index].kind ==
-                                   PLANNED_ROW_SCALAR_EXPRESSION_VALUE) {
-            rc = append_numbered_parameter(string, *next_parameter);
-            if (rc == MYLITE_OK) {
-                ++(*next_parameter);
-            }
-        } else if (rc == MYLITE_OK && expression->arguments[argument_index].kind ==
-                                      PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
-            rc = append_row_scalar_column_sql(string, &expression->arguments[argument_index]);
-        } else if (rc == MYLITE_OK) {
-            rc = MYLITE_ERROR;
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_non_concat_expression_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
         }
     }
     if (rc == MYLITE_OK) {
@@ -263,6 +258,10 @@ static int append_row_scalar_uuid_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
@@ -409,6 +408,10 @@ static int append_row_scalar_uuid_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
@@ -513,6 +516,10 @@ static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_exp
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:

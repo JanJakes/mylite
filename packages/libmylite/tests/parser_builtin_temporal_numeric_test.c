@@ -30,6 +30,7 @@ static int test_bit_count_function(void);
 static int test_numeric_format_truncate_crc32_functions(void);
 static int test_hex_function(void);
 static int test_base64_functions(void);
+static int test_compression_random_functions(void);
 static int test_digest_functions(void);
 static int test_unhex_function(void);
 static int test_pi_function(void);
@@ -70,6 +71,7 @@ int main(void) {
     failures += test_numeric_format_truncate_crc32_functions();
     failures += test_hex_function();
     failures += test_base64_functions();
+    failures += test_compression_random_functions();
     failures += test_digest_functions();
     failures += test_unhex_function();
     failures += test_pi_function();
@@ -4523,6 +4525,145 @@ static int test_base64_functions(void) {
         select,
         MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
         "base64 identifiers"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_compression_random_functions(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    int failures = 0;
+
+    failures += parser_test_parse_sql(
+        "SELECT COMPRESS('abc'), UNCOMPRESS(c), UNCOMPRESSED_LENGTH(c), RANDOM_BYTES(4) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures +=
+        parser_test_expect_node(expression, MYLITE_SQL_AST_COMPRESS_FUNCTION, "compress function");
+    failures += parser_test_expect_span_text(expression, "COMPRESS('abc')", "compress span");
+    failures += parser_test_expect_literal(
+        parser_test_child_at(expression, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "compress string"
+    );
+    expression = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+    failures += parser_test_expect_node(
+        expression,
+        MYLITE_SQL_AST_UNCOMPRESS_FUNCTION,
+        "uncompress function"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression, 0U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "uncompress column"
+    );
+    expression = parser_test_child_at(parser_test_child_at(select_list, 2U), 0U);
+    failures += parser_test_expect_node(
+        expression,
+        MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION,
+        "uncompressed length function"
+    );
+    expression = parser_test_child_at(parser_test_child_at(select_list, 3U), 0U);
+    failures += parser_test_expect_node(
+        expression,
+        MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION,
+        "random bytes function"
+    );
+    failures += parser_test_expect_literal(
+        parser_test_child_at(expression, 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "random bytes length"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(select, 1U),
+        MYLITE_SQL_AST_FROM_TABLE,
+        "compression random from table"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT COMPRESS (), UNCOMPRESS('a','b'), UNCOMPRESSED_LENGTH(), RANDOM_BYTES();",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        expression,
+        MYLITE_SQL_AST_COMPRESS_ARGUMENT_COUNT_ERROR,
+        "compress empty argument count error"
+    );
+    expression = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+    failures += parser_test_expect_node(
+        expression,
+        MYLITE_SQL_AST_UNCOMPRESS_ARGUMENT_COUNT_ERROR,
+        "uncompress extra argument count error"
+    );
+    expression = parser_test_child_at(parser_test_child_at(select_list, 2U), 0U);
+    failures += parser_test_expect_node(
+        expression,
+        MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_ARGUMENT_COUNT_ERROR,
+        "uncompressed length empty argument count error"
+    );
+    expression = parser_test_child_at(parser_test_child_at(select_list, 3U), 0U);
+    failures += parser_test_expect_node(
+        expression,
+        MYLITE_SQL_AST_RANDOM_BYTES_ARGUMENT_COUNT_ERROR,
+        "random bytes empty argument count error"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "DO COMPRESS('abc'), UNCOMPRESS(NULL), UNCOMPRESSED_LENGTH(NULL), RANDOM_BYTES(1);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    expression_list = parser_test_child_at(statement, 0U);
+    failures += parser_test_expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "compression do");
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression_list, 0U),
+        MYLITE_SQL_AST_COMPRESS_FUNCTION,
+        "do compress"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression_list, 1U),
+        MYLITE_SQL_AST_UNCOMPRESS_FUNCTION,
+        "do uncompress"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression_list, 2U),
+        MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION,
+        "do uncompressed length"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression_list, 3U),
+        MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION,
+        "do random bytes"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE compression_names (compress INT, uncompress INT, "
+        "uncompressed_length INT, random_bytes INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        select,
+        MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+        "compression random identifiers"
     );
     mylite_sql_parse_result_deinit(&result);
 

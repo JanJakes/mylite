@@ -1330,6 +1330,22 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "sha2_function";
     case MYLITE_SQL_AST_SHA2_ARGUMENT_COUNT_ERROR:
         return "sha2_argument_count_error";
+    case MYLITE_SQL_AST_COMPRESS_FUNCTION:
+        return "compress_function";
+    case MYLITE_SQL_AST_COMPRESS_ARGUMENT_COUNT_ERROR:
+        return "compress_argument_count_error";
+    case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
+        return "uncompress_function";
+    case MYLITE_SQL_AST_UNCOMPRESS_ARGUMENT_COUNT_ERROR:
+        return "uncompress_argument_count_error";
+    case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
+        return "uncompressed_length_function";
+    case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_ARGUMENT_COUNT_ERROR:
+        return "uncompressed_length_argument_count_error";
+    case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
+        return "random_bytes_function";
+    case MYLITE_SQL_AST_RANDOM_BYTES_ARGUMENT_COUNT_ERROR:
+        return "random_bytes_argument_count_error";
     case MYLITE_SQL_AST_HEX_FUNCTION:
         return "hex_function";
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:

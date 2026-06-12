@@ -568,6 +568,7 @@ static bool is_digest_projection_expression(const struct mylite_sql_ast_node *ex
 static bool is_binary_string_projection_expression(const struct mylite_sql_ast_node *expression) {
     return (is_hex_projection_expression(expression) ||
             is_base64_projection_expression(expression) ||
+            is_compression_random_projection_expression(expression) ||
             is_unhex_projection_expression(expression) ||
             is_weight_string_projection_expression(expression) ||
             is_uuid_projection_expression(expression) ||
@@ -784,6 +785,136 @@ static bool is_base64_projection_expression(const struct mylite_sql_ast_node *ex
             return true;
         default:
             return false;
+        }
+    }
+    return false;
+}
+
+static bool is_compression_random_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_ast_node *argument = NULL;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_COMPRESS_FUNCTION:
+    case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
+    case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
+        break;
+    default:
+        return false;
+    }
+    if (mylite_sql_ast_node_child_count(expression) != 1U) {
+        return false;
+    }
+
+    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
+    if (argument == NULL) {
+        return false;
+    }
+    if (argument->kind == MYLITE_SQL_AST_LITERAL) {
+        enum mylite_sql_ast_literal_kind literal_kind =
+            mylite_sql_ast_node_literal_kind(argument);
+
+        return (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_HEX ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_FALSE ||
+                literal_kind == MYLITE_SQL_AST_LITERAL_NULL) != 0;
+    }
+    if (argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(argument);
+        const struct mylite_sql_ast_node *literal =
+            unwrap_parenthesized_expression(child_at(argument, 0U));
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return false;
+        }
+        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+            return false;
+        }
+        switch (mylite_sql_ast_node_literal_kind(literal)) {
+        case MYLITE_SQL_AST_LITERAL_INTEGER:
+        case MYLITE_SQL_AST_LITERAL_DECIMAL:
+        case MYLITE_SQL_AST_LITERAL_FLOAT:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    switch (argument->kind) {
+    case MYLITE_SQL_AST_COMPRESS_FUNCTION:
+    case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
+    case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
+        return is_compression_random_projection_expression(argument);
+    case MYLITE_SQL_AST_DATABASE_FUNCTION:
+    case MYLITE_SQL_AST_SCHEMA_FUNCTION:
+    case MYLITE_SQL_AST_USER_FUNCTION:
+    case MYLITE_SQL_AST_SESSION_USER_FUNCTION:
+    case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION:
+    case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
+    case MYLITE_SQL_AST_VERSION_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
+    case MYLITE_SQL_AST_SYSDATE_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
+    case MYLITE_SQL_AST_CURRENT_TIME_VALUE:
+    case MYLITE_SQL_AST_UTC_DATE_VALUE:
+    case MYLITE_SQL_AST_UTC_TIME_VALUE:
+    case MYLITE_SQL_AST_UTC_TIMESTAMP_VALUE:
+    case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
+    case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION:
+    case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
+    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
+    case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
+    case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool scalar_projection_expression_contains_compression_random_function(
+    const struct mylite_sql_ast_node *expression
+) {
+    size_t child_count = 0U;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_COMPRESS_FUNCTION:
+    case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
+    case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
+        return true;
+    default:
+        break;
+    }
+
+    child_count = mylite_sql_ast_node_child_count(expression);
+    for (size_t child_index = 0U; child_index < child_count; ++child_index) {
+        if (scalar_projection_expression_contains_compression_random_function(
+                child_at(expression, child_index)
+            )) {
+            return true;
         }
     }
     return false;
@@ -2400,6 +2531,9 @@ static bool is_scalar_projection_literal_expression(const struct mylite_sql_ast_
 static bool is_scalar_function_expression(const struct mylite_sql_ast_node *expression) {
     if (expression == NULL) {
         return false;
+    }
+    if (is_compression_random_projection_expression(expression)) {
+        return true;
     }
     switch (expression->kind) {
     case MYLITE_SQL_AST_IF_FUNCTION:

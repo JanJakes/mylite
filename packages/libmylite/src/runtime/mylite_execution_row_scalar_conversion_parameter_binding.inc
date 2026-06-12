@@ -68,6 +68,10 @@ static int bind_row_scalar_conversion_base_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
         return bind_row_scalar_expression_parameters(statement, expression, parameter_index);

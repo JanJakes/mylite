@@ -355,6 +355,10 @@ static int bind_row_scalar_expression_parameters(
         return bind_row_scalar_base64_expression_parameters(statement, expression, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         return bind_row_scalar_unhex_expression_parameters(statement, expression, parameter_index);
+    case PLANNED_ROW_SCALAR_EXPRESSION_COMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
     case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:

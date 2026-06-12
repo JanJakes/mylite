@@ -552,6 +552,10 @@ enum {
     mysql_user_function_display_length = 1152,
     mysql_version_function_display_length = 20,
     mysql_sum_integer_display_length = 33,
+    mysql_compress_overhead_display_length = 18,
+    mysql_uncompress_display_length = 16777216,
+    mysql_random_bytes_display_length = 1024,
+    mysql_uncompressed_length_display_length = 10,
     mysql_json_value_display_character_length = 512,
     mysql_json_type_display_length = 68,
     mysql_temporal_string_function_display_length = 29,
@@ -2517,6 +2521,10 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN = 86,
     PLANNED_ROW_SCALAR_EXPRESSION_COLLATE = 87,
     PLANNED_ROW_SCALAR_EXPRESSION_DIGEST = 88,
+    PLANNED_ROW_SCALAR_EXPRESSION_COMPRESS = 89,
+    PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS = 90,
+    PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH = 91,
+    PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES = 92,
 };
 
 enum row_scalar_control_flow_bind_mode {
@@ -12360,6 +12368,11 @@ static void populate_row_scalar_digest_result_column_descriptor(
     const struct planned_row_scalar_expression *expression,
     struct mylite_result_column_descriptor *descriptor
 );
+static int populate_row_scalar_compress_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_row_scalar_expression *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
 static int populate_row_scalar_date_interval_second_result_column_descriptor(
     struct mylite_db *database,
     const struct planned_row_scalar_expression *expression,
@@ -14354,6 +14367,7 @@ static int evaluate_scalar_logical_enter_comparison_frame(
 static int evaluate_scalar_logical_enter_is_frame(
     struct mylite_db *database,
     struct scalar_logical_eval_stack *expression_stack,
+    struct scalar_arithmetic_value_stack *value_stack,
     const struct mylite_sql_ast_node *expression,
     enum mylite_sql_ast_operator operator_kind
 );
@@ -15153,6 +15167,11 @@ static bool is_crc32_projection_expression(const struct mylite_sql_ast_node *exp
 static bool is_digest_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_hex_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_base64_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_compression_random_projection_expression(const struct mylite_sql_ast_node *expression
+);
+static bool scalar_projection_expression_contains_compression_random_function(
+    const struct mylite_sql_ast_node *expression
+);
 static bool is_unhex_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_weight_string_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_uuid_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -23288,6 +23307,19 @@ static bool base64_column_descriptor_is_supported(
     const struct mylite_catalog_column_descriptor *column,
     const char *function_name
 );
+static int plan_row_scalar_registered_one_argument_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static enum planned_row_scalar_expression_kind registered_one_argument_expression_kind(
+    enum mylite_sql_ast_node_kind ast_kind
+);
+static const char *registered_one_argument_function_name(enum mylite_sql_ast_node_kind ast_kind);
 static bool unhex_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column

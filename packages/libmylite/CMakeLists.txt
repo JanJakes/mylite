@@ -8,6 +8,8 @@ set(MYLITE_SQL_PARSE_DIR "${PROJECT_BINARY_DIR}/generated/libmylite/sql")
 set(MYLITE_SQL_PARSE_C "${MYLITE_SQL_PARSE_DIR}/mylite_parse.c")
 set(MYLITE_SQL_PARSE_H "${MYLITE_SQL_PARSE_DIR}/mylite_parse.h")
 
+find_package(ZLIB REQUIRED)
+
 add_custom_command(
   OUTPUT
     "${MYLITE_SQL_PARSE_C}"
@@ -108,6 +110,7 @@ add_library(mylite STATIC
   src/runtime/mylite_json_validate.c
   src/runtime/mylite_period_functions.c
   src/runtime/mylite_rand.c
+  src/runtime/mylite_random_bytes.c
   src/runtime/mylite_regexp.c
   src/runtime/mylite_result.c
   src/runtime/mylite_result_metadata.c
@@ -119,6 +122,7 @@ add_library(mylite STATIC
   src/runtime/mylite_string_case.c
   src/runtime/mylite_string_char.c
   src/runtime/mylite_string_codepoint.c
+  src/runtime/mylite_string_compression.c
   src/runtime/mylite_string_concat.c
   src/runtime/mylite_string_insert.c
   src/runtime/mylite_string_padding.c
@@ -165,9 +169,13 @@ target_include_directories(mylite
 target_link_libraries(mylite
   PRIVATE
     MyLite::sqlite
+    ZLIB::ZLIB
 )
 if(UNIX AND NOT APPLE)
   target_link_libraries(mylite PRIVATE m)
+endif()
+if(WIN32)
+  target_link_libraries(mylite PRIVATE bcrypt)
 endif()
 
 mylite_configure_c_target(mylite)
@@ -1198,6 +1206,17 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
   )
   mylite_configure_c_target(mylite_runtime_base64_functions_test)
+
+  add_executable(mylite_runtime_compression_random_functions_test
+    tests/runtime_compression_random_functions_test.c
+  )
+  target_link_libraries(mylite_runtime_compression_random_functions_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_compression_random_functions_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_compression_random_functions_test)
 
   add_executable(mylite_runtime_digest_functions_test
     tests/runtime_digest_functions_test.c
@@ -6364,6 +6383,10 @@ if(BUILD_TESTING)
   add_test(
     NAME libmylite.runtime.base64_functions
     COMMAND mylite_runtime_base64_functions_test
+  )
+  add_test(
+    NAME libmylite.runtime.compression_random_functions
+    COMMAND mylite_runtime_compression_random_functions_test
   )
   add_test(
     NAME libmylite.runtime.digest_functions

@@ -13,6 +13,7 @@
 #include "mylite_like.h"
 #include "mylite_period_functions.h"
 #include "mylite_rand.h"
+#include "mylite_random_bytes.h"
 #include "mylite_regexp.h"
 #include "mylite_sqlite_registration.h"
 #include "mylite_string_base64.h"
@@ -20,6 +21,7 @@
 #include "mylite_string_case.h"
 #include "mylite_string_char.h"
 #include "mylite_string_codepoint.h"
+#include "mylite_string_compression.h"
 #include "mylite_string_concat.h"
 #include "mylite_string_insert.h"
 #include "mylite_string_padding.h"
@@ -290,6 +292,9 @@ static int initialize_function_registration_surface(
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_rand_functions(sqlite);
     }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_random_bytes_function(sqlite);
+    }
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -343,6 +348,9 @@ static int initialize_string_function_registration_surface(sqlite3 *sqlite) {
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_string_base64_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_string_compression_functions(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_string_unhex_function(sqlite);

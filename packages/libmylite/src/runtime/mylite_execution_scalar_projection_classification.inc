@@ -62,6 +62,7 @@ static bool select_statement_is_row_function_scalar_projection(
         if (is_string_metadata_projection_expression(expression) ||
             is_hex_projection_expression(expression) ||
             is_base64_projection_expression(expression) ||
+            is_compression_random_projection_expression(expression) ||
             is_unhex_projection_expression(expression) ||
             is_uuid_projection_expression(expression) ||
             is_char_projection_expression(expression) ||
@@ -71,7 +72,8 @@ static bool select_statement_is_row_function_scalar_projection(
             is_json_contains_projection_expression(expression) ||
             is_json_unquote_projection_expression(expression) ||
             is_json_set_projection_expression(expression) ||
-            is_json_construction_projection_expression(expression)) {
+            is_json_construction_projection_expression(expression) ||
+            scalar_projection_expression_contains_compression_random_function(expression)) {
             found_row_function = true;
         } else if (row_scalar_expression_contains_row_function(expression)) {
             return false;

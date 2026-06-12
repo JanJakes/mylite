@@ -9,6 +9,11 @@ static void populate_scalar_digest_result_column_descriptor(
     const struct mylite_sql_ast_node *expression,
     struct mylite_result_column_descriptor *descriptor
 );
+static void populate_scalar_compress_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+);
 static enum mylite_digest_algorithm scalar_digest_result_algorithm(
     const struct mylite_sql_ast_node *expression
 );
@@ -259,6 +264,39 @@ static int populate_scalar_function_result_column_descriptor(
     case MYLITE_SQL_AST_SHA2_FUNCTION:
         populate_scalar_digest_result_column_descriptor(database, expression, descriptor);
         return MYLITE_OK;
+    case MYLITE_SQL_AST_COMPRESS_FUNCTION:
+        populate_scalar_compress_result_column_descriptor(database, expression, descriptor);
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_BLOB;
+        descriptor->charset_id = mysql_collation_binary_id;
+        descriptor->collation_id = mysql_collation_binary_id;
+        descriptor->display_length = mysql_uncompress_display_length;
+        descriptor->decimals = mysql_approximate_decimals;
+        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+        descriptor->nullable = true;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                .display_length = mysql_uncompressed_length_display_length,
+                .decimals = 0U,
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+        descriptor->charset_id = mysql_collation_binary_id;
+        descriptor->collation_id = mysql_collation_binary_id;
+        descriptor->display_length = mysql_random_bytes_display_length;
+        descriptor->decimals = mysql_approximate_decimals;
+        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+        descriptor->nullable = true;
+        return MYLITE_OK;
     case MYLITE_SQL_AST_UUID_FUNCTION:
         populate_uuid_string_result_column_descriptor(descriptor, true);
         return MYLITE_OK;
@@ -383,6 +421,60 @@ static void populate_scalar_digest_result_column_descriptor(
             .nullable = true,
         }
     );
+}
+
+static void populate_scalar_compress_result_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    struct mylite_result_column_descriptor argument_descriptor = {0};
+    char *literal_text = NULL;
+    size_t literal_length = 0U;
+    uint64_t argument_display_length = 0U;
+
+    if (expression != NULL && mylite_sql_ast_node_child_count(expression) == 1U) {
+        const struct mylite_sql_ast_node *argument =
+            unwrap_parenthesized_expression(child_at(expression, 0U));
+
+        if (argument != NULL && argument->kind == MYLITE_SQL_AST_LITERAL &&
+            mylite_sql_ast_node_literal_kind(argument) == MYLITE_SQL_AST_LITERAL_STRING) {
+            if (decode_sql_string_literal_with_policy(
+                    database,
+                    argument,
+                    "COMPRESS() metadata supports only ordinary string literals",
+                    "COMPRESS() metadata does not support NUL bytes in string literals",
+                    true,
+                    &literal_text,
+                    &literal_length
+                ) == MYLITE_OK) {
+                argument_display_length = (uint64_t)literal_length;
+            }
+            free(literal_text);
+        } else if (
+            argument != NULL &&
+            (argument->kind == MYLITE_SQL_AST_LITERAL ||
+             argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) &&
+            populate_scalar_literal_result_column_descriptor(
+                database,
+                argument,
+                &argument_descriptor
+            ) == MYLITE_OK
+        ) {
+            argument_display_length = argument_descriptor.display_length;
+        }
+    }
+    if (argument_display_length > UINT64_MAX - mysql_compress_overhead_display_length) {
+        argument_display_length = UINT64_MAX - mysql_compress_overhead_display_length;
+    }
+
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+    descriptor->charset_id = mysql_collation_binary_id;
+    descriptor->collation_id = mysql_collation_binary_id;
+    descriptor->display_length = argument_display_length + mysql_compress_overhead_display_length;
+    descriptor->decimals = mysql_approximate_decimals;
+    descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+    descriptor->nullable = true;
 }
 
 static enum mylite_digest_algorithm scalar_digest_result_algorithm(

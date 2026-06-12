@@ -203,6 +203,34 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_base64_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
         return append_row_scalar_unhex_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_COMPRESS:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_compress",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_uncompress",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_uncompressed_length",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_random_bytes",
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST: {
         const char *function_name = row_scalar_digest_sql_function_name(expression->digest_kind);
 
@@ -554,6 +582,10 @@ static int append_row_scalar_window_function_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
@@ -717,6 +749,10 @@ static int append_row_scalar_conversion_base_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return append_row_scalar_column_sql(string, expression);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
         return append_row_scalar_expression_sql(string, expression, next_parameter);
@@ -936,6 +972,10 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
@@ -1064,6 +1104,34 @@ static int append_row_scalar_non_control_flow_expression_sql(
             expression,
             next_parameter
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_COMPRESS:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_compress",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_uncompress",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_uncompressed_length",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_random_bytes",
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST:
         return append_row_scalar_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
@@ -1188,6 +1256,8 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
         return append_row_scalar_integer_arithmetic_function_call_sql(string, stack, expression);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
         return append_row_scalar_string_length_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:
+        return append_row_scalar_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
         return append_row_scalar_unix_timestamp_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
@@ -1270,6 +1340,9 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:

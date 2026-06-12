@@ -1681,6 +1681,42 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST:
         populate_row_scalar_digest_result_column_descriptor(database, expression, descriptor);
         return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_COMPRESS:
+        return populate_row_scalar_compress_result_column_descriptor(
+            database,
+            expression,
+            descriptor
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS:
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_BLOB;
+        descriptor->charset_id = mysql_collation_binary_id;
+        descriptor->collation_id = mysql_collation_binary_id;
+        descriptor->display_length = mysql_uncompress_display_length;
+        descriptor->decimals = mysql_approximate_decimals;
+        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+        descriptor->nullable = true;
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                .display_length = mysql_uncompressed_length_display_length,
+                .decimals = 0U,
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+        descriptor->charset_id = mysql_collation_binary_id;
+        descriptor->collation_id = mysql_collation_binary_id;
+        descriptor->display_length = mysql_random_bytes_display_length;
+        descriptor->decimals = mysql_approximate_decimals;
+        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+        descriptor->nullable = true;
+        return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         populate_scalar_binary_numeric_result_column_descriptor(
             descriptor,
@@ -2016,6 +2052,10 @@ static int populate_window_value_function_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
     case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
@@ -2238,6 +2278,51 @@ static void populate_row_scalar_digest_result_column_descriptor(
             .nullable = true,
         }
     );
+}
+
+static int populate_row_scalar_compress_result_column_descriptor(
+    struct mylite_db *database,
+    const struct planned_row_scalar_expression *expression,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    struct mylite_result_column_descriptor argument_descriptor = {0};
+    uint64_t argument_display_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (database == NULL || expression == NULL || descriptor == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (expression->argument_count == 1U && expression->arguments != NULL) {
+        if (expression->arguments[0].kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE) {
+            rc = populate_window_value_literal_result_column_descriptor(
+                database,
+                &expression->arguments[0].value,
+                &argument_descriptor
+            );
+        } else if (expression->arguments[0].kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
+            rc = populate_window_value_column_result_column_descriptor(
+                database,
+                &expression->arguments[0].column,
+                &argument_descriptor
+            );
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        argument_display_length = argument_descriptor.display_length;
+    }
+    if (argument_display_length > UINT64_MAX - mysql_compress_overhead_display_length) {
+        argument_display_length = UINT64_MAX - mysql_compress_overhead_display_length;
+    }
+
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+    descriptor->charset_id = mysql_collation_binary_id;
+    descriptor->collation_id = mysql_collation_binary_id;
+    descriptor->display_length = argument_display_length + mysql_compress_overhead_display_length;
+    descriptor->decimals = mysql_approximate_decimals;
+    descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+    descriptor->nullable = true;
+    return MYLITE_OK;
 }
 
 static int populate_row_scalar_date_interval_second_result_column_descriptor(

@@ -282,6 +282,26 @@ int mylite_execution_scalar_from_base64_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+int mylite_execution_scalar_compress_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+int mylite_execution_scalar_uncompress_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+int mylite_execution_scalar_uncompressed_length_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+int mylite_execution_scalar_random_bytes_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 int mylite_execution_scalar_unhex_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

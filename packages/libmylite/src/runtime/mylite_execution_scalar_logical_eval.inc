@@ -480,6 +480,7 @@ static int evaluate_scalar_logical_enter_frame(
         return evaluate_scalar_logical_enter_is_frame(
             database,
             expression_stack,
+            value_stack,
             expression,
             operator_kind
         );
@@ -585,9 +586,12 @@ static int evaluate_scalar_logical_enter_comparison_frame(
 static int evaluate_scalar_logical_enter_is_frame(
     struct mylite_db *database,
     struct scalar_logical_eval_stack *expression_stack,
+    struct scalar_arithmetic_value_stack *value_stack,
     const struct mylite_sql_ast_node *expression,
     enum mylite_sql_ast_operator operator_kind
 ) {
+    const struct mylite_sql_ast_node *operand =
+        unwrap_parenthesized_expression(child_at(expression, 0U));
     int rc = scalar_logical_eval_stack_push(
         database,
         expression_stack,
@@ -596,6 +600,24 @@ static int evaluate_scalar_logical_enter_is_frame(
         operator_kind
     );
 
+    if (rc == MYLITE_OK &&
+        (operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NULL ||
+         operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL ||
+         operator_kind == MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN ||
+         operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN) &&
+        is_compression_random_projection_expression(operand)) {
+        struct session_scalar_cell cell = {0};
+        struct scalar_arithmetic_value value = {.is_null = false, .integer = 0};
+
+        rc = session_scalar_value(database, operand, &cell);
+        if (rc == MYLITE_OK) {
+            value.is_null = cell.value == NULL;
+            value.division_by_zero_warning_count = cell.staged_division_by_zero_warning_count;
+            rc = scalar_arithmetic_value_stack_push(database, value_stack, value);
+        }
+        session_scalar_cell_deinit(&cell);
+        return rc;
+    }
     if (rc == MYLITE_OK) {
         rc = scalar_logical_eval_stack_push(
             database,

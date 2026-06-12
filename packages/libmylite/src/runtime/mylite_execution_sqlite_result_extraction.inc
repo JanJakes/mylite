@@ -315,6 +315,40 @@ static int script_statement_count(const struct mylite_sql_ast_node *root, size_t
     return MYLITE_OK;
 }
 
+static unsigned int parse_error_line_for_offset(const char *text, size_t offset) {
+    unsigned int line = 1U;
+
+    for (size_t index = 0U; text != NULL && index < offset; ++index) {
+        if (text[index] == '\r' ||
+            (text[index] == '\n' && (index == 0U || text[index - 1U] != '\r'))) {
+            ++line;
+        }
+    }
+    return line;
+}
+
+static unsigned int parse_error_line(const struct mylite_sql_token *token) {
+    const char *text = NULL;
+
+    if (token == NULL || token->text == NULL) {
+        return 1U;
+    }
+
+    text = token->text - token->offset;
+    return parse_error_line_for_offset(text, token->offset);
+}
+
+static unsigned int parse_error_span_line(const struct mylite_sql_source_span *span) {
+    const char *text = NULL;
+
+    if (span == NULL || span->text == NULL) {
+        return 1U;
+    }
+
+    text = span->text - span->offset;
+    return parse_error_line_for_offset(text, span->offset);
+}
+
 static void set_parse_error(
     struct mylite_db *database,
     const struct mylite_sql_parse_result *parse_result
@@ -329,10 +363,10 @@ static void set_parse_error(
         written = snprintf(
             message,
             sizeof(message),
-            "You have an error in your SQL syntax near '%.*s' at line %zu",
+            "You have an error in your SQL syntax near '%.*s' at line %u",
             (int)parse_result->error_token.length,
             near_text,
-            parse_result->error_token.line
+            parse_error_line(&parse_result->error_token)
         );
     } else {
         written = snprintf(
@@ -364,13 +398,13 @@ static void set_multi_statement_parse_error(
         second_statement == NULL ? NULL : &second_statement->span;
     const char *near_text = "end of input";
     size_t near_length = strlen(near_text);
-    size_t line = 1U;
+    unsigned int line = 1U;
     int written = 0;
 
     if (span != NULL && span->text != NULL && span->length != 0U) {
         near_text = span->text;
         near_length = span->length;
-        line = span->line == 0U ? 1U : span->line;
+        line = parse_error_span_line(span);
     }
     if (near_length > (size_t)INT_MAX) {
         near_length = (size_t)INT_MAX;
@@ -380,7 +414,7 @@ static void set_multi_statement_parse_error(
         message,
         sizeof(message),
         "You have an error in your SQL syntax; check the manual that corresponds to your "
-        "MySQL server version for the right syntax to use near '%.*s' at line %zu",
+        "MySQL server version for the right syntax to use near '%.*s' at line %u",
         (int)near_length,
         near_text,
         line

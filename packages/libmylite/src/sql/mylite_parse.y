@@ -5943,8 +5943,6 @@ select_locking_clause_opt(A) ::= FOR(F) UPDATE(U) select_lock_wait_opt(W). {
             .text = F.text,
             .length = (end_token.offset + end_token.length) - F.offset,
             .offset = F.offset,
-            .line = F.line,
-            .column = F.column,
         },
     };
 }
@@ -5956,8 +5954,6 @@ select_locking_clause_opt(A) ::= FOR(F) SHARE(S) select_lock_wait_opt(W). {
             .text = F.text,
             .length = (end_token.offset + end_token.length) - F.offset,
             .offset = F.offset,
-            .line = F.line,
-            .column = F.column,
         },
     };
 }
@@ -5968,8 +5964,6 @@ select_locking_clause_opt(A) ::= LOCK(L) IN SHARE MODE(M). {
             .text = L.text,
             .length = (M.offset + M.length) - L.offset,
             .offset = L.offset,
-            .line = L.line,
-            .column = L.column,
         },
     };
 }

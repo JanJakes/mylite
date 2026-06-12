@@ -77,6 +77,11 @@ struct benchmark_measurement {
     size_t parse_status_counts[parse_status_bucket_count];
 };
 
+struct text_coordinates {
+    unsigned int line;
+    unsigned int column;
+};
+
 struct expected_parse_failure_summary {
     size_t total_count;
     size_t matched_count;
@@ -342,6 +347,11 @@ static void print_parse_failure_row(
     enum mylite_sql_parse_status status,
     const struct mylite_sql_parse_result *result,
     const struct mylite_benchmark_owned_query *query
+);
+static struct text_coordinates compute_offset_coordinates(
+    const char *text,
+    size_t length,
+    size_t offset
 );
 static void print_tsv_escaped_field(FILE *file, const char *text, size_t length);
 static void record_parse_status(
@@ -1201,20 +1211,47 @@ static void print_parse_failure_row(
     const struct mylite_sql_parse_result *result,
     const struct mylite_benchmark_owned_query *query
 ) {
+    struct text_coordinates coordinates =
+        compute_offset_coordinates(query->sql, query->length, result->error_token.offset);
+
     fprintf(
         file,
-        "%zu\t%s\t%s\t%zu\t%zu\t%zu\t",
+        "%zu\t%s\t%s\t%zu\t%u\t%u\t",
         query_index,
         mylite_sql_parse_status_name(status),
         mylite_sql_token_kind_name(result->error_token.kind),
         result->error_token.offset,
-        result->error_token.line,
-        result->error_token.column
+        coordinates.line,
+        coordinates.column
     );
     print_tsv_escaped_field(file, result->error_token.text, result->error_token.length);
     fputc('\t', file);
     print_tsv_escaped_field(file, query->sql, query->length);
     fputc('\n', file);
+}
+
+static struct text_coordinates compute_offset_coordinates(
+    const char *text,
+    size_t length,
+    size_t offset
+) {
+    struct text_coordinates coordinates = {
+        .line = 1U,
+        .column = 1U,
+    };
+    size_t limit = offset < length ? offset : length;
+
+    for (size_t index = 0U; text != NULL && index < limit; ++index) {
+        if (text[index] == '\r' ||
+            (text[index] == '\n' && (index == 0U || text[index - 1U] != '\r'))) {
+            ++coordinates.line;
+            coordinates.column = 1U;
+        } else {
+            ++coordinates.column;
+        }
+    }
+
+    return coordinates;
 }
 
 static void print_tsv_escaped_field(FILE *file, const char *text, size_t length) {

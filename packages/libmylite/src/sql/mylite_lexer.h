@@ -90,21 +90,23 @@ struct mylite_sql_token {
     enum mylite_sql_token_kind kind;
     enum mylite_sql_operator_kind operator_kind;
     enum mylite_sql_lexer_error error;
+    unsigned int flags;
+    unsigned int keyword_flags;
+    unsigned int keyword_index;
     const char *text;
     size_t length;
     size_t offset;
-    size_t line;
-    size_t column;
+};
+
+struct mylite_sql_keyword_lookup_result {
     unsigned int flags;
-    unsigned int keyword_flags;
+    unsigned int keyword_index;
 };
 
 struct mylite_sql_lexer {
     const char *input;
     size_t length;
     size_t offset;
-    size_t line;
-    size_t column;
     unsigned int modes;
 };
 
@@ -118,7 +120,11 @@ void mylite_sql_lexer_init(struct mylite_sql_lexer *lexer, struct mylite_sql_lex
 
 int mylite_sql_lexer_next(struct mylite_sql_lexer *lexer, struct mylite_sql_token *out_token);
 
-bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *out_flags);
+bool mylite_sql_keyword_lookup(
+    const char *text,
+    size_t length,
+    struct mylite_sql_keyword_lookup_result *out_result
+);
 
 const char *mylite_sql_token_kind_name(enum mylite_sql_token_kind kind);
 const char *mylite_sql_operator_kind_name(enum mylite_sql_operator_kind kind);

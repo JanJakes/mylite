@@ -1102,11 +1102,9 @@ static int test_corpus(void) {
         if (token.kind == MYLITE_SQL_TOKEN_ERROR) {
             fprintf(
                 stderr,
-                "unexpected corpus lexer error %s at offset %zu line %zu column %zu near '%.*s'\n",
+                "unexpected corpus lexer error %s at offset %zu near '%.*s'\n",
                 mylite_sql_lexer_error_name(token.error),
                 token.offset,
-                token.line,
-                token.column,
                 (int)(token.length < corpus_error_preview_bytes ? token.length
                                                                 : corpus_error_preview_bytes),
                 token.text
@@ -1156,22 +1154,28 @@ static int expect_single_token_values(
 }
 
 static int expect_keyword(const char *word, unsigned int required_flags) {
-    unsigned int flags = 0U;
-    if (!mylite_sql_keyword_lookup(word, strlen(word), &flags)) {
+    struct mylite_sql_keyword_lookup_result keyword = {0};
+    if (!mylite_sql_keyword_lookup(word, strlen(word), &keyword)) {
         fprintf(stderr, "expected '%s' to be a keyword\n", word);
         return 1;
     }
-    if ((flags & required_flags) != required_flags) {
-        fprintf(stderr, "keyword '%s' missing flags 0x%x, got 0x%x\n", word, required_flags, flags);
+    if ((keyword.flags & required_flags) != required_flags) {
+        fprintf(
+            stderr,
+            "keyword '%s' missing flags 0x%x, got 0x%x\n",
+            word,
+            required_flags,
+            keyword.flags
+        );
         return 1;
     }
     return 0;
 }
 
 static int expect_not_keyword(const char *word) {
-    unsigned int flags = 0U;
-    if (mylite_sql_keyword_lookup(word, strlen(word), &flags)) {
-        fprintf(stderr, "expected '%s' not to be a keyword, got flags 0x%x\n", word, flags);
+    struct mylite_sql_keyword_lookup_result keyword = {0};
+    if (mylite_sql_keyword_lookup(word, strlen(word), &keyword)) {
+        fprintf(stderr, "expected '%s' not to be a keyword, got flags 0x%x\n", word, keyword.flags);
         return 1;
     }
     return 0;

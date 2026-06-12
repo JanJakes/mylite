@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 struct mylite_keyword_entry {
@@ -11,8 +12,6 @@ struct mylite_keyword_entry {
 
 struct mylite_token_start {
     size_t offset;
-    size_t line;
-    size_t column;
     unsigned int flags;
 };
 
@@ -46,6 +45,7 @@ static bool starts_block_comment(const struct mylite_sql_lexer *lexer);
 static bool ends_block_comment(const struct mylite_sql_lexer *lexer);
 static void scan_inner_block_comment_body(struct mylite_sql_lexer *lexer);
 static void advance_two(struct mylite_sql_lexer *lexer);
+static void advance_to_offset_no_newline(struct mylite_sql_lexer *lexer, size_t offset);
 static bool scan_word(
     struct mylite_sql_lexer *lexer,
     unsigned int flags,
@@ -70,6 +70,43 @@ static bool scan_operator_or_punctuation(
     struct mylite_sql_lexer *lexer,
     unsigned int flags,
     struct mylite_sql_token *out_token
+);
+
+struct mylite_sql_operator_match {
+    enum mylite_sql_operator_kind kind;
+    size_t length;
+};
+
+struct mylite_sql_operator_bytes {
+    unsigned char first;
+    unsigned char second;
+    unsigned char third;
+};
+static struct mylite_sql_operator_match classify_operator(struct mylite_sql_operator_bytes bytes);
+static struct mylite_sql_operator_match classify_minus_operator(
+    struct mylite_sql_operator_bytes bytes
+);
+static struct mylite_sql_operator_match classify_less_operator(
+    struct mylite_sql_operator_bytes bytes
+);
+static struct mylite_sql_operator_match classify_greater_operator(
+    struct mylite_sql_operator_bytes bytes
+);
+static struct mylite_sql_operator_match classify_bang_operator(
+    struct mylite_sql_operator_bytes bytes
+);
+static struct mylite_sql_operator_match classify_ampersand_operator(
+    struct mylite_sql_operator_bytes bytes
+);
+static struct mylite_sql_operator_match classify_pipe_operator(
+    struct mylite_sql_operator_bytes bytes
+);
+static struct mylite_sql_operator_match classify_colon_operator(
+    struct mylite_sql_operator_bytes bytes
+);
+static struct mylite_sql_operator_match make_operator_match(
+    enum mylite_sql_operator_kind kind,
+    size_t length
 );
 static bool scan_quoted_string(
     struct mylite_sql_lexer *lexer,
@@ -157,7 +194,6 @@ static bool consume_whitespace(struct mylite_sql_lexer *lexer);
 static void advance_one(struct mylite_sql_lexer *lexer);
 static unsigned char peek_at(const struct mylite_sql_lexer *lexer, size_t lookahead);
 static bool has_at(const struct mylite_sql_lexer *lexer, size_t lookahead);
-static bool starts_with(const struct mylite_sql_lexer *lexer, const char *text);
 static bool starts_comment(const struct mylite_sql_lexer *lexer);
 static bool is_mysql_comment_space(unsigned char byte);
 static bool is_space(unsigned char byte);
@@ -173,7 +209,27 @@ static bool is_sign(unsigned char byte);
 static bool is_binary_literal_digit(unsigned char byte, bool hex);
 static enum mylite_sql_lexer_error binary_literal_error(bool hex);
 static size_t skip_digits(const char *input, size_t length, size_t cursor);
+static size_t skip_identifier_parts(const char *input, size_t length, size_t cursor);
+static size_t skip_user_variable_parts(const char *input, size_t length, size_t cursor);
 static bool scan_exponent_span(const char *input, size_t length, size_t *cursor);
+
+struct mylite_sql_keyword_range {
+    size_t low;
+    size_t high;
+    bool found;
+};
+static struct mylite_sql_keyword_range keyword_search_range(unsigned char first);
+static bool keyword_length_is_possible(unsigned char first, size_t length);
+static unsigned int lookup_hot_keyword_index(const char *text, size_t length, unsigned char first);
+
+struct mylite_sql_keyword_second_char_probe {
+    unsigned char first;
+    unsigned char second;
+    size_t length;
+};
+
+static bool keyword_second_char_is_possible(struct mylite_sql_keyword_second_char_probe probe);
+static int compare_keyword_text(const char *text, size_t length, const char *keyword);
 static char ascii_upper(unsigned char byte);
 
 void mylite_sql_lexer_init(struct mylite_sql_lexer *lexer, struct mylite_sql_lexer_config config) {
@@ -184,8 +240,6 @@ void mylite_sql_lexer_init(struct mylite_sql_lexer *lexer, struct mylite_sql_lex
     lexer->input = config.input;
     lexer->length = config.input == NULL ? 0U : config.length;
     lexer->offset = 0U;
-    lexer->line = 1U;
-    lexer->column = 1U;
     lexer->modes = config.modes;
 }
 
@@ -275,12 +329,15 @@ int mylite_sql_lexer_next(struct mylite_sql_lexer *lexer, struct mylite_sql_toke
     return 0;
 }
 
-bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *out_flags) {
-    enum { keyword_buffer_size = 129 };
+bool mylite_sql_keyword_lookup(
+    const char *text,
+    size_t length,
+    struct mylite_sql_keyword_lookup_result *out_result
+) {
+    enum { maximum_keyword_length = 38 };
 
-    char folded[keyword_buffer_size];
-    size_t low = 0U;
-    size_t high = 0U;
+    struct mylite_sql_keyword_range range = {0};
+    unsigned char first = 0U;
 
     static const struct mylite_keyword_entry keywords[] = {
         {"ABS", 0U},
@@ -1179,37 +1236,60 @@ bool mylite_sql_keyword_lookup(const char *text, size_t length, unsigned int *ou
         {"_FILENAME", MYLITE_SQL_KEYWORD_RESERVED}
     };
 
-    if (out_flags != NULL) {
-        *out_flags = 0U;
+    if (out_result != NULL) {
+        *out_result = (struct mylite_sql_keyword_lookup_result){
+            .flags = 0U,
+            .keyword_index = (unsigned int)-1,
+        };
     }
 
-    if (text == NULL || length == 0U || length >= sizeof(folded)) {
+    if (text == NULL || length == 0U || length > maximum_keyword_length) {
         return false;
     }
 
-    for (size_t index = 0U; index < length; ++index) {
-        unsigned char byte = (unsigned char)text[index];
-        if (byte >= mysql_non_ascii_min) {
-            return false;
-        }
-        folded[index] = ascii_upper(byte);
+    first = (unsigned char)ascii_upper((unsigned char)text[0]);
+    range = keyword_search_range(first);
+    if (!range.found || !keyword_length_is_possible(first, length)) {
+        return false;
     }
-    folded[length] = '\0';
 
-    high = sizeof(keywords) / sizeof(keywords[0]);
-    while (low < high) {
-        size_t middle = low + ((high - low) / 2U);
-        int compare = strcmp(folded, keywords[middle].word);
+    {
+        unsigned int hot_index = lookup_hot_keyword_index(text, length, first);
+        if (hot_index != (unsigned int)-1) {
+            if (out_result != NULL) {
+                *out_result = (struct mylite_sql_keyword_lookup_result){
+                    .flags = keywords[hot_index].flags,
+                    .keyword_index = hot_index,
+                };
+            }
+            return true;
+        }
+    }
+
+    if (!keyword_second_char_is_possible((struct mylite_sql_keyword_second_char_probe){
+            .first = first,
+            .second = length > 1U ? (unsigned char)text[1] : 0U,
+            .length = length,
+        })) {
+        return false;
+    }
+
+    while (range.low < range.high) {
+        size_t middle = range.low + ((range.high - range.low) / 2U);
+        int compare = compare_keyword_text(text, length, keywords[middle].word);
         if (compare == 0) {
-            if (out_flags != NULL) {
-                *out_flags = keywords[middle].flags;
+            if (out_result != NULL) {
+                *out_result = (struct mylite_sql_keyword_lookup_result){
+                    .flags = keywords[middle].flags,
+                    .keyword_index = (unsigned int)middle,
+                };
             }
             return true;
         }
         if (compare < 0) {
-            high = middle;
+            range.high = middle;
         } else {
-            low = middle + 1U;
+            range.low = middle + 1U;
         }
     }
 
@@ -1441,6 +1521,14 @@ static void advance_two(struct mylite_sql_lexer *lexer) {
     advance_one(lexer);
 }
 
+static void advance_to_offset_no_newline(struct mylite_sql_lexer *lexer, size_t offset) {
+    assert(lexer != NULL);
+    assert(offset >= lexer->offset);
+    assert(offset <= lexer->length);
+
+    lexer->offset = offset;
+}
+
 static bool scan_word(
     struct mylite_sql_lexer *lexer,
     unsigned int flags,
@@ -1507,7 +1595,9 @@ static bool scan_digit_leading_token(
     bool saw_exponent = false;
     enum mylite_sql_token_kind kind = MYLITE_SQL_TOKEN_INTEGER;
 
-    if (starts_with(lexer, "0x") && is_hex_digit(peek_at(lexer, 2U))) {
+    if (lexer->input[cursor] == '0' && cursor + 2U < lexer->length &&
+        lexer->input[cursor + 1U] == 'x' &&
+        is_hex_digit((unsigned char)lexer->input[cursor + 2U])) {
         return scan_prefixed_hex_or_bit_literal(
             lexer,
             start,
@@ -1519,7 +1609,9 @@ static bool scan_digit_leading_token(
         );
     }
 
-    if (starts_with(lexer, "0b") && is_bit_digit(peek_at(lexer, 2U))) {
+    if (lexer->input[cursor] == '0' && cursor + 2U < lexer->length &&
+        lexer->input[cursor + 1U] == 'b' &&
+        is_bit_digit((unsigned char)lexer->input[cursor + 2U])) {
         return scan_prefixed_hex_or_bit_literal(
             lexer,
             start,
@@ -1557,9 +1649,7 @@ static bool scan_digit_leading_token(
         return scan_digit_leading_identifier(lexer, flags, out_token);
     }
 
-    while (lexer->offset < cursor) {
-        advance_one(lexer);
-    }
+    advance_to_offset_no_newline(lexer, cursor);
 
     if (saw_exponent) {
         kind = MYLITE_SQL_TOKEN_FLOAT;
@@ -1577,6 +1667,7 @@ static bool scan_dot_or_number(
     struct mylite_sql_token *out_token
 ) {
     struct mylite_token_start start = make_token_start(lexer, flags);
+    size_t cursor = lexer->offset;
     bool saw_exponent = false;
     enum mylite_sql_token_kind kind = MYLITE_SQL_TOKEN_DECIMAL;
 
@@ -1586,28 +1677,14 @@ static bool scan_dot_or_number(
         return true;
     }
 
-    advance_one(lexer);
-    while (is_digit(peek_at(lexer, 0U))) {
-        advance_one(lexer);
-    }
+    ++cursor;
+    cursor = skip_digits(lexer->input, lexer->length, cursor);
 
-    if (peek_at(lexer, 0U) == 'e' || peek_at(lexer, 0U) == 'E') {
-        size_t exponent = lexer->offset + 1U;
-        if (exponent < lexer->length &&
-            (lexer->input[exponent] == '+' || lexer->input[exponent] == '-')) {
-            ++exponent;
-        }
-        if (exponent < lexer->length && is_digit((unsigned char)lexer->input[exponent])) {
-            saw_exponent = true;
-            advance_one(lexer);
-            if (peek_at(lexer, 0U) == '+' || peek_at(lexer, 0U) == '-') {
-                advance_one(lexer);
-            }
-            while (is_digit(peek_at(lexer, 0U))) {
-                advance_one(lexer);
-            }
-        }
+    if (cursor < lexer->length && is_exponent_marker((unsigned char)lexer->input[cursor]) &&
+        scan_exponent_span(lexer->input, lexer->length, &cursor)) {
+        saw_exponent = true;
     }
+    advance_to_offset_no_newline(lexer, cursor);
 
     if (saw_exponent) {
         kind = MYLITE_SQL_TOKEN_FLOAT;
@@ -1641,9 +1718,10 @@ static bool scan_variable(
         return true;
     }
 
-    while (is_user_variable_part(peek_at(lexer, 0U))) {
-        advance_one(lexer);
-    }
+    advance_to_offset_no_newline(
+        lexer,
+        skip_user_variable_parts(lexer->input, lexer->length, lexer->offset)
+    );
     set_token(lexer, out_token, MYLITE_SQL_TOKEN_USER_VARIABLE, start);
     return true;
 }
@@ -1704,58 +1782,151 @@ static bool scan_operator_or_punctuation(
     unsigned int flags,
     struct mylite_sql_token *out_token
 ) {
-    struct operator_candidate {
-        const char *text;
-        enum mylite_sql_operator_kind kind;
-    };
-    static const struct operator_candidate operators[] = {
-        {"->>", MYLITE_SQL_OPERATOR_JSON_UNQUOTE_EXTRACT},
-        {"<=>", MYLITE_SQL_OPERATOR_NULL_SAFE_EQUAL},
-        {"<<", MYLITE_SQL_OPERATOR_LEFT_SHIFT},
-        {">>", MYLITE_SQL_OPERATOR_RIGHT_SHIFT},
-        {"<=", MYLITE_SQL_OPERATOR_LESS_EQUAL},
-        {">=", MYLITE_SQL_OPERATOR_GREATER_EQUAL},
-        {"<>", MYLITE_SQL_OPERATOR_NOT_EQUAL},
-        {"!=", MYLITE_SQL_OPERATOR_NOT_EQUAL},
-        {"&&", MYLITE_SQL_OPERATOR_LOGICAL_AND},
-        {"||", MYLITE_SQL_OPERATOR_LOGICAL_OR},
-        {":=", MYLITE_SQL_OPERATOR_ASSIGN},
-        {"->", MYLITE_SQL_OPERATOR_JSON_EXTRACT},
-        {"=", MYLITE_SQL_OPERATOR_EQUAL},
-        {"<", MYLITE_SQL_OPERATOR_LESS},
-        {">", MYLITE_SQL_OPERATOR_GREATER},
-        {"+", MYLITE_SQL_OPERATOR_PLUS},
-        {"-", MYLITE_SQL_OPERATOR_MINUS},
-        {"*", MYLITE_SQL_OPERATOR_STAR},
-        {"/", MYLITE_SQL_OPERATOR_SLASH},
-        {"%", MYLITE_SQL_OPERATOR_PERCENT},
-        {"!", MYLITE_SQL_OPERATOR_NOT},
-        {"~", MYLITE_SQL_OPERATOR_BITWISE_NOT},
-        {"^", MYLITE_SQL_OPERATOR_BITWISE_XOR},
-        {"&", MYLITE_SQL_OPERATOR_BITWISE_AND},
-        {"|", MYLITE_SQL_OPERATOR_BITWISE_OR},
-    };
     struct mylite_token_start start = make_token_start(lexer, flags);
+    struct mylite_sql_operator_match operator_match =
+        classify_operator((struct mylite_sql_operator_bytes){
+            .first = peek_at(lexer, 0U),
+            .second = peek_at(lexer, 1U),
+            .third = peek_at(lexer, 2U),
+        });
 
-    for (size_t index = 0U; index < (sizeof(operators) / sizeof(operators[0])); ++index) {
-        if (starts_with(lexer, operators[index].text)) {
-            size_t length = strlen(operators[index].text);
-            for (size_t consumed = 0U; consumed < length; ++consumed) {
-                advance_one(lexer);
-            }
-            set_token(lexer, out_token, MYLITE_SQL_TOKEN_OPERATOR, start);
-            out_token->operator_kind = operators[index].kind;
-            return true;
-        }
+    if (operator_match.kind != MYLITE_SQL_OPERATOR_NONE) {
+        advance_to_offset_no_newline(lexer, lexer->offset + operator_match.length);
+        set_token(lexer, out_token, MYLITE_SQL_TOKEN_OPERATOR, start);
+        out_token->operator_kind = operator_match.kind;
+        return true;
     }
 
     if (is_punctuation(peek_at(lexer, 0U))) {
-        advance_one(lexer);
+        advance_to_offset_no_newline(lexer, lexer->offset + 1U);
         set_token(lexer, out_token, MYLITE_SQL_TOKEN_PUNCTUATION, start);
         return true;
     }
 
     return false;
+}
+
+static struct mylite_sql_operator_match classify_operator(struct mylite_sql_operator_bytes bytes) {
+    switch (bytes.first) {
+    case '-':
+        return classify_minus_operator(bytes);
+    case '<':
+        return classify_less_operator(bytes);
+    case '>':
+        return classify_greater_operator(bytes);
+    case '!':
+        return classify_bang_operator(bytes);
+    case '&':
+        return classify_ampersand_operator(bytes);
+    case '|':
+        return classify_pipe_operator(bytes);
+    case ':':
+        return classify_colon_operator(bytes);
+    case '=':
+        return make_operator_match(MYLITE_SQL_OPERATOR_EQUAL, 1U);
+    case '+':
+        return make_operator_match(MYLITE_SQL_OPERATOR_PLUS, 1U);
+    case '*':
+        return make_operator_match(MYLITE_SQL_OPERATOR_STAR, 1U);
+    case '/':
+        return make_operator_match(MYLITE_SQL_OPERATOR_SLASH, 1U);
+    case '%':
+        return make_operator_match(MYLITE_SQL_OPERATOR_PERCENT, 1U);
+    case '~':
+        return make_operator_match(MYLITE_SQL_OPERATOR_BITWISE_NOT, 1U);
+    case '^':
+        return make_operator_match(MYLITE_SQL_OPERATOR_BITWISE_XOR, 1U);
+    default:
+        return make_operator_match(MYLITE_SQL_OPERATOR_NONE, 0U);
+    }
+}
+
+static struct mylite_sql_operator_match classify_minus_operator(
+    struct mylite_sql_operator_bytes bytes
+) {
+    if (bytes.second != '>') {
+        return make_operator_match(MYLITE_SQL_OPERATOR_MINUS, 1U);
+    }
+    if (bytes.third == '>') {
+        return make_operator_match(MYLITE_SQL_OPERATOR_JSON_UNQUOTE_EXTRACT, 3U);
+    }
+    return make_operator_match(MYLITE_SQL_OPERATOR_JSON_EXTRACT, 2U);
+}
+
+static struct mylite_sql_operator_match classify_less_operator(
+    struct mylite_sql_operator_bytes bytes
+) {
+    if (bytes.second == '=' && bytes.third == '>') {
+        return make_operator_match(MYLITE_SQL_OPERATOR_NULL_SAFE_EQUAL, 3U);
+    }
+    if (bytes.second == '<') {
+        return make_operator_match(MYLITE_SQL_OPERATOR_LEFT_SHIFT, 2U);
+    }
+    if (bytes.second == '=') {
+        return make_operator_match(MYLITE_SQL_OPERATOR_LESS_EQUAL, 2U);
+    }
+    if (bytes.second == '>') {
+        return make_operator_match(MYLITE_SQL_OPERATOR_NOT_EQUAL, 2U);
+    }
+    return make_operator_match(MYLITE_SQL_OPERATOR_LESS, 1U);
+}
+
+static struct mylite_sql_operator_match classify_greater_operator(
+    struct mylite_sql_operator_bytes bytes
+) {
+    if (bytes.second == '>') {
+        return make_operator_match(MYLITE_SQL_OPERATOR_RIGHT_SHIFT, 2U);
+    }
+    if (bytes.second == '=') {
+        return make_operator_match(MYLITE_SQL_OPERATOR_GREATER_EQUAL, 2U);
+    }
+    return make_operator_match(MYLITE_SQL_OPERATOR_GREATER, 1U);
+}
+
+static struct mylite_sql_operator_match classify_bang_operator(
+    struct mylite_sql_operator_bytes bytes
+) {
+    if (bytes.second == '=') {
+        return make_operator_match(MYLITE_SQL_OPERATOR_NOT_EQUAL, 2U);
+    }
+    return make_operator_match(MYLITE_SQL_OPERATOR_NOT, 1U);
+}
+
+static struct mylite_sql_operator_match classify_ampersand_operator(
+    struct mylite_sql_operator_bytes bytes
+) {
+    if (bytes.second == '&') {
+        return make_operator_match(MYLITE_SQL_OPERATOR_LOGICAL_AND, 2U);
+    }
+    return make_operator_match(MYLITE_SQL_OPERATOR_BITWISE_AND, 1U);
+}
+
+static struct mylite_sql_operator_match classify_pipe_operator(
+    struct mylite_sql_operator_bytes bytes
+) {
+    if (bytes.second == '|') {
+        return make_operator_match(MYLITE_SQL_OPERATOR_LOGICAL_OR, 2U);
+    }
+    return make_operator_match(MYLITE_SQL_OPERATOR_BITWISE_OR, 1U);
+}
+
+static struct mylite_sql_operator_match classify_colon_operator(
+    struct mylite_sql_operator_bytes bytes
+) {
+    if (bytes.second == '=') {
+        return make_operator_match(MYLITE_SQL_OPERATOR_ASSIGN, 2U);
+    }
+    return make_operator_match(MYLITE_SQL_OPERATOR_NONE, 0U);
+}
+
+static struct mylite_sql_operator_match make_operator_match(
+    enum mylite_sql_operator_kind kind,
+    size_t length
+) {
+    return (struct mylite_sql_operator_match){
+        .kind = kind,
+        .length = length,
+    };
 }
 
 static bool scan_quoted_string(
@@ -1868,9 +2039,7 @@ static bool scan_prefixed_hex_or_bit_literal(
         return scan_digit_leading_identifier(lexer, start.flags, out_token);
     }
 
-    while (lexer->offset < cursor) {
-        advance_one(lexer);
-    }
+    advance_to_offset_no_newline(lexer, cursor);
 
     set_token(lexer, out_token, options.kind, start);
     return true;
@@ -1883,9 +2052,10 @@ static bool scan_digit_leading_identifier(
 ) {
     struct mylite_token_start start = make_token_start(lexer, flags);
 
-    while (is_identifier_part(peek_at(lexer, 0U))) {
-        advance_one(lexer);
-    }
+    advance_to_offset_no_newline(
+        lexer,
+        skip_identifier_parts(lexer->input, lexer->length, lexer->offset)
+    );
 
     set_token(lexer, out_token, MYLITE_SQL_TOKEN_IDENTIFIER, start);
     return true;
@@ -1897,13 +2067,17 @@ static bool scan_unquoted_identifier(
     struct mylite_sql_token *out_token
 ) {
     struct mylite_token_start start = make_token_start(lexer, flags);
-    unsigned int keyword_flags = 0U;
+    struct mylite_sql_keyword_lookup_result keyword = {
+        .flags = 0U,
+        .keyword_index = (unsigned int)-1,
+    };
     enum mylite_sql_token_kind kind = MYLITE_SQL_TOKEN_IDENTIFIER;
     size_t end = 0U;
 
-    while (is_identifier_part(peek_at(lexer, 0U))) {
-        advance_one(lexer);
-    }
+    advance_to_offset_no_newline(
+        lexer,
+        skip_identifier_parts(lexer->input, lexer->length, lexer->offset)
+    );
     end = lexer->offset;
 
     if (identifier_span_is_charset_introducer(lexer, start.offset, end)) {
@@ -1913,13 +2087,14 @@ static bool scan_unquoted_identifier(
     } else if (mylite_sql_keyword_lookup(
                    &lexer->input[start.offset],
                    end - start.offset,
-                   &keyword_flags
+                   &keyword
                )) {
         kind = MYLITE_SQL_TOKEN_KEYWORD;
     }
 
     set_token(lexer, out_token, kind, start);
-    out_token->keyword_flags = keyword_flags;
+    out_token->keyword_flags = keyword.flags;
+    out_token->keyword_index = keyword.keyword_index;
     return true;
 }
 
@@ -1971,13 +2146,30 @@ static bool identifier_span_is_temporal_literal_introducer(
     size_t start,
     size_t end
 ) {
+    enum { date_keyword_length = 4, time_keyword_length = 4, timestamp_keyword_length = 9 };
+
     size_t cursor = end;
+    size_t length = 0U;
+    unsigned char first = 0U;
 
     if (lexer == NULL || lexer->input == NULL || start >= end) {
         return false;
     }
-    if (!identifier_span_equals_keyword(lexer, start, end, "DATE") &&
-        !identifier_span_equals_keyword(lexer, start, end, "TIME") &&
+    length = end - start;
+    first = (unsigned char)ascii_upper((unsigned char)lexer->input[start]);
+    if ((first == 'D' && length != date_keyword_length) ||
+        (first == 'T' && length != time_keyword_length && length != timestamp_keyword_length) ||
+        (first != 'D' && first != 'T')) {
+        return false;
+    }
+    if (first == 'D' && !identifier_span_equals_keyword(lexer, start, end, "DATE")) {
+        return false;
+    }
+    if (first == 'T' && length == time_keyword_length &&
+        !identifier_span_equals_keyword(lexer, start, end, "TIME")) {
+        return false;
+    }
+    if (first == 'T' && length == timestamp_keyword_length &&
         !identifier_span_equals_keyword(lexer, start, end, "TIMESTAMP")) {
         return false;
     }
@@ -2055,8 +2247,6 @@ static struct mylite_token_start make_token_start(
 ) {
     return (struct mylite_token_start){
         .offset = lexer->offset,
-        .line = lexer->line,
-        .column = lexer->column,
         .flags = flags,
     };
 }
@@ -2070,13 +2260,12 @@ static void set_token(
     out_token->kind = kind;
     out_token->operator_kind = MYLITE_SQL_OPERATOR_NONE;
     out_token->error = MYLITE_SQL_LEXER_ERROR_NONE;
+    out_token->flags = start.flags;
+    out_token->keyword_flags = 0U;
+    out_token->keyword_index = (unsigned int)-1;
     out_token->text = lexer->input == NULL ? NULL : &lexer->input[start.offset];
     out_token->length = lexer->offset - start.offset;
     out_token->offset = start.offset;
-    out_token->line = start.line;
-    out_token->column = start.column;
-    out_token->flags = start.flags;
-    out_token->keyword_flags = 0U;
 }
 
 static void set_error_token(
@@ -2090,34 +2279,27 @@ static void set_error_token(
 }
 
 static bool consume_whitespace(struct mylite_sql_lexer *lexer) {
-    bool consumed = false;
+    size_t cursor = 0U;
 
-    while (is_space(peek_at(lexer, 0U))) {
-        consumed = true;
-        advance_one(lexer);
+    if (lexer == NULL || lexer->input == NULL || lexer->offset >= lexer->length) {
+        return false;
     }
 
-    return consumed;
+    cursor = lexer->offset;
+    while (cursor < lexer->length && is_space((unsigned char)lexer->input[cursor])) {
+        ++cursor;
+    }
+
+    if (cursor == lexer->offset) {
+        return false;
+    }
+    lexer->offset = cursor;
+    return true;
 }
 
 static void advance_one(struct mylite_sql_lexer *lexer) {
-    unsigned char byte = 0U;
-
     if (lexer->offset >= lexer->length) {
         return;
-    }
-
-    byte = (unsigned char)lexer->input[lexer->offset];
-    if (byte == '\r') {
-        ++lexer->line;
-        lexer->column = 1U;
-    } else if (byte == '\n') {
-        if (lexer->offset == 0U || lexer->input[lexer->offset - 1U] != '\r') {
-            ++lexer->line;
-        }
-        lexer->column = 1U;
-    } else {
-        ++lexer->column;
     }
     ++lexer->offset;
 }
@@ -2138,15 +2320,6 @@ static bool has_at(const struct mylite_sql_lexer *lexer, size_t lookahead) {
         return true;
     }
     return false;
-}
-
-static bool starts_with(const struct mylite_sql_lexer *lexer, const char *text) {
-    size_t length = strlen(text);
-    if (lexer->input == NULL || lexer->offset > lexer->length ||
-        length > lexer->length - lexer->offset) {
-        return false;
-    }
-    return memcmp(&lexer->input[lexer->offset], text, length) == 0;
 }
 
 static bool starts_comment(const struct mylite_sql_lexer *lexer) {
@@ -2268,6 +2441,20 @@ static size_t skip_digits(const char *input, size_t length, size_t cursor) {
     return cursor;
 }
 
+static size_t skip_identifier_parts(const char *input, size_t length, size_t cursor) {
+    while (cursor < length && is_identifier_part((unsigned char)input[cursor])) {
+        ++cursor;
+    }
+    return cursor;
+}
+
+static size_t skip_user_variable_parts(const char *input, size_t length, size_t cursor) {
+    while (cursor < length && is_user_variable_part((unsigned char)input[cursor])) {
+        ++cursor;
+    }
+    return cursor;
+}
+
 static bool scan_exponent_span(const char *input, size_t length, size_t *cursor) {
     size_t exponent = *cursor + 1U;
 
@@ -2285,6 +2472,861 @@ static bool scan_exponent_span(const char *input, size_t length, size_t *cursor)
 
     *cursor = skip_digits(input, length, exponent + 1U);
     return true;
+}
+
+// NOLINTBEGIN(readability-function-cognitive-complexity, readability-magic-numbers)
+/* Derived keyword-table indexes and masks. */
+static struct mylite_sql_keyword_range keyword_search_range(unsigned char first) {
+#define KEYWORD_RANGE(LOW, HIGH)                                                                   \
+    (struct mylite_sql_keyword_range) {                                                            \
+        .low = (LOW), .high = (HIGH), .found = true                                                \
+    }
+
+    switch (first) {
+    case 'A':
+        return KEYWORD_RANGE(0U, 38U);
+    case 'B':
+        return KEYWORD_RANGE(38U, 64U);
+    case 'C':
+        return KEYWORD_RANGE(64U, 144U);
+    case 'D':
+        return KEYWORD_RANGE(144U, 195U);
+    case 'E':
+        return KEYWORD_RANGE(195U, 232U);
+    case 'F':
+        return KEYWORD_RANGE(232U, 268U);
+    case 'G':
+        return KEYWORD_RANGE(268U, 288U);
+    case 'H':
+        return KEYWORD_RANGE(288U, 302U);
+    case 'I':
+        return KEYWORD_RANGE(302U, 347U);
+    case 'J':
+        return KEYWORD_RANGE(347U, 366U);
+    case 'K':
+        return KEYWORD_RANGE(366U, 371U);
+    case 'L':
+        return KEYWORD_RANGE(371U, 416U);
+    case 'M':
+        return KEYWORD_RANGE(416U, 459U);
+    case 'N':
+        return KEYWORD_RANGE(459U, 487U);
+    case 'O':
+        return KEYWORD_RANGE(487U, 515U);
+    case 'P':
+        return KEYWORD_RANGE(515U, 559U);
+    case 'Q':
+        return KEYWORD_RANGE(559U, 564U);
+    case 'R':
+        return KEYWORD_RANGE(564U, 647U);
+    case 'S':
+        return KEYWORD_RANGE(647U, 780U);
+    case 'T':
+        return KEYWORD_RANGE(780U, 819U);
+    case 'U':
+        return KEYWORD_RANGE(819U, 855U);
+    case 'V':
+        return KEYWORD_RANGE(855U, 868U);
+    case 'W':
+        return KEYWORD_RANGE(868U, 883U);
+    case 'X':
+        return KEYWORD_RANGE(883U, 888U);
+    case 'Y':
+        return KEYWORD_RANGE(888U, 891U);
+    case 'Z':
+        return KEYWORD_RANGE(891U, 893U);
+    case '_':
+        return KEYWORD_RANGE(893U, 894U);
+    default:
+        return (struct mylite_sql_keyword_range){0};
+    }
+
+#undef KEYWORD_RANGE
+}
+
+static bool keyword_length_is_possible(unsigned char first, size_t length) {
+    if (length >= 64U) {
+        return false;
+    }
+
+    switch (first) {
+    case 'A':
+        return (UINT64_C(0x000000400000c6fc) & (UINT64_C(1) << length)) != 0U;
+    case 'B':
+        return (UINT64_C(0x0000000000000efc) & (UINT64_C(1) << length)) != 0U;
+    case 'C':
+        return (UINT64_C(0x000000000007bff8) & (UINT64_C(1) << length)) != 0U;
+    case 'D':
+        return (UINT64_C(0x000000000000bfdc) & (UINT64_C(1) << length)) != 0U;
+    case 'E':
+        return (UINT64_C(0x0000000000010ff8) & (UINT64_C(1) << length)) != 0U;
+    case 'F':
+        return (UINT64_C(0x000000000020aff8) & (UINT64_C(1) << length)) != 0U;
+    case 'G':
+        return (UINT64_C(0x00000000002657e8) & (UINT64_C(1) << length)) != 0U;
+    case 'H':
+        return (UINT64_C(0x0000000000012af8) & (UINT64_C(1) << length)) != 0U;
+    case 'I':
+        return (UINT64_C(0x000000000002fffc) & (UINT64_C(1) << length)) != 0U;
+    case 'J':
+        return (UINT64_C(0x0000000000043f10) & (UINT64_C(1) << length)) != 0U;
+    case 'K':
+        return (UINT64_C(0x0000000000004098) & (UINT64_C(1) << length)) != 0U;
+    case 'L':
+        return (UINT64_C(0x00000000000057fc) & (UINT64_C(1) << length)) != 0U;
+    case 'M':
+        return (UINT64_C(0x000000000114bff8) & (UINT64_C(1) << length)) != 0U;
+    case 'N':
+        return (UINT64_C(0x00000000000607fc) & (UINT64_C(1) << length)) != 0U;
+    case 'O':
+        return (UINT64_C(0x00000000000095fc) & (UINT64_C(1) << length)) != 0U;
+    case 'P':
+        return (UINT64_C(0x0000000000241ffc) & (UINT64_C(1) << length)) != 0U;
+    case 'Q':
+        return (UINT64_C(0x00000000000000a0) & (UINT64_C(1) << length)) != 0U;
+    case 'R':
+        return (UINT64_C(0x0000000088dffff8) & (UINT64_C(1) << length)) != 0U;
+    case 'S':
+        return (UINT64_C(0x00000000a4dffffc) & (UINT64_C(1) << length)) != 0U;
+    case 'T':
+        return (UINT64_C(0x000000000000fffc) & (UINT64_C(1) << length)) != 0U;
+    case 'U':
+        return (UINT64_C(0x0000000000096ff8) & (UINT64_C(1) << length)) != 0U;
+    case 'V':
+        return (UINT64_C(0x00000000000016f0) & (UINT64_C(1) << length)) != 0U;
+    case 'W':
+        return (UINT64_C(0x00000000000025f0) & (UINT64_C(1) << length)) != 0U;
+    case 'X':
+        return (UINT64_C(0x000000000000001c) & (UINT64_C(1) << length)) != 0U;
+    case 'Y':
+        return (UINT64_C(0x0000000000000510) & (UINT64_C(1) << length)) != 0U;
+    case 'Z':
+        return (UINT64_C(0x0000000000000110) & (UINT64_C(1) << length)) != 0U;
+    case '_':
+        return (UINT64_C(0x0000000000000200) & (UINT64_C(1) << length)) != 0U;
+    default:
+        return false;
+    }
+}
+
+static unsigned int lookup_hot_keyword_index(const char *text, size_t length, unsigned char first) {
+    /* Returned indices are positions in mylite_sql_keyword_lookup()'s keyword table. */
+    switch (length) {
+    case 2U:
+        switch (first) {
+        case 'A':
+            if (compare_keyword_text(text, length, "AS") == 0) {
+                return 22U;
+            }
+            break;
+        case 'B':
+            if (compare_keyword_text(text, length, "BY") == 0) {
+                return 62U;
+            }
+            break;
+        case 'I':
+            if (compare_keyword_text(text, length, "IN") == 0) {
+                return 308U;
+            }
+            if (compare_keyword_text(text, length, "IF") == 0) {
+                return 303U;
+            }
+            if (compare_keyword_text(text, length, "IS") == 0) {
+                return 341U;
+            }
+            break;
+        case 'O':
+            if (compare_keyword_text(text, length, "ON") == 0) {
+                return 494U;
+            }
+            if (compare_keyword_text(text, length, "OR") == 0) {
+                return 504U;
+            }
+            break;
+        case 'T':
+            if (compare_keyword_text(text, length, "TO") == 0) {
+                return 806U;
+            }
+            break;
+        default:
+            break;
+        }
+        break;
+    case 3U:
+        switch (first) {
+        case 'A':
+            if (compare_keyword_text(text, length, "AND") == 0) {
+                return 18U;
+            }
+            if (compare_keyword_text(text, length, "ADD") == 0) {
+                return 6U;
+            }
+            if (compare_keyword_text(text, length, "ALL") == 0) {
+                return 14U;
+            }
+            break;
+        case 'E':
+            if (compare_keyword_text(text, length, "END") == 0) {
+                return 203U;
+            }
+            break;
+        case 'F':
+            if (compare_keyword_text(text, length, "FOR") == 0) {
+                return 255U;
+            }
+            break;
+        case 'H':
+            if (compare_keyword_text(text, length, "HEX") == 0) {
+                return 292U;
+            }
+            break;
+        case 'I':
+            if (compare_keyword_text(text, length, "INT") == 0) {
+                return 324U;
+            }
+            break;
+        case 'K':
+            if (compare_keyword_text(text, length, "KEY") == 0) {
+                return 366U;
+            }
+            break;
+        case 'M':
+            if (compare_keyword_text(text, length, "MAX") == 0) {
+                return 422U;
+            }
+            if (compare_keyword_text(text, length, "MIN") == 0) {
+                return 443U;
+            }
+            break;
+        case 'N':
+            if (compare_keyword_text(text, length, "NOT") == 0) {
+                return 474U;
+            }
+            break;
+        case 'R':
+            if (compare_keyword_text(text, length, "ROW") == 0) {
+                return 639U;
+            }
+            break;
+        case 'S':
+            if (compare_keyword_text(text, length, "SET") == 0) {
+                return 670U;
+            }
+            if (compare_keyword_text(text, length, "SUM") == 0) {
+                return 772U;
+            }
+            break;
+        default:
+            break;
+        }
+        break;
+    case 4U:
+        switch (first) {
+        case 'C':
+            if (compare_keyword_text(text, length, "CHAR") == 0) {
+                return 78U;
+            }
+            if (compare_keyword_text(text, length, "CAST") == 0) {
+                return 69U;
+            }
+            if (compare_keyword_text(text, length, "CALL") == 0) {
+                return 65U;
+            }
+            break;
+        case 'D':
+            if (compare_keyword_text(text, length, "DROP") == 0) {
+                return 190U;
+            }
+            if (compare_keyword_text(text, length, "DATE") == 0) {
+                return 148U;
+            }
+            if (compare_keyword_text(text, length, "DESC") == 0) {
+                return 176U;
+            }
+            if (compare_keyword_text(text, length, "DATA") == 0) {
+                return 144U;
+            }
+            break;
+        case 'F':
+            if (compare_keyword_text(text, length, "FROM") == 0) {
+                return 261U;
+            }
+            break;
+        case 'I':
+            if (compare_keyword_text(text, length, "INTO") == 0) {
+                return 333U;
+            }
+            break;
+        case 'J':
+            if (compare_keyword_text(text, length, "JOIN") == 0) {
+                return 347U;
+            }
+            if (compare_keyword_text(text, length, "JSON") == 0) {
+                return 348U;
+            }
+            break;
+        case 'L':
+            if (compare_keyword_text(text, length, "LIKE") == 0) {
+                return 388U;
+            }
+            if (compare_keyword_text(text, length, "LEFT") == 0) {
+                return 384U;
+            }
+            if (compare_keyword_text(text, length, "LESS") == 0) {
+                return 386U;
+            }
+            break;
+        case 'N':
+            if (compare_keyword_text(text, length, "NULL") == 0) {
+                return 481U;
+            }
+            if (compare_keyword_text(text, length, "NAME") == 0) {
+                return 459U;
+            }
+            break;
+        case 'O':
+            if (compare_keyword_text(text, length, "OVER") == 0) {
+                return 513U;
+            }
+            break;
+        case 'S':
+            if (compare_keyword_text(text, length, "SHOW") == 0) {
+                return 675U;
+            }
+            break;
+        case 'T':
+            if (compare_keyword_text(text, length, "TIME") == 0) {
+                return 795U;
+            }
+            if (compare_keyword_text(text, length, "THAN") == 0) {
+                return 791U;
+            }
+            break;
+        case 'U':
+            if (compare_keyword_text(text, length, "USER") == 0) {
+                return 845U;
+            }
+            break;
+        case 'V':
+            if (compare_keyword_text(text, length, "VIEW") == 0) {
+                return 865U;
+            }
+            break;
+        case 'W':
+            if (compare_keyword_text(text, length, "WITH") == 0) {
+                return 878U;
+            }
+            break;
+        default:
+            break;
+        }
+        break;
+    case 5U:
+        switch (first) {
+        case 'A':
+            if (compare_keyword_text(text, length, "ALTER") == 0) {
+                return 15U;
+            }
+            break;
+        case 'B':
+            if (compare_keyword_text(text, length, "BEGIN") == 0) {
+                return 40U;
+            }
+            break;
+        case 'C':
+            if (compare_keyword_text(text, length, "COUNT") == 0) {
+                return 127U;
+            }
+            break;
+        case 'G':
+            if (compare_keyword_text(text, length, "GROUP") == 0) {
+                return 281U;
+            }
+            if (compare_keyword_text(text, length, "GRANT") == 0) {
+                return 278U;
+            }
+            break;
+        case 'I':
+            if (compare_keyword_text(text, length, "INDEX") == 0) {
+                return 310U;
+            }
+            break;
+        case 'L':
+            if (compare_keyword_text(text, length, "LIMIT") == 0) {
+                return 389U;
+            }
+            break;
+        case 'O':
+            if (compare_keyword_text(text, length, "ORDER") == 0) {
+                return 506U;
+            }
+            break;
+        case 'P':
+            if (compare_keyword_text(text, length, "POINT") == 0) {
+                return 537U;
+            }
+            break;
+        case 'T':
+            if (compare_keyword_text(text, length, "TABLE") == 0) {
+                return 780U;
+            }
+            break;
+        case 'U':
+            if (compare_keyword_text(text, length, "USING") == 0) {
+                return 848U;
+            }
+            if (compare_keyword_text(text, length, "UNION") == 0) {
+                return 831U;
+            }
+            break;
+        case 'W':
+            if (compare_keyword_text(text, length, "WHERE") == 0) {
+                return 875U;
+            }
+            break;
+        default:
+            break;
+        }
+        break;
+    case 6U:
+        switch (first) {
+        case 'C':
+            if (compare_keyword_text(text, length, "CREATE") == 0) {
+                return 130U;
+            }
+            if (compare_keyword_text(text, length, "CONCAT") == 0) {
+                return 108U;
+            }
+            if (compare_keyword_text(text, length, "COLUMN") == 0) {
+                return 95U;
+            }
+            break;
+        case 'D':
+            if (compare_keyword_text(text, length, "DELETE") == 0) {
+                return 174U;
+            }
+            break;
+        case 'E':
+            if (compare_keyword_text(text, length, "ENGINE") == 0) {
+                return 206U;
+            }
+            if (compare_keyword_text(text, length, "EXISTS") == 0) {
+                return 221U;
+            }
+            break;
+        case 'F':
+            if (compare_keyword_text(text, length, "FORMAT") == 0) {
+                return 258U;
+            }
+            break;
+        case 'G':
+            if (compare_keyword_text(text, length, "GLOBAL") == 0) {
+                return 277U;
+            }
+            break;
+        case 'I':
+            if (compare_keyword_text(text, length, "INSERT") == 0) {
+                return 319U;
+            }
+            break;
+        case 'R':
+            if (compare_keyword_text(text, length, "RETURN") == 0) {
+                return 624U;
+            }
+            break;
+        case 'S':
+            if (compare_keyword_text(text, length, "SELECT") == 0) {
+                return 662U;
+            }
+            break;
+        case 'U':
+            if (compare_keyword_text(text, length, "UPDATE") == 0) {
+                return 839U;
+            }
+            break;
+        case 'V':
+            if (compare_keyword_text(text, length, "VALUES") == 0) {
+                return 857U;
+            }
+            break;
+        case 'W':
+            if (compare_keyword_text(text, length, "WINDOW") == 0) {
+                return 877U;
+            }
+            break;
+        default:
+            break;
+        }
+        break;
+    case 7U:
+        switch (first) {
+        case 'B':
+            if (compare_keyword_text(text, length, "BETWEEN") == 0) {
+                return 42U;
+            }
+            break;
+        case 'C':
+            if (compare_keyword_text(text, length, "COLLATE") == 0) {
+                return 93U;
+            }
+            if (compare_keyword_text(text, length, "CHARSET") == 0) {
+                return 81U;
+            }
+            if (compare_keyword_text(text, length, "CONVERT") == 0) {
+                return 123U;
+            }
+            if (compare_keyword_text(text, length, "COMMENT") == 0) {
+                return 99U;
+            }
+            break;
+        case 'D':
+            if (compare_keyword_text(text, length, "DEFAULT") == 0) {
+                return 167U;
+            }
+            if (compare_keyword_text(text, length, "DECLARE") == 0) {
+                return 166U;
+            }
+            break;
+        case 'E':
+            if (compare_keyword_text(text, length, "EXPLAIN") == 0) {
+                return 226U;
+            }
+            if (compare_keyword_text(text, length, "EXECUTE") == 0) {
+                return 220U;
+            }
+            break;
+        case 'I':
+            if (compare_keyword_text(text, length, "INTEGER") == 0) {
+                return 330U;
+            }
+            break;
+        case 'P':
+            if (compare_keyword_text(text, length, "PRIMARY") == 0) {
+                return 549U;
+            }
+            if (compare_keyword_text(text, length, "PREPARE") == 0) {
+                return 546U;
+            }
+            break;
+        case 'S':
+            if (compare_keyword_text(text, length, "SESSION") == 0) {
+                return 668U;
+            }
+            break;
+        case 'T':
+            if (compare_keyword_text(text, length, "TINYINT") == 0) {
+                return 803U;
+            }
+            break;
+        case 'V':
+            if (compare_keyword_text(text, length, "VARCHAR") == 0) {
+                return 859U;
+            }
+            break;
+        default:
+            break;
+        }
+        break;
+    case 8U:
+        switch (first) {
+        case 'D':
+            if (compare_keyword_text(text, length, "DATETIME") == 0) {
+                return 150U;
+            }
+            if (compare_keyword_text(text, length, "DISTINCT") == 0) {
+                return 185U;
+            }
+            if (compare_keyword_text(text, length, "DATABASE") == 0) {
+                return 145U;
+            }
+            break;
+        case 'F':
+            if (compare_keyword_text(text, length, "FUNCTION") == 0) {
+                return 267U;
+            }
+            break;
+        case 'U':
+            if (compare_keyword_text(text, length, "UNSIGNED") == 0) {
+                return 837U;
+            }
+            break;
+        default:
+            break;
+        }
+        break;
+    case 9U:
+        switch (first) {
+        case 'C':
+            if (compare_keyword_text(text, length, "CHARACTER") == 0) {
+                return 79U;
+            }
+            break;
+        case 'P':
+            if (compare_keyword_text(text, length, "PARTITION") == 0) {
+                return 521U;
+            }
+            if (compare_keyword_text(text, length, "PROCEDURE") == 0) {
+                return 552U;
+            }
+            if (compare_keyword_text(text, length, "PRECEDING") == 0) {
+                return 544U;
+            }
+            break;
+        case 'T':
+            if (compare_keyword_text(text, length, "TIMESTAMP") == 0) {
+                return 797U;
+            }
+            break;
+        default:
+            break;
+        }
+        break;
+    case 10U:
+        switch (first) {
+        case 'T':
+            if (compare_keyword_text(text, length, "TABLE_NAME") == 0) {
+                return 785U;
+            }
+            break;
+        default:
+            break;
+        }
+        break;
+    case 11U:
+        switch (first) {
+        case 'R':
+            if (compare_keyword_text(text, length, "REGEXP_LIKE") == 0) {
+                return 584U;
+            }
+            break;
+        default:
+            break;
+        }
+        break;
+    case 14U:
+        switch (first) {
+        case 'A':
+            if (compare_keyword_text(text, length, "AUTO_INCREMENT") == 0) {
+                return 35U;
+            }
+            break;
+        default:
+            break;
+        }
+        break;
+    default:
+        break;
+    }
+    return (unsigned int)-1;
+}
+
+static bool keyword_second_char_is_possible(struct mylite_sql_keyword_second_char_probe probe) {
+    enum {
+        keyword_first_count = 27,
+        keyword_second_count = 37,
+        keyword_length_count = 39,
+        keyword_invalid_index = 64
+    };
+
+    /* Bit masks are derived from the same keyword table and reject impossible second bytes. */
+    static const uint64_t second_masks[keyword_first_count][keyword_length_count] = {
+        [0U][2U] = UINT64_C(0x00000c0000),   [0U][3U] = UINT64_C(0x000024280a),
+        [0U][4U] = UINT64_C(0x00001c0004),   [0U][5U] = UINT64_C(0x00000e0828),
+        [0U][6U] = UINT64_C(0x0000000804),   [0U][7U] = UINT64_C(0x000000204c),
+        [0U][9U] = UINT64_C(0x0000082840),   [0U][10U] = UINT64_C(0x0000040004),
+        [0U][14U] = UINT64_C(0x0000300000),  [0U][15U] = UINT64_C(0x0000100000),
+        [0U][38U] = UINT64_C(0x0000040000),  [1U][2U] = UINT64_C(0x0001000000),
+        [1U][3U] = UINT64_C(0x0000000100),   [1U][4U] = UINT64_C(0x0001104800),
+        [1U][5U] = UINT64_C(0x0000080810),   [1U][6U] = UINT64_C(0x0000000111),
+        [1U][7U] = UINT64_C(0x0000104110),   [1U][9U] = UINT64_C(0x0000000110),
+        [1U][10U] = UINT64_C(0x0000000100),  [1U][11U] = UINT64_C(0x0000000100),
+        [2U][3U] = UINT64_C(0x000000c000),   [2U][4U] = UINT64_C(0x0000104091),
+        [2U][5U] = UINT64_C(0x0000024881),   [2U][6U] = UINT64_C(0x0000124980),
+        [2U][7U] = UINT64_C(0x0000104091),   [2U][8U] = UINT64_C(0x0000004081),
+        [2U][9U] = UINT64_C(0x0000104080),   [2U][10U] = UINT64_C(0x0000004000),
+        [2U][11U] = UINT64_C(0x0000104080),  [2U][12U] = UINT64_C(0x0000104801),
+        [2U][13U] = UINT64_C(0x0000004000),  [2U][15U] = UINT64_C(0x0000004000),
+        [2U][16U] = UINT64_C(0x0000000080),  [2U][17U] = UINT64_C(0x0000104000),
+        [2U][18U] = UINT64_C(0x0000004080),  [3U][2U] = UINT64_C(0x0000004000),
+        [3U][3U] = UINT64_C(0x0000000111),   [3U][4U] = UINT64_C(0x0000120111),
+        [3U][6U] = UINT64_C(0x0000004010),   [3U][7U] = UINT64_C(0x0001000111),
+        [3U][8U] = UINT64_C(0x0000100111),   [3U][9U] = UINT64_C(0x0000100101),
+        [3U][10U] = UINT64_C(0x0000000011),  [3U][11U] = UINT64_C(0x0000000111),
+        [3U][12U] = UINT64_C(0x0000000010),  [3U][13U] = UINT64_C(0x0000000010),
+        [3U][15U] = UINT64_C(0x0000000011),  [4U][3U] = UINT64_C(0x0000802800),
+        [4U][4U] = UINT64_C(0x0000802801),   [4U][5U] = UINT64_C(0x0000221000),
+        [4U][6U] = UINT64_C(0x0000a62800),   [4U][7U] = UINT64_C(0x0000842000),
+        [4U][8U] = UINT64_C(0x0000802000),   [4U][9U] = UINT64_C(0x0000800000),
+        [4U][10U] = UINT64_C(0x0000802000),  [4U][11U] = UINT64_C(0x0000800000),
+        [4U][16U] = UINT64_C(0x0000002000),  [5U][3U] = UINT64_C(0x0000004000),
+        [5U][4U] = UINT64_C(0x0000120101),   [5U][5U] = UINT64_C(0x0000004911),
+        [5U][6U] = UINT64_C(0x0000004901),   [5U][7U] = UINT64_C(0x0000004000),
+        [5U][8U] = UINT64_C(0x0000100000),   [5U][9U] = UINT64_C(0x0000024000),
+        [5U][10U] = UINT64_C(0x0000004000),  [5U][11U] = UINT64_C(0x0000020100),
+        [5U][13U] = UINT64_C(0x0000020000),  [5U][15U] = UINT64_C(0x0000000100),
+        [5U][21U] = UINT64_C(0x0000000001),  [6U][3U] = UINT64_C(0x0000000010),
+        [6U][5U] = UINT64_C(0x00000a0000),   [6U][6U] = UINT64_C(0x0000020800),
+        [6U][7U] = UINT64_C(0x0000000010),   [6U][8U] = UINT64_C(0x0000020010),
+        [6U][9U] = UINT64_C(0x0000080010),   [6U][10U] = UINT64_C(0x0000000010),
+        [6U][12U] = UINT64_C(0x0000020000),  [6U][14U] = UINT64_C(0x0000000010),
+        [6U][17U] = UINT64_C(0x0000020000),  [6U][18U] = UINT64_C(0x0000000010),
+        [6U][21U] = UINT64_C(0x0000000010),  [7U][3U] = UINT64_C(0x0000000010),
+        [7U][4U] = UINT64_C(0x0000004011),   [7U][5U] = UINT64_C(0x0000004000),
+        [7U][6U] = UINT64_C(0x0000000001),   [7U][7U] = UINT64_C(0x0000000101),
+        [7U][9U] = UINT64_C(0x0000000100),   [7U][11U] = UINT64_C(0x0000004000),
+        [7U][13U] = UINT64_C(0x0000000100),  [7U][16U] = UINT64_C(0x0000004000),
+        [8U][2U] = UINT64_C(0x0000046020),   [8U][3U] = UINT64_C(0x000000a000),
+        [8U][4U] = UINT64_C(0x0000002000),   [8U][5U] = UINT64_C(0x0000002000),
+        [8U][6U] = UINT64_C(0x0000043060),   [8U][7U] = UINT64_C(0x00000c2000),
+        [8U][8U] = UINT64_C(0x0000002000),   [8U][9U] = UINT64_C(0x0000046000),
+        [8U][10U] = UINT64_C(0x0000000008),  [8U][11U] = UINT64_C(0x0000002000),
+        [8U][12U] = UINT64_C(0x0000002000),  [8U][13U] = UINT64_C(0x0000002000),
+        [8U][14U] = UINT64_C(0x0000004000),  [8U][15U] = UINT64_C(0x0000004000),
+        [8U][17U] = UINT64_C(0x0000000040),  [9U][4U] = UINT64_C(0x0000044000),
+        [9U][8U] = UINT64_C(0x0000040000),   [9U][9U] = UINT64_C(0x0000040000),
+        [9U][10U] = UINT64_C(0x0000040000),  [9U][11U] = UINT64_C(0x0000040000),
+        [9U][12U] = UINT64_C(0x0000040000),  [9U][13U] = UINT64_C(0x0000040000),
+        [9U][18U] = UINT64_C(0x0000040000),  [10U][3U] = UINT64_C(0x0000000010),
+        [10U][4U] = UINT64_C(0x0000000110),  [10U][7U] = UINT64_C(0x0000000010),
+        [10U][14U] = UINT64_C(0x0000000010), [11U][2U] = UINT64_C(0x0000002000),
+        [11U][3U] = UINT64_C(0x0000004001),  [11U][4U] = UINT64_C(0x000000c111),
+        [11U][5U] = UINT64_C(0x0000084114),  [11U][6U] = UINT64_C(0x0000004110),
+        [11U][7U] = UINT64_C(0x0000004011),  [11U][8U] = UINT64_C(0x0000004001),
+        [11U][9U] = UINT64_C(0x0000004000),  [11U][10U] = UINT64_C(0x0000000101),
+        [11U][12U] = UINT64_C(0x0000004000), [11U][14U] = UINT64_C(0x0000004001),
+        [12U][3U] = UINT64_C(0x0000004109),  [12U][4U] = UINT64_C(0x0000004000),
+        [12U][5U] = UINT64_C(0x0000104011),  [12U][6U] = UINT64_C(0x0000004111),
+        [12U][7U] = UINT64_C(0x0000000100),  [12U][8U] = UINT64_C(0x0000004101),
+        [12U][9U] = UINT64_C(0x0000004110),  [12U][10U] = UINT64_C(0x0000100010),
+        [12U][11U] = UINT64_C(0x0001000100), [12U][12U] = UINT64_C(0x0000100010),
+        [12U][13U] = UINT64_C(0x0000000100), [12U][15U] = UINT64_C(0x0000100000),
+        [12U][18U] = UINT64_C(0x0000000100), [12U][20U] = UINT64_C(0x0000000001),
+        [12U][24U] = UINT64_C(0x0000000001), [13U][2U] = UINT64_C(0x0000004000),
+        [13U][3U] = UINT64_C(0x0000004018),  [13U][4U] = UINT64_C(0x0000104011),
+        [13U][5U] = UINT64_C(0x0000180015),  [13U][6U] = UINT64_C(0x0000104010),
+        [13U][7U] = UINT64_C(0x0000104001),  [13U][8U] = UINT64_C(0x0000200001),
+        [13U][9U] = UINT64_C(0x0000084000),  [13U][10U] = UINT64_C(0x0000000008),
+        [13U][17U] = UINT64_C(0x0000000010), [13U][18U] = UINT64_C(0x0000004000),
+        [14U][2U] = UINT64_C(0x0000022220),  [14U][3U] = UINT64_C(0x0000122824),
+        [14U][4U] = UINT64_C(0x000020a000),  [14U][5U] = UINT64_C(0x0000520000),
+        [14U][6U] = UINT64_C(0x0000088020),  [14U][7U] = UINT64_C(0x0000108000),
+        [14U][8U] = UINT64_C(0x0000008000),  [14U][10U] = UINT64_C(0x0000028000),
+        [14U][12U] = UINT64_C(0x0000020004), [14U][15U] = UINT64_C(0x0000008000),
+        [15U][2U] = UINT64_C(0x0000000100),  [15U][3U] = UINT64_C(0x0000004000),
+        [15U][4U] = UINT64_C(0x0000024001),  [15U][5U] = UINT64_C(0x0000124080),
+        [15U][6U] = UINT64_C(0x0000000801),  [15U][7U] = UINT64_C(0x0000024811),
+        [15U][8U] = UINT64_C(0x0000024001),  [15U][9U] = UINT64_C(0x0000020001),
+        [15U][10U] = UINT64_C(0x0000020811), [15U][11U] = UINT64_C(0x0000020010),
+        [15U][12U] = UINT64_C(0x0000000011), [15U][18U] = UINT64_C(0x0000000001),
+        [15U][21U] = UINT64_C(0x0000020000), [16U][5U] = UINT64_C(0x0000100000),
+        [16U][7U] = UINT64_C(0x0000100000),  [17U][3U] = UINT64_C(0x0000004000),
+        [17U][4U] = UINT64_C(0x000000c011),  [17U][5U] = UINT64_C(0x0000084911),
+        [17U][6U] = UINT64_C(0x0000004011),  [17U][7U] = UINT64_C(0x0000004011),
+        [17U][8U] = UINT64_C(0x0000004010),  [17U][9U] = UINT64_C(0x0000004010),
+        [17U][10U] = UINT64_C(0x0000004010), [17U][11U] = UINT64_C(0x0000000010),
+        [17U][12U] = UINT64_C(0x0000000011), [17U][13U] = UINT64_C(0x0000000010),
+        [17U][14U] = UINT64_C(0x0000000010), [17U][15U] = UINT64_C(0x0000000010),
+        [17U][16U] = UINT64_C(0x0000000010), [17U][17U] = UINT64_C(0x0000000010),
+        [17U][18U] = UINT64_C(0x0000000010), [17U][19U] = UINT64_C(0x0000000010),
+        [17U][20U] = UINT64_C(0x0000000010), [17U][22U] = UINT64_C(0x0000000010),
+        [17U][23U] = UINT64_C(0x0000000010), [17U][27U] = UINT64_C(0x0000000010),
+        [17U][31U] = UINT64_C(0x0000000010), [18U][2U] = UINT64_C(0x0040000000),
+        [18U][3U] = UINT64_C(0x0000150190),  [18U][4U] = UINT64_C(0x00000b4d80),
+        [18U][5U] = UINT64_C(0x0000588880),  [18U][6U] = UINT64_C(0x0001184114),
+        [18U][7U] = UINT64_C(0x000118c014),  [18U][8U] = UINT64_C(0x000049b094),
+        [18U][9U] = UINT64_C(0x0000100011),  [18U][10U] = UINT64_C(0x0000014000),
+        [18U][11U] = UINT64_C(0x0001094014), [18U][12U] = UINT64_C(0x0000114010),
+        [18U][13U] = UINT64_C(0x0000194000), [18U][14U] = UINT64_C(0x0000014010),
+        [18U][15U] = UINT64_C(0x0000114000), [18U][16U] = UINT64_C(0x0000090010),
+        [18U][17U] = UINT64_C(0x0000094000), [18U][18U] = UINT64_C(0x0000094010),
+        [18U][19U] = UINT64_C(0x0000010000), [18U][20U] = UINT64_C(0x0000004000),
+        [18U][22U] = UINT64_C(0x0000004000), [18U][23U] = UINT64_C(0x0000004000),
+        [18U][26U] = UINT64_C(0x0000000010), [18U][29U] = UINT64_C(0x0000004000),
+        [18U][31U] = UINT64_C(0x0000004000), [19U][2U] = UINT64_C(0x0000004000),
+        [19U][3U] = UINT64_C(0x0000000801),  [19U][4U] = UINT64_C(0x0001020190),
+        [19U][5U] = UINT64_C(0x0001000001),  [19U][6U] = UINT64_C(0x0000000001),
+        [19U][7U] = UINT64_C(0x0000024100),  [19U][8U] = UINT64_C(0x0000020100),
+        [19U][9U] = UINT64_C(0x0000004110),  [19U][10U] = UINT64_C(0x0000004011),
+        [19U][11U] = UINT64_C(0x0000020101), [19U][12U] = UINT64_C(0x0000000100),
+        [19U][13U] = UINT64_C(0x0000000100), [19U][14U] = UINT64_C(0x0000000001),
+        [19U][15U] = UINT64_C(0x0000000080), [20U][3U] = UINT64_C(0x00000e0000),
+        [20U][4U] = UINT64_C(0x0000142000),  [20U][5U] = UINT64_C(0x000004a004),
+        [20U][6U] = UINT64_C(0x000000a000),  [20U][7U] = UINT64_C(0x000004a000),
+        [20U][8U] = UINT64_C(0x0000082000),  [20U][9U] = UINT64_C(0x0000002000),
+        [20U][10U] = UINT64_C(0x0000002000), [20U][11U] = UINT64_C(0x0000102000),
+        [20U][13U] = UINT64_C(0x0000080000), [20U][14U] = UINT64_C(0x0000042000),
+        [20U][16U] = UINT64_C(0x0000002000), [20U][19U] = UINT64_C(0x0000002000),
+        [21U][4U] = UINT64_C(0x0000000104),  [21U][5U] = UINT64_C(0x0000000001),
+        [21U][6U] = UINT64_C(0x0000000001),  [21U][7U] = UINT64_C(0x0000000111),
+        [21U][9U] = UINT64_C(0x0000000001),  [21U][10U] = UINT64_C(0x0000000001),
+        [21U][12U] = UINT64_C(0x0000000001), [22U][4U] = UINT64_C(0x0000004191),
+        [22U][5U] = UINT64_C(0x0000020080),  [22U][6U] = UINT64_C(0x0000000100),
+        [22U][7U] = UINT64_C(0x0000020110),  [22U][8U] = UINT64_C(0x0000000001),
+        [22U][10U] = UINT64_C(0x0000000010), [22U][13U] = UINT64_C(0x0000000010),
+        [23U][2U] = UINT64_C(0x0000000001),  [23U][3U] = UINT64_C(0x0000005100),
+        [23U][4U] = UINT64_C(0x0100000000),  [24U][4U] = UINT64_C(0x0000000010),
+        [24U][8U] = UINT64_C(0x0000000010),  [24U][10U] = UINT64_C(0x0000000010),
+        [25U][4U] = UINT64_C(0x0000004000),  [25U][8U] = UINT64_C(0x0000000010),
+        [26U][9U] = UINT64_C(0x0000000020),
+    };
+
+    unsigned int first_index = keyword_invalid_index;
+    unsigned int second_index = keyword_invalid_index;
+
+    if (probe.length <= 1U) {
+        return true;
+    }
+    if (probe.length >= (size_t)keyword_length_count) {
+        return false;
+    }
+
+    if (probe.first >= 'A' && probe.first <= 'Z') {
+        first_index = (unsigned int)(probe.first - 'A');
+    } else if (probe.first == '_') {
+        first_index = 26U;
+    }
+
+    probe.second = (unsigned char)ascii_upper(probe.second);
+    if (probe.second >= 'A' && probe.second <= 'Z') {
+        second_index = (unsigned int)(probe.second - 'A');
+    } else if (probe.second == '_') {
+        second_index = 26U;
+    } else if (probe.second >= '0' && probe.second <= '9') {
+        second_index = 27U + (unsigned int)(probe.second - '0');
+    }
+
+    if (first_index >= (unsigned int)keyword_first_count ||
+        second_index >= (unsigned int)keyword_second_count) {
+        return false;
+    }
+    return (second_masks[first_index][probe.length] & (UINT64_C(1) << second_index)) != 0U;
+}
+
+// NOLINTEND(readability-function-cognitive-complexity, readability-magic-numbers)
+
+static int compare_keyword_text(const char *text, size_t length, const char *keyword) {
+    size_t index = 1U;
+
+    while (index < length && keyword[index] != '\0') {
+        unsigned char actual = (unsigned char)ascii_upper((unsigned char)text[index]);
+        unsigned char expected = (unsigned char)keyword[index];
+
+        if (actual < expected) {
+            return -1;
+        }
+        if (actual > expected) {
+            return 1;
+        }
+        ++index;
+    }
+
+    if (index < length) {
+        return 1;
+    }
+    if (keyword[index] != '\0') {
+        return -1;
+    }
+    return 0;
 }
 
 static char ascii_upper(unsigned char byte) {

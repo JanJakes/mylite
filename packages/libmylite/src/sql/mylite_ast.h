@@ -1068,11 +1068,12 @@ struct mylite_sql_ast_node {
     struct mylite_sql_ast_node *first_child;
     struct mylite_sql_ast_node *last_child;
     struct mylite_sql_ast_node *next_sibling;
-    struct mylite_sql_ast_node *next_allocated;
 };
 
+struct mylite_sql_ast_node_chunk;
+
 struct mylite_sql_ast {
-    struct mylite_sql_ast_node *first_allocated;
+    struct mylite_sql_ast_node_chunk *first_chunk;
 };
 
 void mylite_sql_ast_init(struct mylite_sql_ast *ast);

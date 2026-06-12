@@ -694,7 +694,6 @@ static void make_alter_table_action_statement_view(
     if (table_node != NULL) {
         out_view->table_proxy = *table_node;
         out_view->table_proxy.next_sibling = action == NULL ? NULL : action->first_child;
-        out_view->table_proxy.next_allocated = NULL;
     }
     if (action != NULL) {
         out_view->statement = *action;
@@ -702,7 +701,6 @@ static void make_alter_table_action_statement_view(
         out_view->statement.last_child =
             action->last_child == NULL ? &out_view->table_proxy : action->last_child;
         out_view->statement.next_sibling = NULL;
-        out_view->statement.next_allocated = NULL;
     }
 }
 

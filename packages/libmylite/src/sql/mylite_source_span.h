@@ -7,8 +7,6 @@ struct mylite_sql_source_span {
     const char *text;
     size_t length;
     size_t offset;
-    size_t line;
-    size_t column;
 };
 
 #endif

@@ -1,29 +1,55 @@
 #include "mylite_ast.h"
 
+#include <stddef.h>
 #include <stdlib.h>
+
+enum {
+    ast_nodes_per_chunk = 64,
+    ast_cached_chunk_limit = 32,
+};
+
+struct mylite_sql_ast_node_chunk {
+    struct mylite_sql_ast_node_chunk *next;
+    size_t used;
+    struct mylite_sql_ast_node nodes[ast_nodes_per_chunk];
+};
+
+static struct mylite_sql_ast_node *ast_allocate_node(struct mylite_sql_ast *ast);
+static struct mylite_sql_ast_node_chunk *ast_new_chunk(struct mylite_sql_ast *ast);
+static struct mylite_sql_ast_node_chunk *ast_take_cached_chunk(void);
+static void ast_release_chunk(struct mylite_sql_ast_node_chunk *chunk);
+
+#if defined(_MSC_VER)
+#  define MYLITE_THREAD_LOCAL __declspec(thread)
+#else
+#  define MYLITE_THREAD_LOCAL _Thread_local
+#endif
+
+static MYLITE_THREAD_LOCAL struct mylite_sql_ast_node_chunk *cached_ast_chunks;
+static MYLITE_THREAD_LOCAL size_t cached_ast_chunk_count;
 
 void mylite_sql_ast_init(struct mylite_sql_ast *ast) {
     if (ast == NULL) {
         return;
     }
 
-    ast->first_allocated = NULL;
+    ast->first_chunk = NULL;
 }
 
 void mylite_sql_ast_deinit(struct mylite_sql_ast *ast) {
-    struct mylite_sql_ast_node *node = NULL;
+    struct mylite_sql_ast_node_chunk *chunk = NULL;
 
     if (ast == NULL) {
         return;
     }
 
-    node = ast->first_allocated;
-    while (node != NULL) {
-        struct mylite_sql_ast_node *next = node->next_allocated;
-        free(node);
-        node = next;
+    chunk = ast->first_chunk;
+    while (chunk != NULL) {
+        struct mylite_sql_ast_node_chunk *next = chunk->next;
+        ast_release_chunk(chunk);
+        chunk = next;
     }
-    ast->first_allocated = NULL;
+    ast->first_chunk = NULL;
 }
 
 struct mylite_sql_ast_node *mylite_sql_ast_new_node(
@@ -37,16 +63,78 @@ struct mylite_sql_ast_node *mylite_sql_ast_new_node(
         return NULL;
     }
 
-    node = calloc(1U, sizeof(*node));
+    node = ast_allocate_node(ast);
     if (node == NULL) {
         return NULL;
     }
 
     node->kind = kind;
     node->span = span;
-    node->next_allocated = ast->first_allocated;
-    ast->first_allocated = node;
     return node;
+}
+
+static struct mylite_sql_ast_node *ast_allocate_node(struct mylite_sql_ast *ast) {
+    struct mylite_sql_ast_node_chunk *chunk = NULL;
+    struct mylite_sql_ast_node *node = NULL;
+
+    if (ast->first_chunk == NULL || ast->first_chunk->used == ast_nodes_per_chunk) {
+        chunk = ast_new_chunk(ast);
+        if (chunk == NULL) {
+            return NULL;
+        }
+    } else {
+        chunk = ast->first_chunk;
+    }
+
+    node = &chunk->nodes[chunk->used];
+    ++chunk->used;
+    node->payload = (union mylite_sql_ast_node_payload){0};
+    node->first_child = NULL;
+    node->last_child = NULL;
+    node->next_sibling = NULL;
+    return node;
+}
+
+static struct mylite_sql_ast_node_chunk *ast_new_chunk(struct mylite_sql_ast *ast) {
+    struct mylite_sql_ast_node_chunk *chunk = ast_take_cached_chunk();
+
+    if (chunk == NULL) {
+        chunk = (struct mylite_sql_ast_node_chunk *)malloc(sizeof(*chunk));
+    }
+
+    if (chunk == NULL) {
+        return NULL;
+    }
+    chunk->next = ast->first_chunk;
+    chunk->used = 0U;
+    ast->first_chunk = chunk;
+    return chunk;
+}
+
+static struct mylite_sql_ast_node_chunk *ast_take_cached_chunk(void) {
+    struct mylite_sql_ast_node_chunk *chunk = cached_ast_chunks;
+
+    if (chunk == NULL) {
+        return NULL;
+    }
+
+    cached_ast_chunks = chunk->next;
+    --cached_ast_chunk_count;
+    return chunk;
+}
+
+static void ast_release_chunk(struct mylite_sql_ast_node_chunk *chunk) {
+    if (chunk == NULL) {
+        return;
+    }
+    if (cached_ast_chunk_count >= (size_t)ast_cached_chunk_limit) {
+        free(chunk);
+        return;
+    }
+    chunk->next = cached_ast_chunks;
+    chunk->used = 0U;
+    cached_ast_chunks = chunk;
+    ++cached_ast_chunk_count;
 }
 
 void mylite_sql_ast_node_append_child(

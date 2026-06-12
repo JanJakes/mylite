@@ -143,7 +143,7 @@ static void md5_digest(const unsigned char *bytes, size_t byte_count, unsigned c
 static void md5_init(struct md5_context *context);
 static void md5_update(struct md5_context *context, const unsigned char *bytes, size_t byte_count);
 static void md5_final(struct md5_context *context, unsigned char out[16]);
-static void md5_transform(uint32_t state[4], const unsigned char block[64]);
+static void md5_transform(uint32_t state[4], const unsigned char *block);
 static uint32_t md5_left_rotate(uint32_t value, unsigned int bits);
 static uint32_t load_le32(const unsigned char *bytes);
 static void store_le64(unsigned char *bytes, uint64_t value);
@@ -155,7 +155,7 @@ static void sha1_update(
     size_t byte_count
 );
 static void sha1_final(struct sha1_context *context, unsigned char out[20]);
-static void sha1_transform(uint32_t state[5], const unsigned char block[64]);
+static void sha1_transform(uint32_t state[5], const unsigned char *block);
 static uint32_t rotate_left32(uint32_t value, unsigned int bits);
 static uint32_t rotate_right32(uint32_t value, unsigned int bits);
 static uint64_t rotate_right64(uint64_t value, unsigned int bits);
@@ -176,7 +176,7 @@ static void sha256_update(
     size_t byte_count
 );
 static void sha256_final(struct sha256_context *context, bool sha224, unsigned char *out);
-static void sha256_transform(uint32_t state[8], const unsigned char block[64]);
+static void sha256_transform(uint32_t state[8], const unsigned char *block);
 static void sha512_digest(
     const unsigned char *bytes,
     size_t byte_count,
@@ -191,7 +191,7 @@ static void sha512_update(
 );
 static void sha512_final(struct sha512_context *context, bool sha384, unsigned char *out);
 static void sha512_add_bits(struct sha512_context *context, size_t byte_count);
-static void sha512_transform(uint64_t state[8], const unsigned char block[128]);
+static void sha512_transform(uint64_t state[8], const unsigned char *block);
 static void digest_one_arg_sqlite_callback(
     sqlite3_context *context,
     int argc,
@@ -458,7 +458,7 @@ static void md5_final(struct md5_context *context, unsigned char out[16]) {
     }
 }
 
-static void md5_transform(uint32_t state[4], const unsigned char block[64]) {
+static void md5_transform(uint32_t state[4], const unsigned char *block) {
     static const unsigned int shifts[64] = {
         7U, 12U, 17U, 22U, 7U, 12U, 17U, 22U, 7U, 12U, 17U, 22U, 7U, 12U, 17U, 22U,
         5U, 9U,  14U, 20U, 5U, 9U,  14U, 20U, 5U, 9U,  14U, 20U, 5U, 9U,  14U, 20U,
@@ -593,7 +593,7 @@ static void sha1_final(struct sha1_context *context, unsigned char out[20]) {
     }
 }
 
-static void sha1_transform(uint32_t state[5], const unsigned char block[64]) {
+static void sha1_transform(uint32_t state[5], const unsigned char *block) {
     uint32_t words[80];
     uint32_t a = state[0];
     uint32_t b = state[1];
@@ -785,7 +785,7 @@ static void sha256_final(struct sha256_context *context, bool sha224, unsigned c
     }
 }
 
-static void sha256_transform(uint32_t state[8], const unsigned char block[64]) {
+static void sha256_transform(uint32_t state[8], const unsigned char *block) {
     uint32_t words[64];
     uint32_t a = state[0];
     uint32_t b = state[1];
@@ -951,7 +951,7 @@ static void sha512_add_bits(struct sha512_context *context, size_t byte_count) {
     }
 }
 
-static void sha512_transform(uint64_t state[8], const unsigned char block[128]) {
+static void sha512_transform(uint64_t state[8], const unsigned char *block) {
     uint64_t words[80];
     uint64_t a = state[0];
     uint64_t b = state[1];

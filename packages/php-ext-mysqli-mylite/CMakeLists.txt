@@ -1,5 +1,8 @@
 add_library(mylite_php_mysqli_extension MODULE
+  src/mysqli_api.c
   src/mysqli_extension.c
+  src/mysqli_registration.c
+  src/mysqli_support.c
 )
 target_include_directories(mylite_php_mysqli_extension PRIVATE
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"

@@ -45,6 +45,12 @@ WordPress PHPUnit immediately follows it with `START TRANSACTION`; core MyLite
 still documents mutable autocommit as unsupported outside this PHP integration
 shim.
 
+The mysqli implementation is organized by extension responsibility rather than
+by PHP symbol order. Module entry/globals, Zend registration metadata, API
+entry points, and support/runtime helpers live in separate translation units
+sharing one package-private header. The split does not create public ABI; it is
+only a maintenance boundary for the replacement extension.
+
 The PDO package uses PDO's emulated placeholder path and executes the expanded
 SQL string against MyLite. It reports MyLite SQLSTATE, native error code, error
 message, affected rows, and insert ids through PDO's normal surfaces where the

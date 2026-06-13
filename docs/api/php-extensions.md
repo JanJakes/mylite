@@ -19,6 +19,20 @@ ctest --preset php-dev -R '^php-ext'
 The normal `dev` preset does not require PHP headers. The `php-dev` preset
 requires `php-config` and a PHP CLI executable.
 
+## Source Layout
+
+The `mysqli` replacement keeps its installed ABI unchanged but separates the
+extension internals into private source modules:
+
+- `mysqli_extension.c`: module globals, MINIT/MINFO, and the Zend module entry.
+- `mysqli_registration.c`: arginfo, function tables, constants, and class
+  registration.
+- `mysqli_api.c`: procedural mysqli functions and object methods.
+- `mysqli_support.c`: object lifecycle, connection execution, result buffering,
+  parameter interpolation, path resolution, errors, and property updates.
+- `mysqli_extension.h`: private shared declarations for those translation
+  units; it is not an installed public header.
+
 Run WordPress' upstream PHPUnit harness through the mysqli replacement with:
 
 ```sh

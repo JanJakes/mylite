@@ -124,6 +124,7 @@ jobs:
     env:
       MYLITE_WORDPRESS_REF: 6ddfc9d9b532c6e95c1266165149815895e2eb56
       MYLITE_WORDPRESS_CMAKE_BUILD_TYPE: Release
+      MYLITE_WORDPRESS_DB_PATH: /dev/shm/mylite-wordpress-tests.mylite
 
     steps:
       - uses: actions/checkout@v6

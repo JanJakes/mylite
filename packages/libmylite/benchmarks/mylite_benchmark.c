@@ -189,7 +189,8 @@ static const struct benchmark_query wordpress_options_queries[] = {
     ),
     QUERY("INSERT INTO wp_options (option_name, option_value, autoload) "
           "VALUES ('_transient_bench','1','no') "
-          "ON DUPLICATE KEY UPDATE option_value = '1'"),
+          "ON DUPLICATE KEY UPDATE option_name = VALUES(option_name), "
+          "option_value = VALUES(option_value), autoload = VALUES(autoload)"),
     QUERY("DELETE FROM wp_options WHERE option_name = '_transient_delete_miss'"),
 };
 

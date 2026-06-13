@@ -14,7 +14,19 @@ container_root="/work"
 container_wordpress_dir="${container_root}${wordpress_dir#"${root_dir}"}"
 container_phpunit_tools_dir="${container_root}${phpunit_tools_dir#"${root_dir}"}"
 container_cmake_build_dir="${container_root}${cmake_build_dir#"${root_dir}"}"
-container_db_path="${container_root}${db_path#"${root_dir}"}"
+
+container_path_for() {
+  local path="$1"
+
+  if [[ "${path}" == "${root_dir}" || "${path}" == "${root_dir}/"* ]]; then
+    printf '%s%s\n' "${container_root}" "${path#"${root_dir}"}"
+    return
+  fi
+
+  printf '%s\n' "${path}"
+}
+
+container_db_path="$(container_path_for "${db_path}")"
 
 build_image() {
   docker build -t "${image}" - <<'DOCKERFILE'
@@ -62,6 +74,7 @@ USAGE
 
 run_container() {
   docker run --rm -i \
+    --shm-size=512m \
     --user "$(id -u):$(id -g)" \
     -e HOME=/tmp/mylite-home \
     -e MYLITE_WORDPRESS_REPO="${wordpress_repo}" \

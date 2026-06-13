@@ -50,6 +50,11 @@ from the scaffold onward.
 `MYLITE_WARNINGS_AS_ERRORS` is enabled by the shared `dev` preset so local and
 CI builds use the same strict warning baseline.
 
+Large package build registrations should stay split into package-local CMake
+modules under the owning package's `cmake/` directory. The package root
+`CMakeLists.txt` should show the high-level target/test structure, while
+included modules own cohesive source lists or test-family registrations.
+
 When running Homebrew `clang-tidy` on macOS, use a build directory configured
 with Homebrew `clang` so the compile database matches the analysis toolchain.
 Set `CC` explicitly before configuring; putting LLVM on `PATH` alone may still

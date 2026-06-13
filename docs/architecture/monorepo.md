@@ -55,6 +55,12 @@ modules under the owning package's `cmake/` directory. The package root
 `CMakeLists.txt` should show the high-level target/test structure, while
 included modules own cohesive source lists or test-family registrations.
 
+Within `packages/libmylite/src/sql/`, the parser driver owns Lemon token
+feeding, retry parsing, placeholder scanning, and parser state transitions.
+Large AST builder families may live in separate `mylite_parser_*_builders.c`
+modules when they use the shared parser helper surface instead of reaching
+through file-local state.
+
 When running Homebrew `clang-tidy` on macOS, use a build directory configured
 with Homebrew `clang` so the compile database matches the analysis toolchain.
 Set `CC` explicitly before configuring; putting LLVM on `PATH` alone may still

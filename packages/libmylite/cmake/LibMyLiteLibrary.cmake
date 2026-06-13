@@ -147,6 +147,8 @@ add_library(mylite STATIC
   src/sql/mylite_ast.c
   src/sql/mylite_lexer.c
   src/sql/mylite_parser.c
+  src/sql/mylite_parser_ddl_builders.c
+  src/sql/mylite_parser_helpers.c
   src/storage/mylite_file_open.c
   src/storage/mylite_file_format.c
   src/storage/mylite_offset_vfs.c

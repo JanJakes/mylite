@@ -17,11 +17,11 @@ run_mysql() {
     if [ -n "$MYSQL_SOCKET" ]; then
         printf '%s\n' "$sql" \
             | mysql --protocol=SOCKET --socket="$MYSQL_SOCKET" -uroot --batch --raw \
-                --skip-column-names "$@"
+                --skip-column-names --init-command="SET SESSION sql_mode=''" "$@"
     else
         printf '%s\n' "$sql" \
             | docker exec -i "$MYSQL_CONTAINER" mysql --protocol=TCP -h127.0.0.1 -uroot \
-                --batch --raw --skip-column-names "$@"
+                --batch --raw --skip-column-names --init-command="SET SESSION sql_mode=''" "$@"
     fi
 }
 

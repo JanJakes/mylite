@@ -1832,18 +1832,22 @@ int mylite_execution_scalar_uncompress_function_value(
     }
 
     rc = mylite_string_uncompress(bytes, byte_count, &decoded, &decoded_size, &valid);
-    free(owned_bytes);
     if (rc == MYLITE_NOMEM) {
+        free(owned_bytes);
         mylite_execution_set_nomem_error(database);
         return rc;
     }
     if (rc != MYLITE_OK) {
+        free(owned_bytes);
         mylite_execution_set_runtime_error(database, "failed to calculate UNCOMPRESS() value");
         return rc;
     }
     if (!valid) {
-        return mylite_string_compression_append_uncompress_warning(database, bytes, byte_count);
+        rc = mylite_string_compression_append_uncompress_warning(database, bytes, byte_count);
+        free(owned_bytes);
+        return rc;
     }
+    free(owned_bytes);
 
     out_cell->owned_text = (char *)decoded;
     out_cell->value = out_cell->owned_text;
@@ -1894,12 +1898,13 @@ int mylite_execution_scalar_uncompressed_length_function_value(
     }
 
     rc = mylite_string_uncompressed_length(bytes, byte_count, &original_size, &valid);
-    free(owned_bytes);
     if (rc == MYLITE_NOMEM) {
+        free(owned_bytes);
         mylite_execution_set_nomem_error(database);
         return rc;
     }
     if (rc != MYLITE_OK) {
+        free(owned_bytes);
         mylite_execution_set_runtime_error(
             database,
             "failed to calculate UNCOMPRESSED_LENGTH() value"
@@ -1910,6 +1915,7 @@ int mylite_execution_scalar_uncompressed_length_function_value(
         rc = mylite_string_compression_append_uncompress_warning(database, bytes, byte_count);
         original_size = 0U;
     }
+    free(owned_bytes);
     if (rc != MYLITE_OK) {
         return rc;
     }

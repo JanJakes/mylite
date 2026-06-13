@@ -233,9 +233,7 @@ if (!mysqli_query($db, "CREATE DATABASE IF NOT EXISTS wordpress_tests")) {
   (
     cd "${MYLITE_WORDPRESS_DIR}"
     if [ "$#" -eq 0 ]; then
-      "${php_wrapper}" "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}/vendor/bin/phpunit" \
-        tests/phpunit/tests/db.php \
-        tests/phpunit/tests/db
+      "${php_wrapper}" "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}/vendor/bin/phpunit"
     else
       "${php_wrapper}" "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}/vendor/bin/phpunit" "$@"
     fi

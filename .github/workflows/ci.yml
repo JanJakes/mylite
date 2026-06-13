@@ -146,7 +146,7 @@ jobs:
       - name: Install WordPress PHPUnit dependencies
         run: tools/wordpress-phpunit-mysqli-mylite install-dependencies
 
-      - name: Run WordPress PHPUnit test suite
+      - name: Run full WordPress PHPUnit test suite
         run: tools/wordpress-phpunit-mysqli-mylite test
 
       - name: Show generated artifact sizes

@@ -1,8 +1,14 @@
 <?php
 
-if (phpversion('mysqli') !== '0.1.0') {
-    fwrite(STDERR, "Skipping php-ext-mylite mysqli tests: PHP already provides mysqli.\n");
-    exit(77);
+$mysqli_version = phpversion('mysqli');
+if ($mysqli_version !== '0.1.0') {
+    fwrite(
+        STDERR,
+        "php-ext-mysqli-mylite tests require MyLite mysqli replacement 0.1.0; loaded version: "
+        . var_export($mysqli_version, true)
+        . "\n"
+    );
+    exit(1);
 }
 
 mysqli_report(MYSQLI_REPORT_OFF);

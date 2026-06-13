@@ -58,12 +58,4 @@ if(BUILD_TESTING)
     -d "extension=${MYLITE_PHP_MYSQLI_EXTENSION}"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/mysqli_api_surface.php"
   )
-  set_tests_properties(
-    php-ext-mysqli-mylite.basic
-    php-ext-mysqli-mylite.procedural
-    php-ext-mysqli-mylite.statement
-    php-ext-mysqli-mylite.errors
-    php-ext-mysqli-mylite.api-surface
-    PROPERTIES SKIP_RETURN_CODE 77
-  )
 endif()

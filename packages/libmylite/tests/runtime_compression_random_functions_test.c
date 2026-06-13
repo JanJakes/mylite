@@ -357,6 +357,38 @@ static int test_compression_random_diagnostics(void) {
             .context = "multiple invalid compressed payload warnings",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT UNCOMPRESS(X'FFFFFFFF00') IS NULL, "
+                   "UNCOMPRESSED_LENGTH(X'FFFFFFFF00')",
+            .column_count = 2U,
+            .values =
+                (const struct expected_cell[]){
+                    CELL_TEXT("1"),
+                    CELL_TEXT("1073741823"),
+                },
+            .row_count = 1U,
+            .warning_count = 1U,
+            .context = "oversized invalid compressed payload warnings",
+        }
+    );
+    warnings = NULL;
+    failures += execute_ok(database, "SHOW WARNINGS", &warnings);
+    if (failures == 0) {
+        failures +=
+            expect_size(mylite_result_row_count(warnings), 1U, "oversized compressed warning rows");
+        failures += expect_warning(
+            warnings,
+            0U,
+            (struct expected_warning){
+                .code = "1256",
+                .message_part = "Uncompressed data size too large",
+            },
+            "oversized compressed warning"
+        );
+    }
+    mylite_result_free(warnings);
 
     failures += execute_error(
         database,

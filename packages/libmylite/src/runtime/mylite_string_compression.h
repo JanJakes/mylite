@@ -29,6 +29,11 @@ int mylite_string_uncompressed_length(
     bool *out_valid
 );
 int mylite_string_compression_append_zlib_warning(struct mylite_db *database);
+int mylite_string_compression_append_uncompress_warning(
+    struct mylite_db *database,
+    const void *input,
+    size_t input_size
+);
 int mylite_sqlite_register_string_compression_functions(sqlite3 *sqlite);
 
 #endif

@@ -17,13 +17,23 @@
 #include <zlib.h>
 
 enum {
+    mysql_warning_uncompress_too_large = 1256,
     mysql_warning_zlib = 1259,
     mysql_compress_length_prefix_size = 4,
+    mysql_compress_length_mask = 0x3fffffffU,
+    mysql_uncompress_max_output_size = 67108864,
     compression_decimal_text_capacity = 32,
     compression_result_too_large = 1,
+    compression_inflate_buffer_size = 8192,
     compression_le32_second_byte_shift = 8,
     compression_le32_third_byte_shift = 16,
     compression_le32_fourth_byte_shift = 24,
+};
+
+struct compressed_payload_validation_request {
+    const unsigned char *payload;
+    size_t payload_size;
+    uint32_t expected_size;
 };
 
 static void compress_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
@@ -54,6 +64,11 @@ static void uncompressed_length_sqlite_result(
     size_t input_size
 );
 static int alloc_empty_bytes(unsigned char **out_bytes);
+static int validate_compressed_payload(
+    struct compressed_payload_validation_request request,
+    bool *out_valid
+);
+static bool compressed_payload_exceeds_uncompress_limit(const void *input, size_t input_size);
 static uint32_t load_le32(const unsigned char bytes[mysql_compress_length_prefix_size]);
 static void store_le32(unsigned char bytes[mysql_compress_length_prefix_size], uint32_t value);
 
@@ -122,7 +137,9 @@ int mylite_string_uncompress(
     unsigned char *output = NULL;
     uint32_t original_size = 0U;
     uLongf actual_size = 0U;
+    bool stream_valid = false;
     int zlib_rc = Z_OK;
+    int rc = MYLITE_OK;
 
     if ((input == NULL && input_size != 0U) || out_bytes == NULL || out_size == NULL ||
         out_valid == NULL) {
@@ -134,7 +151,7 @@ int mylite_string_uncompress(
     *out_valid = false;
 
     if (input_size == 0U) {
-        int rc = alloc_empty_bytes(out_bytes);
+        rc = alloc_empty_bytes(out_bytes);
 
         if (rc == MYLITE_OK) {
             *out_valid = true;
@@ -145,7 +162,32 @@ int mylite_string_uncompress(
         return MYLITE_OK;
     }
 
-    original_size = load_le32(bytes);
+    original_size = load_le32(bytes) & mysql_compress_length_mask;
+    if (original_size > mysql_uncompress_max_output_size) {
+        return MYLITE_OK;
+    }
+    rc = validate_compressed_payload(
+        (struct compressed_payload_validation_request){
+            .payload = bytes + mysql_compress_length_prefix_size,
+            .payload_size = input_size - mysql_compress_length_prefix_size,
+            .expected_size = original_size,
+        },
+        &stream_valid
+    );
+    if (rc != MYLITE_OK || !stream_valid) {
+        return rc;
+    }
+#if SIZE_MAX <= UINT32_MAX
+    if ((size_t)original_size == SIZE_MAX) {
+        return MYLITE_NOMEM;
+    }
+#endif
+#if SIZE_MAX > ULONG_MAX
+    if (input_size - mysql_compress_length_prefix_size > (size_t)ULONG_MAX) {
+        return MYLITE_NOMEM;
+    }
+#endif
+
     output = (unsigned char *)malloc((size_t)original_size + 1U);
     if (output == NULL) {
         return MYLITE_NOMEM;
@@ -176,8 +218,7 @@ int mylite_string_uncompressed_length(
     uint32_t *out_length,
     bool *out_valid
 ) {
-    unsigned char *decoded = NULL;
-    size_t decoded_size = 0U;
+    const unsigned char *bytes = input;
     int rc = MYLITE_OK;
 
     if ((input == NULL && input_size != 0U) || out_length == NULL || out_valid == NULL) {
@@ -191,17 +232,13 @@ int mylite_string_uncompressed_length(
         *out_valid = true;
         return MYLITE_OK;
     }
-    rc = mylite_string_uncompress(input, input_size, &decoded, &decoded_size, out_valid);
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    free(decoded);
-    if (!*out_valid) {
+    if (input_size <= mysql_compress_length_prefix_size) {
         return MYLITE_OK;
     }
 
-    *out_length = load_le32(input);
-    return MYLITE_OK;
+    *out_length = load_le32(bytes) & mysql_compress_length_mask;
+    *out_valid = true;
+    return rc;
 }
 
 int mylite_string_compression_append_zlib_warning(struct mylite_db *database) {
@@ -223,6 +260,38 @@ int mylite_string_compression_append_zlib_warning(struct mylite_db *database) {
             MYLITE_NOMEM,
             "HY001",
             "out of memory while recording zlib warning"
+        );
+    }
+    return rc;
+}
+
+int mylite_string_compression_append_uncompress_warning(
+    struct mylite_db *database,
+    const void *input,
+    size_t input_size
+) {
+    int rc = MYLITE_OK;
+
+    if (database == NULL || (input == NULL && input_size != 0U)) {
+        return MYLITE_MISUSE;
+    }
+    if (!compressed_payload_exceeds_uncompress_limit(input, input_size)) {
+        return mylite_string_compression_append_zlib_warning(database);
+    }
+
+    rc = mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_uncompress_too_large,
+        "HY000",
+        "Uncompressed data size too large; the maximum size is 67108864 "
+        "(probably, length of uncompressed data was corrupted)"
+    );
+    if (rc == MYLITE_NOMEM) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            MYLITE_NOMEM,
+            "HY001",
+            "out of memory while recording uncompress size warning"
         );
     }
     return rc;
@@ -477,7 +546,7 @@ static void uncompress_sqlite_result(
         return;
     }
     if (!valid) {
-        rc = mylite_string_compression_append_zlib_warning(database);
+        rc = mylite_string_compression_append_uncompress_warning(database, input, input_size);
         if (rc == MYLITE_NOMEM) {
             sqlite3_result_error_nomem(context);
             return;
@@ -525,7 +594,7 @@ static void uncompressed_length_sqlite_result(
         return;
     }
     if (!valid) {
-        rc = mylite_string_compression_append_zlib_warning(database);
+        rc = mylite_string_compression_append_uncompress_warning(database, input, input_size);
         if (rc == MYLITE_NOMEM) {
             sqlite3_result_error_nomem(context);
             return;
@@ -555,6 +624,73 @@ static int alloc_empty_bytes(unsigned char **out_bytes) {
     empty[0] = '\0';
     *out_bytes = empty;
     return MYLITE_OK;
+}
+
+static int validate_compressed_payload(
+    struct compressed_payload_validation_request request,
+    bool *out_valid
+) {
+    unsigned char buffer[compression_inflate_buffer_size];
+    z_stream stream;
+    size_t input_offset = 0U;
+    size_t produced_total = 0U;
+    int zlib_rc = Z_OK;
+
+    if ((request.payload == NULL && request.payload_size != 0U) || out_valid == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    *out_valid = false;
+    stream = (z_stream){0};
+    zlib_rc = inflateInit(&stream);
+    if (zlib_rc != Z_OK) {
+        return zlib_rc == Z_MEM_ERROR ? MYLITE_NOMEM : MYLITE_ERROR;
+    }
+
+    while (true) {
+        size_t produced = 0U;
+
+        if (stream.avail_in == 0U && input_offset < request.payload_size) {
+            size_t remaining = request.payload_size - input_offset;
+            uInt chunk_size = remaining > (size_t)UINT_MAX ? UINT_MAX : (uInt)remaining;
+
+            stream.next_in = (Bytef *)(request.payload + input_offset);
+            stream.avail_in = chunk_size;
+            input_offset += chunk_size;
+        }
+
+        stream.next_out = buffer;
+        stream.avail_out = (uInt)sizeof(buffer);
+        zlib_rc = inflate(&stream, Z_NO_FLUSH);
+        produced = sizeof(buffer) - stream.avail_out;
+        if (produced > (size_t)request.expected_size - produced_total) {
+            (void)inflateEnd(&stream);
+            return MYLITE_OK;
+        }
+        produced_total += produced;
+
+        if (zlib_rc == Z_STREAM_END) {
+            *out_valid = produced_total == (size_t)request.expected_size;
+            (void)inflateEnd(&stream);
+            return MYLITE_OK;
+        }
+        if (zlib_rc != Z_OK) {
+            (void)inflateEnd(&stream);
+            return MYLITE_OK;
+        }
+    }
+}
+
+static bool compressed_payload_exceeds_uncompress_limit(const void *input, size_t input_size) {
+    const unsigned char *bytes = input;
+    uint32_t advertised_size = 0U;
+
+    if (input_size <= mysql_compress_length_prefix_size) {
+        return false;
+    }
+
+    advertised_size = load_le32(bytes) & mysql_compress_length_mask;
+    return advertised_size > mysql_uncompress_max_output_size;
 }
 
 static uint32_t load_le32(const unsigned char bytes[mysql_compress_length_prefix_size]) {

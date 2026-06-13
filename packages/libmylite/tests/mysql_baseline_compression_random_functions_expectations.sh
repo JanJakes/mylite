@@ -96,6 +96,18 @@ expect_output \
     "SELECT UNCOMPRESS('abc') IS NULL, UNCOMPRESSED_LENGTH('abc'); SHOW WARNINGS;" \
     "$DATABASE"
 
+oversized_invalid_expected=$(cat <<EXPECTED
+1	1073741823
+Warning	1256	Uncompressed data size too large; the maximum size is 67108864 (probably, length of uncompressed data was corrupted)
+EXPECTED
+)
+expect_output \
+    "oversized invalid compressed warning" \
+    "$oversized_invalid_expected" \
+    "SELECT UNCOMPRESS(X'FFFFFFFF00') IS NULL, UNCOMPRESSED_LENGTH(X'FFFFFFFF00'); "\
+"SHOW WARNINGS;" \
+    "$DATABASE"
+
 random_expected=$(cat <<EXPECTED
 1	1024	1	4
 1	2	2	1024

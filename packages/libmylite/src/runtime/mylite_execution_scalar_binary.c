@@ -1842,7 +1842,7 @@ int mylite_execution_scalar_uncompress_function_value(
         return rc;
     }
     if (!valid) {
-        return mylite_string_compression_append_zlib_warning(database);
+        return mylite_string_compression_append_uncompress_warning(database, bytes, byte_count);
     }
 
     out_cell->owned_text = (char *)decoded;
@@ -1907,7 +1907,7 @@ int mylite_execution_scalar_uncompressed_length_function_value(
         return rc;
     }
     if (!valid) {
-        rc = mylite_string_compression_append_zlib_warning(database);
+        rc = mylite_string_compression_append_uncompress_warning(database, bytes, byte_count);
         original_size = 0U;
     }
     if (rc != MYLITE_OK) {

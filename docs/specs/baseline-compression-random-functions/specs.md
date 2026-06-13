@@ -107,18 +107,20 @@ than pinning every zlib output byte except in the MySQL expectation artifact.
 `UNCOMPRESS(expr)` returns a binary string. `NULL` input returns `NULL`. Empty
 input returns an empty binary string, matching the result of uncompressing
 `COMPRESS('')`. Invalid compressed input returns `NULL` and appends warning
-`1259`, SQLSTATE `HY000`, message `ZLIB: Input data corrupted`.
+`1259`, SQLSTATE `HY000`, message `ZLIB: Input data corrupted`. If the stored
+length prefix advertises more than MySQL's `67108864` byte decompression limit,
+the result is `NULL` and warning `1256` reports the excessive size instead of
+attempting to inflate or allocate the advertised output.
 
 ### `UNCOMPRESSED_LENGTH()`
 
 `UNCOMPRESSED_LENGTH(expr)` returns the original byte length stored in a
-compressed string. `NULL` input returns `NULL`; empty input returns `0`. Invalid
-compressed input returns `0` and appends warning `1259`, SQLSTATE `HY000`,
-message `ZLIB: Input data corrupted`.
-
-For this baseline, MyLite validates the compressed payload before trusting the
-stored length. This preserves the observable invalid-input warning behavior and
-avoids reporting arbitrary prefix bytes as metadata.
+compressed string. `NULL` input returns `NULL`; empty input returns `0`. Inputs
+that do not contain the four-byte length prefix return `0` and append warning
+`1259`, SQLSTATE `HY000`, message `ZLIB: Input data corrupted`. When the prefix
+exists, MySQL reports the low 30 bits of the stored little-endian length without
+inflating the payload; MyLite follows that behavior so malformed oversized
+payloads do not force decompression or large allocation.
 
 ### `RANDOM_BYTES()`
 

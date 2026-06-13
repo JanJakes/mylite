@@ -1474,15 +1474,12 @@ static int validate_alter_table_add_index_column(
         set_json_key_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (column_descriptor_is_bit(column) || column_descriptor_is_enum(column) ||
-        column_descriptor_is_set(column)) {
-        set_unsupported_error(database, "Secondary indexes do not yet support this column type");
-        return MYLITE_ERROR;
-    }
     if (column_descriptor_is_char_or_varchar(column)) {
         return validate_descriptor_string_key_column(database, column);
     }
-    if (column_descriptor_is_decimal(column) || column_descriptor_is_year(column) ||
+    if (column_descriptor_is_bit(column) || column_descriptor_is_enum(column) ||
+        column_descriptor_is_set(column) || column_descriptor_is_decimal(column) ||
+        column_descriptor_is_approximate(column) || column_descriptor_is_year(column) ||
         column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
         column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column)) {
         return MYLITE_OK;

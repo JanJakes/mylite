@@ -21,6 +21,7 @@ enum {
     statistics_probe_field_count = 5,
     complex_index_metadata_column_count = 7,
     created_index_statistics_row_count = 8,
+    created_index_grouped_statistics_row_count = 9,
     created_index_physical_index_count = 9,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
@@ -106,6 +107,12 @@ static int test_create_index_success_metadata_and_persistence(void) {
         "k_d",      "1", "1", "d",      "YES", "k_dt",   "1", "1", "dt",   "YES",
         "k_ts",     "1", "1", "ts",     "YES", "k_u",    "1", "1", "u",    "YES",
         "k_v",      "1", "1", "v",      "YES", "u_name", "0", "1", "name", "YES",
+    };
+    static const char *const grouped_statistics_rows[] = {
+        "k_amount", "amount",  "BTREE", "0",     "k_c",   "c",      "BTREE", "0",     "k_d",
+        "d",        "BTREE",   "0",     "k_dt",  "dt",    "BTREE",  "0",     "k_ts",  "ts",
+        "BTREE",    "0",       "k_u",   "u",     "BTREE", "0",      "k_v",   "v",     "BTREE",
+        "0",        "PRIMARY", "id",    "BTREE", "1",     "u_name", "name",  "BTREE", "1",
     };
     static const char *const show_create_rows[] = {
         "create_idx",
@@ -200,6 +207,20 @@ static int test_create_index_success_metadata_and_persistence(void) {
             .column_count = statistics_probe_field_count,
             .row_count = created_index_statistics_row_count,
             .context = "I_S STATISTICS after CREATE INDEX",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT index_name AS `name`, "
+                   "GROUP_CONCAT(column_name ORDER BY seq_in_index) AS `columns`, "
+                   "index_type AS `type`, NOT non_unique AS `unique` "
+                   "FROM information_schema.statistics WHERE table_schema = schema() "
+                   "AND table_name = 'create_idx' GROUP BY index_name, index_type, non_unique",
+            .values = grouped_statistics_rows,
+            .column_count = 4U,
+            .row_count = created_index_grouped_statistics_row_count,
+            .context = "Laravel-style grouped information_schema.statistics query",
         }
     );
     failures += expect_query_values(

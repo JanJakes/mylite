@@ -56,6 +56,12 @@ static int plan_row_scalar_non_control_flow_expression(
     if (expression->kind == MYLITE_SQL_AST_LITERAL) {
         return plan_row_scalar_literal_value(database, expression, out_expression);
     }
+    if (generic_function_name_equals(expression, "GET_LOCK")) {
+        return plan_row_scalar_get_lock_function(database, expression, out_expression);
+    }
+    if (generic_function_name_equals(expression, "RELEASE_LOCK")) {
+        return plan_row_scalar_release_lock_function(database, expression, out_expression);
+    }
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         return plan_row_scalar_integer_value(database, expression, out_expression);
     }
@@ -92,6 +98,21 @@ static int plan_row_scalar_non_control_flow_expression(
             table_column_count,
             out_expression
         );
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION) {
+        return plan_row_scalar_unix_timestamp_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR) {
+        set_native_function_parameter_count_error(database, "UNIX_TIMESTAMP");
+        return MYLITE_ERROR;
     }
     if (expression->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION ||
@@ -167,11 +188,90 @@ static int plan_row_scalar_non_control_flow_expression(
         "row-scalar SELECT supports only CONCAT(), CONCAT_WS(), FIELD(), GREATEST(), LEAST(), "
         "INTERVAL(), DATE_FORMAT(), descriptor columns, limited temporal extract, string length, "
         "string case, string trim, string codepoint, string slice, string search, string "
-        "replacement, control-flow functions, HEX(), JSON_VALID(), CHARSET(), COLLATION(), and "
-        "COERCIBILITY() functions, "
+        "replacement, control-flow functions, UNIX_TIMESTAMP(), HEX(), JSON_VALID(), CHARSET(), "
+        "COLLATION(), and COERCIBILITY() functions, "
         "literals, DATABASE(), and system variables"
     );
     return MYLITE_ERROR;
+}
+
+static int plan_row_scalar_get_lock_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    return plan_row_scalar_named_lock_function(
+        database,
+        expression,
+        (struct row_scalar_named_lock_function){
+            .function_name = "GET_LOCK",
+            .argument_count = 2U,
+            .result = 1,
+        },
+        out_expression
+    );
+}
+
+static int plan_row_scalar_release_lock_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    return plan_row_scalar_named_lock_function(
+        database,
+        expression,
+        (struct row_scalar_named_lock_function){
+            .function_name = "RELEASE_LOCK",
+            .argument_count = 1U,
+            .result = 1,
+        },
+        out_expression
+    );
+}
+
+static int plan_row_scalar_named_lock_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct row_scalar_named_lock_function lock_function,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *arguments = expression == NULL ? NULL : expression->first_child;
+
+    while (arguments != NULL && arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        arguments = arguments->next_sibling;
+    }
+
+    if (arguments == NULL ||
+        mylite_sql_ast_node_child_count(arguments) != lock_function.argument_count) {
+        set_native_function_parameter_count_error(database, lock_function.function_name);
+        return MYLITE_ERROR;
+    }
+
+    *out_expression = (struct planned_row_scalar_expression){
+        .kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE,
+        .value = (struct planned_value){.is_null = false, .integer = lock_function.result},
+    };
+    return MYLITE_OK;
+}
+
+static bool generic_function_name_equals(
+    const struct mylite_sql_ast_node *expression,
+    const char *name
+) {
+    const struct mylite_sql_ast_node *function_name = NULL;
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_GENERIC_FUNCTION) {
+        return false;
+    }
+    function_name = expression->first_child;
+    while (function_name != NULL) {
+        if (function_name->kind == MYLITE_SQL_AST_IDENTIFIER &&
+            source_span_text_equals_ascii_case_insensitive(&function_name->span, name)) {
+            return true;
+        }
+        function_name = function_name->next_sibling;
+    }
+    return false;
 }
 
 static const char *row_scalar_top_level_only_expression_message(

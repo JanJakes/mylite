@@ -818,13 +818,17 @@ static int test_set_diagnostics(void) {
                 "text, binary string, and temporal column replacements",
         }
     );
-    failures += execute_error(
+    failures += expect_statement_ok(database, "CREATE INDEX v_idx ON set_values (v)");
+    failures += expect_query_values(
         database,
-        "CREATE INDEX v_idx ON set_values (v)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Secondary indexes do not yet support this column type",
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'set_values' "
+                   "AND INDEX_NAME = 'v_idx'",
+            .values = (const char *const[]){"1"},
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "set secondary index metadata",
         }
     );
 

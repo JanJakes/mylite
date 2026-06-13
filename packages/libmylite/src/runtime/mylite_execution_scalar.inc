@@ -62,7 +62,7 @@ static int session_scalar_value(
         set_native_function_parameter_count_error(database, "CURRENT_TIMESTAMP");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_SYSDATE_FUNCTION:
-        return sysdate_scalar_value(database, out_cell);
+        return sysdate_scalar_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SYSDATE_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "SYSDATE");
         return MYLITE_ERROR;
@@ -1578,16 +1578,36 @@ static int current_timestamp_scalar_value(
     return rc;
 }
 
-static int sysdate_scalar_value(struct mylite_db *database, struct session_scalar_cell *out_cell) {
+static int sysdate_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    uint64_t precision = 0U;
     int rc = MYLITE_OK;
 
     if (out_cell == NULL) {
         return MYLITE_MISUSE;
     }
     *out_cell = (struct session_scalar_cell){0};
-    rc = format_sysdate_text(database, out_cell->datetime_text, sizeof(out_cell->datetime_text));
+    rc = validate_supported_temporal_fractional_precision(
+        database,
+        expression,
+        "sysdate",
+        &precision
+    );
     if (rc == MYLITE_OK) {
-        out_cell->value = out_cell->datetime_text;
+        rc = format_sysdate_text_with_precision(
+            database,
+            precision,
+            precision == 0U ? out_cell->datetime_text : out_cell->fractional_datetime_text,
+            precision == 0U ? sizeof(out_cell->datetime_text)
+                             : sizeof(out_cell->fractional_datetime_text)
+        );
+    }
+    if (rc == MYLITE_OK) {
+        out_cell->value =
+            precision == 0U ? out_cell->datetime_text : out_cell->fractional_datetime_text;
     }
     return rc;
 }

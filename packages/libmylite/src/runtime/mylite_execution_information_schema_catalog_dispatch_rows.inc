@@ -1,11 +1,13 @@
 static int append_information_schema_catalog_rows(
     struct mylite_db *database,
-    struct information_schema_row_set *rows
+    struct information_schema_row_set *rows,
+    const struct information_schema_catalog_filter *filter
 ) {
     struct information_schema_catalog_context context = {
         .database = database,
         .rows = rows,
         .schema = NULL,
+        .filter = filter,
     };
 
     switch (rows->definition->kind) {
@@ -195,6 +197,13 @@ static int append_information_schema_catalog_schema(
     if (schema == NULL || context == NULL || context->database == NULL || context->rows == NULL) {
         return MYLITE_MISUSE;
     }
+    if (!information_schema_catalog_filter_allows_schema(
+            context->rows->definition,
+            context->filter,
+            schema->name
+        )) {
+        return MYLITE_OK;
+    }
     if (context->rows->definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_SCHEMATA) {
         return append_information_schema_schemata_schema_row(
             context->database,
@@ -228,6 +237,13 @@ static int append_information_schema_catalog_table(
     if (table == NULL || context == NULL || context->database == NULL || context->rows == NULL ||
         context->schema == NULL) {
         return MYLITE_MISUSE;
+    }
+    if (!information_schema_catalog_filter_allows_table(
+            context->rows->definition,
+            context->filter,
+            table->name
+        )) {
+        return MYLITE_OK;
     }
     if (table->kind == MYLITE_CATALOG_TABLE_KIND_VIEW) {
         return append_information_schema_catalog_view_table(context, table);

@@ -1145,6 +1145,7 @@ static int plan_column_aggregate(
     const struct mylite_sql_ast_node *select_item = child_at(select_list, 0U);
     const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
     const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *limit_clause = NULL;
     const struct mylite_sql_ast_node *optional_clause = NULL;
     const struct mylite_sql_ast_node *expression = NULL;
     const struct mylite_sql_ast_node *aggregate_expression = NULL;
@@ -1183,6 +1184,8 @@ static int plan_column_aggregate(
     while (optional_clause != NULL) {
         if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
             where_clause = optional_clause;
+        } else if (optional_clause->kind == MYLITE_SQL_AST_LIMIT_CLAUSE) {
+            limit_clause = optional_clause;
         } else if (optional_clause->kind == MYLITE_SQL_AST_SELECT_INTO_LIST) {
             /* SELECT ... INTO is handled after normal SELECT execution. */
         } else {
@@ -1194,15 +1197,42 @@ static int plan_column_aggregate(
         }
         optional_clause = optional_clause->next_sibling;
     }
+    rc = plan_select_limit(database, limit_clause, &out_plan->limit);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
 
     if (from_clause == NULL || from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
-        set_unsupported_error(database, column_aggregate_source_error(out_plan->function));
-        return MYLITE_ERROR;
+        rc = plan_column_aggregate_without_source(
+            database,
+            aggregate_expression,
+            out_plan->function,
+            where_clause,
+            out_plan
+        );
+        if (rc == MYLITE_OK && rhs_expression != NULL) {
+            rc = plan_row_scalar_expression(
+                database,
+                rhs_expression,
+                false,
+                NULL,
+                NULL,
+                NULL,
+                0U,
+                &out_plan->aggregate_projection_rhs
+            );
+            if (rc == MYLITE_OK) {
+                out_plan->aggregate_has_projection_rhs = true;
+                out_plan->aggregate_projection_operator = projection_operator;
+            }
+        }
+        return rc;
     }
     if (from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
         set_unsupported_error(database, column_aggregate_source_error(out_plan->function));
         return MYLITE_ERROR;
     }
+    out_plan->has_source = true;
 
     rc = resolve_visible_table_reference(
         database,
@@ -1285,6 +1315,40 @@ static int plan_column_aggregate(
     }
 
     free(table_columns);
+    return rc;
+}
+
+static int plan_column_aggregate_without_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *aggregate_expression,
+    enum planned_column_aggregate_function function,
+    const struct mylite_sql_ast_node *where_clause,
+    struct planned_column_aggregate *out_plan
+) {
+    const struct mylite_sql_ast_node *argument = child_at(aggregate_expression, 0U);
+    int rc = MYLITE_OK;
+
+    if (where_clause != NULL ||
+        argument == NULL ||
+        (function != PLANNED_COLUMN_AGGREGATE_MIN && function != PLANNED_COLUMN_AGGREGATE_MAX) ||
+        !column_aggregate_argument_is_row_scalar_expression(aggregate_expression)) {
+        set_unsupported_error(database, column_aggregate_source_error(function));
+        return MYLITE_ERROR;
+    }
+
+    rc = plan_row_scalar_expression(
+        database,
+        argument,
+        false,
+        NULL,
+        NULL,
+        NULL,
+        0U,
+        &out_plan->aggregate_row_scalar_expression
+    );
+    if (rc == MYLITE_OK) {
+        out_plan->aggregate_uses_row_scalar_expression = true;
+    }
     return rc;
 }
 
@@ -1409,6 +1473,18 @@ static enum planned_column_aggregate_function select_list_column_aggregate_funct
     }
 
     return PLANNED_COLUMN_AGGREGATE_NONE;
+}
+
+static bool column_aggregate_argument_is_row_scalar_expression(
+    const struct mylite_sql_ast_node *function
+) {
+    const struct mylite_sql_ast_node *argument = child_at(function, 0U);
+
+    if (argument == NULL) {
+        return false;
+    }
+    return (argument->kind != MYLITE_SQL_AST_IDENTIFIER &&
+            argument->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) != 0;
 }
 
 static bool column_aggregate_function_is_bitwise(enum planned_column_aggregate_function function) {
@@ -1690,11 +1766,24 @@ static int execute_column_aggregate_from_plan(
         mylite_result_free(result);
         return column_aggregate_execution_error(database, rc);
     }
+    apply_column_aggregate_limit_to_result(result, plan);
     if (apply_sql_select_limit) {
         apply_sql_select_limit_to_result(database, result);
     }
 
     return finish_successful_result(database, result, out_result);
+}
+
+static void apply_column_aggregate_limit_to_result(
+    mylite_result *result,
+    const struct planned_column_aggregate *plan
+) {
+    if (result == NULL || plan == NULL || !plan->limit.has_limit) {
+        return;
+    }
+    if (plan->limit.row_count == 0 || (plan->limit.has_offset && plan->limit.offset > 0)) {
+        mylite_result_truncate_rows(result, 0U);
+    }
 }
 
 static int append_column_aggregate_result_column(

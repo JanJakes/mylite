@@ -237,6 +237,9 @@ static enum planned_row_scalar_field_domain row_scalar_field_argument_domain(
     if (expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
         return row_scalar_field_column_domain(&expression->column);
     }
+    if (expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC) {
+        return PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
+    }
     return PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
 }
 
@@ -380,6 +383,15 @@ static int plan_row_scalar_greatest_least_argument(
             return MYLITE_ERROR;
         }
         rc = plan_row_scalar_greatest_least_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    } else if (has_source && row_scalar_expression_contains_integer_arithmetic_attempt(expression)) {
+        rc = plan_row_scalar_integer_arithmetic_expression(
             database,
             expression,
             source_context,

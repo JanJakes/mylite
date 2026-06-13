@@ -2877,8 +2877,8 @@ static int test_sysdate_function_statements(void) {
     select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
     failures += parser_test_expect_node(
         parser_test_child_at(parser_test_child_at(select_list, sysdate_item_index), 0U),
-        MYLITE_SQL_AST_SYSDATE_ARGUMENT_COUNT_ERROR,
-        "SYSDATE argument-count select item"
+        MYLITE_SQL_AST_SYSDATE_FUNCTION,
+        "SYSDATE fractional-precision select item"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -2906,8 +2906,8 @@ static int test_sysdate_function_statements(void) {
     select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
     failures += parser_test_expect_node(
         parser_test_child_at(parser_test_child_at(select_list, sysdate_item_index), 0U),
-        MYLITE_SQL_AST_SYSDATE_ARGUMENT_COUNT_ERROR,
-        "ignore_space SYSDATE argument-count select item"
+        MYLITE_SQL_AST_SYSDATE_FUNCTION,
+        "ignore_space SYSDATE fractional-precision select item"
     );
     mylite_sql_parse_result_deinit(&result);
 

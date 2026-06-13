@@ -437,7 +437,7 @@ static int string_length_session_scalar_argument_value(
         mylite_execution_set_native_function_parameter_count_error(database, "CURRENT_TIMESTAMP");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_SYSDATE_FUNCTION:
-        return mylite_execution_sysdate_scalar_value(database, out_cell);
+        return mylite_execution_sysdate_scalar_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SYSDATE_ARGUMENT_COUNT_ERROR:
         mylite_execution_set_native_function_parameter_count_error(database, "SYSDATE");
         return MYLITE_ERROR;

@@ -2088,7 +2088,8 @@ static bool signed_integer_arithmetic_column_descriptor_is_supported(
         strcmp(logical_type, "MEDIUMINT") == 0 || strcmp(logical_type, "SMALLINT UNSIGNED") == 0 ||
         strcmp(logical_type, "MEDIUMINT UNSIGNED") == 0 || strcmp(logical_type, "INT") == 0 ||
         strcmp(logical_type, "INTEGER") == 0 || strcmp(logical_type, "INT UNSIGNED") == 0 ||
-        strcmp(logical_type, "INTEGER UNSIGNED") == 0 || strcmp(logical_type, "BIGINT") == 0) {
+        strcmp(logical_type, "INTEGER UNSIGNED") == 0 || strcmp(logical_type, "BIGINT") == 0 ||
+        strcmp(logical_type, "BIGINT UNSIGNED") == 0) {
         return true;
     }
 

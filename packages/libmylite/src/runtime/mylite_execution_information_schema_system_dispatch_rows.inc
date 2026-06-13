@@ -1,7 +1,12 @@
 static int append_information_schema_system_rows(
     struct mylite_db *database,
-    struct information_schema_row_set *rows
+    struct information_schema_row_set *rows,
+    const struct information_schema_catalog_filter *filter
 ) {
+    if (!information_schema_catalog_filter_allows_system_rows(rows->definition, filter)) {
+        return MYLITE_OK;
+    }
+
     switch (rows->definition->kind) {
     case MYLITE_EXECUTION_CATALOG_TABLE_SCHEMATA:
         return append_information_schema_schemata_system_rows(database, rows);

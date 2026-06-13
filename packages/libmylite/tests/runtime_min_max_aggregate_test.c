@@ -97,6 +97,7 @@ int main(void) {
 
 static int test_min_max_values_persistence_rename_and_drop(void) {
     static const char *const grouped_string_min_values[] = {"Blue", "green"};
+    static const char *const no_aggregate_values[] = {NULL};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -115,6 +116,24 @@ static int test_min_max_values_persistence_rename_and_drop(void) {
     mylite_file_preamble_init(expected_preamble);
 
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open values file");
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
+            .sql = "SELECT MAX(1) AS value",
+            .column = "value",
+            .value = "1",
+            .context = "source-less max literal",
+        }
+    );
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
+            .sql = "SELECT MIN(NULL)",
+            .column = "MIN(NULL)",
+            .value = NULL,
+            .context = "source-less min null",
+        }
+    );
     failures += seed_schema(database, "app");
     failures += execute_ok(database, "USE app", &result);
     mylite_result_free(result);
@@ -179,6 +198,25 @@ static int test_min_max_values_persistence_rename_and_drop(void) {
             .column = "MAX(i)",
             .value = "2147483647",
             .context = "signed int maximum",
+        }
+    );
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
+            .sql = "SELECT MAX(i) FROM numbers LIMIT 1",
+            .column = "MAX(i)",
+            .value = "2147483647",
+            .context = "signed int maximum with no-op limit",
+        }
+    );
+    failures += expect_aggregate_rows_query(
+        database,
+        (struct expected_aggregate_rows_query){
+            .sql = "SELECT MAX(i) FROM numbers LIMIT 0",
+            .column = "MAX(i)",
+            .values = no_aggregate_values,
+            .value_count = 0U,
+            .context = "signed int maximum with zero limit",
         }
     );
     failures += expect_aggregate_query(
@@ -814,16 +852,6 @@ static int test_min_max_diagnostics(void) {
             .message_part = "MIN/MAX supports only WHERE",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT MAX(i) FROM numbers LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "MIN/MAX supports only WHERE",
-        }
-    );
-
     failures += execute_error(
         database,
         "SELECT MIN (i) FROM numbers",

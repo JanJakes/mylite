@@ -3173,7 +3173,7 @@ static void planned_row_scalar_select_deinit(struct planned_row_scalar_select *p
     }
 
     for (size_t item_index = 0U; item_index < plan->item_count; ++item_index) {
-        planned_row_scalar_expression_deinit(&plan->items[item_index].expression);
+        planned_row_scalar_select_item_deinit(&plan->items[item_index]);
     }
     free(plan->items);
     for (size_t source_index = 0U; source_index < plan->source_count; ++source_index) {

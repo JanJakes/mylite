@@ -347,11 +347,19 @@ static int bind_row_scalar_select_parameters_at(
     int rc = MYLITE_OK;
 
     for (size_t item_index = 0U; rc == MYLITE_OK && item_index < plan->item_count; ++item_index) {
-        rc = bind_row_scalar_expression_parameters(
-            statement,
-            &plan->items[item_index].expression,
-            parameter_index
-        );
+        if (plan->items[item_index].is_exists_expression) {
+            rc = bind_select_exists_predicate_parameters(
+                statement,
+                &plan->items[item_index].exists_subquery,
+                parameter_index
+            );
+        } else {
+            rc = bind_row_scalar_expression_parameters(
+                statement,
+                &plan->items[item_index].expression,
+                parameter_index
+            );
+        }
     }
     if (rc == MYLITE_OK && plan->has_source) {
         rc = bind_row_scalar_select_source_parameters(statement, plan, parameter_index);

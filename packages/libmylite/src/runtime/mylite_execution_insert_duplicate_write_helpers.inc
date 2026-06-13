@@ -655,6 +655,11 @@ static int convert_insert_duplicate_update_value(
             out_value
         );
     }
+    if (duplicate_assignment->value_kind == PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_ROW_SCALAR) {
+        planned_value_deinit(out_value);
+        *out_value = (struct planned_value){.is_null = true};
+        return MYLITE_OK;
+    }
     if (insert_duplicate_assignment_is_noop(duplicate_assignment)) {
         planned_value_deinit(out_value);
         *out_value = (struct planned_value){.is_null = true};
@@ -1017,7 +1022,9 @@ static int build_insert_duplicate_update_sql(
         mylite_dynamic_string_deinit(&string);
         return MYLITE_ERROR;
     }
-    next_parameter = executable_assignment_count + conflicting_index->part_count + 1U;
+    next_parameter =
+        insert_duplicate_update_assignment_parameter_count(plan) + conflicting_index->part_count +
+        1U;
 
     rc = mylite_dynamic_string_append(&string, "UPDATE ");
     if (rc == MYLITE_OK) {
@@ -1052,7 +1059,6 @@ static int build_insert_duplicate_update_sql(
             rc = MYLITE_NOMEM;
         }
     }
-
     mylite_dynamic_string_deinit(&string);
     return rc;
 }
@@ -1065,7 +1071,7 @@ static int append_insert_duplicate_key_predicate_sql(
     return append_insert_duplicate_key_predicate_sql_from_parameters(
         string,
         conflicting_index,
-        count_executable_insert_duplicate_assignments(plan) + 1U
+        insert_duplicate_update_assignment_parameter_count(plan) + 1U
     );
 }
 
@@ -1129,11 +1135,19 @@ static int append_insert_duplicate_assignments_sql(
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append(string, " = ");
         }
-        if (rc == MYLITE_OK) {
+        if (rc == MYLITE_OK &&
+            plan->duplicate_update.assignments[index].value_kind ==
+                PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_ROW_SCALAR) {
+            rc = append_row_scalar_expression_sql(
+                string,
+                plan->duplicate_update.assignments[index].row_scalar_expression,
+                &parameter_index
+            );
+        } else if (rc == MYLITE_OK) {
             rc = append_numbered_parameter(string, parameter_index);
+            ++parameter_index;
         }
         has_previous = true;
-        ++parameter_index;
     }
 
     return rc;
@@ -1159,7 +1173,16 @@ static int append_insert_duplicate_changed_conditions_sql(
         if (has_previous) {
             rc = mylite_dynamic_string_append(string, " OR ");
         }
-        if (rc == MYLITE_OK) {
+        if (rc == MYLITE_OK &&
+            plan->duplicate_update.assignments[index].value_kind ==
+                PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_ROW_SCALAR) {
+            rc = append_update_assignment_row_scalar_changed_condition_sql(
+                string,
+                &plan->columns[column_index],
+                plan->duplicate_update.assignments[index].row_scalar_expression,
+                next_parameter
+            );
+        } else if (rc == MYLITE_OK) {
             rc = append_insert_duplicate_changed_condition_sql(
                 string,
                 &plan->columns[column_index],
@@ -1274,6 +1297,15 @@ static int bind_insert_duplicate_assignment_parameters(
         if (insert_duplicate_assignment_is_noop(&plan->duplicate_update.assignments[index])) {
             continue;
         }
+        if (plan->duplicate_update.assignments[index].value_kind ==
+            PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_ROW_SCALAR) {
+            rc = bind_row_scalar_expression_parameters(
+                statement,
+                plan->duplicate_update.assignments[index].row_scalar_expression,
+                parameter_index
+            );
+            continue;
+        }
         rc = bind_planned_value_parameter(statement, *parameter_index, &assignment_values[index]);
         if (rc == MYLITE_OK) {
             ++(*parameter_index);
@@ -1318,6 +1350,15 @@ static int bind_insert_duplicate_changed_condition_parameters(
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->duplicate_update.assignment_count;
          ++index) {
         if (insert_duplicate_assignment_is_noop(&plan->duplicate_update.assignments[index])) {
+            continue;
+        }
+        if (plan->duplicate_update.assignments[index].value_kind ==
+            PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_ROW_SCALAR) {
+            rc = bind_update_row_scalar_changed_condition_parameters(
+                statement,
+                parameter_index,
+                plan->duplicate_update.assignments[index].row_scalar_expression
+            );
             continue;
         }
         if (assignment_values[index].is_null) {

@@ -22,6 +22,7 @@ enum {
     approx_type_column_count = 17,
     approx_values_column_count = 7,
     approx_values_after_underflow_row_count = 5,
+    approx_index_metadata_column_count = 5,
     approx_information_schema_column_count = 10,
     approx_information_schema_row_count = 16,
     mysql_error_parse = 1064,
@@ -281,6 +282,20 @@ static int test_float_double_success_persistence_and_introspection(void) {
     };
     static const char *const renamed_rows[] = {"2.5"};
     static const char *const reopened_rows[] = {"1", "9.75", "4.25", "2.5"};
+    static const char *const approximate_index_rows[] = {
+        "u_fd",
+        "0",
+        "1",
+        "f",
+        "YES",
+        "u_fd",
+        "0",
+        "2",
+        "d",
+        "YES",
+    };
+    static const char *const approximate_index_count_rows[] = {"7"};
+    static const char *const approximate_duplicate_status_rows[] = {"0", "1"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -447,6 +462,58 @@ static int test_float_double_success_persistence_and_introspection(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "approximate IS NULL predicate",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE approx_indexed (id INT PRIMARY KEY, f FLOAT, d DOUBLE, "
+        "UNIQUE KEY u_fd (f,d), KEY k_f (f))"
+    );
+    failures += expect_statement_ok(database, "CREATE INDEX k_d ON approx_indexed (d)");
+    failures += expect_statement_ok(database, "ALTER TABLE approx_indexed ADD KEY k_f_id (f,id)");
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO approx_indexed VALUES "
+        "(1, 1.5, 2.5), (2, 1.5, 3.5), (3, NULL, 2.5), (4, NULL, 2.5)",
+        (struct expected_statement_result){.affected_rows = 4, .warning_count = 0U}
+    );
+    failures += expect_statement_result(
+        database,
+        "INSERT IGNORE INTO approx_indexed VALUES (5, 1.5, 2.5)",
+        (struct expected_statement_result){.affected_rows = 0, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .values = approximate_duplicate_status_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "approximate unique index duplicate status",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, NON_UNIQUE, SEQ_IN_INDEX, COLUMN_NAME, NULLABLE "
+                   "FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'approx_indexed' AND INDEX_NAME = 'u_fd' "
+                   "ORDER BY SEQ_IN_INDEX",
+            .values = approximate_index_rows,
+            .column_count = approx_index_metadata_column_count,
+            .row_count = 2U,
+            .context = "approximate unique index metadata",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'approx_indexed'",
+            .values = approximate_index_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "approximate secondary index count",
         }
     );
     failures +=
@@ -779,33 +846,6 @@ static int test_float_double_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "PRIMARY KEY supports only integer columns",
-        }
-    );
-    failures += execute_error(
-        database,
-        "CREATE TABLE bad_inline_index (f FLOAT, KEY k_f (f))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Secondary indexes do not yet support this column type",
-        }
-    );
-    failures += execute_error(
-        database,
-        "CREATE TABLE bad_inline_unique (f DOUBLE, UNIQUE KEY u_f (f))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Secondary indexes do not yet support this column type",
-        }
-    );
-    failures += execute_error(
-        database,
-        "CREATE INDEX k_f ON values_t (f)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Secondary indexes do not yet support this column type",
         }
     );
     failures += execute_error(

@@ -1141,7 +1141,9 @@ static int evaluate_scalar_comparison_like_expression(
             value.value,
             scalar_cell_text_length(&value),
             false,
-            !session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES)
+            session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES)
+                ? '\0'
+                : '\\'
         );
         out_value->integer = matches ? 1 : 0;
     }

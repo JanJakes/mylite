@@ -21,8 +21,8 @@ enum {
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
     mysql_error_incorrect_table_name = 1103,
-    mysql_error_fulltext_temporary = 1796,
     mysql_error_table_does_not_exist = 1146,
+    show_index_field_count = 15,
 };
 
 struct expected_statement {
@@ -366,6 +366,23 @@ static int test_temporary_like_diagnostics(void) {
     static const char *const zero_count_rows[] = {"0"};
     static const char *const existing_temp_status_rows[] = {"0", "1", "0"};
     static const char *const ai_clone_rows[] = {"1"};
+    static const char *const fulltext_index_rows[] = {
+        "ft_tmp",
+        "1",
+        "ft_name",
+        "1",
+        "name",
+        NULL,
+        "0",
+        NULL,
+        NULL,
+        "YES",
+        "FULLTEXT",
+        "",
+        "",
+        "YES",
+        NULL,
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -540,14 +557,23 @@ static int test_temporary_like_diagnostics(void) {
     );
     failures += expect_statement(
         database,
-        "CREATE TABLE ft_src(name VARCHAR(20), FULLTEXT KEY ft_name(name))",
+        "CREATE TABLE ft_src(name VARCHAR(20), FULLTEXT KEY ft_name(name)) ENGINE=MyISAM",
         (struct expected_statement){0, 0U}
     );
-    failures += expect_error(
+    failures += expect_statement(
         database,
         "CREATE TEMPORARY TABLE ft_tmp LIKE ft_src",
-        mysql_error_fulltext_temporary,
-        "Cannot create FULLTEXT index on temporary InnoDB table"
+        (struct expected_statement){0, 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM ft_tmp WHERE Key_name = 'ft_name'",
+            .values = fulltext_index_rows,
+            .column_count = show_index_field_count,
+            .row_count = 1U,
+            .context = "temporary LIKE clones MyISAM-style fulltext metadata",
+        }
     );
     failures += expect_statement(
         database,

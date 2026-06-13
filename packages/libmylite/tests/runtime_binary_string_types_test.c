@@ -67,6 +67,7 @@ struct expected_dml_result {
 };
 
 static int test_binary_success_persistence_and_introspection(void);
+static int test_binary_predicates(void);
 static int test_binary_defaults(void);
 static int test_blob_expression_defaults(void);
 static int test_binary_diagnostics(void);
@@ -117,6 +118,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_binary_success_persistence_and_introspection();
+    failures += test_binary_predicates();
     failures += test_binary_defaults();
     failures += test_blob_expression_defaults();
     failures += test_binary_diagnostics();
@@ -569,6 +571,82 @@ static int test_binary_success_persistence_and_introspection(void) {
         "binary reopen persistence"
     );
     mylite_result_free(result);
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_binary_predicates(void) {
+    static const char *const string_literal_rows[] = {"1"};
+    static const char *const hex_literal_rows[] = {"2"};
+    static const char *const fixed_literal_rows[] = {"1"};
+    static const char *const in_list_rows[] = {"1", "2"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "predicates") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open binary predicates file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE users (id INT NOT NULL, user_name VARBINARY(255) NOT NULL, "
+        "fixed_name BINARY(5), KEY user_name (user_name))"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO users VALUES "
+        "(1, 'Admin', 'A'), "
+        "(2, X'41646D696E00', 'Admin')",
+        2
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM users WHERE user_name = 'Admin' LIMIT 1",
+            .values = string_literal_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "VARBINARY string literal predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM users WHERE user_name = X'41646D696E00'",
+            .values = hex_literal_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "VARBINARY hex literal predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM users WHERE fixed_name = 'A'",
+            .values = fixed_literal_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "BINARY padded string literal predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM users WHERE user_name IN ('Admin', X'41646D696E00') "
+                   "ORDER BY id",
+            .values = in_list_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "VARBINARY IN literal predicate",
+        }
+    );
+
     mylite_close(database);
     remove_related_files(path);
     return failures;

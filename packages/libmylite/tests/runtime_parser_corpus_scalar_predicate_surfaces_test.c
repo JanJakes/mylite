@@ -84,13 +84,14 @@ static int test_scalar_predicate_surfaces(void) {
             .message_part = "support",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT EXISTS (SELECT 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "support",
+        (struct expected_query){
+            .sql = "SELECT EXISTS (SELECT 1)",
+            .values = exists_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "scalar EXISTS support",
         }
     );
     failures += execute_error(

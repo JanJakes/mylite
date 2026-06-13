@@ -137,27 +137,69 @@ static int format_current_timestamp_text(
 }
 
 static int format_sysdate_text(struct mylite_db *database, char *buffer, size_t buffer_size) {
+    return format_sysdate_text_with_precision(database, 0U, buffer, buffer_size);
+}
+
+static int format_sysdate_text_with_precision(
+    struct mylite_db *database,
+    uint64_t precision,
+    char *buffer,
+    size_t buffer_size
+) {
+    enum {
+        sysdate_fractional_second_precision_max = 6U,
+        decimal_radix = 10,
+    };
+    struct wall_clock_timestamp timestamp = {0};
     struct tm time_parts;
+    long fractional = 0;
+    long divisor = 1;
     int written = 0;
 
     if (buffer == NULL || buffer_size == 0U) {
         set_runtime_error(database, "invalid SYSDATE buffer");
         return MYLITE_ERROR;
     }
-    if (sysdate_session_parts(database, &time_parts) != MYLITE_OK) {
+    if (precision > sysdate_fractional_second_precision_max) {
+        set_temporal_precision_too_big_error(database, "sysdate", precision);
         return MYLITE_ERROR;
     }
-    written = snprintf(
-        buffer,
-        buffer_size,
-        "%04d-%02d-%02d %02d:%02d:%02d",
-        time_parts.tm_year + tm_year_calendar_offset,
-        time_parts.tm_mon + 1,
-        time_parts.tm_mday,
-        time_parts.tm_hour,
-        time_parts.tm_min,
-        time_parts.tm_sec
-    );
+
+    timestamp = current_wall_clock_timestamp();
+    if (session_time_parts_from_epoch(database, timestamp.epoch, &time_parts) != MYLITE_OK) {
+        return MYLITE_ERROR;
+    }
+    if (precision == 0U) {
+        written = snprintf(
+            buffer,
+            buffer_size,
+            "%04d-%02d-%02d %02d:%02d:%02d",
+            time_parts.tm_year + tm_year_calendar_offset,
+            time_parts.tm_mon + 1,
+            time_parts.tm_mday,
+            time_parts.tm_hour,
+            time_parts.tm_min,
+            time_parts.tm_sec
+        );
+    } else {
+        for (uint64_t index = precision; index < sysdate_fractional_second_precision_max; ++index) {
+            divisor *= decimal_radix;
+        }
+        fractional = timestamp.microsecond / divisor;
+        written = snprintf(
+            buffer,
+            buffer_size,
+            "%04d-%02d-%02d %02d:%02d:%02d.%0*ld",
+            time_parts.tm_year + tm_year_calendar_offset,
+            time_parts.tm_mon + 1,
+            time_parts.tm_mday,
+            time_parts.tm_hour,
+            time_parts.tm_min,
+            time_parts.tm_sec,
+            (int)precision,
+            fractional
+        );
+    }
     if (written < 0 || (size_t)written >= buffer_size) {
         set_runtime_error(database, "failed to format SYSDATE value");
         return MYLITE_ERROR;
@@ -306,10 +348,6 @@ static int current_timestamp_session_parts(struct mylite_db *database, struct tm
     );
 }
 
-static int sysdate_session_parts(struct mylite_db *database, struct tm *out_time_parts) {
-    return session_time_parts_from_epoch(database, current_wall_clock_epoch(), out_time_parts);
-}
-
 static int current_timestamp_utc_parts(struct mylite_db *database, struct tm *out_time_parts) {
     return utc_time_parts_from_epoch(database, current_timestamp_epoch(database), out_time_parts);
 }
@@ -415,11 +453,30 @@ static int utc_time_parts_from_epoch(
     return MYLITE_OK;
 }
 
-static int64_t current_wall_clock_epoch(void) {
-    time_t now = time(NULL);
+static struct wall_clock_timestamp current_wall_clock_timestamp(void) {
+    enum { nanoseconds_per_microsecond = 1000L };
+    struct wall_clock_timestamp timestamp = {0};
+#ifdef TIME_UTC
+    struct timespec now;
 
-    if (now < (time_t)0) {
-        return 0;
+    if (timespec_get(&now, TIME_UTC) == TIME_UTC && now.tv_sec >= (time_t)0) {
+        timestamp.epoch = (int64_t)now.tv_sec;
+        timestamp.microsecond = now.tv_nsec / nanoseconds_per_microsecond;
+        return timestamp;
     }
-    return (int64_t)now;
+#endif
+    {
+        time_t fallback_now = time(NULL);
+
+        if (fallback_now >= (time_t)0) {
+            timestamp.epoch = (int64_t)fallback_now;
+        }
+    }
+    return timestamp;
+}
+
+static int64_t current_wall_clock_epoch(void) {
+    struct wall_clock_timestamp timestamp = current_wall_clock_timestamp();
+
+    return timestamp.epoch;
 }

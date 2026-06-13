@@ -313,6 +313,8 @@ static int test_table_backed_greatest_least(void) {
 static int test_greatest_least_diagnostics(void) {
     static const char *const columns_decimal[] = {"GREATEST(1.5, 1.25)"};
     static const char *const values_decimal[] = {"1.5"};
+    static const char *const columns_arithmetic[] = {"GREATEST(v + 1, 2)"};
+    static const char *const values_arithmetic[] = {"2"};
     static const char *const columns_greatest_predicate[] = {"n"};
     static const char *const values_greatest_predicate[] = {"1"};
     char path[test_path_capacity];
@@ -369,14 +371,15 @@ static int test_greatest_least_diagnostics(void) {
                 "GREATEST() and LEAST() do not support mixed string and numeric arguments",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT GREATEST(v + 1, 2) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "GREATEST() and LEAST() support only string, integer, boolean, and NULL arguments",
+        (struct expected_query){
+            .sql = "SELECT GREATEST(v + 1, 2) FROM t",
+            .columns = columns_arithmetic,
+            .column_count = sizeof(columns_arithmetic) / sizeof(columns_arithmetic[0]),
+            .values = values_arithmetic,
+            .row_count = 1U,
+            .context = "greatest arithmetic argument",
         }
     );
     failures += execute_error(

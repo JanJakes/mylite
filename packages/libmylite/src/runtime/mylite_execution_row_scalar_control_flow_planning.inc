@@ -1180,6 +1180,9 @@ static int plan_row_scalar_control_flow_comparison_operand(
         );
         return MYLITE_ERROR;
     }
+    if (generic_function_name_equals(expression, "GET_LOCK")) {
+        return plan_row_scalar_get_lock_function(database, expression, out_expression);
+    }
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         return plan_row_scalar_integer_value(database, expression, out_expression);
     }
@@ -1865,6 +1868,9 @@ static int plan_row_scalar_control_flow_condition_argument(
             "and ISNULL() values"
         );
         return MYLITE_ERROR;
+    }
+    if (generic_function_name_equals(expression, "GET_LOCK")) {
+        return plan_row_scalar_get_lock_function(database, expression, out_expression);
     }
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         return plan_row_scalar_integer_value(database, expression, out_expression);

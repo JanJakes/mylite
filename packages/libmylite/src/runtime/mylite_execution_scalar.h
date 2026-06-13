@@ -18,6 +18,7 @@ enum {
     mylite_execution_scalar_integer_text_capacity = 32,
     mylite_execution_scalar_literal_projection_text_capacity = 83,
     mylite_execution_scalar_datetime_text_length = 19,
+    mylite_execution_scalar_fractional_datetime_text_length = 26,
     mylite_execution_scalar_base_conversion_text_capacity = 66,
     mylite_execution_scalar_double_text_capacity = 32,
 };
@@ -69,6 +70,7 @@ struct session_scalar_cell {
     bool has_staged_truncated_decimal_warning;
     bool has_staged_unhex_incorrect_string_warning;
     char datetime_text[mylite_execution_scalar_datetime_text_length + 1U];
+    char fractional_datetime_text[mylite_execution_scalar_fractional_datetime_text_length + 1U];
     char integer_text[mylite_execution_scalar_integer_text_capacity];
     char double_text[mylite_execution_scalar_double_text_capacity];
     char base_conversion_text[mylite_execution_scalar_base_conversion_text_capacity];
@@ -551,6 +553,7 @@ int mylite_execution_validate_temporal_fractional_precision(
 );
 int mylite_execution_sysdate_scalar_value(
     struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
 int mylite_execution_current_date_scalar_value(

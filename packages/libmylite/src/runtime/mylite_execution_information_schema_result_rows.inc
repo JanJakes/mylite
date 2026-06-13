@@ -106,6 +106,306 @@ static int information_schema_append_result_rows(
     return rc;
 }
 
+static int information_schema_append_grouped_statistics_result_rows(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    mylite_result *result,
+    size_t *out_read_row_count
+) {
+    size_t *indexes = NULL;
+    size_t index_count = 0U;
+    size_t visible_count = 0U;
+    struct information_schema_result_projection_buffers buffers = {0};
+    int rc = information_schema_matching_row_indexes(
+        database,
+        statement,
+        query,
+        rows,
+        &indexes,
+        &index_count
+    );
+
+    if (out_read_row_count != NULL) {
+        *out_read_row_count = 0U;
+    }
+    if (rc == MYLITE_OK && index_count == 0U) {
+        free(indexes);
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_OK && rows->rows == NULL) {
+        free(indexes);
+        set_runtime_error(database, "information_schema row set is inconsistent");
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_sort_grouped_statistics_row_indexes(
+            query,
+            rows,
+            indexes,
+            index_count
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_result_projection_buffers_init(database, query, &buffers);
+    }
+    for (size_t start_index = 0U; rc == MYLITE_OK && start_index < index_count;) {
+        size_t end_index = start_index + 1U;
+
+        while (end_index < index_count &&
+               information_schema_grouped_statistics_rows_same_group(
+                   query,
+                   rows,
+                   indexes[start_index],
+                   indexes[end_index]
+               )) {
+            ++end_index;
+        }
+        if (!query->limit.has_limit || visible_count < (size_t)query->limit.row_count) {
+            rc = information_schema_append_grouped_statistics_projected_row(
+                database,
+                query,
+                rows,
+                indexes,
+                start_index,
+                end_index,
+                &buffers,
+                result
+            );
+            ++visible_count;
+        }
+        start_index = end_index;
+    }
+    information_schema_result_projection_buffers_deinit(&buffers);
+    if (rc == MYLITE_OK && out_read_row_count != NULL) {
+        *out_read_row_count = visible_count;
+    }
+    free(indexes);
+    return rc;
+}
+
+static int information_schema_sort_grouped_statistics_row_indexes(
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    size_t *indexes,
+    size_t index_count
+) {
+    for (size_t index = 1U; index < index_count; ++index) {
+        size_t row_index = indexes[index];
+        size_t scan = index;
+
+        while (scan > 0U &&
+               information_schema_compare_grouped_statistics_rows(
+                   query,
+                   rows,
+                   row_index,
+                   indexes[scan - 1U]
+               ) < 0) {
+            indexes[scan] = indexes[scan - 1U];
+            --scan;
+        }
+        indexes[scan] = row_index;
+    }
+    return MYLITE_OK;
+}
+
+static int information_schema_compare_grouped_statistics_rows(
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    size_t left_row,
+    size_t right_row
+) {
+    int comparison = 0;
+
+    for (size_t index = 0U; index < query->group_index_count; ++index) {
+        size_t column_index = query->group_indexes[index];
+
+        comparison = information_schema_compare_row_values(
+            query->definition,
+            column_index,
+            rows->rows[left_row][column_index],
+            rows->rows[right_row][column_index]
+        );
+        if (comparison != 0) {
+            return comparison;
+        }
+    }
+    return information_schema_compare_row_values(
+        query->definition,
+        information_schema_statistics_seq_in_index_column,
+        rows->rows[left_row][information_schema_statistics_seq_in_index_column],
+        rows->rows[right_row][information_schema_statistics_seq_in_index_column]
+    );
+}
+
+static bool information_schema_grouped_statistics_rows_same_group(
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    size_t left_row,
+    size_t right_row
+) {
+    for (size_t index = 0U; index < query->group_index_count; ++index) {
+        size_t column_index = query->group_indexes[index];
+
+        if (information_schema_compare_row_values(
+                query->definition,
+                column_index,
+                rows->rows[left_row][column_index],
+                rows->rows[right_row][column_index]
+            ) != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int information_schema_compare_row_values(
+    const struct mylite_execution_catalog_table_definition *definition,
+    size_t column_index,
+    const char *left,
+    const char *right
+) {
+    if (left == NULL && right == NULL) {
+        return 0;
+    }
+    if (left == NULL) {
+        return -1;
+    }
+    if (right == NULL) {
+        return 1;
+    }
+    if (information_schema_column_is_numeric(definition, column_index)) {
+        int64_t left_value = 0;
+        int64_t right_value = 0;
+
+        if (information_schema_text_to_i64(left, &left_value) == MYLITE_OK &&
+            information_schema_text_to_i64(right, &right_value) == MYLITE_OK) {
+            return (left_value > right_value) - (left_value < right_value);
+        }
+    }
+    return information_schema_compare_text(definition, column_index, left, right);
+}
+
+static int information_schema_group_concat_ordered_column_value(
+    struct mylite_db *database,
+    const struct information_schema_row_set *rows,
+    const size_t *indexes,
+    struct information_schema_group_concat_order order,
+    char **out_value
+) {
+    struct mylite_dynamic_string string;
+    bool appended = false;
+    int rc = MYLITE_OK;
+
+    *out_value = NULL;
+    mylite_dynamic_string_init(&string);
+    for (size_t index = order.start_index; rc == MYLITE_OK && index < order.end_index; ++index) {
+        const char *value = rows->rows[indexes[index]][order.column_index];
+
+        if (value == NULL) {
+            continue;
+        }
+        if (appended) {
+            rc = mylite_dynamic_string_append_char(&string, ',');
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(&string, value);
+        }
+        appended = true;
+    }
+    if (rc == MYLITE_OK && !appended) {
+        rc = mylite_dynamic_string_append(&string, "");
+    }
+    if (rc == MYLITE_OK) {
+        *out_value = mylite_dynamic_string_take(&string);
+        if (*out_value == NULL) {
+            set_nomem_error(database);
+            rc = MYLITE_NOMEM;
+        }
+    } else if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    mylite_dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int information_schema_append_grouped_statistics_projected_row(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    const size_t *indexes,
+    size_t start_index,
+    size_t end_index,
+    const struct information_schema_result_projection_buffers *buffers,
+    mylite_result *result
+) {
+    char **owned_values = NULL;
+    const char *const *representative = (const char *const *)rows->rows[indexes[start_index]];
+    int rc = MYLITE_OK;
+
+    if (query->projection_count != 0U) {
+        owned_values = (char **)calloc(query->projection_count, sizeof(*owned_values));
+        if (owned_values == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+    }
+    for (size_t projection_index = 0U; rc == MYLITE_OK &&
+                                      projection_index < query->projection_count;
+         ++projection_index) {
+        size_t column_index = query->projection_indexes[projection_index];
+
+        switch (query->projection_kinds[projection_index]) {
+        case INFORMATION_SCHEMA_PROJECTION_COLUMN:
+            buffers->values[projection_index] = representative[column_index];
+            break;
+        case INFORMATION_SCHEMA_PROJECTION_LOGICAL_NOT_COLUMN:
+            rc = information_schema_logical_not_column_projection_value(
+                database,
+                query,
+                representative,
+                projection_index,
+                buffers->computed_values + (projection_index * integer_text_capacity),
+                integer_text_capacity,
+                &buffers->values[projection_index]
+            );
+            break;
+        case INFORMATION_SCHEMA_PROJECTION_GROUP_CONCAT_ORDERED_COLUMN:
+            rc = information_schema_group_concat_ordered_column_value(
+                database,
+                rows,
+                indexes,
+                (struct information_schema_group_concat_order){
+                    .start_index = start_index,
+                    .end_index = end_index,
+                    .column_index = column_index,
+                },
+                &owned_values[projection_index]
+            );
+            buffers->values[projection_index] = owned_values[projection_index];
+            break;
+        case INFORMATION_SCHEMA_PROJECTION_UNSIGNED_INTEGER_EXPRESSION:
+        case INFORMATION_SCHEMA_PROJECTION_INTEGER_LITERAL:
+            set_runtime_error(database, "invalid grouped INFORMATION_SCHEMA projection descriptor");
+            rc = MYLITE_ERROR;
+            break;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, buffers->values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    for (size_t projection_index = 0U; projection_index < query->projection_count;
+         ++projection_index) {
+        free(owned_values[projection_index]);
+    }
+    free((void *)owned_values);
+    return rc;
+}
+
 static int information_schema_result_projection_buffers_init(
     struct mylite_db *database,
     const struct information_schema_query *query,
@@ -208,6 +508,18 @@ static int information_schema_projection_value(
             out_value
         );
     }
+    if (query->projection_kinds[projection_index] ==
+        INFORMATION_SCHEMA_PROJECTION_LOGICAL_NOT_COLUMN) {
+        return information_schema_logical_not_column_projection_value(
+            database,
+            query,
+            row,
+            projection_index,
+            buffer,
+            buffer_size,
+            out_value
+        );
+    }
 
     set_runtime_error(database, "invalid INFORMATION_SCHEMA projection descriptor");
     return MYLITE_ERROR;
@@ -282,6 +594,35 @@ static int information_schema_integer_literal_projection_value(
     buffer[expression->span.length] = '\0';
     *out_value = buffer;
     return MYLITE_OK;
+}
+
+static int information_schema_logical_not_column_projection_value(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const char *const *row,
+    size_t projection_index,
+    char *buffer,
+    size_t buffer_size,
+    const char **out_value
+) {
+    const char *value_text = row[query->projection_indexes[projection_index]];
+    int64_t value = 0;
+    int rc = MYLITE_OK;
+
+    if (value_text == NULL) {
+        *out_value = NULL;
+        return MYLITE_OK;
+    }
+    rc = information_schema_text_to_i64(value_text, &value);
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "invalid INFORMATION_SCHEMA logical NOT projection value");
+        return MYLITE_ERROR;
+    }
+    rc = information_schema_format_i64(database, value == 0 ? 1 : 0, buffer, buffer_size);
+    if (rc == MYLITE_OK) {
+        *out_value = buffer;
+    }
+    return rc;
 }
 
 static int information_schema_numeric_projection_expression_value(
@@ -969,8 +1310,39 @@ static int information_schema_compare_rows(
     const struct information_schema_row_set *rows,
     struct information_schema_row_order_pair pair
 ) {
-    const char *left = rows->rows[pair.left_row][query->order_index];
-    const char *right = rows->rows[pair.right_row][query->order_index];
+    size_t order_count = query->order_count == 0U ? 1U : query->order_count;
+
+    for (size_t order_index = 0U; order_index < order_count; ++order_index) {
+        size_t column_index = query->order_count == 0U ? query->order_index
+                                                       : query->order_indexes[order_index];
+        enum planned_select_order_direction direction =
+            query->order_count == 0U ? query->order_direction
+                                     : query->order_directions[order_index];
+        int comparison = information_schema_compare_rows_by_column(
+            query,
+            rows,
+            pair,
+            (struct information_schema_row_order_column){
+                .column_index = column_index,
+                .direction = direction,
+            }
+        );
+
+        if (comparison != 0) {
+            return comparison;
+        }
+    }
+    return 0;
+}
+
+static int information_schema_compare_rows_by_column(
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    struct information_schema_row_order_pair pair,
+    struct information_schema_row_order_column order
+) {
+    const char *left = rows->rows[pair.left_row][order.column_index];
+    const char *right = rows->rows[pair.right_row][order.column_index];
     int comparison = 0;
 
     if (left == NULL && right == NULL) {
@@ -980,7 +1352,7 @@ static int information_schema_compare_rows(
         comparison = -1;
     } else if (right == NULL) {
         comparison = 1;
-    } else if (information_schema_column_is_numeric(query->definition, query->order_index)) {
+    } else if (information_schema_column_is_numeric(query->definition, order.column_index)) {
         int64_t left_value = 0;
         int64_t right_value = 0;
 
@@ -989,10 +1361,10 @@ static int information_schema_compare_rows(
             comparison = (left_value > right_value) - (left_value < right_value);
         } else {
             comparison =
-                information_schema_compare_text(query->definition, query->order_index, left, right);
+                information_schema_compare_text(query->definition, order.column_index, left, right);
         }
     } else if (query->definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_COLLATIONS &&
-               query->order_index == information_schema_collations_name_column) {
+               order.column_index == information_schema_collations_name_column) {
         size_t left_index = 0U;
         size_t right_index = 0U;
         bool left_known = mylite_execution_catalog_mysql_collation_index_by_name(left, &left_index);
@@ -1003,13 +1375,12 @@ static int information_schema_compare_rows(
             comparison = (left_index > right_index) - (left_index < right_index);
         } else {
             comparison =
-                information_schema_compare_text(query->definition, query->order_index, left, right);
+                information_schema_compare_text(query->definition, order.column_index, left, right);
         }
     } else {
-        comparison =
-            information_schema_compare_text(query->definition, query->order_index, left, right);
+        comparison = information_schema_compare_text(query->definition, order.column_index, left, right);
     }
-    if (query->order_direction == PLANNED_SELECT_ORDER_DESC) {
+    if (order.direction == PLANNED_SELECT_ORDER_DESC) {
         comparison = -comparison;
     }
     return comparison;

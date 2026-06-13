@@ -26,6 +26,8 @@ enum {
     mysql_error_key_column_missing = 1072,
     mysql_error_key_too_long = 1071,
     mysql_error_invalid_use_of_null = 1138,
+    mysql_error_storage_engine_cant_index_column = 1167,
+    mysql_error_blob_key_without_length = 1170,
     mysql_error_primary_key_part_null = 1171,
 };
 
@@ -50,6 +52,7 @@ struct expected_dml_result {
 
 static int test_create_time_composite_string_primary_key(void);
 static int test_alter_add_composite_string_primary_key(void);
+static int test_composite_binary_primary_key(void);
 static int test_composite_string_primary_key_diagnostics(void);
 static int test_composite_string_primary_key_independent_files(void);
 static int create_schema(mylite_db *database);
@@ -93,6 +96,7 @@ int main(void) {
 
     failures += test_create_time_composite_string_primary_key();
     failures += test_alter_add_composite_string_primary_key();
+    failures += test_composite_binary_primary_key();
     failures += test_composite_string_primary_key_diagnostics();
     failures += test_composite_string_primary_key_independent_files();
 
@@ -531,6 +535,142 @@ static int test_alter_add_composite_string_primary_key(void) {
     return failures;
 }
 
+static int test_composite_binary_primary_key(void) {
+    static const char *const statistics_rows[] = {
+        "PRIMARY",
+        "0",
+        "1",
+        "si_type",
+        "",
+        "PRIMARY",
+        "0",
+        "2",
+        "si_key",
+        "",
+    };
+    static const char *const inserted_rows[] = {
+        "01",
+        "02",
+        "1",
+        "01",
+        "03",
+        "2",
+    };
+    static const char *const duplicate_status_rows[] = {"0", "1"};
+    static const char *const alter_show_index_rows[] = {
+        "binary_alter",
+        "0",
+        "PRIMARY",
+        "1",
+        "a",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+        "binary_alter",
+        "0",
+        "PRIMARY",
+        "2",
+        "b",
+        "A",
+        "0",
+        NULL,
+        NULL,
+        "",
+        "BTREE",
+        "",
+        "",
+        "YES",
+        NULL,
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures +=
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open binary pk database");
+    failures += create_schema(database);
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE `site_identifiers` ("
+        "si_type VARBINARY(32) NOT NULL, "
+        "si_key VARBINARY(32) NOT NULL, "
+        "si_site INT UNSIGNED NOT NULL, "
+        "INDEX si_site (si_site), "
+        "INDEX si_key (si_key), "
+        "PRIMARY KEY(si_type, si_key)) ENGINE=InnoDB, DEFAULT CHARSET=binary"
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INDEX_NAME, NON_UNIQUE, SEQ_IN_INDEX, COLUMN_NAME, NULLABLE "
+                   "FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'site_identifiers' AND INDEX_NAME = 'PRIMARY' "
+                   "ORDER BY SEQ_IN_INDEX",
+            .values = statistics_rows,
+            .column_count = statistics_probe_field_count,
+            .row_count = 2U,
+            .context = "composite binary primary key statistics",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO site_identifiers VALUES (X'01', X'02', 1), (X'01', X'03', 2)",
+        2
+    );
+    failures += expect_dml_result(
+        database,
+        "INSERT IGNORE INTO site_identifiers VALUES (X'01', X'02', 3)",
+        (struct expected_dml_result){.affected_rows = 0, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .values = duplicate_status_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "composite binary primary key duplicate status",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT HEX(si_type), HEX(si_key), si_site "
+                   "FROM site_identifiers ORDER BY si_site",
+            .values = inserted_rows,
+            .column_count = 3U,
+            .row_count = 2U,
+            .context = "composite binary primary key rows",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE binary_alter (a VARBINARY(4) NOT NULL, b VARBINARY(4) NOT NULL, v INT)"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO binary_alter VALUES (X'41', X'42', 1)", 1);
+    failures +=
+        expect_alter_primary_key_ok(database, "ALTER TABLE binary_alter ADD PRIMARY KEY (a,b)");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SHOW INDEX FROM binary_alter WHERE Key_name = 'PRIMARY'",
+            .values = alter_show_index_rows,
+            .column_count = show_index_field_count,
+            .row_count = 2U,
+            .context = "ALTER composite binary primary key SHOW INDEX",
+        }
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
 static int test_composite_string_primary_key_diagnostics(void) {
     mylite_db *database = NULL;
     int failures = 0;
@@ -630,6 +770,24 @@ static int test_composite_string_primary_key_diagnostics(void) {
             .code = mysql_error_key_too_long,
             .sqlstate = "42000",
             .message_part = "Specified key was too long; max key length is 3072 bytes",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE binary_pk_zero (a VARBINARY(0), PRIMARY KEY (a))",
+        (struct expected_sql_error){
+            .code = mysql_error_storage_engine_cant_index_column,
+            .sqlstate = "42000",
+            .message_part = "The used storage engine can't index column 'a'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "CREATE TABLE binary_blob_pk (a BLOB, PRIMARY KEY (a))",
+        (struct expected_sql_error){
+            .code = mysql_error_blob_key_without_length,
+            .sqlstate = "42000",
+            .message_part = "BLOB/TEXT column 'a' used in key specification without a key length",
         }
     );
 

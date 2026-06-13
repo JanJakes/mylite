@@ -1032,13 +1032,17 @@ static int test_bit_diagnostics(void) {
     );
     mylite_result_free(result);
     result = NULL;
-    failures += execute_error(
+    failures += expect_statement_ok(database, "CREATE TABLE key_bits (b BIT(6), KEY k_b (b))");
+    failures += expect_query_values(
         database,
-        "CREATE TABLE key_bits (b BIT(6), KEY k_b (b))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Secondary indexes do not yet support this column type",
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'key_bits' "
+                   "AND INDEX_NAME = 'k_b'",
+            .values = (const char *const[]){"1"},
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "BIT secondary index metadata",
         }
     );
     failures += expect_statement_ok(database, "CREATE TABLE alter_bits (id INT)");

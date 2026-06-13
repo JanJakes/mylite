@@ -1,8 +1,10 @@
 #include <mylite/mylite.h>
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #ifdef _WIN32
 #  include <process.h>
@@ -13,6 +15,7 @@
 enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
+    decimal_radix = 10,
     mysql_error_native_function_argument_count = 1582,
     mysql_error_unknown_column = 1054,
     mysql_error_parse = 1064,
@@ -33,12 +36,18 @@ struct expected_query {
     const char *context;
 };
 
+struct current_epoch_query {
+    const char *sql;
+    const char *context;
+};
+
 static int test_no_source_dual_and_do_unix_timestamp(void);
 static int test_table_backed_unix_timestamp_and_reopen(void);
 static int test_unix_timestamp_warnings_and_diagnostics(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_query(mylite_db *database, struct expected_query expected);
+static int expect_current_epoch_query(mylite_db *database, struct current_epoch_query query);
 static int open_app_database(
     mylite_db **out_database,
     const char *name,
@@ -155,6 +164,21 @@ static int test_no_source_dual_and_do_unix_timestamp(void) {
             .values = values_dual,
             .row_count = 1U,
             .context = "dual unix_timestamp",
+        }
+    );
+    failures += expect_current_epoch_query(
+        database,
+        (struct current_epoch_query){
+            .sql = "SELECT UNIX_TIMESTAMP(SYSDATE(6)) AS epoch",
+            .context = "unix_timestamp sysdate argument",
+        }
+    );
+    failures += expect_current_epoch_query(
+        database,
+        (struct current_epoch_query){
+            .sql = "SELECT IF(GET_LOCK('mylite_unix_timestamp_sysdate', 1), "
+                   "UNIX_TIMESTAMP(SYSDATE(6)), NULL) AS epoch",
+            .context = "unix_timestamp sysdate if result",
         }
     );
 
@@ -590,6 +614,52 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
                 expected.context
             );
         }
+    }
+
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_current_epoch_query(mylite_db *database, struct current_epoch_query query) {
+    mylite_result *result = NULL;
+    time_t before = time(NULL);
+    int failures = execute_ok(database, query.sql, &result);
+    time_t after = time(NULL);
+    const char *actual = NULL;
+    char *end = NULL;
+    long long epoch = 0;
+
+    if (failures != 0) {
+        return failures;
+    }
+    failures += expect_size(mylite_result_column_count(result), 1U, query.context);
+    failures += expect_size(mylite_result_row_count(result), 1U, query.context);
+    failures += expect_int64(mylite_result_affected_rows(result), 0, query.context);
+    failures += expect_size(mylite_result_warning_count(result), 0U, query.context);
+    actual = mylite_result_value_text(result, 0U, 0U);
+    if (actual == NULL) {
+        fprintf(stderr, "%s: expected current epoch, got NULL\n", query.context);
+        mylite_result_free(result);
+        return failures + 1;
+    }
+
+    errno = 0;
+    epoch = strtoll(actual, &end, decimal_radix);
+    if (errno != 0 || end == actual || *end != '\0') {
+        fprintf(stderr, "%s: expected integer epoch, got %s\n", query.context, actual);
+        mylite_result_free(result);
+        return failures + 1;
+    }
+    if (epoch < (long long)before - 1LL || epoch > (long long)after + 1LL) {
+        fprintf(
+            stderr,
+            "%s: expected epoch between %lld and %lld, got %lld\n",
+            query.context,
+            (long long)before - 1LL,
+            (long long)after + 1LL,
+            epoch
+        );
+        failures += 1;
     }
 
     mylite_result_free(result);

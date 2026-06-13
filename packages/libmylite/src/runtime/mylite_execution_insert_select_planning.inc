@@ -63,10 +63,6 @@ static int plan_insert_select(
         );
         rc = MYLITE_ERROR;
     }
-    if (rc == MYLITE_OK && ignore && source_kind == PLANNED_INSERT_SELECT_SOURCE_COMPOUND) {
-        set_unsupported_error(database, "INSERT IGNORE ... SELECT does not support UNION sources");
-        rc = MYLITE_ERROR;
-    }
     if (rc == MYLITE_OK) {
         rc = plan_insert_select_source(database, statement, source_kind, out_plan);
     }

@@ -122,6 +122,19 @@ static int test_information_schema_predicates(void) {
         database,
         (struct expected_query){
             .sql = "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME LIKE 'wp`_%' "
+                   "ESCAPE '`' ORDER BY TABLE_NAME",
+            .column_names = table_name_column,
+            .column_count = 1U,
+            .values = wp_options_value,
+            .row_count = 1U,
+            .context = "like explicit backtick escape",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES "
                    "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME LIKE 'wp_%' "
                    "ORDER BY TABLE_NAME",
             .column_names = table_name_column,
@@ -391,10 +404,10 @@ static int test_information_schema_predicates(void) {
         database,
         (struct expected_sql_error){
             .sql = "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES "
-                   "WHERE TABLE_NAME LIKE 't%' ESCAPE '!'",
+                   "WHERE TABLE_NAME LIKE 't%' ESCAPE ''",
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "LIKE ESCAPE supports only the backslash escape character",
+            .message_part = "LIKE ESCAPE supports one-character string literals",
         }
     );
     failures += expect_error(

@@ -21,7 +21,7 @@
 enum {
     test_path_capacity = 1024,
     mysql_error_parse = 1064,
-    mysql_error_incorrect_parameter_count = 1582,
+    mysql_error_decimal_precision_too_big = 1426,
     sysdate_dml_row_count = 5,
     sysdate_two_hour_offset_minutes = 120,
     sysdate_range_tolerance_seconds = 2,
@@ -150,6 +150,7 @@ static int test_sysdate_scalar_and_do(void) {
         NULL,
         "0",
     };
+    static const char *const fsp_values[] = {"19", "26", "0"};
     static const char *const do_counts[] = {"0", "0"};
     mylite_db *database = NULL;
     int failures = 0;
@@ -179,6 +180,16 @@ static int test_sysdate_scalar_and_do(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "SYSDATE from dual",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CHAR_LENGTH(SYSDATE(0)), CHAR_LENGTH(SYSDATE(6)), @@warning_count",
+            .values = fsp_values,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "SYSDATE fsp forms",
         }
     );
     failures += expect_statement_ok(database, "SET time_zone = '+02:00'");
@@ -396,11 +407,11 @@ static int test_sysdate_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT SYSDATE(1)",
+        "SELECT SYSDATE(7)",
         (struct expected_sql_error){
-            .code = mysql_error_incorrect_parameter_count,
+            .code = mysql_error_decimal_precision_too_big,
             .sqlstate = "42000",
-            .message_part = "Incorrect parameter count in the call to native function 'SYSDATE'",
+            .message_part = "Too-big precision 7 specified for 'sysdate'",
         }
     );
     failures += execute_error(

@@ -355,6 +355,8 @@ static int test_insert_select_union_diagnostics_and_unsupported_forms(void) {
     static const char *const zero_count[] = {"0"};
     static const char *const rollback_rows[] = {"9", "90"};
     static const char *const odku_rows[] = {"1", "10", "a", "2", "20", "b"};
+    static const char *const binary_count[] = {"2"};
+    static const char *const binary_rows[] = {"612E73716C", NULL, "622E73716C", NULL};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -484,13 +486,34 @@ static int test_insert_select_union_diagnostics_and_unsupported_forms(void) {
         }
     );
 
-    failures += execute_error(
+    failures += expect_dml_ok(
         database,
-        "INSERT IGNORE INTO dst SELECT 1, 10, 'a' UNION SELECT 2, 20, 'b'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "UNION sources",
+        "CREATE TABLE binary_target(k VARBINARY(255) NOT NULL, v BLOB NULL, UNIQUE KEY u_k(k))",
+        0
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT IGNORE INTO binary_target SELECT 'a.sql', NULL UNION SELECT 'b.sql', NULL",
+        2
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM binary_target",
+            .values = binary_count,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "INSERT IGNORE union binary row count",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT HEX(k), HEX(v) FROM binary_target",
+            .values = binary_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "INSERT IGNORE union text into binary strings",
         }
     );
     failures += execute_error(

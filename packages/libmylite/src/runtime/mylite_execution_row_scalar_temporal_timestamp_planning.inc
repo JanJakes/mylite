@@ -32,6 +32,13 @@ static int plan_row_scalar_unix_timestamp_expression(
         set_native_function_parameter_count_error(database, "UNIX_TIMESTAMP");
         return MYLITE_ERROR;
     }
+    if (unix_timestamp_argument_is_sysdate_function(child_at(expression, 0U))) {
+        return plan_row_scalar_unix_timestamp_sysdate_expression(
+            database,
+            child_at(expression, 0U),
+            out_expression
+        );
+    }
 
     out_expression->arguments =
         (struct planned_row_scalar_expression *)calloc(2U, sizeof(*out_expression->arguments));
@@ -58,6 +65,48 @@ static int plan_row_scalar_unix_timestamp_expression(
         out_expression->arguments[1].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
     }
     return rc;
+}
+
+static int plan_row_scalar_unix_timestamp_sysdate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    uint64_t precision = 0U;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind == MYLITE_SQL_AST_SYSDATE_ARGUMENT_COUNT_ERROR) {
+        set_native_function_parameter_count_error(database, "SYSDATE");
+        return MYLITE_ERROR;
+    }
+
+    rc = validate_supported_temporal_fractional_precision(
+        database,
+        expression,
+        "sysdate",
+        &precision
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    (void)precision;
+    *out_expression = (struct planned_row_scalar_expression){
+        .kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE,
+        .value =
+            (struct planned_value){.is_null = false, .integer = current_wall_clock_epoch()},
+    };
+    return MYLITE_OK;
+}
+
+static bool unix_timestamp_argument_is_sysdate_function(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    return expression != NULL &&
+           (expression->kind == MYLITE_SQL_AST_SYSDATE_FUNCTION ||
+            expression->kind == MYLITE_SQL_AST_SYSDATE_ARGUMENT_COUNT_ERROR);
 }
 
 static int plan_row_scalar_unix_timestamp_argument(

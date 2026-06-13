@@ -11,6 +11,7 @@ static int information_schema_comparison_matches(
         .text = NULL,
         .is_null = false,
         .is_numeric = false,
+        .like_escape_character = '\0',
     };
     enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate_node);
     const char *left_text = NULL;
@@ -76,11 +77,19 @@ static int information_schema_comparison_predicate_value(
         return rc;
     }
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE) {
-        return information_schema_predicate_like_pattern_text(
+        rc = information_schema_predicate_like_pattern_text(
             database,
             child_at(predicate_node, 1U),
             out_right
         );
+        if (rc == MYLITE_OK) {
+            rc = like_escape_character_from_predicate(
+                database,
+                predicate_node,
+                &out_right->like_escape_character
+            );
+        }
+        return rc;
     }
     return information_schema_predicate_value_text(
         database,
@@ -101,7 +110,6 @@ static int information_schema_comparison_truth(
     *out_truth = INFORMATION_SCHEMA_TRUTH_FALSE;
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE) {
         return information_schema_like_comparison_truth(
-            database,
             query,
             column_index,
             left_text,
@@ -132,7 +140,6 @@ static int information_schema_comparison_truth(
 }
 
 static int information_schema_like_comparison_truth(
-    struct mylite_db *database,
     const struct information_schema_query *query,
     size_t column_index,
     const char *left_text,
@@ -148,10 +155,10 @@ static int information_schema_like_comparison_truth(
     }
 
     rc = information_schema_like_comparison_matches(
-        database,
         &query->definition->columns[column_index],
         left_text,
         right->text,
+        right->like_escape_character,
         &like_matches
     );
     if (rc == MYLITE_OK) {
@@ -239,20 +246,16 @@ static int information_schema_nonnull_comparison_truth(
 }
 
 static int information_schema_like_comparison_matches(
-    struct mylite_db *database,
     const struct mylite_execution_catalog_column_definition *column,
     const char *left_text,
     const char *right_text,
+    char escape_character,
     bool *out_matches
 ) {
     bool case_sensitive = true;
-    bool backslash_escapes = true;
 
     if (information_schema_column_uses_case_insensitive_collation(column)) {
         case_sensitive = false;
-    }
-    if (session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES)) {
-        backslash_escapes = false;
     }
 
     *out_matches = show_like_pattern_matches_with_escape(
@@ -261,7 +264,7 @@ static int information_schema_like_comparison_matches(
         left_text,
         strlen(left_text),
         case_sensitive,
-        backslash_escapes
+        escape_character
     );
     return MYLITE_OK;
 }

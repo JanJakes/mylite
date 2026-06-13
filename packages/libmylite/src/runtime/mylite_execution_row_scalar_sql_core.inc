@@ -749,6 +749,7 @@ static int append_row_scalar_conversion_base_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return append_row_scalar_column_sql(string, expression);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_COMPRESS:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:
@@ -764,7 +765,6 @@ static int append_row_scalar_conversion_base_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
-    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
@@ -1012,7 +1012,6 @@ static int append_row_scalar_non_control_flow_expression_sql(
         return append_row_scalar_column_sql(string, expression);
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
-    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
@@ -1074,6 +1073,12 @@ static int append_row_scalar_non_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         break;
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+        return append_row_scalar_integer_arithmetic_expression_sql(
+            string,
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
         return append_row_scalar_conversion_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:

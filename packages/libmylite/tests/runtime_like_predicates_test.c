@@ -252,6 +252,16 @@ static int test_like_predicate_queries(void) {
             .context = "explicit LIKE backslash escape",
         }
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM strings WHERE v LIKE 'ab`_%' ESCAPE '`' ORDER BY id",
+            .values = escaped_underscore_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "explicit LIKE backtick escape",
+        }
+    );
     failures += execute_ok(database, "CREATE TABLE escape (escape VARCHAR(8))", NULL);
     failures += execute_ok(database, "INSERT INTO escape VALUES ('ab_1')", NULL);
     failures += expect_query_values(
@@ -607,11 +617,11 @@ static int test_like_predicate_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id FROM strings WHERE v LIKE 'a%' ESCAPE '#'",
+        "SELECT id FROM strings WHERE v LIKE 'a%' ESCAPE ''",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "LIKE ESCAPE supports only the backslash escape character",
+            .message_part = "LIKE ESCAPE supports one-character string literals",
         }
     );
     mylite_close(database);

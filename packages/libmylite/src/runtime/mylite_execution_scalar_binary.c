@@ -2601,7 +2601,7 @@ static int hex_non_weight_string_scalar_argument_value(
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
         return mylite_execution_current_timestamp_scalar_value(database, out_cell);
     case MYLITE_SQL_AST_SYSDATE_FUNCTION:
-        return mylite_execution_sysdate_scalar_value(database, out_cell);
+        return mylite_execution_sysdate_scalar_value(database, expression, out_cell);
     case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
         return mylite_execution_current_date_scalar_value(database, out_cell);
     case MYLITE_SQL_AST_CURRENT_TIME_VALUE:

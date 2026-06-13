@@ -143,10 +143,6 @@ static int execute_create_temporary_table_like_statement(
         return rc;
     }
     rc = plan_create_table_like(database, statement, &plan);
-    if (rc == MYLITE_OK && planned_create_table_has_fulltext_index(&plan.create_table)) {
-        set_temporary_fulltext_index_error(database);
-        rc = MYLITE_ERROR;
-    }
     if (rc == MYLITE_OK) {
         rc = maybe_finish_create_temporary_if_not_exists_noop(
             database,

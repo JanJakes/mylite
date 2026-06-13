@@ -34,6 +34,7 @@ struct expected_sql_error {
 
 static int test_information_schema_core_queries(void);
 static int test_information_schema_wordpress_bridge_queries(void);
+static int test_information_schema_doctrine_bridge_queries(void);
 static int seed_database(mylite_db *database);
 static int expect_statement_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_query(mylite_db *database, struct expected_query expected);
@@ -53,6 +54,7 @@ int main(void) {
 
     failures += test_information_schema_core_queries();
     failures += test_information_schema_wordpress_bridge_queries();
+    failures += test_information_schema_doctrine_bridge_queries();
     return failures == 0 ? 0 : 1;
 }
 
@@ -671,6 +673,177 @@ static int test_information_schema_wordpress_bridge_queries(void) {
             .row_count = sizeof(dynamic_values) / sizeof(dynamic_values[0]) /
                          (sizeof(dynamic_columns) / sizeof(dynamic_columns[0])),
             .context = "wordpress dynamic information schema columns bridge",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_information_schema_doctrine_bridge_queries(void) {
+    static const char *const column_names[] = {
+        "TABLE_NAME",
+        "field",
+        "type",
+        "COLUMN_TYPE",
+        "CHARACTER_MAXIMUM_LENGTH",
+        "CHARACTER_OCTET_LENGTH",
+        "NUMERIC_PRECISION",
+        "NUMERIC_SCALE",
+        "null",
+        "key",
+        "default",
+        "EXTRA",
+        "comment",
+        "characterset",
+        "collation",
+    };
+    static const char *const index_column_names[] = {
+        "TABLE_NAME",
+        "Non_Unique",
+        "Key_name",
+        "Column_Name",
+        "Sub_Part",
+        "Index_Type",
+    };
+    static const char *const values[] = {
+        "doctrine_users",
+        "id",
+        "int",
+        "int",
+        NULL,
+        NULL,
+        "10",
+        "0",
+        "NO",
+        "PRI",
+        NULL,
+        "auto_increment",
+        "",
+        NULL,
+        NULL,
+        "doctrine_users",
+        "email",
+        "varchar",
+        "varchar(191)",
+        "191",
+        "764",
+        NULL,
+        NULL,
+        "NO",
+        "UNI",
+        NULL,
+        "",
+        "",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "doctrine_users",
+        "name",
+        "varchar",
+        "varchar(191)",
+        "191",
+        "764",
+        NULL,
+        NULL,
+        "NO",
+        "",
+        NULL,
+        "",
+        "",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "doctrine_users",
+        "score",
+        "int",
+        "int",
+        NULL,
+        NULL,
+        "10",
+        "0",
+        "NO",
+        "",
+        "0",
+        "",
+        "",
+        NULL,
+        NULL,
+    };
+    static const char *const index_values[] = {
+        "doctrine_users",
+        "0",
+        "PRIMARY",
+        "id",
+        NULL,
+        "BTREE",
+        "doctrine_users",
+        "0",
+        "doctrine_users_email_unique",
+        "email",
+        NULL,
+        "BTREE",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "doctrine_bridge") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open doctrine bridge db");
+    failures += expect_statement_ok(database, "CREATE DATABASE app", -1);
+    failures += expect_statement_ok(database, "USE app", -1);
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE doctrine_users ("
+        "id INT AUTO_INCREMENT PRIMARY KEY, "
+        "email VARCHAR(191) NOT NULL, "
+        "name VARCHAR(191) NOT NULL, "
+        "score INT NOT NULL DEFAULT 0, "
+        "UNIQUE KEY doctrine_users_email_unique (email))",
+        -1
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT c.TABLE_NAME, c.COLUMN_NAME AS field, c.DATA_TYPE AS type, "
+                   "c.COLUMN_TYPE, c.CHARACTER_MAXIMUM_LENGTH, "
+                   "c.CHARACTER_OCTET_LENGTH, c.NUMERIC_PRECISION, c.NUMERIC_SCALE, "
+                   "c.IS_NULLABLE AS `null`, c.COLUMN_KEY AS `key`, "
+                   "c.COLUMN_DEFAULT AS `default`, c.EXTRA, c.COLUMN_COMMENT AS comment, "
+                   "c.CHARACTER_SET_NAME AS characterset, c.COLLATION_NAME AS collation "
+                   "FROM information_schema.COLUMNS c "
+                   "INNER JOIN information_schema.TABLES t "
+                   "ON t.TABLE_NAME = c.TABLE_NAME "
+                   "WHERE c.TABLE_SCHEMA = 'app' AND t.TABLE_SCHEMA = 'app' "
+                   "AND t.TABLE_NAME = 'doctrine_users' "
+                   "AND t.TABLE_TYPE = 'BASE TABLE' "
+                   "ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION",
+            .column_names = column_names,
+            .column_count = sizeof(column_names) / sizeof(column_names[0]),
+            .values = values,
+            .row_count = sizeof(values) / sizeof(values[0]) /
+                         (sizeof(column_names) / sizeof(column_names[0])),
+            .context = "Doctrine COLUMNS/TABLES information_schema bridge",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT TABLE_NAME, NON_UNIQUE AS Non_Unique, INDEX_NAME AS Key_name, "
+                   "COLUMN_NAME AS Column_Name, SUB_PART AS Sub_Part, "
+                   "INDEX_TYPE AS Index_Type "
+                   "FROM information_schema.STATISTICS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'doctrine_users' "
+                   "ORDER BY TABLE_NAME, SEQ_IN_INDEX",
+            .column_names = index_column_names,
+            .column_count = sizeof(index_column_names) / sizeof(index_column_names[0]),
+            .values = index_values,
+            .row_count = sizeof(index_values) / sizeof(index_values[0]) /
+                         (sizeof(index_column_names) / sizeof(index_column_names[0])),
+            .context = "Doctrine STATISTICS information_schema bridge",
         }
     );
 

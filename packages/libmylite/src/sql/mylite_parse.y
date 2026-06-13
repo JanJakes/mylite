@@ -1240,6 +1240,10 @@ set_function_value(A) ::= UNIX_TIMESTAMP(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION, B, R);
 }
+set_function_value(A) ::= RANDOM_BYTES(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION, B, R);
+}
 set_function_value(A) ::= cast_convert_expression(B). {
     A = B;
 }
@@ -9046,9 +9050,17 @@ sysdate_value(A) ::= SYSDATE(T) LPAREN(L) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_zero_argument_function(
         state, T, L, MYLITE_SQL_AST_SYSDATE_FUNCTION, R);
 }
-sysdate_value(A) ::= SYSDATE(T) LPAREN(L) function_argument_list(B) RPAREN(R). {
-    A = mylite_sql_parser_make_no_space_function_argument_count_error(
-        state, T, L, MYLITE_SQL_AST_SYSDATE_ARGUMENT_COUNT_ERROR, B, R);
+sysdate_value(A) ::= SYSDATE(T) LPAREN(L) INTEGER(P) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_temporal_value_with_precision(
+        state,
+        T,
+        L,
+        MYLITE_SQL_AST_SYSDATE_FUNCTION,
+        (struct mylite_sql_temporal_fractional_precision_tokens){
+            .precision_token = P,
+            .end_token = R,
+            .has_precision = 1,
+        });
 }
 expression(A) ::= CURRENT_ROLE(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(

@@ -249,6 +249,8 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
     static const char *const arithmetic_noop_rows[] = {"8", NULL};
     static const char *const arithmetic_multi_rows[] = {"1", "12", "2", "20"};
     static const char *const arithmetic_mixed_rows[] = {"1", "12", "88", "5"};
+    static const char *const arithmetic_row_scalar_rows[] = {"1", "1", "5"};
+    static const char *const arithmetic_unsigned_row_scalar_rows[] = {"1", "1"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -1377,6 +1379,56 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
         }
     );
 
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE arithmetic_row_scalar(id INT PRIMARY KEY, users INT, cap INT)"
+    );
+    failures += expect_statement_ok(database, "INSERT INTO arithmetic_row_scalar VALUES (1, 0, 7)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO arithmetic_row_scalar VALUES (1, 0, 0) "
+        "ON DUPLICATE KEY UPDATE users = GREATEST(users + 1, 0), cap = LEAST(cap, 5)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO arithmetic_row_scalar VALUES (1, 0, 0) "
+        "ON DUPLICATE KEY UPDATE cap = LEAST(cap, 5)",
+        (struct expected_dml){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, users, cap FROM arithmetic_row_scalar",
+            .values = arithmetic_row_scalar_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "row-scalar arithmetic duplicate assignment",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE arithmetic_unsigned_row_scalar(id INT PRIMARY KEY, users BIGINT UNSIGNED)"
+    );
+    failures +=
+        expect_statement_ok(database, "INSERT INTO arithmetic_unsigned_row_scalar VALUES (1, 0)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO arithmetic_unsigned_row_scalar VALUES (1, 0) "
+        "ON DUPLICATE KEY UPDATE users = GREATEST(users + 1, 0)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, users FROM arithmetic_unsigned_row_scalar",
+            .values = arithmetic_unsigned_row_scalar_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "unsigned row-scalar arithmetic duplicate assignment",
+        }
+    );
+
     failures += execute_ok(
         database,
         "INSERT DELAYED INTO pk_t VALUES (3, 50, NULL) ON DUPLICATE KEY UPDATE v = 50",
@@ -2066,6 +2118,14 @@ static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_
     if (rc == MYLITE_OK) {
         *out_result = result;
     } else {
+        fprintf(
+            stderr,
+            "%s: unexpected error %d / %s: %s\n",
+            sql,
+            mylite_errcode(database),
+            mylite_sqlstate(database),
+            mylite_errmsg(database)
+        );
         mylite_result_free(result);
         *out_result = NULL;
     }

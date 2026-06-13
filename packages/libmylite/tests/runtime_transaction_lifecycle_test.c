@@ -47,6 +47,7 @@ static int test_set_transaction_lifecycle(void);
 static int test_transaction_system_variable_readback(void);
 static int test_transaction_system_variable_assignments(void);
 static int test_start_transaction_characteristics_lifecycle(void);
+static int test_transaction_after_buffered_result_lifecycle(void);
 static int test_savepoint_lifecycle(void);
 static int test_independent_savepoint_handles(void);
 static int test_independent_transaction_characteristic_handles(void);
@@ -100,6 +101,7 @@ int main(void) {
     failures += test_transaction_system_variable_readback();
     failures += test_transaction_system_variable_assignments();
     failures += test_start_transaction_characteristics_lifecycle();
+    failures += test_transaction_after_buffered_result_lifecycle();
     failures += test_savepoint_lifecycle();
     failures += test_independent_savepoint_handles();
     failures += test_independent_transaction_characteristic_handles();
@@ -1115,6 +1117,54 @@ static int test_start_transaction_characteristics_lifecycle(void) {
         "start transaction characteristics preserves MyLite preamble"
     );
 
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_transaction_after_buffered_result_lifecycle(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *held_result = NULL;
+    int failures = 0;
+    int rc = MYLITE_OK;
+
+    if (make_test_path(path, sizeof(path), "buffered_result_transaction") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open buffered result file");
+    failures += seed_schema(database);
+    failures += expect_nonquery(database, "CREATE TABLE t (id INT PRIMARY KEY)", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (1)", 1);
+
+    rc = mylite_execute(
+        database,
+        "SELECT COUNT(*) FROM t",
+        strlen("SELECT COUNT(*) FROM t"),
+        &held_result
+    );
+    failures += expect_int(rc, MYLITE_OK, "buffered result select");
+    failures += expect_result_value(held_result, 0U, 0U, "1", "buffered result count");
+
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    failures += expect_nonquery(database, "INSERT INTO t VALUES (2)", 1);
+    failures += expect_nonquery(database, "ROLLBACK", 0);
+
+    mylite_result_free(held_result);
+    held_result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY id",
+            .values = (const char *const[]){"1"},
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "buffered result transaction rollback",
+        }
+    );
+
+    mylite_close(database);
     remove_related_files(path);
     return failures;
 }

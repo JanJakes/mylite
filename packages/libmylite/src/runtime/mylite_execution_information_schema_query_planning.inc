@@ -107,6 +107,24 @@ static int information_schema_plan_select_item_projection(
             child_at(item, 1U)
         );
     }
+    if (out_query->has_group &&
+        expression->kind == MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION) {
+        return information_schema_append_group_concat_ordered_column_projection(
+            database,
+            out_query,
+            expression,
+            child_at(item, 1U)
+        );
+    }
+    if (out_query->has_group && expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
+        mylite_sql_ast_node_operator(expression) == MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT) {
+        return information_schema_append_logical_not_column_projection(
+            database,
+            out_query,
+            expression,
+            child_at(item, 1U)
+        );
+    }
     if (expression->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_INTEGER) {
         return information_schema_append_integer_literal_projection(
@@ -120,7 +138,8 @@ static int information_schema_plan_select_item_projection(
     set_unsupported_error(
         database,
         "INFORMATION_SCHEMA SELECT supports only metadata columns, COUNT(*), integer literals, "
-        "and CAST(numeric metadata expression AS UNSIGNED)"
+        "CAST(numeric metadata expression AS UNSIGNED), and limited grouped STATISTICS "
+        "expressions"
     );
     return MYLITE_ERROR;
 }
@@ -178,6 +197,64 @@ static int information_schema_append_integer_literal_projection(
         &(const struct information_schema_projection_slot_request){
             .column_index = 0U,
             .kind = INFORMATION_SCHEMA_PROJECTION_INTEGER_LITERAL,
+            .expression = expression,
+            .alias = alias,
+        }
+    );
+}
+
+static int information_schema_append_group_concat_ordered_column_projection(
+    struct mylite_db *database,
+    struct information_schema_query *query,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias
+) {
+    size_t column_index = 0U;
+    int rc = information_schema_validate_group_concat_ordered_column_expression(
+        database,
+        query,
+        expression,
+        &column_index
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return information_schema_append_projection_slot(
+        database,
+        query,
+        &(const struct information_schema_projection_slot_request){
+            .column_index = column_index,
+            .kind = INFORMATION_SCHEMA_PROJECTION_GROUP_CONCAT_ORDERED_COLUMN,
+            .expression = expression,
+            .alias = alias,
+        }
+    );
+}
+
+static int information_schema_append_logical_not_column_projection(
+    struct mylite_db *database,
+    struct information_schema_query *query,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias
+) {
+    size_t column_index = 0U;
+    int rc = information_schema_validate_logical_not_column_expression(
+        database,
+        query,
+        expression,
+        &column_index
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return information_schema_append_projection_slot(
+        database,
+        query,
+        &(const struct information_schema_projection_slot_request){
+            .column_index = column_index,
+            .kind = INFORMATION_SCHEMA_PROJECTION_LOGICAL_NOT_COLUMN,
             .expression = expression,
             .alias = alias,
         }
@@ -257,6 +334,228 @@ static int information_schema_append_projection_slot(
     query->projection_names[query->projection_count] = column_name;
     query->projection_count = required_count;
     return MYLITE_OK;
+}
+
+static int information_schema_plan_group(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *group_clause,
+    struct information_schema_query *out_query
+) {
+    static const size_t expected_group_columns[] = {
+        information_schema_statistics_index_name_column,
+        information_schema_statistics_index_type_column,
+        information_schema_statistics_non_unique_column,
+    };
+    const struct mylite_sql_ast_node *group_key = NULL;
+    size_t group_key_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (group_clause == NULL) {
+        return MYLITE_OK;
+    }
+    if (out_query->definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_STATISTICS) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA GROUP BY is supported only for STATISTICS index metadata"
+        );
+        return MYLITE_ERROR;
+    }
+    if (out_query->is_count_star) {
+        set_unsupported_error(database, "INFORMATION_SCHEMA GROUP BY does not support COUNT(*)");
+        return MYLITE_ERROR;
+    }
+    group_key_count = mylite_sql_ast_node_child_count(group_clause);
+    if (group_key_count != sizeof(expected_group_columns) / sizeof(expected_group_columns[0])) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA STATISTICS GROUP BY supports index_name, index_type, non_unique"
+        );
+        return MYLITE_ERROR;
+    }
+
+    group_key = child_at(group_clause, 0U);
+    for (size_t index = 0U; rc == MYLITE_OK && index < group_key_count; ++index) {
+        size_t column_index = 0U;
+
+        if (group_key == NULL || group_key->kind == MYLITE_SQL_AST_GROUP_BY_ROLLUP_MODIFIER) {
+            set_unsupported_error(database, "INFORMATION_SCHEMA GROUP BY WITH ROLLUP is unsupported");
+            return MYLITE_ERROR;
+        }
+        rc = information_schema_resolve_column_reference(
+            database,
+            out_query,
+            group_key,
+            COLUMN_REFERENCE_FIELD,
+            &column_index
+        );
+        if (rc == MYLITE_OK && column_index != expected_group_columns[index]) {
+            set_unsupported_error(
+                database,
+                "INFORMATION_SCHEMA STATISTICS GROUP BY supports index_name, index_type, "
+                "non_unique"
+            );
+            return MYLITE_ERROR;
+        }
+        if (rc == MYLITE_OK) {
+            out_query->group_indexes[index] = column_index;
+        }
+        group_key = group_key->next_sibling;
+    }
+    if (rc == MYLITE_OK) {
+        out_query->group_index_count = group_key_count;
+    }
+    for (size_t projection_index = 0U; rc == MYLITE_OK &&
+                                      projection_index < out_query->projection_count;
+         ++projection_index) {
+        if (!information_schema_projection_is_grouped_statistics_compatible(
+                out_query,
+                projection_index
+            )) {
+            set_unsupported_error(
+                database,
+                "INFORMATION_SCHEMA STATISTICS GROUP BY supports grouped columns, "
+                "GROUP_CONCAT(column_name ORDER BY seq_in_index), and NOT non_unique"
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    return rc;
+}
+
+static bool information_schema_projection_is_grouped_statistics_compatible(
+    const struct information_schema_query *query,
+    size_t projection_index
+) {
+    size_t column_index = query->projection_indexes[projection_index];
+
+    switch (query->projection_kinds[projection_index]) {
+    case INFORMATION_SCHEMA_PROJECTION_COLUMN:
+        return information_schema_group_contains_column(query, column_index);
+    case INFORMATION_SCHEMA_PROJECTION_GROUP_CONCAT_ORDERED_COLUMN:
+        return column_index == information_schema_statistics_column_name_column;
+    case INFORMATION_SCHEMA_PROJECTION_LOGICAL_NOT_COLUMN:
+        return information_schema_group_contains_column(query, column_index);
+    case INFORMATION_SCHEMA_PROJECTION_UNSIGNED_INTEGER_EXPRESSION:
+    case INFORMATION_SCHEMA_PROJECTION_INTEGER_LITERAL:
+        return false;
+    }
+    return false;
+}
+
+static bool information_schema_group_contains_column(
+    const struct information_schema_query *query,
+    size_t column_index
+) {
+    for (size_t index = 0U; index < query->group_index_count; ++index) {
+        if (query->group_indexes[index] == column_index) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int information_schema_validate_group_concat_ordered_column_expression(
+    struct mylite_db *database,
+    struct information_schema_query *query,
+    const struct mylite_sql_ast_node *expression,
+    size_t *out_column_index
+) {
+    const struct mylite_sql_ast_node *value = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
+    const struct mylite_sql_ast_node *separator = NULL;
+    size_t order_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA grouped STATISTICS supports GROUP_CONCAT metadata expressions"
+        );
+        return MYLITE_ERROR;
+    }
+    value = unwrap_parenthesized_expression(child_at(expression, 0U));
+    order_clause = child_at(expression, 1U);
+    separator = child_at(expression, 2U);
+    if (separator != NULL) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA grouped STATISTICS GROUP_CONCAT does not support SEPARATOR"
+        );
+        return MYLITE_ERROR;
+    }
+    if (order_clause == NULL || order_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE ||
+        mylite_sql_ast_node_order_direction(child_at(order_clause, 1U)) ==
+            MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA grouped STATISTICS GROUP_CONCAT supports ORDER BY seq_in_index"
+        );
+        return MYLITE_ERROR;
+    }
+    rc = information_schema_resolve_column_reference(
+        database,
+        query,
+        value,
+        COLUMN_REFERENCE_FIELD,
+        out_column_index
+    );
+    if (rc == MYLITE_OK && *out_column_index != information_schema_statistics_column_name_column) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA grouped STATISTICS GROUP_CONCAT supports column_name"
+        );
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = information_schema_resolve_column_reference(
+            database,
+            query,
+            child_at(order_clause, 0U),
+            COLUMN_REFERENCE_ORDER,
+            &order_index
+        );
+    }
+    if (rc == MYLITE_OK && order_index != information_schema_statistics_seq_in_index_column) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA grouped STATISTICS GROUP_CONCAT supports ORDER BY seq_in_index"
+        );
+        return MYLITE_ERROR;
+    }
+    return rc;
+}
+
+static int information_schema_validate_logical_not_column_expression(
+    struct mylite_db *database,
+    struct information_schema_query *query,
+    const struct mylite_sql_ast_node *expression,
+    size_t *out_column_index
+) {
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_UNARY_EXPRESSION ||
+        mylite_sql_ast_node_operator(expression) != MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA grouped STATISTICS supports NOT metadata expressions"
+        );
+        return MYLITE_ERROR;
+    }
+
+    int rc = information_schema_resolve_column_reference(
+        database,
+        query,
+        unwrap_parenthesized_expression(child_at(expression, 0U)),
+        COLUMN_REFERENCE_FIELD,
+        out_column_index
+    );
+
+    if (rc == MYLITE_OK && *out_column_index != information_schema_statistics_non_unique_column) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA grouped STATISTICS NOT expression supports non_unique"
+        );
+        return MYLITE_ERROR;
+    }
+    return rc;
 }
 
 static int information_schema_validate_unsigned_projection_expression(
@@ -340,34 +639,87 @@ static int information_schema_plan_order(
     const struct mylite_sql_ast_node *order_clause,
     struct information_schema_query *out_query
 ) {
-    const struct mylite_sql_ast_node *direction = NULL;
+    const struct mylite_sql_ast_node *order_items = NULL;
     int rc = MYLITE_OK;
 
     out_query->has_order = false;
     out_query->order_direction = PLANNED_SELECT_ORDER_DEFAULT;
+    out_query->order_count = 0U;
     if (order_clause == NULL) {
         return MYLITE_OK;
     }
-    if (order_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
-        set_unsupported_error(database, "INFORMATION_SCHEMA SELECT supports one ORDER BY column");
+    if (out_query->has_group) {
+        set_unsupported_error(
+            database,
+            "INFORMATION_SCHEMA grouped SELECT does not support ORDER BY"
+        );
         return MYLITE_ERROR;
     }
-    rc = information_schema_resolve_order_reference(
-        database,
-        out_query,
-        child_at(order_clause, 0U),
-        &out_query->order_index
-    );
+    if (order_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE ||
+        child_at(order_clause, 0U) == NULL) {
+        set_unsupported_error(database, "INFORMATION_SCHEMA SELECT has an invalid ORDER BY");
+        return MYLITE_ERROR;
+    }
+    order_items = child_at(order_clause, 0U);
+    if (order_items->kind == MYLITE_SQL_AST_ORDER_BY_ITEM_LIST) {
+        const struct mylite_sql_ast_node *item = child_at(order_items, 0U);
+
+        while (rc == MYLITE_OK && item != NULL) {
+            const struct mylite_sql_ast_node *direction = NULL;
+
+            if (out_query->order_count == information_schema_order_key_capacity) {
+                set_unsupported_error(
+                    database,
+                    "INFORMATION_SCHEMA SELECT ORDER BY has too many columns"
+                );
+                return MYLITE_ERROR;
+            }
+            if (item->kind != MYLITE_SQL_AST_ORDER_BY_ITEM || child_at(item, 0U) == NULL) {
+                set_unsupported_error(database, "INFORMATION_SCHEMA SELECT has an invalid ORDER BY");
+                return MYLITE_ERROR;
+            }
+            rc = information_schema_resolve_order_reference(
+                database,
+                out_query,
+                child_at(item, 0U),
+                &out_query->order_indexes[out_query->order_count]
+            );
+            direction = child_at(item, 1U);
+            out_query->order_directions[out_query->order_count] = PLANNED_SELECT_ORDER_ASC;
+            if (mylite_sql_ast_node_order_direction(direction) ==
+                MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
+                out_query->order_directions[out_query->order_count] =
+                    PLANNED_SELECT_ORDER_DESC;
+            }
+            if (rc == MYLITE_OK) {
+                ++out_query->order_count;
+            }
+            item = item->next_sibling;
+        }
+    } else {
+        const struct mylite_sql_ast_node *direction = child_at(order_clause, 1U);
+
+        rc = information_schema_resolve_order_reference(
+            database,
+            out_query,
+            child_at(order_clause, 0U),
+            &out_query->order_indexes[0]
+        );
+        out_query->order_directions[0] = PLANNED_SELECT_ORDER_ASC;
+        if (mylite_sql_ast_node_order_direction(direction) == MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
+            out_query->order_directions[0] = PLANNED_SELECT_ORDER_DESC;
+        }
+        if (rc == MYLITE_OK) {
+            out_query->order_count = 1U;
+        }
+    }
     if (rc != MYLITE_OK) {
         return rc;
     }
 
-    out_query->has_order = true;
-    out_query->order_direction = PLANNED_SELECT_ORDER_ASC;
-    direction = child_at(order_clause, 1U);
-    if (mylite_sql_ast_node_order_direction(direction) == MYLITE_SQL_AST_ORDER_DIRECTION_DESC) {
-        out_query->order_direction = PLANNED_SELECT_ORDER_DESC;
-    }
+    out_query->has_order = out_query->order_count > 0U;
+    out_query->order_index = out_query->order_indexes[0];
+    out_query->order_direction = out_query->order_directions[0];
     return MYLITE_OK;
 }
 

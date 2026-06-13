@@ -627,7 +627,13 @@ static int append_row_scalar_select_query_sql(
         if (item_index != 0U) {
             rc = mylite_dynamic_string_append(string, ", ");
         }
-        if (rc == MYLITE_OK) {
+        if (rc == MYLITE_OK && plan->items[item_index].is_exists_expression) {
+            rc = append_select_exists_predicate_sql(
+                string,
+                &plan->items[item_index].exists_subquery,
+                next_parameter
+            );
+        } else if (rc == MYLITE_OK) {
             rc = append_row_scalar_expression_sql(
                 string,
                 &plan->items[item_index].expression,

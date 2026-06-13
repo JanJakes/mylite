@@ -62,7 +62,9 @@ static int validate_insert_select_binary_string_value(
     size_t copy_length = 0U;
     int rc = MYLITE_OK;
 
-    if (sqlite3_column_type(statement, selected_column_index) != SQLITE_BLOB) {
+    int sqlite_type = sqlite3_column_type(statement, selected_column_index);
+
+    if (sqlite_type != SQLITE_BLOB && sqlite_type != SQLITE_TEXT) {
         set_unsupported_error(
             database,
             "INSERT ... SELECT does not support implicit binary string conversion"

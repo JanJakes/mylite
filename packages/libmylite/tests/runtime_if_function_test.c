@@ -119,6 +119,8 @@ static int test_if_function_values_and_file_safety(void) {
     };
     static const char *const row_count_columns[] = {"ROW_COUNT()"};
     static const char *const row_count_values[] = {"-1"};
+    static const char *const named_lock_columns[] = {"lock_result", "chosen", "release_result"};
+    static const char *const named_lock_values[] = {"1", "10", "1"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -188,6 +190,19 @@ static int test_if_function_values_and_file_safety(void) {
             .values = boundary_values,
             .row_count = 1U,
             .context = "integer normalization and boundaries",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT GET_LOCK('mylite_if_test', 1) AS lock_result, "
+                   "IF(GET_LOCK('mylite_if_test', 1), 10, 20) AS chosen, "
+                   "RELEASE_LOCK('mylite_if_test') AS release_result",
+            .columns = named_lock_columns,
+            .column_count = 3U,
+            .values = named_lock_values,
+            .row_count = 1U,
+            .context = "named lock placeholders",
         }
     );
 

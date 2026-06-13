@@ -122,10 +122,13 @@ static bool select_statement_is_row_scalar_projection_attempt(
         }
         if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
             (row_scalar_expression_contains_row_function(expression) ||
+             (expression != NULL && expression->kind == MYLITE_SQL_AST_EXISTS_PREDICATE) ||
              (has_row_source && row_scalar_expression_contains_rand_function(expression)) ||
              (has_row_source && row_scalar_expression_contains_any_value_function(expression)) ||
              (has_row_source && row_scalar_expression_contains_conversion_expression(expression)) ||
              (has_row_source && row_scalar_expression_is_concat_operator(expression)) ||
+             generic_function_name_equals(expression, "GET_LOCK") ||
+             generic_function_name_equals(expression, "RELEASE_LOCK") ||
              (has_row_source &&
               row_scalar_control_flow_condition_operator(expression) ==
                   MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE) ||
@@ -594,6 +597,19 @@ static int make_row_scalar_result_column_descriptor(
             label,
             out_descriptor
         );
+    }
+    if (item->is_exists_expression) {
+        populate_scalar_binary_numeric_result_column_descriptor(
+            out_descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                .display_length = mysql_scalar_bigint_display_length,
+                .decimals = 0U,
+                .extra_flags = 0U,
+                .nullable = false,
+            }
+        );
+        return MYLITE_OK;
     }
 
     int rc = populate_row_scalar_source_result_column_descriptor(database, item, out_descriptor);

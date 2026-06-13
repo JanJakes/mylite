@@ -776,15 +776,7 @@ static int test_innodb_engine_diagnostics(void) {
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "USE app");
 
-    failures += execute_error(
-        database,
-        "CREATE TABLE myisam_table (id INT) ENGINE=MyISAM",
-        (struct expected_sql_error){
-            .code = mysql_error_unknown_storage_engine,
-            .sqlstate = "42000",
-            .message_part = "Unknown storage engine 'MyISAM'",
-        }
-    );
+    failures += execute_statement_ok(database, "CREATE TABLE myisam_table (id INT) ENGINE=MyISAM");
     failures += execute_error(
         database,
         "CREATE TABLE unknown_engine (id INT) ENGINE=NoSuchEngine",
@@ -794,15 +786,8 @@ static int test_innodb_engine_diagnostics(void) {
             .message_part = "Unknown storage engine 'NoSuchEngine'",
         }
     );
-    failures += execute_error(
-        database,
-        "CREATE TABLE string_unknown (id INT) ENGINE='MyISAM'",
-        (struct expected_sql_error){
-            .code = mysql_error_unknown_storage_engine,
-            .sqlstate = "42000",
-            .message_part = "Unknown storage engine 'MyISAM'",
-        }
-    );
+    failures +=
+        execute_statement_ok(database, "CREATE TABLE string_myisam (id INT) ENGINE='MyISAM'");
     failures += execute_error(
         database,
         "CREATE TABLE empty_engine (id INT) ENGINE=''",
@@ -1014,10 +999,6 @@ static int test_storage_engine_substitution(void) {
         {"Warning", "1286", "Unknown storage engine ''"},
         {"Warning", "1266", "Using storage engine InnoDB for table 'empty_loose'"},
     };
-    static const struct expected_warning_row myisam_engine_warnings[] = {
-        {"Warning", "1286", "Unknown storage engine 'MyISAM'"},
-        {"Warning", "1266", "Using storage engine InnoDB for table 'myisam_loose'"},
-    };
     static const struct expected_warning_row memory_engine_warnings[] = {
         {"Warning", "1286", "Unknown storage engine 'MEMORY'"},
         {"Warning", "1266", "Using storage engine InnoDB for table 'memory_loose'"},
@@ -1102,17 +1083,7 @@ static int test_storage_engine_substitution(void) {
         "loose empty engine warnings"
     );
 
-    failures += execute_statement_ok_with_warnings(
-        database,
-        "CREATE TABLE myisam_loose (id INT) ENGINE=MyISAM",
-        2U
-    );
-    failures += expect_show_warnings(
-        database,
-        myisam_engine_warnings,
-        sizeof(myisam_engine_warnings) / sizeof(myisam_engine_warnings[0]),
-        "loose MyISAM engine warnings"
-    );
+    failures += execute_statement_ok(database, "CREATE TABLE myisam_loose (id INT) ENGINE=MyISAM");
     failures += expect_show_create_single_int(
         database,
         (struct expected_show_create_single_int){
@@ -1175,6 +1146,7 @@ static int test_storage_engine_substitution(void) {
     );
 
     failures += execute_statement_ok(database, "SET SESSION sql_mode = 'NO_ENGINE_SUBSTITUTION'");
+    failures += execute_statement_ok(database, "CREATE TABLE strict_myisam (id INT) ENGINE=MyISAM");
     failures += execute_error(
         database,
         "CREATE TABLE strict_unknown (id INT) ENGINE=NoSuchEngine",

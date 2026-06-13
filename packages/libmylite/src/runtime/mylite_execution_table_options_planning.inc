@@ -1216,6 +1216,7 @@ static int validate_create_table_engine_option(
         return rc;
     }
     if (text_equals_ascii_case_insensitive(engine_name, "InnoDB") ||
+        text_equals_ascii_case_insensitive(engine_name, "MyISAM") ||
         (is_temporary_target && text_equals_ascii_case_insensitive(engine_name, "MEMORY"))) {
         return MYLITE_OK;
     }

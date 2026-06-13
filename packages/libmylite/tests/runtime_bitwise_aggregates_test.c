@@ -714,13 +714,13 @@ static int test_bitwise_diagnostics(void) {
             .message_part = "BIT_AND/BIT_OR/BIT_XOR(column) supports only WHERE",
         }
     );
-    failures += execute_error(
+    failures += expect_bitwise_query(
         database,
-        "SELECT BIT_AND(i) FROM numbers LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "BIT_AND/BIT_OR/BIT_XOR(column) supports only WHERE",
+        (struct expected_bitwise_query){
+            .sql = "SELECT BIT_AND(i) FROM numbers LIMIT 1",
+            .column = "BIT_AND(i)",
+            .value = "0",
+            .context = "bit and limit",
         }
     );
     failures += execute_error(

@@ -1668,19 +1668,9 @@ static int validate_secondary_index_column(
         set_json_key_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (planned_column_is_bit(column) || planned_column_is_enum(column) ||
-        planned_column_is_set(column)) {
-        set_unsupported_error(database, "Secondary indexes do not yet support this column type");
-        return MYLITE_ERROR;
-    }
     if (planned_column_is_char_or_varchar(column)) {
         return validate_planned_string_key_column(database, column);
     }
-    if (planned_column_is_approximate(column)) {
-        set_unsupported_error(database, "Secondary indexes do not yet support this column type");
-        return MYLITE_ERROR;
-    }
-
     return MYLITE_OK;
 }
 
@@ -1980,12 +1970,6 @@ static int planned_index_part_key_bytes(
         set_json_key_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (planned_column_is_bit(column) || planned_column_is_enum(column) ||
-        planned_column_is_set(column)) {
-        set_unsupported_error(database, "Secondary indexes do not yet support this column type");
-        return MYLITE_ERROR;
-    }
-
     return row_size_for_column_descriptor(
         database,
         column->logical_type,
@@ -2018,19 +2002,9 @@ static int validate_unique_index_column(
         set_json_key_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (planned_column_is_bit(column) || planned_column_is_enum(column) ||
-        planned_column_is_set(column)) {
-        set_unsupported_error(database, "Secondary indexes do not yet support this column type");
-        return MYLITE_ERROR;
-    }
     if (planned_column_is_char_or_varchar(column)) {
         return validate_planned_string_key_column(database, column);
     }
-    if (planned_column_is_approximate(column)) {
-        set_unsupported_error(database, "Secondary indexes do not yet support this column type");
-        return MYLITE_ERROR;
-    }
-
     return MYLITE_OK;
 }
 
@@ -2325,16 +2299,21 @@ static int validate_primary_key_column(struct mylite_db *database, struct planne
         if (rc != MYLITE_OK) {
             return rc;
         }
+    } else if (planned_column_is_binary_blob_family(column)) {
+        set_blob_key_without_length_error(database, column->name);
+        return MYLITE_ERROR;
+    } else if (planned_column_is_binary_string_family(column)) {
+        return MYLITE_OK;
     } else if (planned_column_is_json(column)) {
         set_json_key_error(database, column->name);
         return MYLITE_ERROR;
     } else if (
-        planned_column_is_string_family(column) || planned_column_is_binary_string_family(column) ||
-        planned_column_is_bit(column) || planned_column_is_enum(column) ||
-        planned_column_is_set(column) || planned_column_is_decimal(column) ||
-        planned_column_is_approximate(column) || planned_column_is_date(column) ||
-        planned_column_is_time(column) || planned_column_is_datetime(column) ||
-        planned_column_is_timestamp(column) || planned_column_is_year(column)
+        planned_column_is_string_family(column) || planned_column_is_bit(column) ||
+        planned_column_is_enum(column) || planned_column_is_set(column) ||
+        planned_column_is_decimal(column) || planned_column_is_approximate(column) ||
+        planned_column_is_date(column) || planned_column_is_time(column) ||
+        planned_column_is_datetime(column) || planned_column_is_timestamp(column) ||
+        planned_column_is_year(column)
     ) {
         if (column->is_auto_increment) {
             return MYLITE_OK;

@@ -120,7 +120,7 @@ static bool show_like_pattern_matches(
         value,
         value_length,
         case_sensitive,
-        true
+        '\\'
     );
 }
 
@@ -130,7 +130,7 @@ static bool show_like_pattern_matches_with_escape(
     const char *value,
     size_t value_length,
     bool case_sensitive,
-    bool backslash_escapes
+    char escape_character
 ) {
     const size_t no_retry_pattern = SIZE_MAX;
     size_t pattern_index = 0U;
@@ -157,7 +157,7 @@ static bool show_like_pattern_matches_with_escape(
                     .pattern_index = pattern_index,
                     .value_byte = value[value_index],
                     .case_sensitive = case_sensitive,
-                    .backslash_escapes = backslash_escapes,
+                    .escape_character = escape_character,
                 },
                 &next_pattern_index
             )) {
@@ -205,7 +205,7 @@ static bool show_like_pattern_item_matches(
         *out_next_pattern_index = request.pattern_index + 1U;
         return true;
     }
-    if (request.backslash_escapes && pattern_byte == '\\' &&
+    if (request.escape_character != '\0' && pattern_byte == request.escape_character &&
         request.pattern_index + 1U < request.pattern_length) {
         ++next_pattern_index;
         pattern_byte = request.pattern[next_pattern_index];

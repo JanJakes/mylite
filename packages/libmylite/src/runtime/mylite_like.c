@@ -13,7 +13,7 @@ struct like_pattern_item_request {
     size_t pattern_index;
     unsigned char value_byte;
     bool case_sensitive;
-    bool backslash_escapes;
+    unsigned char escape_character;
 };
 
 static void like_binary_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
@@ -23,7 +23,7 @@ static bool like_pattern_matches(
     const char *value,
     size_t value_length,
     bool case_sensitive,
-    bool backslash_escapes
+    unsigned char escape_character
 );
 static size_t like_skip_percent_run(
     const char *pattern,
@@ -66,7 +66,7 @@ static void like_binary_sqlite_callback(sqlite3_context *context, int argc, sqli
     const unsigned char *pattern = NULL;
     int value_length = 0;
     int pattern_length = 0;
-    bool backslash_escapes = true;
+    unsigned char escape_character = 0U;
     bool matches = false;
 
     if (argc != 3) {
@@ -87,14 +87,14 @@ static void like_binary_sqlite_callback(sqlite3_context *context, int argc, sqli
         return;
     }
 
-    backslash_escapes = sqlite3_value_int(argv[2]) != 0;
+    escape_character = (unsigned char)sqlite3_value_int(argv[2]);
     matches = like_pattern_matches(
         pattern == NULL ? "" : (const char *)pattern,
         (size_t)pattern_length,
         value == NULL ? "" : (const char *)value,
         (size_t)value_length,
         true,
-        backslash_escapes
+        escape_character
     );
     sqlite3_result_int(context, matches ? 1 : 0);
 }
@@ -105,7 +105,7 @@ static bool like_pattern_matches(
     const char *value,
     size_t value_length,
     bool case_sensitive,
-    bool backslash_escapes
+    unsigned char escape_character
 ) {
     const size_t no_retry_pattern = (size_t)-1;
     size_t pattern_index = 0U;
@@ -132,7 +132,7 @@ static bool like_pattern_matches(
                     .pattern_index = pattern_index,
                     .value_byte = (unsigned char)value[value_index],
                     .case_sensitive = case_sensitive,
-                    .backslash_escapes = backslash_escapes,
+                    .escape_character = escape_character,
                 },
                 &next_pattern_index
             )) {
@@ -180,7 +180,7 @@ static bool like_pattern_item_matches(
         *out_next_pattern_index = request.pattern_index + 1U;
         return true;
     }
-    if (request.backslash_escapes && pattern_byte == '\\' &&
+    if (request.escape_character != 0U && pattern_byte == request.escape_character &&
         request.pattern_index + 1U < request.pattern_length) {
         ++next_pattern_index;
         pattern_byte = (unsigned char)request.pattern[next_pattern_index];

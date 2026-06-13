@@ -75,18 +75,75 @@ int main(void) {
 
 static int test_exists_values_and_persistence(void) {
     static const char *const id_column[] = {"id"};
+    static const char *const exists_column[] = {"exists"};
     static const char *const all_user_ids[] = {"1", "2", "3", "4"};
     static const char *const matched_user_ids[] = {"1", "2"};
     static const char *const unmatched_user_ids[] = {"3", "4"};
     static const char *const closed_user_id[] = {"1"};
     static const char *const null_safe_user_ids[] = {"1", "2", "4"};
     static const char *const joined_not_exists_user_ids[] = {"2", "3"};
+    static const char *const exists_one[] = {"1"};
+    static const char *const exists_zero[] = {"0"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
 
     failures += open_app_database(&database, "values", path, sizeof(path));
     failures += seed_exists_tables(database);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT EXISTS (SELECT 1) AS `exists`",
+            .columns = exists_column,
+            .column_count = 1U,
+            .values = exists_one,
+            .row_count = 1U,
+            .context = "tableless exists scalar projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT EXISTS (SELECT 1 FROM empty_orders) AS `exists`",
+            .columns = exists_column,
+            .column_count = 1U,
+            .values = exists_zero,
+            .row_count = 1U,
+            .context = "empty table exists scalar projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT EXISTS ("
+                   "SELECT 1 FROM information_schema.tables "
+                   "WHERE table_schema = schema() "
+                   "AND table_name = 'users' "
+                   "AND table_type IN ('BASE TABLE', 'SYSTEM VERSIONED')"
+                   ") AS `exists`",
+            .columns = exists_column,
+            .column_count = 1U,
+            .values = exists_one,
+            .row_count = 1U,
+            .context = "information schema tables exists scalar projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT EXISTS ("
+                   "SELECT 1 FROM information_schema.tables "
+                   "WHERE table_schema = schema() "
+                   "AND table_name = 'missing' "
+                   "AND table_type IN ('BASE TABLE', 'SYSTEM VERSIONED')"
+                   ") AS `exists`",
+            .columns = exists_column,
+            .column_count = 1U,
+            .values = exists_zero,
+            .row_count = 1U,
+            .context = "information schema tables missing exists scalar projection",
+        }
+    );
     failures += expect_query(
         database,
         (struct expected_query){
@@ -321,7 +378,9 @@ static int test_exists_values_and_persistence(void) {
 
 static int test_exists_diagnostics(void) {
     static const char *const id_column[] = {"id"};
+    static const char *const exists_column[] = {"exists"};
     static const char *const remaining_users[] = {"3", "4"};
+    static const char *const exists_one[] = {"1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -385,13 +444,15 @@ static int test_exists_diagnostics(void) {
             .message_part = "Unknown column 'u.missing_value' in 'where clause'",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT EXISTS (SELECT 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "descriptor-backed table reads",
+        (struct expected_query){
+            .sql = "SELECT EXISTS (SELECT 1) AS `exists`",
+            .columns = exists_column,
+            .column_count = 1U,
+            .values = exists_one,
+            .row_count = 1U,
+            .context = "diagnostic database tableless exists scalar projection",
         }
     );
     failures += execute_ok(

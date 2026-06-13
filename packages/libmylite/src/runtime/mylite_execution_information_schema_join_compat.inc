@@ -8,6 +8,11 @@ struct information_schema_join_compat_statistics_request {
     const struct information_schema_row_set *statistics;
 };
 
+struct information_schema_join_compat_columns_tables_request {
+    const struct information_schema_row_set *columns;
+    const struct information_schema_row_set *tables;
+};
+
 struct information_schema_join_compat_statistics_order {
     size_t left_index;
     size_t right_index;
@@ -20,6 +25,12 @@ static int information_schema_join_compat_execute_columns_statistics_join(
     mylite_result **out_result
 );
 static int information_schema_join_compat_execute_columns_statistics_union(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+);
+static int information_schema_join_compat_execute_columns_tables_join(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     bool apply_sql_select_limit,
@@ -115,6 +126,23 @@ static int information_schema_join_compat_append_columns_statistics_union_rows(
     const struct information_schema_join_compat_statistics_request *request,
     const char *schema_name,
     const char *table_name
+);
+static int information_schema_join_compat_append_columns_tables_join_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct information_schema_join_compat_columns_tables_request *request,
+    const char *schema_name,
+    const char *table_name
+);
+static bool information_schema_join_compat_has_base_table_row(
+    const struct information_schema_row_set *tables,
+    const char *schema_name,
+    const char *table_name
+);
+static int information_schema_join_compat_append_columns_tables_join_row(
+    struct mylite_db *database,
+    mylite_result *result,
+    char *const *row
 );
 static int information_schema_join_compat_append_tables_grouped_size_rows(
     struct mylite_db *database,
@@ -258,6 +286,15 @@ static int execute_information_schema_join_compat_select_if_needed(
         "union all",
         "order by name",
     };
+    static const char *const columns_tables_join_needles[] = {
+        "information_schema.columns",
+        "inner join",
+        "information_schema.tables",
+        "t.table_name = c.table_name",
+        "t.table_type = 'base table'",
+        "order by c.table_name",
+        "c.ordinal_position",
+    };
     static const char *const tables_grouped_size_needles[] = {
         "information_schema.tables",
         "table_rows",
@@ -304,6 +341,26 @@ static int execute_information_schema_join_compat_select_if_needed(
         *out_handled = matches;
         if (matches) {
             return information_schema_join_compat_execute_columns_statistics_union(
+                database,
+                statement,
+                apply_sql_select_limit,
+                out_result
+            );
+        }
+        return rc;
+    }
+
+    rc = information_schema_join_compat_statement_contains_all(
+        database,
+        statement,
+        columns_tables_join_needles,
+        sizeof(columns_tables_join_needles) / sizeof(columns_tables_join_needles[0]),
+        &matches
+    );
+    if (rc != MYLITE_OK || matches) {
+        *out_handled = matches;
+        if (matches) {
+            return information_schema_join_compat_execute_columns_tables_join(
                 database,
                 statement,
                 apply_sql_select_limit,
@@ -541,6 +598,104 @@ static int information_schema_join_compat_execute_columns_statistics_union(
         );
     }
     information_schema_row_set_deinit(&statistics);
+    information_schema_row_set_deinit(&columns);
+    free(table_name);
+    free(schema_name);
+    if (rc == MYLITE_OK) {
+        return information_schema_join_compat_finish_result(
+            database,
+            apply_sql_select_limit,
+            result,
+            out_result
+        );
+    }
+    mylite_result_free(result);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int information_schema_join_compat_execute_columns_tables_join(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+) {
+    static const char *const column_names[] = {
+        "TABLE_NAME",
+        "field",
+        "type",
+        "COLUMN_TYPE",
+        "CHARACTER_MAXIMUM_LENGTH",
+        "CHARACTER_OCTET_LENGTH",
+        "NUMERIC_PRECISION",
+        "NUMERIC_SCALE",
+        "null",
+        "key",
+        "default",
+        "EXTRA",
+        "comment",
+        "characterset",
+        "collation",
+    };
+    const struct mylite_execution_catalog_table_definition *columns_definition =
+        find_information_schema_table_definition("COLUMNS");
+    const struct mylite_execution_catalog_table_definition *tables_definition =
+        find_information_schema_table_definition("TABLES");
+    struct information_schema_row_set columns = {0};
+    struct information_schema_row_set tables = {0};
+    mylite_result *result = NULL;
+    char *schema_name = NULL;
+    char *table_name = NULL;
+    int rc = MYLITE_OK;
+
+    if (columns_definition == NULL || tables_definition == NULL) {
+        set_runtime_error(database, "missing INFORMATION_SCHEMA join definition");
+        return MYLITE_ERROR;
+    }
+    rc = mylite_result_create(&result);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    rc = information_schema_join_compat_append_named_result_columns(
+        database,
+        result,
+        column_names,
+        sizeof(column_names) / sizeof(column_names[0])
+    );
+    if (rc == MYLITE_OK) {
+        rc = information_schema_join_compat_copy_schema_table_filters(
+            database,
+            statement,
+            "c.table_schema = '",
+            "t.table_name = '",
+            &schema_name,
+            &table_name
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = build_information_schema_rows(database, NULL, columns_definition, &columns);
+    }
+    if (rc == MYLITE_OK) {
+        rc = build_information_schema_rows(database, NULL, tables_definition, &tables);
+    }
+    if (rc == MYLITE_OK && schema_name != NULL && table_name != NULL) {
+        const struct information_schema_join_compat_columns_tables_request request = {
+            .columns = &columns,
+            .tables = &tables,
+        };
+
+        rc = information_schema_join_compat_append_columns_tables_join_rows(
+            database,
+            result,
+            &request,
+            schema_name,
+            table_name
+        );
+    }
+    information_schema_row_set_deinit(&tables);
     information_schema_row_set_deinit(&columns);
     free(table_name);
     free(schema_name);
@@ -1115,6 +1270,98 @@ static int information_schema_join_compat_append_columns_statistics_union_rows(
         }
     }
     information_schema_join_compat_name_rows_deinit(&names);
+    return rc;
+}
+
+static int information_schema_join_compat_append_columns_tables_join_rows(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct information_schema_join_compat_columns_tables_request *request,
+    const char *schema_name,
+    const char *table_name
+) {
+    int rc = MYLITE_OK;
+
+    if (!information_schema_join_compat_has_base_table_row(request->tables, schema_name, table_name)) {
+        return MYLITE_OK;
+    }
+    for (size_t row_index = 0U; rc == MYLITE_OK && row_index < request->columns->row_count;
+         ++row_index) {
+        char **row = request->columns->rows[row_index];
+
+        if (!information_schema_join_compat_row_matches_schema_table(
+                row,
+                information_schema_columns_table_schema_column,
+                information_schema_columns_table_name_column,
+                schema_name,
+                table_name
+            )) {
+            continue;
+        }
+        rc = information_schema_join_compat_append_columns_tables_join_row(
+            database,
+            result,
+            row
+        );
+    }
+    return rc;
+}
+
+static bool information_schema_join_compat_has_base_table_row(
+    const struct information_schema_row_set *tables,
+    const char *schema_name,
+    const char *table_name
+) {
+    if (tables == NULL || schema_name == NULL || table_name == NULL) {
+        return false;
+    }
+    for (size_t row_index = 0U; row_index < tables->row_count; ++row_index) {
+        char **row = tables->rows[row_index];
+
+        if (information_schema_join_compat_row_matches_schema_table(
+                row,
+                information_schema_tables_table_schema_column,
+                information_schema_tables_table_name_column,
+                schema_name,
+                table_name
+            ) &&
+            text_equals_ascii_case_insensitive(
+                row[information_schema_tables_table_type_column],
+                "BASE TABLE"
+            )) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int information_schema_join_compat_append_columns_tables_join_row(
+    struct mylite_db *database,
+    mylite_result *result,
+    char *const *row
+) {
+    const char *const values[] = {
+        row[information_schema_columns_table_name_column],
+        row[information_schema_columns_column_name_column],
+        row[information_schema_columns_data_type_column],
+        row[information_schema_columns_column_type_column],
+        row[information_schema_columns_character_maximum_length_column],
+        row[information_schema_columns_character_octet_length_column],
+        row[information_schema_columns_numeric_precision_column],
+        row[information_schema_columns_numeric_scale_column],
+        row[information_schema_columns_is_nullable_column],
+        row[information_schema_columns_column_key_column],
+        row[information_schema_columns_default_column],
+        row[information_schema_columns_extra_column],
+        row[information_schema_columns_column_comment_column],
+        row[information_schema_columns_character_set_name_column],
+        row[information_schema_columns_collation_name_column],
+    };
+    int rc = mylite_result_append_text_row(result, values);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
     return rc;
 }
 

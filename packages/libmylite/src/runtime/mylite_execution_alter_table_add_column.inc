@@ -1324,6 +1324,11 @@ static int append_alter_table_primary_key_part(
 
     if (column_descriptor_is_char_or_varchar(&columns[column_index])) {
         rc = validate_descriptor_string_key_column(database, &columns[column_index]);
+    } else if (column_descriptor_is_binary_blob_family(&columns[column_index])) {
+        set_blob_key_without_length_error(database, columns[column_index].name);
+        rc = MYLITE_ERROR;
+    } else if (column_descriptor_is_binary_string_family(&columns[column_index])) {
+        rc = MYLITE_OK;
     } else if (column_descriptor_is_json(&columns[column_index])) {
         set_json_key_error(database, columns[column_index].name);
         rc = MYLITE_ERROR;

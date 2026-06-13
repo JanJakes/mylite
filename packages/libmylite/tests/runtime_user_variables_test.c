@@ -396,6 +396,17 @@ static int test_user_variable_scalar_function_assignments(void) {
             .context = "scalar function user variable assignments",
         }
     );
+    failures += execute_statement_ok(database, "SET @keys = RANDOM_BYTES(4)");
+    failures += execute_ok(database, "SELECT @keys", &result);
+    if (failures == 0) {
+        failures += expect_size(
+            mylite_result_value_size(result, 0U, 0U),
+            4U,
+            "RANDOM_BYTES user variable assignment size"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_statement_ok(
         database,
         "SET @now = NOW(), @ts = CURRENT_TIMESTAMP(), @d = DATE '2001-01-02', "

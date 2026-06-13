@@ -266,13 +266,13 @@ static int build_column_aggregate_sql(const struct planned_column_aggregate *pla
     if (rc == MYLITE_OK) {
         rc = append_column_aggregate_select_list_sql(&string, plan, &next_parameter);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && plan->has_source) {
         rc = mylite_dynamic_string_append(&string, " FROM ");
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && plan->has_source) {
         rc = mylite_dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && plan->has_source) {
         rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
     }
     if (rc == MYLITE_OK) {
@@ -1668,7 +1668,13 @@ static int append_select_row_scalar_like_binary_predicate_sql(
         rc = append_select_row_scalar_comparison_rhs_sql(string, node, next_parameter);
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(string, node->like_uses_escape ? ", 1)" : ", 0)");
+        rc = mylite_dynamic_string_append(string, ", ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_like_escape_character_argument_sql(string, node->like_escape_character);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
     }
     return rc;
 }
@@ -2263,6 +2269,41 @@ static int append_string_integer_value_sql_for_source(
     return rc;
 }
 
+static int append_like_escape_character_argument_sql(
+    struct mylite_dynamic_string *string,
+    char escape_character
+) {
+    char text[4];
+    int written = snprintf(text, sizeof(text), "%u", (unsigned char)escape_character);
+
+    if (written < 0 || (size_t)written >= sizeof(text)) {
+        return MYLITE_ERROR;
+    }
+    return mylite_dynamic_string_append(string, text);
+}
+
+static int append_like_escape_clause_sql(
+    struct mylite_dynamic_string *string,
+    char escape_character
+) {
+    int rc = MYLITE_OK;
+
+    if (escape_character == '\0') {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_dynamic_string_append(string, " ESCAPE '");
+    if (rc == MYLITE_OK && escape_character == '\'') {
+        rc = mylite_dynamic_string_append(string, "''");
+    } else if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, escape_character);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, '\'');
+    }
+    return rc;
+}
+
 static int append_select_like_binary_predicate_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select_predicate *predicate,
@@ -2295,7 +2336,13 @@ static int append_select_like_binary_predicate_sql(
         ++(*next_parameter);
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(string, node->like_uses_escape ? ", 1)" : ", 0)");
+        rc = mylite_dynamic_string_append(string, ", ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_like_escape_character_argument_sql(string, node->like_escape_character);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
     }
 
     return rc;
@@ -2483,8 +2530,8 @@ static int append_select_like_predicate_term_sql(
     if (rc == MYLITE_OK && node->row_scalar_value_expression == NULL) {
         ++(*next_parameter);
     }
-    if (rc == MYLITE_OK && node->like_uses_escape) {
-        rc = mylite_dynamic_string_append(string, " ESCAPE '\\'");
+    if (rc == MYLITE_OK) {
+        rc = append_like_escape_clause_sql(string, node->like_escape_character);
     }
 
     return rc;

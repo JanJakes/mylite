@@ -20,7 +20,6 @@ static int bind_row_scalar_non_concat_expression_parameters(
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
-    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
@@ -81,6 +80,12 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         break;
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+        return bind_row_scalar_integer_arithmetic_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
         return bind_row_scalar_conversion_expression_parameters(
             statement,

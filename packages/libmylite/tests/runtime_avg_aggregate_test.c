@@ -696,13 +696,13 @@ static int test_avg_diagnostics(void) {
             .message_part = "AVG(column) supports only WHERE",
         }
     );
-    failures += execute_error(
+    failures += expect_avg_query(
         database,
-        "SELECT AVG(i) FROM numbers LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "AVG(column) supports only WHERE",
+        (struct expected_avg_query){
+            .sql = "SELECT AVG(i) FROM numbers LIMIT 1",
+            .column = "AVG(i)",
+            .value = "536870911.5000",
+            .context = "avg limit",
         }
     );
 

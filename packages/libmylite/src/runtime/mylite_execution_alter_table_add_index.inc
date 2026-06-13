@@ -1420,12 +1420,6 @@ static int column_descriptor_index_part_key_bytes(
         set_json_key_error(database, column->name);
         return MYLITE_ERROR;
     }
-    if (column_descriptor_is_bit(column) || column_descriptor_is_enum(column) ||
-        column_descriptor_is_set(column)) {
-        set_unsupported_error(database, "Secondary indexes do not yet support this column type");
-        return MYLITE_ERROR;
-    }
-
     return row_size_for_column_descriptor(
         database,
         column->logical_type,
@@ -1575,6 +1569,13 @@ static int planned_primary_key_part_key_bytes(
         }
         return rc;
     }
+    if (planned_column_is_binary_string_family(column)) {
+        struct binary_string_type_info storage = {0};
+        const struct binary_string_type_info *info =
+            binary_string_type_info_for_logical_type(column->logical_type, &storage);
+
+        return binary_string_full_key_bytes(database, info, column->name, out_key_bytes);
+    }
     if (planned_column_is_json(column)) {
         set_json_key_error(database, column->name);
         return MYLITE_ERROR;
@@ -1616,6 +1617,13 @@ static int column_descriptor_primary_key_part_key_bytes(
                              logical_type_max_bytes_per_character(column->logical_type);
         }
         return rc;
+    }
+    if (column_descriptor_is_binary_string_family(column)) {
+        struct binary_string_type_info storage = {0};
+        const struct binary_string_type_info *info =
+            binary_string_type_info_for_logical_type(column->logical_type, &storage);
+
+        return binary_string_full_key_bytes(database, info, column->name, out_key_bytes);
     }
     if (column_descriptor_is_json(column)) {
         set_json_key_error(database, column->name);

@@ -566,6 +566,21 @@ static int plan_insert_duplicate_assignment_value(
             duplicate_assignment->assignment_value_node = value;
             duplicate_assignment->value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_LITERAL;
         }
+        if (rc == MYLITE_OK && !planned_arithmetic) {
+            bool planned_row_scalar = false;
+
+            rc = plan_insert_duplicate_row_scalar_assignment(
+                database,
+                value,
+                plan,
+                duplicate_assignment,
+                &planned_row_scalar
+            );
+            if (rc == MYLITE_OK && planned_row_scalar) {
+                duplicate_assignment->assignment_value_node = value;
+                duplicate_assignment->value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_ROW_SCALAR;
+            }
+        }
     }
 
     default_value = unwrap_parenthesized_expression(duplicate_assignment->assignment_value_node);
@@ -703,6 +718,92 @@ static int plan_insert_duplicate_same_column_arithmetic(
     duplicate_assignment->value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_SAME_COLUMN_ARITHMETIC;
     duplicate_assignment->arithmetic_operator = operator_kind;
     duplicate_assignment->arithmetic_delta_node = delta;
+    *out_planned = true;
+    return MYLITE_OK;
+}
+
+static int plan_insert_duplicate_row_scalar_assignment(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_insert *plan,
+    struct planned_insert_duplicate_update_assignment *duplicate_assignment,
+    bool *out_planned
+) {
+    struct select_source_context source_context = {0};
+    const struct mylite_catalog_column_descriptor *target_column = NULL;
+    struct planned_row_scalar_expression *expression = NULL;
+    bool arithmetic_attempt = false;
+    int rc = MYLITE_OK;
+
+    *out_planned = false;
+    value_node = unwrap_parenthesized_expression(value_node);
+    if (value_node == NULL || insert_value_is_unix_timestamp_arithmetic(value_node)) {
+        return MYLITE_OK;
+    }
+    arithmetic_attempt = row_scalar_expression_contains_integer_arithmetic_attempt(value_node);
+    if (!is_row_scalar_control_flow_expression(value_node) &&
+        !row_scalar_expression_contains_row_function(value_node) && !arithmetic_attempt) {
+        return MYLITE_OK;
+    }
+
+    target_column = &plan->columns[duplicate_assignment->assignment_column_index];
+    if (arithmetic_attempt) {
+        struct integer_column_range range = {0};
+        bool is_constant_arithmetic = false;
+
+        rc = update_value_is_constant_arithmetic_expression(
+            database,
+            value_node,
+            &is_constant_arithmetic
+        );
+        if (rc != MYLITE_OK || is_constant_arithmetic) {
+            return rc;
+        }
+
+        rc = integer_range_for_column(
+            database,
+            target_column,
+            "INSERT ... ON DUPLICATE KEY UPDATE row-scalar assignment supports only integer "
+            "arithmetic targets",
+            &range
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    if (column_descriptor_is_auto_increment(target_column) ||
+        insert_duplicate_column_index_is_keyed(plan, duplicate_assignment->assignment_column_index)) {
+        set_unsupported_error(
+            database,
+            "INSERT ... ON DUPLICATE KEY UPDATE row-scalar assignment does not support "
+            "AUTO_INCREMENT or indexed targets"
+        );
+        return MYLITE_ERROR;
+    }
+
+    expression = calloc(1U, sizeof(*expression));
+    if (expression == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    source_context.source = &plan->target;
+    rc = plan_row_scalar_expression(
+        database,
+        value_node,
+        true,
+        &source_context,
+        &plan->table,
+        plan->columns,
+        plan->column_count,
+        expression
+    );
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(expression);
+        free(expression);
+        return rc;
+    }
+
+    duplicate_assignment->row_scalar_expression = expression;
     *out_planned = true;
     return MYLITE_OK;
 }
@@ -930,6 +1031,32 @@ static size_t count_executable_insert_duplicate_assignments(const struct planned
     }
     for (size_t index = 0U; index < plan->duplicate_update.assignment_count; ++index) {
         if (!insert_duplicate_assignment_is_noop(&plan->duplicate_update.assignments[index])) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+static size_t insert_duplicate_update_assignment_parameter_count(
+    const struct planned_insert *plan
+) {
+    size_t count = 0U;
+
+    if (plan == NULL) {
+        return 0U;
+    }
+    for (size_t index = 0U; index < plan->duplicate_update.assignment_count; ++index) {
+        const struct planned_insert_duplicate_update_assignment *assignment =
+            &plan->duplicate_update.assignments[index];
+
+        if (insert_duplicate_assignment_is_noop(assignment)) {
+            continue;
+        }
+        if (assignment->value_kind == PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_ROW_SCALAR) {
+            count += planned_row_scalar_expression_parameter_count(
+                assignment->row_scalar_expression
+            );
+        } else {
             ++count;
         }
     }
@@ -1216,6 +1343,12 @@ static void planned_insert_deinit(struct planned_insert *plan) {
         }
     }
     free(plan->rows);
+    for (size_t index = 0U; index < plan->duplicate_update.assignment_count; ++index) {
+        planned_row_scalar_expression_deinit(
+            plan->duplicate_update.assignments[index].row_scalar_expression
+        );
+        free(plan->duplicate_update.assignments[index].row_scalar_expression);
+    }
     free(plan->duplicate_update.assignments);
     mylite_execution_loaded_index_infos_deinit(&plan->indexes, &plan->index_count);
     mylite_execution_loaded_foreign_key_infos_deinit(&plan->foreign_keys, &plan->foreign_key_count);

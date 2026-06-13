@@ -679,13 +679,13 @@ static int test_sum_diagnostics(void) {
             .message_part = "SUM(column) supports only WHERE",
         }
     );
-    failures += execute_error(
+    failures += expect_sum_query(
         database,
-        "SELECT SUM(i) FROM numbers LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SUM(column) supports only WHERE",
+        (struct expected_sum_query){
+            .sql = "SELECT SUM(i) FROM numbers LIMIT 1",
+            .column = "SUM(i)",
+            .value = "2147483646",
+            .context = "sum limit",
         }
     );
 

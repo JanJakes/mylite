@@ -1426,9 +1426,11 @@ static int plan_comparison_predicate_like_value(
     size_t table_column_count,
     struct planned_select_predicate_node *node
 ) {
-    node->like_uses_escape = (bool
-    )!session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES);
-    int rc = validate_like_escape_clause(database, predicate_node);
+    int rc = like_escape_character_from_predicate(
+        database,
+        predicate_node,
+        &node->like_escape_character
+    );
 
     if (rc != MYLITE_OK) {
         return rc;
@@ -1451,15 +1453,23 @@ static int plan_comparison_predicate_like_value(
     );
 }
 
-static int validate_like_escape_clause(
+static int like_escape_character_from_predicate(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *predicate_node
+    const struct mylite_sql_ast_node *predicate_node,
+    char *out_escape_character
 ) {
     const struct mylite_sql_ast_node *escape_node = child_at(predicate_node, 2U);
     char *escape_text = NULL;
     size_t escape_length = 0U;
     int rc = MYLITE_OK;
 
+    if (out_escape_character == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_escape_character =
+        session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES)
+            ? '\0'
+            : '\\';
     if (escape_node == NULL) {
         return MYLITE_OK;
     }
@@ -1477,9 +1487,12 @@ static int validate_like_escape_clause(
         &escape_text,
         &escape_length
     );
-    if (rc == MYLITE_OK && (escape_length != 1U || escape_text[0] != '\\')) {
-        set_unsupported_error(database, "LIKE ESCAPE supports only the backslash escape character");
+    if (rc == MYLITE_OK && escape_length != 1U) {
+        set_unsupported_error(database, "LIKE ESCAPE supports one-character string literals");
         rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        *out_escape_character = escape_text[0];
     }
     free(escape_text);
     return rc;

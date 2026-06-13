@@ -163,7 +163,7 @@ jobs:
   drupal-phpunit:
     name: drupal-phpunit-mysqli-mylite
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     env:
       MYLITE_DRUPAL_REF: 11.3.11
@@ -190,7 +190,7 @@ jobs:
       - name: Install Drupal PHPUnit dependencies
         run: tools/drupal-phpunit-mysqli-mylite install-dependencies
 
-      - name: Run Drupal database PHPUnit tests
+      - name: Run Drupal database PHPUnit test suite
         run: tools/drupal-phpunit-mysqli-mylite test
 
       - name: Show generated artifact sizes
@@ -200,5 +200,139 @@ jobs:
             build/drupal-core/core/drupal-tests.mylite \
             build/drupal-core \
             build/drupal-php-mylite \
+            2>/dev/null || true
+          df -h .
+
+  laravel-phpunit:
+    name: laravel-phpunit-pdo-mylite
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    env:
+      MYLITE_LARAVEL_REF: v12.62.0
+      MYLITE_LARAVEL_CMAKE_BUILD_TYPE: Release
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Show runner resources
+        run: |
+          df -h .
+          free -h
+          docker version
+
+      - name: Build Laravel PHPUnit Docker image
+        run: tools/laravel-phpunit-pdo-mylite image
+
+      - name: Fetch Laravel test checkout
+        run: tools/laravel-phpunit-pdo-mylite fetch-laravel
+
+      - name: Build MyLite PHP extensions
+        run: tools/laravel-phpunit-pdo-mylite build-extensions
+
+      - name: Install Laravel PHPUnit dependencies
+        run: tools/laravel-phpunit-pdo-mylite install-dependencies
+
+      - name: Run Laravel database PHPUnit test suite
+        run: tools/laravel-phpunit-pdo-mylite test
+
+      - name: Show generated artifact sizes
+        if: always()
+        run: |
+          du -sh \
+            build/laravel-tests.mylite \
+            build/laravel-framework \
+            build/laravel-mylite-tests \
+            build/laravel-php-mylite \
+            2>/dev/null || true
+          df -h .
+
+  doctrine-phpunit:
+    name: doctrine-phpunit-pdo-mylite
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    env:
+      MYLITE_DOCTRINE_DBAL_REF: 4.4.3
+      MYLITE_DOCTRINE_ORM_REF: 3.6.7
+      MYLITE_DOCTRINE_CMAKE_BUILD_TYPE: Release
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Show runner resources
+        run: |
+          df -h .
+          free -h
+          docker version
+
+      - name: Build Doctrine PHPUnit Docker image
+        run: tools/doctrine-phpunit-pdo-mylite image
+
+      - name: Fetch Doctrine test checkouts
+        run: tools/doctrine-phpunit-pdo-mylite fetch-doctrine
+
+      - name: Build MyLite PHP extensions
+        run: tools/doctrine-phpunit-pdo-mylite build-extensions
+
+      - name: Install Doctrine PHPUnit dependencies
+        run: tools/doctrine-phpunit-pdo-mylite install-dependencies
+
+      - name: Run Doctrine DBAL and ORM PHPUnit test suite
+        run: tools/doctrine-phpunit-pdo-mylite test
+
+      - name: Show generated artifact sizes
+        if: always()
+        run: |
+          du -sh \
+            build/doctrine-dbal-tests.mylite \
+            build/doctrine-orm-tests.mylite \
+            build/doctrine-dbal \
+            build/doctrine-orm \
+            build/doctrine-mylite-tests \
+            build/doctrine-php-mylite \
+            2>/dev/null || true
+          df -h .
+
+  mediawiki-phpunit:
+    name: mediawiki-phpunit-mysqli-mylite
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    env:
+      MYLITE_MEDIAWIKI_REF: REL1_42
+      MYLITE_MEDIAWIKI_CMAKE_BUILD_TYPE: Release
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Show runner resources
+        run: |
+          df -h .
+          free -h
+          docker version
+
+      - name: Build MediaWiki PHPUnit Docker image
+        run: tools/mediawiki-phpunit-mysqli-mylite image
+
+      - name: Fetch MediaWiki test checkout
+        run: tools/mediawiki-phpunit-mysqli-mylite fetch-mediawiki
+
+      - name: Build MyLite PHP extensions
+        run: tools/mediawiki-phpunit-mysqli-mylite build-extensions
+
+      - name: Install MediaWiki PHPUnit dependencies
+        run: tools/mediawiki-phpunit-mysqli-mylite install-dependencies
+
+      - name: Run MediaWiki database PHPUnit test suite
+        run: tools/mediawiki-phpunit-mysqli-mylite test
+
+      - name: Show generated artifact sizes
+        if: always()
+        run: |
+          du -sh \
+            build/mediawiki-tests.mylite \
+            build/mediawiki-core \
+            build/mediawiki-php-mylite \
             2>/dev/null || true
           df -h .

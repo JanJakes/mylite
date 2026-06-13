@@ -1,0 +1,450 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+image="${MYLITE_LARAVEL_DOCKER_IMAGE:-mylite-laravel-phpunit:php84}"
+laravel_repo="${MYLITE_LARAVEL_REPO:-https://github.com/laravel/framework.git}"
+laravel_ref="${MYLITE_LARAVEL_REF:-v12.62.0}"
+laravel_dir="${MYLITE_LARAVEL_DIR:-${root_dir}/build/laravel-framework}"
+suite_dir="${MYLITE_LARAVEL_SUITE_DIR:-${root_dir}/build/laravel-mylite-tests}"
+cmake_build_dir="${MYLITE_LARAVEL_CMAKE_BUILD_DIR:-${root_dir}/build/laravel-php-mylite}"
+cmake_build_type="${MYLITE_LARAVEL_CMAKE_BUILD_TYPE:-Release}"
+db_path="${MYLITE_LARAVEL_DB_PATH:-${root_dir}/build/laravel-tests.mylite}"
+container_root="/work"
+container_laravel_dir="${container_root}${laravel_dir#"${root_dir}"}"
+container_suite_dir="${container_root}${suite_dir#"${root_dir}"}"
+container_cmake_build_dir="${container_root}${cmake_build_dir#"${root_dir}"}"
+container_db_path="${container_root}${db_path#"${root_dir}"}"
+
+build_image() {
+  docker build -t "${image}" - <<'DOCKERFILE'
+FROM composer:2 AS composer
+FROM php:8.4-cli-bookworm
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    cmake \
+    git \
+    libgmp-dev \
+    libzip-dev \
+    ninja-build \
+    pkg-config \
+    unzip \
+    zlib1g-dev \
+  && docker-php-ext-install -j"$(nproc)" ftp gmp zip \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=composer /usr/bin/composer /usr/local/bin/composer
+DOCKERFILE
+}
+
+usage() {
+  cat <<USAGE
+usage: tools/laravel-phpunit-pdo-mylite [command] [phpunit-args...]
+
+Commands:
+  image                 Build the Docker image.
+  fetch-laravel         Fetch the Laravel framework checkout.
+  build-extensions      Build the MyLite PHP extensions and PHP wrapper.
+  install-dependencies  Install Laravel and PHPUnit dependencies.
+  build                 Build the Docker image and full PHPUnit environment.
+  test                  Run the Laravel database PHPUnit test suite.
+  run                   Build the environment, then run the Laravel database PHPUnit test suite.
+USAGE
+}
+
+run_container() {
+  docker run --rm -i \
+    --user "$(id -u):$(id -g)" \
+    -e HOME=/tmp/mylite-home \
+    -e MYLITE_LARAVEL_REPO="${laravel_repo}" \
+    -e MYLITE_LARAVEL_REF="${laravel_ref}" \
+    -e MYLITE_LARAVEL_DIR="${container_laravel_dir}" \
+    -e MYLITE_LARAVEL_SUITE_DIR="${container_suite_dir}" \
+    -e MYLITE_LARAVEL_CMAKE_BUILD_DIR="${container_cmake_build_dir}" \
+    -e MYLITE_LARAVEL_CMAKE_BUILD_TYPE="${cmake_build_type}" \
+    -e MYLITE_LARAVEL_DB_PATH="${container_db_path}" \
+    -v "${root_dir}:${container_root}" \
+    -w "${container_root}" \
+    "${image}" \
+    bash -s -- "$@" <<'CONTAINER'
+set -euo pipefail
+
+container_phase="${1:-run}"
+if [ "$#" -gt 0 ]; then
+  shift
+fi
+php_wrapper="${MYLITE_LARAVEL_CMAKE_BUILD_DIR}/mylite-laravel-php"
+mylite_extension="${MYLITE_LARAVEL_CMAKE_BUILD_DIR}/packages/php-ext-mylite/mylite.so"
+pdo_extension="${MYLITE_LARAVEL_CMAKE_BUILD_DIR}/packages/php-ext-pdo-mylite/pdo_mylite.so"
+php_ini_dir="${MYLITE_LARAVEL_CMAKE_BUILD_DIR}/php-conf.d"
+
+phase() {
+  printf '\n==> %s\n' "$*"
+}
+
+seconds_since() {
+  local start="$1"
+  local end
+  end="$(date +%s)"
+  echo "$((end - start))"
+}
+
+require_executable() {
+  if [ ! -x "$1" ]; then
+    printf '%s\n' "missing executable: $1" >&2
+    printf '%s\n' "run tools/laravel-phpunit-pdo-mylite build first" >&2
+    exit 1
+  fi
+}
+
+fetch_laravel_framework() {
+  mkdir -p "${HOME}" "$(dirname "${MYLITE_LARAVEL_DIR}")"
+
+  phase "Fetch Laravel framework"
+  local fetch_start
+  fetch_start="$(date +%s)"
+  if [ ! -d "${MYLITE_LARAVEL_DIR}/.git" ]; then
+    git init "${MYLITE_LARAVEL_DIR}"
+    git -C "${MYLITE_LARAVEL_DIR}" remote add origin "${MYLITE_LARAVEL_REPO}"
+  fi
+  git -C "${MYLITE_LARAVEL_DIR}" fetch --depth 1 origin "${MYLITE_LARAVEL_REF}"
+  git -C "${MYLITE_LARAVEL_DIR}" checkout --detach FETCH_HEAD
+  laravel_sha="$(git -C "${MYLITE_LARAVEL_DIR}" rev-parse HEAD)"
+  echo "laravel_sha=${laravel_sha}"
+  echo "laravel_fetch_seconds=$(seconds_since "${fetch_start}")"
+}
+
+build_mylite_php_extensions() {
+  phase "Build MyLite PHP extensions"
+  local build_start
+  build_start="$(date +%s)"
+  cmake -S . -B "${MYLITE_LARAVEL_CMAKE_BUILD_DIR}" -G Ninja \
+    -DCMAKE_BUILD_TYPE="${MYLITE_LARAVEL_CMAKE_BUILD_TYPE}" \
+    -DMYLITE_WARNINGS_AS_ERRORS=ON \
+    -DMYLITE_BUILD_PHP_EXTENSIONS=ON \
+    -DMYLITE_PHP_CONFIG_EXECUTABLE=/usr/local/bin/php-config \
+    -DMYLITE_PHP_EXECUTABLE=/usr/local/bin/php
+  cmake --build "${MYLITE_LARAVEL_CMAKE_BUILD_DIR}" --target mylite_php_pdo_extension
+  mkdir -p "${php_ini_dir}"
+  cat > "${php_ini_dir}/mylite.ini" <<INI
+extension=${mylite_extension}
+extension=${pdo_extension}
+INI
+  cat > "${php_wrapper}" <<PHP
+#!/usr/bin/env sh
+export PHP_INI_SCAN_DIR="/usr/local/etc/php/conf.d:${php_ini_dir}"
+exec /usr/local/bin/php "\$@"
+PHP
+  chmod +x "${php_wrapper}"
+  "${php_wrapper}" -r 'if (!extension_loaded("mylite") || !extension_loaded("pdo_mylite") || !in_array("mylite", PDO::getAvailableDrivers(), true)) { exit(1); }'
+  echo "mylite_build_seconds=$(seconds_since "${build_start}")"
+}
+
+install_laravel_phpunit_dependencies() {
+  mkdir -p "${HOME}"
+  phase "Install Laravel PHPUnit dependencies"
+  local deps_start
+  deps_start="$(date +%s)"
+  composer --working-dir="${MYLITE_LARAVEL_DIR}" install --no-interaction --no-progress --prefer-dist
+  echo "laravel_dependency_seconds=$(seconds_since "${deps_start}")"
+}
+
+write_laravel_phpunit_suite() {
+  mkdir -p "${MYLITE_LARAVEL_SUITE_DIR}"
+
+  cat > "${MYLITE_LARAVEL_SUITE_DIR}/phpunit.xml" <<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit bootstrap="${MYLITE_LARAVEL_DIR}/vendor/autoload.php"
+         colors="true"
+         failOnRisky="true"
+         failOnWarning="true"
+         cacheDirectory="${MYLITE_LARAVEL_SUITE_DIR}/.phpunit.cache">
+  <testsuites>
+    <testsuite name="Laravel MyLite Database Test Suite">
+      <file>${MYLITE_LARAVEL_SUITE_DIR}/LaravelMyLiteDatabaseTest.php</file>
+    </testsuite>
+  </testsuites>
+  <php>
+    <ini name="date.timezone" value="UTC"/>
+    <ini name="memory_limit" value="1024M"/>
+    <env name="MYLITE_LARAVEL_DB_PATH" value="${MYLITE_LARAVEL_DB_PATH}"/>
+  </php>
+</phpunit>
+XML
+
+  cat > "${MYLITE_LARAVEL_SUITE_DIR}/LaravelMyLiteDatabaseTest.php" <<'PHP'
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Database\ConnectionResolver;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\MySqlConnection;
+use Illuminate\Database\Schema\Blueprint;
+use PHPUnit\Framework\TestCase;
+
+final class LaravelMyLiteDatabaseTest extends TestCase
+{
+    private MySqlConnection $connection;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $dbPath = getenv('MYLITE_LARAVEL_DB_PATH');
+        self::assertIsString($dbPath);
+        @unlink($dbPath);
+        @unlink($dbPath . '-journal');
+        @unlink($dbPath . '-wal');
+        @unlink($dbPath . '-shm');
+
+        $pdo = new PDO('mylite:' . $dbPath, null, null, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]);
+        $pdo->exec('CREATE DATABASE IF NOT EXISTS laravel_tests');
+        $pdo->exec('USE laravel_tests');
+
+        $this->connection = new MySqlConnection($pdo, 'laravel_tests', '', [
+            'name' => 'default',
+            'database' => 'laravel_tests',
+            'prefix' => '',
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+        ]);
+        $this->connection->useDefaultQueryGrammar();
+        $this->connection->useDefaultSchemaGrammar();
+        $this->connection->useDefaultPostProcessor();
+
+        $resolver = new ConnectionResolver(['default' => $this->connection]);
+        $resolver->setDefaultConnection('default');
+        Model::setConnectionResolver($resolver);
+    }
+
+    protected function tearDown(): void
+    {
+        Model::unsetConnectionResolver();
+        $this->connection->disconnect();
+
+        parent::tearDown();
+    }
+
+    public function testSchemaBuilderQueryBuilderAndTransactions(): void
+    {
+        $schema = $this->connection->getSchemaBuilder();
+        $schema->create('users', static function (Blueprint $table): void {
+            $table->increments('id');
+            $table->string('email', 191)->unique();
+            $table->string('name', 191)->default('');
+            $table->integer('score')->default(0);
+            $table->timestamp('created_at')->nullable();
+        });
+
+        self::assertTrue($schema->hasTable('users'));
+        self::assertContains('email', array_column($schema->getColumns('users'), 'name'));
+        self::assertNotEmpty($schema->getIndexes('users'));
+
+        $firstId = $this->connection->table('users')->insertGetId([
+            'email' => 'first@example.test',
+            'name' => 'First',
+            'score' => 10,
+        ]);
+        self::assertSame(1, $firstId);
+
+        $this->connection->table('users')->insert([
+            ['email' => 'second@example.test', 'name' => 'Second', 'score' => 20],
+            ['email' => 'third@example.test', 'name' => 'Third', 'score' => 5],
+        ]);
+
+        $emails = $this->connection->table('users')
+            ->where('score', '>=', 10)
+            ->orderByDesc('score')
+            ->pluck('email')
+            ->all();
+
+        self::assertSame(['second@example.test', 'first@example.test'], $emails);
+
+        try {
+            $this->connection->transaction(function (): void {
+                $this->connection->table('users')->insert([
+                    'email' => 'rolled-back@example.test',
+                    'name' => 'Rollback',
+                    'score' => 99,
+                ]);
+
+                throw new RuntimeException('rollback');
+            });
+            self::fail('Expected transaction callback to throw.');
+        } catch (RuntimeException $exception) {
+            self::assertSame('rollback', $exception->getMessage());
+        }
+
+        self::assertSame(0, $this->connection->table('users')->where('email', 'rolled-back@example.test')->count());
+    }
+
+    public function testEloquentCreateQueryAndRelations(): void
+    {
+        $schema = $this->connection->getSchemaBuilder();
+        $schema->create('users', static function (Blueprint $table): void {
+            $table->increments('id');
+            $table->string('email', 191)->unique();
+            $table->string('name', 191);
+        });
+        $schema->create('posts', static function (Blueprint $table): void {
+            $table->increments('id');
+            $table->unsignedInteger('user_id');
+            $table->string('title', 191);
+            $table->index('user_id');
+        });
+
+        $user = LaravelMyLiteUser::query()->create([
+            'email' => 'eloquent@example.test',
+            'name' => 'Eloquent',
+        ]);
+        $user->posts()->create(['title' => 'First post']);
+
+        $loaded = LaravelMyLiteUser::query()
+            ->with('posts')
+            ->where('email', 'eloquent@example.test')
+            ->firstOrFail();
+
+        self::assertSame('Eloquent', $loaded->name);
+        self::assertCount(1, $loaded->posts);
+        self::assertSame('First post', $loaded->posts[0]->title);
+    }
+}
+
+final class LaravelMyLiteUser extends Model
+{
+    protected $table = 'users';
+    protected $guarded = [];
+    public $timestamps = false;
+
+    public function posts()
+    {
+        return $this->hasMany(LaravelMyLitePost::class, 'user_id');
+    }
+}
+
+final class LaravelMyLitePost extends Model
+{
+    protected $table = 'posts';
+    protected $guarded = [];
+    public $timestamps = false;
+
+    public function user()
+    {
+        return $this->belongsTo(LaravelMyLiteUser::class, 'user_id');
+    }
+}
+PHP
+}
+
+build_laravel_phpunit_environment() {
+  fetch_laravel_framework
+  build_mylite_php_extensions
+  install_laravel_phpunit_dependencies
+}
+
+phpunit_output_has_nonpassing_summary() {
+  grep -Eq '^(FAILURES!|ERRORS!|No tests executed!|There (was|were) [0-9]+ (failure|failures|error|errors))' "$1"
+}
+
+run_laravel_phpunit_suite() {
+  require_executable "${php_wrapper}"
+  require_executable "${MYLITE_LARAVEL_DIR}/vendor/bin/phpunit"
+  mkdir -p "${MYLITE_LARAVEL_CMAKE_BUILD_DIR}"
+  write_laravel_phpunit_suite
+
+  phase "Run Laravel database PHPUnit test suite"
+  suite_log="${MYLITE_LARAVEL_CMAKE_BUILD_DIR}/laravel-phpunit.log"
+  suite_start="$(date +%s)"
+  set +e
+  "${php_wrapper}" "${MYLITE_LARAVEL_DIR}/vendor/bin/phpunit" -c "${MYLITE_LARAVEL_SUITE_DIR}/phpunit.xml" "$@" 2>&1 | tee "${suite_log}"
+  suite_status="${PIPESTATUS[0]}"
+  set -e
+  if [ "${suite_status}" -eq 0 ] && phpunit_output_has_nonpassing_summary "${suite_log}"; then
+    printf '%s\n' "PHPUnit reported a non-passing summary but exited with status 0" >&2
+    suite_status=1
+  fi
+  echo "laravel_phpunit_seconds=$(seconds_since "${suite_start}")"
+  return "${suite_status}"
+}
+
+case "${container_phase}" in
+  fetch-laravel)
+    fetch_laravel_framework
+    ;;
+  build-extensions)
+    build_mylite_php_extensions
+    ;;
+  install-dependencies)
+    install_laravel_phpunit_dependencies
+    ;;
+  build)
+    build_laravel_phpunit_environment
+    ;;
+  test)
+    run_laravel_phpunit_suite "$@"
+    ;;
+  *)
+    printf 'unknown Laravel PHPUnit phase: %s\n' "${container_phase}" >&2
+    exit 2
+    ;;
+esac
+CONTAINER
+}
+
+command="run"
+if [ "$#" -gt 0 ]; then
+  case "$1" in
+    image|fetch-laravel|build-extensions|install-dependencies|build|test|run)
+      command="$1"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      printf 'unknown command: %s\n' "$1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+fi
+
+overall_start="$(date +%s)"
+overall_status=0
+set +e
+case "${command}" in
+  image)
+    build_image
+    ;;
+  fetch-laravel|build-extensions|install-dependencies)
+    run_container "${command}"
+    ;;
+  build)
+    build_image
+    run_container build
+    ;;
+  test)
+    run_container test "$@"
+    ;;
+  run)
+    build_image
+    run_container build && run_container test "$@"
+    ;;
+  *)
+    printf 'unknown command: %s\n' "${command}" >&2
+    false
+    ;;
+esac
+overall_status="$?"
+set -e
+overall_end="$(date +%s)"
+echo "laravel_total_seconds=$((overall_end - overall_start))"
+exit "${overall_status}"

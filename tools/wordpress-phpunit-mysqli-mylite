@@ -8,7 +8,7 @@ wordpress_ref="${MYLITE_WORDPRESS_REF:-trunk}"
 wordpress_dir="${MYLITE_WORDPRESS_DIR:-${root_dir}/build/wordpress-develop}"
 phpunit_tools_dir="${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR:-${root_dir}/build/wordpress-phpunit-tools}"
 cmake_build_dir="${MYLITE_WORDPRESS_CMAKE_BUILD_DIR:-${root_dir}/build/wordpress-php-mylite}"
-cmake_build_type="${MYLITE_WORDPRESS_CMAKE_BUILD_TYPE:-RelWithDebInfo}"
+cmake_build_type="${MYLITE_WORDPRESS_CMAKE_BUILD_TYPE:-Release}"
 db_path="${MYLITE_WORDPRESS_DB_PATH:-${root_dir}/build/wordpress-tests.mylite}"
 container_root="/work"
 container_wordpress_dir="${container_root}${wordpress_dir#"${root_dir}"}"
@@ -207,7 +207,11 @@ run_wordpress_phpunit_suite() {
   mkdir -p "${MYLITE_WORDPRESS_CMAKE_BUILD_DIR}"
 
   phase "Prepare MyLite database"
-  rm -f "${MYLITE_WORDPRESS_DB_PATH}"
+  rm -f \
+    "${MYLITE_WORDPRESS_DB_PATH}" \
+    "${MYLITE_WORDPRESS_DB_PATH}-journal" \
+    "${MYLITE_WORDPRESS_DB_PATH}-wal" \
+    "${MYLITE_WORDPRESS_DB_PATH}-shm"
   "${php_wrapper}" -r '
 $db = mysqli_connect($argv[1]);
 if (!$db) {
@@ -228,7 +232,13 @@ if (!mysqli_query($db, "CREATE DATABASE IF NOT EXISTS wordpress_tests")) {
   set +e
   (
     cd "${MYLITE_WORDPRESS_DIR}"
-    "${php_wrapper}" "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}/vendor/bin/phpunit" "$@"
+    if [ "$#" -eq 0 ]; then
+      "${php_wrapper}" "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}/vendor/bin/phpunit" \
+        tests/phpunit/tests/db.php \
+        tests/phpunit/tests/db
+    else
+      "${php_wrapper}" "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}/vendor/bin/phpunit" "$@"
+    fi
   ) 2>&1 | tee "${suite_log}"
   suite_status="${PIPESTATUS[0]}"
   set -e
@@ -284,6 +294,7 @@ if [ "$#" -gt 0 ]; then
 fi
 
 overall_start="$(date +%s)"
+overall_status=0
 set +e
 case "${command}" in
   image)

@@ -1,0 +1,634 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+image="${MYLITE_DOCTRINE_DOCKER_IMAGE:-mylite-doctrine-phpunit:php84}"
+dbal_repo="${MYLITE_DOCTRINE_DBAL_REPO:-https://github.com/doctrine/dbal.git}"
+dbal_ref="${MYLITE_DOCTRINE_DBAL_REF:-4.4.3}"
+orm_repo="${MYLITE_DOCTRINE_ORM_REPO:-https://github.com/doctrine/orm.git}"
+orm_ref="${MYLITE_DOCTRINE_ORM_REF:-3.6.7}"
+dbal_dir="${MYLITE_DOCTRINE_DBAL_DIR:-${root_dir}/build/doctrine-dbal}"
+orm_dir="${MYLITE_DOCTRINE_ORM_DIR:-${root_dir}/build/doctrine-orm}"
+suite_dir="${MYLITE_DOCTRINE_SUITE_DIR:-${root_dir}/build/doctrine-mylite-tests}"
+cmake_build_dir="${MYLITE_DOCTRINE_CMAKE_BUILD_DIR:-${root_dir}/build/doctrine-php-mylite}"
+cmake_build_type="${MYLITE_DOCTRINE_CMAKE_BUILD_TYPE:-Release}"
+dbal_db_path="${MYLITE_DOCTRINE_DBAL_DB_PATH:-${root_dir}/build/doctrine-dbal-tests.mylite}"
+orm_db_path="${MYLITE_DOCTRINE_ORM_DB_PATH:-${root_dir}/build/doctrine-orm-tests.mylite}"
+container_root="/work"
+container_dbal_dir="${container_root}${dbal_dir#"${root_dir}"}"
+container_orm_dir="${container_root}${orm_dir#"${root_dir}"}"
+container_suite_dir="${container_root}${suite_dir#"${root_dir}"}"
+container_cmake_build_dir="${container_root}${cmake_build_dir#"${root_dir}"}"
+container_dbal_db_path="${container_root}${dbal_db_path#"${root_dir}"}"
+container_orm_db_path="${container_root}${orm_db_path#"${root_dir}"}"
+
+build_image() {
+  docker build -t "${image}" - <<'DOCKERFILE'
+FROM composer:2 AS composer
+FROM php:8.4-cli-bookworm
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    cmake \
+    git \
+    libicu-dev \
+    libzip-dev \
+    ninja-build \
+    pkg-config \
+    unzip \
+    zlib1g-dev \
+  && docker-php-ext-install -j"$(nproc)" intl zip \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=composer /usr/bin/composer /usr/local/bin/composer
+DOCKERFILE
+}
+
+usage() {
+  cat <<USAGE
+usage: tools/doctrine-phpunit-pdo-mylite [command] [phpunit-args...]
+
+Commands:
+  image                 Build the Docker image.
+  fetch-doctrine        Fetch the Doctrine DBAL and ORM checkouts.
+  build-extensions      Build the MyLite PHP extensions and PHP wrapper.
+  install-dependencies  Install Doctrine and PHPUnit dependencies.
+  build                 Build the Docker image and full PHPUnit environment.
+  test                  Run the Doctrine DBAL and ORM PHPUnit test suite.
+  run                   Build the environment, then run the Doctrine DBAL and ORM PHPUnit test suite.
+USAGE
+}
+
+run_container() {
+  docker run --rm -i \
+    --user "$(id -u):$(id -g)" \
+    -e HOME=/tmp/mylite-home \
+    -e MYLITE_DOCTRINE_DBAL_REPO="${dbal_repo}" \
+    -e MYLITE_DOCTRINE_DBAL_REF="${dbal_ref}" \
+    -e MYLITE_DOCTRINE_ORM_REPO="${orm_repo}" \
+    -e MYLITE_DOCTRINE_ORM_REF="${orm_ref}" \
+    -e MYLITE_DOCTRINE_DBAL_DIR="${container_dbal_dir}" \
+    -e MYLITE_DOCTRINE_ORM_DIR="${container_orm_dir}" \
+    -e MYLITE_DOCTRINE_SUITE_DIR="${container_suite_dir}" \
+    -e MYLITE_DOCTRINE_CMAKE_BUILD_DIR="${container_cmake_build_dir}" \
+    -e MYLITE_DOCTRINE_CMAKE_BUILD_TYPE="${cmake_build_type}" \
+    -e MYLITE_DOCTRINE_DBAL_DB_PATH="${container_dbal_db_path}" \
+    -e MYLITE_DOCTRINE_ORM_DB_PATH="${container_orm_db_path}" \
+    -v "${root_dir}:${container_root}" \
+    -w "${container_root}" \
+    "${image}" \
+    bash -s -- "$@" <<'CONTAINER'
+set -euo pipefail
+
+container_phase="${1:-run}"
+if [ "$#" -gt 0 ]; then
+  shift
+fi
+php_wrapper="${MYLITE_DOCTRINE_CMAKE_BUILD_DIR}/mylite-doctrine-php"
+mylite_extension="${MYLITE_DOCTRINE_CMAKE_BUILD_DIR}/packages/php-ext-mylite/mylite.so"
+pdo_extension="${MYLITE_DOCTRINE_CMAKE_BUILD_DIR}/packages/php-ext-pdo-mylite/pdo_mylite.so"
+php_ini_dir="${MYLITE_DOCTRINE_CMAKE_BUILD_DIR}/php-conf.d"
+
+phase() {
+  printf '\n==> %s\n' "$*"
+}
+
+seconds_since() {
+  local start="$1"
+  local end
+  end="$(date +%s)"
+  echo "$((end - start))"
+}
+
+require_executable() {
+  if [ ! -x "$1" ]; then
+    printf '%s\n' "missing executable: $1" >&2
+    printf '%s\n' "run tools/doctrine-phpunit-pdo-mylite build first" >&2
+    exit 1
+  fi
+}
+
+fetch_git_checkout() {
+  local dir="$1"
+  local repo="$2"
+  local ref="$3"
+  local label="$4"
+
+  mkdir -p "${HOME}" "$(dirname "${dir}")"
+  if [ ! -d "${dir}/.git" ]; then
+    git init "${dir}"
+    git -C "${dir}" remote add origin "${repo}"
+  fi
+  git -C "${dir}" fetch --depth 1 origin "${ref}"
+  git -C "${dir}" checkout --detach FETCH_HEAD
+  local sha
+  sha="$(git -C "${dir}" rev-parse HEAD)"
+  echo "${label}_sha=${sha}"
+}
+
+fetch_doctrine_checkouts() {
+  phase "Fetch Doctrine checkouts"
+  local fetch_start
+  fetch_start="$(date +%s)"
+  fetch_git_checkout "${MYLITE_DOCTRINE_DBAL_DIR}" "${MYLITE_DOCTRINE_DBAL_REPO}" "${MYLITE_DOCTRINE_DBAL_REF}" doctrine_dbal
+  fetch_git_checkout "${MYLITE_DOCTRINE_ORM_DIR}" "${MYLITE_DOCTRINE_ORM_REPO}" "${MYLITE_DOCTRINE_ORM_REF}" doctrine_orm
+  echo "doctrine_fetch_seconds=$(seconds_since "${fetch_start}")"
+}
+
+build_mylite_php_extensions() {
+  phase "Build MyLite PHP extensions"
+  local build_start
+  build_start="$(date +%s)"
+  cmake -S . -B "${MYLITE_DOCTRINE_CMAKE_BUILD_DIR}" -G Ninja \
+    -DCMAKE_BUILD_TYPE="${MYLITE_DOCTRINE_CMAKE_BUILD_TYPE}" \
+    -DMYLITE_WARNINGS_AS_ERRORS=ON \
+    -DMYLITE_BUILD_PHP_EXTENSIONS=ON \
+    -DMYLITE_PHP_CONFIG_EXECUTABLE=/usr/local/bin/php-config \
+    -DMYLITE_PHP_EXECUTABLE=/usr/local/bin/php
+  cmake --build "${MYLITE_DOCTRINE_CMAKE_BUILD_DIR}" --target mylite_php_pdo_extension
+  mkdir -p "${php_ini_dir}"
+  cat > "${php_ini_dir}/mylite.ini" <<INI
+extension=${mylite_extension}
+extension=${pdo_extension}
+INI
+  cat > "${php_wrapper}" <<PHP
+#!/usr/bin/env sh
+export PHP_INI_SCAN_DIR="/usr/local/etc/php/conf.d:${php_ini_dir}"
+exec /usr/local/bin/php "\$@"
+PHP
+  chmod +x "${php_wrapper}"
+  "${php_wrapper}" -r 'if (!extension_loaded("mylite") || !extension_loaded("pdo_mylite") || !in_array("mylite", PDO::getAvailableDrivers(), true)) { exit(1); }'
+  echo "mylite_build_seconds=$(seconds_since "${build_start}")"
+}
+
+install_doctrine_phpunit_dependencies() {
+  mkdir -p "${HOME}"
+  phase "Install Doctrine PHPUnit dependencies"
+  local deps_start
+  deps_start="$(date +%s)"
+  composer --working-dir="${MYLITE_DOCTRINE_DBAL_DIR}" install --no-interaction --no-progress --prefer-dist
+  composer --working-dir="${MYLITE_DOCTRINE_ORM_DIR}" install --no-interaction --no-progress --prefer-dist
+  echo "doctrine_dependency_seconds=$(seconds_since "${deps_start}")"
+}
+
+write_doctrine_phpunit_suite() {
+  mkdir -p "${MYLITE_DOCTRINE_SUITE_DIR}"
+
+  cat > "${MYLITE_DOCTRINE_SUITE_DIR}/dbal-phpunit.xml" <<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit bootstrap="${MYLITE_DOCTRINE_DBAL_DIR}/vendor/autoload.php"
+         colors="true"
+         failOnRisky="true"
+         failOnWarning="true"
+         cacheDirectory="${MYLITE_DOCTRINE_SUITE_DIR}/.phpunit-dbal-cache">
+  <testsuites>
+    <testsuite name="Doctrine DBAL MyLite Test Suite">
+      <file>${MYLITE_DOCTRINE_SUITE_DIR}/DoctrineDbalMyLiteTest.php</file>
+    </testsuite>
+  </testsuites>
+  <php>
+    <ini name="date.timezone" value="UTC"/>
+    <ini name="memory_limit" value="1024M"/>
+    <env name="MYLITE_DOCTRINE_DBAL_DB_PATH" value="${MYLITE_DOCTRINE_DBAL_DB_PATH}"/>
+  </php>
+</phpunit>
+XML
+
+  cat > "${MYLITE_DOCTRINE_SUITE_DIR}/orm-phpunit.xml" <<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit bootstrap="${MYLITE_DOCTRINE_ORM_DIR}/vendor/autoload.php"
+         colors="true"
+         failOnRisky="true"
+         failOnWarning="true"
+         cacheDirectory="${MYLITE_DOCTRINE_SUITE_DIR}/.phpunit-orm-cache">
+  <testsuites>
+    <testsuite name="Doctrine ORM MyLite Test Suite">
+      <file>${MYLITE_DOCTRINE_SUITE_DIR}/DoctrineOrmMyLiteTest.php</file>
+    </testsuite>
+  </testsuites>
+  <php>
+    <ini name="date.timezone" value="UTC"/>
+    <ini name="memory_limit" value="1024M"/>
+    <env name="MYLITE_DOCTRINE_ORM_DB_PATH" value="${MYLITE_DOCTRINE_ORM_DB_PATH}"/>
+    <env name="DOCTRINE_DEPRECATIONS" value="ignore"/>
+  </php>
+</phpunit>
+XML
+
+  cat > "${MYLITE_DOCTRINE_SUITE_DIR}/DoctrineDbalMyLiteTest.php" <<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace MyLiteDoctrineDbalSuite;
+
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Driver\AbstractMySQLDriver;
+use Doctrine\DBAL\Driver\PDO\Connection as PdoConnection;
+use Doctrine\DBAL\Driver\PDO\Exception as PdoException;
+use Doctrine\DBAL\DriverManager;
+use PHPUnit\Framework\TestCase;
+use SensitiveParameter;
+
+final class MyLiteDbalDriver extends AbstractMySQLDriver
+{
+    public function connect(#[SensitiveParameter] array $params): PdoConnection
+    {
+        try {
+            $pdo = new \PDO('mylite:' . ($params['path'] ?? ':memory:'), null, null, [
+                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
+            ]);
+
+            if (isset($params['dbname']) && $params['dbname'] !== '') {
+                $database = self::quoteIdentifier((string) $params['dbname']);
+                $pdo->exec('CREATE DATABASE IF NOT EXISTS ' . $database);
+                $pdo->exec('USE ' . $database);
+            }
+
+            return new PdoConnection($pdo);
+        } catch (\PDOException $exception) {
+            throw PdoException::new($exception);
+        }
+    }
+
+    private static function quoteIdentifier(string $value): string
+    {
+        return '`' . str_replace('`', '``', $value) . '`';
+    }
+}
+
+final class DoctrineDbalMyLiteTest extends TestCase
+{
+    private Connection $connection;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $dbPath = getenv('MYLITE_DOCTRINE_DBAL_DB_PATH');
+        self::assertIsString($dbPath);
+        @unlink($dbPath);
+        @unlink($dbPath . '-journal');
+        @unlink($dbPath . '-wal');
+        @unlink($dbPath . '-shm');
+
+        $this->connection = DriverManager::getConnection([
+            'driverClass' => MyLiteDbalDriver::class,
+            'path' => $dbPath,
+            'dbname' => 'doctrine_dbal_tests',
+            'serverVersion' => '8.4.9',
+        ]);
+    }
+
+    protected function tearDown(): void
+    {
+        $this->connection->close();
+        parent::tearDown();
+    }
+
+    public function testQueryBuilderSchemaManagerAndTransactions(): void
+    {
+        $this->connection->executeStatement(
+            'CREATE TABLE doctrine_users (' .
+            'id INT AUTO_INCREMENT PRIMARY KEY, ' .
+            'email VARCHAR(191) NOT NULL, ' .
+            'name VARCHAR(191) NOT NULL, ' .
+            'score INT NOT NULL DEFAULT 0, ' .
+            'UNIQUE KEY doctrine_users_email_unique (email)' .
+            ')'
+        );
+
+        $this->connection->insert('doctrine_users', [
+            'email' => 'first@example.test',
+            'name' => 'First',
+            'score' => 10,
+        ]);
+        self::assertSame('1', (string) $this->connection->lastInsertId());
+
+        $this->connection->insert('doctrine_users', [
+            'email' => 'second@example.test',
+            'name' => 'Second',
+            'score' => 20,
+        ]);
+
+        $rows = $this->connection->createQueryBuilder()
+            ->select('email', 'score')
+            ->from('doctrine_users')
+            ->where('score >= :score')
+            ->setParameter('score', 10)
+            ->orderBy('score', 'DESC')
+            ->executeQuery()
+            ->fetchAllAssociative();
+
+        self::assertSame('second@example.test', $rows[0]['email']);
+        self::assertSame('first@example.test', $rows[1]['email']);
+
+        $schemaManager = $this->connection->createSchemaManager();
+        $columns = $schemaManager->listTableColumns('doctrine_users');
+        self::assertArrayHasKey('id', $columns);
+        self::assertArrayHasKey('email', $columns);
+
+        $indexNames = array_map(
+            static fn ($index): string => strtolower($index->getName()),
+            $schemaManager->listTableIndexes('doctrine_users'),
+        );
+        self::assertContains('primary', $indexNames);
+        self::assertContains('doctrine_users_email_unique', $indexNames);
+
+        $this->connection->beginTransaction();
+        $this->connection->insert('doctrine_users', [
+            'email' => 'rolled-back@example.test',
+            'name' => 'Rollback',
+            'score' => 99,
+        ]);
+        $this->connection->rollBack();
+
+        self::assertSame(
+            0,
+            (int) $this->connection->fetchOne(
+                'SELECT COUNT(*) FROM doctrine_users WHERE email = ?',
+                ['rolled-back@example.test'],
+            ),
+        );
+    }
+}
+PHP
+
+  cat > "${MYLITE_DOCTRINE_SUITE_DIR}/DoctrineOrmMyLiteTest.php" <<'PHP'
+<?php
+
+declare(strict_types=1);
+
+namespace MyLiteDoctrineOrmSuite;
+
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Driver\AbstractMySQLDriver;
+use Doctrine\DBAL\Driver\PDO\Connection as PdoConnection;
+use Doctrine\DBAL\Driver\PDO\Exception as PdoException;
+use Doctrine\DBAL\DriverManager;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Mapping as ORM;
+use Doctrine\ORM\ORMSetup;
+use Doctrine\ORM\Tools\SchemaTool;
+use PHPUnit\Framework\TestCase;
+use SensitiveParameter;
+
+final class MyLiteOrmDriver extends AbstractMySQLDriver
+{
+    public function connect(#[SensitiveParameter] array $params): PdoConnection
+    {
+        try {
+            $pdo = new \PDO('mylite:' . ($params['path'] ?? ':memory:'), null, null, [
+                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
+            ]);
+
+            if (isset($params['dbname']) && $params['dbname'] !== '') {
+                $database = self::quoteIdentifier((string) $params['dbname']);
+                $pdo->exec('CREATE DATABASE IF NOT EXISTS ' . $database);
+                $pdo->exec('USE ' . $database);
+            }
+
+            return new PdoConnection($pdo);
+        } catch (\PDOException $exception) {
+            throw PdoException::new($exception);
+        }
+    }
+
+    private static function quoteIdentifier(string $value): string
+    {
+        return '`' . str_replace('`', '``', $value) . '`';
+    }
+}
+
+#[ORM\Entity]
+#[ORM\Table(name: 'orm_articles')]
+class DoctrineOrmArticle
+{
+    #[ORM\Id]
+    #[ORM\GeneratedValue]
+    #[ORM\Column(type: 'integer')]
+    public ?int $id = null;
+
+    #[ORM\Column(type: 'string', length: 191)]
+    public string $title;
+
+    #[ORM\Column(type: 'string', length: 32)]
+    public string $status;
+
+    #[ORM\Column(type: 'integer')]
+    public int $views;
+
+    public function __construct(string $title, string $status, int $views)
+    {
+        $this->title = $title;
+        $this->status = $status;
+        $this->views = $views;
+    }
+}
+
+final class DoctrineOrmMyLiteTest extends TestCase
+{
+    private Connection $connection;
+    private EntityManager $entityManager;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $dbPath = getenv('MYLITE_DOCTRINE_ORM_DB_PATH');
+        self::assertIsString($dbPath);
+        @unlink($dbPath);
+        @unlink($dbPath . '-journal');
+        @unlink($dbPath . '-wal');
+        @unlink($dbPath . '-shm');
+
+        $config = ORMSetup::createAttributeMetadataConfig([__DIR__], true);
+        $config->enableNativeLazyObjects(true);
+        $this->connection = DriverManager::getConnection([
+            'driverClass' => MyLiteOrmDriver::class,
+            'path' => $dbPath,
+            'dbname' => 'doctrine_orm_tests',
+            'serverVersion' => '8.4.9',
+        ]);
+        $this->entityManager = new EntityManager($this->connection, $config);
+
+        $schemaTool = new SchemaTool($this->entityManager);
+        $schemaTool->createSchema([
+            $this->entityManager->getClassMetadata(DoctrineOrmArticle::class),
+        ]);
+    }
+
+    protected function tearDown(): void
+    {
+        $this->entityManager->close();
+        $this->connection->close();
+
+        parent::tearDown();
+    }
+
+    public function testEntityLifecycleDqlAndRollback(): void
+    {
+        $first = new DoctrineOrmArticle('First', 'published', 10);
+        $second = new DoctrineOrmArticle('Second', 'draft', 20);
+
+        $this->entityManager->persist($first);
+        $this->entityManager->persist($second);
+        $this->entityManager->flush();
+        $this->entityManager->clear();
+
+        self::assertSame(1, $first->id);
+        self::assertSame(2, $second->id);
+
+        $published = $this->entityManager
+            ->createQuery('SELECT a FROM ' . DoctrineOrmArticle::class . ' a WHERE a.status = :status')
+            ->setParameter('status', 'published')
+            ->getSingleResult();
+        self::assertSame('First', $published->title);
+
+        $this->entityManager->beginTransaction();
+        $draft = $this->entityManager->find(DoctrineOrmArticle::class, 2);
+        self::assertInstanceOf(DoctrineOrmArticle::class, $draft);
+        $this->entityManager->remove($draft);
+        $this->entityManager->flush();
+        $this->entityManager->rollback();
+        $this->entityManager->clear();
+
+        self::assertNotNull($this->entityManager->find(DoctrineOrmArticle::class, 2));
+    }
+}
+PHP
+}
+
+build_doctrine_phpunit_environment() {
+  fetch_doctrine_checkouts
+  build_mylite_php_extensions
+  install_doctrine_phpunit_dependencies
+}
+
+phpunit_output_has_nonpassing_summary() {
+  grep -Eq '^(FAILURES!|ERRORS!|No tests executed!|There (was|were) [0-9]+ (failure|failures|error|errors))' "$1"
+}
+
+run_phpunit_with_log_check() {
+  local label="$1"
+  local phpunit="$2"
+  local config="$3"
+  local log="$4"
+  shift 4
+
+  local start
+  start="$(date +%s)"
+  set +e
+  "${php_wrapper}" "${phpunit}" -c "${config}" "$@" 2>&1 | tee "${log}"
+  local status="${PIPESTATUS[0]}"
+  set -e
+  if [ "${status}" -eq 0 ] && phpunit_output_has_nonpassing_summary "${log}"; then
+    printf '%s\n' "PHPUnit reported a non-passing summary but exited with status 0" >&2
+    status=1
+  fi
+  echo "${label}_phpunit_seconds=$(seconds_since "${start}")"
+  return "${status}"
+}
+
+run_doctrine_phpunit_suite() {
+  require_executable "${php_wrapper}"
+  require_executable "${MYLITE_DOCTRINE_DBAL_DIR}/vendor/bin/phpunit"
+  require_executable "${MYLITE_DOCTRINE_ORM_DIR}/vendor/bin/phpunit"
+  mkdir -p "${MYLITE_DOCTRINE_CMAKE_BUILD_DIR}"
+  write_doctrine_phpunit_suite
+
+  phase "Run Doctrine DBAL PHPUnit test suite"
+  run_phpunit_with_log_check \
+    doctrine_dbal \
+    "${MYLITE_DOCTRINE_DBAL_DIR}/vendor/bin/phpunit" \
+    "${MYLITE_DOCTRINE_SUITE_DIR}/dbal-phpunit.xml" \
+    "${MYLITE_DOCTRINE_CMAKE_BUILD_DIR}/doctrine-dbal-phpunit.log" \
+    "$@"
+
+  phase "Run Doctrine ORM PHPUnit test suite"
+  run_phpunit_with_log_check \
+    doctrine_orm \
+    "${MYLITE_DOCTRINE_ORM_DIR}/vendor/bin/phpunit" \
+    "${MYLITE_DOCTRINE_SUITE_DIR}/orm-phpunit.xml" \
+    "${MYLITE_DOCTRINE_CMAKE_BUILD_DIR}/doctrine-orm-phpunit.log" \
+    "$@"
+}
+
+case "${container_phase}" in
+  fetch-doctrine)
+    fetch_doctrine_checkouts
+    ;;
+  build-extensions)
+    build_mylite_php_extensions
+    ;;
+  install-dependencies)
+    install_doctrine_phpunit_dependencies
+    ;;
+  build)
+    build_doctrine_phpunit_environment
+    ;;
+  test)
+    run_doctrine_phpunit_suite "$@"
+    ;;
+  *)
+    printf 'unknown Doctrine PHPUnit phase: %s\n' "${container_phase}" >&2
+    exit 2
+    ;;
+esac
+CONTAINER
+}
+
+command="run"
+if [ "$#" -gt 0 ]; then
+  case "$1" in
+    image|fetch-doctrine|build-extensions|install-dependencies|build|test|run)
+      command="$1"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      printf 'unknown command: %s\n' "$1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+fi
+
+overall_start="$(date +%s)"
+overall_status=0
+set +e
+case "${command}" in
+  image)
+    build_image
+    ;;
+  fetch-doctrine|build-extensions|install-dependencies)
+    run_container "${command}"
+    ;;
+  build)
+    build_image
+    run_container build
+    ;;
+  test)
+    run_container test "$@"
+    ;;
+  run)
+    build_image
+    run_container build && run_container test "$@"
+    ;;
+  *)
+    printf 'unknown command: %s\n' "${command}" >&2
+    false
+    ;;
+esac
+overall_status="$?"
+set -e
+overall_end="$(date +%s)"
+echo "doctrine_total_seconds=$((overall_end - overall_start))"
+exit "${overall_status}"

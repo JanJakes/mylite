@@ -7,7 +7,7 @@ drupal_repo="${MYLITE_DRUPAL_REPO:-https://git.drupalcode.org/project/drupal.git
 drupal_ref="${MYLITE_DRUPAL_REF:-11.3.11}"
 drupal_dir="${MYLITE_DRUPAL_DIR:-${root_dir}/build/drupal-core}"
 cmake_build_dir="${MYLITE_DRUPAL_CMAKE_BUILD_DIR:-${root_dir}/build/drupal-php-mylite}"
-cmake_build_type="${MYLITE_DRUPAL_CMAKE_BUILD_TYPE:-RelWithDebInfo}"
+cmake_build_type="${MYLITE_DRUPAL_CMAKE_BUILD_TYPE:-Release}"
 db_file_name="${MYLITE_DRUPAL_DB_FILE_NAME:-drupal-tests.mylite}"
 db_name="${MYLITE_DRUPAL_DB_NAME:-drupal_tests}"
 db_prefix="${MYLITE_DRUPAL_DB_PREFIX:-mylite_drupal_}"
@@ -55,8 +55,8 @@ Commands:
   build-extensions      Build the MyLite PHP extensions and PHP wrapper.
   install-dependencies  Install Drupal PHPUnit dependencies.
   build                 Build the Docker image and full PHPUnit environment.
-  test                  Run the Drupal database PHPUnit selection.
-  run                   Build the environment, then run the Drupal database PHPUnit selection.
+  test                  Run the Drupal database PHPUnit test suite.
+  run                   Build the environment, then run the Drupal database PHPUnit test suite.
 USAGE
 }
 
@@ -185,7 +185,11 @@ file_put_contents($path, $xml);
 
 prepare_drupal_database() {
   phase "Prepare MyLite database"
-  rm -f "${drupal_db_path}"
+  rm -f \
+    "${drupal_db_path}" \
+    "${drupal_db_path}-journal" \
+    "${drupal_db_path}-wal" \
+    "${drupal_db_path}-shm"
   (
     cd "${drupal_core_dir}"
     "${php_wrapper}" -r '
@@ -293,6 +297,7 @@ if [ "$#" -gt 0 ]; then
 fi
 
 overall_start="$(date +%s)"
+overall_status=0
 set +e
 case "${command}" in
   image)

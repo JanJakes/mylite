@@ -41,6 +41,7 @@ static int test_temporary_if_exists_and_diagnostics(void);
 static int test_temporary_keyword_remains_nonreserved_identifier(void);
 static int test_schema_qualified_temporary_table_survives_schema_drop(void);
 static int test_temporary_table_dml_transactions(void);
+static int test_temporary_table_savepoint_ddl_survives_rollback_to(void);
 static int test_independent_handles_have_independent_temporary_tables(void);
 static int seed_app_schema(mylite_db *database);
 static int expect_statement(
@@ -90,6 +91,7 @@ int main(void) {
     failures += test_temporary_keyword_remains_nonreserved_identifier();
     failures += test_schema_qualified_temporary_table_survives_schema_drop();
     failures += test_temporary_table_dml_transactions();
+    failures += test_temporary_table_savepoint_ddl_survives_rollback_to();
     failures += test_independent_handles_have_independent_temporary_tables();
 
     return failures == 0 ? 0 : 1;
@@ -577,6 +579,96 @@ static int test_temporary_table_dml_transactions(void) {
     );
     failures +=
         expect_error(database, "SELECT COUNT(*) FROM tx_drop", mysql_error_table_does_not_exist);
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_temporary_table_savepoint_ddl_survives_rollback_to(void) {
+    static const char *const created_empty_rows[] = {"0"};
+    static const char *const created_inserted_rows[] = {"2", "20"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "savepoint_ddl") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open savepoint-ddl file");
+    failures += seed_app_schema(database);
+    failures += expect_statement(database, "START TRANSACTION", (struct expected_statement){0, 0U});
+    failures +=
+        expect_statement(database, "SAVEPOINT sp_create", (struct expected_statement){0, 0U});
+    failures += expect_statement(
+        database,
+        "CREATE TEMPORARY TABLE sp_created (id INT PRIMARY KEY, value INT)",
+        (struct expected_statement){0, 0U}
+    );
+    failures += expect_statement(
+        database,
+        "INSERT INTO sp_created VALUES (1, 10)",
+        (struct expected_statement){1, 0U}
+    );
+    failures += expect_statement(
+        database,
+        "ROLLBACK TO SAVEPOINT sp_create",
+        (struct expected_statement){0, 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM sp_created",
+            .values = created_empty_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "temporary create survives rollback to savepoint without rows",
+        }
+    );
+    failures += expect_statement(
+        database,
+        "INSERT INTO sp_created VALUES (2, 20)",
+        (struct expected_statement){1, 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, value FROM sp_created",
+            .values = created_inserted_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "rebuilt temporary table remains writable after savepoint rollback",
+        }
+    );
+    failures += expect_statement(database, "COMMIT", (struct expected_statement){0, 0U});
+
+    failures += expect_statement(
+        database,
+        "CREATE TEMPORARY TABLE sp_dropped (id INT PRIMARY KEY)",
+        (struct expected_statement){0, 0U}
+    );
+    failures += expect_statement(
+        database,
+        "INSERT INTO sp_dropped VALUES (1)",
+        (struct expected_statement){1, 0U}
+    );
+    failures += expect_statement(database, "START TRANSACTION", (struct expected_statement){0, 0U});
+    failures += expect_statement(database, "SAVEPOINT sp_drop", (struct expected_statement){0, 0U});
+    failures += expect_statement(
+        database,
+        "DROP TEMPORARY TABLE sp_dropped",
+        (struct expected_statement){0, 0U}
+    );
+    failures += expect_statement(
+        database,
+        "ROLLBACK TO SAVEPOINT sp_drop",
+        (struct expected_statement){0, 0U}
+    );
+    failures +=
+        expect_error(database, "SELECT COUNT(*) FROM sp_dropped", mysql_error_table_does_not_exist);
+    failures += expect_statement(database, "COMMIT", (struct expected_statement){0, 0U});
 
     mylite_close(database);
     remove_related_files(path);

@@ -4163,6 +4163,21 @@ static int apply_persistent_auto_increment_high_water(
 );
 static void clear_persistent_auto_increment_high_waters(struct mylite_db *database);
 static int reconcile_temporary_physical_tables_after_user_rollback(struct mylite_db *database);
+static int drop_orphaned_temporary_physical_tables(
+    struct mylite_db *database,
+    bool *out_schema_changed
+);
+static int find_orphaned_temporary_physical_table(
+    struct mylite_db *database,
+    char *physical_name,
+    size_t physical_name_size,
+    bool *out_found
+);
+static bool is_mylite_temporary_physical_table_name(const char *name);
+static bool temporary_catalog_has_physical_table_name(
+    const struct mylite_temporary_catalog *catalog,
+    const char *physical_name
+);
 static int temporary_physical_table_exists(
     struct mylite_db *database,
     const char *physical_name,

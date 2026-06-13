@@ -58,6 +58,7 @@ static int rollback_to_user_savepoint(struct mylite_db *database, const char *na
     );
     if (rc == MYLITE_OK) {
         database->session.savepoint_count = index + 1U;
+        rc = reconcile_temporary_physical_tables_after_user_rollback(database);
     }
     return rc;
 }

@@ -459,6 +459,7 @@ static int reconcile_temporary_physical_tables_after_user_rollback(struct mylite
     bool schema_changed = false;
     int rc = MYLITE_OK;
 
+    rc = drop_orphaned_temporary_physical_tables(database, &schema_changed);
     for (size_t table_index = 0U;
          rc == MYLITE_OK && table_index < database->session.temporary_catalog.table_count;
          ++table_index) {
@@ -483,6 +484,102 @@ static int reconcile_temporary_physical_tables_after_user_rollback(struct mylite
         ++database->session.sqlite_schema_generation;
     }
     return MYLITE_OK;
+}
+
+static int drop_orphaned_temporary_physical_tables(
+    struct mylite_db *database,
+    bool *out_schema_changed
+) {
+    char physical_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    bool found = false;
+    int rc = MYLITE_OK;
+
+    do {
+        found = false;
+        rc = find_orphaned_temporary_physical_table(
+            database,
+            physical_name,
+            sizeof(physical_name),
+            &found
+        );
+        if (rc == MYLITE_OK && found) {
+            rc = execute_physical_drop_table(database, physical_name);
+            if (rc == MYLITE_OK) {
+                *out_schema_changed = true;
+            }
+        }
+    } while (rc == MYLITE_OK && found);
+
+    return rc;
+}
+
+static int find_orphaned_temporary_physical_table(
+    struct mylite_db *database,
+    char *physical_name,
+    size_t physical_name_size,
+    bool *out_found
+) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = MYLITE_OK;
+
+    *out_found = false;
+    if (physical_name_size == 0U) {
+        return MYLITE_MISUSE;
+    }
+    physical_name[0] = '\0';
+
+    rc = prepare_sqlite_statement(
+        database,
+        "SELECT name FROM temp.sqlite_master WHERE type = 'table' ORDER BY name",
+        &statement
+    );
+    while (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_DONE) {
+            break;
+        }
+        if (sqlite_rc != SQLITE_ROW) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+            break;
+        }
+
+        const char *name = (const char *)sqlite3_column_text(statement, 0);
+
+        if (is_mylite_temporary_physical_table_name(name) &&
+            !temporary_catalog_has_physical_table_name(
+                &database->session.temporary_catalog,
+                name
+            )) {
+            int written = snprintf(physical_name, physical_name_size, "%s", name);
+
+            if (written < 0 || (size_t)written >= physical_name_size) {
+                rc = MYLITE_ERROR;
+            } else {
+                *out_found = true;
+            }
+            break;
+        }
+    }
+    return finalize_sqlite_statement(statement, rc);
+}
+
+static bool is_mylite_temporary_physical_table_name(const char *name) {
+    static const char prefix[] = "_mylite_temp_table_";
+
+    return name != NULL && strncmp(name, prefix, sizeof(prefix) - 1U) == 0;
+}
+
+static bool temporary_catalog_has_physical_table_name(
+    const struct mylite_temporary_catalog *catalog,
+    const char *physical_name
+) {
+    for (size_t table_index = 0U; table_index < catalog->table_count; ++table_index) {
+        if (strcmp(catalog->tables[table_index].table.physical_name, physical_name) == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static int temporary_physical_table_exists(

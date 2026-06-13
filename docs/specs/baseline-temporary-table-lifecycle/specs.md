@@ -216,14 +216,17 @@ do not implicitly commit an active transaction, but their table-definition
 effects are not rollbackable. SQLite `CREATE TEMPORARY TABLE` and `DROP TABLE`
 inside a transaction are rollbackable.
 
-To avoid silently exposing wrong semantics, this slice rejects
-`CREATE TEMPORARY TABLE` and temporary-table drops while
-`session.user_transaction_active` is true. DML against an already-created
-temporary table follows SQLite transactional row semantics and is supported by
-the current read/write paths.
+MyLite keeps temporary table descriptors outside the SQLite transaction. On
+full user rollback and `ROLLBACK TO SAVEPOINT`, MyLite reconciles generated
+SQLite `TEMP` tables back to the session descriptor catalog: created temporary
+definitions are rebuilt when SQLite rolls them back, and dropped temporary
+definitions are removed again when SQLite restores the physical table. Row DML
+against temporary tables remains transactional and rolls back with SQLite.
 
-Future exact support can add a MyLite-side transaction-exempt temporary DDL
-mechanism or a targeted SQLite extension point if public APIs are insufficient.
+This preserves the current MySQL behavior for admitted temporary create/drop
+forms without a SQLite fork hook. Broader temporary DDL forms, including
+unsupported rename/truncate paths and ALTER behavior beyond the documented
+subset, remain outside this lifecycle slice.
 
 ## Result and Metadata Behavior
 
@@ -273,7 +276,9 @@ MyLite-specific unsupported diagnostics.
 ## MySQL 8.4.9 Runtime Evidence
 
 `packages/libmylite/tests/mysql_baseline_temporary_table_lifecycle_expectations.sh`
-records the runtime behavior used by this spec. Observed MySQL 8.4.9 behavior
+and
+`packages/libmylite/tests/mysql_baseline_temporary_savepoint_ddl_expectations.sh`
+record the runtime behavior used by this spec. Observed MySQL 8.4.9 behavior
 includes:
 
 - unqualified `CREATE TEMPORARY TABLE` without a selected schema fails with
@@ -291,7 +296,10 @@ includes:
   references;
 - temporary-table row DML participates in user transaction rollback;
 - temporary create/drop definition effects are not rollbackable in MySQL even
-  though they do not implicitly commit.
+  though they do not implicitly commit;
+- after `ROLLBACK TO SAVEPOINT`, a temporary table created after the savepoint
+  still exists with row changes rolled back, while a temporary table dropped
+  after the savepoint remains dropped.
 
 ## Performance Notes
 
@@ -309,5 +317,5 @@ tables” wording only for the exact supported subset. Update `DROP TABLE`,
 `SHOW COLUMNS`, `SHOW INDEX`, `SHOW CREATE TABLE`, and metadata docs only where
 their temporary-table behavior changes. Later specs document temporary `LIKE`
 and temporary CTAS. Do not overclaim temporary ALTER/RENAME/TRUNCATE,
-privileges, metadata locks, full information schema visibility, or exact
+privileges, metadata locks, full information schema visibility, or unsupported
 temporary DDL inside user transactions.

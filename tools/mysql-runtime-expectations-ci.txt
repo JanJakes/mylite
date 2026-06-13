@@ -1,0 +1,18 @@
+# High-signal MySQL 8.4.9 runtime expectations for regular CI.
+# Keep this set broad enough to catch compatibility drift while avoiding the
+# cost of running the full 600+ script corpus on every push.
+packages/libmylite/tests/mysql_baseline_compression_random_functions_expectations.sh
+packages/libmylite/tests/mysql_baseline_temporary_savepoint_ddl_expectations.sh
+packages/libmylite/tests/mysql_baseline_savepoint_lifecycle_expectations.sh
+packages/libmylite/tests/mysql_baseline_temporary_auto_increment_expectations.sh
+packages/libmylite/tests/mysql_baseline_temporary_index_lifecycle_expectations.sh
+packages/libmylite/tests/mysql_baseline_create_index_lifecycle_expectations.sh
+packages/libmylite/tests/mysql_baseline_drop_index_lifecycle_expectations.sh
+packages/libmylite/tests/mysql_baseline_show_create_table_expectations.sh
+packages/libmylite/tests/mysql_baseline_show_table_status_introspection_expectations.sh
+packages/libmylite/tests/mysql_baseline_show_table_status_where_expectations.sh
+packages/libmylite/tests/mysql_baseline_wordpress_core_ddl_fixtures_expectations.sh
+packages/libmylite/tests/mysql_baseline_wordpress_dbdelta_introspection_expectations.sh
+packages/libmylite/tests/mysql_baseline_information_schema_core_expectations.sh
+packages/libmylite/tests/mysql_baseline_auto_increment_lifecycle_expectations.sh
+packages/libmylite/tests/mysql_baseline_insert_on_duplicate_key_update_expectations.sh

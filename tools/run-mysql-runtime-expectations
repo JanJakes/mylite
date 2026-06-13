@@ -1,0 +1,82 @@
+#!/usr/bin/env sh
+
+set -eu
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+MYSQL_CONTAINER="${MYLITE_MYSQL_CONTAINER:-mylite-mysql-849}"
+MANIFEST="${MYLITE_MYSQL_EXPECTATIONS_MANIFEST:-$ROOT_DIR/tools/mysql-runtime-expectations-ci.txt}"
+
+failures=0
+total=0
+
+fail() {
+    printf '%s\n' "run-mysql-runtime-expectations: $1" >&2
+    exit 1
+}
+
+verify_mysql_runtime() {
+    version=$(
+        printf '%s\n' "SELECT VERSION();" \
+            | docker exec -i "$MYSQL_CONTAINER" mysql --protocol=TCP -h127.0.0.1 -uroot \
+                --batch --raw --skip-column-names
+    )
+    case "$version" in
+        8.4.9*) ;;
+        *) fail "expected MySQL 8.4.9 runtime, got [$version]" ;;
+    esac
+}
+
+run_expectation_script() {
+    script=$1
+    case "$script" in
+        '' | '#'*)
+            return
+            ;;
+        /*)
+            script_path=$script
+            ;;
+        *)
+            script_path="$ROOT_DIR/$script"
+            ;;
+    esac
+
+    if [ ! -f "$script_path" ]; then
+        printf '%s\n' "missing expectation script: $script" >&2
+        failures=$((failures + 1))
+        total=$((total + 1))
+        return
+    fi
+
+    total=$((total + 1))
+    start_seconds=$(date +%s)
+    printf '%s\n' "==> $script"
+    if MYLITE_MYSQL_CONTAINER="$MYSQL_CONTAINER" sh "$script_path"; then
+        end_seconds=$(date +%s)
+        printf '%s\n' "ok $script ($((end_seconds - start_seconds))s)"
+    else
+        end_seconds=$(date +%s)
+        printf '%s\n' "failed $script ($((end_seconds - start_seconds))s)" >&2
+        failures=$((failures + 1))
+    fi
+}
+
+verify_mysql_runtime
+
+if [ "$#" -gt 0 ]; then
+    for script in "$@"; do
+        run_expectation_script "$script"
+    done
+else
+    if [ ! -f "$MANIFEST" ]; then
+        fail "missing expectation manifest: $MANIFEST"
+    fi
+    while IFS= read -r script || [ -n "$script" ]; do
+        run_expectation_script "$script"
+    done <"$MANIFEST"
+fi
+
+if [ "$failures" -ne 0 ]; then
+    fail "$failures of $total expectation scripts failed"
+fi
+
+printf '%s\n' "run-mysql-runtime-expectations: $total scripts passed"

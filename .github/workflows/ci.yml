@@ -116,6 +116,36 @@ jobs:
       - name: Test
         run: ctest --preset php-ci -R '^php-ext' --output-on-failure
 
+  mysql-runtime-expectations:
+    name: mysql-runtime-expectations
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Start MySQL 8.4.9
+        run: |
+          docker run \
+            --name mylite-mysql-849 \
+            -e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
+            -e MYSQL_ROOT_HOST=% \
+            -d mysql:8.4.9 \
+            --skip-log-bin
+          for attempt in $(seq 1 120); do
+            if docker exec mylite-mysql-849 mysqladmin --protocol=TCP -h127.0.0.1 -uroot ping --silent; then
+              docker exec mylite-mysql-849 mysql --protocol=TCP -h127.0.0.1 -uroot \
+                --batch --raw --skip-column-names -e 'SELECT VERSION();'
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs mylite-mysql-849
+          exit 1
+
+      - name: Run MySQL runtime expectation scripts
+        run: tools/run-mysql-runtime-expectations
+
   wordpress-phpunit:
     name: wordpress-phpunit-mysqli-mylite
     runs-on: ubuntu-24.04

@@ -106,6 +106,7 @@ add_library(mylite STATIC
   src/runtime/mylite_execution_scalar_binary_common.c
   src/runtime/mylite_execution_scalar_binary_compression.c
   src/runtime/mylite_execution_scalar_binary_digest.c
+  src/runtime/mylite_execution_scalar_binary_random.c
   src/runtime/mylite_execution_scalar_binary_uuid.c
   src/runtime/mylite_execution_scalar_charset_collation.c
   src/runtime/mylite_execution_scalar_json.c

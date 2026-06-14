@@ -92,6 +92,9 @@ scalars are split between exact arithmetic/rounding, approximate math, double
 formatting, and decimal `FORMAT()`/`TRUNCATE()` support. Temporal scalar
 wrappers keep format/parsing functions separate from DATE_ADD/SUB, TIMESTAMPADD,
 ADDTIME, and SUBTIME arithmetic.
+JSON scalar wrappers split constructors and mutation functions out of the
+remaining validation/search/path/introspection module, sharing only the narrow
+helpers declared in `mylite_execution_scalar_json_internal.h`.
 `mylite_execution_declarations_*.inc` files are the ordered private declaration
 hub for the remaining fragments. Large declaration hubs may fan out into
 numbered same-directory subfragments when that keeps declaration groups

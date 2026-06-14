@@ -2,30 +2,13 @@
 
 #include "mylite_mysql_server_identity.h"
 #include "mylite_random_bytes.h"
-#include "mylite_string_base64.h"
 #include "mylite_string_compression.h"
 #include "mylite_string_unhex.h"
 #include "mylite_weight_string.h"
 
 enum {
-    base64_function_chain_initial_capacity = 4,
-    base64_function_chain_growth_factor = 2,
-    base64_invalid_message_capacity = 64,
-    base64_signed_integer_message_capacity = 96,
-    base64_unsupported_message_capacity = 256,
     byte_high_nibble_shift = 4,
     byte_low_nibble_mask = 0x0f,
-};
-
-enum base64_function_operation {
-    base64_function_operation_to,
-    base64_function_operation_from,
-};
-
-struct base64_function_chain {
-    enum base64_function_operation *operations;
-    size_t count;
-    size_t capacity;
 };
 
 static int weight_string_binary_length_value(
@@ -68,83 +51,6 @@ static int hex_non_weight_string_scalar_argument_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell,
     bool *out_handled
-);
-static int base64_function_chain_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    enum base64_function_operation expected_operation,
-    struct session_scalar_cell *out_cell
-);
-static int base64_collect_function_chain(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    enum base64_function_operation expected_operation,
-    struct base64_function_chain *chain,
-    const struct mylite_sql_ast_node **out_argument
-);
-static int base64_function_chain_append(
-    struct mylite_db *database,
-    struct base64_function_chain *chain,
-    enum base64_function_operation operation
-);
-static int base64_apply_function_operation(
-    struct mylite_db *database,
-    enum base64_function_operation operation,
-    const unsigned char *bytes,
-    size_t byte_count,
-    struct session_scalar_cell *out_cell
-);
-static const char *base64_function_operation_name(enum base64_function_operation operation);
-static void base64_function_chain_deinit(struct base64_function_chain *chain);
-static int base64_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *function_name,
-    struct session_scalar_cell *cell,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-);
-static int base64_literal_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *literal,
-    const char *function_name,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-);
-static int base64_string_literal_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *literal,
-    const char *function_name,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes
-);
-static int base64_unary_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *function_name,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-);
-static int base64_scalar_argument_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell,
-    bool *out_handled
-);
-static int base64_copy_scalar_argument_bytes(
-    struct mylite_db *database,
-    struct session_scalar_cell *cell,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
 );
 static int random_bytes_length_argument(
     struct mylite_db *database,
@@ -424,22 +330,13 @@ static int weight_string_argument_bytes(
         mylite_execution_scalar_set_base64_argument_unsupported_error(database, "WEIGHT_STRING");
         return MYLITE_ERROR;
     }
-    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
-        return base64_literal_argument_bytes(
+    if (expression->kind == MYLITE_SQL_AST_LITERAL ||
+        expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return mylite_execution_scalar_binary_argument_bytes(
             database,
             expression,
             "WEIGHT_STRING",
-            out_bytes,
-            out_byte_count,
-            out_owned_bytes,
-            out_is_null
-        );
-    }
-    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
-        return base64_unary_argument_bytes(
-            database,
-            expression,
-            "WEIGHT_STRING",
+            cell,
             out_bytes,
             out_byte_count,
             out_owned_bytes,
@@ -529,32 +426,6 @@ int mylite_execution_scalar_unhex_function_value(
     return MYLITE_OK;
 }
 
-int mylite_execution_scalar_to_base64_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-) {
-    return base64_function_chain_value(
-        database,
-        expression,
-        base64_function_operation_to,
-        out_cell
-    );
-}
-
-int mylite_execution_scalar_from_base64_function_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell
-) {
-    return base64_function_chain_value(
-        database,
-        expression,
-        base64_function_operation_from,
-        out_cell
-    );
-}
-
 int mylite_execution_scalar_compress_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -578,7 +449,7 @@ int mylite_execution_scalar_compress_function_value(
         return MYLITE_ERROR;
     }
 
-    rc = base64_argument_bytes(
+    rc = mylite_execution_scalar_binary_argument_bytes(
         database,
         mylite_execution_child_at(expression, 0U),
         "COMPRESS",
@@ -635,7 +506,7 @@ int mylite_execution_scalar_uncompress_function_value(
         return MYLITE_ERROR;
     }
 
-    rc = base64_argument_bytes(
+    rc = mylite_execution_scalar_binary_argument_bytes(
         database,
         mylite_execution_child_at(expression, 0U),
         "UNCOMPRESS",
@@ -701,7 +572,7 @@ int mylite_execution_scalar_uncompressed_length_function_value(
         return MYLITE_ERROR;
     }
 
-    rc = base64_argument_bytes(
+    rc = mylite_execution_scalar_binary_argument_bytes(
         database,
         mylite_execution_child_at(expression, 0U),
         "UNCOMPRESSED_LENGTH",
@@ -1093,618 +964,6 @@ static int hex_non_weight_string_scalar_argument_value(
     return MYLITE_OK;
 }
 
-static int base64_function_chain_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    enum base64_function_operation expected_operation,
-    struct session_scalar_cell *out_cell
-) {
-    struct base64_function_chain chain = {0};
-    struct session_scalar_cell argument_cell = {0};
-    struct session_scalar_cell current_cell = {0};
-    const struct mylite_sql_ast_node *argument = NULL;
-    const unsigned char *bytes = NULL;
-    char *owned_bytes = NULL;
-    size_t byte_count = 0U;
-    bool is_null = false;
-    int rc = MYLITE_OK;
-
-    if (out_cell == NULL) {
-        return MYLITE_MISUSE;
-    }
-    *out_cell = (struct session_scalar_cell){0};
-
-    rc = base64_collect_function_chain(database, expression, expected_operation, &chain, &argument);
-    if (rc == MYLITE_OK) {
-        rc = base64_argument_bytes(
-            database,
-            argument,
-            base64_function_operation_name(chain.operations[chain.count - 1U]),
-            &argument_cell,
-            &bytes,
-            &byte_count,
-            &owned_bytes,
-            &is_null
-        );
-        mylite_execution_session_scalar_cell_deinit(&argument_cell);
-    }
-
-    for (size_t index = chain.count; rc == MYLITE_OK && !is_null && index > 0U; --index) {
-        struct session_scalar_cell next_cell = {0};
-
-        rc = base64_apply_function_operation(
-            database,
-            chain.operations[index - 1U],
-            bytes,
-            byte_count,
-            &next_cell
-        );
-        free(owned_bytes);
-        owned_bytes = NULL;
-        if (rc != MYLITE_OK) {
-            mylite_execution_session_scalar_cell_deinit(&next_cell);
-            break;
-        }
-
-        mylite_execution_session_scalar_cell_deinit(&current_cell);
-        current_cell = next_cell;
-        if (current_cell.value == NULL) {
-            is_null = true;
-            bytes = NULL;
-            byte_count = 0U;
-        } else {
-            bytes = (const unsigned char *)current_cell.value;
-            byte_count =
-                current_cell.has_value_size ? current_cell.value_size : strlen(current_cell.value);
-        }
-    }
-
-    if (rc == MYLITE_OK && !is_null) {
-        *out_cell = current_cell;
-        current_cell = (struct session_scalar_cell){0};
-    }
-
-    free(owned_bytes);
-    mylite_execution_session_scalar_cell_deinit(&current_cell);
-    base64_function_chain_deinit(&chain);
-    return rc;
-}
-
-static int base64_collect_function_chain(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    enum base64_function_operation expected_operation,
-    struct base64_function_chain *chain,
-    const struct mylite_sql_ast_node **out_argument
-) {
-    const struct mylite_sql_ast_node *current =
-        mylite_execution_unwrap_parenthesized_expression(expression);
-    enum base64_function_operation operation = base64_function_operation_to;
-    bool first = true;
-    int rc = MYLITE_OK;
-
-    if (chain == NULL || out_argument == NULL) {
-        return MYLITE_MISUSE;
-    }
-    *out_argument = NULL;
-
-    while (current != NULL) {
-        switch (current->kind) {
-        case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
-            operation = base64_function_operation_to;
-            break;
-        case MYLITE_SQL_AST_FROM_BASE64_FUNCTION:
-            operation = base64_function_operation_from;
-            break;
-        default:
-            if (first) {
-                mylite_execution_set_native_function_parameter_count_error(
-                    database,
-                    base64_function_operation_name(expected_operation)
-                );
-                return MYLITE_ERROR;
-            }
-            *out_argument = current;
-            return MYLITE_OK;
-        }
-
-        if (first && operation != expected_operation) {
-            break;
-        }
-        first = false;
-
-        if (mylite_sql_ast_node_child_count(current) != 1U) {
-            mylite_execution_set_native_function_parameter_count_error(
-                database,
-                base64_function_operation_name(operation)
-            );
-            return MYLITE_ERROR;
-        }
-        rc = base64_function_chain_append(database, chain, operation);
-        if (rc != MYLITE_OK) {
-            return rc;
-        }
-
-        current =
-            mylite_execution_unwrap_parenthesized_expression(mylite_execution_child_at(current, 0U)
-            );
-    }
-
-    mylite_execution_set_native_function_parameter_count_error(
-        database,
-        base64_function_operation_name(expected_operation)
-    );
-    return MYLITE_ERROR;
-}
-
-static int base64_function_chain_append(
-    struct mylite_db *database,
-    struct base64_function_chain *chain,
-    enum base64_function_operation operation
-) {
-    enum base64_function_operation *operations = NULL;
-    size_t new_capacity = 0U;
-
-    if (chain == NULL) {
-        return MYLITE_MISUSE;
-    }
-    if (chain->count < chain->capacity) {
-        chain->operations[chain->count++] = operation;
-        return MYLITE_OK;
-    }
-
-    if (chain->capacity == 0U) {
-        new_capacity = base64_function_chain_initial_capacity;
-    } else if (chain->capacity > SIZE_MAX / base64_function_chain_growth_factor) {
-        mylite_execution_set_nomem_error(database);
-        return MYLITE_NOMEM;
-    } else {
-        new_capacity = chain->capacity * base64_function_chain_growth_factor;
-    }
-    if (new_capacity > SIZE_MAX / sizeof(*chain->operations)) {
-        mylite_execution_set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-
-    operations = (enum base64_function_operation *)
-        realloc(chain->operations, new_capacity * sizeof(*chain->operations));
-    if (operations == NULL) {
-        mylite_execution_set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-
-    chain->operations = operations;
-    chain->capacity = new_capacity;
-    chain->operations[chain->count++] = operation;
-    return MYLITE_OK;
-}
-
-static int base64_apply_function_operation(
-    struct mylite_db *database,
-    enum base64_function_operation operation,
-    const unsigned char *bytes,
-    size_t byte_count,
-    struct session_scalar_cell *out_cell
-) {
-    unsigned char *decoded = NULL;
-    char *encoded = NULL;
-    size_t result_size = 0U;
-    bool valid = false;
-    int rc = MYLITE_OK;
-
-    if (out_cell == NULL || (bytes == NULL && byte_count != 0U)) {
-        return MYLITE_MISUSE;
-    }
-    *out_cell = (struct session_scalar_cell){0};
-
-    if (operation == base64_function_operation_to) {
-        rc = mylite_string_base64_encode(bytes, byte_count, &encoded, &result_size);
-        if (rc != MYLITE_OK) {
-            if (rc == MYLITE_NOMEM) {
-                mylite_execution_set_nomem_error(database);
-            }
-            return rc;
-        }
-        out_cell->owned_text = encoded;
-    } else {
-        rc = mylite_string_base64_decode(bytes, byte_count, &decoded, &result_size, &valid);
-        if (rc != MYLITE_OK) {
-            if (rc == MYLITE_NOMEM) {
-                mylite_execution_set_nomem_error(database);
-            }
-            return rc;
-        }
-        if (!valid) {
-            free(decoded);
-            return MYLITE_OK;
-        }
-        out_cell->owned_text = (char *)decoded;
-    }
-
-    out_cell->value = out_cell->owned_text;
-    out_cell->value_size = result_size;
-    out_cell->has_value_size = true;
-    return MYLITE_OK;
-}
-
-static const char *base64_function_operation_name(enum base64_function_operation operation) {
-    return operation == base64_function_operation_to ? "TO_BASE64" : "FROM_BASE64";
-}
-
-static void base64_function_chain_deinit(struct base64_function_chain *chain) {
-    if (chain == NULL) {
-        return;
-    }
-
-    free(chain->operations);
-    *chain = (struct base64_function_chain){0};
-}
-
-static int base64_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *function_name,
-    struct session_scalar_cell *cell,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-) {
-    bool handled_scalar = false;
-    int rc = MYLITE_OK;
-
-    if (cell == NULL || function_name == NULL || out_bytes == NULL || out_byte_count == NULL ||
-        out_owned_bytes == NULL || out_is_null == NULL) {
-        return MYLITE_MISUSE;
-    }
-    *out_bytes = NULL;
-    *out_byte_count = 0U;
-    *out_owned_bytes = NULL;
-    *out_is_null = false;
-
-    expression = mylite_execution_unwrap_parenthesized_expression(expression);
-    if (expression == NULL) {
-        mylite_execution_scalar_set_base64_argument_unsupported_error(database, function_name);
-        return MYLITE_ERROR;
-    }
-
-    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
-        return base64_literal_argument_bytes(
-            database,
-            expression,
-            function_name,
-            out_bytes,
-            out_byte_count,
-            out_owned_bytes,
-            out_is_null
-        );
-    }
-    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
-        return base64_unary_argument_bytes(
-            database,
-            expression,
-            function_name,
-            out_bytes,
-            out_byte_count,
-            out_owned_bytes,
-            out_is_null
-        );
-    }
-
-    rc = base64_scalar_argument_value(database, expression, cell, &handled_scalar);
-    if (rc != MYLITE_OK || handled_scalar) {
-        if (rc == MYLITE_OK) {
-            rc = base64_copy_scalar_argument_bytes(
-                database,
-                cell,
-                out_bytes,
-                out_byte_count,
-                out_owned_bytes,
-                out_is_null
-            );
-        }
-        return rc;
-    }
-
-    mylite_execution_scalar_set_base64_argument_unsupported_error(database, function_name);
-    return MYLITE_ERROR;
-}
-
-int mylite_execution_scalar_binary_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *function_name,
-    struct session_scalar_cell *cell,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-) {
-    return base64_argument_bytes(
-        database,
-        expression,
-        function_name,
-        cell,
-        out_bytes,
-        out_byte_count,
-        out_owned_bytes,
-        out_is_null
-    );
-}
-
-static int base64_literal_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *literal,
-    const char *function_name,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-) {
-    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
-    int rc = MYLITE_OK;
-
-    if (literal == NULL || function_name == NULL || out_bytes == NULL || out_byte_count == NULL ||
-        out_owned_bytes == NULL || out_is_null == NULL) {
-        return MYLITE_MISUSE;
-    }
-    literal_kind = mylite_sql_ast_node_literal_kind(literal);
-    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
-        *out_is_null = true;
-        return MYLITE_OK;
-    }
-    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
-        literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
-        *out_bytes =
-            (const unsigned char *)(literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ? "1" : "0");
-        *out_byte_count = 1U;
-        return MYLITE_OK;
-    }
-    if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
-        rc = mylite_execution_copy_source_span_text(database, &literal->span, out_owned_bytes);
-        if (rc == MYLITE_OK) {
-            *out_bytes = (const unsigned char *)*out_owned_bytes;
-            *out_byte_count = strlen(*out_owned_bytes);
-        }
-        return rc;
-    }
-    if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
-        return base64_string_literal_argument_bytes(
-            database,
-            literal,
-            function_name,
-            out_bytes,
-            out_byte_count,
-            out_owned_bytes
-        );
-    }
-    if (literal_kind == MYLITE_SQL_AST_LITERAL_HEX) {
-        rc = mylite_execution_decode_binary_hex_literal(
-            database,
-            literal,
-            out_owned_bytes,
-            out_byte_count
-        );
-        if (rc == MYLITE_OK) {
-            *out_bytes = (const unsigned char *)*out_owned_bytes;
-        }
-        return rc;
-    }
-
-    mylite_execution_scalar_set_base64_argument_unsupported_error(database, function_name);
-    return MYLITE_ERROR;
-}
-
-static int base64_string_literal_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *literal,
-    const char *function_name,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes
-) {
-    char unsupported_message[base64_unsupported_message_capacity];
-    char invalid_message[base64_invalid_message_capacity];
-    int written = 0;
-    int rc = MYLITE_OK;
-
-    written = snprintf(
-        unsupported_message,
-        sizeof(unsupported_message),
-        "%s() supports only string, hex, integer, boolean, NULL, supported session scalar, "
-        "supported system variable, binary cast/convert, and descriptor column arguments",
-        function_name
-    );
-    if (written < 0 || (size_t)written >= sizeof(unsupported_message)) {
-        mylite_execution_set_runtime_error(database, "failed to format Base64 unsupported message");
-        return MYLITE_ERROR;
-    }
-    written = snprintf(
-        invalid_message,
-        sizeof(invalid_message),
-        "%s() string literal is invalid",
-        function_name
-    );
-    if (written < 0 || (size_t)written >= sizeof(invalid_message)) {
-        mylite_execution_set_runtime_error(database, "failed to format Base64 invalid message");
-        return MYLITE_ERROR;
-    }
-    rc = mylite_execution_decode_sql_string_literal_with_policy(
-        database,
-        literal,
-        unsupported_message,
-        invalid_message,
-        true,
-        out_owned_bytes,
-        out_byte_count
-    );
-    if (rc == MYLITE_OK) {
-        *out_bytes = (const unsigned char *)*out_owned_bytes;
-    }
-    return rc;
-}
-
-static int base64_unary_argument_bytes(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    const char *function_name,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-) {
-    const struct mylite_sql_ast_node *literal = NULL;
-    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
-    char message[base64_signed_integer_message_capacity];
-    int written = 0;
-    int rc = MYLITE_OK;
-
-    if (expression == NULL || function_name == NULL || out_bytes == NULL ||
-        out_byte_count == NULL || out_owned_bytes == NULL || out_is_null == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    written = snprintf(
-        message,
-        sizeof(message),
-        "%s() supports only signed integer literal arguments",
-        function_name
-    );
-    if (written < 0 || (size_t)written >= sizeof(message)) {
-        mylite_execution_set_runtime_error(
-            database,
-            "failed to format Base64 signed-integer message"
-        );
-        return MYLITE_ERROR;
-    }
-
-    operator_kind = mylite_sql_ast_node_operator(expression);
-    if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
-        operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
-        mylite_execution_set_unsupported_error(database, message);
-        return MYLITE_ERROR;
-    }
-
-    literal =
-        mylite_execution_unwrap_parenthesized_expression(mylite_execution_child_at(expression, 0U));
-    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
-        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_INTEGER) {
-        mylite_execution_set_unsupported_error(database, message);
-        return MYLITE_ERROR;
-    }
-
-    if (operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE) {
-        rc = mylite_execution_copy_source_span_text(database, &literal->span, out_owned_bytes);
-    } else {
-        if (literal->span.length > SIZE_MAX - 2U) {
-            mylite_execution_set_nomem_error(database);
-            return MYLITE_NOMEM;
-        }
-        *out_owned_bytes = (char *)malloc(literal->span.length + 2U);
-        if (*out_owned_bytes == NULL) {
-            mylite_execution_set_nomem_error(database);
-            return MYLITE_NOMEM;
-        }
-        (*out_owned_bytes)[0] = '-';
-        memcpy(*out_owned_bytes + 1U, literal->span.text, literal->span.length);
-        (*out_owned_bytes)[literal->span.length + 1U] = '\0';
-        rc = MYLITE_OK;
-    }
-    if (rc == MYLITE_OK) {
-        *out_bytes = (const unsigned char *)*out_owned_bytes;
-        *out_byte_count = strlen(*out_owned_bytes);
-        *out_is_null = false;
-    }
-    return rc;
-}
-
-static int base64_scalar_argument_value(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
-    struct session_scalar_cell *out_cell,
-    bool *out_handled
-) {
-    int rc = mylite_execution_scalar_binary_scalar_argument_value(
-        database,
-        expression,
-        out_cell,
-        out_handled
-    );
-
-    if (rc != MYLITE_OK || out_handled == NULL || *out_handled) {
-        return rc;
-    }
-
-    expression = mylite_execution_unwrap_parenthesized_expression(expression);
-    if (expression == NULL) {
-        return MYLITE_OK;
-    }
-    switch (expression->kind) {
-    case MYLITE_SQL_AST_COMPRESS_FUNCTION:
-        *out_handled = true;
-        return mylite_execution_scalar_compress_function_value(database, expression, out_cell);
-    case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
-        *out_handled = true;
-        return mylite_execution_scalar_uncompress_function_value(database, expression, out_cell);
-    case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
-        *out_handled = true;
-        return mylite_execution_scalar_uncompressed_length_function_value(
-            database,
-            expression,
-            out_cell
-        );
-    case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
-        *out_handled = true;
-        return mylite_execution_scalar_random_bytes_function_value(database, expression, out_cell);
-    default:
-        break;
-    }
-    return MYLITE_OK;
-}
-
-static int base64_copy_scalar_argument_bytes(
-    struct mylite_db *database,
-    struct session_scalar_cell *cell,
-    const unsigned char **out_bytes,
-    size_t *out_byte_count,
-    char **out_owned_bytes,
-    bool *out_is_null
-) {
-    size_t byte_count = 0U;
-    char *bytes = NULL;
-
-    if (cell == NULL || out_bytes == NULL || out_byte_count == NULL || out_owned_bytes == NULL ||
-        out_is_null == NULL) {
-        return MYLITE_MISUSE;
-    }
-    if (cell->value == NULL) {
-        mylite_execution_session_scalar_cell_deinit(cell);
-        *out_is_null = true;
-        return MYLITE_OK;
-    }
-
-    byte_count = cell->has_value_size ? cell->value_size : strlen(cell->value);
-    if (byte_count == SIZE_MAX) {
-        mylite_execution_session_scalar_cell_deinit(cell);
-        mylite_execution_set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    bytes = (char *)malloc(byte_count + 1U);
-    if (bytes == NULL) {
-        mylite_execution_session_scalar_cell_deinit(cell);
-        mylite_execution_set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    memcpy(bytes, cell->value, byte_count);
-    bytes[byte_count] = '\0';
-    mylite_execution_session_scalar_cell_deinit(cell);
-
-    *out_owned_bytes = bytes;
-    *out_bytes = (const unsigned char *)bytes;
-    *out_byte_count = byte_count;
-    return MYLITE_OK;
-}
-
 static int random_bytes_length_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -1913,7 +1172,12 @@ static int random_bytes_length_scalar(
     *out_is_null = false;
     *out_handled = false;
 
-    rc = base64_scalar_argument_value(database, expression, cell, &handled_scalar);
+    rc = mylite_execution_scalar_binary_argument_scalar_value(
+        database,
+        expression,
+        cell,
+        &handled_scalar
+    );
     if (rc != MYLITE_OK || !handled_scalar) {
         return rc;
     }
@@ -1932,31 +1196,6 @@ static int random_bytes_length_scalar(
     );
     mylite_execution_session_scalar_cell_deinit(cell);
     return rc;
-}
-
-void mylite_execution_scalar_set_base64_argument_unsupported_error(
-    struct mylite_db *database,
-    const char *function_name
-) {
-    char message[base64_unsupported_message_capacity];
-    int written = 0;
-
-    if (function_name == NULL) {
-        mylite_execution_set_runtime_error(database, "missing Base64 function name");
-        return;
-    }
-    written = snprintf(
-        message,
-        sizeof(message),
-        "%s() supports only string, hex, integer, boolean, NULL, supported session scalar, "
-        "supported system variable, binary cast/convert, and descriptor column arguments",
-        function_name
-    );
-    if (written < 0 || (size_t)written >= sizeof(message)) {
-        mylite_execution_set_runtime_error(database, "failed to format Base64 unsupported message");
-        return;
-    }
-    mylite_execution_set_unsupported_error(database, message);
 }
 
 static int unhex_argument_bytes(

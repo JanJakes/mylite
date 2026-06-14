@@ -55,5 +55,11 @@ int mylite_execution_scalar_binary_scalar_argument_value(
     struct session_scalar_cell *out_cell,
     bool *out_handled
 );
+int mylite_execution_scalar_binary_argument_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell,
+    bool *out_handled
+);
 
 #endif

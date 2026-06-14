@@ -66,7 +66,8 @@ graph is kept in ordered same-translation-unit `mylite_parser_placeholders_*.inc
 fragments until smaller true module APIs are worth exposing. Large AST builder
 families may live in separate `mylite_parser_*_builders.c` modules when they
 use the shared parser helper surface instead of reaching through file-local
-state.
+state; DDL builders are grouped by create/view/procedure, index/table-option,
+schema/drop/show/admin, and rename/alter-table surfaces.
 
 Within `packages/libmylite/src/runtime/`, the execution runtime uses true C
 modules for narrow helper surfaces and same-translation-unit `.inc` fragments

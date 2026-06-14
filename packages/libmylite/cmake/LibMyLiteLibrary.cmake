@@ -161,7 +161,10 @@ add_library(mylite STATIC
   src/sql/mylite_ast.c
   src/sql/mylite_lexer.c
   src/sql/mylite_parser.c
-  src/sql/mylite_parser_ddl_builders.c
+  src/sql/mylite_parser_ddl_alter_builders.c
+  src/sql/mylite_parser_ddl_create_builders.c
+  src/sql/mylite_parser_ddl_index_option_builders.c
+  src/sql/mylite_parser_ddl_schema_show_builders.c
   src/sql/mylite_parser_dml_builders.c
   src/sql/mylite_parser_expression_builders.c
   src/sql/mylite_parser_helpers.c

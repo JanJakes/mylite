@@ -72,10 +72,11 @@ schema/drop/show/admin, and rename/alter-table surfaces.
 Within `packages/libmylite/src/runtime/`, the execution runtime uses true C
 modules for narrow helper surfaces and same-translation-unit `.inc` fragments
 for broad planner/executor families that still depend on private static helper
-linkage. The catalog runtime is split between state/migration/read/validation
-helpers, direct object lifecycle helpers, and schema/table/column mutation
-modules so metadata lifecycle code does not collapse into a single catalog
-monolith. SQL text pre-normalization before parsing lives in
+linkage. The catalog runtime is split between state/migration/validation
+helpers, direct object lifecycle helpers, schema/table/column mutation modules,
+and read modules grouped by schema/table/view, column, index, and constraint
+metadata so catalog lifecycle and materialization logic do not collapse into a
+single catalog monolith. SQL text pre-normalization before parsing lives in
 `mylite_execution_sql_normalization.c`; it is a narrow execution-front-door
 module with explicit ownership of rewritten SQL buffers. MySQL-compatible
 execution diagnostics live in `mylite_execution_diagnostics*.c` modules grouped

@@ -48,6 +48,10 @@ add_library(mylite STATIC
   src/runtime/mylite_catalog_migrations.c
   src/runtime/mylite_catalog_object_lifecycle.c
   src/runtime/mylite_catalog_read.c
+  src/runtime/mylite_catalog_read_column.c
+  src/runtime/mylite_catalog_read_constraints.c
+  src/runtime/mylite_catalog_read_index.c
+  src/runtime/mylite_catalog_read_schema_table.c
   src/runtime/mylite_catalog_schema_table_mutation.c
   src/runtime/mylite_catalog_sqlite.c
   src/runtime/mylite_catalog_state.c

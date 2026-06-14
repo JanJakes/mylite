@@ -35,5 +35,14 @@ bool mylite_sql_parser_token_can_be_select_lock_target_identifier(
     const struct mylite_sql_token *token
 );
 bool mylite_sql_parser_token_is_comment(enum mylite_sql_token_kind kind);
+bool mylite_sql_parser_token_is_left_paren(const struct mylite_sql_token *token);
+bool mylite_sql_parser_token_is_right_paren(const struct mylite_sql_token *token);
+bool mylite_sql_parser_token_is_comma(const struct mylite_sql_token *token);
+bool mylite_sql_parser_token_is_equal_sign(const struct mylite_sql_token *token);
+bool mylite_sql_parser_token_is_string_literal(const struct mylite_sql_token *token);
+void mylite_sql_parser_update_token_history(
+    struct mylite_sql_parser_token_history *history,
+    int parser_token
+);
 
 #endif

@@ -55,13 +55,18 @@ modules under the owning package's `cmake/` directory. The package root
 `CMakeLists.txt` should show the high-level target/test structure, while
 included modules own cohesive source lists or test-family registrations.
 
-Within `packages/libmylite/src/sql/`, the parser driver owns Lemon token
-feeding, retry orchestration, and parser state transitions. Lexer-token to
-Lemon-token policy lives in `mylite_parser_token_map.c` so keyword mapping,
-SQL-mode token decisions, and lock-target token skipping stay separate from the
-parse driver. Large AST builder families may live in separate
-`mylite_parser_*_builders.c` modules when they use the shared parser helper
-surface instead of reaching through file-local state.
+Within `packages/libmylite/src/sql/`, the parser driver owns the public parse
+entry point, Lemon token feeding, version-comment expansion, and parser state
+transitions. Lexer-token to Lemon-token policy lives in
+`mylite_parser_token_map.c` so keyword mapping, SQL-mode token decisions,
+shared token predicates, and token-history handling stay separate from the
+parse driver. Syntax-retry and unsupported-placeholder fallback parsing lives
+in `mylite_parser_placeholders.c`; its broad private scanner/classifier helper
+graph is kept in ordered same-translation-unit `mylite_parser_placeholders_*.inc`
+fragments until smaller true module APIs are worth exposing. Large AST builder
+families may live in separate `mylite_parser_*_builders.c` modules when they
+use the shared parser helper surface instead of reaching through file-local
+state.
 
 Within `packages/libmylite/src/runtime/`, the execution runtime uses true C
 modules for narrow helper surfaces and same-translation-unit `.inc` fragments

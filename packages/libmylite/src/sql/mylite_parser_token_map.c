@@ -183,6 +183,44 @@ bool mylite_sql_parser_token_is_comment(enum mylite_sql_token_kind kind) {
     return false;
 }
 
+bool mylite_sql_parser_token_is_left_paren(const struct mylite_sql_token *token) {
+    return token != NULL && token->kind == MYLITE_SQL_TOKEN_PUNCTUATION && token->length == 1U &&
+           token->text != NULL && token->text[0] == '(';
+}
+
+bool mylite_sql_parser_token_is_right_paren(const struct mylite_sql_token *token) {
+    return token != NULL && token->kind == MYLITE_SQL_TOKEN_PUNCTUATION && token->length == 1U &&
+           token->text != NULL && token->text[0] == ')';
+}
+
+bool mylite_sql_parser_token_is_comma(const struct mylite_sql_token *token) {
+    return token != NULL && token->kind == MYLITE_SQL_TOKEN_PUNCTUATION && token->length == 1U &&
+           token->text != NULL && token->text[0] == ',';
+}
+
+bool mylite_sql_parser_token_is_equal_sign(const struct mylite_sql_token *token) {
+    return (token != NULL && token->kind == MYLITE_SQL_TOKEN_PUNCTUATION && token->length == 1U &&
+            token->text != NULL && token->text[0] == '=') ||
+           (token != NULL && token->kind == MYLITE_SQL_TOKEN_OPERATOR &&
+            token->operator_kind == MYLITE_SQL_OPERATOR_EQUAL);
+}
+
+bool mylite_sql_parser_token_is_string_literal(const struct mylite_sql_token *token) {
+    return token != NULL && (token->kind == MYLITE_SQL_TOKEN_STRING ||
+                             token->kind == MYLITE_SQL_TOKEN_NATIONAL_STRING);
+}
+
+void mylite_sql_parser_update_token_history(
+    struct mylite_sql_parser_token_history *history,
+    int parser_token
+) {
+    if (history == NULL) {
+        return;
+    }
+    history->token_before_previous_parser_token = history->previous_parser_token;
+    history->previous_parser_token = parser_token;
+}
+
 static bool map_direct_lexer_token(enum mylite_sql_token_kind kind, int *out_parser_token) {
     switch (kind) {
     case MYLITE_SQL_TOKEN_IDENTIFIER:

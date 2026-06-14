@@ -42,12 +42,16 @@ add_library(mylite STATIC
   src/runtime/mylite_bitwise_aggregate.c
   src/runtime/mylite_cast_convert.c
   src/runtime/mylite_catalog.c
+  src/runtime/mylite_catalog_column_mutation.c
   src/runtime/mylite_catalog_column_values.c
   src/runtime/mylite_catalog_key_constraints.c
   src/runtime/mylite_catalog_migrations.c
+  src/runtime/mylite_catalog_object_lifecycle.c
   src/runtime/mylite_catalog_read.c
+  src/runtime/mylite_catalog_schema_table_mutation.c
   src/runtime/mylite_catalog_sqlite.c
   src/runtime/mylite_catalog_state.c
+  src/runtime/mylite_catalog_table_validation.c
   src/runtime/mylite_catalog_validation.c
   src/runtime/mylite_connection.c
   src/runtime/mylite_convert_tz.c

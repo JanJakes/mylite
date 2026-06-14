@@ -39,5 +39,15 @@ int mylite_execution_scalar_binary_evaluate_base_conversion_direct_literal_opera
     struct scalar_bitwise_value *out_value,
     bool *out_handled
 );
+int mylite_execution_scalar_binary_argument_bytes(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *function_name,
+    struct session_scalar_cell *cell,
+    const unsigned char **out_bytes,
+    size_t *out_byte_count,
+    char **out_owned_bytes,
+    bool *out_is_null
+);
 
 #endif

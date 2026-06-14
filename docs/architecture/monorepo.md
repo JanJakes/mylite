@@ -79,8 +79,10 @@ by behavior domain, with `mylite_execution_diagnostics_internal.h` carrying the
 private shared diagnostic dependencies for those modules. Scalar execution
 modules should keep cohesive function families together; for example,
 base-conversion scalars live in `mylite_execution_scalar_base_conversion.c`
-with only narrow binary-scalar helpers exposed through
-`mylite_execution_scalar_binary_internal.h`, while numeric scalars are split
+and binary scalar wrappers split specialized CHAR() and digest/CRC32 families
+out of the remaining encoding/UUID/compression module, with only narrow
+binary-scalar helpers exposed through `mylite_execution_scalar_binary_internal.h`,
+while numeric scalars are split
 between exact arithmetic/rounding, approximate math, double formatting, and
 decimal `FORMAT()`/`TRUNCATE()` support.
 `mylite_execution_declarations_*.inc` files are the ordered private declaration

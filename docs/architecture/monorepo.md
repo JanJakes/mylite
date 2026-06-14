@@ -56,10 +56,12 @@ modules under the owning package's `cmake/` directory. The package root
 included modules own cohesive source lists or test-family registrations.
 
 Within `packages/libmylite/src/sql/`, the parser driver owns Lemon token
-feeding, retry parsing, placeholder scanning, and parser state transitions.
-Large AST builder families may live in separate `mylite_parser_*_builders.c`
-modules when they use the shared parser helper surface instead of reaching
-through file-local state.
+feeding, retry orchestration, and parser state transitions. Lexer-token to
+Lemon-token policy lives in `mylite_parser_token_map.c` so keyword mapping,
+SQL-mode token decisions, and lock-target token skipping stay separate from the
+parse driver. Large AST builder families may live in separate
+`mylite_parser_*_builders.c` modules when they use the shared parser helper
+surface instead of reaching through file-local state.
 
 Within `packages/libmylite/src/runtime/`, the execution runtime uses true C
 modules for narrow helper surfaces and same-translation-unit `.inc` fragments

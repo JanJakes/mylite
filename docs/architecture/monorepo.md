@@ -84,12 +84,12 @@ by behavior domain, with `mylite_execution_diagnostics_internal.h` carrying the
 private shared diagnostic dependencies for those modules. Scalar execution
 modules should keep cohesive function families together; for example,
 base-conversion scalars live in `mylite_execution_scalar_base_conversion.c`
-and binary scalar wrappers split specialized CHAR(), Base64, digest/CRC32, and
-UUID conversion/generation families out of the remaining HEX/UNHEX/compression
-module, with only narrow binary-scalar helpers exposed through
-`mylite_execution_scalar_binary_internal.h`, while numeric scalars are split
-between exact arithmetic/rounding, approximate math, double formatting, and
-decimal `FORMAT()`/`TRUNCATE()` support. Temporal scalar wrappers keep
+and binary scalar wrappers split specialized CHAR(), Base64, compression,
+digest/CRC32, and UUID conversion/generation families out of the remaining
+HEX/UNHEX/RANDOM_BYTES module, with only narrow binary-scalar helpers exposed
+through `mylite_execution_scalar_binary_internal.h`, while numeric scalars are
+split between exact arithmetic/rounding, approximate math, double formatting,
+and decimal `FORMAT()`/`TRUNCATE()` support. Temporal scalar wrappers keep
 format/parsing functions separate from DATE_ADD/SUB, TIMESTAMPADD, ADDTIME, and
 SUBTIME arithmetic.
 `mylite_execution_declarations_*.inc` files are the ordered private declaration

@@ -118,6 +118,7 @@ add_library(mylite STATIC
   src/runtime/mylite_execution_scalar_numeric_format.c
   src/runtime/mylite_execution_scalar_numeric_math.c
   src/runtime/mylite_execution_scalar_regexp.c
+  src/runtime/mylite_execution_scalar_string_bitmask.c
   src/runtime/mylite_execution_scalar_string.c
   src/runtime/mylite_execution_scalar_string_position.c
   src/runtime/mylite_execution_scalar_string_transform.c

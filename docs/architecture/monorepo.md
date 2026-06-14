@@ -95,6 +95,9 @@ ADDTIME, and SUBTIME arithmetic.
 JSON scalar wrappers split constructors and mutation functions out of the
 remaining validation/search/path/introspection module, sharing only the narrow
 helpers declared in `mylite_execution_scalar_json_internal.h`.
+String-position scalar wrappers keep UTF-8 slicing, padding, search, and set
+comparison in the primary module while the bitmask-oriented EXPORT_SET() and
+MAKE_SET() family lives in `mylite_execution_scalar_string_bitmask.c`.
 `mylite_execution_declarations_*.inc` files are the ordered private declaration
 hub for the remaining fragments. Large declaration hubs may fan out into
 numbered same-directory subfragments when that keeps declaration groups

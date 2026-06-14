@@ -85,7 +85,9 @@ out of the remaining encoding/UUID/compression module, with only narrow
 binary-scalar helpers exposed through `mylite_execution_scalar_binary_internal.h`,
 while numeric scalars are split
 between exact arithmetic/rounding, approximate math, double formatting, and
-decimal `FORMAT()`/`TRUNCATE()` support.
+decimal `FORMAT()`/`TRUNCATE()` support. Temporal scalar wrappers keep
+format/parsing functions separate from DATE_ADD/SUB, TIMESTAMPADD, ADDTIME, and
+SUBTIME arithmetic.
 `mylite_execution_declarations_*.inc` files are the ordered private declaration
 hub for the remaining fragments. Large declaration hubs may fan out into
 numbered same-directory subfragments when that keeps declaration groups

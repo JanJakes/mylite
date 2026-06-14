@@ -1,1 +1,1 @@
-/* Scalar temporal format functions live in mylite_execution_scalar_temporal_format.c. */
+/* Scalar temporal format and arithmetic wrappers live in dedicated C modules. */

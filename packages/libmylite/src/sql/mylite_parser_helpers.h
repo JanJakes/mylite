@@ -8,6 +8,10 @@
 
 char mylite_sql_parser_ascii_upper(unsigned char byte);
 bool mylite_sql_parser_token_text_equals(const struct mylite_sql_token *token, const char *text);
+bool mylite_sql_parser_token_text_is_count_function_name(const struct mylite_sql_token *token);
+bool mylite_sql_parser_token_text_is_generic_aggregate_window_function_name(
+    const struct mylite_sql_token *token
+);
 bool mylite_sql_parser_is_parse_ok(const struct mylite_sql_parser_state *state);
 bool mylite_sql_parser_sql_mode_has(
     const struct mylite_sql_parser_state *state,

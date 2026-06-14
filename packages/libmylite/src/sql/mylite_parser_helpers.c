@@ -149,3 +149,29 @@ bool mylite_sql_parser_token_text_equals(const struct mylite_sql_token *token, c
 
     return true;
 }
+
+bool mylite_sql_parser_token_text_is_count_function_name(const struct mylite_sql_token *token) {
+    return mylite_sql_parser_token_text_equals(token, "COUNT");
+}
+
+bool mylite_sql_parser_token_text_is_generic_aggregate_window_function_name(
+    const struct mylite_sql_token *token
+) {
+    static const char *const names[] = {
+        "JSON_ARRAYAGG",
+        "JSON_OBJECTAGG",
+        "STDDEV",
+        "STDDEV_POP",
+        "STDDEV_SAMP",
+        "VAR_POP",
+        "VAR_SAMP",
+        "VARIANCE",
+    };
+
+    for (size_t index = 0U; index < sizeof(names) / sizeof(names[0]); ++index) {
+        if (mylite_sql_parser_token_text_equals(token, names[index])) {
+            return true;
+        }
+    }
+    return false;
+}

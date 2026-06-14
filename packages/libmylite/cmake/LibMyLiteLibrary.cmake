@@ -96,6 +96,7 @@ add_library(mylite STATIC
   src/runtime/mylite_execution_scalar_string_transform.c
   src/runtime/mylite_execution_scalar_temporal.c
   src/runtime/mylite_execution_scalar_temporal_format.c
+  src/runtime/mylite_execution_sql_normalization.c
   src/runtime/mylite_execution_system_variables.c
   src/runtime/mylite_group_concat_aggregate.c
   src/runtime/mylite_integer_arithmetic.c

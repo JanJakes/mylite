@@ -71,9 +71,12 @@ state.
 Within `packages/libmylite/src/runtime/`, the execution runtime uses true C
 modules for narrow helper surfaces and same-translation-unit `.inc` fragments
 for broad planner/executor families that still depend on private static helper
-linkage. `mylite_execution_declarations_*.inc` files are the ordered private
-declaration hub for those fragments; keep them grouped by execution family
-until a family has a stable internal API that justifies a true module split.
+linkage. SQL text pre-normalization before parsing lives in
+`mylite_execution_sql_normalization.c`; it is a narrow execution-front-door
+module with explicit ownership of rewritten SQL buffers.
+`mylite_execution_declarations_*.inc` files are the ordered private declaration
+hub for the remaining fragments; keep them grouped by execution family until a
+family has a stable internal API that justifies a true module split.
 
 When running Homebrew `clang-tidy` on macOS, use a build directory configured
 with Homebrew `clang` so the compile database matches the analysis toolchain.

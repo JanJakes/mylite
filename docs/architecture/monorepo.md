@@ -82,8 +82,10 @@ base-conversion scalars live in `mylite_execution_scalar_base_conversion.c`
 with only narrow binary-scalar helpers exposed through
 `mylite_execution_scalar_binary_internal.h`.
 `mylite_execution_declarations_*.inc` files are the ordered private declaration
-hub for the remaining fragments; keep them grouped by execution family until a
-family has a stable internal API that justifies a true module split.
+hub for the remaining fragments. Large declaration hubs may fan out into
+numbered same-directory subfragments when that keeps declaration groups
+navigable without changing linkage; keep them grouped by execution family until
+a family has a stable internal API that justifies a true module split.
 
 When running Homebrew `clang-tidy` on macOS, use a build directory configured
 with Homebrew `clang` so the compile database matches the analysis toolchain.

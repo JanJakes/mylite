@@ -262,6 +262,15 @@ projection classifiers, warning appenders, diagnostics, generic scalar
 dispatch, and session state remain in the execution runtime and are reached
 through explicit internal helper declarations.
 
+The thirty-fifth split targets the execution translation unit's private
+declaration hub. `mylite_execution.c` keeps the public and internal includes,
+exported entry points, normalizer implementation, and ordered implementation
+fragment list. Private constants, shared execution plan types, and static
+forward declarations move into ordered declaration fragments named by execution
+family. This is a behavior-preserving same-translation-unit split: it does not
+export runtime internals, change static linkage, alter fragment include order,
+or introduce a second execution dispatcher.
+
 ## Goals
 
 - Reduce the size and review surface of `mylite_execution.c`.

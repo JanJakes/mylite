@@ -61,6 +61,13 @@ Large AST builder families may live in separate `mylite_parser_*_builders.c`
 modules when they use the shared parser helper surface instead of reaching
 through file-local state.
 
+Within `packages/libmylite/src/runtime/`, the execution runtime uses true C
+modules for narrow helper surfaces and same-translation-unit `.inc` fragments
+for broad planner/executor families that still depend on private static helper
+linkage. `mylite_execution_declarations_*.inc` files are the ordered private
+declaration hub for those fragments; keep them grouped by execution family
+until a family has a stable internal API that justifies a true module split.
+
 When running Homebrew `clang-tidy` on macOS, use a build directory configured
 with Homebrew `clang` so the compile database matches the analysis toolchain.
 Set `CC` explicitly before configuring; putting LLVM on `PATH` alone may still

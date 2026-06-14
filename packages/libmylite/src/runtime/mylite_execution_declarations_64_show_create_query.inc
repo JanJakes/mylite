@@ -286,11 +286,6 @@ static const struct mylite_sql_ast_node *unwrap_any_value_function_expression(
     const struct mylite_sql_ast_node *expression
 );
 static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expression);
-static int copy_source_span_text(
-    struct mylite_db *database,
-    const struct mylite_sql_source_span *span,
-    char **out_text
-);
 static int append_show_processlist_row(
     struct mylite_db *database,
     const struct mylite_statement_context *context,

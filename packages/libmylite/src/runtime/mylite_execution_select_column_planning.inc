@@ -1432,32 +1432,3 @@ static int validate_select_item_alias_text(struct mylite_db *database, char **te
 
     return MYLITE_OK;
 }
-
-static int duplicate_text(struct mylite_db *database, const char *source, char **out_text) {
-    size_t length = 0U;
-    char *text = NULL;
-
-    if (out_text == NULL) {
-        return MYLITE_MISUSE;
-    }
-    *out_text = NULL;
-    if (source == NULL) {
-        set_parse_error(database, NULL);
-        return MYLITE_ERROR;
-    }
-
-    length = strlen(source);
-    if (length == SIZE_MAX) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    text = (char *)malloc(length + 1U);
-    if (text == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    memcpy(text, source, length + 1U);
-    *out_text = text;
-
-    return MYLITE_OK;
-}

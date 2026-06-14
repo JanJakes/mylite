@@ -14,6 +14,7 @@
 #include "mylite_diagnostics.h"
 #include "mylite_digest.h"
 #include "mylite_dynamic_string.h"
+#include "mylite_execution_ast_internal.h"
 #include "mylite_execution_catalog.h"
 #include "mylite_execution_diagnostics.h"
 #include "mylite_execution_dml_numeric.h"
@@ -26,8 +27,12 @@
 #include "mylite_execution_scalar_string_position.h"
 #include "mylite_execution_scalar_string_transform.h"
 #include "mylite_execution_scalar_temporal_format.h"
+#include "mylite_execution_show_filter.h"
 #include "mylite_execution_sql_normalization.h"
+#include "mylite_execution_sqlite_internal.h"
+#include "mylite_execution_statement_transaction.h"
 #include "mylite_execution_system_variables.h"
+#include "mylite_execution_text_internal.h"
 #include "mylite_integer_arithmetic.h"
 #include "mylite_json.h"
 #include "mylite_mysql_error_codes.h"
@@ -232,13 +237,6 @@ static int finish_parse_failure(
 
     snapshot_rc = snapshot_current_diagnostics(database);
     return snapshot_rc == MYLITE_OK ? rc : snapshot_rc;
-}
-
-const struct mylite_sql_ast_node *mylite_execution_child_at(
-    const struct mylite_sql_ast_node *node,
-    size_t index
-) {
-    return child_at(node, index);
 }
 
 const struct mylite_sql_ast_node *mylite_execution_unwrap_parenthesized_expression(
@@ -644,23 +642,6 @@ int mylite_execution_decode_binary_hex_literal(
     return decode_binary_hex_literal(database, literal_node, out_bytes, out_byte_count);
 }
 
-int mylite_execution_copy_source_span_text(
-    struct mylite_db *database,
-    const struct mylite_sql_source_span *span,
-    char **out_text
-) {
-    return copy_source_span_text(database, span, out_text);
-}
-
-int mylite_execution_copy_identifier_text(
-    const struct mylite_sql_ast_node *node,
-    char *destination,
-    size_t destination_size,
-    struct mylite_db *database
-) {
-    return copy_identifier_text(node, destination, destination_size, database);
-}
-
 int mylite_execution_normalize_decimal_integer_literal(
     struct mylite_db *database,
     const struct mylite_sql_source_span *span,
@@ -678,14 +659,6 @@ int mylite_execution_format_uint64(
     size_t buffer_size
 ) {
     return format_uint64(database, value, buffer, buffer_size);
-}
-
-int mylite_execution_duplicate_text(
-    struct mylite_db *database,
-    const char *source,
-    char **out_text
-) {
-    return duplicate_text(database, source, out_text);
 }
 
 int mylite_execution_cast_binary_value(
@@ -1143,8 +1116,6 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_session_savepoints.inc"
 
-#include "mylite_execution_statement_sqlite_transactions.inc"
-
 #include "mylite_execution_set_connection_charset.inc"
 
 #include "mylite_execution_set_assignments.inc"
@@ -1561,13 +1532,7 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_show_databases_helpers.inc"
 
-#include "mylite_execution_show_filter_helpers.inc"
-
-#include "mylite_execution_show_result_name_helpers.inc"
-
 #include "mylite_execution_show_table_status_count_helpers.inc"
-
-#include "mylite_execution_show_like_pattern_helpers.inc"
 
 #include "mylite_execution_sql_builder_create_table_index_helpers.inc"
 

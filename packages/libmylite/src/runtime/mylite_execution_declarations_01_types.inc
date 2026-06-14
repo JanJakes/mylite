@@ -19,17 +19,6 @@ struct table_maintenance_target {
     bool unsupported_kind;
 };
 
-enum mylite_statement_transaction_kind {
-    MYLITE_STATEMENT_TRANSACTION_NONE = 0,
-    MYLITE_STATEMENT_TRANSACTION_DIRECT = 1,
-    MYLITE_STATEMENT_TRANSACTION_SAVEPOINT = 2,
-};
-
-struct mylite_statement_transaction {
-    enum mylite_statement_transaction_kind kind;
-    bool active;
-};
-
 struct transaction_characteristics {
     bool has_isolation;
     bool has_access_mode;
@@ -2222,12 +2211,6 @@ struct table_option_name_policy {
     const char *nul_message;
 };
 
-struct show_like_filter {
-    bool has_pattern;
-    char *pattern;
-    size_t pattern_length;
-};
-
 enum show_variables_where_truth {
     SHOW_VARIABLES_WHERE_FALSE = 0,
     SHOW_VARIABLES_WHERE_TRUE = 1,
@@ -2276,15 +2259,6 @@ struct show_variables_where_truth_stack {
     enum show_variables_where_truth *items;
     size_t count;
     size_t capacity;
-};
-
-struct show_like_pattern_item_request {
-    const char *pattern;
-    size_t pattern_length;
-    size_t pattern_index;
-    char value_byte;
-    bool case_sensitive;
-    char escape_character;
 };
 
 struct result_column_metadata_context {

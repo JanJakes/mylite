@@ -66,6 +66,7 @@ add_library(mylite STATIC
   src/runtime/mylite_digest.c
   src/runtime/mylite_dynamic_string.c
   src/runtime/mylite_execution.c
+  src/runtime/mylite_execution_ast_internal.c
   src/runtime/mylite_execution_catalog_builtin.c
   src/runtime/mylite_execution_catalog_charsets.c
   src/runtime/mylite_execution_catalog_information_schema.c
@@ -122,11 +123,15 @@ add_library(mylite STATIC
   src/runtime/mylite_execution_scalar_string.c
   src/runtime/mylite_execution_scalar_string_position.c
   src/runtime/mylite_execution_scalar_string_transform.c
+  src/runtime/mylite_execution_show_filter.c
+  src/runtime/mylite_execution_sqlite_internal.c
   src/runtime/mylite_execution_scalar_temporal.c
   src/runtime/mylite_execution_scalar_temporal_arithmetic.c
   src/runtime/mylite_execution_scalar_temporal_format.c
+  src/runtime/mylite_execution_statement_transaction.c
   src/runtime/mylite_execution_sql_normalization.c
   src/runtime/mylite_execution_system_variables.c
+  src/runtime/mylite_execution_text_internal.c
   src/runtime/mylite_group_concat_aggregate.c
   src/runtime/mylite_integer_arithmetic.c
   src/runtime/mylite_json.c

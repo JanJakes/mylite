@@ -115,25 +115,6 @@ static const char *builtin_schema_error_name(const char *schema_name);
 static void set_builtin_schema_write_error(struct mylite_db *database, const char *schema_name);
 static bool selected_schema_is_information_schema(const struct mylite_db *database);
 static bool schema_name_is_information_schema(const char *schema_name);
-static int copy_identifier_text(
-    const struct mylite_sql_ast_node *node,
-    char *destination,
-    size_t destination_size,
-    struct mylite_db *database
-);
-static int copy_quoted_identifier_text(
-    const char *source,
-    size_t source_size,
-    char *destination,
-    size_t destination_size
-);
-static int copy_unquoted_identifier_text(
-    const char *source,
-    size_t source_size,
-    char *destination,
-    size_t destination_size
-);
-
 static int plan_create_table_items(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *item_list,

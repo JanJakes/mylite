@@ -1,11 +1,3 @@
-static int execute_sqlite_schema_sql(struct mylite_db *database, const char *sql);
-static int execute_sqlite_control_sql(const struct mylite_db *database, const char *sql);
-static int prepare_sqlite_statement(
-    const struct mylite_db *database,
-    const char *sql,
-    sqlite3_stmt **out_statement
-);
-static int finalize_sqlite_statement(sqlite3_stmt *statement, int rc);
 static int bind_insert_row(sqlite3_stmt *statement, const struct planned_insert *plan, size_t row);
 static int handle_insert_unique_key_conflict(
     struct mylite_db *database,
@@ -1121,23 +1113,6 @@ static bool column_name_exists(
     size_t column_count,
     const char *name
 );
-static int make_show_like_filter(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *pattern_node,
-    struct show_like_filter *out_filter
-);
-static void show_like_filter_deinit(struct show_like_filter *filter);
-static bool show_like_filter_matches(
-    const struct show_like_filter *filter,
-    const char *value,
-    bool case_sensitive
-);
-static int build_show_databases_column_name(const struct show_like_filter *filter, char **out_name);
-static int build_show_tables_column_name(
-    const char *schema_name,
-    const struct show_like_filter *filter,
-    char **out_name
-);
 static int read_show_table_status_row_count(
     struct mylite_db *database,
     const struct mylite_catalog_table_descriptor *table,
@@ -1152,58 +1127,4 @@ static int format_show_table_status_integer(
     int64_t value,
     char *buffer,
     size_t buffer_size
-);
-static int decode_show_like_pattern(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *pattern_node,
-    char **out_pattern
-);
-static int append_decoded_string_escape(
-    struct mylite_db *database,
-    struct mylite_dynamic_string *string,
-    char escaped_byte
-);
-static bool show_like_pattern_matches(
-    const char *pattern,
-    size_t pattern_length,
-    const char *value,
-    size_t value_length,
-    bool case_sensitive
-);
-static bool show_like_pattern_matches_with_escape(
-    const char *pattern,
-    size_t pattern_length,
-    const char *value,
-    size_t value_length,
-    bool case_sensitive,
-    char escape_character
-);
-static size_t show_like_skip_percent_run(
-    const char *pattern,
-    size_t pattern_length,
-    size_t pattern_index
-);
-static bool show_like_pattern_item_matches(
-    struct show_like_pattern_item_request request,
-    size_t *out_next_pattern_index
-);
-static bool show_like_bytes_equal(char left, char right, bool case_sensitive);
-static char show_like_ascii_lower(char byte);
-
-static const struct mylite_sql_ast_node *child_at(
-    const struct mylite_sql_ast_node *node,
-    size_t index
-);
-static const struct mylite_sql_ast_node *child_with_kind(
-    const struct mylite_sql_ast_node *node,
-    enum mylite_sql_ast_node_kind kind
-);
-static int script_statement_count(const struct mylite_sql_ast_node *root, size_t *out_count);
-static void set_parse_error(
-    struct mylite_db *database,
-    const struct mylite_sql_parse_result *parse_result
-);
-static void set_multi_statement_parse_error(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *root
 );

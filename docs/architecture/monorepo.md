@@ -98,6 +98,18 @@ helpers declared in `mylite_execution_scalar_json_internal.h`.
 String-position scalar wrappers keep UTF-8 slicing, padding, search, and set
 comparison in the primary module while the bitmask-oriented EXPORT_SET() and
 MAKE_SET() family lives in `mylite_execution_scalar_string_bitmask.c`.
+Cross-cutting execution helpers must use narrow private headers before they are
+shared by true modules. AST navigation and parse-diagnostic helpers live behind
+`mylite_execution_ast_internal.h`; SQLite prepare/finalize and direct control
+SQL execution live behind `mylite_execution_sqlite_internal.h`; statement-level
+transaction/savepoint state and control-SQL error normalization live behind
+`mylite_execution_statement_transaction.h`; source-span duplication and
+identifier text decoding live behind `mylite_execution_text_internal.h`. SHOW
+LIKE decoding, matching, and result-column naming live behind
+`mylite_execution_show_filter.h` so SHOW and information-schema predicate code
+share one matcher instead of carrying file-local wildcard helpers. These headers
+may provide short inline adapters for legacy `.inc` fragments, but new C modules
+should call the `mylite_execution_*` names directly.
 `mylite_execution_declarations_*.inc` files are the ordered private declaration
 hub for the remaining fragments. Large declaration hubs may fan out into
 numbered same-directory subfragments when that keeps declaration groups

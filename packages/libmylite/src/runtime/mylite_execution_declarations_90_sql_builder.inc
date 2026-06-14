@@ -111,7 +111,6 @@ static int copy_select_item_identifier_alias_text(
     char **out_text
 );
 static int validate_select_item_alias_text(struct mylite_db *database, char **text);
-static int duplicate_text(struct mylite_db *database, const char *source, char **out_text);
 static int append_show_tables_result_columns(
     struct mylite_db *database,
     mylite_result *result,

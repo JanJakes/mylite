@@ -2,6 +2,8 @@
 #define MYLITE_RUNTIME_MYLITE_EXECUTION_SCALAR_H
 
 #include "mylite_ast.h"
+#include "mylite_execution_ast_internal.h"
+#include "mylite_execution_text_internal.h"
 #include "mylite_temporal_extract.h"
 #include "mylite_timestampdiff.h"
 
@@ -444,10 +446,6 @@ int mylite_execution_scalar_json_finish_keys_path_result(
     const struct mylite_json_normalize_result *result
 );
 
-const struct mylite_sql_ast_node *mylite_execution_child_at(
-    const struct mylite_sql_ast_node *node,
-    size_t index
-);
 const struct mylite_sql_ast_node *mylite_execution_unwrap_parenthesized_expression(
     const struct mylite_sql_ast_node *expression
 );
@@ -596,17 +594,6 @@ int mylite_execution_decode_binary_hex_literal(
     char **out_bytes,
     size_t *out_byte_count
 );
-int mylite_execution_copy_source_span_text(
-    struct mylite_db *database,
-    const struct mylite_sql_source_span *span,
-    char **out_text
-);
-int mylite_execution_copy_identifier_text(
-    const struct mylite_sql_ast_node *node,
-    char *destination,
-    size_t destination_size,
-    struct mylite_db *database
-);
 int mylite_execution_normalize_decimal_integer_literal(
     struct mylite_db *database,
     const struct mylite_sql_source_span *span,
@@ -619,11 +606,6 @@ int mylite_execution_format_uint64(
     uint64_t value,
     char *buffer,
     size_t buffer_size
-);
-int mylite_execution_duplicate_text(
-    struct mylite_db *database,
-    const char *source,
-    char **out_text
 );
 int mylite_execution_cast_binary_value(
     struct mylite_db *database,

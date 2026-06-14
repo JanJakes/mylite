@@ -1168,16 +1168,3 @@ static int build_savepoint_control_sql(
 );
 static void remove_user_savepoint_at(struct mylite_session_state *session, size_t index);
 static int append_user_savepoint(struct mylite_db *database, struct user_savepoint_values values);
-static int begin_statement_transaction(
-    struct mylite_db *database,
-    struct mylite_statement_transaction *transaction
-);
-static int commit_statement_transaction(
-    struct mylite_db *database,
-    struct mylite_statement_transaction *transaction
-);
-static void rollback_statement_transaction(
-    struct mylite_db *database,
-    struct mylite_statement_transaction *transaction
-);
-static int normalize_sqlite_control_rc(struct mylite_db *database, int rc);

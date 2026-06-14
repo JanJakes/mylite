@@ -2760,35 +2760,3 @@ static const struct mylite_sql_ast_node *unwrap_any_value_function_expression(
 
     return expression;
 }
-
-static int copy_source_span_text(
-    struct mylite_db *database,
-    const struct mylite_sql_source_span *span,
-    char **out_text
-) {
-    char *text = NULL;
-
-    if (out_text == NULL) {
-        return MYLITE_MISUSE;
-    }
-    *out_text = NULL;
-    if (span == NULL || span->text == NULL || span->length == 0U) {
-        set_parse_error(database, NULL);
-        return MYLITE_ERROR;
-    }
-    if (span->length == SIZE_MAX) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-
-    text = (char *)malloc(span->length + 1U);
-    if (text == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    memcpy(text, span->text, span->length);
-    text[span->length] = '\0';
-    *out_text = text;
-
-    return MYLITE_OK;
-}

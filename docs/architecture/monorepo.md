@@ -76,7 +76,11 @@ linkage. SQL text pre-normalization before parsing lives in
 module with explicit ownership of rewritten SQL buffers. MySQL-compatible
 execution diagnostics live in `mylite_execution_diagnostics*.c` modules grouped
 by behavior domain, with `mylite_execution_diagnostics_internal.h` carrying the
-private shared diagnostic dependencies for those modules.
+private shared diagnostic dependencies for those modules. Scalar execution
+modules should keep cohesive function families together; for example,
+base-conversion scalars live in `mylite_execution_scalar_base_conversion.c`
+with only narrow binary-scalar helpers exposed through
+`mylite_execution_scalar_binary_internal.h`.
 `mylite_execution_declarations_*.inc` files are the ordered private declaration
 hub for the remaining fragments; keep them grouped by execution family until a
 family has a stable internal API that justifies a true module split.

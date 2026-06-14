@@ -91,7 +91,9 @@ add_library(mylite STATIC
   src/runtime/mylite_execution_diagnostics_values.c
   src/runtime/mylite_execution_dml_numeric.c
   src/runtime/mylite_execution_loaded_catalog.c
+  src/runtime/mylite_execution_scalar_base_conversion.c
   src/runtime/mylite_execution_scalar_binary.c
+  src/runtime/mylite_execution_scalar_binary_common.c
   src/runtime/mylite_execution_scalar_charset_collation.c
   src/runtime/mylite_execution_scalar_json.c
   src/runtime/mylite_execution_scalar_json_mutation.c

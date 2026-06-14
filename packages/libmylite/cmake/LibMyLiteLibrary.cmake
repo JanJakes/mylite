@@ -83,6 +83,12 @@ add_library(mylite STATIC
   src/runtime/mylite_execution_catalog_sys_views.c
   src/runtime/mylite_execution_catalog_system_tables.c
   src/runtime/mylite_execution_diagnostics.c
+  src/runtime/mylite_execution_diagnostics_ddl.c
+  src/runtime/mylite_execution_diagnostics_json.c
+  src/runtime/mylite_execution_diagnostics_query.c
+  src/runtime/mylite_execution_diagnostics_schema.c
+  src/runtime/mylite_execution_diagnostics_system_variables.c
+  src/runtime/mylite_execution_diagnostics_values.c
   src/runtime/mylite_execution_dml_numeric.c
   src/runtime/mylite_execution_loaded_catalog.c
   src/runtime/mylite_execution_scalar_binary.c

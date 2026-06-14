@@ -73,7 +73,10 @@ modules for narrow helper surfaces and same-translation-unit `.inc` fragments
 for broad planner/executor families that still depend on private static helper
 linkage. SQL text pre-normalization before parsing lives in
 `mylite_execution_sql_normalization.c`; it is a narrow execution-front-door
-module with explicit ownership of rewritten SQL buffers.
+module with explicit ownership of rewritten SQL buffers. MySQL-compatible
+execution diagnostics live in `mylite_execution_diagnostics*.c` modules grouped
+by behavior domain, with `mylite_execution_diagnostics_internal.h` carrying the
+private shared diagnostic dependencies for those modules.
 `mylite_execution_declarations_*.inc` files are the ordered private declaration
 hub for the remaining fragments; keep them grouped by execution family until a
 family has a stable internal API that justifies a true module split.

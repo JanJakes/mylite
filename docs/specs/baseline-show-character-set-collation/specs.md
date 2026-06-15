@@ -9,13 +9,11 @@ pattern decoding, fixed `utf8mb4` / `utf8mb4_0900_ai_ci` table option
 acceptance, `SHOW CREATE DATABASE`, `SHOW CREATE TABLE`, and
 `SHOW TABLE STATUS`.
 
-The feature is intentionally not full MySQL charset or collation support. It
-exposes only the currently meaningful MyLite-owned default character set and
-collation rows, using MySQL 8.4.9 result column names and row values. It does
-not add alternate charsets, alternate collations, connection charset state,
-string comparison semantics, collation coercibility, `SET NAMES`,
-`SET CHARACTER SET`, `INFORMATION_SCHEMA`, system schema dictionary tables, or
-loaded MySQL charset/collation catalogs.
+The feature is intentionally metadata-only. It exposes the MySQL 8.4.9 target
+character-set and collation catalogs for introspection, while keeping charset
+admission, conversion, comparison, coercibility, connection charset state,
+`SET NAMES`, `SET CHARACTER SET`, and system data-dictionary storage separate
+compatibility surfaces.
 
 ## Sources
 
@@ -91,16 +89,16 @@ utf8mb4_0900_ai_ci utf8mb4 255 Yes     Yes      0       NO PAD
   `LIKE 'utf8mb4\_0900\_ai\_ci'`.
 - A no-match `LIKE` pattern returns an empty result set with warning count `0`
   and following `ROW_COUNT() == -1`.
-- MySQL 8.4.9 accepts `WHERE` filters on these statements, but those are
-  outside this slice.
+- MySQL 8.4.9 accepts `WHERE` filters on these statements.
 - Unsupported forms observed as syntax errors include plural spellings
   (`SHOW CHARACTER SETS`, `SHOW CHARSETS`, `SHOW COLLATIONS`), non-string
   pattern expressions (`LIKE 1`, `LIKE NULL`), national-string patterns
   (`LIKE N'utf8mb4'`), and charset introducer patterns
   (`LIKE _utf8mb4'utf8mb4'`).
-- MySQL's full default runtime exposed far more than this slice: 41 character
-  sets and 286 collations in the tested build. Full catalog parity is deferred
-  until MyLite supports those charsets and collations semantically.
+- MySQL's full default runtime exposed 41 character sets and 286 collations in
+  the tested build. MyLite exposes those metadata rows without implying that
+  every listed charset or collation is admitted for DDL, conversion, or
+  comparison semantics.
 
 `mysql --column-type-info -vvv` reported these visible column properties:
 
@@ -133,10 +131,12 @@ The implementation must add:
 - parser and AST support for `SHOW CHARACTER SET`, `SHOW CHARSET`, and
   `SHOW COLLATION`;
 - optional existing `LIKE 'pattern'` filter reuse;
-- a static `SHOW CHARACTER SET` row for `utf8mb4`;
-- a static `SHOW COLLATION` row for `utf8mb4_0900_ai_ci`;
+- limited `WHERE` filters over displayed catalog columns;
+- static MySQL 8.4.9 target catalog rows for all 41 character sets and 286
+  collations observed by the expectation artifact;
 - MySQL 8.4.9 result column names and visible cell values for those rows;
-- case-insensitive ASCII `LIKE` matching for these static catalog names;
+- case-insensitive ASCII `LIKE` and documented `WHERE` matching for these
+  catalog names and displayed metadata values;
 - result-set warning and row-count behavior matching observed MySQL 8.4.9 and
   existing MyLite result conventions;
 - deterministic syntax rejection for unsupported wider forms;
@@ -147,13 +147,10 @@ The implementation must add:
 
 This feature must not implement:
 
-- full MySQL charset or collation catalogs;
-- any charset other than `utf8mb4`;
-- any collation other than `utf8mb4_0900_ai_ci`;
-- `INFORMATION_SCHEMA.CHARACTER_SETS`,
-  `INFORMATION_SCHEMA.COLLATIONS`,
-  `INFORMATION_SCHEMA.COLLATION_CHARACTER_SET_APPLICABILITY`, or
-  `mysql.collations`;
+- charset or collation DDL admission merely because a metadata row exists;
+- string conversion, comparison, ordering, grouping, or coercibility semantics
+  for every cataloged charset or collation;
+- direct `mysql` data-dictionary tables for charset/collation storage;
 - connection character-set state, `SET NAMES`, `SET CHARACTER SET`,
   `character_set_*` variables, or `collation_*` variables;
 - string types, string comparison semantics, collation coercibility,
@@ -230,9 +227,10 @@ The AST stores the optional `LIKE` literal or `WHERE` clause as the first child
 of the dedicated statement node when present. Runtime treats absence of a child
 as an unfiltered static catalog request.
 
-## Static Rows
+## Representative Catalog Rows
 
-`SHOW CHARACTER SET` emits these columns:
+`SHOW CHARACTER SET` emits these columns for each catalog row. The target
+default `utf8mb4` row is:
 
 | Column | MyLite value |
 | --- | --- |
@@ -241,7 +239,8 @@ as an unfiltered static catalog request.
 | `Default collation` | `utf8mb4_0900_ai_ci` |
 | `Maxlen` | `4` |
 
-`SHOW COLLATION` emits these columns:
+`SHOW COLLATION` emits these columns for each catalog row. The target default
+`utf8mb4_0900_ai_ci` row is:
 
 | Column | MyLite value |
 | --- | --- |
@@ -253,8 +252,9 @@ as an unfiltered static catalog request.
 | `Sortlen` | `0` |
 | `Pad_attribute` | `NO PAD` |
 
-All values are returned through the existing text-cell result representation.
-No cells are `NULL` in this slice.
+Catalog values are returned through the existing text-cell result
+representation. The `SHOW` statements use the MySQL 8.4.9 target metadata
+values pinned by the runtime expectation artifact and C tests.
 
 ## LIKE Matching
 
@@ -266,8 +266,8 @@ The matcher is invoked with ASCII case-insensitive comparison for charset and
 collation catalog names:
 
 - `LIKE 'utf8mb4'` and `LIKE 'UTF8MB4'` match the `utf8mb4` character set;
-- `LIKE 'utf8%'` matches `utf8mb4` in MyLite, but does not expose MySQL's
-  separate `utf8mb3` row because that charset is unsupported;
+- broader wildcard patterns match the catalog rows they match in the target
+  MySQL 8.4.9 metadata set;
 - `LIKE 'utf8mb4\_0900\_ai\_ci'` matches
   `utf8mb4_0900_ai_ci`;
 - no-match filters return empty result sets with the normal result metadata.
@@ -288,9 +288,9 @@ On success:
 - no user schema, catalog descriptor, physical row, SQLite schema, or file
   preamble state is changed.
 
-Unfiltered MyLite statements return only the one supported static row for each
-statement. This is intentionally partial compared to MySQL's full server
-catalog and is documented in compatibility tables.
+Unfiltered MyLite statements return the target MySQL 8.4.9 metadata catalogs.
+This remains metadata-only and is documented separately from charset
+admission, conversion, comparison, and mutable session/server charset state.
 
 ## Diagnostics
 
@@ -322,31 +322,32 @@ payload invariant.
 Fast C tests must cover:
 
 - `SHOW CHARACTER SET`, `SHOW CHARSET`, and `SHOW COLLATION`;
-- result column names and the exact static row values;
+- result column names, catalog row counts, and representative row values;
 - case-insensitive `LIKE`, wildcard `LIKE`, escaped wildcard `LIKE`, and
   no-match filters;
+- documented `WHERE` filters over displayed catalog columns;
 - warning count, absence of affected rows beyond result-set conventions, and
   following `ROW_COUNT() == -1`;
 - no dependency on selected schema, with and without user schemas/tables;
 - no mutation of catalog generation, SQLite schema generation, user rows, or
   the MyLite preamble;
 - persistence/reopen and independent handles;
-- unsupported plural forms, `WHERE`, non-string `LIKE`, national-string
-  `LIKE`, charset introducer `LIKE`, and trailing tokens;
+- unsupported plural forms, non-string `LIKE`, national-string `LIKE`, charset
+  introducer `LIKE`, and trailing tokens;
 - existing lexer, parser, runtime handle, diagnostics, statement context,
   result metadata, SQLite bootstrap policy, file-backed opening, VFS, catalog,
   table option, and SHOW lifecycle tests still pass.
 
 The MySQL expectation artifact must verify MySQL 8.4.9 behavior for accepted
 forms, row values, result-state status, case-insensitive `LIKE`, no-match
-results, accepted-but-deferred `WHERE`, syntax rejections, and the wider
-catalog count that MyLite deliberately does not expose in this slice.
+results, accepted `WHERE`, syntax rejections, and the target catalog counts.
 
 ## Compatibility Documentation
 
 Update `COMPATIBILITY.md`, `docs/compatibility/sql-show-statements.md`,
 `docs/compatibility/character-sets.md`, and
-`docs/compatibility/collations.md` for only this partial static
-introspection surface. Do not mark full charset catalogs, full collation
-catalogs, string semantics, collation comparison behavior, `SET NAMES`,
-system variables, or `INFORMATION_SCHEMA` support as implemented.
+`docs/compatibility/collations.md` for this metadata-only introspection
+surface. Do not mark charset admission/conversion, string semantics,
+collation comparison behavior, `SET NAMES`, mutable system variables, or
+direct `mysql` data-dictionary storage as implemented merely because catalog
+rows are visible.

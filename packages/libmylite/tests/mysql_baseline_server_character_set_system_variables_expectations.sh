@@ -4,7 +4,7 @@ set -eu
 
 MYSQL_CONTAINER="${MYLITE_MYSQL_CONTAINER:-mylite-mysql-849}"
 MYSQL_ARGS="--protocol=TCP -h127.0.0.1 -uroot --batch --raw --default-character-set=utf8mb4"
-DATABASE="mylite_server_character_set_system_variables_expectations_$$"
+DATABASE="mylite_srv_charset_$$"
 
 fail() {
     printf '%s\n' "mysql_baseline_server_character_set_system_variables_expectations: $1" >&2

@@ -7323,6 +7323,132 @@ predicate_row_scalar_expression(A) ::= row_scalar_json_predicate_expression(B). 
 predicate_row_scalar_expression(A) ::= row_scalar_temporal_predicate_expression(B). {
     A = B;
 }
+predicate_row_scalar_expression(A) ::= row_scalar_numeric_predicate_expression(B). {
+    A = B;
+}
+
+row_scalar_numeric_predicate_expression(A) ::= ABS(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_ABS_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= SIGN(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_SIGN_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= CEIL(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_CEIL_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= CEILING(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_CEILING_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= FLOOR(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_FLOOR_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= ROUND(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_ROUND_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= ROUND(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_ROUND_FUNCTION, B, C, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= SQRT(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_SQRT_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= DEGREES(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_DEGREES_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= RADIANS(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_RADIANS_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= ACOS(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_ACOS_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= ASIN(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_ASIN_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= ATAN(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_ATAN_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= ATAN(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_ATAN_FUNCTION, B, C, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= ATAN2(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_ATAN2_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= ATAN2(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_ATAN2_FUNCTION, B, C, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= SIN(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_SIN_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= COS(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_COS_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= TAN(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_TAN_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= COT(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_COT_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= EXP(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_EXP_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= LN(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_LN_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= LOG(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_LOG_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= LOG(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_LOG_FUNCTION, B, C, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= LOG10(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_LOG10_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= LOG2(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_LOG2_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= POW(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_POW_FUNCTION, B, C, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= POWER(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_POWER_FUNCTION, B, C, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= BIT_COUNT(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_BIT_COUNT_FUNCTION, B, R);
+}
 
 row_scalar_string_predicate_expression(A) ::= HEX(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
@@ -7682,6 +7808,9 @@ select_order_key(A) ::= predicate_collate_expression(K). {
     A = K;
 }
 select_order_key(A) ::= window_function_expression(K). {
+    A = K;
+}
+select_order_key(A) ::= row_scalar_numeric_predicate_expression(K). {
     A = K;
 }
 select_order_key(A) ::=

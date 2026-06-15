@@ -235,6 +235,8 @@ static int plan_select_order_ast_item(
     }
     if ((row_scalar_conversion_kind_from_expression(item_nodes.order_key) !=
          PLANNED_ROW_SCALAR_CONVERSION_NONE) ||
+        (item_nodes.order_key != NULL &&
+         row_scalar_numeric_function_kind_is_supported(item_nodes.order_key->kind)) ||
         row_scalar_expression_contains_integer_arithmetic_attempt(item_nodes.order_key) ||
         select_order_key_is_searched_case_expression(item_nodes.order_key) ||
         select_order_key_is_like_predicate(item_nodes.order_key) ||

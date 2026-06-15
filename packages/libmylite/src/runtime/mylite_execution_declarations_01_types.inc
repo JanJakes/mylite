@@ -1540,6 +1540,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS = 90,
     PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH = 91,
     PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES = 92,
+    PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION = 93,
 };
 
 enum row_scalar_control_flow_bind_mode {
@@ -1606,6 +1607,35 @@ enum planned_row_scalar_digest_kind {
     PLANNED_ROW_SCALAR_DIGEST_SHA2 = 4,
 };
 
+enum planned_row_scalar_numeric_function_kind {
+    PLANNED_ROW_SCALAR_NUMERIC_NONE = 0,
+    PLANNED_ROW_SCALAR_NUMERIC_ABS = 1,
+    PLANNED_ROW_SCALAR_NUMERIC_SIGN = 2,
+    PLANNED_ROW_SCALAR_NUMERIC_CEIL = 3,
+    PLANNED_ROW_SCALAR_NUMERIC_CEILING = 4,
+    PLANNED_ROW_SCALAR_NUMERIC_FLOOR = 5,
+    PLANNED_ROW_SCALAR_NUMERIC_ROUND = 6,
+    PLANNED_ROW_SCALAR_NUMERIC_SQRT = 7,
+    PLANNED_ROW_SCALAR_NUMERIC_DEGREES = 8,
+    PLANNED_ROW_SCALAR_NUMERIC_RADIANS = 9,
+    PLANNED_ROW_SCALAR_NUMERIC_ACOS = 10,
+    PLANNED_ROW_SCALAR_NUMERIC_ASIN = 11,
+    PLANNED_ROW_SCALAR_NUMERIC_ATAN = 12,
+    PLANNED_ROW_SCALAR_NUMERIC_ATAN2 = 13,
+    PLANNED_ROW_SCALAR_NUMERIC_SIN = 14,
+    PLANNED_ROW_SCALAR_NUMERIC_COS = 15,
+    PLANNED_ROW_SCALAR_NUMERIC_TAN = 16,
+    PLANNED_ROW_SCALAR_NUMERIC_COT = 17,
+    PLANNED_ROW_SCALAR_NUMERIC_EXP = 18,
+    PLANNED_ROW_SCALAR_NUMERIC_LN = 19,
+    PLANNED_ROW_SCALAR_NUMERIC_LOG = 20,
+    PLANNED_ROW_SCALAR_NUMERIC_LOG10 = 21,
+    PLANNED_ROW_SCALAR_NUMERIC_LOG2 = 22,
+    PLANNED_ROW_SCALAR_NUMERIC_POW = 23,
+    PLANNED_ROW_SCALAR_NUMERIC_POWER = 24,
+    PLANNED_ROW_SCALAR_NUMERIC_BIT_COUNT = 25,
+};
+
 struct row_scalar_digest_ast_arguments {
     const struct mylite_sql_ast_node *function_expression;
     const struct mylite_sql_ast_node *argument;
@@ -1657,6 +1687,7 @@ struct planned_row_scalar_expression {
     enum planned_regexp_string_function_kind regexp_string_kind;
     enum planned_row_scalar_conversion_kind conversion_kind;
     enum planned_row_scalar_digest_kind digest_kind;
+    enum planned_row_scalar_numeric_function_kind numeric_function_kind;
     enum planned_window_function_kind window_function_kind;
     enum mylite_temporal_extract_kind temporal_extract_kind;
     enum mylite_sql_ast_operator operator_kind;

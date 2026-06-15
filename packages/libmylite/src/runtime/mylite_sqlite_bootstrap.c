@@ -11,6 +11,7 @@
 #include "mylite_integer_arithmetic.h"
 #include "mylite_json_functions.h"
 #include "mylite_like.h"
+#include "mylite_numeric_functions.h"
 #include "mylite_period_functions.h"
 #include "mylite_rand.h"
 #include "mylite_random_bytes.h"
@@ -246,6 +247,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_integer_arithmetic_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_numeric_functions(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_cast_convert_functions(sqlite);

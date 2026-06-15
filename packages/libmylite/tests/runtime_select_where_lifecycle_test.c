@@ -656,13 +656,12 @@ static int test_filtered_select_diagnostics(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_query_single_value(
         database,
-        "SELECT i FROM numbers WHERE ABS(i) = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_single_value_query){
+            .sql = "SELECT i FROM numbers WHERE ABS(i) = 1",
+            .expected = "1",
+            .context = "function predicate",
         }
     );
     failures += execute_error(

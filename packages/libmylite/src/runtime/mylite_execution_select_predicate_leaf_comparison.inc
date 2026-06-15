@@ -2327,6 +2327,7 @@ static bool row_scalar_predicate_literal_prefers_text(
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
         break;
     }
 
@@ -2692,8 +2693,8 @@ static bool predicate_node_is_supported_row_scalar_expression(
     }
     if (is_row_scalar_control_flow_expression(node) ||
         row_scalar_expression_is_string_function(node->kind) ||
-        is_row_scalar_json_expression(node) ||
-        row_scalar_expression_is_rand_function(node) ||
+        is_row_scalar_json_expression(node) || row_scalar_expression_is_rand_function(node) ||
+        row_scalar_numeric_function_kind_is_supported(node->kind) ||
         row_scalar_conversion_kind_from_expression(node) != PLANNED_ROW_SCALAR_CONVERSION_NONE ||
         node->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION) {
         return true;

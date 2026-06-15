@@ -386,15 +386,7 @@ static int test_abs_errors_and_unsupported_forms(void) {
             .message_part = "ABS() supports",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT ABS(id) FROM t ORDER BY id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports",
-        }
-    );
+    failures += execute_ok(database, "SELECT ABS(id) FROM t ORDER BY id", NULL);
     failures += execute_error(
         database,
         "SELECT 1+ABS(7)",

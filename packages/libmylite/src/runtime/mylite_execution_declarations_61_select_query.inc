@@ -331,6 +331,12 @@ static int read_select_found_row_count(
 static bool select_statement_is_row_scalar_projection_attempt(
     const struct mylite_sql_ast_node *statement
 );
+static bool select_statement_optional_clauses_contain_numeric_function(
+    const struct mylite_sql_ast_node *statement
+);
+static bool select_optional_clause_contains_numeric_function(
+    const struct mylite_sql_ast_node *clause
+);
 static int execute_row_scalar_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -523,6 +529,7 @@ static int row_scalar_select_step_error(
     sqlite3_stmt *statement,
     int sqlite_rc
 );
+static bool map_numeric_row_scalar_step_error(struct mylite_db *database, const char *message);
 static bool map_json_extract_row_scalar_step_error(struct mylite_db *database, const char *message);
 static bool map_json_mutation_row_scalar_step_error(
     struct mylite_db *database,

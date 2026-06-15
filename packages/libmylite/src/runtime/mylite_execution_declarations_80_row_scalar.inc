@@ -124,6 +124,45 @@ static int plan_row_scalar_sum_column_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_numeric_function_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_numeric_function_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_argument
+);
+static int plan_row_scalar_numeric_function_column_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_argument
+);
+static int validate_row_scalar_numeric_function_argument(
+    struct mylite_db *database,
+    const struct planned_row_scalar_expression *argument
+);
+static bool row_scalar_numeric_function_column_descriptor_is_supported(
+    const struct mylite_catalog_column_descriptor *column
+);
+static enum planned_row_scalar_numeric_function_kind row_scalar_numeric_function_kind_from_ast(
+    enum mylite_sql_ast_node_kind ast_kind
+);
+static const char *row_scalar_numeric_function_display_name(enum mylite_sql_ast_node_kind ast_kind);
+static bool row_scalar_numeric_function_kind_is_error(enum mylite_sql_ast_node_kind ast_kind);
+static bool row_scalar_numeric_function_kind_is_supported(enum mylite_sql_ast_node_kind ast_kind);
 static int normalize_row_scalar_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *source_expression,
@@ -2923,6 +2962,9 @@ static bool row_scalar_column_descriptor_is_supported(
     const struct mylite_catalog_column_descriptor *column
 );
 static bool row_scalar_expression_contains_row_function(const struct mylite_sql_ast_node *expression
+);
+static bool row_scalar_expression_contains_numeric_function(
+    const struct mylite_sql_ast_node *expression
 );
 static bool row_scalar_expression_contains_conversion_expression(
     const struct mylite_sql_ast_node *expression

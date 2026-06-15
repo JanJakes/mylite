@@ -1225,6 +1225,46 @@ static bool row_scalar_expression_contains_row_function(
     return found;
 }
 
+static bool row_scalar_expression_contains_numeric_function(
+    const struct mylite_sql_ast_node *expression
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    bool found = false;
+
+    if (expression == NULL) {
+        return false;
+    }
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        return false;
+    }
+    while (stack.count != 0U && !found) {
+        const struct mylite_sql_ast_node *current = stack.items[--stack.count];
+        size_t child_count = 0U;
+
+        current = unwrap_parenthesized_expression(current);
+        if (current == NULL) {
+            continue;
+        }
+        if (row_scalar_numeric_function_kind_is_supported(current->kind)) {
+            found = true;
+            break;
+        }
+        if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
+            continue;
+        }
+        child_count = mylite_sql_ast_node_child_count(current);
+        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
+                scalar_arithmetic_node_stack_deinit(&stack);
+                return false;
+            }
+        }
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+
+    return found;
+}
+
 static bool row_scalar_expression_contains_conversion_expression(
     const struct mylite_sql_ast_node *expression
 ) {

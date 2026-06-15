@@ -545,15 +545,7 @@ static int test_exp_log_power_errors_and_unsupported_forms(void) {
             .message_part = "EXP()/LN()/LOG()",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT EXP(id) FROM t ORDER BY id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
-        }
-    );
+    failures += execute_ok(database, "SELECT EXP(id) FROM t ORDER BY id", NULL);
     failures += execute_error(
         database,
         "SELECT 1+EXP(1)",

@@ -109,6 +109,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
         return bind_row_scalar_registered_function_expression_parameters(
             statement,
             expression,
@@ -209,6 +210,12 @@ static int bind_row_scalar_integer_arithmetic_frame_parameters(
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
         return bind_row_scalar_temporal_extract_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
+        return bind_row_scalar_registered_function_expression_parameters(
             statement,
             expression,
             parameter_index

@@ -129,6 +129,88 @@ static int append_row_scalar_registered_function_expression_sql(
     return rc;
 }
 
+static int append_row_scalar_numeric_function_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    const char *function_name = NULL;
+
+    if (expression == NULL || expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION) {
+        return MYLITE_ERROR;
+    }
+    function_name = row_scalar_numeric_function_sql_name(expression->numeric_function_kind);
+    if (function_name == NULL) {
+        return MYLITE_ERROR;
+    }
+    return append_row_scalar_registered_function_expression_sql(
+        string,
+        function_name,
+        expression,
+        next_parameter
+    );
+}
+
+static const char *row_scalar_numeric_function_sql_name(
+    enum planned_row_scalar_numeric_function_kind kind
+) {
+    switch (kind) {
+    case PLANNED_ROW_SCALAR_NUMERIC_ABS:
+        return "_mylite_numeric_abs";
+    case PLANNED_ROW_SCALAR_NUMERIC_SIGN:
+        return "_mylite_numeric_sign";
+    case PLANNED_ROW_SCALAR_NUMERIC_CEIL:
+        return "_mylite_numeric_ceil";
+    case PLANNED_ROW_SCALAR_NUMERIC_CEILING:
+        return "_mylite_numeric_ceiling";
+    case PLANNED_ROW_SCALAR_NUMERIC_FLOOR:
+        return "_mylite_numeric_floor";
+    case PLANNED_ROW_SCALAR_NUMERIC_ROUND:
+        return "_mylite_numeric_round";
+    case PLANNED_ROW_SCALAR_NUMERIC_SQRT:
+        return "_mylite_numeric_sqrt";
+    case PLANNED_ROW_SCALAR_NUMERIC_DEGREES:
+        return "_mylite_numeric_degrees";
+    case PLANNED_ROW_SCALAR_NUMERIC_RADIANS:
+        return "_mylite_numeric_radians";
+    case PLANNED_ROW_SCALAR_NUMERIC_ACOS:
+        return "_mylite_numeric_acos";
+    case PLANNED_ROW_SCALAR_NUMERIC_ASIN:
+        return "_mylite_numeric_asin";
+    case PLANNED_ROW_SCALAR_NUMERIC_ATAN:
+        return "_mylite_numeric_atan";
+    case PLANNED_ROW_SCALAR_NUMERIC_ATAN2:
+        return "_mylite_numeric_atan2";
+    case PLANNED_ROW_SCALAR_NUMERIC_SIN:
+        return "_mylite_numeric_sin";
+    case PLANNED_ROW_SCALAR_NUMERIC_COS:
+        return "_mylite_numeric_cos";
+    case PLANNED_ROW_SCALAR_NUMERIC_TAN:
+        return "_mylite_numeric_tan";
+    case PLANNED_ROW_SCALAR_NUMERIC_COT:
+        return "_mylite_numeric_cot";
+    case PLANNED_ROW_SCALAR_NUMERIC_EXP:
+        return "_mylite_numeric_exp";
+    case PLANNED_ROW_SCALAR_NUMERIC_LN:
+        return "_mylite_numeric_ln";
+    case PLANNED_ROW_SCALAR_NUMERIC_LOG:
+        return "_mylite_numeric_log";
+    case PLANNED_ROW_SCALAR_NUMERIC_LOG10:
+        return "_mylite_numeric_log10";
+    case PLANNED_ROW_SCALAR_NUMERIC_LOG2:
+        return "_mylite_numeric_log2";
+    case PLANNED_ROW_SCALAR_NUMERIC_POW:
+        return "_mylite_numeric_pow";
+    case PLANNED_ROW_SCALAR_NUMERIC_POWER:
+        return "_mylite_numeric_power";
+    case PLANNED_ROW_SCALAR_NUMERIC_BIT_COUNT:
+        return "_mylite_numeric_bit_count";
+    case PLANNED_ROW_SCALAR_NUMERIC_NONE:
+        break;
+    }
+    return NULL;
+}
+
 static int append_row_scalar_uuid_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -193,6 +275,7 @@ static int append_row_scalar_uuid_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
@@ -343,6 +426,7 @@ static int append_row_scalar_uuid_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
@@ -454,6 +538,7 @@ static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_exp
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:

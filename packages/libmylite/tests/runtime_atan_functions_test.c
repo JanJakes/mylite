@@ -703,15 +703,7 @@ static int test_atan_errors_and_unsupported_forms(void) {
             .message_part = "syntax",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT ATAN(id),ATAN2(id,1) FROM t ORDER BY id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
-        }
-    );
+    failures += execute_ok(database, "SELECT ATAN(id),ATAN2(id,1) FROM t ORDER BY id", NULL);
     failures += execute_error(
         database,
         "SELECT 1+ATAN(1)",

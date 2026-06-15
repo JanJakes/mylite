@@ -90,9 +90,14 @@ static bool select_statement_is_row_scalar_projection_attempt(
                                  from_clause->kind == MYLITE_SQL_AST_FROM_JOIN ||
                                  from_clause->kind == MYLITE_SQL_AST_FROM_DERIVED)) != 0;
 
-    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST ||
-        select_list_is_wildcard(select_list)) {
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
         return false;
+    }
+    if (select_list_is_wildcard(select_list)) {
+        return false;
+    }
+    if (has_row_source && select_statement_optional_clauses_contain_numeric_function(statement)) {
+        return true;
     }
     if ((from_clause == NULL || has_dual_source) &&
         select_statement_optional_clause_start(statement) != NULL) {
@@ -123,6 +128,7 @@ static bool select_statement_is_row_scalar_projection_attempt(
         if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
             (row_scalar_expression_contains_row_function(expression) ||
              (expression != NULL && expression->kind == MYLITE_SQL_AST_EXISTS_PREDICATE) ||
+             (has_row_source && row_scalar_expression_contains_numeric_function(expression)) ||
              (has_row_source && row_scalar_expression_contains_rand_function(expression)) ||
              (has_row_source && row_scalar_expression_contains_any_value_function(expression)) ||
              (has_row_source && row_scalar_expression_contains_conversion_expression(expression)) ||
@@ -147,6 +153,51 @@ static bool select_statement_is_row_scalar_projection_attempt(
     }
 
     return false;
+}
+
+static bool select_statement_optional_clauses_contain_numeric_function(
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *optional_clause = NULL;
+
+    for (optional_clause = select_statement_optional_clause_start(statement); optional_clause != NULL;
+         optional_clause = optional_clause->next_sibling) {
+        if (select_optional_clause_contains_numeric_function(optional_clause)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool select_optional_clause_contains_numeric_function(
+    const struct mylite_sql_ast_node *clause
+) {
+    const struct mylite_sql_ast_node *order_child = NULL;
+
+    if (clause == NULL) {
+        return false;
+    }
+    if (clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+        return row_scalar_expression_contains_numeric_function(child_at(clause, 0U));
+    }
+    if (clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
+        return false;
+    }
+
+    order_child = child_at(clause, 0U);
+    if (order_child != NULL && order_child->kind == MYLITE_SQL_AST_ORDER_BY_ITEM_LIST) {
+        const struct mylite_sql_ast_node *item = child_at(order_child, 0U);
+
+        while (item != NULL) {
+            if (item->kind == MYLITE_SQL_AST_ORDER_BY_ITEM &&
+                row_scalar_expression_contains_numeric_function(child_at(item, 0U))) {
+                return true;
+            }
+            item = item->next_sibling;
+        }
+        return false;
+    }
+    return row_scalar_expression_contains_numeric_function(order_child);
 }
 
 static int execute_row_scalar_select_statement(
@@ -268,7 +319,8 @@ static int row_scalar_select_step_error(
     if (message == NULL) {
         return mylite_sqlite_status_to_mylite(sqlite_rc);
     }
-    if (map_json_extract_row_scalar_step_error(database, message) ||
+    if (map_numeric_row_scalar_step_error(database, message) ||
+        map_json_extract_row_scalar_step_error(database, message) ||
         map_json_mutation_row_scalar_step_error(database, message) ||
         map_json_search_row_scalar_step_error(database, message) ||
         map_json_type_row_scalar_step_error(database, message) ||
@@ -285,6 +337,24 @@ static int row_scalar_select_step_error(
     }
 
     return mylite_sqlite_status_to_mylite(sqlite_rc);
+}
+
+static bool map_numeric_row_scalar_step_error(
+    struct mylite_db *database,
+    const char *message
+) {
+    if (strcmp(message, "BIGINT value is out of range in 'abs(...)'") == 0 ||
+        strcmp(message, "DOUBLE value is out of range in 'cot(0)'") == 0 ||
+        strcmp(message, "DOUBLE value is out of range") == 0) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            mysql_error_bigint_out_of_range,
+            "22003",
+            message
+        );
+        return true;
+    }
+    return false;
 }
 
 static bool map_json_extract_row_scalar_step_error(
@@ -1745,6 +1815,32 @@ static int populate_row_scalar_expression_result_column_descriptor(
             }
         );
         return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
+        if (expression->numeric_function_kind == PLANNED_ROW_SCALAR_NUMERIC_SIGN ||
+            expression->numeric_function_kind == PLANNED_ROW_SCALAR_NUMERIC_BIT_COUNT) {
+            populate_scalar_binary_numeric_result_column_descriptor(
+                descriptor,
+                (struct scalar_binary_numeric_result_column_shape){
+                    .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                    .display_length = mysql_scalar_bigint_display_length,
+                    .decimals = 0U,
+                    .extra_flags = 0U,
+                    .nullable = true,
+                }
+            );
+            return MYLITE_OK;
+        }
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_DOUBLE,
+                .display_length = mysql_scalar_double_display_length,
+                .decimals = mysql_approximate_decimals,
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
         populate_uuid_string_result_column_descriptor(descriptor, true);
         return MYLITE_OK;
@@ -2088,6 +2184,7 @@ static int populate_window_value_function_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
         break;
     }
 

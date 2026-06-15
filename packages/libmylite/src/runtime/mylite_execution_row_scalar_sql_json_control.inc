@@ -237,6 +237,7 @@ static int append_row_scalar_json_extract_document_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
@@ -351,6 +352,7 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
@@ -669,6 +671,7 @@ static int append_row_scalar_json_set_document_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
@@ -909,6 +912,7 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
@@ -1032,6 +1036,7 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
@@ -1840,6 +1845,7 @@ static int append_row_scalar_control_flow_argument_sql(
     switch (expression->kind) {
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
         return append_row_scalar_non_control_flow_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
@@ -1966,6 +1972,7 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     switch (expression->kind) {
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
         return append_row_scalar_non_control_flow_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
@@ -2074,6 +2081,7 @@ static int append_row_scalar_control_flow_leaf_condition_argument_sql(
     switch (expression->kind) {
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
         return append_row_scalar_non_control_flow_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
         return append_row_scalar_leaf_like_predicate_expression_sql(string, expression, next_parameter);

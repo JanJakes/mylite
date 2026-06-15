@@ -164,6 +164,10 @@
     COMMAND mylite_runtime_bit_count_function_test
   )
   add_test(
+    NAME libmylite.runtime.row_scalar_numeric_functions
+    COMMAND mylite_runtime_row_scalar_numeric_functions_test
+  )
+  add_test(
     NAME libmylite.runtime.numeric_format_truncate_crc32
     COMMAND mylite_runtime_numeric_format_truncate_crc32_test
   )

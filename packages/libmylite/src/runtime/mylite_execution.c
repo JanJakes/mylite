@@ -1450,6 +1450,8 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_query_planning.inc"
 
+#include "mylite_execution_row_scalar_numeric_planning.inc"
+
 #include "mylite_execution_row_scalar_string_basic_planning.inc"
 
 #include "mylite_execution_row_scalar_string_shape_planning.inc"

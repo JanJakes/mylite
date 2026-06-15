@@ -38,6 +38,7 @@ int main(void) {
 
 static int test_query_expression_clause_surfaces(void) {
     static const char *const simple_predicate_rows[] = {"1"};
+    static const char *const function_order_key_rows[] = {"3", "1"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -74,13 +75,14 @@ static int test_query_expression_clause_surfaces(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT a FROM t1 ORDER BY ABS(b - 5)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT a FROM t1 ORDER BY ABS(b - 5)",
+            .values = function_order_key_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "numeric function order key",
         }
     );
     failures += execute_error(

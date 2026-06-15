@@ -882,15 +882,7 @@ static int test_delete_diagnostics(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
-        database,
-        "DELETE FROM numbers WHERE ABS(id) = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
-        }
-    );
+    failures += expect_delete_ok(database, "DELETE FROM numbers WHERE ABS(id) = 1", 1);
     failures += execute_error(
         database,
         "DELETE numbers FROM numbers JOIN other_numbers ON numbers.id = other_numbers.id",

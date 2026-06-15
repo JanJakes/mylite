@@ -536,15 +536,7 @@ static int test_round_errors_and_unsupported_forms(void) {
             .message_part = "CEIL()/CEILING()/FLOOR()/ROUND() support",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT ROUND(id) FROM t ORDER BY id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports",
-        }
-    );
+    failures += execute_ok(database, "SELECT ROUND(id) FROM t ORDER BY id", NULL);
     failures += execute_error(
         database,
         "SELECT 1+ROUND(7)",

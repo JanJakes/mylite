@@ -65,6 +65,17 @@ static int plan_row_scalar_non_control_flow_expression(
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         return plan_row_scalar_integer_value(database, expression, out_expression);
     }
+    if (row_scalar_numeric_function_kind_is_supported(expression->kind)) {
+        return plan_row_scalar_numeric_function_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (row_scalar_conversion_kind_from_expression(expression) !=
         PLANNED_ROW_SCALAR_CONVERSION_NONE) {
         return plan_row_scalar_conversion_expression(
@@ -188,8 +199,8 @@ static int plan_row_scalar_non_control_flow_expression(
         "row-scalar SELECT supports only CONCAT(), CONCAT_WS(), FIELD(), GREATEST(), LEAST(), "
         "INTERVAL(), DATE_FORMAT(), descriptor columns, limited temporal extract, string length, "
         "string case, string trim, string codepoint, string slice, string search, string "
-        "replacement, control-flow functions, UNIX_TIMESTAMP(), HEX(), JSON_VALID(), CHARSET(), "
-        "COLLATION(), and COERCIBILITY() functions, "
+        "replacement, numeric functions, control-flow functions, UNIX_TIMESTAMP(), HEX(), "
+        "JSON_VALID(), CHARSET(), COLLATION(), and COERCIBILITY() functions, "
         "literals, DATABASE(), and system variables"
     );
     return MYLITE_ERROR;

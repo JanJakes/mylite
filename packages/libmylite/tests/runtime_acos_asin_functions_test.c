@@ -689,15 +689,7 @@ static int test_inverse_trig_errors_and_unsupported_forms(void) {
             .message_part = "syntax",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT ACOS(id),ASIN(id) FROM t ORDER BY id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
-        }
-    );
+    failures += execute_ok(database, "SELECT ACOS(id),ASIN(id) FROM t ORDER BY id", NULL);
     failures += execute_error(
         database,
         "SELECT 1+ACOS(1)",

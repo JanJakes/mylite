@@ -28,8 +28,6 @@ static int test_query_expression_clause_placeholders(void) {
     static const struct expected_statement placeholders[] = {
         {.sql = "SELECT COUNT(*) FROM t1 WHERE a + 1 > 1",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "SELECT a FROM t1 ORDER BY ABS(b - 5)",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT a, COUNT(*) FROM t1 GROUP BY a + 0 "
                 "HAVING COUNT(*) >= 1 AND a > 0 ORDER BY a + 0",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
@@ -109,6 +107,7 @@ static int test_query_expression_clause_placeholders(void) {
     failures += parse_ok("SELECT a FROM t1 WHERE a = 1");
     failures += parse_ok("SELECT t1.a, t2.a FROM t1 JOIN t2 ON t1.a = t2.a");
     failures += parse_ok("SELECT * FROM (SELECT 1) AS dt");
+    failures += parse_ok("SELECT a FROM t1 ORDER BY ABS(b - 5)");
     for (size_t index = 0U; index < sizeof(placeholders) / sizeof(placeholders[0]); ++index) {
         failures += expect_statement_kind(placeholders[index]);
     }

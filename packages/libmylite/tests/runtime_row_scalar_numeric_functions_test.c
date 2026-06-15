@@ -1,0 +1,389 @@
+#include <mylite/mylite.h>
+
+#include "runtime_test_support.h"
+
+#include <stdio.h>
+#include <string.h>
+
+struct expected_query {
+    const char *sql;
+    const char *const *values;
+    size_t column_count;
+    size_t row_count;
+    const char *context;
+};
+
+struct expected_error {
+    int code;
+    const char *sqlstate;
+    const char *message_part;
+};
+
+enum {
+    mysql_error_parse = 1064,
+    mysql_error_bigint_out_of_range = 1690,
+    integer_projection_column_count = 10,
+    floating_projection_column_count = 17,
+    nested_projection_column_count = 5,
+    explicit_projection_column_count = 5,
+};
+
+static int test_row_scalar_numeric_functions(void);
+static int open_app_database(mylite_db **out_database);
+static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
+static int execute_error_contains(
+    mylite_db *database,
+    const char *sql,
+    struct expected_error expected
+);
+static int expect_statement_ok(mylite_db *database, const char *sql);
+static int expect_query_values(mylite_db *database, struct expected_query query);
+static int expect_result_value(
+    const mylite_result *result,
+    size_t row,
+    size_t column,
+    const char *expected,
+    const char *context
+);
+static int expect_int(int actual, int expected, const char *context);
+static int expect_size(size_t actual, size_t expected, const char *context);
+static int expect_text(const char *actual, const char *expected, const char *context);
+static int expect_contains(const char *actual, const char *needle, const char *context);
+
+int main(void) {
+    return test_row_scalar_numeric_functions() == 0 ? 0 : 1;
+}
+
+static int test_row_scalar_numeric_functions(void) {
+    static const char *const integer_projection_values[] = {
+        "1", "4", "-1", "-4", "-4", "-4", "-4", "0", "2", "2", "2", "0", "0",  "0", "0",
+        "0", "0", "0",  "0",  "1",  "3",  "9",  "1", "9", "9", "9", "9", "10", "3", "4",
+    };
+    static const char *const rounded_float_projection_values[] = {
+        "1", "0", "0", "0", "0", "0", "0", "1", "0", "1", "1", "0", "2", "2", "3", "1", "1",
+        "2", "1", "0", "0", "0", "0", "1", "1", "0", "1", "1", "0", "2", "2", "3", "4", "4",
+        "3", "2", "0", "0", "0", "0", "1", "1", "0", "1", "1", "0", "2", "2", "3", "9", "9",
+    };
+    static const char *const abs_bit_count_ids[] = {"1", "3"};
+    static const char *const rounded_sin_ids[] = {"2", "3"};
+    static const char *const sqrt_null_ids[] = {"1"};
+    static const char *const log_null_ids[] = {"1", "2"};
+    static const char *const acos_null_ids[] = {"1", "3"};
+    static const char *const nested_values[] = {
+        "1",
+        "5",
+        "0",
+        "1",
+        "-1",
+        "2",
+        "1",
+        "1",
+        "100",
+        "0",
+        "3",
+        "10",
+        "0",
+        "9",
+        "1",
+    };
+    static const char *const explicit_numeric_predicate_values[] = {"2", "0", "8", "1", "5"};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += open_app_database(&database);
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE numeric_rows("
+        "id INT PRIMARY KEY, "
+        "i INT, "
+        "mask INT, "
+        "angle INT, "
+        "nullable INT"
+        ")"
+    );
+    failures += expect_statement_ok(database, "CREATE TABLE text_rows(id INT, label VARCHAR(10))");
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO numeric_rows(id, i, mask, angle, nullable) VALUES "
+        "(1, -4, 3, 0, NULL), "
+        "(2, 0, 8, 1, 5), "
+        "(3, 9, 15, 2, NULL)"
+    );
+    failures += expect_statement_ok(database, "INSERT INTO text_rows VALUES (1, '64')");
+
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, ABS(i), SIGN(i), CEIL(i), CEILING(i), FLOOR(i), "
+                   "ROUND(i), ROUND(i, -1), SQRT(ABS(i)), BIT_COUNT(mask) "
+                   "FROM numeric_rows ORDER BY id",
+            .values = integer_projection_values,
+            .column_count = integer_projection_column_count,
+            .row_count = 3U,
+            .context = "integer numeric function projection",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, ROUND(DEGREES(RADIANS(angle))), ROUND(ACOS(1)), "
+                   "ROUND(ASIN(0)), ROUND(ATAN(0)), ROUND(ATAN2(0, 1)), "
+                   "ROUND(SIN(angle)), ROUND(COS(angle - angle)), ROUND(TAN(0)), "
+                   "ROUND(COT(1)), ROUND(EXP(0)), ROUND(LN(1)), "
+                   "ROUND(LOG(10, 100)), ROUND(LOG10(100)), ROUND(LOG2(8)), "
+                   "ROUND(POW(id, 2)), ROUND(POWER(id, 2)) "
+                   "FROM numeric_rows ORDER BY id",
+            .values = rounded_float_projection_values,
+            .column_count = floating_projection_column_count,
+            .row_count = 3U,
+            .context = "rounded floating numeric function projection",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM numeric_rows "
+                   "WHERE ABS(i) >= 4 AND (BIT_COUNT(mask) = 2 OR BIT_COUNT(mask) = 4) "
+                   "ORDER BY ABS(i), id",
+            .values = abs_bit_count_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "numeric predicates and order by",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, i, mask, angle, nullable "
+                   "FROM numeric_rows WHERE BIT_COUNT(mask) = 1 ORDER BY id",
+            .values = explicit_numeric_predicate_values,
+            .column_count = explicit_projection_column_count,
+            .row_count = 1U,
+            .context = "explicit column numeric predicate routing",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM numeric_rows WHERE ROUND(SIN(angle)) = 1 ORDER BY id",
+            .values = rounded_sin_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "nested numeric predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM numeric_rows WHERE SQRT(i) IS NULL ORDER BY id",
+            .values = sqrt_null_ids,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "sqrt domain predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM numeric_rows WHERE LOG(i) IS NULL ORDER BY id",
+            .values = log_null_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "log domain predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM numeric_rows WHERE ACOS(ABS(i)) IS NULL ORDER BY id",
+            .values = acos_null_ids,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "acos domain predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, ABS(i) + 1, IFNULL(SIGN(nullable), 0), "
+                   "IF(ABS(i), ROUND(POWER(id, 2)), 100), "
+                   "CASE WHEN SIGN(i) = 0 THEN 0 ELSE SIGN(i) END "
+                   "FROM numeric_rows ORDER BY id",
+            .values = nested_values,
+            .column_count = nested_projection_column_count,
+            .row_count = 3U,
+            .context = "numeric arithmetic and control flow operands",
+        }
+    );
+    failures += execute_error_contains(
+        database,
+        "SELECT ABS('64') FROM numeric_rows",
+        (struct expected_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "numeric row-scalar arguments",
+        }
+    );
+    failures += execute_error_contains(
+        database,
+        "SELECT ABS(label) FROM text_rows",
+        (struct expected_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "numeric descriptor columns",
+        }
+    );
+    failures += execute_error_contains(
+        database,
+        "SELECT COT(0) FROM numeric_rows",
+        (struct expected_error){
+            .code = mysql_error_bigint_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "DOUBLE value is out of range",
+        }
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int open_app_database(mylite_db **out_database) {
+    int rc = mylite_test_open_temporary(out_database);
+
+    if (rc != MYLITE_OK) {
+        return expect_int(rc, MYLITE_OK, "open temporary database");
+    }
+    return expect_statement_ok(*out_database, "CREATE DATABASE app") +
+           expect_statement_ok(*out_database, "USE app");
+}
+
+static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result) {
+    mylite_result *result = NULL;
+    int rc = mylite_execute(database, sql, strlen(sql), &result);
+
+    if (rc != MYLITE_OK) {
+        fprintf(
+            stderr,
+            "expected SQL to succeed: %s\nerror %d/%s: %s\n",
+            sql,
+            mylite_errcode(database),
+            mylite_sqlstate(database),
+            mylite_errmsg(database)
+        );
+        return 1;
+    }
+    if (out_result == NULL) {
+        mylite_result_free(result);
+    } else {
+        *out_result = result;
+    }
+    return 0;
+}
+
+static int execute_error_contains(
+    mylite_db *database,
+    const char *sql,
+    struct expected_error expected
+) {
+    mylite_result *result = NULL;
+    int rc = mylite_execute(database, sql, strlen(sql), &result);
+    int failures = 0;
+
+    if (rc == MYLITE_OK) {
+        fprintf(stderr, "expected SQL to fail: %s\n", sql);
+        mylite_result_free(result);
+        return 1;
+    }
+    failures += expect_int(mylite_errcode(database), expected.code, "error code");
+    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, "error sqlstate");
+    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_statement_ok(mylite_db *database, const char *sql) {
+    return execute_ok(database, sql, NULL);
+}
+
+static int expect_query_values(mylite_db *database, struct expected_query query) {
+    mylite_result *result = NULL;
+    size_t expected_value_count = query.column_count * query.row_count;
+    int failures = execute_ok(database, query.sql, &result);
+
+    if (failures == 0) {
+        failures +=
+            expect_size(mylite_result_column_count(result), query.column_count, query.context);
+        failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+        for (size_t index = 0U; index < expected_value_count; ++index) {
+            failures += expect_result_value(
+                result,
+                index / query.column_count,
+                index % query.column_count,
+                query.values[index],
+                query.context
+            );
+        }
+    }
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_result_value(
+    const mylite_result *result,
+    size_t row,
+    size_t column,
+    const char *expected,
+    const char *context
+) {
+    const char *actual = mylite_result_value_text(result, row, column);
+
+    return expect_text(actual, expected, context);
+}
+
+static int expect_int(int actual, int expected, const char *context) {
+    if (actual != expected) {
+        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_size(size_t actual, size_t expected, const char *context) {
+    if (actual != expected) {
+        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_text(const char *actual, const char *expected, const char *context) {
+    if ((actual == NULL) != (expected == NULL)) {
+        fprintf(
+            stderr,
+            "%s: expected [%s], got [%s]\n",
+            context,
+            expected == NULL ? "NULL" : expected,
+            actual == NULL ? "NULL" : actual
+        );
+        return 1;
+    }
+    if (actual != NULL && strcmp(actual, expected) != 0) {
+        fprintf(stderr, "%s: expected [%s], got [%s]\n", context, expected, actual);
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_contains(const char *actual, const char *needle, const char *context) {
+    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
+        fprintf(
+            stderr,
+            "%s: expected [%s] to contain [%s]\n",
+            context,
+            actual == NULL ? "NULL" : actual,
+            needle == NULL ? "NULL" : needle
+        );
+        return 1;
+    }
+    return 0;
+}

@@ -1894,6 +1894,14 @@ static int append_row_scalar_registered_function_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
+static int append_row_scalar_numeric_function_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static const char *row_scalar_numeric_function_sql_name(
+    enum planned_row_scalar_numeric_function_kind kind
+);
 static int append_row_scalar_uuid_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,

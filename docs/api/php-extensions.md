@@ -56,6 +56,18 @@ arguments to run a broader or different Drupal selection, for example:
 tools/drupal-phpunit-mysqli-mylite test --testsuite=kernel
 ```
 
+Run the other CI application baselines with:
+
+```sh
+tools/laravel-phpunit-pdo-mylite
+tools/doctrine-phpunit-pdo-mylite
+tools/mediawiki-phpunit-mysqli-mylite
+```
+
+Laravel and Doctrine run MyLite-owned bridge suites against upstream framework
+dependencies through `pdo_mylite`. MediaWiki runs the selected upstream
+database PHPUnit paths through the mysqli replacement.
+
 For mysqli callers, pass the `.mylite` file as a socket path, as a path-like
 host, or as `localhost:/path/to/file.mylite` for WordPress-style DB host
 parsing. The replacement module must be loaded in a PHP process that has not

@@ -10,20 +10,22 @@ The runner fetches `WordPress/wordpress-develop`, builds this repository with
 `.mylite` file, and invokes PHPUnit with any command-line arguments passed to
 the runner.
 
-CI runs a pinned, bounded WordPress PHPUnit test selection. Full WordPress
-PHPUnit execution remains available locally by running the same tool without a
-filter.
+CI runs the full upstream WordPress PHPUnit suite at the pinned
+`MYLITE_WORDPRESS_REF`. Focused local runs remain available by passing PHPUnit
+arguments such as `--filter` to the same tool.
 
 ## Compatibility Contract
 
 The harness is an application-level signal. It does not mark all WordPress or
-mysqli behavior as supported. A passing selected run means WordPress can load
-the MyLite mysqli replacement, create the configured test database, bootstrap
-the PHPUnit environment, and exercise the selected WordPress DB test path.
+mysqli behavior as supported. A passing CI run means WordPress can load the
+MyLite mysqli replacement, create the configured test database, bootstrap the
+PHPUnit environment, and pass the pinned full upstream WordPress PHPUnit suite
+under the current runner configuration.
 
-The full suite is expected to expose unimplemented MySQL, mysqli, and WordPress
-query surfaces until those features are independently specified and added to
-the core compatibility matrix.
+Third-party plugins, alternate WordPress refs, non-default PHP/runtime
+configuration, and future upstream query changes remain outside this exact
+baseline until those surfaces are independently specified and added to the core
+compatibility matrix.
 
 ## Runtime Inputs
 

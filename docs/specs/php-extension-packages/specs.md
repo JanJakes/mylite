@@ -67,8 +67,9 @@ CTest package tests cover:
 - PDO driver registration, exec/query, emulated prepared statements,
   transactions, quoting, and silent error metadata.
 
-The tests are package-local PHP scripts registered only in the `php-dev`
-configuration.
+The tests are package-local PHP scripts registered in the PHP-enabled CMake
+configurations, including the `php-ci` preset used by CI and the `php-dev`
+preset used for local development.
 
 ## Exclusions
 

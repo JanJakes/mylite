@@ -288,6 +288,11 @@ static int test_table_backed_concat_ws_and_reopen(void) {
 }
 
 static int test_concat_ws_diagnostics(void) {
+    static const char *const nested_columns[] = {
+        "CONCAT_WS('-', CONCAT(v, id), id)",
+        "CONCAT_WS('-', CONCAT_WS(':', v, id), UPPER(v))",
+    };
+    static const char *const nested_values[] = {"a1-1", "a:1-A"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -322,14 +327,16 @@ static int test_concat_ws_diagnostics(void) {
             .message_part = "Unknown column 'missing' in 'field list'",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT CONCAT_WS('-', CONCAT(v, id), id) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "row-scalar SELECT CONCAT_WS() does not support nested CONCAT() or CONCAT_WS()",
+        (struct expected_query){
+            .sql = "SELECT CONCAT_WS('-', CONCAT(v, id), id), "
+                   "CONCAT_WS('-', CONCAT_WS(':', v, id), UPPER(v)) FROM t",
+            .columns = nested_columns,
+            .column_count = sizeof(nested_columns) / sizeof(nested_columns[0]),
+            .values = nested_values,
+            .row_count = 1U,
+            .context = "nested concat_ws arguments",
         }
     );
     failures += execute_error(

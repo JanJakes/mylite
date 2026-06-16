@@ -326,8 +326,9 @@ Add MySQL-runtime expectation coverage for:
 - no-source and `DUAL` `CONCAT()` over string, integer, boolean, `NULL`, and
   `DATABASE()` / `SCHEMA()` values;
 - table-backed mixed projection such as `SELECT id, CONCAT(v, '-', i)`;
-- documented nested row helpers such as `CONCAT(GREATEST(i, 3), '-', v)` and
-  `CONCAT_WS('-', LEAST(v, 'z'), i)`;
+- documented nested row helpers such as `CONCAT(GREATEST(i, 3), '-', v)`,
+  `CONCAT_WS('-', LEAST(v, 'z'), i)`, `CONCAT_WS('-', CONCAT(v, i), i)`,
+  `LOWER(CONCAT(v, n))`, and `LENGTH(CONCAT(v, n))`;
 - `NULL` propagation from literals and nullable columns;
 - one-argument `CONCAT()`;
 - exact decimal, `DATE`, `TIME`, `DATETIME`, `TIMESTAMP`, and `TEXT` column
@@ -353,5 +354,6 @@ Update:
 - `docs/compatibility/sql-query-expressions.md`
 - `docs/compatibility/functions-string.md`
 
-Do not infer general expression support, arbitrary nested helpers, expression
-defaults, or broad DML expression assignments from this row-scalar envelope.
+Do not infer general expression support, arbitrary nested helpers outside the
+documented row-scalar value subset, expression defaults, or broad DML
+expression assignments from this row-scalar envelope.

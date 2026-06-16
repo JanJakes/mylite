@@ -10,9 +10,11 @@ CONCAT_WS(separator, str1[, str2 ...])
 
 The supported contexts match the current row-scalar string-function envelope:
 no-source scalar `SELECT`, `SELECT ... FROM DUAL`, `DO`, and single-table
-row-scalar `SELECT` projection. It does not add general expression predicates,
+row-scalar `SELECT` projection. Arguments may use the documented supported
+row-scalar value-function subset, including nested `CONCAT()` / `CONCAT_WS()`
+and string helper calls. It does not add general expression predicates,
 expression ordering, DML assignment expressions, generated columns, defaults,
-or arbitrary nested expression planning.
+or arbitrary expression planning outside that supported value subset.
 
 ## Sources And Evidence
 
@@ -61,10 +63,10 @@ Runtime probes establish the behavior used by this phase:
   followed by `ROW_COUNT()` reports `0`, while scalar `SELECT` makes
   `ROW_COUNT()` report `-1`.
 
-MySQL also accepts broader behavior such as nested functions, binary-string
-typing, expression predicates, expression ordering, DML assignment expressions,
-nonliteral general expressions, user variables, and full expression metadata.
-Those forms remain outside this baseline.
+MySQL also accepts broader behavior such as binary-string typing, expression
+predicates, expression ordering, DML assignment expressions, nonliteral general
+expressions beyond MyLite's supported row-scalar value subset, user variables,
+and full expression metadata. Those forms remain outside this baseline.
 
 ## Ownership Boundaries
 
@@ -132,6 +134,7 @@ concat_ws_arg:
   | system_variable_reference
   | scalar_subquery                 -- no-source / DUAL only, existing subset
   | descriptor_column_reference     -- table-backed SELECT only
+  | supported_row_scalar_value_function
   | ( concat_ws_arg )
 ```
 
@@ -146,14 +149,13 @@ descriptor column families match the current `CONCAT()` row-scalar subset:
 
 The following remain outside this phase:
 
-- nested `CONCAT_WS()` or `CONCAT()` arguments;
-- nested row functions such as `CONCAT_WS('-', LEFT(v, 1), id)`;
 - `WHERE CONCAT_WS(...) ...`, `HAVING CONCAT_WS(...) ...`, expression
   `ORDER BY`, grouping, distinct expression rows, and aggregate arguments;
 - DML assignment values such as `UPDATE t SET c = CONCAT_WS('-', a, b)`;
 - binary string result typing, binary-string descriptor operands, binary casts,
   hexadecimal string operands, parameters, user variables, correlated
-  subqueries, CTEs, and stored functions;
+  subqueries, CTEs, stored functions, and arbitrary expressions outside the
+  supported row-scalar value subset;
 - full character-set, collation, coercibility, or protocol metadata parity.
 
 ### MyLite Lemon-Syntax Snippet
@@ -199,7 +201,7 @@ cell for the current row and does not materialize full result sets in MyLite.
 - `1582 / 42000` for zero or one total argument.
 - Existing unknown-column diagnostics for unresolved descriptor arguments.
 - Existing row-scalar unsupported diagnostics for unsupported argument shapes,
-  nested functions, unsupported descriptor types, predicates, ordering
+  unsupported descriptor types, predicates, ordering
   expressions, DML assignment values, parameters, user variables, and broader
   expression forms.
 - Existing allocation and physical SQLite failure diagnostics for internal
@@ -218,8 +220,9 @@ Fast C tests cover:
 - `WHERE`, `ORDER BY`, and `LIMIT` envelope reuse around row-scalar projection;
 - reopen persistence and `.mylite` preamble preservation for the read-only
   query path;
-- wrong argument counts, unknown columns, nested functions, unsupported
-  predicates, unsupported DML assignment use, and unsupported binary operands.
+- wrong argument counts, unknown columns, supported nested value functions,
+  unsupported predicates, unsupported DML assignment use, and unsupported binary
+  operands.
 
 MySQL expectation probes cover the user-visible result values, diagnostics,
 labels, row count, and warning count for the admitted subset.

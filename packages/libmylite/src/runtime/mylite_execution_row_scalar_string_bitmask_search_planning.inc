@@ -505,6 +505,17 @@ static int plan_row_scalar_string_search_text_argument(
         );
         return MYLITE_ERROR;
     }
+    if (row_scalar_expression_is_nested_value_argument(expression)) {
+        return plan_row_scalar_nested_value_argument(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (!mylite_execution_string_slice_scalar_text_argument_is_admitted(expression)) {
         set_unsupported_error(database, unsupported_message);
         return MYLITE_ERROR;

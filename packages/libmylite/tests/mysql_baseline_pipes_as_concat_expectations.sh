@@ -80,6 +80,13 @@ dual-ab" \
     "$DATABASE"
 
 expect_output \
+    "nested concat operands" \
+    "ab	ab	0" \
+    "SET SESSION sql_mode = 'PIPES_AS_CONCAT';
+     SELECT CONCAT('a')||'b', 'a'||CONCAT_WS('-', 'b'), @@warning_count;" \
+    "$DATABASE"
+
+expect_output \
     "table backed concatenation" \
     "1	a:12	a:2024-01-02	ax
 2	b:-3	NULL	NULL

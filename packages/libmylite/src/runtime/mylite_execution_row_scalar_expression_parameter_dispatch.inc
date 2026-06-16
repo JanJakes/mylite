@@ -38,29 +38,11 @@ static int bind_row_scalar_expression_parameters(
         for (size_t argument_index = 0U;
              rc == MYLITE_OK && argument_index < expression->argument_count;
              ++argument_index) {
-            if (expression->arguments[argument_index].kind ==
-                PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH) {
-                rc = bind_row_scalar_string_length_expression_parameters(
-                    statement,
-                    &expression->arguments[argument_index],
-                    parameter_index
-                );
-            } else if (
-                expression->arguments[argument_index].kind ==
-                PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE
-            ) {
-                rc = bind_row_scalar_string_slice_expression_parameters(
-                    statement,
-                    &expression->arguments[argument_index],
-                    parameter_index
-                );
-            } else {
-                rc = bind_row_scalar_non_concat_expression_parameters(
-                    statement,
-                    &expression->arguments[argument_index],
-                    parameter_index
-                );
-            }
+            rc = bind_row_scalar_expression_parameters(
+                statement,
+                &expression->arguments[argument_index],
+                parameter_index
+            );
         }
         return rc;
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:

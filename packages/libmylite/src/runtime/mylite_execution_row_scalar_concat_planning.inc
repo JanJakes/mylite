@@ -348,15 +348,6 @@ static int plan_row_scalar_concat_operator_arguments(
             }
             continue;
         }
-        if (current->kind == MYLITE_SQL_AST_CONCAT_FUNCTION ||
-            current->kind == MYLITE_SQL_AST_CONCAT_WS_FUNCTION) {
-            set_unsupported_error(
-                database,
-                "row-scalar SELECT || does not support nested CONCAT()"
-            );
-            rc = MYLITE_ERROR;
-            break;
-        }
         if (*inout_next_argument >= argument_count) {
             set_parse_error(database, NULL);
             rc = MYLITE_ERROR;
@@ -462,28 +453,15 @@ static int plan_row_scalar_concat_ws_expression(
     for (size_t argument_index = 0U;
          rc == MYLITE_OK && argument_index < argument_count && argument != NULL;
          ++argument_index) {
-        const struct mylite_sql_ast_node *unwrapped_argument =
-            unwrap_parenthesized_expression(argument);
-
-        if (unwrapped_argument != NULL &&
-            (unwrapped_argument->kind == MYLITE_SQL_AST_CONCAT_FUNCTION ||
-             unwrapped_argument->kind == MYLITE_SQL_AST_CONCAT_WS_FUNCTION)) {
-            set_unsupported_error(
-                database,
-                "row-scalar SELECT CONCAT_WS() does not support nested CONCAT() or CONCAT_WS()"
-            );
-            rc = MYLITE_ERROR;
-        } else {
-            rc = plan_row_scalar_concat_ws_argument(
-                database,
-                argument,
-                has_source,
-                source_context,
-                table_columns,
-                table_column_count,
-                &out_expression->arguments[argument_index]
-            );
-        }
+        rc = plan_row_scalar_concat_ws_argument(
+            database,
+            argument,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_expression->arguments[argument_index]
+        );
         argument = argument->next_sibling;
     }
     if (rc != MYLITE_OK) {

@@ -1080,7 +1080,7 @@ static int append_row_scalar_non_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
-        break;
+        return append_row_scalar_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
         return append_row_scalar_greatest_least_expression_sql(string, expression, next_parameter);
@@ -1542,29 +1542,11 @@ static int append_row_scalar_concat_expression_sql(
             rc = mylite_dynamic_string_append(string, " || ");
         }
         if (rc == MYLITE_OK) {
-            if (expression->arguments[argument_index].kind ==
-                PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH) {
-                rc = append_row_scalar_string_length_expression_sql(
-                    string,
-                    &expression->arguments[argument_index],
-                    next_parameter
-                );
-            } else if (
-                expression->arguments[argument_index].kind ==
-                PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE
-            ) {
-                rc = append_row_scalar_string_slice_expression_sql(
-                    string,
-                    &expression->arguments[argument_index],
-                    next_parameter
-                );
-            } else {
-                rc = append_row_scalar_non_concat_expression_sql(
-                    string,
-                    &expression->arguments[argument_index],
-                    next_parameter
-                );
-            }
+            rc = append_row_scalar_expression_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
         }
     }
     if (rc == MYLITE_OK) {
@@ -1592,29 +1574,11 @@ static int append_row_scalar_concat_ws_expression_sql(
             rc = mylite_dynamic_string_append(string, ", ");
         }
         if (rc == MYLITE_OK) {
-            if (expression->arguments[argument_index].kind ==
-                PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH) {
-                rc = append_row_scalar_string_length_expression_sql(
-                    string,
-                    &expression->arguments[argument_index],
-                    next_parameter
-                );
-            } else if (
-                expression->arguments[argument_index].kind ==
-                PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE
-            ) {
-                rc = append_row_scalar_string_slice_expression_sql(
-                    string,
-                    &expression->arguments[argument_index],
-                    next_parameter
-                );
-            } else {
-                rc = append_row_scalar_non_concat_expression_sql(
-                    string,
-                    &expression->arguments[argument_index],
-                    next_parameter
-                );
-            }
+            rc = append_row_scalar_expression_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
         }
     }
     if (rc == MYLITE_OK) {

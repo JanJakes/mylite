@@ -69,8 +69,7 @@ Supported statement forms:
 - `SET sql_mode = 'PIPES_AS_CONCAT'` and `SET sql_mode = 'ANSI'` activation
   through the existing session SQL-mode state.
 
-Supported operand forms match the current non-nested `CONCAT()` argument
-surface:
+Supported operand forms match the current `CONCAT()` argument surface:
 
 - string, integer, boolean, and `NULL` literals;
 - optional unary sign for integer literals within the signed 64-bit range;
@@ -81,6 +80,9 @@ surface:
 - descriptor-backed integer, exact `DECIMAL`, nonbinary string, baseline
   `TEXT` family, `YEAR`, `DATE`, `TIME`, `DATETIME`, and `TIMESTAMP` operands
   in the existing row-scalar `SELECT` path;
+- supported row-scalar value functions, including nested `CONCAT()` /
+  `CONCAT_WS()` and current string helpers, in the existing row-scalar value
+  envelope;
 - parentheses around operands and around the full concatenation expression.
 
 For no-source, `DUAL`, and `DO` scalar expressions, a `||` expression may also
@@ -105,10 +107,11 @@ This slice intentionally does not support:
   pass-through;
 - joined, grouped, distinct, compound, recursive, windowed, or CTE expression
   contexts beyond the current row-scalar projection envelope;
-- nested `CONCAT()` or `CONCAT_WS()` as operands;
 - binary-string result typing, charset/collation metadata parity, non-ASCII
   collation behavior, introducers, collations, parameters, user variables,
-  approximate numeric formatting, JSON value typing, or expression metadata.
+  approximate numeric formatting, JSON value typing, arbitrary expression
+  operands outside the supported row-scalar value subset, or expression
+  metadata.
 
 ## Grammar
 

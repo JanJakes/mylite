@@ -77,7 +77,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
-        break;
+        return bind_row_scalar_expression_parameters(statement, expression, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
         return bind_row_scalar_reversed_arguments_parameters(

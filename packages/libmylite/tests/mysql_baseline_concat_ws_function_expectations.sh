@@ -158,6 +158,17 @@ expect_output_with_headers \
     "SELECT CONCAT_WS('-', v, id), CONCAT_WS('-', v, c) AS cw FROM t WHERE id = 1;" \
     "$DATABASE"
 
+nested_expected=$(cat <<\EXPECTED
+a1-1	a:1-A
+EXPECTED
+)
+expect_output \
+    "nested concat_ws values" \
+    "$nested_expected" \
+    "SELECT CONCAT_WS('-', CONCAT(v, id), id), "\
+"CONCAT_WS('-', CONCAT_WS(':', v, id), UPPER(v)) FROM t WHERE id = 1;" \
+    "$DATABASE"
+
 expect_error \
     "concat_ws rejects zero arguments" \
     1582 \

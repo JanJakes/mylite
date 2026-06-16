@@ -2092,6 +2092,18 @@ static int plan_row_scalar_non_control_flow_expression(
     bool allow_scalar_subquery,
     struct planned_row_scalar_expression *out_expression
 );
+static bool row_scalar_expression_is_nested_value_argument(
+    const struct mylite_sql_ast_node *expression
+);
+static int plan_row_scalar_nested_value_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_get_lock_function(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

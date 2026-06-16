@@ -181,6 +181,26 @@ static int test_table_backed_concat(void) {
     static const char *const values_multi_order[] = {":3", "a:1", "b:2"};
     static const char *const columns_labels[] = {"CONCAT(v, '-', id)", "alias_name"};
     static const char *const values_labels[] = {"a-1", "xapp"};
+    static const char *const columns_nested_functions[] = {
+        "id",
+        "mixed_case",
+        "lower_concat",
+        "length_concat",
+    };
+    static const char *const values_nested_functions[] = {
+        "1",
+        "a:X:5",
+        "ax",
+        "2",
+        "2",
+        NULL,
+        NULL,
+        NULL,
+        "3",
+        NULL,
+        "",
+        "0",
+    };
     static const char *const columns_distinct_date_parts[] = {"year", "month"};
     static const char *const values_distinct_date_parts[] = {
         "2024",
@@ -291,6 +311,19 @@ static int test_table_backed_concat(void) {
             .values = values_labels,
             .row_count = 1U,
             .context = "concat labels",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, CONCAT(LOWER(v), ':', UPPER(n), ':', LENGTH(txt)) "
+                   "AS mixed_case, LOWER(CONCAT(v, n)) AS lower_concat, "
+                   "LENGTH(CONCAT(v, n)) AS length_concat FROM t ORDER BY id",
+            .columns = columns_nested_functions,
+            .column_count = sizeof(columns_nested_functions) / sizeof(columns_nested_functions[0]),
+            .values = values_nested_functions,
+            .row_count = 3U,
+            .context = "nested row-scalar string functions",
         }
     );
     failures += execute_ok(database, "SET sql_mode = ''", NULL);

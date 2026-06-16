@@ -213,6 +213,19 @@ expect_output_with_headers \
     "SELECT CONCAT(v, '-', id), CONCAT('x', DATABASE()) AS alias_name FROM t WHERE id = 1;" \
     "$DATABASE"
 
+nested_string_functions_expected=$(cat <<\EXPECTED
+1	a:X:5	ax	2
+2	NULL	NULL	NULL
+3	NULL		0
+EXPECTED
+)
+expect_output \
+    "nested row-scalar string functions" \
+    "$nested_string_functions_expected" \
+    "SELECT id, CONCAT(LOWER(v), ':', UPPER(n), ':', LENGTH(txt)), "\
+"LOWER(CONCAT(v, n)), LENGTH(CONCAT(v, n)) FROM t ORDER BY id;" \
+    "$DATABASE"
+
 expect_error \
     "concat rejects zero arguments" \
     1582 \

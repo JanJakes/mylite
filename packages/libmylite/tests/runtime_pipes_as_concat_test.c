@@ -294,6 +294,8 @@ static int test_table_backed_concat_and_reopen(void) {
 static int test_pipes_as_concat_diagnostics(void) {
     static const char *const columns_wide_literal[] = {"wide_value", "@@warning_count"};
     static const char *const values_wide_literal[] = {"19223372036854775808", "0"};
+    static const char *const columns_nested_concat[] = {"nested_concat", "nested_ws"};
+    static const char *const values_nested_concat[] = {"ab", "ab"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -320,22 +322,16 @@ static int test_pipes_as_concat_diagnostics(void) {
             .context = "wide unsigned literal remains concat text",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT CONCAT('a')||'b'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "does not support nested CONCAT",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT 'a'||CONCAT_WS('-', 'b')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "does not support nested CONCAT",
+        (struct expected_query){
+            .sql = "SELECT CONCAT('a')||'b' AS nested_concat, "
+                   "'a'||CONCAT_WS('-', 'b') AS nested_ws",
+            .columns = columns_nested_concat,
+            .column_count = sizeof(columns_nested_concat) / sizeof(columns_nested_concat[0]),
+            .values = values_nested_concat,
+            .row_count = 1U,
+            .context = "nested concat operands",
         }
     );
 

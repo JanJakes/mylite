@@ -46,6 +46,7 @@ static int plan_row_scalar_non_control_flow_expression(
     const char *top_level_only_message = NULL;
     bool handled = false;
     int binary_rc = MYLITE_OK;
+    int temporal_rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
@@ -107,6 +108,79 @@ static int plan_row_scalar_non_control_flow_expression(
             table_column_count,
             out_expression
         );
+    }
+    if (row_scalar_expression_is_concat_operator(expression)) {
+        return plan_row_scalar_concat_operator_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_CONCAT_FUNCTION) {
+        return plan_row_scalar_concat_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_CONCAT_WS_ARGUMENT_COUNT_ERROR) {
+        set_native_function_parameter_count_error(database, "CONCAT_WS");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_CONCAT_WS_FUNCTION) {
+        return plan_row_scalar_concat_ws_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (row_scalar_expression_is_string_function(expression->kind)) {
+        return plan_row_scalar_string_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (is_row_scalar_json_expression(expression)) {
+        return plan_row_scalar_json_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            COLUMN_REFERENCE_FIELD,
+            out_expression
+        );
+    }
+    temporal_rc = plan_row_scalar_temporal_function_expression(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        out_expression,
+        &handled
+    );
+    if (handled) {
+        return temporal_rc;
     }
     if (expression->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
         if (!allow_scalar_subquery) {
@@ -224,6 +298,98 @@ static int plan_row_scalar_non_control_flow_expression(
         "literals, DATABASE(), and system variables"
     );
     return MYLITE_ERROR;
+}
+
+static bool row_scalar_expression_is_nested_value_argument(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (row_scalar_expression_is_concat_operator(expression) ||
+        row_scalar_expression_is_string_function(expression->kind) ||
+        is_row_scalar_json_expression(expression) ||
+        row_scalar_numeric_function_kind_is_supported(expression->kind) ||
+        row_scalar_numeric_function_kind_is_error(expression->kind) ||
+        row_scalar_conversion_kind_from_expression(expression) !=
+            PLANNED_ROW_SCALAR_CONVERSION_NONE ||
+        is_row_scalar_control_flow_expression(expression)) {
+        return true;
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_CONCAT_FUNCTION:
+    case MYLITE_SQL_AST_CONCAT_WS_FUNCTION:
+    case MYLITE_SQL_AST_CONCAT_WS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_GREATEST_FUNCTION:
+    case MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LEAST_FUNCTION:
+    case MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_UUID_FUNCTION:
+    case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_IS_UUID_FUNCTION:
+    case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
+    case MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION:
+    case MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION:
+    case MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_MD5_FUNCTION:
+    case MYLITE_SQL_AST_MD5_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SHA_FUNCTION:
+    case MYLITE_SQL_AST_SHA_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SHA1_FUNCTION:
+    case MYLITE_SQL_AST_SHA1_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SHA2_FUNCTION:
+    case MYLITE_SQL_AST_SHA2_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_HEX_FUNCTION:
+    case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
+    case MYLITE_SQL_AST_FROM_BASE64_FUNCTION:
+    case MYLITE_SQL_AST_COMPRESS_FUNCTION:
+    case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
+    case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
+    case MYLITE_SQL_AST_UNHEX_FUNCTION:
+    case MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION:
+    case MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION:
+    case MYLITE_SQL_AST_CHAR_FUNCTION:
+    case MYLITE_SQL_AST_DATABASE_FUNCTION:
+    case MYLITE_SQL_AST_SCHEMA_FUNCTION:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SYSDATE_FUNCTION:
+    case MYLITE_SQL_AST_SYSDATE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
+    case MYLITE_SQL_AST_CURRENT_TIME_VALUE:
+    case MYLITE_SQL_AST_UTC_DATE_VALUE:
+    case MYLITE_SQL_AST_UTC_TIME_VALUE:
+    case MYLITE_SQL_AST_UTC_TIMESTAMP_VALUE:
+    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+        return true;
+    default:
+        break;
+    }
+    return false;
+}
+
+static int plan_row_scalar_nested_value_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    return plan_row_scalar_non_concat_expression(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        true,
+        out_expression
+    );
 }
 
 static int plan_row_scalar_get_lock_function(

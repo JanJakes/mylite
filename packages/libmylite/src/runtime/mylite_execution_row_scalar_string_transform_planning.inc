@@ -95,6 +95,17 @@ static int plan_row_scalar_string_reverse_argument(
         );
         return MYLITE_ERROR;
     }
+    if (row_scalar_expression_is_nested_value_argument(expression)) {
+        return plan_row_scalar_nested_value_argument(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (!mylite_execution_string_reverse_scalar_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
@@ -277,6 +288,17 @@ static int plan_row_scalar_soundex_argument(
         );
         return MYLITE_ERROR;
     }
+    if (row_scalar_expression_is_nested_value_argument(expression)) {
+        return plan_row_scalar_nested_value_argument(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (!mylite_execution_soundex_scalar_argument_is_admitted(expression)) {
         set_unsupported_error(
             database,
@@ -458,6 +480,17 @@ static int plan_row_scalar_string_quote_argument(
             "QUOTE() does not support RAND() arguments in table-backed SELECT"
         );
         return MYLITE_ERROR;
+    }
+    if (row_scalar_expression_is_nested_value_argument(expression)) {
+        return plan_row_scalar_nested_value_argument(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
     }
     if (!mylite_execution_quote_scalar_argument_is_admitted(expression)) {
         set_unsupported_error(

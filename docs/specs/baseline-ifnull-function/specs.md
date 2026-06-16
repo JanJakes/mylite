@@ -19,6 +19,11 @@ This is another step toward a real expression subsystem. It does not add
 table-backed `IFNULL()`, predicates, DML assignment values, arithmetic/string
 arguments, subqueries, expression metadata, or arbitrary SQLite pass-through.
 
+Later row-scalar predicate work admits supported `IFNULL()` expressions as
+direct descriptor-column comparison RHS values, such as
+`WHERE id = IFNULL(1,0)`. Bare truth predicates like `WHERE IFNULL(...)` and
+unsupported expression contexts remain outside this baseline scalar slice.
+
 ## Sources And Evidence
 
 - Official MySQL 8.4 Reference Manual:
@@ -206,8 +211,8 @@ SQLite:
 
 - wrong `IFNULL()` arity with MySQL-compatible error 1582 / SQLSTATE `42000`;
 - table-backed `IFNULL()` projection;
-- `IFNULL()` in `WHERE`, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments,
-  defaults, or predicates;
+- bare `WHERE IFNULL(...)`, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments,
+  defaults, or unsupported predicate positions;
 - no-source `ORDER BY` / `LIMIT` around scalar `IFNULL()` projection;
 - mixed literal, `IF()`, and `IFNULL()` top-level scalar projection items
   unless the implementation explicitly admits and tests a broader scalar
@@ -256,8 +261,8 @@ preferably a new `runtime_ifnull_function` test binary. Coverage must include:
 - deterministic rejection for wrong arity, table-backed `IFNULL()`, no-source
   `ORDER BY` / `LIMIT`, mixed top-level scalar forms if deferred,
   arithmetic/string/decimal/float/hex/bit arguments, parameters, variables,
-  subqueries, column arguments, `IFNULL()` in predicates or DML assignment
-  values, and out-of-range integer operands; and
+  subqueries, unsupported column arguments, unsupported predicate positions,
+  DML assignment values, and out-of-range integer operands; and
 - no regression in existing parser, scalar select, literal projection,
   `IF()` function, system function, result metadata, statement-context,
   storage, and lifecycle tests.

@@ -61,6 +61,11 @@ column-rhs	1
 function-rhs	1,2
 extrema-rhs	1
 control-rhs	1,2,3
+if-column-rhs	1
+ifnull-column-rhs	1
+coalesce-column-rhs	1
+nullif-column-rhs	1
+isnull-column-rhs	1
 numeric-rhs	1,2
 concat-ws-rhs	1,2,3
 between-function-bounds	1,2
@@ -116,6 +121,16 @@ expect_output \
 "FROM expr_pred WHERE GREATEST(i, 5) = LEAST(i, 10); "\
 "SELECT 'control-rhs', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
 "FROM expr_pred WHERE IFNULL(v, 'fallback') = COALESCE(v, 'fallback'); "\
+"SELECT 'if-column-rhs', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE id = IF(1, 1, 0); "\
+"SELECT 'ifnull-column-rhs', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE id = IFNULL(1, 0); "\
+"SELECT 'coalesce-column-rhs', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE id = COALESCE(1, 0); "\
+"SELECT 'nullif-column-rhs', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE id = NULLIF(1, 0); "\
+"SELECT 'isnull-column-rhs', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE id = ISNULL(NULL); "\
 "SELECT 'numeric-rhs', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
 "FROM expr_pred WHERE ABS(i) = GREATEST(i, 0); "\
 "SELECT 'concat-ws-rhs', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\

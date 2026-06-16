@@ -21,6 +21,11 @@ engine. It does not add table-backed `ISNULL()`, predicate use, DML assignment
 values, expression metadata, arithmetic/string/subquery operands, or arbitrary
 SQLite pass-through.
 
+Later row-scalar predicate work admits supported `ISNULL()` expressions as
+direct descriptor-column comparison RHS values, such as
+`WHERE id = ISNULL(NULL)`. Bare truth predicates like `WHERE ISNULL(...)` and
+unsupported expression contexts remain outside this baseline scalar slice.
+
 ## Sources And Evidence
 
 - Official MySQL 8.4 Reference Manual:
@@ -210,8 +215,8 @@ SQLite:
 - malformed token sequences such as `ISNULL(,1)` as syntax error 1064 /
   SQLSTATE `42000`;
 - table-backed `ISNULL()` projection;
-- `ISNULL()` in `WHERE`, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments,
-  defaults, or predicates;
+- bare `WHERE ISNULL(...)`, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments,
+  defaults, or unsupported predicate positions;
 - no-source `WHERE` / `ORDER BY` / `LIMIT` around scalar `ISNULL()`
   projection;
 - mixed literal, `IF()`, `IFNULL()`, `COALESCE()`, `NULLIF()`, and `ISNULL()`
@@ -260,8 +265,9 @@ preferably a new `runtime_isnull_function` test binary. Coverage must include:
 - deterministic rejection for wrong argument counts, malformed syntax,
   table-backed `ISNULL()`, no-source `WHERE` / `ORDER BY` / `LIMIT`, mixed
   top-level scalar forms if deferred, arithmetic/string/decimal/float/hex/bit
-  arguments, parameters, variables, subqueries, column arguments, `ISNULL()` in
-  predicates or DML assignment values, and out-of-range integer operands; and
+  arguments, parameters, variables, subqueries, unsupported column arguments,
+  unsupported predicate positions, DML assignment values, and out-of-range
+  integer operands; and
 - no regression in existing parser, scalar select, literal projection, `IF()`,
   `IFNULL()`, `COALESCE()`, `NULLIF()`, system function, result metadata,
   statement-context, storage, and file-format tests.

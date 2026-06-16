@@ -1,14 +1,16 @@
 # Baseline SELECT Row-Scalar Predicates
 
-This phase admits common MySQL predicate shapes where the left side is a
-supported row-scalar function expression rather than a bare descriptor column.
-The target is table-backed `SELECT ... WHERE` filters such as:
+This phase admits common MySQL predicate shapes where a comparison, `IS`, or
+range operand is a supported row-scalar function expression rather than only a
+bare descriptor column or literal. The target is table-backed
+`SELECT ... WHERE` filters such as:
 
 ```sql
 SELECT id FROM t WHERE HEX(binary_col) = '4142'
 SELECT id FROM t WHERE LOWER(name) = 'alpha'
 SELECT id FROM t WHERE COALESCE(name, 'fallback') IS NOT NULL
 SELECT id FROM t WHERE GREATEST(score, 5) BETWEEN 5 AND 10
+SELECT id FROM t WHERE id = IF(1, 1, 0)
 ```
 
 The slice keeps MyLite's current predicate model. It does not introduce a
@@ -112,7 +114,8 @@ remain outside this slice.
   column where the existing planner supports it, `COLLATE` expression, or a
   supported row-scalar expression. The executable single-table subset includes
   descriptor-column RHS values and direct supported row-scalar function RHS
-  values for row-scalar comparison subjects.
+  values for row-scalar comparison subjects, plus direct supported row-scalar
+  function RHS values for descriptor-column comparison subjects.
 - `IS NULL` and `IS NOT NULL` use the row-scalar predicate node so functions
   can participate without resolving as columns.
 - `BETWEEN` and `NOT BETWEEN` reuse existing literal/range conversion for
@@ -143,6 +146,8 @@ Add MySQL-runtime expectations and focused runtime tests for:
   values;
 - descriptor-column and direct row-scalar function RHS values for row-scalar
   comparison subjects;
+- direct row-scalar function RHS values for descriptor-column comparison
+  subjects;
 - control-flow and comparison functions in `WHERE`;
 - `IS NULL` / `IS NOT NULL` over row-scalar functions;
 - `BETWEEN` / `NOT BETWEEN` over row-scalar functions, including direct

@@ -228,6 +228,56 @@ static int test_select_row_scalar_predicates(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE id = IF(1, 1, 0) ORDER BY id",
+            .values = ids_1,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "IF column rhs predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE id = IFNULL(1, 0) ORDER BY id",
+            .values = ids_1,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "IFNULL column rhs predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE id = COALESCE(1, 0) ORDER BY id",
+            .values = ids_1,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "COALESCE column rhs predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE id = NULLIF(1, 0) ORDER BY id",
+            .values = ids_1,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "NULLIF column rhs predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE id = ISNULL(NULL) ORDER BY id",
+            .values = ids_1,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "ISNULL column rhs predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
             .sql = "SELECT id FROM expr_pred WHERE ABS(i) = GREATEST(i, 0) ORDER BY id",
             .values = ids_12,
             .column_count = 1U,

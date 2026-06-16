@@ -22,6 +22,11 @@ arguments, string/decimal/float/hex/bit operands, casts, collations, subqueries,
 prepared parameters, `CASE`, `IFNULL`, `NULLIF`, or arbitrary SQLite
 pass-through.
 
+Later row-scalar predicate work admits supported `IF()` expressions as direct
+descriptor-column comparison RHS values, such as `WHERE id = IF(1,1,0)`. Bare
+truth predicates like `WHERE IF(...)` and unsupported expression contexts
+remain outside this baseline scalar slice.
+
 ## Sources And Evidence
 
 - Official MySQL 8.4 Reference Manual:
@@ -209,8 +214,8 @@ SQLite:
 
 - wrong `IF()` arity;
 - table-backed `IF()` projection;
-- `IF()` in `WHERE`, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments,
-  defaults, or predicates;
+- bare `WHERE IF(...)`, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments,
+  defaults, or unsupported predicate positions;
 - no-source `ORDER BY` / `LIMIT` around scalar `IF()` projection;
 - arithmetic, comparison, logical, bitwise, cast, string, decimal, float, hex,
   bit, temporal, JSON, variable, parameter, subquery, column-reference, or
@@ -255,8 +260,9 @@ preferably a new `runtime_if_function` test binary. Coverage must include:
 - file-backed preamble preservation and independent handles;
 - deterministic rejection for wrong arity, table-backed `IF()`, no-source
   `ORDER BY` / `LIMIT`, arithmetic/string/decimal/float/hex/bit arguments,
-  parameters, variables, subqueries, column arguments, `IF()` in predicates or
-  DML assignment values, and out-of-range integer operands; and
+  parameters, variables, subqueries, unsupported column arguments, unsupported
+  predicate positions, DML assignment values, and out-of-range integer
+  operands; and
 - no regression in existing parser, scalar select, literal projection, system
   function, result metadata, statement-context, storage, and lifecycle tests.
 

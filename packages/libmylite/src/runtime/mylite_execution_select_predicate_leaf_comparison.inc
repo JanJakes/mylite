@@ -1513,6 +1513,9 @@ static bool comparison_predicate_rhs_requires_row_scalar_value(
     if (rhs->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION) {
         return true;
     }
+    if (predicate_node_is_supported_row_scalar_expression(rhs)) {
+        return true;
+    }
     if (rhs->kind == MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE) {
         return column_descriptor_is_string_family(&node->column) ||
                column_descriptor_is_datetime(&node->column) ||

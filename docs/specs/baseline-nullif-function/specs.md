@@ -21,6 +21,11 @@ does not add table-backed `NULLIF()`, predicates, DML assignment values,
 arithmetic/string arguments, subqueries, expression metadata, or arbitrary
 SQLite pass-through.
 
+Later row-scalar predicate work admits supported `NULLIF()` expressions as
+direct descriptor-column comparison RHS values, such as
+`WHERE id = NULLIF(1,0)`. Bare truth predicates like `WHERE NULLIF(...)` and
+unsupported expression contexts remain outside this baseline scalar slice.
+
 ## Sources And Evidence
 
 - Official MySQL 8.4 Reference Manual:
@@ -235,8 +240,8 @@ SQLite:
 - malformed token sequences such as `NULLIF(1,,2)` as syntax error 1064 /
   SQLSTATE `42000`;
 - table-backed `NULLIF()` projection;
-- `NULLIF()` in `WHERE`, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments,
-  defaults, or predicates;
+- bare `WHERE NULLIF(...)`, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments,
+  defaults, or unsupported predicate positions;
 - no-source `WHERE` / `ORDER BY` / `LIMIT` around scalar `NULLIF()` projection;
 - mixed literal, `IF()`, `IFNULL()`, `COALESCE()`, and `NULLIF()` top-level
   scalar projection items unless the implementation explicitly admits and tests
@@ -287,8 +292,9 @@ preferably a new `runtime_nullif_function` test binary. Coverage must include:
 - deterministic rejection for wrong argument counts, malformed syntax,
   table-backed `NULLIF()`, no-source `WHERE` / `ORDER BY` / `LIMIT`, mixed
   top-level scalar forms if deferred, arithmetic/string/decimal/float/hex/bit
-  arguments, parameters, variables, subqueries, column arguments, `NULLIF()` in
-  predicates or DML assignment values, and out-of-range integer operands; and
+  arguments, parameters, variables, subqueries, unsupported column arguments,
+  unsupported predicate positions, DML assignment values, and out-of-range
+  integer operands; and
 - no regression in existing parser, scalar select, literal projection, `IF()`,
   `IFNULL()`, `COALESCE()`, system function, result metadata,
   statement-context, storage, and file-format tests.

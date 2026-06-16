@@ -158,10 +158,10 @@ The following remain outside this phase:
 - `WHERE SOUNDEX(column) ...`, `HAVING SOUNDEX(...) ...`, expression
   `ORDER BY`, grouping, distinct expression rows, and aggregate arguments;
 - DML assignment values such as `UPDATE t SET c = SOUNDEX(v)`;
-- nested row functions such as `SOUNDEX(CONCAT(v, '-'))`;
 - scalar subqueries, correlated subqueries, CTEs, joins beyond the already
   supported row-scalar source envelope, parameters, user variables, and stored
   functions;
+- arbitrary expressions outside the supported nested row-scalar value subset;
 - binary-string result typing, binary/BLOB row-backed inputs, approximate
   numeric row-backed inputs, full collation behavior, and full expression
   metadata.

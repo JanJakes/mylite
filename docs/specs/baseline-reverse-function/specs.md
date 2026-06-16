@@ -66,9 +66,9 @@ Runtime probes establish the behavior used by this phase:
   in this baseline.
 
 MySQL also supports broader expression inputs, binary-string result metadata,
-collation metadata, DML assignment expressions, nested row functions, and use
-in predicates, grouping, ordering, and generated/default expressions. Those
-forms remain outside this baseline.
+collation metadata, DML assignment expressions, and use in predicates,
+grouping, ordering, and generated/default expressions. Those forms remain
+outside this baseline, except for the supported nested row-scalar value subset.
 
 ## Ownership Boundaries
 
@@ -155,9 +155,9 @@ The following remain outside this phase:
 - `WHERE REVERSE(...) ...`, `HAVING REVERSE(...) ...`, expression `ORDER BY`,
   grouping, distinct expression rows, and aggregate arguments;
 - DML assignment values such as `UPDATE t SET c = REVERSE(c)`;
-- nested row functions such as `REVERSE(LOWER(v))`;
 - scalar subqueries, correlated subqueries, CTEs, parameters, user variables,
-  stored functions, and arbitrary expressions;
+  stored functions, and arbitrary expressions outside the supported nested
+  row-scalar value subset;
 - string introducers, national strings, arbitrary binary literals, binary
   casts as arguments, binary-string result metadata, and full collation
   metadata.

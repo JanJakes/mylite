@@ -66,9 +66,9 @@ Runtime probes establish the behavior used by this phase:
   parameter-count diagnostic.
 
 MySQL also supports broader expression inputs, binary-string result metadata,
-collation-sensitive coercion, DML assignment expressions, nested row functions,
-and use in predicates, grouping, ordering, and generated/default expressions.
-Those forms remain outside this baseline.
+collation-sensitive coercion, DML assignment expressions, and use in predicates,
+grouping, ordering, and generated/default expressions. Those forms remain
+outside this baseline, except for the supported nested row-scalar value subset.
 
 ## Ownership Boundaries
 
@@ -154,9 +154,9 @@ The following remain outside this phase:
 - `WHERE REPLACE(...) ...`, `HAVING REPLACE(...) ...`, expression `ORDER BY`,
   grouping, distinct expression rows, and aggregate arguments;
 - DML assignment values such as `UPDATE t SET c = REPLACE(c, 'a', 'b')`;
-- nested row functions such as `REPLACE(LOWER(v), 'a', 'b')`;
 - scalar subqueries, correlated subqueries, CTEs, parameters, user variables,
-  stored functions, and arbitrary expressions;
+  stored functions, and arbitrary expressions outside the supported nested
+  row-scalar value subset;
 - string introducers, national strings, arbitrary binary literals, binary
   casts as arguments, binary-string result metadata, and full collation
   metadata.
@@ -262,8 +262,9 @@ Coverage must include:
 - table-backed projection over descriptor integer, exact decimal, nonbinary
   string, baseline `TEXT`, `YEAR`, and temporal columns;
 - table-backed `WHERE`, descriptor `ORDER BY`, and `LIMIT` envelope reuse;
-- unknown columns, unsupported descriptor families, nested row functions, and
-  unsupported scalar subqueries in table-backed context;
+- unknown columns, unsupported descriptor families, unsupported expressions
+  outside the supported nested row-scalar value subset, and unsupported scalar
+  subqueries in table-backed context;
 - malformed arity and bare keyword syntax errors;
 - close/reopen persistence for source rows and deterministic readback;
 - no public API changes and no `.mylite` file-format mutation beyond ordinary

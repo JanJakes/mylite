@@ -454,13 +454,15 @@ static int test_trim_diagnostics(void) {
             .message_part = "trim functions support only scalar string, integer, boolean, NULL",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT TRIM(CONCAT(v)) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "trim functions support only string, integer, boolean, NULL",
+        (struct expected_query){
+            .sql = "SELECT TRIM(CONCAT(v)) FROM t",
+            .columns = (const char *const[]){"TRIM(CONCAT(v))"},
+            .column_count = 1U,
+            .values = (const char *const[]){"abc"},
+            .row_count = 1U,
+            .context = "nested concat trim argument",
         }
     );
 

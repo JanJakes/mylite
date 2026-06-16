@@ -80,8 +80,8 @@ Runtime probes establish the behavior used by this phase:
 MySQL also accepts deferred behavior such as decimal count rounding, string
 numeric count conversion, out-of-range count conversion with warning `1292`,
 binary-string result typing, predicates over `SUBSTRING_INDEX()` expressions,
-nested functions, and arbitrary expression arguments. Those forms remain
-outside this baseline.
+arbitrary nested functions, and unsupported expression arguments. Those forms
+remain outside this baseline.
 
 ## Ownership Boundaries
 
@@ -159,6 +159,9 @@ substring_index_count:
   | TRUE
   | FALSE
   | NULL
+  | supported_integer_scalar_function
+  | descriptor_integer_column_reference        -- table-backed SELECT only
+  | supported_integer_row_scalar_expression    -- table-backed SELECT only
   | ( substring_index_count )
 ```
 
@@ -172,11 +175,15 @@ current `REPLACE()` subset:
 - `YEAR`, `DATE`, `TIME`, `DATETIME`, and `TIMESTAMP`;
 - `CHAR`, `VARCHAR`, and baseline `TEXT` family.
 
-The `count` argument is intentionally literal-only in this phase. Descriptor
-count columns, session scalar count values, string numeric count conversion,
-noninteger rounding, out-of-range count conversion warnings, binary string
+The `count` argument admits signed-64 integer, boolean, and `NULL` scalar
+values, direct supported integer-domain numeric and string-length scalar functions, descriptor integer
+columns, and the existing supported table-backed integer row-scalar expression
+subset. That row-scalar subset includes integer arithmetic over admitted
+operands, supported integer-domain numeric functions, string-length functions,
+`UNIX_TIMESTAMP()`, and numeric temporal extractors. Warning-producing
+string/noninteger conversion, out-of-range conversion warnings, binary string
 values, `BIT`, approximate numeric values, `ENUM`, `SET`, `JSON`, spatial
-values, and binary-string metadata are deferred.
+values, parameters, user variables, and binary-string metadata are deferred.
 
 The following remain outside this phase:
 
@@ -185,7 +192,8 @@ The following remain outside this phase:
   arguments;
 - DML assignment values such as
   `UPDATE t SET c = SUBSTRING_INDEX(v, '.', 1)`;
-- nested row functions such as `SUBSTRING_INDEX(CONCAT(v, '-'), '-', 1)`;
+- arbitrary nested row functions outside the supported row-scalar value and
+  integer argument subsets;
 - scalar subqueries, correlated subqueries, CTEs, parameters, user variables,
   and stored functions;
 - string introducers, national strings, arbitrary binary literals as scalar
@@ -224,7 +232,8 @@ No-source, `DUAL`, and `DO` evaluation is MyLite-owned:
    - integer literal: canonical signed decimal text;
    - `TRUE` / `FALSE`: `1` / `0`;
    - supported session scalar value: its existing text result or `NULL`.
-3. Convert `count` to a signed 64-bit integer literal value, or SQL `NULL`.
+3. Convert `count` through the supported integer argument envelope, yielding a
+   signed 64-bit integer value or SQL `NULL`.
 4. Return SQL `NULL` if any argument is `NULL`.
 5. Return `''` for `count = 0`.
 6. Return `''` for empty `delim`.
@@ -242,8 +251,10 @@ _mylite_substring_index(str, delim, count)
 ```
 
 Literal and session scalar values are bound parameters, not interpolated SQL.
-Descriptor columns are quoted stable physical column references. The helper
-uses public SQLite scalar-function APIs only; no SQLite fork hook is required.
+Descriptor columns are quoted stable physical column references, and integer
+`count` expressions use the supported row-scalar integer SQL emitters. The
+helper uses public SQLite scalar-function APIs only; no SQLite fork hook is
+required.
 
 Supported successful calls return zero warnings. Unsupported expression shapes
 use the existing unsupported scalar/row-scalar expression diagnostics unless a
@@ -258,8 +269,8 @@ diagnostics:
   `Incorrect parameter count in the call to native function 'SUBSTRING_INDEX'`;
 - unsupported scalar argument:
   `SUBSTRING_INDEX() supports only string, integer, boolean, NULL, session scalar, and system variable value arguments`;
-- unsupported count argument:
-  `SUBSTRING_INDEX() count supports only integer, boolean, and NULL literals`;
+- unsupported count argument: deterministic MyLite unsupported diagnostic
+  requiring the supported integer argument envelope;
 - out-of-range count literal:
   `SUBSTRING_INDEX() count literals must fit the signed 64-bit range`;
 - embedded NUL in a scalar string literal:
@@ -291,10 +302,11 @@ plus parser coverage in `parser_test.c`. Coverage must include:
 - default labels and explicit aliases;
 - reopen persistence and `.mylite` preamble preservation inherited from the
   string-slice runtime test;
-- diagnostics for wrong arity, unknown columns, unsupported count expressions,
-  unsupported nested row functions, binary and approximate descriptor columns,
-  hex/binary/parameter scalar arguments, predicates, ordering expressions, and
-  DML assignment use;
+- diagnostics for wrong arity, unknown columns, supported integer count
+  expressions, unsupported count expressions, unsupported nested row functions
+  outside the supported value/integer subsets, binary and approximate
+  descriptor columns, hex/binary/parameter scalar arguments, predicates,
+  ordering expressions, and DML assignment use;
 - MySQL-runtime expectation script coverage for every newly admitted
   user-visible behavior and for MySQL-accepted but deferred behavior.
 
@@ -308,4 +320,3 @@ Update:
 No `docs/compatibility/sql-table-dml.md`, `operators.md`, or literal/conversion
 detail changes are needed because this phase does not add predicate, DML,
 operator, or general literal-conversion surface.
-

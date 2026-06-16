@@ -116,6 +116,14 @@ expect_output \
     "SELECT SUBSTRING('abcdef', 2, 3), MID('abcdef' FROM 2 FOR 3) FROM DUAL;" \
     "$DATABASE"
 
+expect_output \
+    "scalar integer function slice arguments" \
+    "ab	def	bcd	a.b" \
+    "SELECT LEFT('abcdef', ABS(-2)), RIGHT('abcdef', LENGTH('abc')), "\
+"SUBSTRING('abcdef', LENGTH('ab'), ABS(-3)), "\
+"SUBSTRING_INDEX('a.b.c', '.', ABS(-2));" \
+    "$DATABASE"
+
 expect_error \
     "substring rejects default-mode whitespace before parenthesis" \
     1630 \
@@ -161,6 +169,16 @@ expect_output \
     "3	NULL
 2	🙂a" \
     "SELECT id, SUBSTR(v FROM -4 FOR 2) AS s FROM t WHERE id >= 1 ORDER BY id DESC LIMIT 2;" \
+    "$DATABASE"
+
+expect_output \
+    "table integer expression slice arguments" \
+    "1	ab	f	bc	a.b
+2	é🙂a	bc	abc	a.b.c
+3	NULL	NULL	NULL	a.b.c.d" \
+    "SELECT id, LEFT(v, id + 1), RIGHT(v, ABS(id)), "\
+"SUBSTRING(v, id + 1, LENGTH(v) - 4), "\
+"SUBSTRING_INDEX('a.b.c.d', '.', id + 1) FROM t ORDER BY id;" \
     "$DATABASE"
 
 expect_output \

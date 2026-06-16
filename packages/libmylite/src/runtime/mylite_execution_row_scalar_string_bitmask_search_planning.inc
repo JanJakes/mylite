@@ -135,6 +135,10 @@ static int plan_row_scalar_export_set_bitmask_arguments(
         rc = plan_row_scalar_string_bitmask_count_argument(
             database,
             child_at(arguments, 4U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
             &out_expression->arguments[4]
         );
     }
@@ -187,75 +191,18 @@ static int plan_row_scalar_string_bitmask_bit_argument(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 ) {
-    int64_t value = 0;
-    bool is_null = false;
-    int rc = MYLITE_OK;
-
-    expression = unwrap_parenthesized_expression(expression);
-    if (expression == NULL) {
-        set_unsupported_error(
-            database,
-            "string bitmask functions support only signed integer, boolean, NULL, and integer "
-            "descriptor bitmask arguments"
-        );
-        return MYLITE_ERROR;
-    }
-    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
-        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
-        if (!has_source) {
-            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
-            size_t part_count = 0U;
-
-            rc = collect_column_reference_parts(database, expression, parts, &part_count);
-            if (rc == MYLITE_OK) {
-                rc = format_column_reference_name(
-                    database,
-                    parts,
-                    part_count,
-                    column_name,
-                    sizeof(column_name)
-                );
-            }
-            if (rc != MYLITE_OK) {
-                return rc;
-            }
-            set_unknown_column_error(database, column_name);
-            return MYLITE_ERROR;
-        }
-        return plan_row_scalar_string_bitmask_column(
-            database,
-            expression,
-            source_context,
-            table_columns,
-            table_column_count,
-            out_expression
-        );
-    }
-    if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
-        set_unsupported_error(
-            database,
-            "string bitmask functions support only signed integer, boolean, NULL, and integer "
-            "descriptor bitmask arguments"
-        );
-        return MYLITE_ERROR;
-    }
-    rc = mylite_execution_string_slice_signed_integer_value(
+    return plan_row_scalar_integer_like_argument(
         database,
         expression,
-        "string bitmask functions support only signed integer, boolean, NULL, and integer "
-        "descriptor bitmask arguments",
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        "string bitmask functions support only signed integer, boolean, NULL, integer "
+        "descriptor, and supported integer expression bitmask arguments",
         "string bitmask function bitmask literals must fit the signed 64-bit range",
-        &value,
-        &is_null
+        out_expression
     );
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
-        return plan_row_scalar_literal_value(database, expression, out_expression);
-    }
-    return plan_row_scalar_integer_value(database, expression, out_expression);
 }
 
 static int plan_row_scalar_string_bitmask_value_argument(
@@ -283,82 +230,24 @@ static int plan_row_scalar_string_bitmask_value_argument(
 static int plan_row_scalar_string_bitmask_count_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
-    struct planned_row_scalar_expression *out_expression
-) {
-    int64_t value = 0;
-    bool is_null = false;
-    int rc = MYLITE_OK;
-
-    expression = unwrap_parenthesized_expression(expression);
-    if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
-        set_unsupported_error(
-            database,
-            "EXPORT_SET() number_of_bits supports only signed integer, boolean, and NULL literals"
-        );
-        return MYLITE_ERROR;
-    }
-    rc = mylite_execution_string_slice_signed_integer_value(
-        database,
-        expression,
-        "EXPORT_SET() number_of_bits supports only signed integer, boolean, and NULL literals",
-        "EXPORT_SET() number_of_bits literals must fit the signed 64-bit range",
-        &value,
-        &is_null
-    );
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
-        return plan_row_scalar_literal_value(database, expression, out_expression);
-    }
-    return plan_row_scalar_integer_value(database, expression, out_expression);
-}
-
-static int plan_row_scalar_string_bitmask_column(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
+    bool has_source,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 ) {
-    struct mylite_catalog_column_descriptor column = {0};
-    int rc = resolve_descriptor_column_reference(
+    return plan_row_scalar_integer_like_argument(
         database,
         expression,
+        has_source,
         source_context,
-        COLUMN_REFERENCE_FIELD,
-        "row-scalar SELECT string bitmask functions support only descriptor columns",
         table_columns,
         table_column_count,
-        &column
+        "EXPORT_SET() number_of_bits supports only signed integer, boolean, NULL, integer "
+        "descriptor, and supported integer expression arguments",
+        "EXPORT_SET() number_of_bits literals must fit the signed 64-bit range",
+        out_expression
     );
-
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    if (!string_bitmask_column_descriptor_is_supported(database, &column)) {
-        return MYLITE_ERROR;
-    }
-
-    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
-    out_expression->column = column;
-    return MYLITE_OK;
-}
-
-static bool string_bitmask_column_descriptor_is_supported(
-    struct mylite_db *database,
-    const struct mylite_catalog_column_descriptor *column
-) {
-    if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
-        return true;
-    }
-
-    set_unsupported_error(
-        database,
-        "string bitmask functions support only integer descriptor bitmask columns"
-    );
-    return false;
 }
 
 static int plan_row_scalar_string_search_expression(
@@ -441,6 +330,10 @@ static int plan_row_scalar_string_search_expression(
         rc = plan_row_scalar_string_search_position_argument(
             database,
             position,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
             &out_expression->arguments[2]
         );
     } else if (rc == MYLITE_OK) {
@@ -532,35 +425,24 @@ static int plan_row_scalar_string_search_text_argument(
 static int plan_row_scalar_string_search_position_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 ) {
-    int64_t value = 0;
-    bool is_null = false;
-    int rc = MYLITE_OK;
-
-    expression = unwrap_parenthesized_expression(expression);
-    if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
-        set_unsupported_error(
-            database,
-            "LOCATE() position supports only integer, boolean, and NULL literals"
-        );
-        return MYLITE_ERROR;
-    }
-    rc = mylite_execution_string_slice_signed_integer_value(
+    return plan_row_scalar_integer_like_argument(
         database,
         expression,
-        "LOCATE() position supports only integer, boolean, and NULL literals",
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        "LOCATE() position supports only integer, boolean, NULL, integer descriptor, and "
+        "supported integer expression arguments",
         "LOCATE() position literals must fit the signed 64-bit range",
-        &value,
-        &is_null
+        out_expression
     );
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
-        return plan_row_scalar_literal_value(database, expression, out_expression);
-    }
-    return plan_row_scalar_integer_value(database, expression, out_expression);
 }
 
 static int plan_row_scalar_string_search_column(

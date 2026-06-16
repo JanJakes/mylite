@@ -100,6 +100,12 @@ expect_output \
     "SELECT EXPORT_SET(5,'Y','N'), EXPORT_SET(1,'Y','N',',',-1);" \
     "$DATABASE"
 
+expect_output \
+    "scalar integer function bitmask arguments" \
+    "Y:N	a,b" \
+    "SELECT EXPORT_SET(ABS(-5),'Y','N',':',BIT_COUNT(3)), MAKE_SET(ABS(-3),'a','b','c');" \
+    "$DATABASE"
+
 run_mysql \
     "CREATE TABLE t("\
 "id INT, bits INT, on_label VARCHAR(20), off_label VARCHAR(20), sep CHAR(1), txt TEXT, i INT"\
@@ -129,6 +135,15 @@ expect_output \
 2	on" \
     "SELECT id, MAKE_SET(bits, off_label, on_label) FROM t "\
 "WHERE id >= 1 ORDER BY id DESC LIMIT 2;" \
+    "$DATABASE"
+
+expect_output \
+    "table integer expression bitmask arguments" \
+    "1	N:Y:Y	Y
+2	off|off|on|off	second,on,off
+3	NULL	NULL" \
+    "SELECT id, EXPORT_SET(bits + id, on_label, off_label, sep, id + 2), "\
+"MAKE_SET(ABS(i), txt, on_label, off_label) FROM t ORDER BY id;" \
     "$DATABASE"
 
 expect_error \

@@ -421,13 +421,15 @@ static int test_replace_diagnostics(void) {
             .message_part = "Unknown column 'missing' in 'field list'",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT REPLACE(CONCAT(v, id), 'a', 'x') FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "REPLACE() supports only string, integer, boolean, NULL",
+        (struct expected_query){
+            .sql = "SELECT REPLACE(CONCAT(v, id), 'a', 'x') FROM t",
+            .columns = (const char *const[]){"REPLACE(CONCAT(v, id), 'a', 'x')"},
+            .column_count = 1U,
+            .values = (const char *const[]){"xbc1"},
+            .row_count = 1U,
+            .context = "nested concat replace argument",
         }
     );
     failures += execute_error(

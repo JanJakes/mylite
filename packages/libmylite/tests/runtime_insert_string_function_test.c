@@ -121,6 +121,8 @@ static int test_no_source_dual_and_do_insert_function(void) {
     };
     static const char *const columns_dual[] = {"INSERT('abc',2,1,'X')", "inserted"};
     static const char *const values_dual[] = {"aXc", "aYc"};
+    static const char *const columns_scalar_integer_arguments[] = {"inserted"};
+    static const char *const values_scalar_integer_arguments[] = {"aXdef"};
     static const char *const columns_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_after_select[] = {"-1", "0"};
     static const char *const values_after_do[] = {"0", "0"};
@@ -167,6 +169,18 @@ static int test_no_source_dual_and_do_insert_function(void) {
             .values = values_dual,
             .row_count = 1U,
             .context = "dual INSERT() labels",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT INSERT('abcdef', ABS(-2), LENGTH('xy'), 'X') AS inserted",
+            .columns = columns_scalar_integer_arguments,
+            .column_count = sizeof(columns_scalar_integer_arguments) /
+                            sizeof(columns_scalar_integer_arguments[0]),
+            .values = values_scalar_integer_arguments,
+            .row_count = 1U,
+            .context = "no-source INSERT() integer function arguments",
         }
     );
     failures += expect_query(
@@ -267,6 +281,22 @@ static int test_table_backed_insert_function_and_reopen(void) {
         "AappaAa",
         "A0Aa",
     };
+    static const char *const columns_integer_expression_insert[] = {
+        "id",
+        "pos_len",
+        "length_pos",
+    };
+    static const char *const values_integer_expression_insert[] = {
+        "1",
+        "Xcdef",
+        "aYcdef",
+        "2",
+        "AX",
+        "AaAa",
+        "3",
+        NULL,
+        NULL,
+    };
     static const char *const columns_reopen[] = {"id", "sv"};
     static const char *const values_reopen[] = {"1", "aXef", "2", "AX"};
     char path[test_path_capacity];
@@ -325,6 +355,20 @@ static int test_table_backed_insert_function_and_reopen(void) {
             .context = "table INSERT() envelope",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, INSERT(v, id, id + 1, 'X') AS pos_len, "
+                   "INSERT(v, LENGTH(v) - 4, 1, 'Y') AS length_pos "
+                   "FROM t ORDER BY id",
+            .columns = columns_integer_expression_insert,
+            .column_count = sizeof(columns_integer_expression_insert) /
+                            sizeof(columns_integer_expression_insert[0]),
+            .values = values_integer_expression_insert,
+            .row_count = 3U,
+            .context = "table INSERT() integer expression arguments",
+        }
+    );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
     failures += expect_bytes(
         actual_preamble,
@@ -355,6 +399,10 @@ static int test_table_backed_insert_function_and_reopen(void) {
 }
 
 static int test_insert_function_diagnostics(void) {
+    static const char *const columns_nested_scalar[] = {"inserted"};
+    static const char *const values_nested_scalar[] = {"aX"};
+    static const char *const columns_nested_table[] = {"inserted"};
+    static const char *const values_nested_table[] = {"aXc1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -408,7 +456,7 @@ static int test_insert_function_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "INSERT() position supports only integer, boolean, and NULL literals",
+            .message_part = "INSERT() position supports only integer, boolean, NULL",
         }
     );
     failures += execute_error(
@@ -417,25 +465,29 @@ static int test_insert_function_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "INSERT() length supports only integer, boolean, and NULL literals",
+            .message_part = "INSERT() length supports only integer, boolean, NULL",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT INSERT(CONCAT('a', 'b'), 2, 1, 'X')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "INSERT() supports only string, integer, boolean, NULL",
+        (struct expected_query){
+            .sql = "SELECT INSERT(CONCAT('a', 'b'), 2, 1, 'X') AS inserted",
+            .columns = columns_nested_scalar,
+            .column_count = sizeof(columns_nested_scalar) / sizeof(columns_nested_scalar[0]),
+            .values = values_nested_scalar,
+            .row_count = 1U,
+            .context = "INSERT() nested scalar value argument",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT INSERT(CONCAT(v, id), 2, 1, 'X') FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "INSERT() supports only string, integer, boolean, NULL",
+        (struct expected_query){
+            .sql = "SELECT INSERT(CONCAT(v, id), 2, 1, 'X') AS inserted FROM t",
+            .columns = columns_nested_table,
+            .column_count = sizeof(columns_nested_table) / sizeof(columns_nested_table[0]),
+            .values = values_nested_table,
+            .row_count = 1U,
+            .context = "INSERT() nested table value argument",
         }
     );
     failures += execute_error(

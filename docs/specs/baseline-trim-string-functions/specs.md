@@ -197,12 +197,12 @@ The following remain outside this phase:
 - `WHERE TRIM(column) ...`, `HAVING TRIM(...) ...`, expression `ORDER BY`,
   grouping, distinct expression rows, and aggregate arguments;
 - DML assignment values such as `UPDATE t SET c = TRIM(v)`;
-- nested row functions such as `TRIM(CONCAT(v, '-'))`;
 - row-backed remove-string columns such as `TRIM(rem_col FROM value_col)`;
 - scalar subqueries, correlated subqueries, CTEs, parameters, user variables,
   and stored functions;
 - string introducers, national strings, arbitrary binary literals as scalar
-  arguments, binary casts as arguments, and full expression metadata;
+  arguments, binary casts as arguments, arbitrary expressions outside the
+  supported nested row-scalar value subset, and full expression metadata;
 - binary-string result typing and collation-sensitive metadata propagation.
 
 ### MyLite Lemon-Syntax Snippet
@@ -389,8 +389,9 @@ Add C runtime tests for:
 - reopen persistence and unchanged `.mylite` preamble;
 - row envelope integration with `WHERE`, `ORDER BY`, and `LIMIT`;
 - deterministic diagnostics for unsupported row-backed columns, unknown
-  columns, wrong arity, malformed syntax, unsupported nested row functions, and
-  unsupported row-backed remove-string columns.
+  columns, wrong arity, malformed syntax, unsupported expressions outside the
+  supported nested row-scalar value subset, and unsupported row-backed
+  remove-string columns.
 
 Verification commands:
 

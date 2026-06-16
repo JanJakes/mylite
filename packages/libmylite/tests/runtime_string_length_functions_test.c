@@ -639,13 +639,15 @@ static int test_string_length_diagnostics(void) {
                 "literals",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT LENGTH(CONCAT(v, 'x')) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "string length functions support only string, integer, boolean, NULL",
+        (struct expected_query){
+            .sql = "SELECT LENGTH(CONCAT(v, 'x')) FROM t",
+            .columns = (const char *const[]){"LENGTH(CONCAT(v, 'x'))"},
+            .column_count = 1U,
+            .values = (const char *const[]){"2"},
+            .row_count = 1U,
+            .context = "nested concat length argument",
         }
     );
     failures += execute_error(
@@ -666,13 +668,15 @@ static int test_string_length_diagnostics(void) {
             .message_part = "string length functions do not support approximate numeric columns",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT LENGTH(CAST('ABC' AS BINARY))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "string length functions support only string, integer, boolean, NULL",
+        (struct expected_query){
+            .sql = "SELECT LENGTH(CAST('ABC' AS BINARY))",
+            .columns = (const char *const[]){"LENGTH(CAST('ABC' AS BINARY))"},
+            .column_count = 1U,
+            .values = (const char *const[]){"3"},
+            .row_count = 1U,
+            .context = "binary cast length argument",
         }
     );
     failures += execute_error(

@@ -107,6 +107,10 @@ static int plan_row_scalar_string_insert_expression(
         rc = plan_row_scalar_string_insert_position_argument(
             database,
             child_at(expression, 1U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
             &out_expression->arguments[1]
         );
     }
@@ -114,6 +118,10 @@ static int plan_row_scalar_string_insert_expression(
         rc = plan_row_scalar_string_insert_length_argument(
             database,
             child_at(expression, 2U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
             &out_expression->arguments[2]
         );
     }
@@ -294,69 +302,47 @@ static int plan_row_scalar_string_insert_argument(
 static int plan_row_scalar_string_insert_position_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 ) {
-    int64_t value = 0;
-    bool is_null = false;
-    int rc = MYLITE_OK;
-
-    expression = unwrap_parenthesized_expression(expression);
-    if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
-        set_unsupported_error(
-            database,
-            "INSERT() position supports only integer, boolean, and NULL literals"
-        );
-        return MYLITE_ERROR;
-    }
-    rc = mylite_execution_string_slice_signed_integer_value(
+    return plan_row_scalar_integer_like_argument(
         database,
         expression,
-        "INSERT() position supports only integer, boolean, and NULL literals",
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        "INSERT() position supports only integer, boolean, NULL, integer descriptor, and "
+        "supported integer expression arguments",
         "INSERT() position literals must fit the signed 64-bit range",
-        &value,
-        &is_null
+        out_expression
     );
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
-        return plan_row_scalar_literal_value(database, expression, out_expression);
-    }
-    return plan_row_scalar_integer_value(database, expression, out_expression);
 }
 
 static int plan_row_scalar_string_insert_length_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 ) {
-    int64_t value = 0;
-    bool is_null = false;
-    int rc = MYLITE_OK;
-
-    expression = unwrap_parenthesized_expression(expression);
-    if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
-        set_unsupported_error(
-            database,
-            "INSERT() length supports only integer, boolean, and NULL literals"
-        );
-        return MYLITE_ERROR;
-    }
-    rc = mylite_execution_string_slice_signed_integer_value(
+    return plan_row_scalar_integer_like_argument(
         database,
         expression,
-        "INSERT() length supports only integer, boolean, and NULL literals",
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        "INSERT() length supports only integer, boolean, NULL, integer descriptor, and "
+        "supported integer expression arguments",
         "INSERT() length literals must fit the signed 64-bit range",
-        &value,
-        &is_null
+        out_expression
     );
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
-        return plan_row_scalar_literal_value(database, expression, out_expression);
-    }
-    return plan_row_scalar_integer_value(database, expression, out_expression);
 }
 
 static int plan_row_scalar_string_replace_column(

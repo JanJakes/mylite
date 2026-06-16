@@ -88,7 +88,7 @@ MyLite supports:
   - `REGEXP_LIKE(...) IS NULL`;
   - `REGEXP_LIKE(...) IS NOT NULL`;
 - two- and three-argument `REGEXP_LIKE()` only;
-- flat arguments only; no nested row functions inside `REGEXP_LIKE()`;
+- nested argument support is limited to the supported row-scalar value subset;
 - value argument forms:
   - string literals;
   - signed 64-bit decimal integer literals with optional unary sign;

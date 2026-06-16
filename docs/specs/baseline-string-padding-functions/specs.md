@@ -96,9 +96,9 @@ Runtime probes establish the behavior used by this phase:
   `ROW_COUNT()` report `-1`.
 
 MySQL also accepts deferred behavior such as decimal or string length/count
-conversion, binary-string padding/repetition, expression counts, predicates
-over these functions, nested functions, and non-ASCII collation-sensitive result
-typing. Those forms remain outside this baseline.
+conversion, binary-string padding/repetition, predicates over these functions,
+arbitrary nested functions, and non-ASCII collation-sensitive result typing.
+Those forms remain outside this baseline.
 
 ## Ownership Boundaries
 
@@ -182,6 +182,9 @@ string_padding_count:
   | TRUE
   | FALSE
   | NULL
+  | supported_integer_scalar_function
+  | descriptor_integer_column_reference        -- table-backed SELECT only
+  | supported_integer_row_scalar_expression    -- table-backed SELECT only
   | ( string_padding_count )
 ```
 
@@ -194,17 +197,23 @@ descriptor column families for value and pad-string arguments are:
 - `YEAR`, `DATE`, `TIME`, `DATETIME`, and `TIMESTAMP`;
 - `CHAR`, `VARCHAR`, and baseline `TEXT` family.
 
-Length and count arguments are intentionally literal-only in this phase.
-Descriptor count columns, session scalar count values, string count values,
-noninteger rounding, binary string values, `BIT`, approximate numeric values,
-`ENUM`, `SET`, `JSON`, and spatial values are deferred.
+Length and count arguments admit signed-64 integer, boolean, and `NULL` scalar
+values, direct supported integer-domain numeric and string-length scalar functions, descriptor integer
+columns, and the existing supported table-backed integer row-scalar expression
+subset. That row-scalar subset includes integer arithmetic over admitted
+operands, supported integer-domain numeric functions, string-length functions,
+`UNIX_TIMESTAMP()`, and numeric temporal extractors. Warning-producing
+string/noninteger conversion, binary string values, `BIT`, approximate numeric
+values, `ENUM`, `SET`, `JSON`, spatial values, parameters, and user variables
+remain deferred.
 
 The following remain outside this phase:
 
 - `WHERE LPAD(column, 3, '0') ...`, `HAVING REPEAT(...) ...`, expression
   `ORDER BY`, grouping, distinct expression rows, and aggregate arguments;
 - DML assignment values such as `UPDATE t SET c = LPAD(v, 5, '0')`;
-- nested row functions such as `LPAD(CONCAT(v, '-'), 5, '0')`;
+- arbitrary nested row functions outside the supported row-scalar value and
+  integer argument subsets;
 - scalar subqueries, correlated subqueries, CTEs, joins beyond the already
   supported row-scalar source envelope, parameters, user variables, and stored
   functions;
@@ -253,8 +262,8 @@ No-source, `DUAL`, and `DO` evaluation is MyLite-owned:
    - `NULL`: SQL `NULL`;
    - supported session scalar value or system variable: its existing visible
      string value or SQL `NULL`.
-3. Convert length/count arguments to signed 64-bit integer literal values, or
-   SQL `NULL`.
+3. Convert length/count arguments through the supported integer argument
+   envelope, yielding signed 64-bit integer values or SQL `NULL`.
 4. For `LPAD()` / `RPAD()`, return SQL `NULL` when any argument is `NULL` or
    `len < 0`; return `''` when `len == 0`; validate `str` and `padstr` as
    UTF-8; if `str` has at least `len` characters, return its leftmost `len`
@@ -278,8 +287,9 @@ _mylite_space(count_expr)
 ```
 
 Each generated expression is built only from descriptors, quoted identifiers,
-and bound scalar parameters. Literal values from user SQL are not interpolated
-into generated SQLite SQL.
+generated expressions from the supported argument subsets, and bound scalar
+parameters. Literal values from user SQL are not interpolated into generated
+SQLite SQL.
 
 ## Diagnostics
 
@@ -306,7 +316,7 @@ Update `COMPATIBILITY.md` and `docs/compatibility/functions-string.md` to mark
 `LPAD()`, `RPAD()`, `REPEAT()`, and `SPACE()` as limited. Do not claim support
 for binary string result typing, full collation coercion, expression predicates,
 ordering/grouping expressions, DML assignments, parameters, general expression
-counts, or noninteger rounding.
+counts beyond the supported integer subset, or noninteger rounding.
 
 ## Test Plan
 
@@ -323,8 +333,9 @@ counts, or noninteger rounding.
     baseline `TEXT`, `YEAR`, and temporal columns;
   - `NULL`, zero, negative, empty pad string, multibyte, numeric, boolean, and
     alias/label behavior;
-  - unsupported binary, `BIT`, approximate, expression, count-column, nested,
-    predicate, and DML-assignment forms;
+  - supported integer argument expressions;
+  - unsupported binary, `BIT`, approximate, unsupported expression, predicate,
+    and DML-assignment forms;
   - reopen persistence and `.mylite` preamble preservation;
   - independent file-backed handles;
   - zero-initialized cleanup through existing result and planner deinit paths.

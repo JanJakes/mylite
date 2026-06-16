@@ -88,8 +88,8 @@ Runtime probes establish the behavior used by this phase:
 MySQL also accepts deferred behavior such as noninteger `pos` / `len`
 conversion, string numeric positions, binary-string slicing, predicates over
 substring expressions outside the later `baseline-string-function-predicates`
-subset, nested functions, and very large out-of-range positions with conversion
-warnings. Those forms remain outside this baseline.
+subset, arbitrary nested functions, and very large out-of-range positions with
+conversion warnings. Those forms remain outside this baseline.
 
 ## Ownership Boundaries
 
@@ -176,6 +176,9 @@ substring_position:
   | TRUE
   | FALSE
   | NULL
+  | supported_integer_scalar_function
+  | descriptor_integer_column_reference        -- table-backed SELECT only
+  | supported_integer_row_scalar_expression    -- table-backed SELECT only
   | ( substring_position )
 
 substring_length:
@@ -185,6 +188,9 @@ substring_length:
   | TRUE
   | FALSE
   | NULL
+  | supported_integer_scalar_function
+  | descriptor_integer_column_reference        -- table-backed SELECT only
+  | supported_integer_row_scalar_expression    -- table-backed SELECT only
   | ( substring_length )
 ```
 
@@ -198,11 +204,15 @@ descriptor column families for the string argument are the same as `LEFT()` /
 - `YEAR`, `DATE`, `TIME`, `DATETIME`, and `TIMESTAMP`;
 - `CHAR`, `VARCHAR`, and baseline `TEXT` family.
 
-Position and length arguments are intentionally literal-only in this phase.
-Descriptor position columns, session scalar position values, string numeric
-position conversion, noninteger rounding, binary string values, `BIT`,
-approximate numeric values, `ENUM`, `SET`, `JSON`, and spatial values are
-deferred.
+Position and length arguments admit signed-64 integer, boolean, and `NULL`
+scalar values, direct supported integer-domain numeric and string-length scalar functions, descriptor
+integer columns, and the existing supported table-backed integer row-scalar
+expression subset. That row-scalar subset includes integer arithmetic over
+admitted operands, supported integer-domain numeric functions, string-length functions,
+`UNIX_TIMESTAMP()`, and numeric temporal extractors. Warning-producing
+string/noninteger conversion, binary string values, `BIT`, approximate numeric
+values, `ENUM`, `SET`, `JSON`, spatial values, parameters, and user variables
+remain deferred.
 
 The following remain outside this phase:
 
@@ -211,7 +221,8 @@ The following remain outside this phase:
   expression `ORDER BY`, grouping, distinct expression rows, and aggregate
   arguments;
 - DML assignment values such as `UPDATE t SET c = SUBSTRING(v, 1, 1)`;
-- nested row functions such as `SUBSTRING(CONCAT(v, '-'), 2, 2)`;
+- arbitrary nested row functions outside the supported row-scalar value and
+  integer argument subsets;
 - scalar subqueries, correlated subqueries, CTEs, parameters, user variables,
   and stored functions;
 - string introducers, national strings, arbitrary binary literals as scalar
@@ -255,10 +266,10 @@ No-source, `DUAL`, and `DO` evaluation is MyLite-owned:
 1. Unwrap supported parentheses.
 2. Convert the first argument to a text value using the existing string-slice
    value conversion.
-3. Convert the second argument to a signed 64-bit integer literal value, or
-   SQL `NULL`.
-4. If present, convert the third argument to a signed 64-bit integer literal
-   value, or SQL `NULL`.
+3. Convert the second argument through the supported integer argument envelope,
+   yielding a signed 64-bit integer value or SQL `NULL`.
+4. If present, convert the third argument through the supported integer
+   argument envelope, yielding a signed 64-bit integer value or SQL `NULL`.
 5. Return SQL `NULL` if any argument is `NULL`.
 6. Return `''` if `pos = 0`.
 7. Return `''` if a length is present and `len <= 0`.
@@ -289,10 +300,12 @@ CASE
 END
 ```
 
-`value_expr` is either a quoted descriptor column or a bound scalar value.
-`pos_expr` and `len_expr` are bound signed 64-bit integers or `NULL`.
-Generated identifiers are always quoted and scalar values are bound through
-prepared-statement parameters.
+`value_expr` is either a quoted descriptor column, a generated expression from
+the supported value subset, or a bound scalar value. `pos_expr` and `len_expr`
+are bound signed 64-bit integers/`NULL`, quoted integer descriptor columns, or
+generated expressions from the supported integer subset. Generated identifiers
+are always quoted and scalar values are bound through prepared-statement
+parameters.
 
 SQLite's public `substr()` over TEXT is used because it slices UTF-8 text by
 character position for positive and in-range negative start positions. MyLite
@@ -316,7 +329,7 @@ Diagnostics:
 - Unsupported string argument expression: deterministic MyLite unsupported
   diagnostic shared with the string-slice family.
 - Unsupported position or length argument: deterministic MyLite unsupported
-  diagnostic requiring integer, boolean, or `NULL` literals.
+  diagnostic requiring the supported integer argument envelope.
 - Out-of-range position or length literal: deterministic MyLite unsupported
   diagnostic requiring signed 64-bit range.
 - Unsupported descriptor column type: deterministic MyLite unsupported
@@ -344,4 +357,5 @@ The implementation must add:
   use as ordinary identifiers where MySQL permits it;
 - runtime C tests extending the existing string-slice test coverage for
   no-source, `DUAL`, `DO`, table-backed projection, reopen/preamble safety,
-  diagnostics, and unsupported binary/approximate/nested expression forms.
+  supported integer argument expressions, diagnostics, and unsupported
+  binary/approximate/expression forms.

@@ -174,12 +174,13 @@ The following remain outside this phase:
   expression `ORDER BY`, grouping, distinct expression rows, and aggregate
   arguments;
 - DML assignment values such as `UPDATE t SET c = LENGTH(v)`;
-- nested row functions such as `LENGTH(CONCAT(v, '-'))`;
 - scalar subqueries, correlated subqueries, CTEs, joins beyond the already
   supported row-scalar source envelope, parameters, user variables, and stored
   functions;
-- string introducers, national strings, arbitrary binary literals as scalar
-  arguments, spatial values, JSON values, and full expression metadata.
+- string introducers, national strings, arbitrary binary literals outside the
+  supported binary value subset, spatial values, JSON values, arbitrary
+  expressions outside the supported nested row-scalar value subset, and full
+  expression metadata.
 
 ### MyLite Lemon-Syntax Snippet
 

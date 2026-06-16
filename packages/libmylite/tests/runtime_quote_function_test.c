@@ -405,13 +405,15 @@ static int test_quote_diagnostics(void) {
             .message_part = "Unknown column 'missing' in 'field list'",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT QUOTE(CONCAT(v, id)) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "QUOTE() supports only string, integer, DECIMAL, boolean, NULL",
+        (struct expected_query){
+            .sql = "SELECT QUOTE(CONCAT(v, id)) FROM t",
+            .columns = (const char *const[]){"QUOTE(CONCAT(v, id))"},
+            .column_count = 1U,
+            .values = (const char *const[]){"'abc1'"},
+            .row_count = 1U,
+            .context = "nested concat quote argument",
         }
     );
     failures += execute_error(

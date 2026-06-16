@@ -118,6 +118,12 @@ expect_output \
     "SELECT LOCATE ('a','abc'), INSTR ('abc','a');" \
     "$DATABASE"
 
+expect_output \
+    "scalar integer function locate positions" \
+    "2	4" \
+    "SELECT LOCATE('b', 'abc', ABS(-2)), LOCATE('', 'abc', LENGTH('abcd'));" \
+    "$DATABASE"
+
 header_expected=$(cat <<\EXPECTED
 loc	INSTR('foobarbar','bar')	POSITION('bar' IN 'foobarbar')
 4	4	4
@@ -148,6 +154,14 @@ expect_output \
 "SELECT id, LOCATE('bar', s), INSTR(s, 'bar'), POSITION('bar' IN s), "\
 "LOCATE('a', c), LOCATE('2', n), LOCATE('-', d) FROM t ORDER BY id; "\
 "SELECT ROW_COUNT(), @@warning_count;" \
+    "$DATABASE"
+
+expect_output \
+    "table integer expression locate positions" \
+    "1	4	2
+2	0	NULL
+3	NULL	0" \
+    "SELECT id, LOCATE('bar', s, id + 3), LOCATE('2', n, ABS(id)) FROM t ORDER BY id;" \
     "$DATABASE"
 
 expect_error \

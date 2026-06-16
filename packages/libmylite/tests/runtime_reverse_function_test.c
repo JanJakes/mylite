@@ -373,13 +373,15 @@ static int test_reverse_diagnostics(void) {
             .message_part = "Unknown column 'missing' in 'field list'",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT REVERSE(CONCAT(v, id)) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "REVERSE() supports only string, integer, boolean, NULL",
+        (struct expected_query){
+            .sql = "SELECT REVERSE(CONCAT(v, id)) FROM t",
+            .columns = (const char *const[]){"REVERSE(CONCAT(v, id))"},
+            .column_count = 1U,
+            .values = (const char *const[]){"1cba"},
+            .row_count = 1U,
+            .context = "nested concat reverse argument",
         }
     );
     failures += execute_error(

@@ -130,6 +130,18 @@ static int test_no_source_dual_and_do_padding(void) {
     };
     static const char *const columns_dual[] = {"a", "b", "c", "d"};
     static const char *const values_dual[] = {"??hi", "hi??", "xx", "  "};
+    static const char *const columns_scalar_integer_arguments[] = {
+        "lp_abs",
+        "rp_len",
+        "rep_abs",
+        "sp_len",
+    };
+    static const char *const values_scalar_integer_arguments[] = {
+        "00hi",
+        "hix",
+        "abab",
+        "  ",
+    };
     static const char *const columns_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_after_select[] = {"-1", "0"};
     static const char *const values_after_do[] = {"0", "0"};
@@ -176,6 +188,21 @@ static int test_no_source_dual_and_do_padding(void) {
             .values = values_dual,
             .row_count = 1U,
             .context = "dual padding whitespace",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LPAD('hi', ABS(-4), '0') AS lp_abs, "
+                   "RPAD('hi', LENGTH('abc'), 'x') AS rp_len, "
+                   "REPEAT('ab', ABS(-2)) AS rep_abs, "
+                   "SPACE(LENGTH('xy')) AS sp_len",
+            .columns = columns_scalar_integer_arguments,
+            .column_count = sizeof(columns_scalar_integer_arguments) /
+                            sizeof(columns_scalar_integer_arguments[0]),
+            .values = values_scalar_integer_arguments,
+            .row_count = 1U,
+            .context = "no-source padding integer function arguments",
         }
     );
     failures += expect_query(
@@ -279,6 +306,30 @@ static int test_table_backed_padding_and_reopen(void) {
         "2",
         "0\xC3\xA9\xF0\x9F\x99\x82",
     };
+    static const char *const columns_integer_expression_padding[] = {
+        "id",
+        "lp",
+        "rp",
+        "rep",
+        "sp",
+    };
+    static const char *const values_integer_expression_padding[] = {
+        "1",
+        "00abc",
+        "abc",
+        "abc",
+        " ",
+        "2",
+        "0000\xC3\xA9\xF0\x9F\x99\x82",
+        "\xC3\xA9\xF0\x9F\x99\x82xx",
+        "\xC3\xA9\xF0\x9F\x99\x82\xC3\xA9\xF0\x9F\x99\x82",
+        "  ",
+        "3",
+        NULL,
+        NULL,
+        NULL,
+        "   ",
+    };
     static const char *const columns_reopen[] = {"id", "padded"};
     static const char *const values_reopen[] = {
         "1",
@@ -336,6 +387,20 @@ static int test_table_backed_padding_and_reopen(void) {
             .values = values_limited,
             .row_count = 2U,
             .context = "table padding row envelope",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, LPAD(v, id + 4, '0') AS lp, "
+                   "RPAD(v, ABS(id + 2), 'x') AS rp, REPEAT(v, id) AS rep, "
+                   "SPACE(id) AS sp FROM t ORDER BY id",
+            .columns = columns_integer_expression_padding,
+            .column_count = sizeof(columns_integer_expression_padding) /
+                            sizeof(columns_integer_expression_padding[0]),
+            .values = values_integer_expression_padding,
+            .row_count = 3U,
+            .context = "table padding integer expression arguments",
         }
     );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
@@ -414,6 +479,10 @@ static int test_independent_file_backed_padding_handles(void) {
 }
 
 static int test_padding_diagnostics(void) {
+    static const char *const columns_expression_count[] = {"padded"};
+    static const char *const values_expression_count[] = {"ab"};
+    static const char *const columns_nested_value[] = {"padded"};
+    static const char *const values_nested_value[] = {"00abc"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -481,22 +550,26 @@ static int test_padding_diagnostics(void) {
             .message_part = "Unknown column 'missing' in 'field list'",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT LPAD(v, 1 + 1, '0') FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "string padding functions support only integer, boolean, and NULL",
+        (struct expected_query){
+            .sql = "SELECT LPAD(v, 1 + 1, '0') AS padded FROM t",
+            .columns = columns_expression_count,
+            .column_count = sizeof(columns_expression_count) / sizeof(columns_expression_count[0]),
+            .values = values_expression_count,
+            .row_count = 1U,
+            .context = "LPAD arithmetic count argument",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT LPAD(CONCAT(v), 5, '0') FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "string padding functions support only string, integer, boolean, NULL",
+        (struct expected_query){
+            .sql = "SELECT LPAD(CONCAT(v), 5, '0') AS padded FROM t",
+            .columns = columns_nested_value,
+            .column_count = sizeof(columns_nested_value) / sizeof(columns_nested_value[0]),
+            .values = values_nested_value,
+            .row_count = 1U,
+            .context = "LPAD nested value argument",
         }
     );
     failures += execute_error(

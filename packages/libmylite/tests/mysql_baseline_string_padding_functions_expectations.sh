@@ -118,6 +118,13 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "scalar integer function padding arguments" \
+    "00hi	hix	abab	2020" \
+    "SELECT LPAD('hi', ABS(-4), '0'), RPAD('hi', LENGTH('abc'), 'x'), "\
+"REPEAT('ab', ABS(-2)), HEX(SPACE(LENGTH('xy')));" \
+    "$DATABASE"
+
+expect_output \
     "do row count" \
     "0	0" \
     "DO LPAD('abc', 5, '0'), RPAD(NULL, 5, '0'), REPEAT('x', 2), SPACE(2); "\
@@ -153,6 +160,15 @@ expect_output \
     "3	NULL
 2	0é🙂" \
     "SELECT id, LPAD(v, 3, '0') AS padded FROM t WHERE id >= 1 ORDER BY id DESC LIMIT 2;" \
+    "$DATABASE"
+
+expect_output \
+    "table integer expression padding arguments" \
+    "1	00abc	abc	abc	20
+2	0000é🙂	é🙂xx	é🙂é🙂	2020
+3	NULL	NULL	NULL	202020" \
+    "SELECT id, LPAD(v, id + 4, '0'), RPAD(v, ABS(id + 2), 'x'), "\
+"REPEAT(v, id), HEX(SPACE(id)) FROM t ORDER BY id;" \
     "$DATABASE"
 
 expect_output \

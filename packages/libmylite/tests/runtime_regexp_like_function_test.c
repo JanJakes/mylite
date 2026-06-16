@@ -667,7 +667,16 @@ static int test_regexp_like_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "REGEXP_LIKE() supports only string, integer, boolean, NULL",
+            .message_part = "REGEXP_LIKE() does not support binary values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT REGEXP_LIKE(CONCAT(CAST('a' AS BINARY)), 'A', 'i')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "REGEXP_LIKE() does not support binary values",
         }
     );
     failures += execute_error(

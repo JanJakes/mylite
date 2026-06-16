@@ -132,6 +132,12 @@ expect_output \
     "SELECT INSERT ('Quadratic',3,4,'What'), INSERT(('abc'),(2),(1),('X'));" \
     "$DATABASE"
 
+expect_output \
+    "scalar integer function INSERT arguments" \
+    "aXdef" \
+    "SELECT INSERT('abcdef', ABS(-2), LENGTH('xy'), 'X');" \
+    "$DATABASE"
+
 do_expected=$(cat <<EXPECTED
 0	0
 EXPECTED
@@ -172,6 +178,14 @@ expect_output \
     "$limited_expected" \
     "DO 0; SELECT id, INSERT(v,2,3,'X'), INSERT(v,2,3,DATABASE()), "\
 "INSERT(v,2,3,@@warning_count) FROM t WHERE id >= 1 ORDER BY id LIMIT 1;" \
+    "$DATABASE"
+
+expect_output \
+    "table integer expression INSERT arguments" \
+    "1	Xcdef	aYcdef
+2	NULL	NULL" \
+    "SELECT id, INSERT(v, id, id + 1, 'X'), INSERT(v, LENGTH(v) - 4, 1, 'Y') "\
+"FROM t ORDER BY id;" \
     "$DATABASE"
 
 expect_error \

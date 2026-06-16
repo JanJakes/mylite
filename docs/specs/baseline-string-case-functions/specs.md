@@ -169,12 +169,12 @@ The following remain outside this phase:
 - `WHERE LOWER(column) ...`, `HAVING LOWER(...) ...`, expression `ORDER BY`,
   grouping, distinct expression rows, and aggregate arguments;
 - DML assignment values such as `UPDATE t SET c = LOWER(v)`;
-- nested row functions such as `LOWER(CONCAT(v, '-'))`;
 - scalar subqueries, correlated subqueries, CTEs, joins beyond the already
   supported row-scalar source envelope, parameters, user variables, and stored
   functions;
-- string introducers, national strings, arbitrary binary literals as scalar
-  arguments, binary casts as arguments, and full expression metadata;
+- string introducers, national strings, arbitrary binary literals, binary casts
+  as arguments, arbitrary expressions outside the supported nested row-scalar
+  value subset, and full expression metadata;
 - full Unicode case mapping, collation-sensitive folding, and connection
   collation effects.
 

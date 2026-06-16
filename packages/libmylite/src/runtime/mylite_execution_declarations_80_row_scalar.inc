@@ -565,6 +565,10 @@ static int plan_row_scalar_string_slice_value_argument(
 static int plan_row_scalar_string_slice_length_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_string_slice_position_argument(
@@ -611,6 +615,10 @@ static int plan_row_scalar_string_padding_value_argument(
 static int plan_row_scalar_string_padding_count_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_string_padding_column(
@@ -676,19 +684,11 @@ static int plan_row_scalar_string_bitmask_value_argument(
 static int plan_row_scalar_string_bitmask_count_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
-    struct planned_row_scalar_expression *out_expression
-);
-static int plan_row_scalar_string_bitmask_column(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *expression,
+    bool has_source,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
-);
-static bool string_bitmask_column_descriptor_is_supported(
-    struct mylite_db *database,
-    const struct mylite_catalog_column_descriptor *column
 );
 static int plan_row_scalar_string_search_expression(
     struct mylite_db *database,
@@ -712,6 +712,10 @@ static int plan_row_scalar_string_search_text_argument(
 static int plan_row_scalar_string_search_position_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_string_search_column(
@@ -767,11 +771,19 @@ static int plan_row_scalar_string_insert_argument(
 static int plan_row_scalar_string_insert_position_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_string_insert_length_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_string_replace_column(
@@ -915,6 +927,10 @@ static int plan_row_scalar_substring_index_argument(
 static int plan_row_scalar_substring_index_count_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_substring_index_column(
@@ -2104,6 +2120,32 @@ static int plan_row_scalar_nested_value_argument(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_integer_like_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *unsupported_message,
+    const char *range_message,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_integer_like_column_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *unsupported_message,
+    struct planned_row_scalar_expression *out_expression
+);
+static bool row_scalar_expression_is_integer_like_runtime_argument(
+    const struct mylite_sql_ast_node *expression
+);
+static bool row_scalar_numeric_function_kind_is_integer_like_runtime_argument(
+    enum mylite_sql_ast_node_kind ast_kind
+);
 static int plan_row_scalar_get_lock_function(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -2142,6 +2184,12 @@ static int append_row_scalar_conversion_step(
     struct planned_row_scalar_expression *out_expression
 );
 static enum planned_row_scalar_conversion_kind row_scalar_conversion_kind_from_expression(
+    const struct mylite_sql_ast_node *expression
+);
+static bool row_scalar_expression_is_explicit_binary_conversion(
+    const struct mylite_sql_ast_node *expression
+);
+static bool row_scalar_expression_contains_explicit_binary_conversion(
     const struct mylite_sql_ast_node *expression
 );
 static bool row_scalar_conversion_kind_is_numeric(

@@ -75,7 +75,7 @@ Runtime probes establish the behavior used by this phase:
 
 MySQL also accepts deferred behavior such as noninteger `len` conversion,
 string `len` conversion, binary-string slicing, predicates over `LEFT()`, and
-nested functions. Those forms remain outside this baseline.
+arbitrary nested functions. Those forms remain outside this baseline.
 
 ## Ownership Boundaries
 
@@ -154,6 +154,9 @@ string_slice_length:
   | TRUE
   | FALSE
   | NULL
+  | supported_integer_scalar_function
+  | descriptor_integer_column_reference        -- table-backed SELECT only
+  | supported_integer_row_scalar_expression    -- table-backed SELECT only
   | ( string_slice_length )
 ```
 
@@ -166,17 +169,23 @@ descriptor column families for the string argument are:
 - `YEAR`, `DATE`, `TIME`, `DATETIME`, and `TIMESTAMP`;
 - `CHAR`, `VARCHAR`, and baseline `TEXT` family.
 
-The length argument is intentionally literal-only in this phase. Descriptor
-length columns, session scalar length values, string length values, noninteger
-rounding, binary string values, `BIT`, approximate numeric values, `ENUM`,
-`SET`, `JSON`, and spatial values are deferred.
+The length argument admits signed-64 integer, boolean, and `NULL` scalar
+values, direct supported integer-domain numeric and string-length scalar functions, descriptor integer
+columns, and the existing supported table-backed integer row-scalar expression
+subset. That row-scalar subset includes integer arithmetic over admitted
+operands, supported integer-domain numeric functions, string-length functions,
+`UNIX_TIMESTAMP()`, and numeric temporal extractors. Warning-producing
+string/noninteger conversion, binary string values, `BIT`, approximate numeric
+values, `ENUM`, `SET`, `JSON`, spatial values, parameters, and user variables
+remain deferred.
 
 The following remain outside this phase:
 
 - `WHERE LEFT(column, 1) ...`, `HAVING LEFT(...) ...`, expression `ORDER BY`,
   grouping, distinct expression rows, and aggregate arguments;
 - DML assignment values such as `UPDATE t SET c = LEFT(v, 1)`;
-- nested row functions such as `LEFT(CONCAT(v, '-'), 2)`;
+- arbitrary nested row functions outside the supported row-scalar value and
+  integer argument subsets;
 - scalar subqueries, correlated subqueries, CTEs, joins beyond the already
   supported row-scalar source envelope, parameters, user variables, and stored
   functions;
@@ -214,8 +223,8 @@ No-source, `DUAL`, and `DO` evaluation is MyLite-owned:
    - `NULL`: SQL `NULL`;
    - supported session scalar value or system variable: its existing visible
      string value or SQL `NULL`.
-3. Convert the second argument to a signed 64-bit integer literal value, or
-   SQL `NULL`.
+3. Convert the second argument through the supported integer argument envelope,
+   yielding a signed 64-bit integer value or SQL `NULL`.
 4. Return SQL `NULL` if either argument is `NULL`.
 5. Return `''` if `len <= 0`.
 6. Validate the input as UTF-8 and slice on character boundaries.
@@ -237,11 +246,12 @@ CASE
 END
 ```
 
-`value_expr` is either a quoted descriptor column or a bound scalar value.
-`len_expr` is a bound signed 64-bit integer or `NULL`. The builder emits the
-value and length expressions separately for each occurrence and binds all
-values through prepared-statement parameters. Generated identifiers are always
-quoted.
+`value_expr` is either a quoted descriptor column, a generated expression from
+the supported value subset, or a bound scalar value. `len_expr` is a bound
+signed 64-bit integer/`NULL`, quoted integer descriptor column, or generated
+expression from the supported integer subset. The builder emits the value and
+length expressions separately for each occurrence and binds all scalar values
+through prepared-statement parameters. Generated identifiers are always quoted.
 
 SQLite's public `substr()` over TEXT is used for row-backed projection because
 it slices UTF-8 text by character position, which matches the admitted MySQL
@@ -273,8 +283,8 @@ Diagnostics:
 
 `COMPATIBILITY.md` and `docs/compatibility/functions-string.md` mark `LEFT()`
 and `RIGHT()` as limited support for no-source, `DUAL`, `DO`, and single-table
-row-scalar `SELECT` projection only. Broader expression, predicate, DML,
-binary, and metadata behavior remains documented as unsupported.
+row-scalar `SELECT` projection only. Broader predicate, DML, ordering/grouping,
+binary, coercion, and metadata behavior remains documented as unsupported.
 
 ## Performance And Storage Impact
 

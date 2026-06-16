@@ -101,6 +101,8 @@ static int test_no_source_dual_and_do_string_searches(void) {
     };
     static const char *const columns_dual[] = {"a", "b"};
     static const char *const values_dual[] = {"1", "1"};
+    static const char *const columns_scalar_integer_arguments[] = {"loc_abs", "empty_len"};
+    static const char *const values_scalar_integer_arguments[] = {"2", "4"};
     static const char *const columns_row_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_after_select[] = {"-1", "0"};
     static const char *const values_after_do[] = {"0", "0"};
@@ -140,6 +142,19 @@ static int test_no_source_dual_and_do_string_searches(void) {
             .values = values_dual,
             .row_count = 1U,
             .context = "dual string search whitespace",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LOCATE('b', 'abc', ABS(-2)) AS loc_abs, "
+                   "LOCATE('', 'abc', LENGTH('abcd')) AS empty_len",
+            .columns = columns_scalar_integer_arguments,
+            .column_count = sizeof(columns_scalar_integer_arguments) /
+                            sizeof(columns_scalar_integer_arguments[0]),
+            .values = values_scalar_integer_arguments,
+            .row_count = 1U,
+            .context = "no-source string search integer function arguments",
         }
     );
     failures += expect_query(
@@ -198,6 +213,18 @@ static int test_table_backed_string_searches_and_reopen(void) {
     };
     static const char *const columns_limited[] = {"id", "loc"};
     static const char *const values_limited[] = {"3", NULL, "2", "3"};
+    static const char *const columns_integer_expression_search[] = {"id", "from_expr", "num_expr"};
+    static const char *const values_integer_expression_search[] = {
+        "1",
+        "4",
+        "2",
+        "2",
+        "0",
+        NULL,
+        "3",
+        NULL,
+        "0",
+    };
     static const char *const columns_type_coverage[] = {
         "text_pos",
         "year_pos",
@@ -263,6 +290,19 @@ static int test_table_backed_string_searches_and_reopen(void) {
             .values = values_limited,
             .row_count = 2U,
             .context = "table string search row envelope",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, LOCATE('bar', s, id + 3) AS from_expr, "
+                   "LOCATE('2', n, ABS(id)) AS num_expr FROM t ORDER BY id",
+            .columns = columns_integer_expression_search,
+            .column_count = sizeof(columns_integer_expression_search) /
+                            sizeof(columns_integer_expression_search[0]),
+            .values = values_integer_expression_search,
+            .row_count = 3U,
+            .context = "table string search integer expression arguments",
         }
     );
     failures += expect_query(
@@ -897,6 +937,8 @@ static int test_table_backed_strcmp_and_reopen(void) {
 }
 
 static int test_string_search_diagnostics(void) {
+    static const char *const columns_locate_position[] = {"loc"};
+    static const char *const values_locate_position[] = {"1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -983,13 +1025,15 @@ static int test_string_search_diagnostics(void) {
             .message_part = "string search functions do not support binary columns",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT LOCATE('a', v, id) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "LOCATE() position supports only integer, boolean, and NULL literals",
+        (struct expected_query){
+            .sql = "SELECT LOCATE('a', v, id) AS loc FROM t WHERE id = 1",
+            .columns = columns_locate_position,
+            .column_count = sizeof(columns_locate_position) / sizeof(columns_locate_position[0]),
+            .values = values_locate_position,
+            .row_count = 1U,
+            .context = "LOCATE integer column position",
         }
     );
     failures += execute_error(
@@ -998,7 +1042,7 @@ static int test_string_search_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "string search functions support only string",
+            .message_part = "string search functions support only ASCII text values",
         }
     );
     failures += execute_error(
@@ -1136,7 +1180,7 @@ static int test_string_search_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "FIND_IN_SET() supports only string",
+            .message_part = "string search functions support only ASCII text values",
         }
     );
     failures += execute_error(
@@ -1271,7 +1315,7 @@ static int test_string_search_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "STRCMP() supports only string",
+            .message_part = "string search functions support only ASCII text values",
         }
     );
     failures += execute_error(

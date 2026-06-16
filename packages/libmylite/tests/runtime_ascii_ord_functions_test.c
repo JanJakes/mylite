@@ -398,13 +398,15 @@ static int test_ascii_ord_diagnostics(void) {
             .message_part = "Unknown column 'missing' in 'field list'",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT ASCII(CONCAT(v, 'x')) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "string codepoint functions support only string, hex, integer",
+        (struct expected_query){
+            .sql = "SELECT ASCII(CONCAT(v, 'x')) FROM t",
+            .columns = (const char *const[]){"ASCII(CONCAT(v, 'x'))"},
+            .column_count = 1U,
+            .values = (const char *const[]){"97"},
+            .row_count = 1U,
+            .context = "nested concat codepoint argument",
         }
     );
     failures += execute_error(

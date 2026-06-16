@@ -161,10 +161,10 @@ The following remain outside this phase:
 - `WHERE ASCII(column) ...`, `HAVING ORD(...) ...`, expression `ORDER BY`,
   grouping, aggregate arguments, and distinct expression rows;
 - DML assignment values such as `UPDATE t SET c = ASCII(v)`;
-- nested row functions such as `ASCII(CONCAT(v, 'x'))`;
 - scalar subqueries, correlated subqueries, CTEs, joins beyond the already
   supported row-scalar source envelope, parameters, user variables, and stored
   functions;
+- arbitrary expressions outside the supported nested row-scalar value subset;
 - complete character-set/collation metadata and full expression metadata.
 
 ### MyLite Lemon-Syntax Snippet

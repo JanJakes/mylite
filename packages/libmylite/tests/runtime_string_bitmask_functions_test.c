@@ -126,6 +126,8 @@ static int test_no_source_dual_and_do_bitmask(void) {
     };
     static const char *const columns_dual[] = {"es", "ms"};
     static const char *const values_dual[] = {"Y:N:Y:N", "b"};
+    static const char *const columns_scalar_integer_arguments[] = {"es_func", "ms_func"};
+    static const char *const values_scalar_integer_arguments[] = {"Y:N", "a,b"};
     static const char *const columns_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_after_select[] = {"-1", "0"};
     static const char *const values_after_do[] = {"0", "0"};
@@ -171,6 +173,19 @@ static int test_no_source_dual_and_do_bitmask(void) {
             .values = values_dual,
             .row_count = 1U,
             .context = "dual bitmask whitespace",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT EXPORT_SET(ABS(-5),'Y','N',':',BIT_COUNT(3)) AS es_func, "
+                   "MAKE_SET(ABS(-3),'a','b','c') AS ms_func",
+            .columns = columns_scalar_integer_arguments,
+            .column_count = sizeof(columns_scalar_integer_arguments) /
+                            sizeof(columns_scalar_integer_arguments[0]),
+            .values = values_scalar_integer_arguments,
+            .row_count = 1U,
+            .context = "no-source bitmask integer function arguments",
         }
     );
     failures += expect_query(
@@ -231,6 +246,18 @@ static int test_table_backed_bitmask_and_reopen(void) {
         "2",
         "on",
     };
+    static const char *const columns_integer_expression_bitmask[] = {"id", "exported", "made"};
+    static const char *const values_integer_expression_bitmask[] = {
+        "1",
+        "N:Y:Y",
+        "Y",
+        "2",
+        "off|off|on|off",
+        "second,on,off",
+        "3",
+        NULL,
+        NULL,
+    };
     static const char *const columns_reopen[] = {"id", "exported"};
     static const char *const values_reopen[] = {
         "1",
@@ -284,6 +311,20 @@ static int test_table_backed_bitmask_and_reopen(void) {
             .values = values_limited,
             .row_count = 2U,
             .context = "table bitmask row envelope",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, EXPORT_SET(bits + id, on_label, off_label, sep, id + 2) "
+                   "AS exported, MAKE_SET(ABS(i), txt, on_label, off_label) AS made "
+                   "FROM t ORDER BY id",
+            .columns = columns_integer_expression_bitmask,
+            .column_count = sizeof(columns_integer_expression_bitmask) /
+                            sizeof(columns_integer_expression_bitmask[0]),
+            .values = values_integer_expression_bitmask,
+            .row_count = 3U,
+            .context = "table bitmask integer expression arguments",
         }
     );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
@@ -477,8 +518,7 @@ static int test_bitmask_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part =
-                "string bitmask functions support only integer descriptor bitmask columns",
+            .message_part = "string bitmask functions support only signed integer, boolean, NULL",
         }
     );
     failures += execute_error(

@@ -149,6 +149,10 @@ static int plan_row_scalar_regexp_like_value_argument(
         );
         return MYLITE_ERROR;
     }
+    if (row_scalar_expression_contains_explicit_binary_conversion(expression)) {
+        set_unsupported_error(database, "REGEXP_LIKE() does not support binary values");
+        return MYLITE_ERROR;
+    }
     if (row_scalar_expression_is_nested_value_argument(expression)) {
         return plan_row_scalar_nested_value_argument(
             database,

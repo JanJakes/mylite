@@ -94,8 +94,8 @@ Runtime probes establish the behavior used by this phase:
 MySQL also accepts deferred behavior such as string and decimal bitmask/count
 conversion with warnings, unsigned integer literals outside the signed-64
 range, non-ASCII collation-sensitive result typing, binary string metadata,
-predicates over these functions, and DML assignment expressions. Those forms
-remain outside this baseline.
+predicates over these functions, arbitrary nested functions, and DML assignment
+expressions. Those forms remain outside this baseline.
 
 ## Ownership Boundaries
 
@@ -165,7 +165,9 @@ bitmask_value:
   | TRUE
   | FALSE
   | NULL
+  | supported_integer_scalar_function
   | descriptor_integer_column_reference        -- table-backed SELECT only
+  | supported_integer_row_scalar_expression    -- table-backed SELECT only
   | ( bitmask_value )
 
 bit_count_value:
@@ -175,6 +177,9 @@ bit_count_value:
   | TRUE
   | FALSE
   | NULL
+  | supported_integer_scalar_function
+  | descriptor_integer_column_reference        -- table-backed SELECT only
+  | supported_integer_row_scalar_expression    -- table-backed SELECT only
   | ( bit_count_value )
 
 string_value:
@@ -192,8 +197,9 @@ string_value:
 ```
 
 `descriptor_integer_column_reference` follows the existing single-source table
-alias policy and may explicitly name invisible descriptor columns. The bitmask
-descriptor column must use the current integer-family physical storage.
+alias policy and may explicitly name invisible descriptor columns. Integer
+descriptor columns used as `bits` or `number_of_bits` must use the current
+integer-family physical storage.
 
 Supported descriptor column families for `string_value` arguments are:
 
@@ -202,18 +208,25 @@ Supported descriptor column families for `string_value` arguments are:
 - `YEAR`, `DATE`, `TIME`, `DATETIME`, and `TIMESTAMP`;
 - `CHAR`, `VARCHAR`, and baseline `TEXT` family.
 
-The `number_of_bits` argument is intentionally literal-only in this phase.
-String/decimal/float bitmask conversion, string/decimal/float count conversion,
-unsigned magnitudes beyond the signed-64 parser envelope, binary string values,
-`BIT`, approximate numeric values, `ENUM`, `SET`, `JSON`, and spatial values
-are deferred.
+The bitmask and `number_of_bits` arguments admit signed-64 integer, boolean,
+and `NULL` scalar values, direct supported integer-domain numeric and string-length scalar functions,
+descriptor integer columns, and the existing supported table-backed integer
+row-scalar expression subset. That row-scalar subset includes integer
+arithmetic over admitted operands, supported integer-domain numeric functions, string-length
+functions, `UNIX_TIMESTAMP()`, and numeric temporal extractors.
+Warning-producing string/decimal/float bitmask conversion,
+string/decimal/float count conversion, unsigned magnitudes beyond the signed-64
+parser envelope, binary string values, `BIT`, approximate numeric values,
+`ENUM`, `SET`, `JSON`, spatial values, parameters, and user variables are
+deferred.
 
 The following remain outside this phase:
 
 - `WHERE EXPORT_SET(...) ...`, `HAVING MAKE_SET(...) ...`, expression
   `ORDER BY`, grouping, distinct expression rows, and aggregate arguments;
 - DML assignment values such as `UPDATE t SET c = MAKE_SET(bits, 'a', 'b')`;
-- nested row functions such as `EXPORT_SET(bits, UPPER(on_value), off_value)`;
+- arbitrary nested row functions outside the supported row-scalar value and
+  integer argument subsets;
 - scalar subqueries, correlated subqueries, CTEs, table joins beyond the
   already supported row-scalar source envelope, parameters, user variables, and
   stored functions;
@@ -304,9 +317,10 @@ _mylite_make_set(arg0, arg1[, argN ...])
 ```
 
 Every generated identifier is quoted by the existing row-scalar SQL emitter,
-and scalar literal arguments are parameter-bound by the existing row-scalar
-parameter binder. MyLite registers the `_mylite_*` helpers on connection
-bootstrap through SQLite's public scalar-function API.
+supported integer/value expressions are emitted through the row-scalar SQL
+emitters, and scalar literal arguments are parameter-bound by the existing
+row-scalar parameter binder. MyLite registers the `_mylite_*` helpers on
+connection bootstrap through SQLite's public scalar-function API.
 
 ## Result Behavior
 

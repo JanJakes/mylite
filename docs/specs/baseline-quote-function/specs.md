@@ -154,8 +154,9 @@ The following remain outside this phase:
 - approximate numeric scalar or row-backed inputs;
 - non-`utf8mb4` character-set conversion, introducers, explicit collations, and
   binary result metadata;
-- nested row functions, scalar subqueries, correlated subqueries, CTEs,
-  parameters, user variables, stored functions, and arbitrary expressions;
+- scalar subqueries, correlated subqueries, CTEs, parameters, user variables,
+  stored functions, and arbitrary expressions outside the supported nested
+  row-scalar value subset;
 - `WHERE QUOTE(...) ...`, `HAVING QUOTE(...) ...`, expression `ORDER BY`,
   grouping, distinct expression rows, aggregate arguments, and DML assignments.
 

@@ -304,6 +304,10 @@ static int plan_row_scalar_string_slice_expression(
         rc = plan_row_scalar_string_slice_length_argument(
             database,
             child_at(expression, 1U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
             &out_expression->arguments[1]
         );
     }
@@ -312,6 +316,10 @@ static int plan_row_scalar_string_slice_expression(
         rc = plan_row_scalar_string_slice_length_argument(
             database,
             child_at(expression, 2U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
             &out_expression->arguments[2]
         );
     }
@@ -421,28 +429,24 @@ static int plan_row_scalar_string_slice_value_argument(
 static int plan_row_scalar_string_slice_length_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 ) {
-    int64_t value = 0;
-    bool is_null = false;
-    int rc = MYLITE_OK;
-
-    expression = unwrap_parenthesized_expression(expression);
-    if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
-        set_unsupported_error(
-            database,
-            "string slice functions support only integer, boolean, and NULL length literals"
-        );
-        return MYLITE_ERROR;
-    }
-    rc = mylite_execution_string_slice_signed_length_value(database, expression, &value, &is_null);
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
-        return plan_row_scalar_literal_value(database, expression, out_expression);
-    }
-    return plan_row_scalar_integer_value(database, expression, out_expression);
+    return plan_row_scalar_integer_like_argument(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        "string slice functions support only integer, boolean, NULL, integer descriptor, and "
+        "supported integer expression length arguments",
+        "string slice function length literals must fit the signed 64-bit range",
+        out_expression
+    );
 }
 
 static int plan_row_scalar_string_slice_position_argument(
@@ -454,36 +458,19 @@ static int plan_row_scalar_string_slice_position_argument(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 ) {
-    int64_t value = 0;
-    bool is_null = false;
-    int rc = MYLITE_OK;
-
     expression = unwrap_parenthesized_expression(expression);
-    if (has_source && row_scalar_expression_contains_integer_arithmetic_attempt(expression)) {
-        return plan_row_scalar_integer_arithmetic_expression(
-            database,
-            expression,
-            source_context,
-            table_columns,
-            table_column_count,
-            out_expression
-        );
-    }
-    if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
-        set_unsupported_error(
-            database,
-            "string slice functions support only integer, boolean, and NULL position literals"
-        );
-        return MYLITE_ERROR;
-    }
-    rc = mylite_execution_string_slice_signed_position_value(database, expression, &value, &is_null);
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
-        return plan_row_scalar_literal_value(database, expression, out_expression);
-    }
-    return plan_row_scalar_integer_value(database, expression, out_expression);
+    return plan_row_scalar_integer_like_argument(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        "string slice functions support only integer, boolean, NULL, integer descriptor, and "
+        "supported integer expression position arguments",
+        "string slice function position literals must fit the signed 64-bit range",
+        out_expression
+    );
 }
 
 static int plan_row_scalar_string_slice_column(
@@ -612,6 +599,10 @@ static int plan_row_scalar_string_padding_expression(
         return plan_row_scalar_string_padding_count_argument(
             database,
             child_at(expression, 0U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
             &out_expression->arguments[0]
         );
     }
@@ -631,6 +622,10 @@ static int plan_row_scalar_string_padding_expression(
         rc = plan_row_scalar_string_padding_count_argument(
             database,
             child_at(expression, 1U),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
             &out_expression->arguments[1]
         );
     }
@@ -733,36 +728,24 @@ static int plan_row_scalar_string_padding_value_argument(
 static int plan_row_scalar_string_padding_count_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 ) {
-    int64_t value = 0;
-    bool is_null = false;
-    int rc = MYLITE_OK;
-
-    expression = unwrap_parenthesized_expression(expression);
-    if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
-        set_unsupported_error(
-            database,
-            "string padding functions support only integer, boolean, and NULL length/count "
-            "literals"
-        );
-        return MYLITE_ERROR;
-    }
-    rc = mylite_execution_string_slice_signed_integer_value(
+    return plan_row_scalar_integer_like_argument(
         database,
         expression,
-        "string padding functions support only integer, boolean, and NULL length/count literals",
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        "string padding functions support only integer, boolean, NULL, integer descriptor, and "
+        "supported integer expression length/count arguments",
         "string padding function length/count literals must fit the signed 64-bit range",
-        &value,
-        &is_null
+        out_expression
     );
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
-        return plan_row_scalar_literal_value(database, expression, out_expression);
-    }
-    return plan_row_scalar_integer_value(database, expression, out_expression);
 }
 
 static int plan_row_scalar_string_padding_column(

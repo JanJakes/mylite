@@ -359,13 +359,24 @@ static int test_string_case_diagnostics(void) {
             .message_part = "Unknown column 'missing' in 'field list'",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LOWER(CONCAT(v)) FROM t WHERE id = 1",
+            .columns = (const char *const[]){"LOWER(CONCAT(v))"},
+            .column_count = 1U,
+            .values = (const char *const[]){"abc"},
+            .row_count = 1U,
+            .context = "nested concat string case argument",
+        }
+    );
     failures += execute_error(
         database,
-        "SELECT LOWER(CONCAT(v)) FROM t",
+        "SELECT LOWER(CONCAT(v)) FROM t WHERE id = 2",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "string case functions support only string, integer, boolean, NULL",
+            .message_part = "string case functions support only ASCII text values",
         }
     );
     failures += execute_error(
@@ -374,7 +385,16 @@ static int test_string_case_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "string case functions support only string, integer, boolean, NULL",
+            .message_part = "string case functions do not support binary values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT LOWER(CONCAT(CAST('ABC' AS BINARY)))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "string case functions do not support binary values",
         }
     );
     failures += execute_error(

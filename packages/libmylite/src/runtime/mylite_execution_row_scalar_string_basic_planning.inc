@@ -565,6 +565,10 @@ static int plan_row_scalar_string_case_argument(
         );
         return MYLITE_ERROR;
     }
+    if (row_scalar_expression_contains_explicit_binary_conversion(expression)) {
+        set_unsupported_error(database, "string case functions do not support binary values");
+        return MYLITE_ERROR;
+    }
     if (row_scalar_expression_is_nested_value_argument(expression)) {
         return plan_row_scalar_nested_value_argument(
             database,

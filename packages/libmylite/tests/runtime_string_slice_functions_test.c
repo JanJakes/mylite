@@ -154,6 +154,18 @@ static int test_no_source_dual_and_do_string_slices(void) {
         "c",         "",          "aa",  "",    "aa", "a",
         "c",         "1",         "",
     };
+    static const char *const columns_scalar_integer_arguments[] = {
+        "l_abs",
+        "r_len",
+        "sub_func",
+        "idx_func",
+    };
+    static const char *const values_scalar_integer_arguments[] = {
+        "ab",
+        "def",
+        "bcd",
+        "a.b",
+    };
     static const char *const columns_row_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_after_select[] = {"-1", "0"};
     static const char *const values_after_do[] = {"0", "0"};
@@ -250,6 +262,21 @@ static int test_no_source_dual_and_do_string_slices(void) {
             .values = values_substring_index,
             .row_count = 1U,
             .context = "no-source substring_index values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT LEFT('abcdef', ABS(-2)) AS l_abs, "
+                   "RIGHT('abcdef', LENGTH('abc')) AS r_len, "
+                   "SUBSTRING('abcdef', LENGTH('ab'), ABS(-3)) AS sub_func, "
+                   "SUBSTRING_INDEX('a.b.c', '.', ABS(-2)) AS idx_func",
+            .columns = columns_scalar_integer_arguments,
+            .column_count = sizeof(columns_scalar_integer_arguments) /
+                            sizeof(columns_scalar_integer_arguments[0]),
+            .values = values_scalar_integer_arguments,
+            .row_count = 1U,
+            .context = "no-source string slice integer function arguments",
         }
     );
     failures += expect_query(
@@ -446,6 +473,30 @@ static int test_table_backed_string_slices_and_reopen(void) {
         "3",
         NULL,
     };
+    static const char *const columns_integer_expression_slices[] = {
+        "id",
+        "left_expr",
+        "right_abs",
+        "sub_expr",
+        "idx_expr",
+    };
+    static const char *const values_integer_expression_slices[] = {
+        "1",
+        "ab",
+        "c",
+        "",
+        "a.b",
+        "2",
+        "\xC3\xA9\xF0\x9F\x99\x82",
+        "\xC3\xA9\xF0\x9F\x99\x82",
+        "",
+        "a.b.c",
+        "3",
+        NULL,
+        NULL,
+        NULL,
+        "a.b.c.d",
+    };
     static const char *const columns_labels[] = {"LEFT(v, 2)", "r"};
     static const char *const values_labels[] = {"ab", "c"};
     static const char *const columns_substring_labels[] = {"SUBSTRING(v, 2, 3)", "s"};
@@ -623,6 +674,22 @@ static int test_table_backed_string_slices_and_reopen(void) {
             .values = values_substring_limited,
             .row_count = 2U,
             .context = "table substring row envelope",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, LEFT(v, id + 1) AS left_expr, "
+                   "RIGHT(v, ABS(id)) AS right_abs, "
+                   "SUBSTRING(v, id + 1, LENGTH(v) - 4) AS sub_expr, "
+                   "SUBSTRING_INDEX('a.b.c.d', '.', id + 1) AS idx_expr "
+                   "FROM t ORDER BY id",
+            .columns = columns_integer_expression_slices,
+            .column_count = sizeof(columns_integer_expression_slices) /
+                            sizeof(columns_integer_expression_slices[0]),
+            .values = values_integer_expression_slices,
+            .row_count = 3U,
+            .context = "table string slice integer expression arguments",
         }
     );
     failures += expect_query(
@@ -875,6 +942,14 @@ static int test_string_slice_diagnostics(void) {
         "SUBSTRING(CAST('ABC' AS BINARY), 1)",
     };
     static const char *const binary_substring_values[] = {"ABC"};
+    static const char *const substring_index_binary_columns[] = {
+        "SUBSTRING_INDEX(CAST('ABC' AS BINARY), '.', 1)",
+    };
+    static const char *const substring_index_binary_values[] = {"ABC"};
+    static const char *const substring_index_count_columns[] = {"s"};
+    static const char *const substring_index_count_values[] = {"abc", "\xC3\xA9"};
+    static const char *const substring_index_nested_columns[] = {"s"};
+    static const char *const substring_index_nested_values[] = {"a", "\xC3\xA9"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -991,8 +1066,16 @@ static int test_string_slice_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part =
-                "string slice functions support only integer, boolean, and NULL length literals",
+            .message_part = "string slice functions support only integer, boolean, NULL",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT LEFT('abc', SQRT(2))",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "string slice functions support only integer, boolean, NULL",
         }
     );
     failures += execute_error(
@@ -1001,8 +1084,7 @@ static int test_string_slice_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part =
-                "string slice functions support only integer, boolean, and NULL position literals",
+            .message_part = "string slice functions support only integer, boolean, NULL",
         }
     );
     failures += execute_error(
@@ -1011,8 +1093,7 @@ static int test_string_slice_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part =
-                "string slice functions support only integer, boolean, and NULL length literals",
+            .message_part = "string slice functions support only integer, boolean, NULL",
         }
     );
     failures += execute_error(
@@ -1031,7 +1112,7 @@ static int test_string_slice_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SUBSTRING_INDEX() count supports only integer, boolean, and NULL",
+            .message_part = "SUBSTRING_INDEX() count supports only integer, boolean, NULL",
         }
     );
     failures += execute_error(
@@ -1065,13 +1146,16 @@ static int test_string_slice_diagnostics(void) {
             .context = "binary SUBSTRING slice",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT SUBSTRING_INDEX(CAST('ABC' AS BINARY), '.', 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SUBSTRING_INDEX() supports only string, integer, boolean, NULL",
+        (struct expected_query){
+            .sql = "SELECT SUBSTRING_INDEX(CAST('ABC' AS BINARY), '.', 1)",
+            .columns = substring_index_binary_columns,
+            .column_count =
+                sizeof(substring_index_binary_columns) / sizeof(substring_index_binary_columns[0]),
+            .values = substring_index_binary_values,
+            .row_count = 1U,
+            .context = "binary SUBSTRING_INDEX value",
         }
     );
     failures += execute_error(
@@ -1137,22 +1221,28 @@ static int test_string_slice_diagnostics(void) {
             .message_part = "Unknown column 'missing' in 'field list'",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT SUBSTRING_INDEX(v, '.', id) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SUBSTRING_INDEX() count supports only integer, boolean, and NULL",
+        (struct expected_query){
+            .sql = "SELECT SUBSTRING_INDEX(v, '.', id) AS s FROM t ORDER BY id",
+            .columns = substring_index_count_columns,
+            .column_count =
+                sizeof(substring_index_count_columns) / sizeof(substring_index_count_columns[0]),
+            .values = substring_index_count_values,
+            .row_count = 2U,
+            .context = "SUBSTRING_INDEX integer column count",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT SUBSTRING_INDEX(LEFT(v, 1), '.', 1) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SUBSTRING_INDEX() supports only string, integer, boolean, NULL",
+        (struct expected_query){
+            .sql = "SELECT SUBSTRING_INDEX(LEFT(v, 1), '.', 1) AS s FROM t ORDER BY id",
+            .columns = substring_index_nested_columns,
+            .column_count =
+                sizeof(substring_index_nested_columns) / sizeof(substring_index_nested_columns[0]),
+            .values = substring_index_nested_values,
+            .row_count = 2U,
+            .context = "SUBSTRING_INDEX nested value argument",
         }
     );
     failures += execute_error(
@@ -1179,8 +1269,7 @@ static int test_string_slice_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part =
-                "string slice functions support only integer, boolean, and NULL position literals",
+            .message_part = "string slice functions support only integer, boolean, NULL",
         }
     );
     failures += execute_error(

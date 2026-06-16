@@ -76,9 +76,9 @@ Runtime probes establish the behavior used by this phase:
 
 MySQL also accepts broader behavior such as noninteger argument rounding,
 string-to-number position conversion, binary-string case-sensitive matching,
-full Unicode collation folding, expression predicates, nested function
-arguments, and DML assignment expressions. Those forms remain outside this
-baseline.
+full Unicode collation folding, expression predicates, arbitrary nested
+function arguments, and DML assignment expressions. Those forms remain outside
+this baseline.
 
 ## Ownership Boundaries
 
@@ -161,6 +161,9 @@ string_search_position:
   | TRUE
   | FALSE
   | NULL
+  | supported_integer_scalar_function
+  | descriptor_integer_column_reference        -- table-backed SELECT only
+  | supported_integer_row_scalar_expression    -- table-backed SELECT only
   | ( string_search_position )
 ```
 
@@ -174,18 +177,23 @@ subset:
 - `YEAR`, `DATE`, `TIME`, `DATETIME`, and `TIMESTAMP`;
 - `CHAR`, `VARCHAR`, and baseline `TEXT` family.
 
-The `pos` argument for three-argument `LOCATE()` is intentionally literal-only.
-Descriptor position columns, session scalar position values, string numeric
-position conversion, noninteger rounding, binary string values, `BIT`,
-approximate numeric values, `ENUM`, `SET`, `JSON`, spatial values, and full
-Unicode collation behavior are deferred.
+The `pos` argument for three-argument `LOCATE()` admits signed-64 integer,
+boolean, and `NULL` scalar values, direct supported numeric and string-length scalar
+functions, descriptor integer columns, and the existing supported table-backed
+integer row-scalar expression subset. That row-scalar subset includes integer
+arithmetic over admitted operands, supported integer-domain numeric functions, string-length
+functions, `UNIX_TIMESTAMP()`, and numeric temporal extractors.
+Warning-producing string/noninteger conversion, binary string values, `BIT`,
+approximate numeric values, `ENUM`, `SET`, `JSON`, spatial values, parameters,
+user variables, and full Unicode collation behavior are deferred.
 
 The following remain outside this phase:
 
 - `WHERE LOCATE(...) ...`, `HAVING LOCATE(...) ...`, expression `ORDER BY`,
   grouping, distinct expression rows, and aggregate arguments;
 - DML assignment values such as `UPDATE t SET c = LOCATE('x', v)`;
-- nested row functions such as `LOCATE(LOWER(v), 'x')`;
+- arbitrary nested row functions outside the supported row-scalar value and
+  integer argument subsets;
 - scalar subqueries, correlated subqueries, CTEs, parameters, user variables,
   and stored functions;
 - string introducers, national strings, arbitrary binary literals as scalar
@@ -219,8 +227,8 @@ No-source, `DUAL`, and `DO` evaluation is MyLite-owned:
    - integer literal: canonical signed decimal text;
    - `TRUE` / `FALSE`: `1` / `0`;
    - supported session scalar value: its existing text result or `NULL`.
-3. Convert the admitted `pos` argument for three-argument `LOCATE()` to a
-   signed integer when non-`NULL`.
+3. Convert the admitted `pos` argument for three-argument `LOCATE()` through
+   the supported integer argument envelope when non-`NULL`.
 4. If any argument is `NULL`, return SQL `NULL`.
 5. Reject NUL-containing or non-ASCII text values with a deterministic
    MyLite diagnostic for this slice.
@@ -237,7 +245,8 @@ Two-argument `LOCATE()` binds `pos = 1`. `INSTR(str, substr)` and
 `POSITION(substr IN str)` are lowered by swapping or preserving arguments into
 the same helper. Literal and session scalar values are bound parameters, not
 interpolated SQL. Descriptor columns are quoted stable physical column
-references.
+references, and integer `pos` expressions use the supported row-scalar integer
+SQL emitters.
 
 Supported successful calls return zero warnings. Unsupported expression shapes
 use the existing unsupported scalar/row-scalar expression diagnostics unless a
@@ -261,9 +270,11 @@ as `libmylite.runtime.string_search_functions`. Coverage must include:
   the row-scalar path;
 - wrong arity for `LOCATE()` and `INSTR()`;
 - unsupported `POSITION` whitespace and wrong-shape syntax;
-- unsupported nested functions, expression predicates, expression ordering, DML
-  assignment values, binary strings, non-ASCII values, nonliteral `pos`,
-  parameters, and general expressions;
+- supported integer `pos` expressions;
+- unsupported nested functions outside the supported value/integer subsets,
+  expression predicates, expression ordering, DML assignment values, binary
+  strings, non-ASCII values, unsupported `pos` operands, parameters, and
+  general expressions;
 - MySQL expectation script coverage for user-visible results, errors,
   `ROW_COUNT()`, and `@@warning_count`.
 
@@ -286,4 +297,3 @@ Before marking the feature done:
 2. Focused parser/runtime CTests for parser and string-search functions.
 3. `packages/libmylite/tests/mysql_baseline_string_search_functions_expectations.sh`
 4. `cmake --workflow --preset check`
-

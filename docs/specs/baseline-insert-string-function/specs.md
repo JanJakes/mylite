@@ -19,7 +19,7 @@ This phase does not add broader DML `INSERT` behavior, binary-string
 substring replacement, string-to-integer conversion warnings for `pos`/`len`,
 decimal/floating argument conversion, predicates, ordering expressions,
 grouping expressions, generated columns, defaults, or arbitrary expression
-support.
+support outside the documented row-scalar value and integer argument subsets.
 
 ## Sources And Evidence
 
@@ -62,9 +62,10 @@ Observed behavior shaping this slice:
   through the end of `str`.
 - Position and length are character based for nonbinary UTF-8 strings.
 - Literal integer, boolean, and numeric-looking string/decimal position and
-  length arguments are coerced by MySQL. MyLite admits only integer, boolean,
-  and `NULL` literals in this baseline, deferring broader warning-producing
-  numeric conversion.
+  length arguments are coerced by MySQL. MyLite admits signed-64 integer,
+  boolean, and `NULL` scalars plus documented integer descriptor and
+  integer-expression arguments, deferring broader warning-producing numeric
+  conversion.
 - Successful supported invocations emit no warnings. Scalar `SELECT` follows
   existing result-set conventions; `DO` reports row count `0`.
 
@@ -89,6 +90,12 @@ Supported:
   - SQL decimal integer literals with optional unary sign inside the current
     signed-64 range;
   - `TRUE`, `FALSE`, and SQL `NULL`;
+  - direct supported integer-domain numeric and string-length scalar functions;
+  - descriptor-backed integer columns in row-scalar projection;
+  - supported table-backed integer row-scalar expressions, including integer
+    arithmetic over admitted operands, supported numeric functions,
+    string-length functions, `UNIX_TIMESTAMP()`, and numeric temporal
+    extractors;
 - UTF-8 character based replacement for admitted nonbinary strings;
 - existing result labels, explicit aliases, result ownership, row-count state,
   and warning count conventions.
@@ -98,12 +105,13 @@ Deferred:
 - use as DML `INSERT` syntax beyond existing table DML;
 - binary string, `BIT`, approximate numeric, JSON, spatial, or BLOB-family
   arguments;
-- string, decimal, floating-point, hexadecimal, bit, parameter, user-variable,
-  descriptor-column, or expression-valued `pos` / `len`;
-- nested `INSERT()` calls, arbitrary nested functions, scalar subqueries inside
-  the function, table-backed subqueries, predicates, grouping expressions,
-  ordering expressions, DML assignments, defaults, generated columns, and
-  functional indexes;
+- warning-producing string, decimal, floating-point, hexadecimal, bit,
+  parameter, user-variable, or unsupported expression-valued `pos` / `len`;
+- nested `INSERT()` calls, arbitrary nested functions outside the supported
+  row-scalar value and integer argument subsets, scalar subqueries inside the
+  function, table-backed subqueries, predicates, grouping expressions, ordering
+  expressions, DML assignments, defaults, generated columns, and functional
+  indexes;
 - MySQL's warning-producing string-to-integer conversion for `pos` / `len`;
 - full protocol-grade expression metadata and binary result typing.
 
@@ -181,7 +189,7 @@ Supported diagnostics:
 - unsupported `str` or `newstr` expression: deterministic MyLite unsupported
   diagnostic;
 - unsupported `pos` or `len` expression: deterministic MyLite unsupported
-  diagnostic;
+  diagnostic requiring the supported integer argument envelope;
 - signed-64 range overflow for `pos` or `len`: deterministic MyLite
   unsupported diagnostic;
 - decoded `NUL` in scalar string literals: existing MyLite unsupported string
@@ -202,11 +210,12 @@ MyLite lowers row-scalar `INSERT()` projections to:
 _mylite_insert_string(str_sql, pos_sql, len_sql, newstr_sql)
 ```
 
-Generated SQL is built from planned descriptor expressions. Descriptor columns
-use quoted physical identifiers and stable physical table aliases. Literal
-arguments are bound as parameters. The internal SQLite function performs the
-same MyLite-owned UTF-8 character replacement as scalar execution. No SQLite
-fork hook or SQLite JSON/string extension is required.
+Generated SQL is built from planned descriptor expressions, generated
+expressions from the supported argument subsets, and bound scalar parameters.
+Descriptor columns use quoted physical identifiers and stable physical table
+aliases. Literal arguments are bound as parameters. The internal SQLite
+function performs the same MyLite-owned UTF-8 character replacement as scalar
+execution. No SQLite fork hook or SQLite JSON/string extension is required.
 
 ## Tests
 
@@ -226,9 +235,10 @@ Required coverage:
   persistence;
 - row-scalar projection with `WHERE`, `ORDER BY`, and `LIMIT` using existing
   descriptor-driven row selection;
-- unsupported/wrong arity syntax, unsupported `pos`/`len` literals, unsupported
-  binary and approximate descriptor columns, missing row-scalar columns, and
-  unsupported nested expression arguments;
+- unsupported/wrong arity syntax, supported integer `pos`/`len` expressions,
+  unsupported `pos`/`len` operands, unsupported binary and approximate
+  descriptor columns, missing row-scalar columns, and unsupported expression
+  arguments;
 - no result rows for `DO`, `ROW_COUNT() == 0`, scalar/select `ROW_COUNT() ==
   -1`, and `warning_count == 0` for successful supported statements;
 - existing parser, string slice, padding, search, replacement, and runtime

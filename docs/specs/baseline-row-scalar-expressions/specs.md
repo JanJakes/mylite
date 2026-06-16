@@ -30,6 +30,9 @@ expression subset is intentionally small:
 - existing session scalar functions and system variables that already return a
   MyLite-owned scalar text value or SQL `NULL`, such as `DATABASE()` and
   `@@warning_count`;
+- documented helper expressions that share this planner, including the current
+  `GREATEST()` / `LEAST()` subset as values in supported string-concatenation
+  expressions;
 - parenthesized admitted expressions; and
 - `CONCAT(expr[, expr ...])` over the same admitted non-`CONCAT()` expression
   domain.
@@ -164,6 +167,7 @@ row_scalar_non_concat_expr:
   | FALSE
   | NULL
   | session_scalar_function
+  | documented_row_scalar_helper
   | ( row_scalar_non_concat_expr )
 
 row_scalar_non_concat_expr_list:
@@ -183,6 +187,11 @@ supported `@@...` system-variable reads. Existing scalar-read warnings are
 preserved at statement level. Warning-producing numeric functions stay on the
 existing no-source scalar path until expression metadata and warning propagation
 are generalized.
+
+`documented_row_scalar_helper` is limited by each helper's own feature spec.
+For the current comparison-function subset, supported all-string or all-integer
+`GREATEST()` / `LEAST()` expressions are admitted as values in supported
+string-concatenation expressions.
 
 ### MyLite Lemon-Syntax Snippet
 
@@ -209,6 +218,7 @@ row_scalar_non_concat_expr(A) ::= NULL(T).
 row_scalar_non_concat_expr(A) ::= DATABASE(T) LPAREN RPAREN(R).
 row_scalar_non_concat_expr(A) ::= SCHEMA(T) LPAREN RPAREN(R).
 row_scalar_non_concat_expr(A) ::= system_variable_reference(T).
+row_scalar_non_concat_expr(A) ::= comparison_extrema_expr(B).
 row_scalar_non_concat_expr(A) ::= LPAREN row_scalar_non_concat_expr(B) RPAREN(R).
 row_scalar_non_concat_expr_list(A) ::= row_scalar_non_concat_expr(B).
 row_scalar_non_concat_expr_list(A) ::= row_scalar_non_concat_expr_list(B)
@@ -225,6 +235,10 @@ arguments to `CONCAT()` or as companion select-list items in a `SELECT` that
 also contains `CONCAT()`. Existing non-row-scalar planners continue to own
 standalone literal, session-scalar, wildcard, descriptor-column, aggregate, and
 distinct projection forms that do not contain `CONCAT()`.
+
+`comparison_extrema_expr` is the documented `GREATEST()` / `LEAST()` subset
+from `docs/specs/baseline-greatest-least-functions/specs.md`; it does not imply
+general nested expressions inside `GREATEST()` / `LEAST()`.
 
 ## Semantics
 
@@ -312,6 +326,8 @@ Add MySQL-runtime expectation coverage for:
 - no-source and `DUAL` `CONCAT()` over string, integer, boolean, `NULL`, and
   `DATABASE()` / `SCHEMA()` values;
 - table-backed mixed projection such as `SELECT id, CONCAT(v, '-', i)`;
+- documented nested row helpers such as `CONCAT(GREATEST(i, 3), '-', v)` and
+  `CONCAT_WS('-', LEAST(v, 'z'), i)`;
 - `NULL` propagation from literals and nullable columns;
 - one-argument `CONCAT()`;
 - exact decimal, `DATE`, `TIME`, `DATETIME`, `TIMESTAMP`, and `TEXT` column
@@ -337,6 +353,5 @@ Update:
 - `docs/compatibility/sql-query-expressions.md`
 - `docs/compatibility/functions-string.md`
 
-Do not mark general expressions, `CONCAT_WS()`, `FIELD()`, `CAST()`, temporal
-functions, scalar subqueries, expression defaults, or DML expression
-assignments as supported.
+Do not infer general expression support, arbitrary nested helpers, expression
+defaults, or broad DML expression assignments from this row-scalar envelope.

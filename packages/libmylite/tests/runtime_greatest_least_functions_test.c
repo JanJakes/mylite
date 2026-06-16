@@ -108,6 +108,11 @@ static int test_no_source_dual_and_do_greatest_least(void) {
         "-9223372036854775808",
         "0",
     };
+    static const char *const columns_no_source_nested[] = {
+        "CONCAT(GREATEST(2, 1), ':', LEAST('b', 'a'))",
+        "CONCAT_WS('-', GREATEST(2, 1), LEAST('b', 'a'), NULL, 'x')",
+    };
+    static const char *const values_no_source_nested[] = {"2:a", "2-a-x"};
     static const char *const columns_dual[] = {"GREATEST (2,1)", "least_alias"};
     static const char *const values_dual[] = {"2", "a"};
     static const char *const columns_row_status[] = {"ROW_COUNT()", "@@warning_count"};
@@ -135,6 +140,18 @@ static int test_no_source_dual_and_do_greatest_least(void) {
             .values = values_no_source,
             .row_count = 1U,
             .context = "no-source greatest least",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONCAT(GREATEST(2, 1), ':', LEAST('b', 'a')), "
+                   "CONCAT_WS('-', GREATEST(2, 1), LEAST('b', 'a'), NULL, 'x')",
+            .columns = columns_no_source_nested,
+            .column_count = sizeof(columns_no_source_nested) / sizeof(columns_no_source_nested[0]),
+            .values = values_no_source_nested,
+            .row_count = 1U,
+            .context = "no-source greatest least nested string arguments",
         }
     );
     failures += expect_query(
@@ -226,6 +243,21 @@ static int test_table_backed_greatest_least(void) {
     static const char *const values_control_flow[] = {
         "1", "3",  "alpha",    NULL, "nz", "yes", "2", "5",  "Beta", "5",  "nz", "yes",
         "3", "99", "fallback", NULL, "z",  "no",  "4", "20", "m",    "20", "nz", "yes",
+    };
+    static const char *const columns_nested_string[] = {"id", "concat_gl", "concat_ws_gl"};
+    static const char *const values_nested_string[] = {
+        "1",
+        "3:alpha",
+        "3-alpha-x",
+        "2",
+        "5:Beta",
+        "5-Beta-x",
+        "3",
+        NULL,
+        "x",
+        "4",
+        "20:m",
+        "20-m-x",
     };
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -333,6 +365,19 @@ static int test_table_backed_greatest_least(void) {
             .context = "table greatest least control-flow arguments",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, CONCAT(GREATEST(n, 3), ':', LEAST(code, 'm')) AS concat_gl, "
+                   "CONCAT_WS('-', GREATEST(n, 3), LEAST(code, 'm'), 'x') AS concat_ws_gl "
+                   "FROM t ORDER BY id",
+            .columns = columns_nested_string,
+            .column_count = sizeof(columns_nested_string) / sizeof(columns_nested_string[0]),
+            .values = values_nested_string,
+            .row_count = 4U,
+            .context = "table greatest least nested string arguments",
+        }
+    );
 
     mylite_close(database);
     remove_related_files(path);
@@ -348,6 +393,8 @@ static int test_greatest_least_diagnostics(void) {
     static const char *const values_if_greatest[] = {"2"};
     static const char *const columns_if_greatest_condition[] = {"IF(GREATEST(n, 2), 'yes', 'no')"};
     static const char *const values_if_greatest_condition[] = {"yes"};
+    static const char *const columns_concat_greatest[] = {"CONCAT(GREATEST(n, 2), 'x')"};
+    static const char *const values_concat_greatest[] = {"2x"};
     static const char *const columns_greatest_predicate[] = {"n"};
     static const char *const values_greatest_predicate[] = {"1"};
     char path[test_path_capacity];
@@ -499,14 +546,15 @@ static int test_greatest_least_diagnostics(void) {
             .context = "greatest least as control-flow condition",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT CONCAT(GREATEST(n, 2), 'x') FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "row-scalar SELECT GREATEST() and LEAST() are supported only as top-level",
+        (struct expected_query){
+            .sql = "SELECT CONCAT(GREATEST(n, 2), 'x') FROM t",
+            .columns = columns_concat_greatest,
+            .column_count = sizeof(columns_concat_greatest) / sizeof(columns_concat_greatest[0]),
+            .values = values_concat_greatest,
+            .row_count = 1U,
+            .context = "greatest least as nested string argument",
         }
     );
     failures += execute_error(

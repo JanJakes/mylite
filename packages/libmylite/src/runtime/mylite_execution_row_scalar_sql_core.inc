@@ -910,6 +910,9 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
         return append_row_scalar_control_flow_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+        return append_row_scalar_greatest_least_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
@@ -921,8 +924,6 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
-    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
-    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
@@ -1023,8 +1024,6 @@ static int append_row_scalar_non_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
-    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
-    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
@@ -1082,6 +1081,9 @@ static int append_row_scalar_non_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         break;
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+        return append_row_scalar_greatest_least_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
         return append_row_scalar_numeric_function_expression_sql(
             string,
@@ -1547,8 +1549,10 @@ static int append_row_scalar_concat_expression_sql(
                     &expression->arguments[argument_index],
                     next_parameter
                 );
-            } else if (expression->arguments[argument_index].kind ==
-                       PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE) {
+            } else if (
+                expression->arguments[argument_index].kind ==
+                PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE
+            ) {
                 rc = append_row_scalar_string_slice_expression_sql(
                     string,
                     &expression->arguments[argument_index],
@@ -1595,8 +1599,10 @@ static int append_row_scalar_concat_ws_expression_sql(
                     &expression->arguments[argument_index],
                     next_parameter
                 );
-            } else if (expression->arguments[argument_index].kind ==
-                       PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE) {
+            } else if (
+                expression->arguments[argument_index].kind ==
+                PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE
+            ) {
                 rc = append_row_scalar_string_slice_expression_sql(
                     string,
                     &expression->arguments[argument_index],

@@ -7,7 +7,8 @@ expressions in scalar projections, `DO`, and descriptor-backed single-table row
 projection. Current row-scalar projection also admits supported row arithmetic
 arguments and allows the resulting `GREATEST()` / `LEAST()` expression as a
 value argument to supported row control-flow functions, or as an integer-domain
-condition for `IF()` and searched `CASE`.
+condition for `IF()` and searched `CASE`. The same planned expression is also
+admitted as an argument to the current string-concatenation helpers.
 
 This is not a general expression engine, general type aggregation layer, or full
 MySQL collation implementation. It extends the existing scalar and row-scalar
@@ -62,6 +63,11 @@ Runtime probes establish the behavior used by this baseline:
 - Integer-domain `GREATEST()` / `LEAST()` results used as `IF()` or
   searched-`CASE` conditions use MySQL's numeric truth rule. String-domain truth
   conversion is broader behavior and remains deferred.
+- `CONCAT(GREATEST(...), ...)` converts a supported integer-domain
+  `GREATEST()` / `LEAST()` row result to text and returns `NULL` when the
+  nested extrema result is `NULL`.
+- `CONCAT_WS(separator, GREATEST(...), ...)` converts supported extrema row
+  results to text and skips `NULL` nested extrema values after the separator.
 
 ## Supported Surface
 
@@ -98,6 +104,9 @@ MyLite supports:
 - `IF()` and searched `CASE` row-control-flow conditions may use an
   integer-domain `GREATEST()` / `LEAST()` expression. All-`NULL` extrema are
   admitted and evaluate as false through the existing `NULL` truth rule.
+- supported `CONCAT()` and `CONCAT_WS()` string-concatenation expressions
+  may use a supported scalar or table-backed `GREATEST()` / `LEAST()`
+  expression as an admitted value argument.
 
 String literal values must decode to ordinary UTF-8 text without embedded
 `NUL`; MyLite claims MySQL collation parity only for ASCII values in this
@@ -120,6 +129,8 @@ This slice intentionally does not support:
   `GREATEST()` / `LEAST()`;
 - string-domain `GREATEST()` / `LEAST()` truth conversion in `IF()` or searched
   `CASE` conditions;
+- arbitrary nesting outside the documented row-control-flow and
+  string-concatenation argument positions;
 - use in ordering expressions, grouping expressions, broad DML assignments,
   defaults, generated columns, indexes, constraints, joins, CTEs, views, or
   arbitrary SQLite pass-through.
@@ -190,6 +201,11 @@ generated SQL. Integer-domain uses in `IF()` and searched `CASE` conditions are
 lowered through the existing `COALESCE(<condition>, 0) <> 0` truth wrapper.
 String-domain condition use remains rejected until string truth conversion is
 implemented for this nested surface.
+
+When a supported string-concatenation expression uses a planned
+`GREATEST()` / `LEAST()` argument, MyLite reuses the same planned expression and
+generated SQL. `CONCAT()` keeps its normal `NULL` propagation, while
+`CONCAT_WS()` keeps its normal post-separator `NULL` skipping.
 
 Generated row-scalar SQL shape:
 
@@ -273,6 +289,8 @@ Coverage must include:
 - table-backed row arithmetic arguments and warning propagation;
 - `GREATEST()` / `LEAST()` as values in supported row control-flow functions and
   as integer-domain `IF()` / searched-`CASE` conditions;
+- `GREATEST()` / `LEAST()` as values in supported `CONCAT()` / `CONCAT_WS()`
+  expressions;
 - unknown column diagnostics in row-scalar projection;
 - deterministic rejection for mixed domains, unsupported non-ASCII strings,
   unsupported binary/temporal/expression/subquery/parameter arguments, nested

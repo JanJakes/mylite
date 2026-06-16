@@ -159,6 +159,17 @@ expect_output \
 "GREATEST('a','A'), LEAST('a','A'), GREATEST('b','B','a'), LEAST('b','B','c');" \
     "$DATABASE"
 
+nested_scalar_expected=$(cat <<EXPECTED
+2:a	2-a-x
+EXPECTED
+)
+expect_output \
+    "scalar nested greatest least strings" \
+    "$nested_scalar_expected" \
+    "SELECT CONCAT(GREATEST(2,1), ':', LEAST('b','a')), "\
+"CONCAT_WS('-', GREATEST(2,1), LEAST('b','a'), NULL, 'x');" \
+    "$DATABASE"
+
 labels_expected=$(cat <<EXPECTED
 GREATEST (2,1)	least_alias
 2	a
@@ -245,6 +256,20 @@ expect_output \
 "CASE WHEN LEAST(n,1) THEN 'yes' ELSE 'no' END FROM t ORDER BY id;" \
     "$DATABASE"
 
+nested_string_expected=$(cat <<EXPECTED
+1	3:alpha	3-alpha-x
+2	5:Beta	5-Beta-x
+3	NULL	x
+4	20:m	20-m-x
+EXPECTED
+)
+expect_output \
+    "string nested greatest least" \
+    "$nested_string_expected" \
+    "SELECT id, CONCAT(GREATEST(n,3), ':', LEAST(code,'m')), "\
+"CONCAT_WS('-', GREATEST(n,3), LEAST(code,'m'), 'x') FROM t ORDER BY id;" \
+    "$DATABASE"
+
 do_expected=$(cat <<EXPECTED
 0	0
 EXPECTED
@@ -301,11 +326,6 @@ expect_upstream_accepts \
 expect_upstream_accepts \
     "binary domain accepted by MySQL but deferred by MyLite" \
     "SELECT GREATEST(_binary 'a', _binary 'A'), LEAST(_binary 'a', _binary 'A');" \
-    "$DATABASE"
-
-expect_upstream_accepts \
-    "concat nested row-scalar usage accepted by MySQL but deferred by MyLite" \
-    "SELECT CONCAT(GREATEST(n,2), 'x') FROM t;" \
     "$DATABASE"
 
 expect_upstream_accepts \

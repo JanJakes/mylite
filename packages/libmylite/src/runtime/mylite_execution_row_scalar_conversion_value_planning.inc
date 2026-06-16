@@ -65,6 +65,26 @@ static int plan_row_scalar_non_control_flow_expression(
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         return plan_row_scalar_integer_value(database, expression, out_expression);
     }
+    if (expression->kind == MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR) {
+        set_native_function_parameter_count_error(database, "GREATEST");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR) {
+        set_native_function_parameter_count_error(database, "LEAST");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_GREATEST_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_LEAST_FUNCTION) {
+        return plan_row_scalar_greatest_least_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (row_scalar_numeric_function_kind_is_supported(expression->kind)) {
         return plan_row_scalar_numeric_function_expression(
             database,
@@ -246,7 +266,8 @@ static int plan_row_scalar_named_lock_function(
     struct row_scalar_named_lock_function lock_function,
     struct planned_row_scalar_expression *out_expression
 ) {
-    const struct mylite_sql_ast_node *arguments = expression == NULL ? NULL : expression->first_child;
+    const struct mylite_sql_ast_node *arguments =
+        expression == NULL ? NULL : expression->first_child;
 
     while (arguments != NULL && arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
         arguments = arguments->next_sibling;
@@ -293,12 +314,6 @@ static const char *row_scalar_top_level_only_expression_message(
         return NULL;
     }
     switch (expression->kind) {
-    case MYLITE_SQL_AST_GREATEST_FUNCTION:
-    case MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR:
-    case MYLITE_SQL_AST_LEAST_FUNCTION:
-    case MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR:
-        return "row-scalar SELECT GREATEST() and LEAST() are supported only as top-level "
-               "projection expressions";
     case MYLITE_SQL_AST_INTERVAL_FUNCTION:
         return "row-scalar SELECT INTERVAL() is supported only as a top-level projection "
                "expression";

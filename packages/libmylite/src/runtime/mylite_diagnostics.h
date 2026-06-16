@@ -28,6 +28,7 @@ struct mylite_diagnostics {
 void mylite_diagnostics_init(struct mylite_diagnostics *diagnostics);
 void mylite_diagnostics_deinit(struct mylite_diagnostics *diagnostics);
 void mylite_diagnostics_reset(struct mylite_diagnostics *diagnostics);
+void mylite_diagnostics_clear_condition(struct mylite_diagnostics *diagnostics);
 int mylite_diagnostics_replace(
     struct mylite_diagnostics *destination,
     const struct mylite_diagnostics *source

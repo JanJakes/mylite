@@ -20,6 +20,7 @@ static int finish_completed_statement(
     int rc = MYLITE_OK;
 
     if (!preserve_diagnostics_snapshot) {
+        mylite_diagnostics_clear_condition(mylite_connection_diagnostics(database));
         rc = snapshot_current_diagnostics(database);
     }
     if (rc != MYLITE_OK) {

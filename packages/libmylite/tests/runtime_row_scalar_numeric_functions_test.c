@@ -10,6 +10,7 @@ struct expected_query {
     const char *const *values;
     size_t column_count;
     size_t row_count;
+    size_t warning_count;
     const char *context;
 };
 
@@ -26,6 +27,15 @@ enum {
     floating_projection_column_count = 17,
     nested_projection_column_count = 5,
     explicit_projection_column_count = 5,
+    string_projection_column_count = 8,
+    string_projection_row_count = 5,
+    string_projection_warning_count = 26,
+    string_projection_first_warning_row = 0,
+    string_projection_round_places_warning_row = 4,
+    string_projection_bit_count_warning_row = 16,
+    string_projection_log_warning_row = 24,
+    literal_projection_column_count = 4,
+    literal_projection_warning_count = 6,
 };
 
 static int test_row_scalar_numeric_functions(void);
@@ -43,6 +53,13 @@ static int expect_result_value(
     size_t row,
     size_t column,
     const char *expected,
+    const char *context
+);
+static int expect_warning_row(
+    const mylite_result *result,
+    size_t row,
+    const char *code,
+    const char *message,
     const char *context
 );
 static int expect_int(int actual, int expected, const char *context);
@@ -87,7 +104,51 @@ static int test_row_scalar_numeric_functions(void) {
         "1",
     };
     static const char *const explicit_numeric_predicate_values[] = {"2", "0", "8", "1", "5"};
+    static const char *const string_projection_values[] = {
+        "1",
+        "64",
+        "1",
+        "64",
+        "64",
+        "8",
+        "4.1588830833596715",
+        "1",
+        "2",
+        "64",
+        "1",
+        "64",
+        "64",
+        "8",
+        "4.1588830833596715",
+        "1",
+        "3",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        NULL,
+        "0",
+        "4",
+        "25",
+        "-1",
+        "-25",
+        "-20",
+        NULL,
+        NULL,
+        "63",
+        "5",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+    };
+    static const char *const literal_projection_values[] = {"64", "12.3", "3", NULL};
     mylite_db *database = NULL;
+    mylite_result *result = NULL;
     int failures = 0;
 
     failures += open_app_database(&database);
@@ -101,7 +162,10 @@ static int test_row_scalar_numeric_functions(void) {
         "nullable INT"
         ")"
     );
-    failures += expect_statement_ok(database, "CREATE TABLE text_rows(id INT, label VARCHAR(10))");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE text_rows(id INT, label VARCHAR(32), places VARCHAR(8))"
+    );
     failures += expect_statement_ok(
         database,
         "INSERT INTO numeric_rows(id, i, mask, angle, nullable) VALUES "
@@ -109,7 +173,15 @@ static int test_row_scalar_numeric_functions(void) {
         "(2, 0, 8, 1, 5), "
         "(3, 9, 15, 2, NULL)"
     );
-    failures += expect_statement_ok(database, "INSERT INTO text_rows VALUES (1, '64')");
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO text_rows VALUES "
+        "(1, '64', '1'), "
+        "(2, '64x', '1x'), "
+        "(3, 'x64', 'x'), "
+        "(4, ' -2.5e1abc', '-1x'), "
+        "(5, NULL, NULL)"
+    );
 
     failures += expect_query_values(
         database,
@@ -137,6 +209,69 @@ static int test_row_scalar_numeric_functions(void) {
             .column_count = floating_projection_column_count,
             .row_count = 3U,
             .context = "rounded floating numeric function projection",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, ABS(label), SIGN(label), ROUND(label), "
+                   "ROUND(label, places), SQRT(label), LOG(label), BIT_COUNT(label) "
+                   "FROM text_rows ORDER BY id",
+            .values = string_projection_values,
+            .column_count = string_projection_column_count,
+            .row_count = string_projection_row_count,
+            .warning_count = string_projection_warning_count,
+            .context = "string numeric function projection",
+        }
+    );
+    failures += execute_ok(database, "SHOW WARNINGS", &result);
+    if (failures == 0) {
+        failures += expect_size(
+            mylite_result_row_count(result),
+            string_projection_warning_count,
+            "string numeric warning row count"
+        );
+        failures += expect_warning_row(
+            result,
+            string_projection_first_warning_row,
+            "1292",
+            "Truncated incorrect DOUBLE value: '64x'",
+            "first string numeric warning"
+        );
+        failures += expect_warning_row(
+            result,
+            string_projection_round_places_warning_row,
+            "1292",
+            "Truncated incorrect INTEGER value: '1x'",
+            "round places string warning"
+        );
+        failures += expect_warning_row(
+            result,
+            string_projection_bit_count_warning_row,
+            "1292",
+            "Truncated incorrect INTEGER value: 'x64'",
+            "bit count string warning"
+        );
+        failures += expect_warning_row(
+            result,
+            string_projection_log_warning_row,
+            "3020",
+            "Invalid argument for logarithm",
+            "logarithm string warning"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ABS('64x'), ROUND('12.345x', '1.9'), "
+                   "BIT_COUNT('7x'), LOG('x') FROM numeric_rows WHERE id = 1",
+            .values = literal_projection_values,
+            .column_count = literal_projection_column_count,
+            .row_count = 1U,
+            .warning_count = literal_projection_warning_count,
+            .context = "string literal numeric function projection",
         }
     );
     failures += expect_query_values(
@@ -189,6 +324,7 @@ static int test_row_scalar_numeric_functions(void) {
             .values = log_null_ids,
             .column_count = 1U,
             .row_count = 2U,
+            .warning_count = 2U,
             .context = "log domain predicate",
         }
     );
@@ -217,20 +353,11 @@ static int test_row_scalar_numeric_functions(void) {
     );
     failures += execute_error_contains(
         database,
-        "SELECT ABS('64') FROM numeric_rows",
+        "SELECT ABS(X'3634') FROM numeric_rows",
         (struct expected_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "numeric row-scalar arguments",
-        }
-    );
-    failures += execute_error_contains(
-        database,
-        "SELECT ABS(label) FROM text_rows",
-        (struct expected_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "numeric descriptor columns",
         }
     );
     failures += execute_error_contains(
@@ -314,6 +441,8 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
         failures +=
             expect_size(mylite_result_column_count(result), query.column_count, query.context);
         failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
+        failures +=
+            expect_size(mylite_result_warning_count(result), query.warning_count, query.context);
         for (size_t index = 0U; index < expected_value_count; ++index) {
             failures += expect_result_value(
                 result,
@@ -338,6 +467,21 @@ static int expect_result_value(
     const char *actual = mylite_result_value_text(result, row, column);
 
     return expect_text(actual, expected, context);
+}
+
+static int expect_warning_row(
+    const mylite_result *result,
+    size_t row,
+    const char *code,
+    const char *message,
+    const char *context
+) {
+    int failures = 0;
+
+    failures += expect_result_value(result, row, 0U, "Warning", context);
+    failures += expect_result_value(result, row, 1U, code, context);
+    failures += expect_result_value(result, row, 2U, message, context);
+    return failures;
 }
 
 static int expect_int(int actual, int expected, const char *context) {

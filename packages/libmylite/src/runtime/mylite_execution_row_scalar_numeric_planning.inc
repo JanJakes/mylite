@@ -135,7 +135,7 @@ static int plan_row_scalar_numeric_function_column_argument(
     if (!row_scalar_numeric_function_column_descriptor_is_supported(&column)) {
         set_unsupported_error(
             database,
-            "row-scalar numeric functions support only numeric descriptor columns"
+            "row-scalar numeric functions support only numeric or string descriptor columns"
         );
         return MYLITE_ERROR;
     }
@@ -156,8 +156,7 @@ static int validate_row_scalar_numeric_function_argument(
     }
     switch (argument->kind) {
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
-        if (argument->value.is_null ||
-            (!argument->value.is_text && !argument->value.is_blob)) {
+        if (!argument->value.is_blob) {
             return MYLITE_OK;
         }
         break;
@@ -274,7 +273,8 @@ static bool row_scalar_numeric_function_column_descriptor_is_supported(
 ) {
     return column != NULL && (strcmp(column->physical_type, "INTEGER") == 0 ||
                               column_descriptor_is_decimal(column) ||
-                              column_descriptor_is_approximate(column));
+                              column_descriptor_is_approximate(column) ||
+                              column_descriptor_is_string_family(column));
 }
 
 static enum planned_row_scalar_numeric_function_kind row_scalar_numeric_function_kind_from_ast(

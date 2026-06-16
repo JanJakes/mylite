@@ -59,6 +59,15 @@ void mylite_diagnostics_reset(struct mylite_diagnostics *diagnostics) {
         return;
     }
 
+    mylite_diagnostics_clear_condition(diagnostics);
+    diagnostics->warning_count = 0U;
+}
+
+void mylite_diagnostics_clear_condition(struct mylite_diagnostics *diagnostics) {
+    if (diagnostics == NULL) {
+        return;
+    }
+
     set_record(
         &diagnostics->condition,
         &(struct diagnostic_values){
@@ -68,7 +77,6 @@ void mylite_diagnostics_reset(struct mylite_diagnostics *diagnostics) {
             .message = mylite_diagnostics_ok_message(),
         }
     );
-    diagnostics->warning_count = 0U;
 }
 
 int mylite_diagnostics_replace(

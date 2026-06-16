@@ -100,10 +100,21 @@ run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE};
                angle INT,
                nullable INT
            );
+           CREATE TABLE text_rows(
+               id INT PRIMARY KEY,
+               label VARCHAR(32),
+               places VARCHAR(8)
+           );
            INSERT INTO numeric_rows(id, i, mask, angle, nullable) VALUES
                (1, -4, 3, 0, NULL),
                (2, 0, 8, 1, 5),
-               (3, 9, 15, 2, NULL);" \
+               (3, 9, 15, 2, NULL);
+           INSERT INTO text_rows VALUES
+               (1, '64', '1'),
+               (2, '64x', '1x'),
+               (3, 'x64', 'x'),
+               (4, ' -2.5e1abc', '-1x'),
+               (5, NULL, NULL);" \
     >/dev/null
 
 expect_output_with_headers \
@@ -130,6 +141,63 @@ expect_output_with_headers \
             ROUND(LOG(10, 100)), ROUND(LOG10(100)), ROUND(LOG2(8)),
             ROUND(POW(id, 2)), ROUND(POWER(id, 2))
      FROM numeric_rows ORDER BY id;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "string numeric function projection and warnings" \
+    "id	ABS(label)	SIGN(label)	ROUND(label)	ROUND(label, places)	SQRT(label)	LOG(label)	BIT_COUNT(label)
+1	64	1	64	64	8	4.1588830833596715	1
+2	64	1	64	64	8	4.1588830833596715	1
+3	0	0	0	0	0	NULL	0
+4	25	-1	-25	-20	NULL	NULL	63
+5	NULL	NULL	NULL	NULL	NULL	NULL	NULL
+Level	Code	Message
+Warning	1292	Truncated incorrect DOUBLE value: '64x'
+Warning	1292	Truncated incorrect DOUBLE value: '64x'
+Warning	1292	Truncated incorrect DOUBLE value: '64x'
+Warning	1292	Truncated incorrect DOUBLE value: '64x'
+Warning	1292	Truncated incorrect INTEGER value: '1x'
+Warning	1292	Truncated incorrect DOUBLE value: '64x'
+Warning	1292	Truncated incorrect DOUBLE value: '64x'
+Warning	1292	Truncated incorrect INTEGER value: '64x'
+Warning	1292	Truncated incorrect DOUBLE value: 'x64'
+Warning	1292	Truncated incorrect DOUBLE value: 'x64'
+Warning	1292	Truncated incorrect DOUBLE value: 'x64'
+Warning	1292	Truncated incorrect DOUBLE value: 'x64'
+Warning	1292	Truncated incorrect INTEGER value: 'x'
+Warning	1292	Truncated incorrect DOUBLE value: 'x64'
+Warning	1292	Truncated incorrect DOUBLE value: 'x64'
+Warning	3020	Invalid argument for logarithm
+Warning	1292	Truncated incorrect INTEGER value: 'x64'
+Warning	1292	Truncated incorrect DOUBLE value: ' -2.5e1abc'
+Warning	1292	Truncated incorrect DOUBLE value: ' -2.5e1abc'
+Warning	1292	Truncated incorrect DOUBLE value: ' -2.5e1abc'
+Warning	1292	Truncated incorrect DOUBLE value: ' -2.5e1abc'
+Warning	1292	Truncated incorrect INTEGER value: '-1x'
+Warning	1292	Truncated incorrect DOUBLE value: ' -2.5e1abc'
+Warning	1292	Truncated incorrect DOUBLE value: ' -2.5e1abc'
+Warning	3020	Invalid argument for logarithm
+Warning	1292	Truncated incorrect INTEGER value: ' -2.5e1abc'" \
+    "SELECT id, ABS(label), SIGN(label), ROUND(label), ROUND(label, places),
+            SQRT(label), LOG(label), BIT_COUNT(label)
+     FROM text_rows ORDER BY id;
+     SHOW WARNINGS;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "string literal numeric function projection and warnings" \
+    "ABS('64x')	ROUND('12.345x', '1.9')	BIT_COUNT('7x')	LOG('x')
+64	12.3	3	NULL
+Level	Code	Message
+Warning	1292	Truncated incorrect DOUBLE value: '64x'
+Warning	1292	Truncated incorrect DOUBLE value: '12.345x'
+Warning	1292	Truncated incorrect INTEGER value: '1.9'
+Warning	1292	Truncated incorrect INTEGER value: '7x'
+Warning	1292	Truncated incorrect DOUBLE value: 'x'
+Warning	3020	Invalid argument for logarithm" \
+    "SELECT ABS('64x'), ROUND('12.345x', '1.9'), BIT_COUNT('7x'), LOG('x')
+     FROM numeric_rows WHERE id = 1;
+     SHOW WARNINGS;" \
     "$DATABASE"
 
 expect_output \

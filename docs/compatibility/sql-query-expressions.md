@@ -49,7 +49,7 @@ The limited table-backed signed integer arithmetic slice admits `+`, binary
 integer/boolean/`NULL` literals, and parentheses in one-base-table `SELECT`
 statements. It now also admits the covered row-backed numeric functions as
 numeric operands. It does not admit unsigned columns, division, modulo, other
-function families, casts, string or decimal coercion, general expression
+function families, casts, broad decimal coercion, general expression
 predicates, broad expression ordering, or DML assignment expressions.
 
 The covered row-backed numeric functions include `ABS()`, `SIGN()`,
@@ -59,10 +59,10 @@ The covered row-backed numeric functions include `ABS()`, `SIGN()`,
 `POWER()`, and `BIT_COUNT()` in single-table projections, supported comparison
 predicates, `ORDER BY` expression keys, arithmetic/control-flow operands, and
 nested covered numeric calls over integer, `DECIMAL`, or approximate numeric
-descriptor columns plus integer/boolean/`NULL` literals. String, binary, JSON,
-temporal, and arbitrary decimal-literal coercion, exact-decimal result typing,
-negative-zero floating-point display parity, row warning rows, and broad
-expression metadata remain deferred.
+descriptor columns, nonbinary string-family descriptor columns, and
+integer/string/boolean/`NULL` literals. Binary, JSON, temporal, arbitrary
+decimal-literal coercion, exact-decimal result typing, negative-zero
+floating-point display parity, and broad expression metadata remain deferred.
 
 The limited row-scalar `CAST()` / `CONVERT()` slice admits binary, character,
 signed integer, unsigned integer, `USING BINARY`, and `USING

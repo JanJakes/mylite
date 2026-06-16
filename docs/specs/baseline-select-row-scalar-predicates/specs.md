@@ -53,7 +53,7 @@ MyLite Lemon-syntax snippets:
 
 ```lemon
 predicate_atom(A) ::= predicate_row_scalar_expression(B)
-        predicate_comparison_operator(O) predicate_comparison_value(V).
+        predicate_comparison_operator(O) predicate_row_scalar_comparison_value(V).
 predicate_atom(A) ::= predicate_row_scalar_expression(B) IS NULL.
 predicate_atom(A) ::= predicate_row_scalar_expression(B) IS NOT NULL.
 predicate_atom(A) ::= predicate_row_scalar_expression(B)
@@ -62,6 +62,9 @@ predicate_atom(A) ::= predicate_row_scalar_expression(B)
         NOT BETWEEN predicate_range_value(L) AND predicate_range_value(U).
 
 predicate_row_scalar_expression(A) ::= supported_row_scalar_function(B).
+
+predicate_row_scalar_comparison_value(A) ::= predicate_comparison_value(B).
+predicate_row_scalar_comparison_value(A) ::= supported_row_scalar_function(B).
 
 supported_row_scalar_function(A) ::= IF(expr, expr, expr).
 supported_row_scalar_function(A) ::= IFNULL(expr, expr).
@@ -105,8 +108,8 @@ remain outside this slice.
 - The comparison right operand may be a supported predicate literal, descriptor
   column where the existing planner supports it, `COLLATE` expression, or a
   supported row-scalar expression. The executable single-table subset includes
-  descriptor-column RHS values and supported row-scalar function RHS values for
-  row-scalar comparison subjects.
+  descriptor-column RHS values and direct supported row-scalar function RHS
+  values for row-scalar comparison subjects.
 - `IS NULL` and `IS NOT NULL` use the row-scalar predicate node so functions
   can participate without resolving as columns.
 - `BETWEEN` and `NOT BETWEEN` reuse existing literal/range conversion for the
@@ -134,7 +137,8 @@ Add MySQL-runtime expectations and focused runtime tests for:
 
 - binary/string expression comparisons, including supported row-scalar RHS
   values;
-- descriptor-column RHS values for row-scalar comparison subjects;
+- descriptor-column and direct row-scalar function RHS values for row-scalar
+  comparison subjects;
 - control-flow and comparison functions in `WHERE`;
 - `IS NULL` / `IS NOT NULL` over row-scalar functions;
 - `BETWEEN` / `NOT BETWEEN` over row-scalar functions;

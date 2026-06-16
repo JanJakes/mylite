@@ -59,6 +59,10 @@ datediff-eq	1
 json-extract-eq	2
 column-rhs	1
 function-rhs	1,2
+extrema-rhs	1
+control-rhs	1,2,3
+numeric-rhs	1,2
+concat-ws-rhs	1,2,3
 EXPECTED
 )
 expect_output \
@@ -105,7 +109,16 @@ expect_output \
 "FROM expr_pred WHERE GREATEST(i, 5) = i; "\
 "SELECT 'function-rhs', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
 "FROM expr_pred WHERE CONCAT(v, ':', i) = "\
-"CONCAT(v, ':', GREATEST(i, 0));" \
+"CONCAT(v, ':', GREATEST(i, 0)); "\
+"SELECT 'extrema-rhs', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE GREATEST(i, 5) = LEAST(i, 10); "\
+"SELECT 'control-rhs', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE IFNULL(v, 'fallback') = COALESCE(v, 'fallback'); "\
+"SELECT 'numeric-rhs', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE ABS(i) = GREATEST(i, 0); "\
+"SELECT 'concat-ws-rhs', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE CONCAT_WS('-', v, i) = "\
+"CONCAT_WS('-', v, GREATEST(i, 0));" \
     "$DATABASE"
 
 printf '%s\n' "mysql_baseline_select_row_scalar_predicates_expectations: ok"

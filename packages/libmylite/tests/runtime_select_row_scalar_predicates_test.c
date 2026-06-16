@@ -203,6 +203,49 @@ static int test_select_row_scalar_predicates(void) {
             .context = "function rhs predicate",
         }
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE GREATEST(i, 5) = LEAST(i, 10) "
+                   "ORDER BY id",
+            .values = ids_1,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "direct extrema rhs predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE IFNULL(v, 'fallback') = "
+                   "COALESCE(v, 'fallback') ORDER BY id",
+            .values = ids_123,
+            .column_count = 1U,
+            .row_count = 3U,
+            .context = "direct control flow rhs predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE ABS(i) = GREATEST(i, 0) ORDER BY id",
+            .values = ids_12,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "direct numeric rhs predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE CONCAT_WS('-', v, i) = "
+                   "CONCAT_WS('-', v, GREATEST(i, 0)) ORDER BY id",
+            .values = ids_123,
+            .column_count = 1U,
+            .row_count = 3U,
+            .context = "direct concat ws rhs predicate",
+        }
+    );
 
     mylite_close(database);
     return failures;

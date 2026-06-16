@@ -7270,6 +7270,48 @@ predicate_comparison_value(A) ::= SYSTEM_VARIABLE(T). {
 predicate_comparison_value(A) ::= user_variable(T). {
     A = T;
 }
+predicate_comparison_value(A) ::= IF(T) LPAREN expression(B) COMMA expression(C)
+        COMMA expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_IF_FUNCTION, B, C, D, R);
+}
+predicate_comparison_value(A) ::= IFNULL(T) LPAREN expression(B) COMMA expression(C)
+        RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_IFNULL_FUNCTION, B, C, R);
+}
+predicate_comparison_value(A) ::= NULLIF(T) LPAREN expression(B) COMMA expression(C)
+        RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_NULLIF_FUNCTION, B, C, R);
+}
+predicate_comparison_value(A) ::= ISNULL(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_ISNULL_FUNCTION, B, R);
+}
+predicate_comparison_value(A) ::= COALESCE(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_COALESCE_FUNCTION, B, R);
+}
+predicate_comparison_value(A) ::= CONCAT_WS(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_CONCAT_WS_FUNCTION, B, R);
+}
+predicate_comparison_value(A) ::= FIELD(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_FIELD_FUNCTION, B, R);
+}
+predicate_comparison_value(A) ::= GREATEST(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_GREATEST_FUNCTION, B, R);
+}
+predicate_comparison_value(A) ::= LEAST(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_LEAST_FUNCTION, B, R);
+}
+predicate_comparison_value(A) ::= row_scalar_numeric_predicate_expression(V). {
+    A = V;
+}
 
 predicate_row_scalar_expression(A) ::= IF(T) LPAREN expression(B) COMMA expression(C)
         COMMA expression(D) RPAREN(R). {

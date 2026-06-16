@@ -10,10 +10,11 @@ This slice implements the MySQL 8.4.9-compatible baseline for:
 - `RANDOM_BYTES(expr)`
 
 The functions are supported in direct scalar statements, `DO`, `DUAL` queries,
-and row-backed projections. The implementation covers common scalar argument
-forms already supported by adjacent binary-string functions: string literals,
-binary literals, integer and boolean literals, `NULL`, supported session
-scalars/system variables, binary casts/conversions, and descriptor columns.
+row-backed projections, and selected descriptor-backed `WHERE` predicates. The
+implementation covers common scalar argument forms already supported by
+adjacent binary-string functions: string literals, binary literals, integer and
+boolean literals, `NULL`, supported session scalars/system variables, binary
+casts/conversions, and descriptor columns.
 
 AES encryption, password strength validation, replication safety warnings, and
 cryptographic-strength guarantees beyond using the host operating system random
@@ -178,6 +179,9 @@ Testing must include:
   arity errors, and random length bounds.
 - Parser tests for all function AST nodes and arity-error nodes.
 - Runtime C tests for direct scalar, `DUAL`, `DO`, and row-backed execution.
+- Descriptor `WHERE` comparison, `IS [NOT] NULL`, and `[NOT] BETWEEN`
+  predicate tests through
+  [baseline binary and digest function predicates](../baseline-binary-digest-function-predicates/specs.md).
 - Warning count checks for invalid compressed values and truncated
   `RANDOM_BYTES()` string lengths.
 - Error checks for invalid random-byte lengths and native arity errors.
@@ -186,6 +190,8 @@ Testing must include:
 
 - MyLite does not emulate MySQL replication safety warnings for
   nondeterministic functions.
+- Row-scalar `IN`, ordering/grouping, broad DML assignment, generated-column,
+  and default-expression contexts remain outside this baseline.
 - Very large compression inputs beyond a 32-bit stored length are rejected by
   MyLite runtime limits rather than attempting MySQL large-object behavior.
 - The exact compressed zlib byte stream is not treated as a portable assertion

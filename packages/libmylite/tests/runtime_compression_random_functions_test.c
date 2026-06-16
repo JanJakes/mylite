@@ -62,6 +62,7 @@ struct expected_column_metadata {
 static int test_scalar_compression_random_functions(void);
 static int test_compression_random_dual_do_and_arity(void);
 static int test_table_backed_compression_random_functions(void);
+static int test_table_backed_compression_random_predicates(void);
 static int test_compression_random_diagnostics(void);
 static int test_compression_random_metadata(void);
 static int setup_database(mylite_db **out_database);
@@ -123,6 +124,7 @@ int main(void) {
     failures += test_scalar_compression_random_functions();
     failures += test_compression_random_dual_do_and_arity();
     failures += test_table_backed_compression_random_functions();
+    failures += test_table_backed_compression_random_predicates();
     failures += test_compression_random_diagnostics();
     failures += test_compression_random_metadata();
 
@@ -273,6 +275,82 @@ static int test_table_backed_compression_random_functions(void) {
         3U,
         0U,
         "table-backed random bytes length"
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_table_backed_compression_random_predicates(void) {
+    static const struct expected_cell uncompress_values[] = {
+        CELL_TEXT("1"),
+    };
+    static const struct expected_cell length_values[] = {
+        CELL_TEXT("1"),
+    };
+    static const struct expected_cell null_values[] = {
+        CELL_TEXT("3"),
+    };
+    static const struct expected_cell random_values[] = {
+        CELL_TEXT("3"),
+    };
+    mylite_db *database = NULL;
+    int failures = setup_database(&database);
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE t (id INT PRIMARY KEY, v VARCHAR(20), vb VARBINARY(20))",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO t VALUES (1,'abc',X'610062'),(2,'',X''),(3,NULL,NULL)",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE UNCOMPRESS(COMPRESS(v)) = 'abc' ORDER BY id",
+            .column_count = 1U,
+            .values = uncompress_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .context = "uncompress comparison predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE UNCOMPRESSED_LENGTH(COMPRESS(vb)) BETWEEN 1 AND 3 "
+                   "ORDER BY id",
+            .column_count = 1U,
+            .values = length_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .context = "uncompressed length between predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE COMPRESS(v) IS NULL ORDER BY id",
+            .column_count = 1U,
+            .values = null_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .context = "compress is null predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t WHERE RANDOM_BYTES(id) IS NOT NULL",
+            .column_count = 1U,
+            .values = random_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .context = "random bytes is not null predicate",
+        }
     );
 
     mylite_close(database);

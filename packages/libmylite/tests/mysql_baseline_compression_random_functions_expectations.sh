@@ -143,6 +143,23 @@ expect_output \
 "UNCOMPRESSED_LENGTH(COMPRESS(vb)), LENGTH(RANDOM_BYTES(4)) FROM t ORDER BY id;" \
     "$DATABASE"
 
+predicate_expected=$(cat <<EXPECTED
+1
+1
+3
+3
+EXPECTED
+)
+expect_output \
+    "row-backed compression and random predicates" \
+    "$predicate_expected" \
+    "SELECT GROUP_CONCAT(id ORDER BY id) FROM t WHERE UNCOMPRESS(COMPRESS(v)) = 'abc'; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM t WHERE UNCOMPRESSED_LENGTH(COMPRESS(vb)) "\
+"BETWEEN 1 AND 3; "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM t WHERE COMPRESS(v) IS NULL; "\
+"SELECT COUNT(*) FROM t WHERE RANDOM_BYTES(id) IS NOT NULL;" \
+    "$DATABASE"
+
 expect_error \
     "random zero length" \
     1690 \

@@ -2271,6 +2271,16 @@ static int plan_where_row_scalar_predicate_literal_value(
     size_t text_length = 0U;
     int rc = MYLITE_OK;
 
+    if (row_scalar_predicate_literal_prefers_blob(row_scalar_expression) &&
+        literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_NULL) {
+        rc = decode_binary_string_literal(database, literal, &text, &text_length);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return assign_blob_value(database, text, text_length, out_value);
+    }
+
     if (row_scalar_predicate_literal_prefers_text(row_scalar_expression) &&
         literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
@@ -2403,6 +2413,30 @@ static bool row_scalar_predicate_literal_prefers_text(
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
+        break;
+    }
+
+    return false;
+}
+
+static bool row_scalar_predicate_literal_prefers_blob(
+    const struct planned_row_scalar_expression *expression
+) {
+    if (expression == NULL) {
+        return false;
+    }
+
+    switch (expression->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
+        return true;
+    default:
         break;
     }
 
@@ -2786,6 +2820,14 @@ static bool predicate_node_is_supported_row_scalar_expression(
     case MYLITE_SQL_AST_UNHEX_FUNCTION:
     case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
     case MYLITE_SQL_AST_FROM_BASE64_FUNCTION:
+    case MYLITE_SQL_AST_MD5_FUNCTION:
+    case MYLITE_SQL_AST_SHA_FUNCTION:
+    case MYLITE_SQL_AST_SHA1_FUNCTION:
+    case MYLITE_SQL_AST_SHA2_FUNCTION:
+    case MYLITE_SQL_AST_COMPRESS_FUNCTION:
+    case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
+    case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
     case MYLITE_SQL_AST_UUID_FUNCTION:
     case MYLITE_SQL_AST_IS_UUID_FUNCTION:
     case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:

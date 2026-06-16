@@ -331,10 +331,10 @@ static int read_select_found_row_count(
 static bool select_statement_is_row_scalar_projection_attempt(
     const struct mylite_sql_ast_node *statement
 );
-static bool select_statement_optional_clauses_contain_numeric_function(
+static bool select_statement_optional_clauses_contain_row_scalar_function(
     const struct mylite_sql_ast_node *statement
 );
-static bool select_optional_clause_contains_numeric_function(
+static bool select_optional_clause_contains_row_scalar_function(
     const struct mylite_sql_ast_node *clause
 );
 static int execute_row_scalar_select_statement(

@@ -4,8 +4,8 @@ String compression and decompression helpers.
 
 | Function | Status | Notes |
 | --- | --- | --- |
-| `COMPRESS()` | 🟡 | Baseline MySQL compressed payload format with zlib for supported scalar and row-projection arguments |
-| `UNCOMPRESS()` | 🟡 | Baseline decompression of `COMPRESS()` payloads, `NULL` handling, invalid zlib warning `1259`, and oversized stored-length warning `1256` |
-| `UNCOMPRESSED_LENGTH()` | 🟡 | Baseline original-length reporting, including low-30-bit stored length prefixes and invalid short-input warning `1259` |
+| `COMPRESS()` | 🟡 | Scalar, row projection, and documented `WHERE` predicates; no row-scalar `IN`, ordering/grouping, or broad DML contexts |
+| `UNCOMPRESS()` | 🟡 | Scalar, row projection, documented `WHERE` predicates, and MySQL warnings `1256`/`1259`; no row-scalar `IN`, ordering/grouping, or broad DML contexts |
+| `UNCOMPRESSED_LENGTH()` | 🟡 | Scalar, row projection, documented `WHERE` predicates, and MySQL warning `1259`; no row-scalar `IN`, ordering/grouping, or broad DML contexts |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

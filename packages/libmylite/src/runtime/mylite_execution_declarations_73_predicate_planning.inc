@@ -287,6 +287,9 @@ static int plan_where_row_scalar_predicate_literal_value(
 static bool row_scalar_predicate_literal_prefers_text(
     const struct planned_row_scalar_expression *expression
 );
+static bool row_scalar_predicate_literal_prefers_blob(
+    const struct planned_row_scalar_expression *expression
+);
 static int plan_where_scalar_hex_literal_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *literal,

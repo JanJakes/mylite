@@ -50,6 +50,7 @@ struct expected_column_metadata {
 static int test_no_source_dual_do_and_warnings(void);
 static int test_dml_constant_digest_values(void);
 static int test_table_backed_digest_projection(void);
+static int test_table_backed_digest_predicates(void);
 static int test_digest_diagnostics(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -78,6 +79,7 @@ int main(void) {
     failures += test_no_source_dual_do_and_warnings();
     failures += test_dml_constant_digest_values();
     failures += test_table_backed_digest_projection();
+    failures += test_table_backed_digest_predicates();
     failures += test_digest_diagnostics();
 
     return failures == 0 ? 0 : 1;
@@ -449,6 +451,66 @@ static int test_table_backed_digest_projection(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "digest table projection",
+        }
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_table_backed_digest_predicates(void) {
+    static const char *const columns[] = {"id"};
+    static const char *const eq_values[] = {"1"};
+    static const char *const between_values[] = {"1", "2"};
+    static const char *const null_values[] = {"1", "2", "3"};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open predicate db");
+    failures += execute_ok(database, "CREATE DATABASE app", NULL);
+    failures += execute_ok(database, "USE app", NULL);
+    failures += execute_ok(database, "CREATE TABLE t(id INT, v VARCHAR(10))", NULL);
+    failures +=
+        execute_ok(database, "INSERT INTO t VALUES (1, 'abc'), (2, 'def'), (3, NULL)", NULL);
+
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE MD5(v) = MD5('abc') ORDER BY id",
+            .columns = columns,
+            .column_count = sizeof(columns) / sizeof(columns[0]),
+            .values = eq_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "digest comparison predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE SHA2(v,256) BETWEEN SHA2('abc',256) "
+                   "AND SHA2('def',256) ORDER BY id",
+            .columns = columns,
+            .column_count = sizeof(columns) / sizeof(columns[0]),
+            .values = between_values,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "digest between predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE SHA2(v,NULL) IS NULL ORDER BY id",
+            .columns = columns,
+            .column_count = sizeof(columns) / sizeof(columns[0]),
+            .values = null_values,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "digest is null predicate",
         }
     );
 

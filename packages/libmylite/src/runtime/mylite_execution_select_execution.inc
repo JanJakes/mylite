@@ -96,7 +96,8 @@ static bool select_statement_is_row_scalar_projection_attempt(
     if (select_list_is_wildcard(select_list)) {
         return false;
     }
-    if (has_row_source && select_statement_optional_clauses_contain_numeric_function(statement)) {
+    if (has_row_source &&
+        select_statement_optional_clauses_contain_row_scalar_function(statement)) {
         return true;
     }
     if ((from_clause == NULL || has_dual_source) &&
@@ -159,21 +160,21 @@ static bool select_statement_is_row_scalar_projection_attempt(
     return false;
 }
 
-static bool select_statement_optional_clauses_contain_numeric_function(
+static bool select_statement_optional_clauses_contain_row_scalar_function(
     const struct mylite_sql_ast_node *statement
 ) {
     const struct mylite_sql_ast_node *optional_clause = NULL;
 
     for (optional_clause = select_statement_optional_clause_start(statement); optional_clause != NULL;
          optional_clause = optional_clause->next_sibling) {
-        if (select_optional_clause_contains_numeric_function(optional_clause)) {
+        if (select_optional_clause_contains_row_scalar_function(optional_clause)) {
             return true;
         }
     }
     return false;
 }
 
-static bool select_optional_clause_contains_numeric_function(
+static bool select_optional_clause_contains_row_scalar_function(
     const struct mylite_sql_ast_node *clause
 ) {
     const struct mylite_sql_ast_node *order_child = NULL;
@@ -182,7 +183,7 @@ static bool select_optional_clause_contains_numeric_function(
         return false;
     }
     if (clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
-        return row_scalar_expression_contains_numeric_function(child_at(clause, 0U));
+        return row_scalar_expression_contains_row_function(child_at(clause, 0U));
     }
     if (clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
         return false;
@@ -194,14 +195,14 @@ static bool select_optional_clause_contains_numeric_function(
 
         while (item != NULL) {
             if (item->kind == MYLITE_SQL_AST_ORDER_BY_ITEM &&
-                row_scalar_expression_contains_numeric_function(child_at(item, 0U))) {
+                row_scalar_expression_contains_row_function(child_at(item, 0U))) {
                 return true;
             }
             item = item->next_sibling;
         }
         return false;
     }
-    return row_scalar_expression_contains_numeric_function(order_child);
+    return row_scalar_expression_contains_row_function(order_child);
 }
 
 static int execute_row_scalar_select_statement(

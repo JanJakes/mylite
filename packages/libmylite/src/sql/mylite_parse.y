@@ -7248,6 +7248,9 @@ predicate_range_value(A) ::= LEAST(T) LPAREN function_argument_list(B) RPAREN(R)
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_LEAST_FUNCTION, B, R);
 }
+predicate_range_value(A) ::= row_scalar_string_predicate_expression(V). {
+    A = V;
+}
 predicate_range_value(A) ::= row_scalar_numeric_predicate_expression(V). {
     A = V;
 }
@@ -7562,6 +7565,23 @@ row_scalar_string_predicate_expression(A) ::= SHA2(T) LPAREN expression(B) COMMA
         expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_SHA2_FUNCTION, B, C, R);
+}
+row_scalar_string_predicate_expression(A) ::= COMPRESS(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_COMPRESS_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= UNCOMPRESS(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_UNCOMPRESS_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= UNCOMPRESSED_LENGTH(T) LPAREN expression(B)
+        RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= RANDOM_BYTES(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION, B, R);
 }
 row_scalar_string_predicate_expression(A) ::= LOWER(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(

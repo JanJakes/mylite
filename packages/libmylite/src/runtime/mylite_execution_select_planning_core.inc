@@ -2678,6 +2678,15 @@ static int plan_row_scalar_select_row_envelope(
         &out_plan->predicate
     );
 
+    if (rc == MYLITE_OK && out_plan->has_distinct && clauses->order_clause != NULL &&
+        session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_ONLY_FULL_GROUP_BY) &&
+        select_optional_clause_contains_row_scalar_function(clauses->order_clause)) {
+        set_unsupported_error(
+            database,
+            "SELECT ORDER BY supports only descriptor columns or FIELD(column, value, ...)"
+        );
+        rc = MYLITE_ERROR;
+    }
     if (rc == MYLITE_OK) {
         rc = plan_row_scalar_select_order(
             database,

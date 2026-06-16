@@ -203,6 +203,24 @@ expect_output \
 "SHA2(bl,384),SHA2(bi,512) FROM t ORDER BY id;" \
     "$DATABASE"
 
+predicate_expected=$(cat <<\EXPECTED
+1
+1
+1,3
+1,2,3
+EXPECTED
+)
+expect_output \
+    "table digest predicates" \
+    "$predicate_expected" \
+    "INSERT INTO t VALUES (3, 'def', 'def', 'def', 'def', X'646566', X'646566', 456); "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM t WHERE MD5(v) = MD5('abc'); "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM t WHERE SHA(c) = SHA('abc'); "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM t WHERE SHA2(v,256) "\
+"BETWEEN SHA2('abc',256) AND SHA2('def',256); "\
+"SELECT GROUP_CONCAT(id ORDER BY id) FROM t WHERE SHA2(v,NULL) IS NULL;" \
+    "$DATABASE"
+
 expect_error \
     "md5 rejects zero arguments" \
     1582 \

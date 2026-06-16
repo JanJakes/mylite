@@ -1059,6 +1059,52 @@ static bool row_scalar_control_flow_expression_is_bare_arithmetic(
     return integer_arithmetic_operator_is_supported(mylite_sql_ast_node_operator(expression));
 }
 
+static bool row_scalar_control_flow_expression_is_greatest_least(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    return expression->kind == MYLITE_SQL_AST_GREATEST_FUNCTION ||
+           expression->kind == MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR ||
+           expression->kind == MYLITE_SQL_AST_LEAST_FUNCTION ||
+           expression->kind == MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR;
+}
+
+static int plan_row_scalar_control_flow_greatest_least_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    bool require_integer_domain,
+    struct planned_row_scalar_expression *out_expression
+) {
+    int rc = plan_row_scalar_greatest_least_expression(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        out_expression
+    );
+
+    if (rc == MYLITE_OK && require_integer_domain &&
+        out_expression->field_domain != PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE &&
+        out_expression->field_domain != PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER) {
+        planned_row_scalar_expression_deinit(out_expression);
+        set_unsupported_error(
+            database,
+            "IF() row conditions support GREATEST() and LEAST() only in integer domain"
+        );
+        return MYLITE_ERROR;
+    }
+    return rc;
+}
+
 static bool row_scalar_control_flow_logical_operator_is_supported(
     enum mylite_sql_ast_operator operator_kind
 ) {
@@ -1864,6 +1910,18 @@ static int plan_row_scalar_control_flow_value_argument(
             out_expression
         );
     }
+    if (has_source && row_scalar_control_flow_expression_is_greatest_least(expression)) {
+        return plan_row_scalar_control_flow_greatest_least_argument(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            false,
+            out_expression
+        );
+    }
     return plan_row_scalar_non_control_flow_expression(
         database,
         expression,
@@ -1936,6 +1994,18 @@ static int plan_row_scalar_control_flow_condition_argument(
             source_context,
             table_columns,
             table_column_count,
+            out_expression
+        );
+    }
+    if (has_source && row_scalar_control_flow_expression_is_greatest_least(expression)) {
+        return plan_row_scalar_control_flow_greatest_least_argument(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            true,
             out_expression
         );
     }
@@ -2095,6 +2165,18 @@ static int plan_row_scalar_control_flow_leaf_value_argument(
             out_expression
         );
     }
+    if (has_source && row_scalar_control_flow_expression_is_greatest_least(expression)) {
+        return plan_row_scalar_control_flow_greatest_least_argument(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            false,
+            out_expression
+        );
+    }
     return plan_row_scalar_non_control_flow_expression(
         database,
         expression,
@@ -2172,6 +2254,18 @@ static int plan_row_scalar_control_flow_leaf_condition_argument(
             source_context,
             table_columns,
             table_column_count,
+            out_expression
+        );
+    }
+    if (has_source && row_scalar_control_flow_expression_is_greatest_least(expression)) {
+        return plan_row_scalar_control_flow_greatest_least_argument(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            true,
             out_expression
         );
     }

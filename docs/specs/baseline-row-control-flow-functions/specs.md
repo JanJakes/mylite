@@ -17,11 +17,12 @@ CASE WHEN condition THEN value [WHEN condition THEN value ...] [ELSE value] END
 The scope is intentionally limited to projection in the current row-scalar
 `SELECT` envelope, plus a searched-`CASE` hidden order key in the same
 single-table envelope. The current projection envelope admits supported row
-arithmetic expressions as control-flow values and integer-truth conditions. It
-does not add other control-flow functions to `WHERE`, `ORDER BY`, `GROUP BY`,
-`HAVING`, DML assignment values, defaults, generated columns, or arbitrary
-expression positions. It also does not make MyLite's expression metadata
-general.
+arithmetic expressions and current `GREATEST()` / `LEAST()` row expressions as
+control-flow values, with integer-domain arithmetic and extrema also admitted as
+integer-truth conditions. It does not add other control-flow functions to
+`WHERE`, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignment values, defaults,
+generated columns, or arbitrary expression positions. It also does not make
+MyLite's expression metadata general.
 
 The main architectural goal is to move common application projection patterns
 such as `IFNULL(option_value, '')` and `COALESCE(col, fallback)` onto the
@@ -158,6 +159,7 @@ row_scalar_value:
   | session_scalar_function
   | system_variable_reference
   | row_arithmetic_expr
+  | comparison_extrema_expr
   | nested_row_control_expr
   | ( row_scalar_value )
 
@@ -170,6 +172,7 @@ row_condition:
   | FALSE
   | NULL
   | row_arithmetic_expr
+  | integer_comparison_extrema_expr
   | ISNULL ( row_scalar_value )
   | row_scalar_value LIKE row_scalar_value
   | row_condition AND row_condition
@@ -193,6 +196,7 @@ nested_row_condition:
   | FALSE
   | NULL
   | row_arithmetic_expr
+  | integer_comparison_extrema_expr
   | row_scalar_leaf_value LIKE row_scalar_leaf_value
   | nested_row_condition AND nested_row_condition
   | nested_row_condition OR nested_row_condition
@@ -210,6 +214,7 @@ row_scalar_leaf_value:
   | session_scalar_function
   | system_variable_reference
   | row_arithmetic_expr
+  | comparison_extrema_expr
   | ( row_scalar_leaf_value )
 
 row_arithmetic_expr:
@@ -232,6 +237,14 @@ arithmetic_operand:
   | NULL
   | supported_numeric_function
   | row_arithmetic_expr
+
+comparison_extrema_expr:
+    GREATEST ( extrema_arg_list )
+  | LEAST ( extrema_arg_list )
+
+integer_comparison_extrema_expr:
+    GREATEST ( integer_extrema_arg_list )
+  | LEAST ( integer_extrema_arg_list )
 
 row_scalar_value_list:
     row_scalar_value
@@ -258,10 +271,12 @@ deterministically.
 
 `IF()` and searched-`CASE` conditions accept the integer truth rule over
 integer-family descriptor columns, integer/boolean/`NULL` literals,
-row-backed `ISNULL()` results, supported row arithmetic expressions, and the
-documented `LIKE`/logical atoms. String and decimal truth conversion are
-supported only when they occur through the row arithmetic UDF envelope;
-arbitrary expression truthiness remains deferred.
+row-backed `ISNULL()` results, supported row arithmetic expressions,
+integer-domain `GREATEST()` / `LEAST()` row expressions, and the documented
+`LIKE`/logical atoms. String and decimal truth conversion are supported only
+when they occur through the row arithmetic UDF envelope; string-domain
+`GREATEST()` / `LEAST()` truth conversion and arbitrary expression truthiness
+remain deferred.
 
 The following remain outside this phase:
 
@@ -300,12 +315,15 @@ row_condition(A) ::= TRUE(T).
 row_condition(A) ::= FALSE(T).
 row_condition(A) ::= NULL(T).
 row_condition(A) ::= row_arithmetic_expr(B).
+row_condition(A) ::= integer_comparison_extrema_expr(B).
 row_condition(A) ::= ISNULL(T) LPAREN row_scalar_value(V) RPAREN(R).
 row_condition(A) ::= row_scalar_value(L) LIKE(T) row_scalar_value(R).
 row_condition(A) ::= row_condition(L) AND(T) row_condition(R).
 row_condition(A) ::= row_condition(L) OR(T) row_condition(R).
 row_scalar_value(A) ::= row_arithmetic_expr(B).
+row_scalar_value(A) ::= comparison_extrema_expr(B).
 row_scalar_leaf_value(A) ::= row_arithmetic_expr(B).
+row_scalar_leaf_value(A) ::= comparison_extrema_expr(B).
 row_arithmetic_expr(A) ::= row_arithmetic_expr(L) PLUS(T) row_arithmetic_expr(R).
 row_arithmetic_expr(A) ::= row_arithmetic_expr(L) MINUS(T) row_arithmetic_expr(R).
 row_arithmetic_expr(A) ::= row_arithmetic_expr(L) STAR(T) row_arithmetic_expr(R).
@@ -315,6 +333,12 @@ row_arithmetic_expr(A) ::= row_arithmetic_expr(L) MOD(T) row_arithmetic_expr(R).
 row_arithmetic_expr(A) ::= row_arithmetic_expr(L) PERCENT(T) row_arithmetic_expr(R).
 row_arithmetic_expr(A) ::= MOD(T) LPAREN row_arithmetic_expr(L) COMMA
                            row_arithmetic_expr(R) RPAREN.
+comparison_extrema_expr(A) ::= GREATEST(T) LPAREN extrema_arg_list(B) RPAREN(R).
+comparison_extrema_expr(A) ::= LEAST(T) LPAREN extrema_arg_list(B) RPAREN(R).
+integer_comparison_extrema_expr(A) ::= GREATEST(T) LPAREN integer_extrema_arg_list(B)
+                                       RPAREN(R).
+integer_comparison_extrema_expr(A) ::= LEAST(T) LPAREN integer_extrema_arg_list(B)
+                                    RPAREN(R).
 ```
 
 These snippets describe MyLite's supported subset, not MySQL's full grammar.
@@ -341,7 +365,9 @@ Function semantics:
   not `NULL` selects the true branch; zero or `NULL` selects the false branch.
   When the condition is a supported row arithmetic expression, MyLite uses the
   same UDF-backed numeric coercion and warning behavior as row arithmetic
-  projection.
+  projection. When the condition is an integer-domain `GREATEST()` / `LEAST()`,
+  MyLite uses the planned extrema expression and the same `NULL`-as-false truth
+  wrapper.
 - Searched `CASE` and `IF()` row conditions admit `LIKE`, `AND`, and `OR` over
   the supported row-condition atoms; `LIKE` uses the current backslash-escape
   SQL mode decision already used by MyLite row predicates.
@@ -356,6 +382,9 @@ Function semantics:
   UDFs. SQLite continues to scan and filter rows; MyLite supplies MySQL
   coercion, truncation warnings, division-by-zero warnings, and parameter
   binding.
+- `GREATEST()` / `LEAST()` arguments are lowered through the existing MyLite
+  row extrema planner and SQLite `max()` / `min()` expression generator. String
+  extrema are admitted as returned values but not as truth conditions.
 
 Table-backed evaluation stays inside SQLite's row scan. MyLite must not copy the
 matched row set into memory to evaluate these functions. SQLite may evaluate
@@ -410,6 +439,8 @@ Add MySQL-runtime expectation coverage for:
 - table-backed `IFNULL()`, `COALESCE()`, `NULLIF()`, `ISNULL()`, and `IF()`;
 - row arithmetic control-flow values and conditions, including string numeric
   truth conversion warnings;
+- `GREATEST()` / `LEAST()` as supported control-flow values and integer-domain
+  conditions, including `NULL` handling;
 - string, integer, date, datetime, and `NULL` values;
 - case-insensitive ASCII string comparison for `NULLIF()` under the default
   collation;
@@ -425,6 +456,8 @@ Add fast C runtime coverage for:
 - supported table-backed projection values and aliases;
 - row arithmetic values, conditions, parameter binding, and warnings inside
   supported control-flow functions;
+- comparison extrema values and integer-domain conditions inside supported
+  control-flow functions;
 - nullable and nonnullable descriptor values;
 - qualified column references with table aliases;
 - existing row-envelope reuse;

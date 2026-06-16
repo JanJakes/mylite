@@ -215,6 +215,18 @@ static int test_table_backed_greatest_least(void) {
         "4",
         "9223372036854775807",
     };
+    static const char *const columns_control_flow[] = {
+        "id",
+        "ifnull_gl",
+        "coalesce_gl",
+        "nullif_gl",
+        "if_gl",
+        "case_gl",
+    };
+    static const char *const values_control_flow[] = {
+        "1", "3",  "alpha",    NULL, "nz", "yes", "2", "5",  "Beta", "5",  "nz", "yes",
+        "3", "99", "fallback", NULL, "z",  "no",  "4", "20", "m",    "20", "nz", "yes",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -305,6 +317,22 @@ static int test_table_backed_greatest_least(void) {
             .context = "table greatest least integer families",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, IFNULL(GREATEST(n, 3), 99) AS ifnull_gl, "
+                   "COALESCE(LEAST(code, 'm'), 'fallback') AS coalesce_gl, "
+                   "NULLIF(GREATEST(n, 3), 3) AS nullif_gl, "
+                   "IF(GREATEST(n, 0), 'nz', 'z') AS if_gl, "
+                   "CASE WHEN LEAST(n, 1) THEN 'yes' ELSE 'no' END AS case_gl "
+                   "FROM t ORDER BY id",
+            .columns = columns_control_flow,
+            .column_count = sizeof(columns_control_flow) / sizeof(columns_control_flow[0]),
+            .values = values_control_flow,
+            .row_count = 4U,
+            .context = "table greatest least control-flow arguments",
+        }
+    );
 
     mylite_close(database);
     remove_related_files(path);
@@ -316,6 +344,10 @@ static int test_greatest_least_diagnostics(void) {
     static const char *const values_decimal[] = {"1.5"};
     static const char *const columns_arithmetic[] = {"GREATEST(v + 1, 2)"};
     static const char *const values_arithmetic[] = {"2"};
+    static const char *const columns_if_greatest[] = {"IF(TRUE, GREATEST(n, 2), 0)"};
+    static const char *const values_if_greatest[] = {"2"};
+    static const char *const columns_if_greatest_condition[] = {"IF(GREATEST(n, 2), 'yes', 'no')"};
+    static const char *const values_if_greatest_condition[] = {"yes"};
     static const char *const columns_greatest_predicate[] = {"n"};
     static const char *const values_greatest_predicate[] = {"1"};
     char path[test_path_capacity];
@@ -444,6 +476,29 @@ static int test_greatest_least_diagnostics(void) {
                 "GREATEST() and LEAST() support only string, integer, boolean, and NULL arguments",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT IF(TRUE, GREATEST(n, 2), 0) FROM t",
+            .columns = columns_if_greatest,
+            .column_count = sizeof(columns_if_greatest) / sizeof(columns_if_greatest[0]),
+            .values = values_if_greatest,
+            .row_count = 1U,
+            .context = "greatest least as control-flow value",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT IF(GREATEST(n, 2), 'yes', 'no') FROM t",
+            .columns = columns_if_greatest_condition,
+            .column_count =
+                sizeof(columns_if_greatest_condition) / sizeof(columns_if_greatest_condition[0]),
+            .values = values_if_greatest_condition,
+            .row_count = 1U,
+            .context = "greatest least as control-flow condition",
+        }
+    );
     failures += execute_error(
         database,
         "SELECT CONCAT(GREATEST(n, 2), 'x') FROM t",
@@ -456,12 +511,12 @@ static int test_greatest_least_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT IF(TRUE, GREATEST(n, 2), 0) FROM t",
+        "SELECT IF(GREATEST(v, 'm'), 'yes', 'no') FROM t",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "row-scalar SELECT GREATEST() and LEAST() are supported only as top-level",
+                "IF() row conditions support GREATEST() and LEAST() only in integer domain",
         }
     );
     failures += expect_query(

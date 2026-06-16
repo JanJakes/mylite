@@ -229,6 +229,22 @@ expect_output \
     "SELECT id, GREATEST(code,'m'), LEAST(n,4) FROM t WHERE id <> 3 ORDER BY id DESC LIMIT 2;" \
     "$DATABASE"
 
+control_flow_expected=$(cat <<EXPECTED
+1	3	alpha	NULL	nz	yes
+2	5	Beta	5	nz	yes
+3	99	fallback	NULL	z	no
+4	20	m	20	nz	yes
+EXPECTED
+)
+expect_output \
+    "control-flow nested greatest least" \
+    "$control_flow_expected" \
+    "SELECT id, IFNULL(GREATEST(n,3),99), "\
+"COALESCE(LEAST(code,'m'),'fallback'), NULLIF(GREATEST(n,3),3), "\
+"IF(GREATEST(n,0),'nz','z'), "\
+"CASE WHEN LEAST(n,1) THEN 'yes' ELSE 'no' END FROM t ORDER BY id;" \
+    "$DATABASE"
+
 do_expected=$(cat <<EXPECTED
 0	0
 EXPECTED
@@ -288,8 +304,8 @@ expect_upstream_accepts \
     "$DATABASE"
 
 expect_upstream_accepts \
-    "nested row-scalar usage accepted by MySQL but deferred by MyLite" \
-    "SELECT CONCAT(GREATEST(n,2), 'x'), IF(TRUE, GREATEST(n,2), 0) FROM t;" \
+    "concat nested row-scalar usage accepted by MySQL but deferred by MyLite" \
+    "SELECT CONCAT(GREATEST(n,2), 'x') FROM t;" \
     "$DATABASE"
 
 expect_upstream_accepts \

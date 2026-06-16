@@ -4,7 +4,10 @@
 
 Add a narrow `GREATEST()` / `LEAST()` slice for common MySQL comparison
 expressions in scalar projections, `DO`, and descriptor-backed single-table row
-projection.
+projection. Current row-scalar projection also admits supported row arithmetic
+arguments and allows the resulting `GREATEST()` / `LEAST()` expression as a
+value argument to supported row control-flow functions, or as an integer-domain
+condition for `IF()` and searched `CASE`.
 
 This is not a general expression engine, general type aggregation layer, or full
 MySQL collation implementation. It extends the existing scalar and row-scalar
@@ -53,6 +56,12 @@ Runtime probes establish the behavior used by this baseline:
 - Table-backed `GREATEST(column, literal, ...)` and `LEAST(column, literal, ...)`
   evaluate once per source row and preserve the existing single-table row
   envelope for `WHERE`, descriptor-column `ORDER BY`, and `LIMIT`.
+- Supported table-backed arithmetic arguments reuse the row arithmetic UDF
+  behavior, including `NULL` propagation, string numeric prefix conversion,
+  truncation warnings, and division-by-zero warnings.
+- Integer-domain `GREATEST()` / `LEAST()` results used as `IF()` or
+  searched-`CASE` conditions use MySQL's numeric truth rule. String-domain truth
+  conversion is broader behavior and remains deferred.
 
 ## Supported Surface
 
@@ -73,6 +82,7 @@ MyLite supports:
   - signed 64-bit integer literals with optional unary sign;
   - `TRUE` and `FALSE` as `1` and `0`;
   - integer-family descriptor columns in table-backed row-scalar `SELECT`;
+  - supported table-backed row arithmetic expressions;
   - `NULL` arguments;
 - fixed `utf8mb4_0900_ai_ci` ASCII case-insensitive semantics for admitted
   string comparisons, matching the current string-predicate and `FIELD()`
@@ -80,7 +90,14 @@ MyLite supports:
 - MySQL-compatible tied ASCII case behavior for admitted row and scalar values:
   `GREATEST()` keeps replacing the current winner on equality, while `LEAST()`
   keeps the first equal winner;
-- warning count `0` for supported in-range forms.
+- warning count `0` for supported in-range forms that do not evaluate
+  warning-producing arithmetic;
+- supported `IF()`, `IFNULL()`, `COALESCE()`, `NULLIF()`, `ISNULL()`, and
+  searched-`CASE` row-control-flow values may use a table-backed
+  `GREATEST()` / `LEAST()` expression as an admitted value argument;
+- `IF()` and searched `CASE` row-control-flow conditions may use an
+  integer-domain `GREATEST()` / `LEAST()` expression. All-`NULL` extrema are
+  admitted and evaluate as false through the existing `NULL` truth rule.
 
 String literal values must decode to ordinary UTF-8 text without embedded
 `NUL`; MyLite claims MySQL collation parity only for ASCII values in this
@@ -98,12 +115,14 @@ This slice intentionally does not support:
   other full `utf8mb4_0900_ai_ci` behavior;
 - explicit `BINARY`, `CAST()`, `COLLATE`, introducers, connection collation
   changes, or binary-string result typing;
-- nested `GREATEST()`, nested `LEAST()`, nested `FIELD()`, arithmetic,
-  flow-control, temporal, aggregate, subquery, parameter, or variable
-  arguments inside `GREATEST()` / `LEAST()`;
-- use in predicates, ordering expressions, grouping expressions, DML
-  assignments, defaults, generated columns, indexes, constraints, joins, CTEs,
-  views, or arbitrary SQLite pass-through.
+- nested `GREATEST()`, nested `LEAST()`, nested `FIELD()`, control-flow,
+  temporal, aggregate, subquery, parameter, or variable arguments inside
+  `GREATEST()` / `LEAST()`;
+- string-domain `GREATEST()` / `LEAST()` truth conversion in `IF()` or searched
+  `CASE` conditions;
+- use in ordering expressions, grouping expressions, broad DML assignments,
+  defaults, generated columns, indexes, constraints, joins, CTEs, views, or
+  arbitrary SQLite pass-through.
 
 ## Grammar
 
@@ -126,6 +145,7 @@ extrema_arg(A) ::= string_literal(T).
 extrema_arg(A) ::= decimal_integer_literal(T).
 extrema_arg(A) ::= PLUS(P) decimal_integer_literal(T).
 extrema_arg(A) ::= MINUS(M) decimal_integer_literal(T).
+extrema_arg(A) ::= row_arithmetic_expr(B).
 extrema_arg(A) ::= TRUE(T).
 extrema_arg(A) ::= FALSE(T).
 extrema_arg(A) ::= NULL(T).
@@ -163,6 +183,13 @@ C because there is no SQLite source row. For row-scalar table projections,
 MyLite does not materialize source rows to evaluate the function in C; it builds
 the descriptor-driven SQLite projection and lets SQLite scan, filter, order,
 and limit rows.
+
+When a supported row control-flow expression uses a table-backed
+`GREATEST()` / `LEAST()` argument, MyLite reuses the same planned expression and
+generated SQL. Integer-domain uses in `IF()` and searched `CASE` conditions are
+lowered through the existing `COALESCE(<condition>, 0) <> 0` truth wrapper.
+String-domain condition use remains rejected until string truth conversion is
+implemented for this nested surface.
 
 Generated row-scalar SQL shape:
 
@@ -216,6 +243,8 @@ Required diagnostics:
   `GREATEST() and LEAST() support only string, integer, boolean, and NULL arguments`;
 - unsupported mixed domain:
   `GREATEST() and LEAST() do not support mixed string and numeric arguments`;
+- unsupported string-domain control-flow conditions:
+  `IF() row conditions support GREATEST() and LEAST() only in integer domain`;
 - unsupported non-ASCII or embedded-`NUL` string values with deterministic
   MyLite-specific diagnostics;
 - signed-64 integer overflow:
@@ -241,10 +270,13 @@ Coverage must include:
   tied values, and empty strings;
 - table-backed integer and string descriptor columns, nullable columns, row
   order, `WHERE`, descriptor-column `ORDER BY`, and `LIMIT`;
+- table-backed row arithmetic arguments and warning propagation;
+- `GREATEST()` / `LEAST()` as values in supported row control-flow functions and
+  as integer-domain `IF()` / searched-`CASE` conditions;
 - unknown column diagnostics in row-scalar projection;
 - deterministic rejection for mixed domains, unsupported non-ASCII strings,
-  unsupported binary/decimal/float/temporal/expression/subquery/parameter
-  arguments, nested calls, predicate use, DML assignment use, and ordering
+  unsupported binary/temporal/expression/subquery/parameter arguments, nested
+  calls, string-domain truth conditions, DML assignment use, and ordering
   expression use;
 - reopen persistence indirectly through existing row storage tests remaining
   green, since this feature is read-only;
@@ -261,7 +293,7 @@ Update:
 - `docs/compatibility/type-system-literals-conversion.md` only for the admitted
   literal surfaces.
 
-Do not overclaim full `GREATEST()` / `LEAST()`, mixed type coercion, decimals,
-floating point, binary strings, full Unicode collation, nested expressions, DML
-use, predicate use, ordering/grouping expression use, or general expression
-evaluation.
+Do not overclaim full `GREATEST()` / `LEAST()`, mixed type coercion, full
+decimal/floating point domains, binary strings, full Unicode collation, nested
+expressions, broad DML use, ordering/grouping expression use, or general
+expression evaluation.

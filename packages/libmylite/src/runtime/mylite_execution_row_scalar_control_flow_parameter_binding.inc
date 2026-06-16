@@ -71,6 +71,13 @@ static int bind_row_scalar_control_flow_frame_parameters(
                 expression,
                 parameter_index
             );
+        case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+        case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+            return bind_row_scalar_reversed_arguments_parameters(
+                statement,
+                expression,
+                parameter_index
+            );
         case PLANNED_ROW_SCALAR_EXPRESSION_IF:
         case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
         case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -91,8 +98,6 @@ static int bind_row_scalar_control_flow_frame_parameters(
         case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
         case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
         case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
-        case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
-        case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
         case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
         case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
         case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
@@ -186,6 +191,13 @@ static int bind_row_scalar_control_flow_frame_parameters(
                 expression,
                 parameter_index
             );
+        case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+        case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+            return bind_row_scalar_reversed_arguments_parameters(
+                statement,
+                expression,
+                parameter_index
+            );
         case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
         case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
         case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
@@ -201,8 +213,6 @@ static int bind_row_scalar_control_flow_frame_parameters(
         case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
         case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
         case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
-        case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
-        case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
         case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
         case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
         case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:

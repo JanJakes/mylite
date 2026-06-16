@@ -1887,6 +1887,19 @@ static enum mylite_sql_ast_operator row_scalar_control_flow_condition_operator(
 static bool row_scalar_control_flow_expression_is_bare_arithmetic(
     const struct mylite_sql_ast_node *expression
 );
+static bool row_scalar_control_flow_expression_is_greatest_least(
+    const struct mylite_sql_ast_node *expression
+);
+static int plan_row_scalar_control_flow_greatest_least_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    bool require_integer_domain,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_control_flow_comparison_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -2716,7 +2729,8 @@ static int plan_row_scalar_unix_timestamp_sysdate_expression(
     const struct mylite_sql_ast_node *expression,
     struct planned_row_scalar_expression *out_expression
 );
-static bool unix_timestamp_argument_is_sysdate_function(const struct mylite_sql_ast_node *expression
+static bool unix_timestamp_argument_is_sysdate_function(
+    const struct mylite_sql_ast_node *expression
 );
 static int plan_row_scalar_unix_timestamp_column(
     struct mylite_db *database,
@@ -2971,7 +2985,8 @@ static bool row_scalar_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
 );
-static bool row_scalar_expression_contains_row_function(const struct mylite_sql_ast_node *expression
+static bool row_scalar_expression_contains_row_function(
+    const struct mylite_sql_ast_node *expression
 );
 static bool row_scalar_expression_contains_numeric_function(
     const struct mylite_sql_ast_node *expression

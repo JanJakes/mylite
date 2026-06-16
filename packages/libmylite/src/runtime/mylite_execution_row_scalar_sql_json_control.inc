@@ -1024,7 +1024,11 @@ static int append_row_scalar_nested_control_flow_expression_sql(
             next_parameter
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
-        return append_row_scalar_leaf_like_predicate_expression_sql(string, expression, next_parameter);
+        return append_row_scalar_leaf_like_predicate_expression_sql(
+            string,
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
         return append_row_scalar_leaf_logical_condition_expression_sql(
             string,
@@ -1588,8 +1592,10 @@ static int append_row_scalar_logical_condition_expression_sql(
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_AND ||
         operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND) {
         operator_sql = " AND ";
-    } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_OR ||
-               operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR) {
+    } else if (
+        operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_OR ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR
+    ) {
         operator_sql = " OR ";
     } else {
         return MYLITE_ERROR;
@@ -1637,8 +1643,10 @@ static int append_row_scalar_leaf_logical_condition_expression_sql(
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_AND ||
         operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND) {
         operator_sql = " AND ";
-    } else if (operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_OR ||
-               operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR) {
+    } else if (
+        operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_OR ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR
+    ) {
         operator_sql = " OR ";
     } else {
         return MYLITE_ERROR;
@@ -1846,13 +1854,20 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
-        return append_row_scalar_non_control_flow_expression_sql(string, expression, next_parameter);
+        return append_row_scalar_non_control_flow_expression_sql(
+            string,
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
         return append_row_scalar_integer_arithmetic_expression_sql(
             string,
             expression,
             next_parameter
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+        return append_row_scalar_greatest_least_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -1873,8 +1888,6 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
-    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
-    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
@@ -1978,13 +1991,20 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
-        return append_row_scalar_non_control_flow_expression_sql(string, expression, next_parameter);
+        return append_row_scalar_non_control_flow_expression_sql(
+            string,
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
         return append_row_scalar_integer_arithmetic_expression_sql(
             string,
             expression,
             next_parameter
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+        return append_row_scalar_greatest_least_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
@@ -1995,8 +2015,6 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
-    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
-    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
@@ -2092,15 +2110,26 @@ static int append_row_scalar_control_flow_leaf_condition_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
-        return append_row_scalar_non_control_flow_expression_sql(string, expression, next_parameter);
+        return append_row_scalar_non_control_flow_expression_sql(
+            string,
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
         return append_row_scalar_integer_arithmetic_expression_sql(
             string,
             expression,
             next_parameter
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
+        return append_row_scalar_greatest_least_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
-        return append_row_scalar_leaf_like_predicate_expression_sql(string, expression, next_parameter);
+        return append_row_scalar_leaf_like_predicate_expression_sql(
+            string,
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
         return append_row_scalar_leaf_logical_condition_expression_sql(
             string,
@@ -2114,8 +2143,6 @@ static int append_row_scalar_control_flow_leaf_condition_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
-    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
-    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
@@ -2235,10 +2262,10 @@ static int append_row_scalar_left_right_expression_sql(
     value = &expression->arguments[0];
     length = &expression->arguments[1];
     use_right = expression->string_slice_kind == PLANNED_STRING_SLICE_FUNCTION_RIGHT;
-    use_big5_left =
-        !use_right && value->kind == PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION &&
-        value->conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_USING_CHARSET &&
-        value->conversion_charset != NULL && strcmp(value->conversion_charset, "big5") == 0;
+    use_big5_left = !use_right && value->kind == PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION &&
+                    value->conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_USING_CHARSET &&
+                    value->conversion_charset != NULL &&
+                    strcmp(value->conversion_charset, "big5") == 0;
 
     rc = mylite_dynamic_string_append(string, "(CASE WHEN ");
     if (rc == MYLITE_OK) {
@@ -2478,11 +2505,8 @@ static int append_row_scalar_string_slice_operand_sql(
     }
     if (rc == MYLITE_OK && expression != NULL &&
         expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC) {
-        rc = append_row_scalar_integer_arithmetic_expression_sql(
-            string,
-            expression,
-            next_parameter
-        );
+        rc =
+            append_row_scalar_integer_arithmetic_expression_sql(string, expression, next_parameter);
     } else if (rc == MYLITE_OK) {
         rc = append_row_scalar_non_concat_expression_sql(string, expression, next_parameter);
     }

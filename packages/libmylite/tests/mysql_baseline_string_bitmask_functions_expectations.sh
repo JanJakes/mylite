@@ -106,6 +106,13 @@ expect_output \
     "SELECT EXPORT_SET(ABS(-5),'Y','N',':',BIT_COUNT(3)), MAKE_SET(ABS(-3),'a','b','c');" \
     "$DATABASE"
 
+expect_output \
+    "scalar integer arithmetic bitmask arguments" \
+    "Y:N	Y	a" \
+    "SELECT EXPORT_SET(1 + 0,'Y','N',':',2), "\
+"EXPORT_SET(1,'Y','N',':',1 + 0), MAKE_SET(1 + 0,'a','b');" \
+    "$DATABASE"
+
 run_mysql \
     "CREATE TABLE t("\
 "id INT, bits INT, on_label VARCHAR(20), off_label VARCHAR(20), sep CHAR(1), txt TEXT, i INT"\

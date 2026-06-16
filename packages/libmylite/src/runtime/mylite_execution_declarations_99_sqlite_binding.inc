@@ -622,6 +622,11 @@ static int bind_row_scalar_field_expression_parameters(
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
 );
+static int bind_row_scalar_elt_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
 static int bind_row_scalar_reversed_arguments_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,

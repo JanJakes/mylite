@@ -126,8 +126,14 @@ static int test_no_source_dual_and_do_bitmask(void) {
     };
     static const char *const columns_dual[] = {"es", "ms"};
     static const char *const values_dual[] = {"Y:N:Y:N", "b"};
-    static const char *const columns_scalar_integer_arguments[] = {"es_func", "ms_func"};
-    static const char *const values_scalar_integer_arguments[] = {"Y:N", "a,b"};
+    static const char *const columns_scalar_integer_arguments[] = {
+        "es_func",
+        "ms_func",
+        "es_arithmetic_bits",
+        "es_arithmetic_count",
+        "ms_arithmetic_bits",
+    };
+    static const char *const values_scalar_integer_arguments[] = {"Y:N", "a,b", "Y:N", "Y", "a"};
     static const char *const columns_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_after_select[] = {"-1", "0"};
     static const char *const values_after_do[] = {"0", "0"};
@@ -179,7 +185,10 @@ static int test_no_source_dual_and_do_bitmask(void) {
         database,
         (struct expected_query){
             .sql = "SELECT EXPORT_SET(ABS(-5),'Y','N',':',BIT_COUNT(3)) AS es_func, "
-                   "MAKE_SET(ABS(-3),'a','b','c') AS ms_func",
+                   "MAKE_SET(ABS(-3),'a','b','c') AS ms_func, "
+                   "EXPORT_SET(1 + 0,'Y','N',':',2) AS es_arithmetic_bits, "
+                   "EXPORT_SET(1,'Y','N',':',1 + 0) AS es_arithmetic_count, "
+                   "MAKE_SET(1 + 0,'a','b') AS ms_arithmetic_bits",
             .columns = columns_scalar_integer_arguments,
             .column_count = sizeof(columns_scalar_integer_arguments) /
                             sizeof(columns_scalar_integer_arguments[0]),
@@ -455,33 +464,6 @@ static int test_bitmask_diagnostics(void) {
             .code = mysql_error_native_function_argument_count,
             .sqlstate = "42000",
             .message_part = "Incorrect parameter count in the call to native function 'MAKE_SET'",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT EXPORT_SET(1 + 0, 'Y', 'N')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "string bitmask functions support only signed integer, boolean, NULL",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT EXPORT_SET(1, 'Y', 'N', ',', 1 + 0)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "EXPORT_SET() number_of_bits supports only signed integer",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT MAKE_SET(1 + 0, 'a')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "string bitmask functions support only signed integer, boolean, NULL",
         }
     );
     failures += execute_error(

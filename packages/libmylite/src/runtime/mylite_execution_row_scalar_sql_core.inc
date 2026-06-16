@@ -32,6 +32,8 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_concat_ws_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
         return append_row_scalar_field_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_ELT:
+        return append_row_scalar_elt_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
         return append_row_scalar_greatest_least_expression_sql(string, expression, next_parameter);
@@ -528,6 +530,7 @@ static int append_row_scalar_window_function_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ELT:
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
@@ -775,6 +778,7 @@ static int append_row_scalar_conversion_base_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ELT:
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
@@ -924,6 +928,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ELT:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
@@ -1024,6 +1029,7 @@ static int append_row_scalar_non_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ELT:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
@@ -1299,6 +1305,7 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ELT:
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
@@ -1649,6 +1656,64 @@ static int append_row_scalar_field_expression_sql(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(string, " ELSE 0 END)");
+    }
+
+    return rc;
+}
+
+static int append_row_scalar_elt_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (expression->argument_count < 2U) {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append(string, "(CASE WHEN ");
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_expression_sql(string, &expression->arguments[0], next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " IS NULL THEN NULL");
+    }
+    for (size_t argument_index = 1U; rc == MYLITE_OK && argument_index < expression->argument_count;
+         ++argument_index) {
+        char position_text[integer_text_capacity];
+        int written = snprintf(position_text, sizeof(position_text), "%zu", argument_index);
+
+        if (written < 0 || (size_t)written >= sizeof(position_text)) {
+            return MYLITE_NOMEM;
+        }
+        rc = mylite_dynamic_string_append(string, " WHEN ");
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_expression_sql(
+                string,
+                &expression->arguments[0],
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, " = ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, position_text);
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, " THEN ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_expression_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " ELSE NULL END)");
     }
 
     return rc;

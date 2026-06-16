@@ -21,6 +21,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ELT:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
@@ -234,6 +235,7 @@ static int bind_row_scalar_integer_arithmetic_frame_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ELT:
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
@@ -378,6 +380,41 @@ static int bind_row_scalar_field_expression_parameters(
         );
         if (rc == MYLITE_OK) {
             rc = bind_row_scalar_non_concat_expression_parameters(
+                statement,
+                &expression->arguments[argument_index],
+                parameter_index
+            );
+        }
+    }
+
+    return rc;
+}
+
+static int bind_row_scalar_elt_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->argument_count < 2U) {
+        return MYLITE_ERROR;
+    }
+
+    rc = bind_row_scalar_expression_parameters(
+        statement,
+        &expression->arguments[0],
+        parameter_index
+    );
+    for (size_t argument_index = 1U; rc == MYLITE_OK && argument_index < expression->argument_count;
+         ++argument_index) {
+        rc = bind_row_scalar_expression_parameters(
+            statement,
+            &expression->arguments[0],
+            parameter_index
+        );
+        if (rc == MYLITE_OK) {
+            rc = bind_row_scalar_expression_parameters(
                 statement,
                 &expression->arguments[argument_index],
                 parameter_index

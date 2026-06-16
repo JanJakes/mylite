@@ -2,14 +2,17 @@
 
 ## Summary
 
-This phase adds a narrow `ELT()` scalar-function slice. `ELT(index, value1,
-value2, ...)` returns the argument at the 1-based `index` position after the
-index argument. The first implementation is deliberately limited to top-level
-no-source, `FROM DUAL`, and `DO` expressions over scalar literals.
+This phase adds a narrow `ELT()` scalar and row-scalar slice.
+`ELT(index, value1, value2, ...)` returns the argument at the 1-based `index`
+position after the index argument. The scalar path covers top-level no-source,
+`FROM DUAL`, and `DO` expressions over scalar literals and the current
+row-scalar expression subset. The row-scalar path adds single-table `SELECT`
+projection support over descriptor-backed values and the same supported
+row-scalar value-argument subset.
 
 The slice is a companion to the existing `FIELD()` support, but it does not add
-`ELT()` ordering, predicates, table-backed row-scalar expressions, DML
-assignment expressions, or general expression nesting.
+`ELT()` ordering, predicates, DML assignment expressions, defaults, generated
+columns, subqueries, parameters, or full MySQL coercion/metadata behavior.
 
 ## Compatibility Authority
 
@@ -29,9 +32,19 @@ SELECT ELT(1,'Aa','Bb','Cc'), ELT(3,'Aa','Bb','Cc'),
        ELT(NULL,'Aa'), ELT(TRUE,'no','yes'), ELT(FALSE,'zero'),
        ELT(1,10,TRUE,NULL), ELT(2,10,TRUE,NULL),
        ELT(3,10,TRUE,NULL), @@warning_count;
+SELECT ELT(1 + 0, 'a'), ELT(1, 1 + 0), ELT(1, 'é');
 SHOW WARNINGS;
 SELECT ELT();
 SELECT ELT(1);
+CREATE TABLE elt_values (id INT, value_text VARCHAR(20), number_value INT,
+                         created_on DATE);
+SELECT id,
+       ELT(id, value_text, CONCAT(value_text, '!'), number_value),
+       ELT(id + 1, 'zero', value_text, 'last'),
+       ELT(LENGTH(value_text) - 3, 'short', 'medium', 'long'),
+       CONCAT('prefix-', ELT(id, value_text, 'fallback'))
+FROM elt_values
+ORDER BY id;
 ```
 
 Observed MySQL 8.4.9 behavior shaping this subset:
@@ -46,8 +59,12 @@ Observed MySQL 8.4.9 behavior shaping this subset:
 - Selected integer and boolean value arguments are returned as their visible
   scalar string forms, for example `10`, `1`, and `0`.
 - A selected `NULL` value returns SQL `NULL`.
-- The admitted integer/boolean/NULL and ASCII string literal cases produce no
-  warnings.
+- Table-backed projection evaluates per source row; selector `NULL`,
+  nonpositive, and out-of-range values return SQL `NULL`.
+- The row-scalar implementation admits descriptor-backed integer selectors and
+  supported integer-producing row-scalar selector expressions.
+- The admitted integer/boolean/NULL, string literal, and row-scalar expression
+  cases produce no warnings.
 
 ## Ownership Boundary
 
@@ -55,8 +72,10 @@ Observed MySQL 8.4.9 behavior shaping this subset:
   diagnostics, warning counts, and cleanup through the existing result API.
 - Lexer/parser/AST: add an `ELT` keyword token and AST nodes for the function
   and native argument-count diagnostics. No broad expression grammar changes.
-- Analyzer/runtime: evaluate admitted scalar literal arguments in MyLite and
-  format the selected result. Unsupported argument shapes are rejected before
+- Analyzer/runtime: evaluate admitted no-source scalar literal arguments in
+  MyLite. Row-scalar `SELECT` projection resolves descriptors, lowers `ELT()`
+  to a generated SQLite `CASE`, and binds values through the existing
+  row-scalar parameter system. Unsupported argument shapes are rejected before
   any SQLite SQL is generated.
 - Catalog/storage/VFS: no catalog, descriptor, file format, preamble, or VFS
   change.
@@ -80,6 +99,9 @@ SELECT ELT(1, 'a', 'b');
 SELECT ELT(+2, 'a', 'b') FROM DUAL;
 SELECT ELT(TRUE, 10, 20), ELT(FALSE, 'x');
 DO ELT(2, 'a', 'b'), ELT(NULL, 'a');
+SELECT id, ELT(id, value_text, CONCAT(value_text, '!'), number_value)
+FROM elt_values;
+SELECT CONCAT('prefix-', ELT(id, value_text, 'fallback')) FROM elt_values;
 ```
 
 ## Semantics
@@ -90,16 +112,22 @@ The admitted selector argument is one of:
   signed 64-bit range;
 - `TRUE`;
 - `FALSE`;
-- `NULL`.
+- `NULL`;
+- in single-table row-scalar projection, descriptor-backed integer columns and
+  supported integer-producing row-scalar expressions.
 
 The admitted value arguments are:
 
-- ASCII ordinary string literals without embedded NUL bytes;
+- ordinary string literals without embedded NUL bytes;
 - signed decimal integer literals with optional unary `+` or `-`, inside the
   signed 64-bit range;
 - `TRUE`;
 - `FALSE`;
-- `NULL`.
+- `NULL`;
+- in single-table row-scalar projection, descriptor-backed integer, exact
+  `DECIMAL`, nonbinary string, `YEAR`, and temporal columns plus supported
+  nested row-scalar value functions, session scalar values, and system
+  variables.
 
 Result rules:
 
@@ -108,6 +136,9 @@ Result rules:
 - Selecting a string returns its decoded string bytes.
 - Selecting an integer or boolean returns its visible integer text.
 - Selecting `NULL` returns SQL `NULL`.
+- Row-scalar projection is SQLite-backed: MyLite resolves descriptors and emits
+  a `CASE` expression rather than loading source rows into memory for C-side
+  evaluation.
 - Successful admitted evaluations produce `warning_count == 0`.
 - `DO ELT(...)` returns no rows and leaves `ROW_COUNT() = 0`.
 
@@ -118,14 +149,20 @@ Supported diagnostics:
 - wrong argument count: MySQL-compatible `1582 / 42000`;
 - unsupported index argument: deterministic parse error,
   `ELT() index supports only signed integer, boolean, and NULL literals`;
+- unsupported row-scalar index argument: deterministic parse error,
+  `ELT() index supports only signed integer, boolean, NULL, integer descriptor,
+  and supported integer expression arguments`;
 - signed selector out of range: deterministic parse error,
   `ELT() index literals must fit the signed 64-bit range`;
 - unsupported value argument: deterministic parse error,
   `ELT() supports only string, integer, boolean, and NULL value arguments`;
+- unsupported row-scalar value argument: deterministic parse error,
+  `ELT() supports only string, integer, boolean, NULL, session scalar, system
+  variable, descriptor column, and supported row-scalar value arguments`;
+- unsupported row-scalar binary or approximate columns: deterministic
+  `ELT()`-specific unsupported diagnostics;
 - signed value out of range: deterministic parse error,
   `ELT() value integer literals must fit the signed 64-bit range`;
-- non-ASCII string value: deterministic parse error,
-  `ELT() string literals support only ASCII values`;
 - embedded-NUL string value: existing string decoding diagnostic with
   `ELT() string literals do not support NUL bytes`;
 - allocation failures: existing MyLite allocation diagnostics.
@@ -134,14 +171,13 @@ Supported diagnostics:
 
 This feature does not implement:
 
-- string, decimal, float, hex, bit, parameter, function, subquery, or column
-  selector conversion;
-- non-ASCII collation behavior, binary string values, national string values,
-  or embedded-NUL result delivery;
-- table-backed row-scalar `ELT()` projection;
+- string, decimal, float, hex, bit, parameter, function, or subquery selector
+  conversion outside the documented integer row-scalar subset;
+- binary string values, national string values, or embedded-NUL result delivery;
 - `ELT()` in predicates, ordering, grouping, DML assignments, defaults, or
   generated columns;
-- nested `ELT()` or arbitrary expression arguments;
+- nested `ELT()` outside the supported row-scalar value-argument subset, or
+  arbitrary expression arguments;
 - SQLite fork patches.
 
 ## Tests
@@ -154,15 +190,20 @@ Tests cover:
 - selector values `1`, last position, `0`, negative, out-of-range, `NULL`,
   `TRUE`, and `FALSE`;
 - selected string, integer, boolean, and `NULL` value arguments;
+- single-table row-scalar projection over descriptor-backed selectors and
+  values;
+- selector expressions and nested `ELT()` inside supported row-scalar value
+  functions;
 - argument-count errors;
 - deterministic unsupported diagnostics for unsupported selector/value
-  arguments, mixed column references, integer overflow, and non-ASCII strings;
+  arguments, mixed column references, unsupported row-backed binary and
+  approximate columns and integer overflow;
 - parser AST coverage for normal and argument-count forms;
 - MySQL 8.4.9 expectation script for the admitted user-visible behavior.
 
 ## Compatibility Gaps
 
 MyLite still does not claim full `ELT()` compatibility. The main deferred
-areas are MySQL's broader first-argument coercion, table-backed expression
-evaluation, binary and non-ASCII string behavior, nested expressions,
-predicates, ordering, and metadata-level charset/collation parity.
+areas are MySQL's broader first-argument coercion, binary string behavior,
+predicates, ordering/grouping, DML assignments, arbitrary expression operands,
+and metadata-level charset/collation parity.

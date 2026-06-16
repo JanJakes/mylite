@@ -146,6 +146,17 @@ static int plan_row_scalar_non_control_flow_expression(
             out_expression
         );
     }
+    if (expression->kind == MYLITE_SQL_AST_ELT_FUNCTION) {
+        return plan_row_scalar_elt_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (row_scalar_expression_is_string_function(expression->kind)) {
         return plan_row_scalar_string_expression(
             database,
@@ -322,6 +333,7 @@ static bool row_scalar_expression_is_nested_value_argument(
     case MYLITE_SQL_AST_CONCAT_FUNCTION:
     case MYLITE_SQL_AST_CONCAT_WS_FUNCTION:
     case MYLITE_SQL_AST_CONCAT_WS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_ELT_FUNCTION:
     case MYLITE_SQL_AST_GREATEST_FUNCTION:
     case MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_LEAST_FUNCTION:
@@ -445,7 +457,8 @@ static int plan_row_scalar_integer_like_argument(
             out_expression
         );
     }
-    if (has_source && row_scalar_expression_is_integer_like_runtime_argument(expression)) {
+    if (row_scalar_expression_contains_integer_arithmetic_attempt(expression) ||
+        (has_source && row_scalar_expression_is_integer_like_runtime_argument(expression))) {
         return plan_row_scalar_integer_arithmetic_expression(
             database,
             expression,

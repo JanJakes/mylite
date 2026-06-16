@@ -33,6 +33,7 @@ struct expected_query {
 };
 
 static int test_no_source_dual_and_do_elt(void);
+static int test_table_backed_elt(void);
 static int test_elt_diagnostics(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -64,6 +65,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_no_source_dual_and_do_elt();
+    failures += test_table_backed_elt();
     failures += test_elt_diagnostics();
 
     return failures == 0 ? 0 : 1;
@@ -100,6 +102,12 @@ static int test_no_source_dual_and_do_elt(void) {
     };
     static const char *const columns_dual[] = {"elt_alias", "plus_index"};
     static const char *const values_dual[] = {"second", "x"};
+    static const char *const columns_expression[] = {
+        "index_expr",
+        "value_expr",
+        "unicode_value",
+    };
+    static const char *const values_expression[] = {"a", "1", "\xC3\xA9"};
     static const char *const columns_row_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_after_select[] = {"-1", "0"};
     static const char *const values_after_do[] = {"0", "0"};
@@ -141,6 +149,19 @@ static int test_no_source_dual_and_do_elt(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT ELT(1 + 0, 'a') AS index_expr, "
+                   "ELT(1, 1 + 0) AS value_expr, "
+                   "ELT(1, '\xC3\xA9') AS unicode_value",
+            .columns = columns_expression,
+            .column_count = sizeof(columns_expression) / sizeof(columns_expression[0]),
+            .values = values_expression,
+            .row_count = 1U,
+            .context = "expression elt",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT ROW_COUNT(), @@warning_count",
             .columns = columns_row_status,
             .column_count = sizeof(columns_row_status) / sizeof(columns_row_status[0]),
@@ -175,12 +196,73 @@ static int test_no_source_dual_and_do_elt(void) {
     return failures;
 }
 
+static int test_table_backed_elt(void) {
+    static const char *const columns_table[] = {
+        "id",
+        "selected",
+        "expr_index",
+        "len_index",
+        "nested_value",
+    };
+    static const char *const values_table[] = {
+        "1", "alpha", "alpha", "medium", "prefix-alpha",
+        "2", "beta!", "last",  "short",  "prefix-fallback",
+        "3", NULL,    NULL,    NULL,     NULL,
+        "4", NULL,    NULL,    "long",   NULL,
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += open_app_database(&database, "table", path, sizeof(path));
+    failures += execute_ok(
+        database,
+        "CREATE TABLE elt_values ("
+        "id INT, value_text VARCHAR(20), number_value INT, created_on DATE)",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO elt_values VALUES "
+        "(1, 'alpha', 10, '2024-01-02'), "
+        "(2, 'beta', 20, '2024-03-04'), "
+        "(3, NULL, NULL, NULL), "
+        "(4, 'beyond', 40, '2024-05-06')",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, "
+                   "ELT(id, value_text, CONCAT(value_text, '!'), number_value) AS selected, "
+                   "ELT(id + 1, 'zero', value_text, 'last') AS expr_index, "
+                   "ELT(LENGTH(value_text) - 3, 'short', 'medium', 'long') AS len_index, "
+                   "CONCAT('prefix-', ELT(id, value_text, 'fallback')) AS nested_value "
+                   "FROM elt_values ORDER BY id",
+            .columns = columns_table,
+            .column_count = sizeof(columns_table) / sizeof(columns_table[0]),
+            .values = values_table,
+            .row_count = 4U,
+            .context = "table-backed elt",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_elt_diagnostics(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
 
     failures += open_app_database(&database, "diagnostics", path, sizeof(path));
+    failures += execute_ok(
+        database,
+        "CREATE TABLE elt_bad (id INT, approximate_value DOUBLE, binary_value VARBINARY(10))",
+        NULL
+    );
     failures += execute_error(
         database,
         "SELECT ELT()",
@@ -201,25 +283,6 @@ static int test_elt_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT ELT(1 + 0, 'a')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "ELT() index supports only signed integer, boolean, and NULL literals",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT ELT(1, 1 + 0)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "ELT() supports only string, integer, boolean, and NULL value arguments",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT ELT(9223372036854775808, 'a')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -233,16 +296,27 @@ static int test_elt_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "ELT() value integer literals must fit the signed 64-bit range",
+            .message_part = "row-scalar SELECT integer literals must fit the signed 64-bit range",
         }
     );
     failures += execute_error(
         database,
-        "SELECT ELT(1, '\xC3\xA9')",
+        "SELECT ELT(approximate_value, 'a') FROM elt_bad",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "ELT() string literals support only ASCII values",
+            .message_part =
+                "ELT() index supports only signed integer, boolean, NULL, integer descriptor, "
+                "and supported integer expression arguments",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ELT(id, binary_value) FROM elt_bad",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "ELT() does not support binary columns",
         }
     );
 

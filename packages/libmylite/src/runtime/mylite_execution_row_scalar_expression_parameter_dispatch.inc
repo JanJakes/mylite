@@ -47,6 +47,8 @@ static int bind_row_scalar_expression_parameters(
         return rc;
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
         return bind_row_scalar_field_expression_parameters(statement, expression, parameter_index);
+    case PLANNED_ROW_SCALAR_EXPRESSION_ELT:
+        return bind_row_scalar_elt_expression_parameters(statement, expression, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
         return bind_row_scalar_reversed_arguments_parameters(

@@ -153,6 +153,17 @@ static int plan_row_scalar_special_expression(
             out_expression
         );
     }
+    if (expression->kind == MYLITE_SQL_AST_ELT_FUNCTION) {
+        return plan_row_scalar_elt_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (expression->kind == MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR) {
         set_native_function_parameter_count_error(database, "GREATEST");
         return MYLITE_ERROR;
@@ -567,6 +578,7 @@ static int row_scalar_collate_base_charset(
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ELT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_COMPARISON:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:

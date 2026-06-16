@@ -255,6 +255,246 @@ static enum planned_row_scalar_field_domain row_scalar_field_column_domain(
     return PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
 }
 
+static int plan_row_scalar_elt_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *arguments = NULL;
+    const struct mylite_sql_ast_node *argument = NULL;
+    size_t argument_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (mylite_sql_ast_node_child_count(expression) != 1U) {
+        set_native_function_parameter_count_error(database, "ELT");
+        return MYLITE_ERROR;
+    }
+    arguments = child_at(expression, 0U);
+    if (arguments == NULL || arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        set_native_function_parameter_count_error(database, "ELT");
+        return MYLITE_ERROR;
+    }
+    argument_count = mylite_sql_ast_node_child_count(arguments);
+    if (argument_count < 2U) {
+        set_native_function_parameter_count_error(database, "ELT");
+        return MYLITE_ERROR;
+    }
+    if (argument_count > SIZE_MAX / sizeof(*out_expression->arguments)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(argument_count, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_ELT;
+    out_expression->argument_count = argument_count;
+
+    rc = plan_row_scalar_integer_like_argument(
+        database,
+        child_at(arguments, 0U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        "ELT() index supports only signed integer, boolean, NULL, integer descriptor, and "
+        "supported integer expression arguments",
+        "ELT() index literals must fit the signed 64-bit range",
+        &out_expression->arguments[0]
+    );
+    argument = child_at(arguments, 1U);
+    for (size_t argument_index = 1U;
+         rc == MYLITE_OK && argument_index < argument_count && argument != NULL;
+         ++argument_index) {
+        rc = plan_row_scalar_elt_value_argument(
+            database,
+            argument,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_expression->arguments[argument_index]
+        );
+        argument = argument->next_sibling;
+    }
+    if (rc == MYLITE_OK && argument != NULL) {
+        set_parse_error(database, NULL);
+        rc = MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(out_expression);
+    }
+    return rc;
+}
+
+static int plan_row_scalar_elt_value_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "ELT() supports only string, integer, boolean, NULL, session scalar, system "
+            "variable, descriptor column, and supported row-scalar value arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+            int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_elt_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (has_source && (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION ||
+                       expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION)) {
+        set_unsupported_error(
+            database,
+            "ELT() does not support RAND() arguments in table-backed SELECT"
+        );
+        return MYLITE_ERROR;
+    }
+    if (row_scalar_expression_is_nested_value_argument(expression)) {
+        return plan_row_scalar_nested_value_argument(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (row_scalar_expression_contains_integer_arithmetic_attempt(expression)) {
+        return plan_row_scalar_integer_arithmetic_expression(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (!mylite_execution_string_replace_scalar_argument_is_admitted(expression)) {
+        set_unsupported_error(
+            database,
+            "ELT() supports only string, integer, boolean, NULL, session scalar, system "
+            "variable, descriptor column, and supported row-scalar value arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        return plan_row_scalar_literal_value(database, expression, out_expression);
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return plan_row_scalar_integer_value(database, expression, out_expression);
+    }
+    return plan_row_scalar_session_value(database, expression, out_expression);
+}
+
+static int plan_row_scalar_elt_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    size_t source_index = 0U;
+    int rc = resolve_descriptor_column_reference_with_source_index(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT ELT() supports only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column,
+        &source_index
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!elt_column_descriptor_is_supported(database, &column)) {
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_expression->column = column;
+    out_expression->column_has_source_index = select_source_context_is_joined(source_context);
+    out_expression->column_source_index = source_index;
+    return MYLITE_OK;
+}
+
+static bool elt_column_descriptor_is_supported(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column != NULL && strcmp(column->physical_type, "INTEGER") == 0) {
+        return true;
+    }
+    if (column_descriptor_is_decimal(column) || column_descriptor_is_string_family(column) ||
+        column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
+        column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
+        column_descriptor_is_year(column)) {
+        return true;
+    }
+    if (column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column)) {
+        set_unsupported_error(database, "ELT() does not support binary columns");
+        return false;
+    }
+    if (column_descriptor_is_approximate(column)) {
+        set_unsupported_error(database, "ELT() does not support approximate columns");
+        return false;
+    }
+
+    set_unsupported_error(
+        database,
+        "ELT() supports only integer, DECIMAL, nonbinary string, YEAR, and temporal columns"
+    );
+    return false;
+}
+
 static int plan_row_scalar_greatest_least_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -1084,6 +1324,7 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_CONCAT_WS_FUNCTION ||
             current->kind == MYLITE_SQL_AST_CONCAT_WS_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_FIELD_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_ELT_FUNCTION ||
             current->kind == MYLITE_SQL_AST_GREATEST_FUNCTION ||
             current->kind == MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_LEAST_FUNCTION ||
@@ -1139,6 +1380,7 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_SOUNDEX_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_QUOTE_FUNCTION ||
             current->kind == MYLITE_SQL_AST_QUOTE_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_ELT_FUNCTION ||
             current->kind == MYLITE_SQL_AST_SUBSTRING_INDEX_FUNCTION ||
             current->kind == MYLITE_SQL_AST_FIND_IN_SET_FUNCTION ||
             current->kind == MYLITE_SQL_AST_STRCMP_FUNCTION ||

@@ -165,6 +165,7 @@ bitmask_value:
   | TRUE
   | FALSE
   | NULL
+  | supported_integer_arithmetic_expression
   | supported_integer_scalar_function
   | descriptor_integer_column_reference        -- table-backed SELECT only
   | supported_integer_row_scalar_expression    -- table-backed SELECT only
@@ -177,6 +178,7 @@ bit_count_value:
   | TRUE
   | FALSE
   | NULL
+  | supported_integer_arithmetic_expression
   | supported_integer_scalar_function
   | descriptor_integer_column_reference        -- table-backed SELECT only
   | supported_integer_row_scalar_expression    -- table-backed SELECT only
@@ -209,16 +211,16 @@ Supported descriptor column families for `string_value` arguments are:
 - `CHAR`, `VARCHAR`, and baseline `TEXT` family.
 
 The bitmask and `number_of_bits` arguments admit signed-64 integer, boolean,
-and `NULL` scalar values, direct supported integer-domain numeric and string-length scalar functions,
-descriptor integer columns, and the existing supported table-backed integer
-row-scalar expression subset. That row-scalar subset includes integer
-arithmetic over admitted operands, supported integer-domain numeric functions, string-length
-functions, `UNIX_TIMESTAMP()`, and numeric temporal extractors.
-Warning-producing string/decimal/float bitmask conversion,
-string/decimal/float count conversion, unsigned magnitudes beyond the signed-64
-parser envelope, binary string values, `BIT`, approximate numeric values,
-`ENUM`, `SET`, `JSON`, spatial values, parameters, and user variables are
-deferred.
+and `NULL` scalar values, direct supported integer arithmetic, supported
+integer-domain numeric and string-length scalar functions, descriptor integer
+columns, and the existing supported table-backed integer row-scalar expression
+subset. That row-scalar subset includes integer arithmetic over admitted
+operands, supported integer-domain numeric functions, string-length functions,
+`UNIX_TIMESTAMP()`, and numeric temporal extractors. Warning-producing
+string/decimal/float bitmask conversion, string/decimal/float count conversion,
+unsigned magnitudes beyond the signed-64 parser envelope, binary string values,
+`BIT`, approximate numeric values, `ENUM`, `SET`, `JSON`, spatial values,
+parameters, and user variables are deferred.
 
 The following remain outside this phase:
 

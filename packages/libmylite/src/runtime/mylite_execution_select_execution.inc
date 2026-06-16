@@ -129,6 +129,8 @@ static bool select_statement_is_row_scalar_projection_attempt(
             (row_scalar_expression_contains_row_function(expression) ||
              (expression != NULL && expression->kind == MYLITE_SQL_AST_EXISTS_PREDICATE) ||
              (has_row_source && row_scalar_expression_contains_numeric_function(expression)) ||
+             (has_row_source &&
+              row_scalar_expression_contains_base_conversion_function(expression)) ||
              (has_row_source && row_scalar_expression_contains_rand_function(expression)) ||
              (has_row_source && row_scalar_expression_contains_any_value_function(expression)) ||
              (has_row_source && row_scalar_expression_contains_conversion_expression(expression)) ||
@@ -1841,6 +1843,18 @@ static int populate_row_scalar_expression_result_column_descriptor(
             }
         );
         return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
+        populate_scalar_connection_string_result_column_descriptor(
+            database,
+            descriptor,
+            (struct scalar_connection_string_result_column_shape){
+                .display_length = (base_conversion_text_capacity - 1U) *
+                                  scalar_connection_max_bytes_per_character(database),
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
         populate_uuid_string_result_column_descriptor(descriptor, true);
         return MYLITE_OK;
@@ -2187,6 +2201,7 @@ static int populate_window_value_function_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
         break;
     }
 

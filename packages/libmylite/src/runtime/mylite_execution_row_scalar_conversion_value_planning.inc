@@ -97,6 +97,17 @@ static int plan_row_scalar_non_control_flow_expression(
             out_expression
         );
     }
+    if (has_source && row_scalar_base_conversion_kind_is_supported(expression->kind)) {
+        return plan_row_scalar_base_conversion_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (row_scalar_conversion_kind_from_expression(expression) !=
         PLANNED_ROW_SCALAR_CONVERSION_NONE) {
         return plan_row_scalar_conversion_expression(
@@ -322,6 +333,7 @@ static bool row_scalar_expression_is_nested_value_argument(
         row_scalar_expression_is_string_function(expression->kind) ||
         is_row_scalar_json_expression(expression) ||
         row_scalar_numeric_function_kind_is_supported(expression->kind) ||
+        row_scalar_base_conversion_kind_is_supported(expression->kind) ||
         row_scalar_numeric_function_kind_is_error(expression->kind) ||
         row_scalar_conversion_kind_from_expression(expression) !=
             PLANNED_ROW_SCALAR_CONVERSION_NONE ||

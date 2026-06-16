@@ -2502,6 +2502,8 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
         return PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
+    case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
+        return PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING;
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
         if (expression->conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_SIGNED ||
             expression->conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_UNSIGNED) {

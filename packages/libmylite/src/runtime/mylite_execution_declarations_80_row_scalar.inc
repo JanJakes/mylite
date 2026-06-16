@@ -163,6 +163,33 @@ static enum planned_row_scalar_numeric_function_kind row_scalar_numeric_function
 static const char *row_scalar_numeric_function_display_name(enum mylite_sql_ast_node_kind ast_kind);
 static bool row_scalar_numeric_function_kind_is_error(enum mylite_sql_ast_node_kind ast_kind);
 static bool row_scalar_numeric_function_kind_is_supported(enum mylite_sql_ast_node_kind ast_kind);
+static int plan_row_scalar_base_conversion_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_base_conversion_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *function_name,
+    struct planned_row_scalar_expression *out_argument
+);
+static enum planned_row_scalar_base_conversion_kind row_scalar_base_conversion_kind_from_ast(
+    enum mylite_sql_ast_node_kind ast_kind
+);
+static const char *row_scalar_base_conversion_display_name(
+    enum mylite_sql_ast_node_kind ast_kind
+);
+static bool row_scalar_base_conversion_kind_is_error(enum mylite_sql_ast_node_kind ast_kind);
+static bool row_scalar_base_conversion_kind_is_supported(enum mylite_sql_ast_node_kind ast_kind);
 static int normalize_row_scalar_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *source_expression,
@@ -3079,6 +3106,9 @@ static bool row_scalar_expression_contains_row_function(
     const struct mylite_sql_ast_node *expression
 );
 static bool row_scalar_expression_contains_numeric_function(
+    const struct mylite_sql_ast_node *expression
+);
+static bool row_scalar_expression_contains_base_conversion_function(
     const struct mylite_sql_ast_node *expression
 );
 static bool row_scalar_expression_contains_conversion_expression(

@@ -206,6 +206,17 @@ static int plan_row_scalar_special_expression(
             out_expression
         );
     }
+    if (has_source && row_scalar_base_conversion_kind_is_supported(expression->kind)) {
+        return plan_row_scalar_base_conversion_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     rc = plan_row_scalar_temporal_function_expression(
         database,
         expression,
@@ -642,6 +653,7 @@ static int row_scalar_collate_base_charset(
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMEDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
         break;
     }
 

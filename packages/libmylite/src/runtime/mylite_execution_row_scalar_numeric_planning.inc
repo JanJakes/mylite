@@ -259,6 +259,7 @@ static int validate_row_scalar_numeric_function_argument(
     case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
         break;
     }
 
@@ -272,10 +273,9 @@ static int validate_row_scalar_numeric_function_argument(
 static bool row_scalar_numeric_function_column_descriptor_is_supported(
     const struct mylite_catalog_column_descriptor *column
 ) {
-    return column != NULL && (strcmp(column->physical_type, "INTEGER") == 0 ||
-                              column_descriptor_is_decimal(column) ||
-                              column_descriptor_is_approximate(column) ||
-                              column_descriptor_is_string_family(column));
+    return column != NULL &&
+           (strcmp(column->physical_type, "INTEGER") == 0 || column_descriptor_is_decimal(column) ||
+            column_descriptor_is_approximate(column) || column_descriptor_is_string_family(column));
 }
 
 static enum planned_row_scalar_numeric_function_kind row_scalar_numeric_function_kind_from_ast(
@@ -458,4 +458,180 @@ static bool row_scalar_numeric_function_kind_is_error(enum mylite_sql_ast_node_k
 static bool row_scalar_numeric_function_kind_is_supported(enum mylite_sql_ast_node_kind ast_kind) {
     return row_scalar_numeric_function_kind_from_ast(ast_kind) != PLANNED_ROW_SCALAR_NUMERIC_NONE ||
            row_scalar_numeric_function_kind_is_error(ast_kind);
+}
+
+static int plan_row_scalar_base_conversion_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum planned_row_scalar_base_conversion_kind function_kind =
+        PLANNED_ROW_SCALAR_BASE_CONVERSION_NONE;
+    const char *function_name = NULL;
+    size_t argument_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_expression == NULL) {
+        return MYLITE_MISUSE;
+    }
+    planned_row_scalar_expression_deinit(out_expression);
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    function_name = row_scalar_base_conversion_display_name(expression->kind);
+    if (row_scalar_base_conversion_kind_is_error(expression->kind)) {
+        set_native_function_parameter_count_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+
+    function_kind = row_scalar_base_conversion_kind_from_ast(expression->kind);
+    if (function_kind == PLANNED_ROW_SCALAR_BASE_CONVERSION_NONE || function_name == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    argument_count = mylite_sql_ast_node_child_count(expression);
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(argument_count, sizeof(*out_expression->arguments));
+    if (argument_count != 0U && out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION;
+    out_expression->base_conversion_kind = function_kind;
+    out_expression->argument_count = argument_count;
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < argument_count;
+         ++argument_index) {
+        rc = plan_row_scalar_base_conversion_argument(
+            database,
+            child_at(expression, argument_index),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            function_name,
+            &out_expression->arguments[argument_index]
+        );
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(out_expression);
+    }
+    return rc;
+}
+
+static int plan_row_scalar_base_conversion_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *function_name,
+    struct planned_row_scalar_expression *out_argument
+) {
+    enum {
+        base_conversion_unsupported_message_capacity = 192,
+        base_conversion_range_message_capacity = 96,
+    };
+
+    char unsupported_message[base_conversion_unsupported_message_capacity];
+    char range_message[base_conversion_range_message_capacity];
+    int written = 0;
+
+    if (function_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    written = snprintf(
+        unsupported_message,
+        sizeof(unsupported_message),
+        "%s() supports only signed integer, boolean, NULL, integer descriptor, "
+        "and supported integer expression arguments",
+        function_name
+    );
+    if (written < 0 || (size_t)written >= sizeof(unsupported_message)) {
+        set_runtime_error(database, "failed to format base conversion support message");
+        return MYLITE_ERROR;
+    }
+    written = snprintf(
+        range_message,
+        sizeof(range_message),
+        "%s() arguments must fit the signed 64-bit range",
+        function_name
+    );
+    if (written < 0 || (size_t)written >= sizeof(range_message)) {
+        set_runtime_error(database, "failed to format base conversion range message");
+        return MYLITE_ERROR;
+    }
+
+    return plan_row_scalar_integer_like_argument(
+        database,
+        argument,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        unsupported_message,
+        range_message,
+        out_argument
+    );
+}
+
+static enum planned_row_scalar_base_conversion_kind row_scalar_base_conversion_kind_from_ast(
+    enum mylite_sql_ast_node_kind ast_kind
+) {
+    switch (ast_kind) {
+    case MYLITE_SQL_AST_BIN_FUNCTION:
+        return PLANNED_ROW_SCALAR_BASE_CONVERSION_BIN;
+    case MYLITE_SQL_AST_OCT_FUNCTION:
+        return PLANNED_ROW_SCALAR_BASE_CONVERSION_OCT;
+    case MYLITE_SQL_AST_CONV_FUNCTION:
+        return PLANNED_ROW_SCALAR_BASE_CONVERSION_CONV;
+    default:
+        break;
+    }
+    return PLANNED_ROW_SCALAR_BASE_CONVERSION_NONE;
+}
+
+static const char *row_scalar_base_conversion_display_name(enum mylite_sql_ast_node_kind ast_kind) {
+    switch (ast_kind) {
+    case MYLITE_SQL_AST_BIN_FUNCTION:
+    case MYLITE_SQL_AST_BIN_ARGUMENT_COUNT_ERROR:
+        return "BIN";
+    case MYLITE_SQL_AST_OCT_FUNCTION:
+    case MYLITE_SQL_AST_OCT_ARGUMENT_COUNT_ERROR:
+        return "OCT";
+    case MYLITE_SQL_AST_CONV_FUNCTION:
+    case MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR:
+        return "CONV";
+    default:
+        break;
+    }
+    return NULL;
+}
+
+static bool row_scalar_base_conversion_kind_is_error(enum mylite_sql_ast_node_kind ast_kind) {
+    switch (ast_kind) {
+    case MYLITE_SQL_AST_BIN_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_OCT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_CONV_ARGUMENT_COUNT_ERROR:
+        return true;
+    default:
+        break;
+    }
+    return false;
+}
+
+static bool row_scalar_base_conversion_kind_is_supported(enum mylite_sql_ast_node_kind ast_kind) {
+    return row_scalar_base_conversion_kind_from_ast(ast_kind) !=
+               PLANNED_ROW_SCALAR_BASE_CONVERSION_NONE ||
+           row_scalar_base_conversion_kind_is_error(ast_kind);
 }

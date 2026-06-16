@@ -20,6 +20,8 @@ enum {
     core_column_count = 9,
     parsing_column_count = 8,
     boundary_column_count = 10,
+    row_column_count = 6,
+    row_warning_column_count = 2,
     null_short_circuit_column_count = 4,
     warning_column_count = 5,
     show_warning_column_count = 3,
@@ -88,6 +90,8 @@ int main(void) {
 }
 
 static int test_conv_values_and_file_safety(void) {
+    static const char row_all_ones[] =
+        "1111111111111111111111111111111111111111111111111111111111111111";
     static const char *const core_columns[] = {
         "CONV(NULL,10,2)",
         "CONV(10,NULL,2)",
@@ -154,6 +158,19 @@ static int test_conv_values_and_file_safety(void) {
         "18446744073709551615",
         "FFFFFFFFFFFFFFFF",
     };
+    static const char *const row_columns[] = {
+        "id",
+        "CONV(id,10,2)",
+        "CONV(id,10,16)",
+        "CONV(id,10,-10)",
+        "CASE WHEN id=10 THEN CONV(id,10,16) END",
+        "CONCAT('x',CONV(id+1,10,36))",
+    };
+    static const char *const row_values[] = {
+        NULL, NULL,     NULL, NULL, NULL,   NULL,  "-1", row_all_ones, "FFFFFFFFFFFFFFFF",
+        "-1", NULL,     "x0", "10", "1010", "A",   "10", "A",          "xB",
+        "35", "100011", "23", "35", NULL,   "x10",
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -173,6 +190,8 @@ static int test_conv_values_and_file_safety(void) {
     failures += execute_ok(database, "CREATE DATABASE app", NULL);
     failures += execute_ok(database, "USE app", NULL);
     failures += execute_ok(database, "CREATE TABLE catalog_guard(id INT)", NULL);
+    failures += execute_ok(database, "CREATE TABLE row_values(id INT)", NULL);
+    failures += execute_ok(database, "INSERT INTO row_values VALUES (NULL),(10),(35),(-1)", NULL);
     session = mylite_connection_session_state(database);
     catalog_generation = session->catalog_generation;
     sqlite_schema_generation = session->sqlite_schema_generation;
@@ -227,6 +246,22 @@ static int test_conv_values_and_file_safety(void) {
             .context = "CONV boundaries",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id,CONV(id,10,2),CONV(id,10,16),CONV(id,10,-10),"
+                   "CASE WHEN id=10 THEN CONV(id,10,16) END,"
+                   "CONCAT('x',CONV(id+1,10,36)) "
+                   "FROM row_values ORDER BY id",
+            .columns = row_columns,
+            .column_count = row_column_count,
+            .values = row_values,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "table-backed CONV values",
+        }
+    );
 
     failures += expect_int64(
         (int64_t)session->catalog_generation,
@@ -259,6 +294,20 @@ static int test_conv_warnings_and_do(void) {
         "ROW_COUNT()",
     };
     static const char *const warning_values[] = {"0", "0", "1", "0", "0"};
+    static const char *const row_warning_columns[] = {
+        "id",
+        "CONV(id,from_base,to_base)",
+    };
+    static const char *const row_warning_values[] = {
+        "2",
+        "0",
+        "9",
+        "0",
+        "12",
+        "5",
+        "19",
+        "1",
+    };
     static const char *const null_short_circuit_columns[] = {
         "CONV(NULL,5 DIV 0,2)",
         "CONV(10,NULL,5 DIV 0)",
@@ -294,6 +343,15 @@ static int test_conv_warnings_and_do(void) {
 
     failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open warning db");
     failures += execute_ok(database, "DO 0", NULL);
+    failures += execute_ok(database, "CREATE DATABASE app", NULL);
+    failures += execute_ok(database, "USE app", NULL);
+    failures +=
+        execute_ok(database, "CREATE TABLE row_warnings(id INT, from_base INT, to_base INT)", NULL);
+    failures += execute_ok(
+        database,
+        "INSERT INTO row_warnings VALUES (2,2,10),(9,8,10),(12,3,10),(19,8,10)",
+        NULL
+    );
     failures += expect_query(
         database,
         (struct expected_query){
@@ -319,6 +377,34 @@ static int test_conv_warnings_and_do(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "CONV NULL short-circuit diagnostics",
+        }
+    );
+
+    failures += execute_ok(database, "DO 0", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id,CONV(id,from_base,to_base) FROM row_warnings ORDER BY id",
+            .columns = row_warning_columns,
+            .column_count = row_warning_column_count,
+            .values = row_warning_values,
+            .row_count = 4U,
+            .warning_count = 2U,
+            .affected_rows = 0,
+            .context = "table-backed CONV digit warnings",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = show_warning_columns,
+            .column_count = show_warning_column_count,
+            .values = digit_warning_rows,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "table-backed CONV warning diagnostics",
         }
     );
 
@@ -534,18 +620,6 @@ static int test_conv_errors_and_unsupported_forms(void) {
             .code = 0,
             .sqlstate = "42000",
             .message_part = "CONV() support",
-        }
-    );
-    failures += execute_ok(database, "CREATE DATABASE app", NULL);
-    failures += execute_ok(database, "USE app", NULL);
-    failures += execute_ok(database, "CREATE TABLE t(id INT)", NULL);
-    failures += execute_error(
-        database,
-        "SELECT CONV(id,10,2) FROM t",
-        (struct expected_sql_error){
-            .code = 0,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
         }
     );
     failures += execute_error(

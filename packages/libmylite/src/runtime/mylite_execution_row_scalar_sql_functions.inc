@@ -211,6 +211,45 @@ static const char *row_scalar_numeric_function_sql_name(
     return NULL;
 }
 
+static int append_row_scalar_base_conversion_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    const char *function_name = NULL;
+
+    if (expression == NULL ||
+        expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION) {
+        return MYLITE_ERROR;
+    }
+    function_name = row_scalar_base_conversion_sql_name(expression->base_conversion_kind);
+    if (function_name == NULL) {
+        return MYLITE_ERROR;
+    }
+    return append_row_scalar_registered_function_expression_sql(
+        string,
+        function_name,
+        expression,
+        next_parameter
+    );
+}
+
+static const char *row_scalar_base_conversion_sql_name(
+    enum planned_row_scalar_base_conversion_kind kind
+) {
+    switch (kind) {
+    case PLANNED_ROW_SCALAR_BASE_CONVERSION_BIN:
+        return "_mylite_bin";
+    case PLANNED_ROW_SCALAR_BASE_CONVERSION_OCT:
+        return "_mylite_oct";
+    case PLANNED_ROW_SCALAR_BASE_CONVERSION_CONV:
+        return "_mylite_conv";
+    case PLANNED_ROW_SCALAR_BASE_CONVERSION_NONE:
+        break;
+    }
+    return NULL;
+}
+
 static int append_row_scalar_uuid_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -276,6 +315,7 @@ static int append_row_scalar_uuid_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
@@ -428,6 +468,7 @@ static int append_row_scalar_uuid_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
@@ -541,6 +582,7 @@ static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_exp
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_ELT:
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:

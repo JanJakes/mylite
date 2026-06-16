@@ -285,11 +285,23 @@ Error	1690	BIGINT value is out of range in '(3037000500 * 3037000500)'
      SHOW WARNINGS; SELECT @@warning_count,@@error_count,ROW_COUNT();" \
     "$DATABASE"
 
+expect_output_with_headers \
+    "row-backed conv values" \
+    "id	CONV(id,10,2)	CONV(id,10,16)	CONV(id,10,-10)	CASE WHEN id=10 THEN CONV(id,10,16) END	CONCAT('x',CONV(id+1,10,36))
+-1	1111111111111111111111111111111111111111111111111111111111111111	FFFFFFFFFFFFFFFF	-1	NULL	x0
+10	1010	A	10	A	xB
+NULL	NULL	NULL	NULL	NULL	NULL" \
+    "SELECT id,CONV(id,10,2),CONV(id,10,16),CONV(id,10,-10),
+            CASE WHEN id=10 THEN CONV(id,10,16) END,
+            CONCAT('x',CONV(id+1,10,36))
+       FROM t ORDER BY id IS NULL,id;" \
+    "$DATABASE"
+
 accepted_but_deferred=$(run_mysql_with_headers \
     "SELECT CONV('6E',18,8),CONV('a',16,2),CONV('zz',36,10),
             CONV(12.75,10,2),CONV(-12.75,10,-2),CONV(1e1,10,2),
             CONV(X'40',10,2),CONV(0x40,10,2),CONV(b'1111',10,2);
-     SELECT id,txt,CONV(id,10,2),CONV(txt,10,2),CONV(bits,10,2)
+     SELECT id,txt,CONV(txt,10,2),CONV(bits,10,2)
        FROM t ORDER BY id IS NULL,id;" \
     "$DATABASE"
 )
@@ -297,10 +309,10 @@ expect_value \
     "mysql accepted forms deferred by this slice" \
     "CONV('6E',18,8)	CONV('a',16,2)	CONV('zz',36,10)	CONV(12.75,10,2)	CONV(-12.75,10,-2)	CONV(1e1,10,2)	CONV(X'40',10,2)	CONV(0x40,10,2)	CONV(b'1111',10,2)
 172	1010	1295	1100	-1100	1010	1000000	1000000	1111
-id	txt	CONV(id,10,2)	CONV(txt,10,2)	CONV(bits,10,2)
--1	-1	1111111111111111111111111111111111111111111111111111111111111111	1111111111111111111111111111111111111111111111111111111111111111	10
-10	10	1010	1010	1111
-NULL	NULL	NULL	NULL	NULL" \
+id	txt	CONV(txt,10,2)	CONV(bits,10,2)
+-1	-1	1111111111111111111111111111111111111111111111111111111111111111	10
+10	10	1010	1111
+NULL	NULL	NULL	NULL" \
     "$accepted_but_deferred"
 
 printf '%s\n' "mysql_baseline_conv_function_expectations: ok"

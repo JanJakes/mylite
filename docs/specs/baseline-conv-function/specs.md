@@ -2,7 +2,7 @@
 
 ## Summary
 
-This phase admits a narrow MyLite-owned base-conversion scalar function for
+This scalar phase admits a narrow MyLite-owned base-conversion function for
 no-source, `FROM DUAL`, and `DO` execution:
 
 ```sql
@@ -18,11 +18,12 @@ returns uppercase digits in `ABS(to_base)`. A positive `to_base` renders the
 Any `NULL` argument returns `NULL`. Invalid absolute base values outside
 `2..36` return `NULL` without warning.
 
-This is not a general expression, string, or table-column conversion engine.
-The phase does not admit table-backed `CONV(column, ...)`, string/decimal/float/
-hex/bit coercion, casts, user variables, parameters, subqueries, CTEs,
-expression metadata, `CONV()` results nested inside parent expressions, or
-arbitrary SQLite pass-through.
+This is not a general expression, string, or table-column conversion engine. A
+later row-backed slice adds single-table integer-domain `CONV()` projection and
+nesting. The combined baseline still does not admit string/decimal/float/hex/bit
+row coercion, casts outside the documented scalar subset, user variables,
+parameters, subqueries, CTEs, exact expression metadata, or arbitrary SQLite
+pass-through.
 
 ## Compatibility Authority
 
@@ -74,8 +75,9 @@ against MySQL 8.4.9 establish these expectations for this slice:
 - `CONV()`, `CONV(1)`, `CONV(1,10)`, and `CONV(1,10,2,3)` raise MySQL error
   `1582` / SQLSTATE `42000`, with the native function name in the message; and
 - MySQL accepts broader forms such as strings, binary strings, hex literals,
-  bit literals, decimals, floats, casts, and table-backed columns. Those remain
-  deferred by this MyLite baseline.
+  bit literals, decimals, floats, and casts. Those remain deferred by this
+  MyLite baseline. Single-table integer-domain row-backed columns are covered
+  by `baseline-row-base-conversion-functions`.
 
 ## Ownership Boundaries
 
@@ -160,9 +162,10 @@ current top-level numeric bitwise domain: `~`, `&`, `|`, `^`, `<<`, and `>>`
 over admitted signed-64 scalar arithmetic operands, with unsigned 64-bit
 results.
 
-`CONV()` is not admitted as a child of arithmetic, comparison, logical, `IS`,
-`CASE`, control-flow functions, predicates, table-backed projection, ordering,
-grouping, DML expressions, or another `CONV()` in this phase.
+In this scalar phase, `CONV()` is not admitted as a child of arithmetic,
+comparison, logical, `IS`, `CASE`, control-flow functions, predicates,
+table-backed projection, ordering, grouping, DML expressions, or another
+`CONV()`.
 
 ### MyLite Lemon Snippet
 
@@ -278,13 +281,17 @@ The following remain unsupported and must be rejected deterministically by
 parser syntax errors, native arity errors, or MyLite unsupported-feature
 diagnostics depending on where they enter the existing grammar:
 
-- table-backed `CONV(column, ...)` or any `FROM` source other than `DUAL`;
+- table-backed `CONV(column, ...)` outside the later single-table
+  integer-domain row-backed slice or any scalar `FROM` source other than
+  `DUAL`;
 - string, binary string, hex, bit, decimal, float, scientific-notation, date,
   time, JSON, and spatial argument coercions;
 - base arguments from bitwise expressions, session variables, system variables,
   parameters, casts, or user variables;
-- `CONV()` nested inside arithmetic, bitwise, comparison, logical, `IS`,
-  `CASE`, control-flow functions, predicates, ordering, grouping, or DML;
+- scalar-phase `CONV()` nested inside arithmetic, bitwise, comparison, logical,
+  `IS`, `CASE`, control-flow functions, predicates, ordering, grouping, or
+  DML, except where the later row-backed slice explicitly admits integer-domain
+  projection/nesting;
 - expression metadata and MySQL character set/collation metadata for the
   returned string;
 - subqueries, CTEs, window functions, aggregate arguments, stored functions,
@@ -324,8 +331,8 @@ Update `COMPATIBILITY.md`,
 `docs/compatibility/functions-numeric-math.md`,
 `docs/compatibility/sql-query-expressions.md`,
 `docs/compatibility/sql-stored-programs.md`, and any operator/literal detail
-docs touched by the admitted scalar surface. Use partial/limited wording for
-the exact no-source/`DUAL`/`DO` integer-domain `CONV()` subset. Do not imply
-support for table-backed conversion, string/decimal/float/hex/bit conversion,
-general expression support, arbitrary function nesting, full metadata,
-collations, or SQLite pass-through.
+docs touched by the admitted scalar or later row-backed surface. Use
+partial/limited wording for the documented integer-domain `CONV()` subsets. Do
+not imply support for broad table-backed conversion, string/decimal/float/hex/
+bit conversion, general expression support, arbitrary function nesting, full
+metadata, collations, or SQLite pass-through.

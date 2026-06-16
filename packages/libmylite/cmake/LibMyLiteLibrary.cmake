@@ -39,6 +39,7 @@ endif()
 
 add_library(mylite STATIC
   "${MYLITE_SQL_PARSE_C}"
+  src/runtime/mylite_base_conversion.c
   src/runtime/mylite_bitwise_aggregate.c
   src/runtime/mylite_cast_convert.c
   src/runtime/mylite_catalog.c

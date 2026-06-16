@@ -16,6 +16,8 @@
 enum {
     test_path_capacity = 1024,
     core_column_count = 15,
+    row_column_count = 7,
+    row_result_count = 5,
     warning_column_count = 4,
     dual_column_count = 6,
     mysql_error_parse = 1064,
@@ -176,6 +178,24 @@ static int test_bin_oct_values_and_file_safety(void) {
         "2",
         "7",
     };
+    static const char *const row_columns[] = {
+        "id",
+        "BIN(id)",
+        "OCT(id)",
+        "BIN(id+delta)",
+        "OCT(BIT_COUNT(id))",
+        "CASE WHEN id=1 THEN BIN(id) END",
+        "CONCAT('0b',BIN(id+delta))",
+    };
+    static const char *const row_values[] = {
+        NULL,   NULL,    NULL,    NULL,         NULL,
+        NULL,   NULL,    "-1",    bin_all_ones, "1777777777777777777777",
+        "11",   "100",   NULL,    "0b11",       "0",
+        "0",    "0",     "10",    "0",          NULL,
+        "0b10", "1",     "1",     "1",          "100",
+        "1",    "1",     "0b100", "12",         "1100",
+        "14",   "10001", "2",     NULL,         "0b10001",
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -195,6 +215,12 @@ static int test_bin_oct_values_and_file_safety(void) {
     failures += execute_ok(database, "CREATE DATABASE app", NULL);
     failures += execute_ok(database, "USE app", NULL);
     failures += execute_ok(database, "CREATE TABLE catalog_guard(id INT)", NULL);
+    failures += execute_ok(database, "CREATE TABLE row_values(id INT, delta INT)", NULL);
+    failures += execute_ok(
+        database,
+        "INSERT INTO row_values VALUES (NULL,1),(0,2),(1,3),(-1,4),(12,5)",
+        NULL
+    );
     session = mylite_connection_session_state(database);
     catalog_generation = session->catalog_generation;
     sqlite_schema_generation = session->sqlite_schema_generation;
@@ -265,6 +291,22 @@ static int test_bin_oct_values_and_file_safety(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "dual OCT operands",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id,BIN(id),OCT(id),BIN(id+delta),OCT(BIT_COUNT(id)) "
+                   ",CASE WHEN id=1 THEN BIN(id) END"
+                   ",CONCAT('0b',BIN(id+delta)) "
+                   "FROM row_values ORDER BY id",
+            .columns = row_columns,
+            .column_count = row_column_count,
+            .values = row_values,
+            .row_count = row_result_count,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "table-backed BIN/OCT values",
         }
     );
 
@@ -520,15 +562,6 @@ static int test_bin_oct_errors_and_unsupported_forms(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "BIN()/OCT() support",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT OCT(id) FROM t ORDER BY id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports",
         }
     );
     failures += execute_error(

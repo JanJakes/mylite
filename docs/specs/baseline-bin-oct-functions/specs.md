@@ -2,8 +2,8 @@
 
 ## Summary
 
-This phase admits a narrow MyLite-owned string-valued numeric conversion
-surface for no-source, `FROM DUAL`, and `DO` scalar execution:
+This scalar phase admits a narrow MyLite-owned string-valued numeric conversion
+surface for no-source, `FROM DUAL`, and `DO` execution:
 
 ```sql
 SELECT BIN(base_value)[, OCT(base_value) ...]
@@ -18,11 +18,12 @@ matches the MySQL 8.4.9 behavior verified for the integer, boolean, `NULL`,
 signed-64 scalar arithmetic, and limited numeric bitwise values already
 admitted by MyLite's current scalar runtime.
 
-This is not a general string or expression engine. The phase does not admit
-table-backed `BIN(column)` / `OCT(column)`, string/decimal/float/hex/bit
-conversion, casts, user variables, parameters, subqueries, CTEs, expression
-metadata, function results nested inside arithmetic/comparison/logical/`CASE`
-parents, or arbitrary SQLite pass-through.
+This is not a general string or expression engine. A later row-backed slice
+adds single-table integer-domain `BIN()` / `OCT()` projection and nesting. The
+combined baseline still does not admit string/decimal/float/hex/bit row
+coercion, casts outside the documented scalar subset, user variables,
+parameters, subqueries, CTEs, exact expression metadata, or arbitrary SQLite
+pass-through.
 
 ## Compatibility Authority
 
@@ -68,9 +69,10 @@ establish these expectations for this slice:
 - `BIN()`, `BIN(1,2)`, `OCT()`, and `OCT(1,2)` raise MySQL error `1582` /
   SQLSTATE `42000`, with the native function name in the message; and
 - MySQL accepts broader forms such as strings, binary strings, hex literals,
-  bit literals, decimals, floats, casts, very large direct nonnegative
-  literals that can emit truncation warning `1292`, and table-backed columns.
-  Those remain deferred by this MyLite baseline.
+  bit literals, decimals, floats, casts, and very large direct nonnegative
+  literals that can emit truncation warning `1292`. Those remain deferred by
+  this MyLite baseline. Single-table integer-domain row-backed columns are
+  covered by `baseline-row-base-conversion-functions`.
 
 ## Ownership Boundaries
 
@@ -142,9 +144,9 @@ admitted arithmetic, unary `+`/`-`, binary `+`, binary `-`, `*`, `%`, infix
 `~`, `&`, `|`, `^`, `<<`, and `>>` over admitted signed-64 scalar arithmetic
 operands, with unsigned 64-bit results.
 
-`BIN()` and `OCT()` are not admitted as children of arithmetic, comparison,
-logical, `IS`, `CASE`, control-flow functions, predicates, table-backed
-projection, ordering, grouping, or DML expressions in this phase.
+In this scalar phase, `BIN()` and `OCT()` are not admitted as children of
+arithmetic, comparison, logical, `IS`, `CASE`, control-flow functions,
+predicates, table-backed projection, ordering, grouping, or DML expressions.
 
 ### MyLite Lemon Snippet
 
@@ -246,11 +248,14 @@ Diagnostics for this baseline:
 
 Unsupported for this slice:
 
-- table-backed `BIN(column)` / `OCT(column)` and any `FROM` source other than
+- table-backed `BIN(column)` / `OCT(column)` outside the later single-table
+  integer-domain row-backed slice and any scalar `FROM` source other than
   `DUAL`;
-- function results nested inside arithmetic, comparison, logical, `IS`, `CASE`,
-  control-flow functions, predicates, `ORDER BY`, `GROUP BY`, aggregate
-  arguments, defaults, generated columns, and DML assignment expressions;
+- scalar-phase function results nested inside arithmetic, comparison, logical,
+  `IS`, `CASE`, control-flow functions, predicates, `ORDER BY`, `GROUP BY`,
+  aggregate arguments, defaults, generated columns, and DML assignment
+  expressions, except where the later row-backed slice explicitly admits
+  integer-domain projection/nesting;
 - string, decimal, float, hex, bit, binary-string, temporal, JSON, parameter,
   user-variable, system-variable, session-function, cast, collation, and
   subquery operands;
@@ -298,8 +303,8 @@ Update `COMPATIBILITY.md`,
 `docs/compatibility/functions-string.md`,
 `docs/compatibility/operators.md`,
 `docs/compatibility/sql-query-expressions.md`, and
-`docs/compatibility/sql-stored-programs.md` only for this limited
-no-source/`DUAL`/`DO` numeric `BIN()` / `OCT()` subset. Do not imply support
-for full MySQL string functions, string/decimal/float/hex/bit conversion,
-table-backed expression evaluation, expression metadata, or general function
-composition.
+`docs/compatibility/sql-stored-programs.md` for this limited scalar subset and
+the later `baseline-row-base-conversion-functions` row subset. Do not imply
+support for full MySQL string functions, string/decimal/float/hex/bit
+conversion, broad table-backed expression evaluation, exact expression
+metadata, or general function composition.

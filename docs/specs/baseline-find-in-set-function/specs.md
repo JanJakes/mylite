@@ -77,7 +77,9 @@ MyLite supports:
   - `FIND_IN_SET(value, list) IS NULL`;
   - `FIND_IN_SET(value, list) IS NOT NULL`;
 - two-argument `FIND_IN_SET(value, list)` only;
-- flat arguments only; no nested row functions inside `FIND_IN_SET()`;
+- supported nested row-scalar value functions inside `FIND_IN_SET()` arguments,
+  including the current string, integer-producing, conversion, JSON, numeric,
+  control-flow, session-value, and system-variable subset;
 - scalar argument values:
   - string literals;
   - signed 64-bit decimal integer literals with optional unary sign;
@@ -114,12 +116,11 @@ This slice intentionally does not support:
   columns, not plain comma-text positions, so this requires a later
   descriptor-aware `SET` path rather than the generic comma-list helper;
 - approximate numeric scalar arguments, arbitrary numeric string conversion,
-  noninteger rounding, warnings from conversion, blob/spatial/JSON arguments,
-  parameters, user variables, stored functions, or scalar subqueries inside
-  `FIND_IN_SET()`;
-- nested `FIND_IN_SET()`, `CONCAT(FIND_IN_SET(...))`,
-  `FIND_IN_SET(CONCAT(...), col)`, arithmetic, aggregate, window, CTE, or
-  joined-table expression arguments;
+  noninteger rounding, warnings from conversion, blob/spatial/JSON arguments
+  outside the supported value subset, parameters, user variables, stored
+  functions, or scalar subqueries inside `FIND_IN_SET()`;
+- nested functions outside the supported row-scalar value subset, arithmetic,
+  aggregate, window, CTE, or joined-table expression arguments;
 - expression `ORDER BY`, grouping expressions, aggregate arguments, generated
   columns, defaults, indexes, constraints, or arbitrary SQLite pass-through.
 

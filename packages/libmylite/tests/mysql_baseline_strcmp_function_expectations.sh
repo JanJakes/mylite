@@ -155,6 +155,16 @@ expect_output \
 "SELECT STRCMP(10, '2'), STRCMP(2, '10'), STRCMP(TRUE, '1'), STRCMP(FALSE, '0'), "\
 "STRCMP('9', 10), STRCMP(-1, '-2'), @@warning_count;"
 
+nested_expected=$(cat <<EXPECTED
+0	0
+EXPECTED
+)
+expect_output \
+    "nested argument values" \
+    "$nested_expected" \
+    "USE ${DATABASE}; SET NAMES utf8mb4; "\
+"SELECT STRCMP(CONCAT('abc'), 'ABC'), STRCMP(LOCATE('b','abc'), '2');"
+
 table_expected=$(cat <<EXPECTED
 1	0	-1	-1	0	0
 2	0	0	0	-1	-1

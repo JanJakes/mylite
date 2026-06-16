@@ -69,7 +69,9 @@ MyLite supports:
   `FROM table [AS alias]`, optional existing `WHERE`, descriptor-column
   `ORDER BY`, and existing `LIMIT`;
 - exactly two-argument `STRCMP(left, right)` calls;
-- flat arguments only; no nested row functions inside `STRCMP()`;
+- supported nested row-scalar value functions inside `STRCMP()` arguments,
+  including the current string, integer-producing, conversion, JSON, numeric,
+  control-flow, session-value, and system-variable subset;
 - scalar argument values:
   - ASCII string literals without embedded `NUL`;
   - signed 64-bit decimal integer literals with optional unary sign;
@@ -105,11 +107,11 @@ This slice intentionally does not support:
   metadata;
 - approximate numeric scalar or row-backed arguments, arbitrary numeric string
   conversion, noninteger rounding, warnings from conversion, blob/spatial/JSON
-  arguments, parameters, user variables, or scalar subqueries inside
-  `STRCMP()`;
+  arguments outside the supported value subset, parameters, user variables, or
+  scalar subqueries inside `STRCMP()`;
 - row-backed `TIME` columns;
-- nested `STRCMP()`, `CONCAT(STRCMP(...))`, `STRCMP(CONCAT(...), col)`,
-  arithmetic, aggregate, window, CTE, or joined-table expression arguments;
+- nested functions outside the supported row-scalar value subset, arithmetic,
+  aggregate, window, CTE, or joined-table expression arguments;
 - predicates, expression `ORDER BY`, grouping expressions, aggregate
   arguments, DML assignments, defaults, generated columns, indexes,
   constraints, or arbitrary SQLite pass-through.

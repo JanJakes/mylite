@@ -134,6 +134,17 @@ expect_output_with_headers \
     "SELECT FIND_IN_SET ('b','a,b'), FIND_IN_SET('green','red,green') AS fis FROM DUAL;" \
     "$DATABASE"
 
+nested_expected=$(cat <<\EXPECTED
+2	2
+EXPECTED
+)
+expect_output \
+    "nested FIND_IN_SET arguments" \
+    "$nested_expected" \
+    "SELECT FIND_IN_SET(CONCAT('b'), CONCAT('a,','b')), "\
+"FIND_IN_SET(LOCATE('b','abc'), '1,2,3');" \
+    "$DATABASE"
+
 table_expected=$(cat <<\EXPECTED
 1	1	1	2	0	1	1	1	1	1	1	3
 2	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL

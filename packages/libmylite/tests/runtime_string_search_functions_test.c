@@ -372,6 +372,8 @@ static int test_no_source_dual_and_do_find_in_set(void) {
     };
     static const char *const columns_dual[] = {"spaced", "alias"};
     static const char *const values_dual[] = {"2", "2"};
+    static const char *const columns_nested[] = {"concat_args", "numeric_arg"};
+    static const char *const values_nested[] = {"2", "2"};
     static const char *const columns_row_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_after_select[] = {"-1", "0"};
     static const char *const values_after_do[] = {"0", "0"};
@@ -415,6 +417,18 @@ static int test_no_source_dual_and_do_find_in_set(void) {
             .values = values_dual,
             .row_count = 1U,
             .context = "dual find_in_set",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT FIND_IN_SET(CONCAT('b'), CONCAT('a,','b')) AS concat_args, "
+                   "FIND_IN_SET(LOCATE('b','abc'), '1,2,3') AS numeric_arg",
+            .columns = columns_nested,
+            .column_count = sizeof(columns_nested) / sizeof(columns_nested[0]),
+            .values = values_nested,
+            .row_count = 1U,
+            .context = "nested find_in_set arguments",
         }
     );
     failures += expect_query(
@@ -729,6 +743,8 @@ static int test_no_source_dual_and_do_strcmp(void) {
     };
     static const char *const columns_dual[] = {"c", "STRCMP('b','a')"};
     static const char *const values_dual[] = {"1", "1"};
+    static const char *const columns_nested[] = {"concat_args", "numeric_arg"};
+    static const char *const values_nested[] = {"0", "0"};
     static const char *const columns_row_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_after_select[] = {"-1", "0"};
     static const char *const values_after_do[] = {"0", "0"};
@@ -766,6 +782,18 @@ static int test_no_source_dual_and_do_strcmp(void) {
             .values = values_dual,
             .row_count = 1U,
             .context = "dual strcmp whitespace",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT STRCMP(CONCAT('abc'), 'ABC') AS concat_args, "
+                   "STRCMP(LOCATE('b','abc'), '2') AS numeric_arg",
+            .columns = columns_nested,
+            .column_count = sizeof(columns_nested) / sizeof(columns_nested[0]),
+            .values = values_nested,
+            .row_count = 1U,
+            .context = "nested strcmp arguments",
         }
     );
     failures += expect_query(
@@ -939,6 +967,8 @@ static int test_table_backed_strcmp_and_reopen(void) {
 static int test_string_search_diagnostics(void) {
     static const char *const columns_locate_position[] = {"loc"};
     static const char *const values_locate_position[] = {"1"};
+    static const char *const columns_nested[] = {"find_nested", "strcmp_nested"};
+    static const char *const values_nested[] = {"1", "0"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -1034,6 +1064,18 @@ static int test_string_search_diagnostics(void) {
             .values = values_locate_position,
             .row_count = 1U,
             .context = "LOCATE integer column position",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT FIND_IN_SET(CONCAT(v), CONCAT(v, ',x')) AS find_nested, "
+                   "STRCMP(CONCAT(v), 'ABC') AS strcmp_nested FROM t WHERE id = 1",
+            .columns = columns_nested,
+            .column_count = sizeof(columns_nested) / sizeof(columns_nested[0]),
+            .values = values_nested,
+            .row_count = 1U,
+            .context = "nested search compare arguments on ASCII row",
         }
     );
     failures += execute_error(

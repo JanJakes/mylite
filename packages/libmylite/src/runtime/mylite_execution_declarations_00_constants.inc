@@ -479,6 +479,7 @@ enum {
     double_text_capacity = mylite_execution_scalar_double_text_capacity,
     scalar_exact_decimal_part_capacity = literal_projection_max_significant_digits + 1,
     scalar_format_max_decimals = 30,
+    scalar_format_grouping_overhead = 32,
     crc32_bits_per_byte = 8,
     double_format_error_capacity = 80,
     float_text_max_significant_digits = 6,

@@ -3,6 +3,7 @@
 set -eu
 
 MYSQL_CONTAINER="${MYLITE_MYSQL_CONTAINER:-mylite-mysql-849}"
+DATABASE="mylite_numeric_format_truncate_crc32_expectations_$$"
 
 fail() {
     printf '%s\n' "mysql_baseline_numeric_format_truncate_crc32_expectations: $1" >&2
@@ -48,11 +49,32 @@ expect_mysql_error() {
     esac
 }
 
+cleanup() {
+    run_mysql "DROP DATABASE IF EXISTS ${DATABASE};" >/dev/null 2>&1 || true
+}
+
+trap cleanup EXIT
+
 version=$(run_mysql 'SELECT VERSION();')
 case "$version" in
     8.4.9*) ;;
     *) fail "expected MySQL 8.4.9 runtime, got [$version]" ;;
 esac
+
+cleanup
+run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE};
+           CREATE TABLE metrics(
+               id INT,
+               amount DECIMAL(8,3),
+               places INT,
+               label VARCHAR(20),
+               payload VARBINARY(20)
+           );
+           INSERT INTO metrics VALUES
+               (1,1234.555,2,'MySQL',X'616263'),
+               (2,-1.004,2,'mysql',NULL),
+               (3,NULL,NULL,NULL,X'');" \
+    >/dev/null
 
 crc32_values=$(run_mysql \
     "SELECT CRC32('MySQL'), CRC32('mysql'), CRC32(''), CRC32(NULL), "\
@@ -79,6 +101,17 @@ truncate_values=$(run_mysql \
 expect_value "truncate values" \
     "1.2	1.9	1	-1.9	100	NULL	NULL	123.456	0	1234	1234.00	1234.1	1234.10	1.9	1" \
     "$truncate_values"
+
+row_values=$(run_mysql \
+    "SELECT id, CRC32(label), CRC32(payload), FORMAT(amount, places), "\
+"TRUNCATE(amount, places), CONCAT('c=', CRC32(label)), PI(), CONCAT('p=', PI()) "\
+"FROM metrics ORDER BY id;" \
+    "$DATABASE")
+expect_value "row-backed numeric functions" \
+    "1	3259397556	891568578	1,234.56	1234.550	c=3259397556	3.141593	p=3.141593
+2	2501908538	NULL	-1.00	-1.000	c=2501908538	3.141593	p=3.141593
+3	NULL	0	NULL	NULL	NULL	3.141593	p=3.141593" \
+    "$row_values"
 
 status=$(run_mysql "SELECT CRC32('ok'), FORMAT(1,2), TRUNCATE(1.9,0); SELECT @@warning_count, ROW_COUNT();" | tail -n 1)
 expect_value "supported status" "0	-1" "$status"

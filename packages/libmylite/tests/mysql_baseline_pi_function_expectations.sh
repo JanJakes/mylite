@@ -157,15 +157,15 @@ expect_error \
     "$DATABASE"
 
 accepted_but_deferred=$(run_mysql_with_headers \
-    "SELECT PI() FROM t ORDER BY id;
+    "SELECT id, PI() AS p, CONCAT('p=', PI()) AS label FROM t ORDER BY id;
      SELECT PI()+0.000000000000000000;" \
     "$DATABASE"
 )
 expect_value \
-    "mysql accepted forms deferred by this slice" \
-    "PI()
-3.141593
-3.141593
+    "row pi values and deferred arithmetic" \
+    "id	p	label
+7	3.141593	p=3.141593
+8	3.141593	p=3.141593
 PI()+0.000000000000000000
 3.141592653589793000" \
     "$accepted_but_deferred"

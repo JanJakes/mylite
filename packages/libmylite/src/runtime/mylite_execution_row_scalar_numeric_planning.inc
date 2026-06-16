@@ -168,6 +168,11 @@ static int validate_row_scalar_numeric_function_argument(
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
         return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
+        if (argument->numeric_extra_kind != PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT) {
+            return MYLITE_OK;
+        }
+        break;
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
@@ -634,4 +639,481 @@ static bool row_scalar_base_conversion_kind_is_supported(enum mylite_sql_ast_nod
     return row_scalar_base_conversion_kind_from_ast(ast_kind) !=
                PLANNED_ROW_SCALAR_BASE_CONVERSION_NONE ||
            row_scalar_base_conversion_kind_is_error(ast_kind);
+}
+
+static int plan_row_scalar_numeric_extra_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum planned_row_scalar_numeric_extra_kind function_kind =
+        PLANNED_ROW_SCALAR_NUMERIC_EXTRA_NONE;
+    const char *function_name = NULL;
+    size_t argument_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_expression == NULL) {
+        return MYLITE_MISUSE;
+    }
+    planned_row_scalar_expression_deinit(out_expression);
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    function_name = row_scalar_numeric_extra_display_name(expression->kind);
+    if (row_scalar_numeric_extra_kind_is_error(expression->kind)) {
+        set_native_function_parameter_count_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_FORMAT_LOCALE_UNSUPPORTED) {
+        set_unsupported_error(database, "FORMAT() locale arguments are not supported");
+        return MYLITE_ERROR;
+    }
+
+    function_kind = row_scalar_numeric_extra_kind_from_ast(expression->kind);
+    if (function_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_NONE || function_name == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    argument_count = mylite_sql_ast_node_child_count(expression);
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(argument_count, sizeof(*out_expression->arguments));
+    if (argument_count != 0U && out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA;
+    out_expression->numeric_extra_kind = function_kind;
+    out_expression->argument_count = argument_count;
+    if (function_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_CRC32) {
+        if (argument_count != 1U) {
+            set_native_function_parameter_count_error(database, "CRC32");
+            rc = MYLITE_ERROR;
+        } else {
+            rc = plan_row_scalar_numeric_extra_value_argument(
+                database,
+                child_at(expression, 0U),
+                has_source,
+                source_context,
+                table_columns,
+                table_column_count,
+                function_name,
+                &out_expression->arguments[0]
+            );
+        }
+    } else if (
+        function_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT ||
+        function_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_TRUNCATE
+    ) {
+        if (argument_count != 2U) {
+            set_native_function_parameter_count_error(database, function_name);
+            rc = MYLITE_ERROR;
+        } else {
+            rc = plan_row_scalar_format_truncate_value_argument(
+                database,
+                child_at(expression, 0U),
+                has_source,
+                source_context,
+                table_columns,
+                table_column_count,
+                function_name,
+                &out_expression->arguments[0]
+            );
+            if (rc == MYLITE_OK) {
+                rc = plan_row_scalar_format_truncate_places_argument(
+                    database,
+                    child_at(expression, 1U),
+                    has_source,
+                    source_context,
+                    table_columns,
+                    table_column_count,
+                    function_name,
+                    &out_expression->arguments[1]
+                );
+            }
+            if (rc == MYLITE_OK) {
+                plan_row_scalar_numeric_extra_result_shape(function_kind, out_expression);
+            }
+        }
+    } else if (function_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_PI && argument_count != 0U) {
+        set_native_function_parameter_count_error(database, "PI");
+        rc = MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(out_expression);
+    }
+    return rc;
+}
+
+static int plan_row_scalar_numeric_extra_value_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *function_name,
+    struct planned_row_scalar_expression *out_argument
+) {
+    (void)function_name;
+    return plan_row_scalar_nested_value_argument(
+        database,
+        argument,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        out_argument
+    );
+}
+
+static int plan_row_scalar_format_truncate_value_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *function_name,
+    struct planned_row_scalar_expression *out_argument
+) {
+    argument = unwrap_parenthesized_expression(argument);
+    if (argument == NULL || function_name == NULL) {
+        set_unsupported_error(
+            database,
+            "FORMAT() and TRUNCATE() support only exact-decimal row arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (argument->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        argument->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return plan_row_scalar_format_truncate_column_argument(
+            database,
+            argument,
+            source_context,
+            table_columns,
+            table_column_count,
+            function_name,
+            out_argument
+        );
+    }
+    if (argument->kind == MYLITE_SQL_AST_LITERAL ||
+        argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return plan_row_scalar_format_truncate_literal_argument(
+            database,
+            argument,
+            function_name,
+            out_argument
+        );
+    }
+    if (has_source && row_scalar_expression_contains_integer_arithmetic_attempt(argument)) {
+        return plan_row_scalar_integer_arithmetic_expression(
+            database,
+            argument,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_argument
+        );
+    }
+    if (has_source && row_scalar_numeric_function_kind_is_supported(argument->kind)) {
+        return plan_row_scalar_numeric_function_expression(
+            database,
+            argument,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_argument
+        );
+    }
+
+    set_unsupported_error(
+        database,
+        "FORMAT() and TRUNCATE() support only exact-decimal row arguments"
+    );
+    return MYLITE_ERROR;
+}
+
+static int plan_row_scalar_format_truncate_literal_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    const char *function_name,
+    struct planned_row_scalar_expression *out_argument
+) {
+    const struct mylite_sql_ast_node *unwrapped = unwrap_parenthesized_expression(argument);
+    const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(argument);
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (literal != NULL && literal->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        literal = unwrap_parenthesized_expression(child_at(literal, 0U));
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "FORMAT() and TRUNCATE() support only exact-decimal literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL) {
+        return plan_row_scalar_numeric_extra_decimal_literal_text(
+            database,
+            argument,
+            function_name,
+            out_argument
+        );
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_FALSE ||
+        literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        if (unwrapped != NULL && unwrapped->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+            return plan_row_scalar_integer_value(database, argument, out_argument);
+        }
+        return plan_row_scalar_literal_value(database, literal, out_argument);
+    }
+
+    set_unsupported_error(
+        database,
+        "FORMAT() and TRUNCATE() support only exact-decimal literals"
+    );
+    return MYLITE_ERROR;
+}
+
+static int plan_row_scalar_format_truncate_column_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *function_name,
+    struct planned_row_scalar_expression *out_argument
+) {
+    struct mylite_catalog_column_descriptor column = {0};
+    size_t source_index = 0U;
+    int rc = resolve_descriptor_column_reference_with_source_index(
+        database,
+        argument,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "row-scalar SELECT FORMAT() and TRUNCATE() support only descriptor columns",
+        table_columns,
+        table_column_count,
+        &column,
+        &source_index
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!row_scalar_numeric_extra_format_truncate_column_is_supported(&column)) {
+        set_unsupported_error(
+            database,
+            "FORMAT() and TRUNCATE() support only integer and exact DECIMAL columns"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_argument->kind = PLANNED_ROW_SCALAR_EXPRESSION_COLUMN;
+    out_argument->column = column;
+    out_argument->column_has_source_index = select_source_context_is_joined(source_context);
+    out_argument->column_source_index = source_index;
+    (void)function_name;
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_format_truncate_places_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *function_name,
+    struct planned_row_scalar_expression *out_argument
+) {
+    enum {
+        message_capacity = 160,
+    };
+    char unsupported_message[message_capacity];
+    int written = 0;
+
+    if (function_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    written = snprintf(
+        unsupported_message,
+        sizeof(unsupported_message),
+        "%s() decimal places support only signed integer row arguments",
+        function_name
+    );
+    if (written < 0 || (size_t)written >= sizeof(unsupported_message)) {
+        set_runtime_error(database, "failed to format FORMAT()/TRUNCATE() support message");
+        return MYLITE_ERROR;
+    }
+    return plan_row_scalar_integer_like_argument(
+        database,
+        argument,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        unsupported_message,
+        "FORMAT()/TRUNCATE() decimal places must fit the signed 64-bit range",
+        out_argument
+    );
+}
+
+static void plan_row_scalar_numeric_extra_result_shape(
+    enum planned_row_scalar_numeric_extra_kind function_kind,
+    struct planned_row_scalar_expression *out_expression
+) {
+    struct decimal_type_info info = {0};
+
+    if (function_kind != PLANNED_ROW_SCALAR_NUMERIC_EXTRA_TRUNCATE ||
+        out_expression == NULL || out_expression->argument_count != 2U ||
+        out_expression->arguments == NULL ||
+        out_expression->arguments[0].kind != PLANNED_ROW_SCALAR_EXPRESSION_COLUMN ||
+        out_expression->arguments[1].kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE ||
+        !column_descriptor_is_decimal(&out_expression->arguments[0].column) ||
+        decimal_type_info_for_logical_type(
+            out_expression->arguments[0].column.logical_type,
+            &info
+        ) != MYLITE_OK) {
+        return;
+    }
+
+    out_expression->numeric_extra_has_decimal_scale = true;
+    out_expression->numeric_extra_decimal_scale = (size_t)info.scale;
+}
+
+static int plan_row_scalar_numeric_extra_decimal_literal_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    const char *function_name,
+    struct planned_row_scalar_expression *out_argument
+) {
+    const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(argument);
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    size_t prefix_size = 0U;
+    size_t text_length = 0U;
+    char *text = NULL;
+
+    if (literal != NULL && literal->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        operator_kind = mylite_sql_ast_node_operator(literal);
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(
+                database,
+                "FORMAT() and TRUNCATE() support only signed decimal literals"
+            );
+            return MYLITE_ERROR;
+        }
+        prefix_size = 1U;
+        literal = unwrap_parenthesized_expression(child_at(literal, 0U));
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_DECIMAL ||
+        literal->span.text == NULL || literal->span.length == 0U ||
+        literal->span.length > SIZE_MAX - prefix_size - 1U) {
+        set_unsupported_error(
+            database,
+            "FORMAT() and TRUNCATE() support only signed decimal literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    text_length = prefix_size + literal->span.length;
+    text = (char *)malloc(text_length + 1U);
+    if (text == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (prefix_size != 0U) {
+        text[0] = operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE ? '-' : '+';
+    }
+    memcpy(text + prefix_size, literal->span.text, literal->span.length);
+    text[text_length] = '\0';
+
+    out_argument->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+    (void)function_name;
+    return assign_text_value(database, text, text_length, &out_argument->value);
+}
+
+static bool row_scalar_numeric_extra_format_truncate_column_is_supported(
+    const struct mylite_catalog_column_descriptor *column
+) {
+    if (column == NULL) {
+        return false;
+    }
+    return strcmp(column->physical_type, "INTEGER") == 0 || column_descriptor_is_decimal(column);
+}
+
+static enum planned_row_scalar_numeric_extra_kind row_scalar_numeric_extra_kind_from_ast(
+    enum mylite_sql_ast_node_kind ast_kind
+) {
+    switch (ast_kind) {
+    case MYLITE_SQL_AST_CRC32_FUNCTION:
+        return PLANNED_ROW_SCALAR_NUMERIC_EXTRA_CRC32;
+    case MYLITE_SQL_AST_FORMAT_FUNCTION:
+        return PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT;
+    case MYLITE_SQL_AST_TRUNCATE_FUNCTION:
+        return PLANNED_ROW_SCALAR_NUMERIC_EXTRA_TRUNCATE;
+    case MYLITE_SQL_AST_PI_FUNCTION:
+        return PLANNED_ROW_SCALAR_NUMERIC_EXTRA_PI;
+    default:
+        break;
+    }
+    return PLANNED_ROW_SCALAR_NUMERIC_EXTRA_NONE;
+}
+
+static const char *row_scalar_numeric_extra_display_name(
+    enum mylite_sql_ast_node_kind ast_kind
+) {
+    switch (ast_kind) {
+    case MYLITE_SQL_AST_CRC32_FUNCTION:
+    case MYLITE_SQL_AST_CRC32_ARGUMENT_COUNT_ERROR:
+        return "CRC32";
+    case MYLITE_SQL_AST_FORMAT_FUNCTION:
+    case MYLITE_SQL_AST_FORMAT_LOCALE_UNSUPPORTED:
+    case MYLITE_SQL_AST_FORMAT_ARGUMENT_COUNT_ERROR:
+        return "FORMAT";
+    case MYLITE_SQL_AST_TRUNCATE_FUNCTION:
+    case MYLITE_SQL_AST_TRUNCATE_ARGUMENT_COUNT_ERROR:
+        return "TRUNCATE";
+    case MYLITE_SQL_AST_PI_FUNCTION:
+        return "PI";
+    default:
+        break;
+    }
+    return NULL;
+}
+
+static bool row_scalar_numeric_extra_kind_is_error(enum mylite_sql_ast_node_kind ast_kind) {
+    switch (ast_kind) {
+    case MYLITE_SQL_AST_CRC32_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_FORMAT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TRUNCATE_ARGUMENT_COUNT_ERROR:
+        return true;
+    default:
+        break;
+    }
+    return false;
+}
+
+static bool row_scalar_numeric_extra_kind_is_supported(enum mylite_sql_ast_node_kind ast_kind) {
+    return row_scalar_numeric_extra_kind_from_ast(ast_kind) !=
+               PLANNED_ROW_SCALAR_NUMERIC_EXTRA_NONE ||
+           row_scalar_numeric_extra_kind_is_error(ast_kind) ||
+           ast_kind == MYLITE_SQL_AST_FORMAT_LOCALE_UNSUPPORTED;
 }

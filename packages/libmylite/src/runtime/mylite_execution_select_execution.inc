@@ -131,6 +131,8 @@ static bool select_statement_is_row_scalar_projection_attempt(
              (has_row_source && row_scalar_expression_contains_numeric_function(expression)) ||
              (has_row_source &&
               row_scalar_expression_contains_base_conversion_function(expression)) ||
+             (has_row_source &&
+              row_scalar_expression_contains_numeric_extra_function(expression)) ||
              (has_row_source && row_scalar_expression_contains_rand_function(expression)) ||
              (has_row_source && row_scalar_expression_contains_any_value_function(expression)) ||
              (has_row_source && row_scalar_expression_contains_conversion_expression(expression)) ||
@@ -1855,6 +1857,63 @@ static int populate_row_scalar_expression_result_column_descriptor(
             }
         );
         return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
+        if (expression->numeric_extra_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_CRC32) {
+            populate_scalar_binary_numeric_result_column_descriptor(
+                descriptor,
+                (struct scalar_binary_numeric_result_column_shape){
+                    .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                    .display_length = mysql_unsigned_int_display_length,
+                    .decimals = 0U,
+                    .extra_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED,
+                    .nullable = true,
+                }
+            );
+            return MYLITE_OK;
+        }
+        if (expression->numeric_extra_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT) {
+            populate_scalar_connection_string_result_column_descriptor(
+                database,
+                descriptor,
+                (struct scalar_connection_string_result_column_shape){
+                    .display_length = (scalar_exact_decimal_part_capacity +
+                                       scalar_format_max_decimals +
+                                       scalar_format_grouping_overhead) *
+                                      scalar_connection_max_bytes_per_character(database),
+                    .extra_flags = 0U,
+                    .nullable = true,
+                }
+            );
+            return MYLITE_OK;
+        }
+        if (expression->numeric_extra_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_TRUNCATE) {
+            populate_scalar_binary_numeric_result_column_descriptor(
+                descriptor,
+                (struct scalar_binary_numeric_result_column_shape){
+                    .logical_type = MYLITE_RESULT_LOGICAL_TYPE_NEWDECIMAL,
+                    .display_length = scalar_exact_decimal_part_capacity +
+                                      scalar_format_max_decimals,
+                    .decimals = scalar_format_max_decimals,
+                    .extra_flags = 0U,
+                    .nullable = true,
+                }
+            );
+            return MYLITE_OK;
+        }
+        if (expression->numeric_extra_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_PI) {
+            populate_scalar_binary_numeric_result_column_descriptor(
+                descriptor,
+                (struct scalar_binary_numeric_result_column_shape){
+                    .logical_type = MYLITE_RESULT_LOGICAL_TYPE_DOUBLE,
+                    .display_length = mysql_scalar_double_display_length,
+                    .decimals = mysql_approximate_decimals,
+                    .extra_flags = 0U,
+                    .nullable = false,
+                }
+            );
+            return MYLITE_OK;
+        }
+        break;
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
         populate_uuid_string_result_column_descriptor(descriptor, true);
         return MYLITE_OK;
@@ -2202,6 +2261,7 @@ static int populate_window_value_function_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
         break;
     }
 

@@ -2,7 +2,7 @@
 
 ## Summary
 
-This phase admits a narrow MyLite-owned `PI()` scalar function for no-source,
+This phase admitted a narrow MyLite-owned `PI()` scalar function for no-source,
 `FROM DUAL`, and `DO` execution:
 
 ```sql
@@ -14,15 +14,16 @@ DO PI()[, ...]
 The supported result is the default visible MySQL 8.4.9 scalar value
 `3.141593`. MySQL uses a double-precision value internally for `PI()`, but this
 baseline deliberately does not introduce a general approximate numeric
-expression engine. `PI()` is therefore admitted only as a top-level scalar
+expression engine. This scalar phase admitted `PI()` only as a top-level scalar
 select item or `DO` expression, with optional parenthesization and aliases where
-the current scalar select path already supports them.
+the scalar select path already supported them. The later
+`baseline-row-numeric-extra-functions` slice adds limited single-table
+row-scalar projection and `CONCAT()` nesting for `PI()`.
 
-This phase does not admit table-backed `PI()` projection, `PI()` inside
-arithmetic/comparison/logical/control-flow expressions, `PI()` in predicates or
-DML assignments, expression metadata beyond current public result names and text
-values, subqueries, CTEs, parameters, user variables, arbitrary SQLite
-pass-through, or SQLite fork changes.
+This phase did not admit arithmetic/comparison/logical/control-flow expression
+generalization, predicates, DML assignments, expression metadata beyond current
+public result names and text values, subqueries, CTEs, parameters, user
+variables, arbitrary SQLite pass-through, or SQLite fork changes.
 
 ## Compatibility Authority
 
@@ -56,9 +57,10 @@ this slice:
   `42000`, reporting an incorrect parameter count for native function `PI`;
 - bare `PI` in a select list is an identifier lookup and raises MySQL error
   `1054` / SQLSTATE `42S22` when no such column is visible;
-- MySQL accepts broader forms such as table-backed `SELECT PI() FROM table` and
-  approximate arithmetic such as `PI()+0.000000000000000000`. Those remain
-  deferred by this MyLite baseline.
+- MySQL accepts broader forms such as approximate arithmetic
+  `PI()+0.000000000000000000`. Those remain deferred by this MyLite baseline;
+  table-backed row projection is covered by
+  `baseline-row-numeric-extra-functions`.
 
 ## Ownership Boundaries
 
@@ -70,8 +72,8 @@ this slice:
 - Lexer/parser/AST: adds function-specific `PI()` and `PI` wrong-arity AST
   nodes, following existing native-function parser patterns.
 - Analyzer/runtime: admits only top-level supported `PI()` scalar projection
-  and `DO` expressions. It evaluates the function as a MyLite-owned constant
-  text value in the scalar runtime.
+  and `DO` expressions in this phase. It evaluates the function as a MyLite-owned
+  constant text value in the scalar runtime.
 - Catalog: not involved. The feature must not read or mutate descriptors,
   descriptor caches, catalog generation, selected schema, or
   `sqlite_schema_generation`.
@@ -143,13 +145,13 @@ Runtime evaluation is MyLite-owned and proportional to AST size.
    successful `SELECT PI()` returns a row-result with affected rows `0`;
    successful `DO PI()` returns no rows with affected rows `0`.
 6. Do not stage warnings for supported `PI()` evaluation.
-7. Reject unsupported nested or table-backed `PI()` forms deterministically
-   before any SQLite SQL is generated.
+7. Reject unsupported nested scalar-expression forms deterministically before
+   any SQLite SQL is generated.
 
 `PI()` is not folded into integer scalar arithmetic, bitwise, comparison,
 logical, `IS`, `CASE`, control-flow, aggregate, predicate, ordering, grouping,
-DML assignment, or table-backed expression evaluators in this phase. That is a
-scope boundary, not a claim about MySQL.
+or DML assignment expression evaluators in this phase. Single-table row-scalar
+projection is added by `baseline-row-numeric-extra-functions`.
 
 ## Diagnostics
 
@@ -162,8 +164,6 @@ Diagnostics for this phase:
 - bare `PI`: existing identifier/unknown-column behavior, MySQL error `1054`,
   SQLSTATE `42S22`, where the current scalar select path reaches name
   resolution;
-- table-backed `PI()`: deterministic unsupported scalar/table projection
-  diagnostic until table-backed scalar expressions are implemented;
 - nested `PI()` inside arithmetic, comparison, logical, control-flow, `CASE`,
   predicates, DML assignments, grouping, ordering, or another function:
   deterministic unsupported scalar-expression diagnostic;
@@ -213,8 +213,7 @@ Add MySQL-runtime expectation coverage for:
 - `SHOW WARNINGS` after successful `PI()`;
 - wrong arity diagnostics for one, `NULL`, and two arguments;
 - bare `PI` unknown-column diagnostics;
-- MySQL-accepted but deferred table-backed and nested approximate arithmetic
-  forms.
+- MySQL-accepted but deferred approximate arithmetic forms.
 
 Add plain C tests for:
 
@@ -223,7 +222,7 @@ Add plain C tests for:
 - mixed `PI()` with existing scalar functions and diagnostic count reads;
 - successful `DO PI()`;
 - wrong-arity native diagnostics;
-- bare identifier and unsupported table-backed/nested forms;
+- bare identifier and unsupported nested scalar forms;
 - file-backed preamble preservation and catalog/schema-generation immutability;
 - independent handles returning the same constant;
 - zero-initialized cleanup coverage through existing result-free and close
@@ -243,6 +242,8 @@ cmake --workflow --preset check
 Update only the exact admitted subset:
 
 - `COMPATIBILITY.md`: mark `PI()` as limited no-source/`DUAL`/`DO` support.
+  Later row-scalar support is documented by
+  `baseline-row-numeric-extra-functions`.
 - `docs/compatibility/functions-numeric-math.md`: document the limited
   top-level scalar `PI()` subset.
 - `docs/compatibility/sql-query-expressions.md`: mention `PI()` in the
@@ -250,6 +251,6 @@ Update only the exact admitted subset:
 - `docs/compatibility/sql-stored-programs.md`: mention `PI()` in the limited
   `DO` domain.
 
-Do not claim general DOUBLE support, approximate arithmetic, table-backed scalar
-expressions, function nesting, expression metadata, protocol metadata,
-collations, casts, parameters, subqueries, CTEs, or SQLite function pass-through.
+Do not claim general DOUBLE support, approximate arithmetic, broad function
+nesting, expression metadata, protocol metadata, collations, casts, parameters,
+subqueries, CTEs, or SQLite function pass-through.

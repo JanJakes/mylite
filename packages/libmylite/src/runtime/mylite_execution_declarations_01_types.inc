@@ -1544,6 +1544,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION = 93,
     PLANNED_ROW_SCALAR_EXPRESSION_ELT = 94,
     PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION = 95,
+    PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA = 96,
 };
 
 enum row_scalar_control_flow_bind_mode {
@@ -1646,6 +1647,14 @@ enum planned_row_scalar_base_conversion_kind {
     PLANNED_ROW_SCALAR_BASE_CONVERSION_CONV = 3,
 };
 
+enum planned_row_scalar_numeric_extra_kind {
+    PLANNED_ROW_SCALAR_NUMERIC_EXTRA_NONE = 0,
+    PLANNED_ROW_SCALAR_NUMERIC_EXTRA_CRC32 = 1,
+    PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT = 2,
+    PLANNED_ROW_SCALAR_NUMERIC_EXTRA_TRUNCATE = 3,
+    PLANNED_ROW_SCALAR_NUMERIC_EXTRA_PI = 4,
+};
+
 struct row_scalar_digest_ast_arguments {
     const struct mylite_sql_ast_node *function_expression;
     const struct mylite_sql_ast_node *argument;
@@ -1699,6 +1708,9 @@ struct planned_row_scalar_expression {
     enum planned_row_scalar_digest_kind digest_kind;
     enum planned_row_scalar_numeric_function_kind numeric_function_kind;
     enum planned_row_scalar_base_conversion_kind base_conversion_kind;
+    enum planned_row_scalar_numeric_extra_kind numeric_extra_kind;
+    bool numeric_extra_has_decimal_scale;
+    size_t numeric_extra_decimal_scale;
     enum planned_window_function_kind window_function_kind;
     enum mylite_temporal_extract_kind temporal_extract_kind;
     enum mylite_sql_ast_operator operator_kind;

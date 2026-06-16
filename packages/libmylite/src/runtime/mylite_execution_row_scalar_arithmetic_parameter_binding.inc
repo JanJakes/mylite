@@ -117,6 +117,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
         return bind_row_scalar_registered_function_expression_parameters(
             statement,
             expression,
@@ -228,6 +229,7 @@ static int bind_row_scalar_integer_arithmetic_frame_parameters(
             parameter_index
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:

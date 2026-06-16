@@ -250,6 +250,78 @@ static const char *row_scalar_base_conversion_sql_name(
     return NULL;
 }
 
+static int append_row_scalar_numeric_extra_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    const char *function_name = NULL;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA) {
+        return MYLITE_ERROR;
+    }
+    if (expression->numeric_extra_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_TRUNCATE &&
+        expression->numeric_extra_has_decimal_scale) {
+        if (expression->argument_count != 2U || expression->arguments == NULL) {
+            return MYLITE_ERROR;
+        }
+        rc = mylite_dynamic_string_append(string, "_mylite_truncate_scaled(");
+        for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 2U;
+             ++argument_index) {
+            if (argument_index != 0U) {
+                rc = mylite_dynamic_string_append(string, ", ");
+            }
+            if (rc == MYLITE_OK) {
+                rc = append_row_scalar_non_concat_expression_sql(
+                    string,
+                    &expression->arguments[argument_index],
+                    next_parameter
+                );
+            }
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_size_literal(string, expression->numeric_extra_decimal_scale);
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append_char(string, ')');
+        }
+        return rc;
+    }
+
+    function_name = row_scalar_numeric_extra_sql_name(expression->numeric_extra_kind);
+    if (function_name == NULL) {
+        return MYLITE_ERROR;
+    }
+    return append_row_scalar_registered_function_expression_sql(
+        string,
+        function_name,
+        expression,
+        next_parameter
+    );
+}
+
+static const char *row_scalar_numeric_extra_sql_name(
+    enum planned_row_scalar_numeric_extra_kind kind
+) {
+    switch (kind) {
+    case PLANNED_ROW_SCALAR_NUMERIC_EXTRA_CRC32:
+        return "_mylite_crc32";
+    case PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT:
+        return "_mylite_format";
+    case PLANNED_ROW_SCALAR_NUMERIC_EXTRA_TRUNCATE:
+        return "_mylite_truncate";
+    case PLANNED_ROW_SCALAR_NUMERIC_EXTRA_PI:
+        return "_mylite_pi";
+    case PLANNED_ROW_SCALAR_NUMERIC_EXTRA_NONE:
+        break;
+    }
+    return NULL;
+}
+
 static int append_row_scalar_uuid_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -316,6 +388,7 @@ static int append_row_scalar_uuid_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
@@ -469,6 +542,7 @@ static int append_row_scalar_uuid_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
@@ -583,6 +657,7 @@ static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_exp
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_ELT:
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:

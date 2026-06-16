@@ -144,6 +144,7 @@ add_library(mylite STATIC
   src/runtime/mylite_json_parse.c
   src/runtime/mylite_json_path.c
   src/runtime/mylite_json_validate.c
+  src/runtime/mylite_numeric_extras.c
   src/runtime/mylite_numeric_functions.c
   src/runtime/mylite_period_functions.c
   src/runtime/mylite_rand.c

@@ -473,6 +473,8 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
         return true;
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
+        return expression->numeric_extra_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT;
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
         return (expression->conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_CHAR ||
                 expression->conversion_kind == PLANNED_ROW_SCALAR_CONVERSION_USING_CHARSET) != 0;

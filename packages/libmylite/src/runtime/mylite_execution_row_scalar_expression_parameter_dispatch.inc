@@ -348,6 +348,7 @@ static int bind_row_scalar_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
         return bind_row_scalar_registered_function_expression_parameters(
             statement,
             expression,

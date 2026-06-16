@@ -20,6 +20,7 @@ enum {
     pi_core_column_count = 7,
     pi_alias_column_count = 2,
     pi_mixed_column_count = 3,
+    pi_row_column_count = 3,
     diagnostic_column_count = 2,
     show_warning_column_count = 3,
     mysql_error_parse = 1064,
@@ -259,6 +260,15 @@ static int test_pi_do_and_independent_handles(void) {
 }
 
 static int test_pi_errors_and_unsupported_forms(void) {
+    static const char *const pi_row_columns[] = {"id", "p", "label"};
+    static const char *const pi_row_values[] = {
+        "7",
+        "3.141593",
+        "p=3.141593",
+        "8",
+        "3.141593",
+        "p=3.141593",
+    };
     static const char *const show_warning_columns[] = {"Level", "Code", "Message"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -334,13 +344,17 @@ static int test_pi_errors_and_unsupported_forms(void) {
             .message_part = "Unknown column 'PI' in 'field list'",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT PI() FROM t ORDER BY id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+        (struct expected_query){
+            .sql = "SELECT id,PI() AS p,CONCAT('p=',PI()) AS label FROM t ORDER BY id",
+            .columns = pi_row_columns,
+            .column_count = pi_row_column_count,
+            .values = pi_row_values,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row-backed pi values",
         }
     );
     failures += execute_error(

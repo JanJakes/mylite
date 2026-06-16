@@ -6,10 +6,12 @@ This phase completes the remaining baseline numeric/math function rows for
 `CRC32()`, `FORMAT()`, and `TRUNCATE()` in the current scalar-expression
 surface. The implementation is deliberately limited to no-source `SELECT`,
 `SELECT ... FROM DUAL`, and `DO` expression execution over literal operands.
+The later `baseline-row-numeric-extra-functions` slice extends these functions
+into limited single-table row-scalar projection and `CONCAT()` nesting.
 
-The slice does not add table-backed expression projection, expression
-predicates, generated columns, default-expression support, indexes, collation
-semantics, locale catalogs, or SQLite fork changes.
+This slice does not add expression predicates, generated columns,
+default-expression support, indexes, collation semantics, locale catalogs, or
+SQLite fork changes.
 
 ## Sources
 
@@ -93,7 +95,8 @@ Supported:
 
 Out of scope:
 
-- table-backed function projection and row-scalar evaluation;
+- table-backed function projection and row-scalar evaluation, now covered
+  separately by `baseline-row-numeric-extra-functions`;
 - function operands other than the admitted direct literals;
 - string-to-number conversion for `FORMAT()` / `TRUNCATE()`;
 - approximate float operands;
@@ -222,9 +225,12 @@ include:
 - `TRUNCATE()` positive, zero, and negative `D`; integer versus fixed decimal
   display; negative values; `NULL`;
 - unsupported arity, unsupported locale, unsupported string numeric conversion,
-  unsupported table-backed projection, and unsupported nested expression forms;
+  and unsupported nested expression forms;
 - diagnostics snapshots and zero-warning successful supported cases;
 - file preamble and independent-handle preservation.
+
+The later `baseline-row-numeric-extra-functions` slice owns row-backed
+projection tests for these functions.
 
 Verification before commit:
 

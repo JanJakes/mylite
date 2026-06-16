@@ -18,6 +18,7 @@ enum {
     crc32_column_count = 9,
     format_column_count = 13,
     truncate_column_count = 15,
+    row_column_count = 8,
     dual_column_count = 5,
     mysql_error_parse = 1064,
     mysql_error_native_function_arity = 1582,
@@ -169,6 +170,22 @@ static int test_numeric_values_and_file_safety(void) {
         "1.9",
         "1",
     };
+    static const char *const row_columns[] = {
+        "id",
+        "label_crc",
+        "payload_crc",
+        "amount_format",
+        "amount_truncate",
+        "label_crc_text",
+        "pi_value",
+        "pi_text",
+    };
+    static const char *const row_values[] = {
+        "1",        "3259397556",   "891568578", "1,234.56",   "1234.550", "c=3259397556",
+        "3.141593", "p=3.141593",   "2",         "2501908538", NULL,       "-1.00",
+        "-1.000",   "c=2501908538", "3.141593",  "p=3.141593", "3",        NULL,
+        "0",        NULL,           NULL,        NULL,         "3.141593", "p=3.141593",
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -188,6 +205,25 @@ static int test_numeric_values_and_file_safety(void) {
     failures += execute_ok(database, "CREATE DATABASE app", NULL);
     failures += execute_ok(database, "USE app", NULL);
     failures += execute_ok(database, "CREATE TABLE catalog_guard(id INT)", NULL);
+    failures += execute_ok(
+        database,
+        "CREATE TABLE metrics("
+        "id INT,"
+        "amount DECIMAL(8,3),"
+        "places INT,"
+        "label VARCHAR(20),"
+        "payload VARBINARY(20)"
+        ")",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO metrics VALUES "
+        "(1,1234.555,2,'MySQL',X'616263'),"
+        "(2,-1.004,2,'mysql',NULL),"
+        "(3,NULL,NULL,NULL,X'')",
+        NULL
+    );
     session = mylite_connection_session_state(database);
     catalog_generation = session->catalog_generation;
     sqlite_schema_generation = session->sqlite_schema_generation;
@@ -239,6 +275,24 @@ static int test_numeric_values_and_file_safety(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "truncate values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id,CRC32(label) AS label_crc,CRC32(payload) AS payload_crc,"
+                   "FORMAT(amount,places) AS amount_format,"
+                   "TRUNCATE(amount,places) AS amount_truncate,"
+                   "CONCAT('c=',CRC32(label)) AS label_crc_text,"
+                   "PI() AS pi_value,CONCAT('p=',PI()) AS pi_text "
+                   "FROM metrics ORDER BY id",
+            .columns = row_columns,
+            .column_count = row_column_count,
+            .values = row_values,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row-backed numeric functions",
         }
     );
 

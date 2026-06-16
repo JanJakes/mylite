@@ -246,6 +246,29 @@ static int test_select_row_scalar_predicates(void) {
             .context = "direct concat ws rhs predicate",
         }
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE GREATEST(i, 5) BETWEEN LEAST(i, 5) "
+                   "AND GREATEST(i, 10) ORDER BY id",
+            .values = ids_12,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "row-scalar between function bounds",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE IFNULL(v, 'fallback') BETWEEN "
+                   "COALESCE(v, 'fallback') AND CONCAT(IFNULL(v, 'fallback'), 'z') "
+                   "ORDER BY id",
+            .values = ids_123,
+            .column_count = 1U,
+            .row_count = 3U,
+            .context = "row-scalar between string function bounds",
+        }
+    );
 
     mylite_close(database);
     return failures;

@@ -1118,6 +1118,7 @@ struct planned_select_predicate_node {
     struct planned_scalar_aggregate_subquery *upper_scalar_subquery;
     struct planned_row_scalar_expression *row_scalar_expression;
     struct planned_row_scalar_expression *row_scalar_value_expression;
+    struct planned_row_scalar_expression *row_scalar_upper_value_expression;
 };
 
 struct planned_select_predicate {

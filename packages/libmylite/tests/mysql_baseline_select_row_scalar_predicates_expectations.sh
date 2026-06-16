@@ -63,6 +63,8 @@ extrema-rhs	1
 control-rhs	1,2,3
 numeric-rhs	1,2
 concat-ws-rhs	1,2,3
+between-function-bounds	1,2
+between-string-function-bounds	1,2,3
 EXPECTED
 )
 expect_output \
@@ -118,7 +120,13 @@ expect_output \
 "FROM expr_pred WHERE ABS(i) = GREATEST(i, 0); "\
 "SELECT 'concat-ws-rhs', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
 "FROM expr_pred WHERE CONCAT_WS('-', v, i) = "\
-"CONCAT_WS('-', v, GREATEST(i, 0));" \
+"CONCAT_WS('-', v, GREATEST(i, 0)); "\
+"SELECT 'between-function-bounds', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE GREATEST(i, 5) BETWEEN LEAST(i, 5) "\
+"AND GREATEST(i, 10); "\
+"SELECT 'between-string-function-bounds', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE IFNULL(v, 'fallback') BETWEEN "\
+"COALESCE(v, 'fallback') AND CONCAT(IFNULL(v, 'fallback'), 'z');" \
     "$DATABASE"
 
 printf '%s\n' "mysql_baseline_select_row_scalar_predicates_expectations: ok"

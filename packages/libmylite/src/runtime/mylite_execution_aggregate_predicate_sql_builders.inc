@@ -1749,7 +1749,13 @@ static int append_select_row_scalar_between_predicate_term_sql(
 ) {
     int rc = mylite_dynamic_string_append(string, " BETWEEN ");
 
-    if (rc == MYLITE_OK && node->row_scalar_compare_as_real) {
+    if (rc == MYLITE_OK && node->row_scalar_value_expression != NULL) {
+        rc = append_row_scalar_expression_sql(
+            string,
+            node->row_scalar_value_expression,
+            next_parameter
+        );
+    } else if (rc == MYLITE_OK && node->row_scalar_compare_as_real) {
         rc = append_row_scalar_decimal_parameter_sql(string, next_parameter);
     } else if (rc == MYLITE_OK) {
         rc = append_numbered_parameter(string, *next_parameter);
@@ -1760,7 +1766,13 @@ static int append_select_row_scalar_between_predicate_term_sql(
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(string, " AND ");
     }
-    if (rc == MYLITE_OK && node->row_scalar_compare_as_real) {
+    if (rc == MYLITE_OK && node->row_scalar_upper_value_expression != NULL) {
+        rc = append_row_scalar_expression_sql(
+            string,
+            node->row_scalar_upper_value_expression,
+            next_parameter
+        );
+    } else if (rc == MYLITE_OK && node->row_scalar_compare_as_real) {
         rc = append_row_scalar_decimal_parameter_sql(string, next_parameter);
     } else if (rc == MYLITE_OK) {
         rc = append_numbered_parameter(string, *next_parameter);

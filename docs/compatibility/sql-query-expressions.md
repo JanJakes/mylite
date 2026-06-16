@@ -90,7 +90,9 @@ trailing-space parity, and general coercibility remain deferred.
 Row-scalar comparison predicates may compare the documented row-scalar subject
 forms against compatible literals, descriptor-column RHS values, and supported
 direct row-scalar RHS function expressions in the current single-table `SELECT`
-envelope. Arithmetic predicate operands and expression bounds remain deferred.
+envelope. Row-scalar `BETWEEN` predicates also admit direct supported
+row-scalar function bounds. Arithmetic predicate operands and non-function
+expression bounds remain deferred.
 
 The limited user-variable surface exposes handle-local `@name` values in
 no-source/`DUAL` scalar `SELECT` lists, `DO` expressions, SQL-level prepared

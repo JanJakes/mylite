@@ -147,6 +147,12 @@ static void planned_select_predicate_deinit(struct planned_select_predicate *pre
             );
         }
         free(predicate->nodes[node_index].row_scalar_value_expression);
+        if (predicate->nodes[node_index].row_scalar_upper_value_expression != NULL) {
+            planned_row_scalar_expression_deinit(
+                predicate->nodes[node_index].row_scalar_upper_value_expression
+            );
+        }
+        free(predicate->nodes[node_index].row_scalar_upper_value_expression);
         planned_exists_subquery_deinit(predicate->nodes[node_index].exists_subquery);
         free(predicate->nodes[node_index].exists_subquery);
         planned_in_subquery_deinit(predicate->nodes[node_index].in_subquery);
@@ -192,6 +198,12 @@ static void planned_select_predicate_deinit_without_exists(
             );
         }
         free(predicate->nodes[node_index].row_scalar_value_expression);
+        if (predicate->nodes[node_index].row_scalar_upper_value_expression != NULL) {
+            planned_row_scalar_expression_deinit(
+                predicate->nodes[node_index].row_scalar_upper_value_expression
+            );
+        }
+        free(predicate->nodes[node_index].row_scalar_upper_value_expression);
         planned_scalar_aggregate_subquery_deinit(
             predicate->nodes[node_index].subject_scalar_subquery
         );

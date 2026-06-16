@@ -317,7 +317,7 @@ static bool predicate_node_is_scalar_literal_expression(
 static bool predicate_node_is_supported_row_scalar_expression(
     const struct mylite_sql_ast_node *predicate_node
 );
-static bool predicate_node_is_supported_row_scalar_comparison_value_expression(
+static bool predicate_node_is_supported_row_scalar_predicate_value_expression(
     const struct mylite_sql_ast_node *predicate_node
 );
 static bool predicate_node_is_column_reference(const struct mylite_sql_ast_node *node);
@@ -791,6 +791,14 @@ static int validate_comparison_predicate_column(
     const struct planned_select_predicate_node *node
 );
 static int plan_predicate_row_scalar_value_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node
+);
+static int plan_predicate_row_scalar_upper_value_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     const struct select_source_context *source_context,

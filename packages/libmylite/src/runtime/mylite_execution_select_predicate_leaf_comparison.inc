@@ -1555,6 +1555,8 @@ static void planned_select_predicate_node_deinit_runtime_values(
     planned_value_deinit(&node->upper_value);
     planned_row_scalar_expression_deinit(node->row_scalar_value_expression);
     free(node->row_scalar_value_expression);
+    planned_row_scalar_expression_deinit(node->row_scalar_upper_value_expression);
+    free(node->row_scalar_upper_value_expression);
 }
 
 static int plan_predicate_row_scalar_value_expression(
@@ -1587,6 +1589,41 @@ static int plan_predicate_row_scalar_value_expression(
         planned_row_scalar_expression_deinit(node->row_scalar_value_expression);
         free(node->row_scalar_value_expression);
         node->row_scalar_value_expression = NULL;
+    }
+    return rc;
+}
+
+static int plan_predicate_row_scalar_upper_value_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node
+) {
+    int rc = MYLITE_OK;
+
+    node->row_scalar_upper_value_expression =
+        calloc(1U, sizeof(*node->row_scalar_upper_value_expression));
+    if (node->row_scalar_upper_value_expression == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = plan_row_scalar_expression(
+        database,
+        expression,
+        true,
+        source_context,
+        NULL,
+        table_columns,
+        table_column_count,
+        node->row_scalar_upper_value_expression
+    );
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(node->row_scalar_upper_value_expression);
+        free(node->row_scalar_upper_value_expression);
+        node->row_scalar_upper_value_expression = NULL;
     }
     return rc;
 }
@@ -1856,7 +1893,7 @@ static int plan_row_scalar_expression_comparison_predicate(
                 &node.value
             );
         } else if (
-            predicate_node_is_supported_row_scalar_comparison_value_expression(
+            predicate_node_is_supported_row_scalar_predicate_value_expression(
                 child_at(predicate_node, 1U)
             ) ||
             (child_at(predicate_node, 1U) != NULL &&
@@ -1935,6 +1972,19 @@ static int plan_row_scalar_expression_between_predicate(
             child_at(predicate_node, 1U),
             &node.value
         );
+    } else if (
+        rc == MYLITE_OK &&
+        predicate_node_is_supported_row_scalar_predicate_value_expression(
+            child_at(predicate_node, 1U)
+        )) {
+        rc = plan_predicate_row_scalar_value_expression(
+            database,
+            child_at(predicate_node, 1U),
+            source_context,
+            table_columns,
+            table_column_count,
+            &node
+        );
     } else if (rc == MYLITE_OK) {
         rc = plan_where_row_scalar_predicate_literal_value(
             database,
@@ -1948,6 +1998,19 @@ static int plan_row_scalar_expression_between_predicate(
             database,
             child_at(predicate_node, 2U),
             &node.upper_value
+        );
+    } else if (
+        rc == MYLITE_OK &&
+        predicate_node_is_supported_row_scalar_predicate_value_expression(
+            child_at(predicate_node, 2U)
+        )) {
+        rc = plan_predicate_row_scalar_upper_value_expression(
+            database,
+            child_at(predicate_node, 2U),
+            source_context,
+            table_columns,
+            table_column_count,
+            &node
         );
     } else if (rc == MYLITE_OK) {
         rc = plan_where_row_scalar_predicate_literal_value(
@@ -1963,6 +2026,10 @@ static int plan_row_scalar_expression_between_predicate(
     if (rc != MYLITE_OK) {
         planned_value_deinit(&node.value);
         planned_value_deinit(&node.upper_value);
+        planned_row_scalar_expression_deinit(node.row_scalar_value_expression);
+        free(node.row_scalar_value_expression);
+        planned_row_scalar_expression_deinit(node.row_scalar_upper_value_expression);
+        free(node.row_scalar_upper_value_expression);
         planned_row_scalar_expression_deinit(node.row_scalar_expression);
         free(node.row_scalar_expression);
     }
@@ -2746,7 +2813,7 @@ static bool predicate_node_is_supported_row_scalar_expression(
     return false;
 }
 
-static bool predicate_node_is_supported_row_scalar_comparison_value_expression(
+static bool predicate_node_is_supported_row_scalar_predicate_value_expression(
     const struct mylite_sql_ast_node *predicate_node
 ) {
     const struct mylite_sql_ast_node *node = unwrap_parenthesized_predicate(predicate_node);

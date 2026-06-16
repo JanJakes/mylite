@@ -114,11 +114,11 @@ cleanup
 run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE};" >/dev/null
 run_mysql \
     "USE ${DATABASE}; "\
-"CREATE TABLE t(id INT, a INT, i INTEGER, b BIGINT, n INT NULL); "\
+"CREATE TABLE t(id INT, a INT, i INTEGER, b BIGINT, n INT NULL, v VARCHAR(10)); "\
 "INSERT INTO t VALUES "\
-"(1, 2, 3, 9223372036854775806, NULL), "\
-"(2, -5, 7, -9223372036854775807, 10), "\
-"(3, 0, -2, 0, NULL);" >/dev/null
+"(1, 2, 3, 9223372036854775806, NULL, 'x'), "\
+"(2, -5, 7, -9223372036854775807, 10, 'y'), "\
+"(3, 0, -2, 0, NULL, 'z');" >/dev/null
 
 core_expected=$(cat <<EXPECTED
 5	-1	6	7	7	10	8	NULL	3	2	6	-2	NULL	NULL
@@ -184,6 +184,33 @@ expect_output \
     "warning count and row count after arithmetic select" \
     "$warning_expected" \
     "USE ${DATABASE}; SELECT a+i FROM t WHERE id = 1; SELECT @@warning_count; SELECT ROW_COUNT();"
+
+division_expected=$(cat <<EXPECTED
+3.5000	3	1	1	-3	-1	NULL	NULL	NULL	NULL
+4
+EXPECTED
+)
+expect_output \
+    "division and modulo arithmetic" \
+    "$division_expected" \
+    "USE ${DATABASE}; "\
+"SELECT 7 / 2 AS quotient, 7 DIV 2 AS int_quotient, 7 % 2 AS remainder, "\
+"MOD(7, 2) AS mod_function, -7 DIV 2 AS negative_int_quotient, "\
+"-7 % 2 AS negative_remainder, 7 / 0 AS divide_zero, "\
+"7 DIV 0 AS int_divide_zero, 7 % 0 AS mod_zero, MOD(7, 0) AS mod_function_zero "\
+"FROM t WHERE id = 1; SELECT @@warning_count;"
+
+string_expected=$(cat <<EXPECTED
+1
+1
+1
+3
+EXPECTED
+)
+expect_output \
+    "string numeric arithmetic warnings" \
+    "$string_expected" \
+    "USE ${DATABASE}; SELECT v+1 FROM t ORDER BY id; SELECT @@warning_count;"
 
 expect_error \
     "signed arithmetic overflow" \

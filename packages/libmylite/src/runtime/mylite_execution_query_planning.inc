@@ -1774,6 +1774,15 @@ static int plan_row_scalar_integer_arithmetic_frame(
             stack
         );
     }
+    if (current->kind == MYLITE_SQL_AST_MOD_FUNCTION) {
+        return plan_row_scalar_integer_arithmetic_operator(
+            database,
+            current,
+            MYLITE_SQL_AST_OPERATOR_MODULO,
+            frame->out_expression,
+            stack
+        );
+    }
     if (current->kind == MYLITE_SQL_AST_LITERAL ||
         current->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         return plan_row_scalar_integer_arithmetic_literal(database, current, frame->out_expression);
@@ -1852,8 +1861,8 @@ static int plan_row_scalar_integer_arithmetic_frame(
         if (!temporal_extract_predicate_kind_is_numeric(extract_kind)) {
             set_unsupported_error(
                 database,
-                "table-backed signed integer arithmetic projection supports only numeric "
-                "temporal extractor functions"
+                "table-backed arithmetic expression supports only numeric temporal extractor "
+                "functions"
             );
             return MYLITE_ERROR;
         }
@@ -1870,9 +1879,9 @@ static int plan_row_scalar_integer_arithmetic_frame(
 
     set_unsupported_error(
         database,
-        "table-backed signed integer arithmetic projection supports only descriptor columns, "
-        "integer literals, booleans, NULL, numeric temporal extractor functions, parentheses, "
-        "and +, binary -, and * operators"
+        "table-backed arithmetic expression supports only descriptor columns, numeric and string "
+        "literals, booleans, NULL, numeric temporal extractor functions, parentheses, and "
+        "+, binary -, *, /, DIV, and MOD operators"
     );
     return MYLITE_ERROR;
 }
@@ -1883,14 +1892,29 @@ static int plan_row_scalar_integer_arithmetic_binary(
     struct planned_row_scalar_expression *out_expression,
     struct row_scalar_integer_arithmetic_plan_stack *stack
 ) {
-    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+    return plan_row_scalar_integer_arithmetic_operator(
+        database,
+        expression,
+        mylite_sql_ast_node_operator(expression),
+        out_expression,
+        stack
+    );
+}
+
+static int plan_row_scalar_integer_arithmetic_operator(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_sql_ast_operator operator_kind,
+    struct planned_row_scalar_expression *out_expression,
+    struct row_scalar_integer_arithmetic_plan_stack *stack
+) {
     int rc = MYLITE_OK;
 
     if (!integer_arithmetic_operator_is_supported(operator_kind)) {
         set_unsupported_error(
             database,
-            "table-backed signed integer arithmetic projection supports only +, binary -, "
-            "and * operators"
+            "table-backed arithmetic expression supports only +, binary -, *, /, DIV, and MOD "
+            "operators"
         );
         return MYLITE_ERROR;
     }
@@ -1987,34 +2011,47 @@ static int plan_row_scalar_integer_arithmetic_literal(
             operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
             set_unsupported_error(
                 database,
-                "table-backed signed integer arithmetic projection supports only signed "
-                "integer literal operands"
+                "table-backed arithmetic expression supports only signed numeric literal operands"
             );
             return MYLITE_ERROR;
         }
-        if (child == NULL || child->kind != MYLITE_SQL_AST_LITERAL ||
-            mylite_sql_ast_node_literal_kind(child) != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        if (child == NULL || child->kind != MYLITE_SQL_AST_LITERAL) {
             set_unsupported_error(
                 database,
-                "table-backed signed integer arithmetic projection supports unary signs only "
-                "on integer literals"
+                "table-backed arithmetic expression supports unary signs only on numeric literals"
             );
             return MYLITE_ERROR;
         }
-        return plan_row_scalar_integer_value(database, unwrapped, out_expression);
+        if (mylite_sql_ast_node_literal_kind(child) == MYLITE_SQL_AST_LITERAL_INTEGER) {
+            return plan_row_scalar_integer_value(database, unwrapped, out_expression);
+        }
+        if (mylite_sql_ast_node_literal_kind(child) == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+            mylite_sql_ast_node_literal_kind(child) == MYLITE_SQL_AST_LITERAL_FLOAT) {
+            return plan_row_scalar_greatest_least_decimal_value(database, unwrapped, out_expression);
+        }
+        set_unsupported_error(
+            database,
+            "table-backed arithmetic expression supports unary signs only on numeric literals"
+        );
+        return MYLITE_ERROR;
     }
     if (unwrapped->kind != MYLITE_SQL_AST_LITERAL) {
         set_unsupported_error(
             database,
-            "table-backed signed integer arithmetic projection supports only integer, boolean, "
-            "and NULL literal operands"
+            "table-backed arithmetic expression supports only numeric and string literals, "
+            "booleans, and NULL operands"
         );
         return MYLITE_ERROR;
     }
 
     switch (mylite_sql_ast_node_literal_kind(unwrapped)) {
+    case MYLITE_SQL_AST_LITERAL_STRING:
+        return plan_row_scalar_literal_value(database, unwrapped, out_expression);
     case MYLITE_SQL_AST_LITERAL_INTEGER:
         return plan_row_scalar_integer_value(database, unwrapped, out_expression);
+    case MYLITE_SQL_AST_LITERAL_DECIMAL:
+    case MYLITE_SQL_AST_LITERAL_FLOAT:
+        return plan_row_scalar_greatest_least_decimal_value(database, unwrapped, out_expression);
     case MYLITE_SQL_AST_LITERAL_TRUE:
         out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
         out_expression->value = (struct planned_value){.is_null = false, .integer = 1};
@@ -2033,8 +2070,8 @@ static int plan_row_scalar_integer_arithmetic_literal(
 
     set_unsupported_error(
         database,
-        "table-backed signed integer arithmetic projection supports only integer, boolean, "
-        "and NULL literal operands"
+        "table-backed arithmetic expression supports only numeric and string literals, booleans, "
+        "and NULL operands"
     );
     return MYLITE_ERROR;
 }
@@ -2055,7 +2092,7 @@ static int plan_row_scalar_integer_arithmetic_column(
         expression,
         source_context,
         COLUMN_REFERENCE_FIELD,
-        "table-backed signed integer arithmetic projection supports only descriptor columns",
+        "table-backed arithmetic expression supports only descriptor columns",
         table_columns,
         table_column_count,
         &column,
@@ -2086,42 +2123,19 @@ static bool signed_integer_arithmetic_column_descriptor_is_supported(
     const struct mylite_catalog_column_descriptor *column,
     bool *out_cast_as_integer
 ) {
-    const char *logical_type = NULL;
-
     if (out_cast_as_integer == NULL) {
         return false;
     }
     *out_cast_as_integer = false;
-    if (column != NULL && column_descriptor_is_string_family(column)) {
-        *out_cast_as_integer = true;
-        return true;
-    }
-    if (column == NULL || strcmp(column->physical_type, "INTEGER") != 0) {
+    if (!row_scalar_numeric_function_column_descriptor_is_supported(column)) {
         set_unsupported_error(
             database,
-            "table-backed signed integer arithmetic projection supports only signed integer "
-            "and nonbinary string descriptor columns"
+            "table-backed arithmetic expression supports only numeric and nonbinary string "
+            "descriptor columns"
         );
         return false;
     }
-
-    logical_type = column->logical_type;
-    if (strcmp(logical_type, "TINYINT") == 0 || strcmp(logical_type, "TINYINT(1)") == 0 ||
-        strcmp(logical_type, "TINYINT UNSIGNED") == 0 || strcmp(logical_type, "SMALLINT") == 0 ||
-        strcmp(logical_type, "MEDIUMINT") == 0 || strcmp(logical_type, "SMALLINT UNSIGNED") == 0 ||
-        strcmp(logical_type, "MEDIUMINT UNSIGNED") == 0 || strcmp(logical_type, "INT") == 0 ||
-        strcmp(logical_type, "INTEGER") == 0 || strcmp(logical_type, "INT UNSIGNED") == 0 ||
-        strcmp(logical_type, "INTEGER UNSIGNED") == 0 || strcmp(logical_type, "BIGINT") == 0 ||
-        strcmp(logical_type, "BIGINT UNSIGNED") == 0) {
-        return true;
-    }
-
-    set_unsupported_error(
-        database,
-        "table-backed signed integer arithmetic projection supports only signed integer "
-        "and nonbinary string descriptor columns"
-    );
-    return false;
+    return true;
 }
 
 static int plan_row_scalar_temporal_function_expression(

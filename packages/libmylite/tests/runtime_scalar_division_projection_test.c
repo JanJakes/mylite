@@ -414,6 +414,8 @@ static int test_scalar_division_warnings_and_do(void) {
 }
 
 static int test_scalar_division_errors_and_unsupported_forms(void) {
+    static const char *const table_division_columns[] = {"id/2"};
+    static const char *const table_division_values[] = {NULL, "0.5", "1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -501,14 +503,17 @@ static int test_scalar_division_errors_and_unsupported_forms(void) {
             .message_part = "scalar projection supports",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT id/2 FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "table-backed signed integer arithmetic projection supports only +, "
-                            "binary -, and * operators",
+        (struct expected_query){
+            .sql = "SELECT id/2 FROM t ORDER BY id",
+            .columns = table_division_columns,
+            .column_count = sizeof(table_division_columns) / sizeof(table_division_columns[0]),
+            .values = table_division_values,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "table division projection",
         }
     );
     failures += execute_error(

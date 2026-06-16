@@ -328,6 +328,13 @@ static int plan_row_scalar_integer_arithmetic_binary(
     struct planned_row_scalar_expression *out_expression,
     struct row_scalar_integer_arithmetic_plan_stack *stack
 );
+static int plan_row_scalar_integer_arithmetic_operator(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_sql_ast_operator operator_kind,
+    struct planned_row_scalar_expression *out_expression,
+    struct row_scalar_integer_arithmetic_plan_stack *stack
+);
 static void row_scalar_integer_arithmetic_plan_stack_deinit(
     struct row_scalar_integer_arithmetic_plan_stack *stack
 );

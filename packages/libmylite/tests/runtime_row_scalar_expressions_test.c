@@ -32,6 +32,7 @@ struct expected_query {
     size_t column_count;
     const char *const *values;
     size_t row_count;
+    size_t warning_count;
     const char *context;
 };
 
@@ -610,6 +611,30 @@ static int test_table_backed_signed_integer_arithmetic(void) {
     static const char *const values_unsigned_arithmetic[] = {"5", "6", "7"};
     static const char *const columns_string_arithmetic[] = {"v+1"};
     static const char *const values_string_arithmetic[] = {"1", "1", "1"};
+    static const char *const columns_division[] = {
+        "quotient",
+        "int_quotient",
+        "remainder",
+        "mod_function",
+        "negative_int_quotient",
+        "negative_remainder",
+        "divide_zero",
+        "int_divide_zero",
+        "mod_zero",
+        "mod_function_zero",
+    };
+    static const char *const values_division[] = {
+        "3.5",
+        "3",
+        "1",
+        "1",
+        "-3",
+        "-1",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -762,16 +787,24 @@ static int test_table_backed_signed_integer_arithmetic(void) {
                 sizeof(columns_string_arithmetic) / sizeof(columns_string_arithmetic[0]),
             .values = values_string_arithmetic,
             .row_count = 3U,
+            .warning_count = 3U,
             .context = "string column integer arithmetic projection",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT a/1 FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "signed integer arithmetic projection supports only +, binary -, and *",
+        (struct expected_query){
+            .sql = "SELECT 7 / 2 AS quotient, 7 DIV 2 AS int_quotient, "
+                   "7 % 2 AS remainder, MOD(7, 2) AS mod_function, "
+                   "-7 DIV 2 AS negative_int_quotient, -7 % 2 AS negative_remainder, "
+                   "7 / 0 AS divide_zero, 7 DIV 0 AS int_divide_zero, "
+                   "7 % 0 AS mod_zero, MOD(7, 0) AS mod_function_zero FROM t WHERE id = 1",
+            .columns = columns_division,
+            .column_count = sizeof(columns_division) / sizeof(columns_division[0]),
+            .values = values_division,
+            .row_count = 1U,
+            .warning_count = 4U,
+            .context = "table arithmetic division and modulo projection",
         }
     );
     failures += execute_error(
@@ -780,8 +813,7 @@ static int test_table_backed_signed_integer_arithmetic(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "signed integer arithmetic projection supports unary signs only on "
-                            "integer literals",
+            .message_part = "arithmetic expression supports unary signs only on numeric literals",
         }
     );
 
@@ -1011,6 +1043,7 @@ static int test_concat_diagnostics(void) {
             .column_count = sizeof(arithmetic_columns) / sizeof(arithmetic_columns[0]),
             .values = arithmetic_values,
             .row_count = 1U,
+            .warning_count = 1U,
             .context = "string integer arithmetic projection",
         }
     );
@@ -1171,7 +1204,8 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
     failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
     failures += expect_int64(mylite_result_affected_rows(result), 0, expected.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures +=
+        expect_size(mylite_result_warning_count(result), expected.warning_count, expected.context);
 
     for (size_t column = 0U; column < expected.column_count; ++column) {
         failures += expect_text(

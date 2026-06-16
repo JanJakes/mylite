@@ -30,6 +30,7 @@ struct expected_query {
     size_t column_count;
     const char *const *values;
     size_t row_count;
+    size_t warning_count;
     const char *context;
 };
 
@@ -379,6 +380,7 @@ static int test_greatest_least_diagnostics(void) {
             .column_count = sizeof(columns_arithmetic) / sizeof(columns_arithmetic[0]),
             .values = values_arithmetic,
             .row_count = 1U,
+            .warning_count = 1U,
             .context = "greatest arithmetic argument",
         }
     );
@@ -602,7 +604,8 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
     failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
     failures += expect_int64(mylite_result_affected_rows(result), 0, expected.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures +=
+        expect_size(mylite_result_warning_count(result), expected.warning_count, expected.context);
 
     for (size_t column = 0U; column < expected.column_count; ++column) {
         failures += expect_text(

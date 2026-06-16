@@ -196,14 +196,14 @@ expect_error \
     "SELECT 1/;" \
     "$DATABASE"
 
-accepted_but_deferred=$(run_mysql_with_headers \
+accepted_broader_forms=$(run_mysql_with_headers \
     "SELECT 1+5/2*3,5/2/2,5/2%2,5/2 DIV 1,ABS(5/2),IF(1,5/2,3),
             CASE WHEN TRUE THEN 5/2 END,5.5/2,5e0/2,'5'/2,0x10/2,b'1010'/2,X'35'/2;
      SELECT id,n,id/2,n/2 FROM t ORDER BY id;" \
     "$DATABASE"
 )
 expect_value \
-    "mysql accepted forms deferred by this slice" \
+    "mysql accepted broader division forms" \
     "1+5/2*3	5/2/2	5/2%2	5/2 DIV 1	ABS(5/2)	IF(1,5/2,3)	CASE WHEN TRUE THEN 5/2 END	5.5/2	5e0/2	'5'/2	0x10/2	b'1010'/2	X'35'/2
 8.5000	1.25000000	0.5000	2	2.5000	2.5000	2.5000	2.75000	2.5	2.5	8.0000	5.0000	26.5000
 id	n	id/2	n/2
@@ -211,6 +211,6 @@ id	n	id/2	n/2
 0	NULL	0.0000	NULL
 1	2	0.5000	1.0000
 2	0	1.0000	0.0000" \
-    "$accepted_but_deferred"
+    "$accepted_broader_forms"
 
 printf '%s\n' "mysql_baseline_scalar_division_projection_expectations: ok"

@@ -1257,19 +1257,13 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
 
     switch (expression->kind) {
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
-        rc = mylite_dynamic_string_append(string, "CAST(");
-        if (rc == MYLITE_OK) {
-            rc = append_numbered_parameter(string, *next_parameter);
-        }
-        if (rc == MYLITE_OK) {
-            rc = mylite_dynamic_string_append(string, " AS INTEGER)");
-        }
+        rc = append_numbered_parameter(string, *next_parameter);
         if (rc == MYLITE_OK) {
             ++(*next_parameter);
         }
         return rc;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
-        return append_row_scalar_column_sql(string, expression);
+        return append_row_scalar_integer_arithmetic_column_sql(string, expression);
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
         return append_row_scalar_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
@@ -1385,6 +1379,27 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     return MYLITE_ERROR;
 }
 
+static int append_row_scalar_integer_arithmetic_column_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
+        return MYLITE_ERROR;
+    }
+    if (expression->column_has_source_index) {
+        rc = append_select_source_alias(string, expression->column_source_index);
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append_char(string, '.');
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(string, expression->column.name);
+    }
+    return rc;
+}
+
 static int append_row_scalar_integer_arithmetic_function_call_sql(
     struct mylite_dynamic_string *string,
     struct row_scalar_integer_arithmetic_append_stack *stack,
@@ -1451,11 +1466,17 @@ static const char *row_scalar_integer_arithmetic_function_name(
     }
     switch (expression->arithmetic_operator) {
     case MYLITE_SQL_AST_OPERATOR_ADD:
-        return "_mylite_i64_add";
+        return "_mylite_arithmetic_add";
     case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
-        return "_mylite_i64_sub";
+        return "_mylite_arithmetic_sub";
     case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
-        return "_mylite_i64_mul";
+        return "_mylite_arithmetic_mul";
+    case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+        return "_mylite_arithmetic_div";
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
+        return "_mylite_arithmetic_int_div";
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
+        return "_mylite_arithmetic_mod";
     default:
         return NULL;
     }

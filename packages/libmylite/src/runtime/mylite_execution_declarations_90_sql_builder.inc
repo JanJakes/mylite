@@ -1389,6 +1389,10 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
+static int append_row_scalar_integer_arithmetic_column_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression
+);
 static int append_row_scalar_integer_arithmetic_function_call_sql(
     struct mylite_dynamic_string *string,
     struct row_scalar_integer_arithmetic_append_stack *stack,

@@ -1403,6 +1403,10 @@ static bool row_scalar_expression_contains_integer_arithmetic_attempt(
             found = true;
             break;
         }
+        if (current->kind == MYLITE_SQL_AST_MOD_FUNCTION) {
+            found = true;
+            break;
+        }
         if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
             continue;
         }
@@ -1439,6 +1443,9 @@ static bool integer_arithmetic_operator_is_supported(enum mylite_sql_ast_operato
     case MYLITE_SQL_AST_OPERATOR_ADD:
     case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
     case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+    case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
         return true;
     default:
         break;

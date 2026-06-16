@@ -178,19 +178,19 @@ expect_error \
     "SELECT MOD(5,2,1);" \
     "$DATABASE"
 
-accepted_but_deferred=$(run_mysql_with_headers \
+accepted_broader_forms=$(run_mysql_with_headers \
     "SELECT '5'%2, 5%'2', 5.5%2, 5%2.5, MOD(5.5,2);
      SELECT id%2 FROM t ORDER BY id IS NULL, id;" \
     "$DATABASE"
 )
 expect_value \
-    "mysql accepted forms deferred by this slice" \
+    "mysql accepted broader modulo forms" \
     "'5'%2	5%'2'	5.5%2	5%2.5	MOD(5.5,2)
 1	1	1.5	0.0	1.5
 id%2
 0
 1
 NULL" \
-    "$accepted_but_deferred"
+    "$accepted_broader_forms"
 
 printf '%s\n' "mysql_baseline_scalar_modulo_projection_expectations: ok"

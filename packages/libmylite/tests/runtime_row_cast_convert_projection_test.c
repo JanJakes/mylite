@@ -781,7 +781,7 @@ static int test_row_cast_convert_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "signed integer arithmetic projection supports only descriptor columns",
+            .message_part = "table-backed arithmetic expression supports only descriptor columns",
         }
     );
     failures += execute_error(

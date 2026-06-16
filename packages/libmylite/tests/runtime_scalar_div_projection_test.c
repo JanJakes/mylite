@@ -475,6 +475,7 @@ static int test_scalar_div_warnings_and_diagnostics(void) {
 }
 
 static int test_scalar_div_overflow_and_unsupported_forms(void) {
+    static const char *const table_div_columns[] = {"id DIV 2"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -543,14 +544,17 @@ static int test_scalar_div_overflow_and_unsupported_forms(void) {
             .message_part = "signed 64-bit +, binary -, and * arithmetic",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT id DIV 2 FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "table-backed signed integer arithmetic projection supports only +, "
-                            "binary -, and * operators",
+        (struct expected_query){
+            .sql = "SELECT id DIV 2 FROM t",
+            .columns = table_div_columns,
+            .column_count = sizeof(table_div_columns) / sizeof(table_div_columns[0]),
+            .values = NULL,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "table div projection",
         }
     );
     failures += execute_error(

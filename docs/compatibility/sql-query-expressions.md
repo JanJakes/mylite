@@ -87,6 +87,11 @@ use MyLite's current string-key collation, binary collations use SQLite
 `utf8mb4_0900_as_cs` collation; full Unicode weights, accent sensitivity,
 trailing-space parity, and general coercibility remain deferred.
 
+Row-scalar comparison predicates may compare the documented row-scalar subject
+forms against compatible literals, descriptor-column RHS values, and supported
+row-scalar RHS function expressions in the current single-table `SELECT`
+envelope. Arithmetic predicate operands and expression bounds remain deferred.
+
 The limited user-variable surface exposes handle-local `@name` values in
 no-source/`DUAL` scalar `SELECT` lists, `DO` expressions, SQL-level prepared
 statement source/`USING` positions, source-free `INSERT` / `REPLACE` value

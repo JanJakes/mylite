@@ -37,6 +37,7 @@ int main(void) {
 static int test_select_row_scalar_predicates(void) {
     static const char *const ids_1[] = {"1"};
     static const char *const ids_2[] = {"2"};
+    static const char *const ids_12[] = {"1", "2"};
     static const char *const ids_123[] = {"1", "2", "3"};
     static const char *const ids_13[] = {"1", "3"};
     mylite_db *database = NULL;
@@ -179,6 +180,27 @@ static int test_select_row_scalar_predicates(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "json extract equality predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE GREATEST(i, 5) = i ORDER BY id",
+            .values = ids_1,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "column rhs predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE CONCAT(v, ':', i) = "
+                   "CONCAT(v, ':', GREATEST(i, 0)) ORDER BY id",
+            .values = ids_12,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "function rhs predicate",
         }
     );
 

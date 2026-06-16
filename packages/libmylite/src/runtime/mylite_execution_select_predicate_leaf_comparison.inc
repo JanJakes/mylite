@@ -1856,11 +1856,12 @@ static int plan_row_scalar_expression_comparison_predicate(
                 &node.value
             );
         } else if (
-            predicate_node_is_supported_row_scalar_expression(child_at(predicate_node, 1U)) ||
+            predicate_node_is_supported_row_scalar_comparison_value_expression(
+                child_at(predicate_node, 1U)
+            ) ||
             (child_at(predicate_node, 1U) != NULL &&
-             (child_at(predicate_node, 1U)->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION ||
-              (node.row_scalar_expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLLATE &&
-               child_at(predicate_node, 1U)->kind == MYLITE_SQL_AST_LITERAL)))) {
+             node.row_scalar_expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLLATE &&
+             child_at(predicate_node, 1U)->kind == MYLITE_SQL_AST_LITERAL)) {
             rc = plan_predicate_row_scalar_value_expression(
                 database,
                 child_at(predicate_node, 1U),
@@ -2743,6 +2744,20 @@ static bool predicate_node_is_supported_row_scalar_expression(
     }
 
     return false;
+}
+
+static bool predicate_node_is_supported_row_scalar_comparison_value_expression(
+    const struct mylite_sql_ast_node *predicate_node
+) {
+    const struct mylite_sql_ast_node *node = unwrap_parenthesized_predicate(predicate_node);
+
+    if (node == NULL) {
+        return false;
+    }
+    if (predicate_node_is_column_reference(node)) {
+        return true;
+    }
+    return predicate_node_is_supported_row_scalar_expression(node);
 }
 
 static bool predicate_node_is_column_reference(const struct mylite_sql_ast_node *node) {

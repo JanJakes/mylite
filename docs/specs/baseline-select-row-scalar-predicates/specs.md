@@ -104,7 +104,9 @@ remain outside this slice.
   row-scalar `LIKE` / `REGEXP` paths where already supported.
 - The comparison right operand may be a supported predicate literal, descriptor
   column where the existing planner supports it, `COLLATE` expression, or a
-  supported row-scalar expression.
+  supported row-scalar expression. The executable single-table subset includes
+  descriptor-column RHS values and supported row-scalar function RHS values for
+  row-scalar comparison subjects.
 - `IS NULL` and `IS NOT NULL` use the row-scalar predicate node so functions
   can participate without resolving as columns.
 - `BETWEEN` and `NOT BETWEEN` reuse existing literal/range conversion for the
@@ -132,6 +134,7 @@ Add MySQL-runtime expectations and focused runtime tests for:
 
 - binary/string expression comparisons, including supported row-scalar RHS
   values;
+- descriptor-column RHS values for row-scalar comparison subjects;
 - control-flow and comparison functions in `WHERE`;
 - `IS NULL` / `IS NOT NULL` over row-scalar functions;
 - `BETWEEN` / `NOT BETWEEN` over row-scalar functions;

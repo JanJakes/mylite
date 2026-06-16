@@ -57,6 +57,8 @@ ifnull-is-not-null	1,2,3
 timestamp-between	1
 datediff-eq	1
 json-extract-eq	2
+column-rhs	1
+function-rhs	1,2
 EXPECTED
 )
 expect_output \
@@ -98,7 +100,12 @@ expect_output \
 "SELECT 'datediff-eq', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
 "FROM expr_pred WHERE DATEDIFF(dt, '2024-01-01') = 1; "\
 "SELECT 'json-extract-eq', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
-"FROM expr_pred WHERE JSON_UNQUOTE(JSON_EXTRACT(js, '$.a')) = '2';" \
+"FROM expr_pred WHERE JSON_UNQUOTE(JSON_EXTRACT(js, '$.a')) = '2'; "\
+"SELECT 'column-rhs', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE GREATEST(i, 5) = i; "\
+"SELECT 'function-rhs', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE CONCAT(v, ':', i) = "\
+"CONCAT(v, ':', GREATEST(i, 0));" \
     "$DATABASE"
 
 printf '%s\n' "mysql_baseline_select_row_scalar_predicates_expectations: ok"

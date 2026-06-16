@@ -273,8 +273,8 @@ static int plan_row_scalar_searched_case_expression(
         return MYLITE_NOMEM;
     }
 
-    out_expression->arguments =
-        (struct planned_row_scalar_expression *)calloc(argument_count, sizeof(*out_expression->arguments));
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(argument_count, sizeof(*out_expression->arguments));
     if (out_expression->arguments == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -373,8 +373,8 @@ static int plan_row_scalar_simple_case_expression(
         return MYLITE_NOMEM;
     }
 
-    out_expression->arguments =
-        (struct planned_row_scalar_expression *)calloc(argument_count, sizeof(*out_expression->arguments));
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(argument_count, sizeof(*out_expression->arguments));
     if (out_expression->arguments == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -497,7 +497,10 @@ static int plan_row_scalar_nested_searched_case_expression(
 
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION) {
-        set_unsupported_error(database, "nested row-scalar searched CASE expression is unsupported");
+        set_unsupported_error(
+            database,
+            "nested row-scalar searched CASE expression is unsupported"
+        );
         return MYLITE_ERROR;
     }
     when_list = child_at(expression, 0U);
@@ -517,8 +520,8 @@ static int plan_row_scalar_nested_searched_case_expression(
         return MYLITE_NOMEM;
     }
 
-    out_expression->arguments =
-        (struct planned_row_scalar_expression *)calloc(argument_count, sizeof(*out_expression->arguments));
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(argument_count, sizeof(*out_expression->arguments));
     if (out_expression->arguments == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -620,8 +623,8 @@ static int plan_row_scalar_nested_simple_case_expression(
         return MYLITE_NOMEM;
     }
 
-    out_expression->arguments =
-        (struct planned_row_scalar_expression *)calloc(argument_count, sizeof(*out_expression->arguments));
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(argument_count, sizeof(*out_expression->arguments));
     if (out_expression->arguments == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -803,7 +806,10 @@ static int plan_row_scalar_leaf_like_predicate_expression(
     expression = unwrap_parenthesized_expression(expression);
     operator_kind = row_scalar_control_flow_condition_operator(expression);
     if (operator_kind != MYLITE_SQL_AST_OPERATOR_LIKE) {
-        set_unsupported_error(database, "nested row-scalar CASE WHEN supports only LIKE predicates");
+        set_unsupported_error(
+            database,
+            "nested row-scalar CASE WHEN supports only LIKE predicates"
+        );
         return MYLITE_ERROR;
     }
 
@@ -1035,6 +1041,22 @@ static enum mylite_sql_ast_operator row_scalar_control_flow_condition_operator(
         return mylite_sql_ast_node_operator(expression);
     }
     return MYLITE_SQL_AST_OPERATOR_NONE;
+}
+
+static bool row_scalar_control_flow_expression_is_bare_arithmetic(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_MOD_FUNCTION) {
+        return true;
+    }
+    if (expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return false;
+    }
+    return integer_arithmetic_operator_is_supported(mylite_sql_ast_node_operator(expression));
 }
 
 static bool row_scalar_control_flow_logical_operator_is_supported(
@@ -1832,6 +1854,16 @@ static int plan_row_scalar_control_flow_value_argument(
         );
     }
 
+    if (has_source && row_scalar_control_flow_expression_is_bare_arithmetic(expression)) {
+        return plan_row_scalar_integer_arithmetic_expression(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     return plan_row_scalar_non_control_flow_expression(
         database,
         expression,
@@ -1861,7 +1893,7 @@ static int plan_row_scalar_control_flow_condition_argument(
         set_unsupported_error(
             database,
             "IF() row conditions support only integer, boolean, NULL, descriptor integer column, "
-            "and ISNULL() values"
+            "numeric function, row arithmetic, ISNULL(), LIKE, and comparison values"
         );
         return MYLITE_ERROR;
     }
@@ -1876,7 +1908,7 @@ static int plan_row_scalar_control_flow_condition_argument(
         set_unsupported_error(
             database,
             "IF() row conditions support only integer, boolean, NULL, descriptor integer column, "
-            "and ISNULL() values"
+            "numeric function, row arithmetic, ISNULL(), LIKE, and comparison values"
         );
         return MYLITE_ERROR;
     }
@@ -1891,6 +1923,16 @@ static int plan_row_scalar_control_flow_condition_argument(
             database,
             expression,
             has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (has_source && row_scalar_control_flow_expression_is_bare_arithmetic(expression)) {
+        return plan_row_scalar_integer_arithmetic_expression(
+            database,
+            expression,
             source_context,
             table_columns,
             table_column_count,
@@ -1979,7 +2021,7 @@ static int plan_row_scalar_control_flow_condition_argument(
     set_unsupported_error(
         database,
         "IF() row conditions support only integer, boolean, NULL, descriptor integer column, "
-        "numeric functions, ISNULL(), LIKE, and integer comparison values"
+        "numeric function, row arithmetic, ISNULL(), LIKE, and comparison values"
     );
     return MYLITE_ERROR;
 }
@@ -2043,6 +2085,16 @@ static int plan_row_scalar_control_flow_leaf_value_argument(
         );
     }
 
+    if (has_source && row_scalar_control_flow_expression_is_bare_arithmetic(expression)) {
+        return plan_row_scalar_integer_arithmetic_expression(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     return plan_row_scalar_non_control_flow_expression(
         database,
         expression,
@@ -2072,7 +2124,7 @@ static int plan_row_scalar_control_flow_leaf_condition_argument(
         set_unsupported_error(
             database,
             "nested IF() row conditions support only integer, boolean, NULL, and descriptor "
-            "integer column values"
+            "integer column, numeric function, row arithmetic, LIKE, and comparison values"
         );
         return MYLITE_ERROR;
     }
@@ -2095,7 +2147,7 @@ static int plan_row_scalar_control_flow_leaf_condition_argument(
         set_unsupported_error(
             database,
             "nested IF() row conditions support only integer, boolean, NULL, and descriptor "
-            "integer column values"
+            "integer column, numeric function, row arithmetic, LIKE, and comparison values"
         );
         return MYLITE_ERROR;
     }
@@ -2107,6 +2159,16 @@ static int plan_row_scalar_control_flow_leaf_condition_argument(
             database,
             expression,
             has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (has_source && row_scalar_control_flow_expression_is_bare_arithmetic(expression)) {
+        return plan_row_scalar_integer_arithmetic_expression(
+            database,
+            expression,
             source_context,
             table_columns,
             table_column_count,
@@ -2183,7 +2245,7 @@ static int plan_row_scalar_control_flow_leaf_condition_argument(
     set_unsupported_error(
         database,
         "nested IF() row conditions support only integer, boolean, NULL, descriptor integer "
-        "column, numeric functions, LIKE, and integer comparison values"
+        "column, numeric function, row arithmetic, LIKE, and comparison values"
     );
     return MYLITE_ERROR;
 }

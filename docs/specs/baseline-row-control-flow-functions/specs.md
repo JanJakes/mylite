@@ -16,10 +16,12 @@ CASE WHEN condition THEN value [WHEN condition THEN value ...] [ELSE value] END
 
 The scope is intentionally limited to projection in the current row-scalar
 `SELECT` envelope, plus a searched-`CASE` hidden order key in the same
-single-table envelope. It does not add other control-flow functions to `WHERE`,
-`ORDER BY`, `GROUP BY`, `HAVING`, DML assignment values, defaults, generated
-columns, or arbitrary expression positions. It also does not make MyLite's
-expression metadata general.
+single-table envelope. The current projection envelope admits supported row
+arithmetic expressions as control-flow values and integer-truth conditions. It
+does not add other control-flow functions to `WHERE`, `ORDER BY`, `GROUP BY`,
+`HAVING`, DML assignment values, defaults, generated columns, or arbitrary
+expression positions. It also does not make MyLite's expression metadata
+general.
 
 The main architectural goal is to move common application projection patterns
 such as `IFNULL(option_value, '')` and `COALESCE(col, fallback)` onto the
@@ -67,11 +69,14 @@ Runtime probes establish the behavior used by this phase:
 - `ISNULL(expr)` returns integer `1` for `NULL` and `0` otherwise.
 - Table-backed projection evaluates these functions once for each matched row
   and preserves the existing `WHERE`, `ORDER BY`, and `LIMIT` row envelope.
+- Supported table-backed arithmetic arguments follow the existing row
+  arithmetic behavior, including `NULL` propagation, MySQL-style string numeric
+  prefix conversion, truncation warnings, and division-by-zero warnings.
 - In the default `utf8mb4_0900_ai_ci` context, admitted string comparisons for
   `NULLIF()` are case-insensitive for ASCII text. For example, `NULLIF('A',
   'a')` returns `NULL`.
-- Successful supported projections produce no warnings for the admitted value
-  shapes and make a following `ROW_COUNT()` return `-1`.
+- Successful supported projections that do not evaluate warning-producing
+  arithmetic produce no warnings and make a following `ROW_COUNT()` return `-1`.
 - MySQL also supports these functions in predicates, broader ordering, DML
   assignments, grouping, subqueries, generated expressions, and broad
   expression trees. Those positions remain outside this baseline.
@@ -81,7 +86,8 @@ Runtime probes establish the behavior used by this phase:
 - Public API: unchanged. `mylite_execute()` returns the existing row result
   object, with labels from source spans or aliases.
 - Statement context: owns diagnostics, warning count, affected-row state, and
-  result finalization. Supported calls add no warnings.
+  result finalization. Supported arithmetic arguments may add evaluated
+  expression warnings.
 - Lexer/parser/AST: existing function nodes and wrong-arity diagnostic nodes are
   reused. No MySQL grammar text is copied.
 - Analyzer/planner: detects supported row control-flow expressions in `SELECT`
@@ -151,6 +157,7 @@ row_scalar_value:
   | NULL
   | session_scalar_function
   | system_variable_reference
+  | row_arithmetic_expr
   | nested_row_control_expr
   | ( row_scalar_value )
 
@@ -162,6 +169,7 @@ row_condition:
   | TRUE
   | FALSE
   | NULL
+  | row_arithmetic_expr
   | ISNULL ( row_scalar_value )
   | row_scalar_value LIKE row_scalar_value
   | row_condition AND row_condition
@@ -184,6 +192,7 @@ nested_row_condition:
   | TRUE
   | FALSE
   | NULL
+  | row_arithmetic_expr
   | row_scalar_leaf_value LIKE row_scalar_leaf_value
   | nested_row_condition AND nested_row_condition
   | nested_row_condition OR nested_row_condition
@@ -200,7 +209,29 @@ row_scalar_leaf_value:
   | NULL
   | session_scalar_function
   | system_variable_reference
+  | row_arithmetic_expr
   | ( row_scalar_leaf_value )
+
+row_arithmetic_expr:
+    arithmetic_operand + arithmetic_operand
+  | arithmetic_operand - arithmetic_operand
+  | arithmetic_operand * arithmetic_operand
+  | arithmetic_operand / arithmetic_operand
+  | arithmetic_operand DIV arithmetic_operand
+  | arithmetic_operand MOD arithmetic_operand
+  | arithmetic_operand % arithmetic_operand
+  | MOD ( arithmetic_operand , arithmetic_operand )
+  | ( row_arithmetic_expr )
+
+arithmetic_operand:
+    integer_or_nonbinary_string_descriptor_column_reference
+  | numeric_literal
+  | string_literal
+  | TRUE
+  | FALSE
+  | NULL
+  | supported_numeric_function
+  | row_arithmetic_expr
 
 row_scalar_value_list:
     row_scalar_value
@@ -225,19 +256,21 @@ session scalar, or system-variable values. Further nested control-flow
 functions and nested non-control-flow row functions are rejected
 deterministically.
 
-`IF()` conditions are deliberately narrower: they accept integer-family
-descriptor columns, integer/boolean/`NULL` literals, and row-backed `ISNULL()`
-results. String truth conversion, decimal truth conversion, warning-producing
-numeric conversion, and arbitrary expression truthiness are deferred.
+`IF()` and searched-`CASE` conditions accept the integer truth rule over
+integer-family descriptor columns, integer/boolean/`NULL` literals,
+row-backed `ISNULL()` results, supported row arithmetic expressions, and the
+documented `LIKE`/logical atoms. String and decimal truth conversion are
+supported only when they occur through the row arithmetic UDF envelope;
+arbitrary expression truthiness remains deferred.
 
 The following remain outside this phase:
 
 - functions in `WHERE`, `HAVING`, `ORDER BY`, `GROUP BY`, aggregate arguments,
   distinct keys, DML assignment values, generated/default expressions, and
   check constraints;
-- joined sources, derived tables, CTEs, scalar/table subqueries in table-backed
-  control-flow arguments, user variables, parameters, stored functions, and
-  arbitrary expression operands;
+- joined sources beyond the existing row-scalar envelope, derived tables, CTEs,
+  scalar/table subqueries in table-backed control-flow arguments, user
+  variables, parameters, stored functions, and arbitrary expression operands;
 - exact `DECIMAL`, binary-string, `BIT`, `ENUM`, `SET`, `JSON`, and
   approximate numeric column operands;
 - MySQL's complete result type aggregation and expression metadata;
@@ -266,10 +299,22 @@ row_condition(A) ::= MINUS(M) INTEGER(T).
 row_condition(A) ::= TRUE(T).
 row_condition(A) ::= FALSE(T).
 row_condition(A) ::= NULL(T).
+row_condition(A) ::= row_arithmetic_expr(B).
 row_condition(A) ::= ISNULL(T) LPAREN row_scalar_value(V) RPAREN(R).
 row_condition(A) ::= row_scalar_value(L) LIKE(T) row_scalar_value(R).
 row_condition(A) ::= row_condition(L) AND(T) row_condition(R).
 row_condition(A) ::= row_condition(L) OR(T) row_condition(R).
+row_scalar_value(A) ::= row_arithmetic_expr(B).
+row_scalar_leaf_value(A) ::= row_arithmetic_expr(B).
+row_arithmetic_expr(A) ::= row_arithmetic_expr(L) PLUS(T) row_arithmetic_expr(R).
+row_arithmetic_expr(A) ::= row_arithmetic_expr(L) MINUS(T) row_arithmetic_expr(R).
+row_arithmetic_expr(A) ::= row_arithmetic_expr(L) STAR(T) row_arithmetic_expr(R).
+row_arithmetic_expr(A) ::= row_arithmetic_expr(L) SLASH(T) row_arithmetic_expr(R).
+row_arithmetic_expr(A) ::= row_arithmetic_expr(L) DIV(T) row_arithmetic_expr(R).
+row_arithmetic_expr(A) ::= row_arithmetic_expr(L) MOD(T) row_arithmetic_expr(R).
+row_arithmetic_expr(A) ::= row_arithmetic_expr(L) PERCENT(T) row_arithmetic_expr(R).
+row_arithmetic_expr(A) ::= MOD(T) LPAREN row_arithmetic_expr(L) COMMA
+                           row_arithmetic_expr(R) RPAREN.
 ```
 
 These snippets describe MyLite's supported subset, not MySQL's full grammar.
@@ -294,6 +339,9 @@ Function semantics:
 
 - `IF()` tests the condition with the admitted integer truth rule: nonzero and
   not `NULL` selects the true branch; zero or `NULL` selects the false branch.
+  When the condition is a supported row arithmetic expression, MyLite uses the
+  same UDF-backed numeric coercion and warning behavior as row arithmetic
+  projection.
 - Searched `CASE` and `IF()` row conditions admit `LIKE`, `AND`, and `OR` over
   the supported row-condition atoms; `LIKE` uses the current backslash-escape
   SQL mode decision already used by MyLite row predicates.
@@ -304,6 +352,10 @@ Function semantics:
   numeric equality over the stored integer values. Mixed unsupported domains
   are rejected.
 - `ISNULL()` returns integer `1` or `0`.
+- Arithmetic arguments are lowered through the existing MyLite row arithmetic
+  UDFs. SQLite continues to scan and filter rows; MyLite supplies MySQL
+  coercion, truncation warnings, division-by-zero warnings, and parameter
+  binding.
 
 Table-backed evaluation stays inside SQLite's row scan. MyLite must not copy the
 matched row set into memory to evaluate these functions. SQLite may evaluate
@@ -316,7 +368,7 @@ Generated SQL uses standard SQLite expression shapes plus MyLite's registered
 collation:
 
 ```sql
-CASE WHEN <condition> IS NOT NULL AND <condition> <> 0 THEN <true> ELSE <false> END
+CASE WHEN COALESCE(<condition>, 0) <> 0 THEN <true> ELSE <false> END
 ifnull(<value>, <fallback>)
 coalesce(<value>, ...)
 CASE WHEN <left> COLLATE "utf8mb4_0900_ai_ci" = <right> COLLATE "utf8mb4_0900_ai_ci"
@@ -356,6 +408,8 @@ Supported diagnostics include:
 Add MySQL-runtime expectation coverage for:
 
 - table-backed `IFNULL()`, `COALESCE()`, `NULLIF()`, `ISNULL()`, and `IF()`;
+- row arithmetic control-flow values and conditions, including string numeric
+  truth conversion warnings;
 - string, integer, date, datetime, and `NULL` values;
 - case-insensitive ASCII string comparison for `NULLIF()` under the default
   collation;
@@ -369,6 +423,8 @@ Add MySQL-runtime expectation coverage for:
 Add fast C runtime coverage for:
 
 - supported table-backed projection values and aliases;
+- row arithmetic values, conditions, parameter binding, and warnings inside
+  supported control-flow functions;
 - nullable and nonnullable descriptor values;
 - qualified column references with table aliases;
 - existing row-envelope reuse;

@@ -1884,6 +1884,9 @@ static int plan_row_scalar_leaf_logical_condition_expression(
 static enum mylite_sql_ast_operator row_scalar_control_flow_condition_operator(
     const struct mylite_sql_ast_node *expression
 );
+static bool row_scalar_control_flow_expression_is_bare_arithmetic(
+    const struct mylite_sql_ast_node *expression
+);
 static int plan_row_scalar_control_flow_comparison_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

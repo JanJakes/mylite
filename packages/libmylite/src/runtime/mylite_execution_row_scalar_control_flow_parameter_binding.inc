@@ -65,6 +65,12 @@ static int bind_row_scalar_control_flow_frame_parameters(
             );
         case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
             return bind_row_scalar_expression_parameters(statement, expression, parameter_index);
+        case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+            return bind_row_scalar_integer_arithmetic_expression_parameters(
+                statement,
+                expression,
+                parameter_index
+            );
         case PLANNED_ROW_SCALAR_EXPRESSION_IF:
         case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
         case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -82,7 +88,6 @@ static int bind_row_scalar_control_flow_frame_parameters(
         case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
         case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
         case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
-        case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
         case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
         case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
         case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
@@ -175,6 +180,12 @@ static int bind_row_scalar_control_flow_frame_parameters(
             );
         case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
             return bind_row_scalar_expression_parameters(statement, expression, parameter_index);
+        case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+            return bind_row_scalar_integer_arithmetic_expression_parameters(
+                statement,
+                expression,
+                parameter_index
+            );
         case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
         case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
         case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
@@ -187,7 +198,6 @@ static int bind_row_scalar_control_flow_frame_parameters(
         case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
         case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
         case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
-        case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
         case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
         case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
         case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:

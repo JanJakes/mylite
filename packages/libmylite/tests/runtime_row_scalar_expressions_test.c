@@ -416,6 +416,19 @@ static int test_table_backed_control_flow(void) {
     static const char *const values_qualified[] = {"2", "x"};
     static const char *const columns_nested[] = {"id", "nested"};
     static const char *const values_nested[] = {"1", "a", "2", "fallback", "3", "a"};
+    static const char *const columns_arithmetic[] = {
+        "id",
+        "ifnull_arith",
+        "coalesce_arith",
+        "nullif_arith",
+        "if_condition_arith",
+        "if_value_arith",
+        "case_condition_arith",
+    };
+    static const char *const values_arithmetic[] = {
+        "1",  "8",  "8", "8", "a", "yes", "nz", "2", "-1",  "10", NULL,
+        NULL, "no", "z", "3", "1", "15",  NULL, "a", "yes", "nz",
+    };
     static const char *const columns_comparisons[] = {"id", "cmp_gt", "cmp_lt"};
     static const char *const values_comparisons[] = {
         "1",
@@ -430,6 +443,10 @@ static int test_table_backed_control_flow(void) {
     };
     static const char *const columns_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_status[] = {"-1", "0"};
+    static const char *const columns_string_truth[] = {"id", "truthy"};
+    static const char *const values_string_truth[] = {"1", "true", "2", "false", "3", "true"};
+    static const char *const columns_warning_status[] = {"@@warning_count", "ROW_COUNT()"};
+    static const char *const values_string_truth_status[] = {"2", "-1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -539,6 +556,22 @@ static int test_table_backed_control_flow(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT id, IFNULL(i+1,-1) AS ifnull_arith, "
+                   "COALESCE(NULLIF(i+1,1),nn+10,99) AS coalesce_arith, "
+                   "NULLIF(i+1,1) AS nullif_arith, IF(nn-5,v,n) AS if_condition_arith, "
+                   "IF(i+1,'yes','no') AS if_value_arith, "
+                   "CASE WHEN i+1 THEN 'nz' ELSE 'z' END AS case_condition_arith "
+                   "FROM t ORDER BY id",
+            .columns = columns_arithmetic,
+            .column_count = sizeof(columns_arithmetic) / sizeof(columns_arithmetic[0]),
+            .values = values_arithmetic,
+            .row_count = 3U,
+            .context = "control-flow arithmetic projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT id, CASE WHEN id > 5 THEN 'yes' ELSE 'no' END AS cmp_gt, "
                    "CASE WHEN id < 2 THEN 'string' ELSE 123 END AS cmp_lt FROM t ORDER BY id",
             .columns = columns_comparisons,
@@ -557,6 +590,29 @@ static int test_table_backed_control_flow(void) {
             .values = values_status,
             .row_count = 1U,
             .context = "control-flow status after select",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, IF(v+1,'true','false') AS truthy FROM t ORDER BY id",
+            .columns = columns_string_truth,
+            .column_count = sizeof(columns_string_truth) / sizeof(columns_string_truth[0]),
+            .values = values_string_truth,
+            .row_count = 3U,
+            .warning_count = 2U,
+            .context = "control-flow string arithmetic truth warnings",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@warning_count, ROW_COUNT()",
+            .columns = columns_warning_status,
+            .column_count = sizeof(columns_warning_status) / sizeof(columns_warning_status[0]),
+            .values = values_string_truth_status,
+            .row_count = 1U,
+            .context = "control-flow warning status after string arithmetic truth",
         }
     );
 

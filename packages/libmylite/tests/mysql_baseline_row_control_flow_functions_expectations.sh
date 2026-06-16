@@ -149,6 +149,20 @@ expect_output \
     "SELECT id, IFNULL(NULLIF(v,n), COALESCE(n,'z')) FROM t ORDER BY id;" \
     "$DATABASE"
 
+arithmetic_expected=$(cat <<\EXPECTED
+1	8	8	8	a	yes	nz
+2	-1	10	NULL	NULL	no	z
+3	1	15	NULL	a	yes	nz
+EXPECTED
+)
+expect_output \
+    "arithmetic row control-flow projection" \
+    "$arithmetic_expected" \
+    "SELECT id, IFNULL(i+1,-1), COALESCE(NULLIF(i+1,1),nn+10,99), "\
+"NULLIF(i+1,1), IF(nn-5,v,n), IF(i+1,'yes','no'), "\
+"CASE WHEN i+1 THEN 'nz' ELSE 'z' END FROM t ORDER BY id;" \
+    "$DATABASE"
+
 labels_expected=$(cat <<\EXPECTED
 IFNULL(v,'x')	alias_name	ISNULL(n)
 a	a	1
@@ -166,6 +180,16 @@ expect_output \
     "a
 -1	0" \
     "SELECT IFNULL(v,'x') FROM t WHERE id = 1; SELECT ROW_COUNT(), @@warning_count;" \
+    "$DATABASE"
+
+expect_output \
+    "string arithmetic truth warnings" \
+    "1	true
+2	false
+3	true
+2	-1" \
+    "SELECT id, IF(v+1,'true','false') FROM t ORDER BY id; "\
+"SELECT @@warning_count, ROW_COUNT();" \
     "$DATABASE"
 
 printf '%s\n' "mysql_baseline_row_control_flow_functions_expectations: ok"

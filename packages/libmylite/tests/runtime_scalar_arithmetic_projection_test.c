@@ -497,13 +497,15 @@ static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
             .message_part = "row-scalar SELECT supports only signed integer literals",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT 1+2 WHERE TRUE",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "near 'WHERE'",
+        (struct expected_query){
+            .sql = "SELECT 1+2 WHERE TRUE",
+            .columns = (const char *const[]){"1+2"},
+            .column_count = 1U,
+            .values = (const char *const[]){"3"},
+            .row_count = 1U,
+            .context = "arithmetic with where true",
         }
     );
     failures += expect_query(
@@ -517,13 +519,15 @@ static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
             .context = "arithmetic with limit",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT 1+2 ORDER BY 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "near 'ORDER'",
+        (struct expected_query){
+            .sql = "SELECT 1+2 ORDER BY 1",
+            .columns = (const char *const[]){"1+2"},
+            .column_count = 1U,
+            .values = (const char *const[]){"3"},
+            .row_count = 1U,
+            .context = "arithmetic with order by ordinal",
         }
     );
 

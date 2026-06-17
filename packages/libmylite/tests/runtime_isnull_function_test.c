@@ -498,13 +498,15 @@ static int test_isnull_function_unsupported_forms(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT ISNULL(NULL) WHERE TRUE",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT ISNULL(NULL) WHERE TRUE",
+            .columns = (const char *const[]){"ISNULL(NULL)"},
+            .column_count = 1U,
+            .values = (const char *const[]){"1"},
+            .row_count = 1U,
+            .context = "isnull with where true",
         }
     );
     failures += expect_query(
@@ -518,13 +520,15 @@ static int test_isnull_function_unsupported_forms(void) {
             .context = "isnull with limit",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT ISNULL(NULL) ORDER BY 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT ISNULL(NULL) ORDER BY 1",
+            .columns = (const char *const[]){"ISNULL(NULL)"},
+            .column_count = 1U,
+            .values = (const char *const[]){"1"},
+            .row_count = 1U,
+            .context = "isnull with order by ordinal",
         }
     );
     failures += execute_error(

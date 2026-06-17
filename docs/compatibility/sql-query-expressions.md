@@ -19,7 +19,9 @@ The limited `WHERE` predicate operand set also admits statement-current
 The limited row-scalar control-flow family includes `IF()`, `IFNULL()`,
 `COALESCE()`, `NULLIF()`, `ISNULL()`, searched `CASE` in single-table
 projection lists, and a narrow joined simple `CASE` projection shape over
-integer descriptor/literal operands. The current descriptor-backed `WHERE`
+integer descriptor/literal operands. Source-free and `DUAL` scalar `SELECT`
+queries admit documented `WHERE`, `ORDER BY`, and `LIMIT` clauses around the
+current scalar expression envelope. The current descriptor-backed `WHERE`
 predicate subset admits these function calls as row-scalar truth, comparison,
 `IS [NOT] NULL`, and `[NOT] BETWEEN` operands, and supported non-grouped
 single-table `SELECT` paths admit documented row-scalar `ORDER BY` expression

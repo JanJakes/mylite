@@ -111,7 +111,9 @@ row_scalar_order_key(A) ::= supported_searched_case_rank_key(B).
   documented grouped descriptor, aggregate-alias, relaxed cast, and selected
   extractor subsets.
 - No `TABLE`, `VALUES`, `DELETE`, or `UPDATE` row-scalar expression order keys.
-- No tableless/no-source row-scalar function `ORDER BY` expression execution.
+- No tableless/no-source multi-row sorting; source-free scalar `ORDER BY`
+  validation is covered by
+  [baseline tableless SELECT expression clauses](../baseline-tableless-select-expression-clauses/specs.md).
 - No aggregate, window, stored-function, loadable-function, user-variable,
   scalar-subquery, JSON-arrow, tuple, full-text, spatial, or arbitrary
   expression order keys.

@@ -477,6 +477,32 @@ static int plan_row_scalar_select_order_alias_item(
     struct planned_select_order *out_order,
     bool *out_handled
 );
+static int plan_row_scalar_select_tableless_clauses(
+    struct mylite_db *database,
+    const struct row_scalar_select_clauses *clauses,
+    struct planned_row_scalar_select *out_plan
+);
+static int plan_row_scalar_select_tableless_order(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause,
+    struct planned_row_scalar_select *out_plan
+);
+static int plan_row_scalar_select_tableless_order_item(
+    struct mylite_db *database,
+    struct select_order_ast_item_nodes item_nodes,
+    struct planned_row_scalar_select *out_plan
+);
+static int plan_row_scalar_select_tableless_order_alias_item(
+    struct mylite_db *database,
+    struct select_order_ast_item_nodes item_nodes,
+    const struct planned_row_scalar_select *select_plan,
+    struct planned_select_order *out_order,
+    bool *out_handled
+);
+static int plan_row_scalar_select_tableless_order_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key
+);
 static int plan_row_scalar_select_tableless_filter(
     struct mylite_db *database,
     const struct row_scalar_select_clauses *clauses,

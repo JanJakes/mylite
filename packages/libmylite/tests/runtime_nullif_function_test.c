@@ -583,13 +583,15 @@ static int test_nullif_function_unsupported_forms(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT NULLIF(1,2) WHERE TRUE",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT NULLIF(1,2) WHERE TRUE",
+            .columns = (const char *const[]){"NULLIF(1,2)"},
+            .column_count = 1U,
+            .values = (const char *const[]){"1"},
+            .row_count = 1U,
+            .context = "nullif with where true",
         }
     );
     failures += expect_query(
@@ -603,13 +605,15 @@ static int test_nullif_function_unsupported_forms(void) {
             .context = "nullif with limit",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT NULLIF(1,2) ORDER BY 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT NULLIF(1,2) ORDER BY 1",
+            .columns = (const char *const[]){"NULLIF(1,2)"},
+            .column_count = 1U,
+            .values = (const char *const[]){"1"},
+            .row_count = 1U,
+            .context = "nullif with order by ordinal",
         }
     );
     failures += execute_ok(database, "UPDATE t SET id = NULLIF(1,2)", NULL);

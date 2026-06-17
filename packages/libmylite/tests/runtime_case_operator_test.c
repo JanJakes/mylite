@@ -502,13 +502,15 @@ static int test_case_operator_unsupported_forms(void) {
             .context = "case with limit",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT CASE WHEN 1 THEN 2 ELSE 3 END ORDER BY 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "near 'ORDER'",
+        (struct expected_query){
+            .sql = "SELECT CASE WHEN 1 THEN 2 ELSE 3 END ORDER BY 1",
+            .columns = (const char *const[]){"CASE WHEN 1 THEN 2 ELSE 3 END"},
+            .column_count = 1U,
+            .values = (const char *const[]){"2"},
+            .row_count = 1U,
+            .context = "case with order by ordinal",
         }
     );
     failures += execute_error(

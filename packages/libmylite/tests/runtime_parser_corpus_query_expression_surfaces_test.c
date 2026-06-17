@@ -40,6 +40,7 @@ int main(void) {
 static int test_query_expression_surfaces(void) {
     static const char *const wrapped_select_rows[] = {"1"};
     static const char *const wrapped_values_rows[] = {"7"};
+    static const char *const selected_variable_rows[] = {"1"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -161,13 +162,14 @@ static int test_query_expression_surfaces(void) {
             .message_part = "UNION supports only SELECT query blocks",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT 1 UNION SELECT 1 LIMIT 0",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT 1 UNION SELECT 1 LIMIT 0",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .context = "compound query limit tail",
         }
     );
     failures += execute_error(
@@ -176,7 +178,7 @@ static int test_query_expression_surfaces(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+            .message_part = "UNION ORDER BY supports only output column names",
         }
     );
     failures += execute_error(
@@ -188,13 +190,16 @@ static int test_query_expression_surfaces(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(database, "SET @var = NULL");
+    failures += execute_ok(database, "SELECT 1 FROM DUAL LIMIT 1 FOR UPDATE INTO @var");
+    failures += expect_query_values(
         database,
-        "SELECT 1 FROM DUAL LIMIT 1 FOR UPDATE INTO @var",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT @var",
+            .values = selected_variable_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "select limit locking before into",
         }
     );
     failures += execute_error(

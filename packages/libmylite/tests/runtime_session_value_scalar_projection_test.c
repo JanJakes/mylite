@@ -363,13 +363,16 @@ static int test_session_value_scalar_projection_unsupported_forms(void) {
             .message_part = "SELECT IF() supports only signed 64-bit integer",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT DATABASE(), 1 WHERE TRUE",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT DATABASE(), 1 WHERE TRUE",
+            .columns = (const char *const[]){"DATABASE()", "1"},
+            .column_count = 2U,
+            .values = (const char *const[]){"app", "1"},
+            .row_count = 1U,
+            .warning_count = 0U,
+            .context = "tableless session scalar with where true",
         }
     );
     failures += expect_query(

@@ -5194,45 +5194,49 @@ update_constant_arithmetic_factor(A) ::= LPAREN(L) update_constant_arithmetic_mu
 }
 
 select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B)
-    window_clause_opt(WN) select_locking_clause_opt(K). {
+    where_clause_opt(W) window_clause_opt(WN) select_order_clause_opt(O) limit_clause_opt(L)
+    select_locking_clause_opt(K). {
     A = mylite_sql_parser_attach_select_window_clause(
         state,
         mylite_sql_parser_make_select_statement_with_modifiers(
-            state, T, M, B, NULL, NULL, NULL, NULL, NULL, NULL, K),
+            state, T, M, B, NULL, W, NULL, NULL, O, L, K),
         WN);
 }
 select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) INTO select_into_list(PI)
-    window_clause_opt(WN) select_locking_clause_opt(K). {
+    where_clause_opt(W) window_clause_opt(WN) select_order_clause_opt(O) limit_clause_opt(L)
+    select_locking_clause_opt(K). {
     A = mylite_sql_parser_attach_select_into_clause(
         state,
         mylite_sql_parser_attach_select_window_clause(
             state,
             mylite_sql_parser_make_select_statement_with_modifiers(
-                state, T, M, B, NULL, NULL, NULL, NULL, NULL, NULL, K),
+                state, T, M, B, NULL, W, NULL, NULL, O, L, K),
             WN),
         PI);
 }
 select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) DUAL(D)
-    where_clause_opt(W) window_clause_opt(WN) select_locking_clause_opt(K) select_into_opt(AI). {
+    where_clause_opt(W) window_clause_opt(WN) select_order_clause_opt(O) limit_clause_opt(L)
+    select_locking_clause_opt(K) select_into_opt(AI). {
     A = mylite_sql_parser_attach_select_into_clause(
         state,
         mylite_sql_parser_attach_select_window_clause(
             state,
             mylite_sql_parser_make_select_statement_with_modifiers(
                 state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), W, NULL, NULL,
-                NULL, NULL, K),
+                O, L, K),
             WN),
         AI);
 }
 select_statement(A) ::= SELECT(T) select_modifiers(M) select_item_list(B) INTO select_into_list(PI)
-    FROM(F) DUAL(D) where_clause_opt(W) window_clause_opt(WN) select_locking_clause_opt(K). {
+    FROM(F) DUAL(D) where_clause_opt(W) window_clause_opt(WN) select_order_clause_opt(O)
+    limit_clause_opt(L) select_locking_clause_opt(K). {
     A = mylite_sql_parser_attach_select_into_clause(
         state,
         mylite_sql_parser_attach_select_window_clause(
             state,
             mylite_sql_parser_make_select_statement_with_modifiers(
                 state, T, M, B, mylite_sql_parser_make_from_dual(state, F, D), W, NULL, NULL,
-                NULL, NULL, K),
+                O, L, K),
             WN),
         PI);
 }

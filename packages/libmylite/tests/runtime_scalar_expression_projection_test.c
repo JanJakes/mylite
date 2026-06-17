@@ -1445,13 +1445,15 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
             .message_part = "IF() row conditions support only integer",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT 1, IF(1,2,3) WHERE TRUE",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT 1, IF(1,2,3) WHERE TRUE",
+            .columns = (const char *const[]){"1", "IF(1,2,3)"},
+            .column_count = 2U,
+            .values = (const char *const[]){"1", "2"},
+            .row_count = 1U,
+            .context = "mixed scalar with where true",
         }
     );
     failures += expect_query(
@@ -1465,13 +1467,26 @@ static int test_scalar_expression_projection_unsupported_forms(void) {
             .context = "mixed scalar with limit",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT 1, IF(1,2,3) ORDER BY 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT 1, IF(1,2,3) ORDER BY 1",
+            .columns = (const char *const[]){"1", "IF(1,2,3)"},
+            .column_count = 2U,
+            .values = (const char *const[]){"1", "2"},
+            .row_count = 1U,
+            .context = "mixed scalar with order by ordinal",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT IF(1,2,3) ORDER BY IF(1,2,3) DESC, 1",
+            .columns = (const char *const[]){"IF(1,2,3)"},
+            .column_count = 1U,
+            .values = (const char *const[]){"2"},
+            .row_count = 1U,
+            .context = "scalar function with expression order key",
         }
     );
 

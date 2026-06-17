@@ -22,6 +22,7 @@ enum {
     literal_rejected_text_capacity = literal_rejected_digit_count + 1,
     core_literal_column_count = 6,
     core_literal_with_string_column_count = 8,
+    mysql_error_unknown_column = 1054,
     mysql_error_parse = 1064,
 };
 
@@ -240,6 +241,8 @@ static int test_literal_projection_diagnostics_and_table_selects(void) {
     static const char *const column_test[] = {"test"};
     static const char *const column_id[] = {"id"};
     static const char *const values_one[] = {"1", "1"};
+    static const char *const columns_one_two[] = {"one", "two"};
+    static const char *const values_one_two[] = {"1", "2"};
     static const char *const value_one[] = {"1"};
     static const char *const values_id[] = {"1", "2"};
     char path[test_path_capacity];
@@ -264,13 +267,66 @@ static int test_literal_projection_diagnostics_and_table_selects(void) {
             .message_part = "SELECT scalar projection supports only session scalar values",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 ORDER BY 1",
+            .columns = column_literal_one,
+            .column_count = 1U,
+            .values = value_one,
+            .row_count = 1U,
+            .context = "literal order by ordinal",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 AS one, 2 AS two ORDER BY one DESC, 2 ASC",
+            .columns = columns_one_two,
+            .column_count = 2U,
+            .values = values_one_two,
+            .row_count = 1U,
+            .context = "literal order by alias and ordinal",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 WHERE FALSE ORDER BY 1",
+            .columns = column_literal_one,
+            .column_count = 1U,
+            .values = NULL,
+            .row_count = 0U,
+            .context = "literal where false with order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 FROM DUAL ORDER BY 1 LIMIT 1",
+            .columns = column_literal_one,
+            .column_count = 1U,
+            .values = value_one,
+            .row_count = 1U,
+            .context = "dual literal order limit",
+        }
+    );
     failures += execute_error(
         database,
-        "SELECT 1 ORDER BY 1",
+        "SELECT 1 ORDER BY 2",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "near 'ORDER'",
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column '2' in 'order clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT 1 ORDER BY missing",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'missing' in 'order clause'",
         }
     );
     failures += expect_query(

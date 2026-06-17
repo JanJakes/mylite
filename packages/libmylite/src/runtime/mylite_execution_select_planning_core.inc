@@ -2487,7 +2487,7 @@ static int plan_row_scalar_select(
         );
     }
     if (rc == MYLITE_OK && !out_plan->has_source) {
-        rc = plan_row_scalar_select_tableless_filter(database, &clauses, out_plan);
+        rc = plan_row_scalar_select_tableless_clauses(database, &clauses, out_plan);
     }
 
     free(table_columns);
@@ -2996,24 +2996,183 @@ static int plan_row_scalar_select_order_alias_item(
     return MYLITE_OK;
 }
 
-static int plan_row_scalar_select_tableless_filter(
+static int plan_row_scalar_select_tableless_clauses(
     struct mylite_db *database,
     const struct row_scalar_select_clauses *clauses,
     struct planned_row_scalar_select *out_plan
 ) {
     int rc = MYLITE_OK;
 
-    if (clauses->order_clause != NULL) {
-        set_unsupported_error(
-            database,
-            "tableless row-scalar SELECT supports only WHERE filtering and LIMIT"
-        );
-        return MYLITE_ERROR;
+    rc = plan_row_scalar_select_tableless_order(database, clauses->order_clause, out_plan);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
     rc = plan_select_limit(database, clauses->limit_clause, &out_plan->limit);
     if (rc != MYLITE_OK) {
         return rc;
     }
+    return plan_row_scalar_select_tableless_filter(database, clauses, out_plan);
+}
+
+static int plan_row_scalar_select_tableless_order(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_clause,
+    struct planned_row_scalar_select *out_plan
+) {
+    const struct mylite_sql_ast_node *order_items = NULL;
+    int rc = MYLITE_OK;
+
+    if (order_clause == NULL || order_clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
+        return MYLITE_OK;
+    }
+
+    order_items = child_at(order_clause, 0U);
+    if (order_items != NULL && order_items->kind == MYLITE_SQL_AST_ORDER_BY_ITEM_LIST) {
+        const struct mylite_sql_ast_node *item = child_at(order_items, 0U);
+
+        while (rc == MYLITE_OK && item != NULL) {
+            if (item->kind != MYLITE_SQL_AST_ORDER_BY_ITEM) {
+                set_parse_error(database, NULL);
+                return MYLITE_ERROR;
+            }
+            rc = plan_row_scalar_select_tableless_order_item(
+                database,
+                (struct select_order_ast_item_nodes){
+                    .order_key = child_at(item, 0U),
+                    .direction = child_at(item, 1U),
+                },
+                out_plan
+            );
+            item = item->next_sibling;
+        }
+    } else {
+        rc = plan_row_scalar_select_tableless_order_item(
+            database,
+            (struct select_order_ast_item_nodes){
+                .order_key = child_at(order_clause, 0U),
+                .direction = child_at(order_clause, 1U),
+            },
+            out_plan
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_plan->order.has_order = true;
+    out_plan->order.qualify_column_reference = false;
+    if (out_plan->order.item_count != 0U) {
+        out_plan->order.direction = out_plan->order.items[0U].direction;
+    } else {
+        out_plan->order.direction = PLANNED_SELECT_ORDER_ASC;
+    }
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_select_tableless_order_item(
+    struct mylite_db *database,
+    struct select_order_ast_item_nodes item_nodes,
+    struct planned_row_scalar_select *out_plan
+) {
+    bool handled = false;
+    int rc = MYLITE_OK;
+
+    if (select_order_key_is_integer_ordinal(item_nodes.order_key)) {
+        return plan_row_scalar_select_order_ordinal_item_and_append(
+            database,
+            item_nodes,
+            out_plan->item_count,
+            &out_plan->order
+        );
+    }
+
+    rc = plan_row_scalar_select_tableless_order_alias_item(
+        database,
+        item_nodes,
+        out_plan,
+        &out_plan->order,
+        &handled
+    );
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
+
+    return plan_row_scalar_select_tableless_order_expression(database, item_nodes.order_key);
+}
+
+static int plan_row_scalar_select_tableless_order_alias_item(
+    struct mylite_db *database,
+    struct select_order_ast_item_nodes item_nodes,
+    const struct planned_row_scalar_select *select_plan,
+    struct planned_select_order *out_order,
+    bool *out_handled
+) {
+    struct planned_select_order_item item = {
+        .kind = PLANNED_SELECT_ORDER_ITEM_ALIAS,
+        .direction = PLANNED_SELECT_ORDER_ASC,
+    };
+    char *order_name = NULL;
+    int rc = MYLITE_OK;
+
+    *out_handled = false;
+    if (item_nodes.order_key == NULL || item_nodes.order_key->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        return MYLITE_OK;
+    }
+
+    rc = copy_select_item_identifier_alias_text(database, item_nodes.order_key, &order_name);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    for (size_t item_index = 0U; rc == MYLITE_OK && item_index < select_plan->item_count;
+         ++item_index) {
+        const struct planned_row_scalar_select_item *select_item = &select_plan->items[item_index];
+        char *alias_text = NULL;
+
+        if (select_item->alias == NULL) {
+            continue;
+        }
+        rc = copy_select_item_alias_text(database, select_item->alias, &alias_text);
+        if (rc != MYLITE_OK) {
+            break;
+        }
+        if (text_equals_ascii_case_insensitive(alias_text, order_name)) {
+            snprintf(item.alias, sizeof(item.alias), "%s", alias_text);
+            free(alias_text);
+            apply_select_order_item_direction(item_nodes.direction, &item);
+            rc = append_planned_select_order_item(out_order, item);
+            if (rc != MYLITE_OK) {
+                set_nomem_error(database);
+            }
+            *out_handled = rc == MYLITE_OK;
+            break;
+        }
+        free(alias_text);
+    }
+    if (rc == MYLITE_OK && !*out_handled) {
+        set_unknown_order_column_error(database, order_name);
+        rc = MYLITE_ERROR;
+    }
+    free(order_name);
+    return rc;
+}
+
+static int plan_row_scalar_select_tableless_order_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key
+) {
+    struct planned_row_scalar_expression expression = {0};
+    int rc =
+        plan_row_scalar_expression(database, order_key, false, NULL, NULL, NULL, 0U, &expression);
+
+    planned_row_scalar_expression_deinit(&expression);
+    return rc;
+}
+
+static int plan_row_scalar_select_tableless_filter(
+    struct mylite_db *database,
+    const struct row_scalar_select_clauses *clauses,
+    struct planned_row_scalar_select *out_plan
+) {
     if (clauses->where_clause == NULL) {
         return MYLITE_OK;
     }

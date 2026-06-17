@@ -185,10 +185,10 @@ static int test_derived_values_aliases(void) {
 static int test_query_final_tail_placeholders(void) {
     int failures = 0;
 
-    failures += expect_unsupported_statement("SELECT 1 UNION SELECT 1 LIMIT 0");
-    failures += expect_unsupported_statement("select id from t1 union all select 99 order by 1");
+    failures += parse_ok("SELECT 1 UNION SELECT 1 LIMIT 0");
+    failures += parse_ok("select id from t1 union all select 99 order by 1");
     failures += expect_unsupported_statement("SELECT 1 FROM DUAL LIMIT 1 INTO @var FOR UPDATE");
-    failures += expect_unsupported_statement("SELECT 1 FROM DUAL LIMIT 1 FOR UPDATE INTO @var");
+    failures += parse_ok("SELECT 1 FROM DUAL LIMIT 1 FOR UPDATE INTO @var");
     failures += expect_unsupported_statement("SELECT 1 UNION SELECT 1 FOR UPDATE INTO @var");
     failures +=
         expect_unsupported_statement("SELECT 1 UNION SELECT 1 FROM DUAL INTO @var FOR UPDATE");

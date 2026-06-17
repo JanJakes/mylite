@@ -352,6 +352,8 @@ static int test_table_union_persistence_and_file_safety(void) {
 }
 
 static int test_union_diagnostics_and_unsupported_forms(void) {
+    static const char *const column_one[] = {"1"};
+    static const char *const value_one[] = {"1"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -376,13 +378,15 @@ static int test_union_diagnostics_and_unsupported_forms(void) {
             .message_part = "UNION branch ORDER BY is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT 1 UNION ALL SELECT 2 LIMIT 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT 1 UNION ALL SELECT 2 LIMIT 1",
+            .columns = column_one,
+            .column_count = 1U,
+            .values = value_one,
+            .row_count = 1U,
+            .context = "global union limit",
         }
     );
     failures += execute_error(

@@ -23,7 +23,9 @@ SQLite pass-through.
 
 Later row-scalar predicate work admits supported `NULLIF()` expressions as
 direct descriptor-column comparison RHS values, such as
-`WHERE id = NULLIF(1,0)`. Bare truth predicates like `WHERE NULLIF(...)` and
+`WHERE id = NULLIF(1,0)`. The later
+[baseline row-scalar truth predicates](../baseline-row-scalar-truth-predicates/specs.md)
+slice also admits supported `WHERE NULLIF(...)` truth predicates. Other
 unsupported expression contexts remain outside this baseline scalar slice.
 
 ## Sources And Evidence
@@ -240,8 +242,8 @@ SQLite:
 - malformed token sequences such as `NULLIF(1,,2)` as syntax error 1064 /
   SQLSTATE `42000`;
 - table-backed `NULLIF()` projection;
-- bare `WHERE NULLIF(...)`, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments,
-  defaults, or unsupported predicate positions;
+- `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments, defaults, or unsupported
+  predicate positions;
 - no-source `WHERE` / `ORDER BY` / `LIMIT` around scalar `NULLIF()` projection;
 - mixed literal, `IF()`, `IFNULL()`, `COALESCE()`, and `NULLIF()` top-level
   scalar projection items unless the implementation explicitly admits and tests

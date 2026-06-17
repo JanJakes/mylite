@@ -23,9 +23,11 @@ prepared parameters, `CASE`, `IFNULL`, `NULLIF`, or arbitrary SQLite
 pass-through.
 
 Later row-scalar predicate work admits supported `IF()` expressions as direct
-descriptor-column comparison RHS values, such as `WHERE id = IF(1,1,0)`. Bare
-truth predicates like `WHERE IF(...)` and unsupported expression contexts
-remain outside this baseline scalar slice.
+descriptor-column comparison RHS values, such as `WHERE id = IF(1,1,0)`. The
+later
+[baseline row-scalar truth predicates](../baseline-row-scalar-truth-predicates/specs.md)
+slice also admits supported `WHERE IF(...)` truth predicates. Other unsupported
+expression contexts remain outside this baseline scalar slice.
 
 ## Sources And Evidence
 
@@ -214,8 +216,8 @@ SQLite:
 
 - wrong `IF()` arity;
 - table-backed `IF()` projection;
-- bare `WHERE IF(...)`, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments,
-  defaults, or unsupported predicate positions;
+- `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments, defaults, or unsupported
+  predicate positions;
 - no-source `ORDER BY` / `LIMIT` around scalar `IF()` projection;
 - arithmetic, comparison, logical, bitwise, cast, string, decimal, float, hex,
   bit, temporal, JSON, variable, parameter, subquery, column-reference, or

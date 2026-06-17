@@ -113,7 +113,9 @@ This slice does not add:
 
 - row-scalar `IN (SELECT ...)` subqueries;
 - row constructor `IN` predicates;
-- bare truth predicates such as `WHERE LOWER(v)`;
+- bare truth predicates outside the later
+  [baseline row-scalar truth predicates](../baseline-row-scalar-truth-predicates/specs.md)
+  slice;
 - `HAVING`, generated-column, default-expression, aggregate/window, or broad
   DML assignment contexts;
 - broad MySQL coercion beyond the current row-scalar predicate helpers;

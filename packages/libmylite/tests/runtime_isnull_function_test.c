@@ -447,13 +447,15 @@ static int test_isnull_function_unsupported_forms(void) {
             .context = "ISNULL row expression projection",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT id FROM t WHERE ISNULL(id)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE ISNULL(id)",
+            .columns = (const char *const[]){"id"},
+            .column_count = 1U,
+            .values = NULL,
+            .row_count = 0U,
+            .context = "ISNULL truth predicate",
         }
     );
     failures += expect_query(

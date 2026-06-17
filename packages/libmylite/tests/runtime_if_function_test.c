@@ -432,13 +432,15 @@ static int test_if_function_unsupported_forms(void) {
             .message_part = "IF() row conditions support only integer",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT id FROM t WHERE IF(1,TRUE,FALSE)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE IF(1,TRUE,FALSE)",
+            .columns = (const char *const[]){"id"},
+            .column_count = 1U,
+            .values = (const char *const[]){"1"},
+            .row_count = 1U,
+            .context = "IF truth predicate",
         }
     );
     failures += expect_query(

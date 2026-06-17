@@ -104,8 +104,10 @@ The implemented parser may keep existing special predicate productions for
 `FIND_IN_SET()`, `REGEXP_LIKE()`, `JSON_VALID()`, JSON containment, string
 length, substring, temporal extractors, conversions, and collations. This slice
 adds the broader row-scalar comparison, `IS NULL`, and `BETWEEN` dispatch
-without changing those specialized paths. Bare row-scalar truth predicates
-remain outside this slice.
+without changing those specialized paths. Bare row-scalar truth predicates are
+covered by the later
+[baseline row-scalar truth predicates](../baseline-row-scalar-truth-predicates/specs.md)
+slice.
 
 ## Semantics
 
@@ -130,7 +132,8 @@ remain outside this slice.
 
 - Row-scalar `IN (...)` and `NOT IN (...)` are covered by
   [baseline row-scalar IN predicates](../baseline-row-scalar-in-predicates/specs.md).
-- No bare row-scalar truth predicates such as `WHERE IF(...)` in this slice.
+- Bare row-scalar truth predicates such as `WHERE IF(...)` are covered by the
+  later row-scalar truth predicate slice, not this one.
 - No arbitrary `predicate_atom ::= expression` grammar widening.
 - No row constructors, `MATCH ... AGAINST`, full-text predicates, spatial
   constructors, stored functions, loadable functions, or user-defined

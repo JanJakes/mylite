@@ -22,8 +22,10 @@ SQLite pass-through.
 
 Later row-scalar predicate work admits supported `COALESCE()` expressions as
 direct descriptor-column comparison RHS values, such as
-`WHERE id = COALESCE(1,0)`. Bare truth predicates like `WHERE COALESCE(...)`
-and unsupported expression contexts remain outside this baseline scalar slice.
+`WHERE id = COALESCE(1,0)`. The later
+[baseline row-scalar truth predicates](../baseline-row-scalar-truth-predicates/specs.md)
+slice also admits supported `WHERE COALESCE(...)` truth predicates. Other
+unsupported expression contexts remain outside this baseline scalar slice.
 
 ## Sources And Evidence
 
@@ -211,8 +213,8 @@ SQLite:
 
 - `COALESCE()` with no arguments as a syntax error 1064 / SQLSTATE `42000`;
 - table-backed `COALESCE()` projection;
-- bare `WHERE COALESCE(...)`, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments,
-  defaults, or unsupported predicate positions;
+- `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments, defaults, or unsupported
+  predicate positions;
 - no-source `ORDER BY` / `LIMIT` around scalar `COALESCE()` projection;
 - mixed literal, `IF()`, `IFNULL()`, and `COALESCE()` top-level scalar
   projection items unless the implementation explicitly admits and tests a

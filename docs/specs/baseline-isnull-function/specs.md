@@ -23,7 +23,9 @@ SQLite pass-through.
 
 Later row-scalar predicate work admits supported `ISNULL()` expressions as
 direct descriptor-column comparison RHS values, such as
-`WHERE id = ISNULL(NULL)`. Bare truth predicates like `WHERE ISNULL(...)` and
+`WHERE id = ISNULL(NULL)`. The later
+[baseline row-scalar truth predicates](../baseline-row-scalar-truth-predicates/specs.md)
+slice also admits supported `WHERE ISNULL(...)` truth predicates. Other
 unsupported expression contexts remain outside this baseline scalar slice.
 
 ## Sources And Evidence
@@ -215,8 +217,8 @@ SQLite:
 - malformed token sequences such as `ISNULL(,1)` as syntax error 1064 /
   SQLSTATE `42000`;
 - table-backed `ISNULL()` projection;
-- bare `WHERE ISNULL(...)`, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments,
-  defaults, or unsupported predicate positions;
+- `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments, defaults, or unsupported
+  predicate positions;
 - no-source `WHERE` / `ORDER BY` / `LIMIT` around scalar `ISNULL()`
   projection;
 - mixed literal, `IF()`, `IFNULL()`, `COALESCE()`, `NULLIF()`, and `ISNULL()`

@@ -79,6 +79,20 @@ json-in	1
 temporal-in	1
 digest-in	1
 compression-in	1
+coalesce-truth	1
+coalesce-not-truth	2,3
+if-truth	1
+isnull-truth	3
+nullif-truth	<empty>
+greatest-truth	1
+abs-truth	1
+datediff-truth	2
+json-unquote-truth	1,2
+lower-truth	<empty>
+hex-truth	1,2
+md5-truth	1,2
+uncompressed-length-truth	1,2
+and-truth	<empty>
 EXPECTED
 )
 expect_output \
@@ -170,7 +184,35 @@ expect_output \
 "SELECT 'digest-in', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
 "FROM expr_pred WHERE MD5(v) IN (MD5('Alpha'), MD5('missing')); "\
 "SELECT 'compression-in', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
-"FROM expr_pred WHERE UNCOMPRESSED_LENGTH(COMPRESS(v)) IN (0, 5);" \
+"FROM expr_pred WHERE UNCOMPRESSED_LENGTH(COMPRESS(v)) IN (0, 5); "\
+"SELECT 'coalesce-truth', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE COALESCE(i, 0); "\
+"SELECT 'coalesce-not-truth', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE NOT COALESCE(i, 0); "\
+"SELECT 'if-truth', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE IF(i, i, 0); "\
+"SELECT 'isnull-truth', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE ISNULL(i); "\
+"SELECT 'nullif-truth', IFNULL(GROUP_CONCAT(id ORDER BY id), '<empty>') "\
+"FROM expr_pred WHERE NULLIF(i, 10); "\
+"SELECT 'greatest-truth', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE GREATEST(i, 0); "\
+"SELECT 'abs-truth', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE ABS(i); "\
+"SELECT 'datediff-truth', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE DATEDIFF(dt, '2024-01-02'); "\
+"SELECT 'json-unquote-truth', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE JSON_UNQUOTE(JSON_EXTRACT(js, '$.a')); "\
+"SELECT 'lower-truth', IFNULL(GROUP_CONCAT(id ORDER BY id), '<empty>') "\
+"FROM expr_pred WHERE LOWER(v); "\
+"SELECT 'hex-truth', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE HEX(b); "\
+"SELECT 'md5-truth', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE MD5(v); "\
+"SELECT 'uncompressed-length-truth', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE UNCOMPRESSED_LENGTH(COMPRESS(v)); "\
+"SELECT 'and-truth', IFNULL(GROUP_CONCAT(id ORDER BY id), '<empty>') "\
+"FROM expr_pred WHERE COALESCE(i, 0) AND IFNULL(v, '0');" \
     "$DATABASE"
 
 printf '%s\n' "mysql_baseline_select_row_scalar_predicates_expectations: ok"

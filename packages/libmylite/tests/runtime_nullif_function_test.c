@@ -532,13 +532,15 @@ static int test_nullif_function_unsupported_forms(void) {
             .context = "NULLIF row expression projection",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT id FROM t WHERE NULLIF(1,0)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE NULLIF(1,0)",
+            .columns = (const char *const[]){"id"},
+            .column_count = 1U,
+            .values = (const char *const[]){"1"},
+            .row_count = 1U,
+            .context = "NULLIF truth predicate",
         }
     );
     failures += expect_query(

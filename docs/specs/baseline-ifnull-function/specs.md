@@ -21,7 +21,9 @@ arguments, subqueries, expression metadata, or arbitrary SQLite pass-through.
 
 Later row-scalar predicate work admits supported `IFNULL()` expressions as
 direct descriptor-column comparison RHS values, such as
-`WHERE id = IFNULL(1,0)`. Bare truth predicates like `WHERE IFNULL(...)` and
+`WHERE id = IFNULL(1,0)`. The later
+[baseline row-scalar truth predicates](../baseline-row-scalar-truth-predicates/specs.md)
+slice also admits supported `WHERE IFNULL(...)` truth predicates. Other
 unsupported expression contexts remain outside this baseline scalar slice.
 
 ## Sources And Evidence
@@ -211,8 +213,8 @@ SQLite:
 
 - wrong `IFNULL()` arity with MySQL-compatible error 1582 / SQLSTATE `42000`;
 - table-backed `IFNULL()` projection;
-- bare `WHERE IFNULL(...)`, `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments,
-  defaults, or unsupported predicate positions;
+- `ORDER BY`, `GROUP BY`, `HAVING`, DML assignments, defaults, or unsupported
+  predicate positions;
 - no-source `ORDER BY` / `LIMIT` around scalar `IFNULL()` projection;
 - mixed literal, `IF()`, and `IFNULL()` top-level scalar projection items
   unless the implementation explicitly admits and tests a broader scalar

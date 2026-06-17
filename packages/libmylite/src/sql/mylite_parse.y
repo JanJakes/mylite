@@ -6533,6 +6533,9 @@ predicate_atom(A) ::= predicate_row_scalar_expression(C) predicate_comparison_op
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O.token, O.operator_kind, V);
 }
+predicate_atom(A) ::= predicate_row_scalar_expression(C). {
+    A = C;
+}
 predicate_atom(A) ::= predicate_row_scalar_expression(C) IS(I) NULL(N). {
     A = mylite_sql_parser_make_is_null_predicate(
         state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NULL, N);

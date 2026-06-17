@@ -40,6 +40,8 @@ static int test_select_row_scalar_predicates(void) {
     static const char *const ids_12[] = {"1", "2"};
     static const char *const ids_123[] = {"1", "2", "3"};
     static const char *const ids_13[] = {"1", "3"};
+    static const char *const ids_23[] = {"2", "3"};
+    static const char *const ids_3[] = {"3"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -415,6 +417,148 @@ static int test_select_row_scalar_predicates(void) {
             .column_count = 1U,
             .row_count = 1U,
             .context = "row-scalar compression in predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE COALESCE(i, 0) ORDER BY id",
+            .values = ids_1,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row-scalar coalesce truth predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE NOT COALESCE(i, 0) ORDER BY id",
+            .values = ids_23,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "row-scalar coalesce not truth predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE IF(i, i, 0) ORDER BY id",
+            .values = ids_1,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row-scalar if truth predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE ISNULL(i) ORDER BY id",
+            .values = ids_3,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row-scalar isnull truth predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE NULLIF(i, 10) ORDER BY id",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .context = "row-scalar nullif truth predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE GREATEST(i, 0) ORDER BY id",
+            .values = ids_1,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row-scalar greatest truth predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE ABS(i) ORDER BY id",
+            .values = ids_1,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row-scalar numeric truth predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE DATEDIFF(dt, '2024-01-02') ORDER BY id",
+            .values = ids_2,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row-scalar temporal truth predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE JSON_UNQUOTE(JSON_EXTRACT(js, '$.a')) "
+                   "ORDER BY id",
+            .values = ids_12,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "row-scalar json truth predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE LOWER(v) ORDER BY id",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .context = "row-scalar string truth predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE HEX(b) ORDER BY id",
+            .values = ids_12,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "row-scalar binary string truth predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE MD5(v) ORDER BY id",
+            .values = ids_12,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "row-scalar digest truth predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE UNCOMPRESSED_LENGTH(COMPRESS(v)) ORDER BY id",
+            .values = ids_12,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "row-scalar compression truth predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE COALESCE(i, 0) AND IFNULL(v, '0') "
+                   "ORDER BY id",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .context = "row-scalar logical truth predicate",
         }
     );
 

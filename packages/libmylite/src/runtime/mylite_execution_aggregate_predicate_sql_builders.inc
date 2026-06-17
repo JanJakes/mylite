@@ -1367,6 +1367,7 @@ static int append_select_predicate_non_exists_node_sql(
     if (node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_TRUTH ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL ||
+        node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_BOOLEAN ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IN) {
         return append_select_row_scalar_predicate_sql(string, node, next_parameter);
@@ -1419,6 +1420,7 @@ static int append_select_predicate_non_subquery_node_sql(
     if (node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_TRUTH ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL ||
+        node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_BOOLEAN ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IN) {
         return append_select_row_scalar_predicate_sql(string, node, next_parameter);
@@ -1555,6 +1557,9 @@ static int append_select_row_scalar_predicate_sql(
         comparison_operator_is_regexp(node->operator_kind)) {
         return append_select_row_scalar_regexp_predicate_sql(string, node, next_parameter);
     }
+    if (node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_BOOLEAN) {
+        return append_select_row_scalar_is_boolean_predicate_sql(string, node, next_parameter);
+    }
     if (node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON &&
         node->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE &&
         (row_scalar_expression_is_binary_sensitive_collate(node->row_scalar_expression) ||
@@ -1629,6 +1634,67 @@ static int append_select_row_scalar_predicate_sql(
     }
 
     return MYLITE_ERROR;
+}
+
+static int append_select_row_scalar_is_boolean_predicate_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    const char *comparison = NULL;
+    const char *null_fallback = NULL;
+    int rc = MYLITE_OK;
+
+    if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN ||
+        node->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN) {
+        rc = append_row_scalar_expression_sql(string, node->row_scalar_expression, next_parameter);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN) {
+            return mylite_dynamic_string_append(string, " IS NULL");
+        }
+        return mylite_dynamic_string_append(string, " IS NOT NULL");
+    }
+
+    switch (node->operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
+        comparison = " <> 0";
+        null_fallback = "0";
+        break;
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE:
+        comparison = " = 0";
+        null_fallback = "1";
+        break;
+    case MYLITE_SQL_AST_OPERATOR_IS_FALSE:
+        comparison = " = 0";
+        null_fallback = "0";
+        break;
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE:
+        comparison = " <> 0";
+        null_fallback = "1";
+        break;
+    default:
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append(string, "COALESCE(");
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_expression_sql(string, node->row_scalar_expression, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, comparison);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, ", ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, null_fallback);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
 }
 
 static int append_select_row_scalar_regexp_predicate_sql(

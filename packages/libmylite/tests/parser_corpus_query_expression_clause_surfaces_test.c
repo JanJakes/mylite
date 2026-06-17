@@ -26,8 +26,6 @@ int main(void) {
 
 static int test_query_expression_clause_placeholders(void) {
     static const struct expected_statement placeholders[] = {
-        {.sql = "SELECT COUNT(*) FROM t1 WHERE a + 1 > 1",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT a, COUNT(*) FROM t1 GROUP BY a + 0 "
                 "HAVING COUNT(*) >= 1 AND a > 0 ORDER BY a + 0",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
@@ -59,9 +57,6 @@ static int test_query_expression_clause_placeholders(void) {
                 "HAVING MATCH(x) AGAINST ('abc')",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "VALUES ROW(1),ROW(2) ORDER BY '1' DESC",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "SELECT a FROM t1 WHERE a IN (SELECT a FROM t2 WHERE b + 1 > 20) "
-                "ORDER BY a",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "select f2 from t1 where '2001-04-10 12:34:56' between f2 and '01-05-01'",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
@@ -105,6 +100,9 @@ static int test_query_expression_clause_placeholders(void) {
     int failures = 0;
 
     failures += parse_ok("SELECT a FROM t1 WHERE a = 1");
+    failures += parse_ok("SELECT COUNT(*) FROM t1 WHERE a + 1 > 1");
+    failures += parse_ok("SELECT a FROM t1 WHERE a IN (SELECT a FROM t2 WHERE b + 1 > 20) "
+                         "ORDER BY a");
     failures += parse_ok("SELECT t1.a, t2.a FROM t1 JOIN t2 ON t1.a = t2.a");
     failures += parse_ok("SELECT * FROM (SELECT 1) AS dt");
     failures += parse_ok("SELECT a FROM t1 ORDER BY ABS(b - 5)");

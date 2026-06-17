@@ -38,7 +38,9 @@ int main(void) {
 
 static int test_query_expression_clause_surfaces(void) {
     static const char *const simple_predicate_rows[] = {"1"};
+    static const char *const arithmetic_predicate_count_rows[] = {"2"};
     static const char *const function_order_key_rows[] = {"3", "1"};
+    static const char *const subquery_arithmetic_predicate_rows[] = {"1", "3"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -66,13 +68,14 @@ static int test_query_expression_clause_surfaces(void) {
         }
     );
 
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT COUNT(*) FROM t1 WHERE a + 1 > 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t1 WHERE a + 1 > 1",
+            .values = arithmetic_predicate_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row arithmetic predicate support",
         }
     );
     failures += expect_query_values(
@@ -204,13 +207,14 @@ static int test_query_expression_clause_surfaces(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT a FROM t1 WHERE a IN (SELECT a FROM t2 WHERE b + 1 > 20) ORDER BY a",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT a FROM t1 WHERE a IN (SELECT a FROM t2 WHERE b + 1 > 20) ORDER BY a",
+            .values = subquery_arithmetic_predicate_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "subquery row arithmetic predicate support",
         }
     );
     failures += execute_error(

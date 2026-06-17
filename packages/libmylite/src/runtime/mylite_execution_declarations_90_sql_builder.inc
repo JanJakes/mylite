@@ -2194,6 +2194,11 @@ static int append_select_row_scalar_predicate_sql(
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 );
+static int append_select_row_scalar_is_boolean_predicate_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+);
 static int append_select_row_scalar_regexp_predicate_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select_predicate_node *node,

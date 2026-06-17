@@ -6566,6 +6566,30 @@ predicate_atom(A) ::= predicate_row_scalar_expression(C) IS(I) NOT NULL(N). {
     A = mylite_sql_parser_make_is_null_predicate(
         state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, N);
 }
+predicate_atom(A) ::= predicate_row_scalar_expression(C) IS(I) TRUE(T). {
+    A = mylite_sql_parser_make_is_boolean_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_TRUE, T);
+}
+predicate_atom(A) ::= predicate_row_scalar_expression(C) IS(I) NOT TRUE(T). {
+    A = mylite_sql_parser_make_is_boolean_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE, T);
+}
+predicate_atom(A) ::= predicate_row_scalar_expression(C) IS(I) FALSE(T). {
+    A = mylite_sql_parser_make_is_boolean_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_FALSE, T);
+}
+predicate_atom(A) ::= predicate_row_scalar_expression(C) IS(I) NOT FALSE(T). {
+    A = mylite_sql_parser_make_is_boolean_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE, T);
+}
+predicate_atom(A) ::= predicate_row_scalar_expression(C) IS(I) UNKNOWN(T). {
+    A = mylite_sql_parser_make_is_boolean_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN, T);
+}
+predicate_atom(A) ::= predicate_row_scalar_expression(C) IS(I) NOT UNKNOWN(T). {
+    A = mylite_sql_parser_make_is_boolean_predicate(
+        state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN, T);
+}
 predicate_atom(A) ::= predicate_row_scalar_expression(C) BETWEEN(B)
         predicate_range_value(L) AND predicate_range_value(U). {
     A = mylite_sql_parser_make_between_predicate(state, C, B, L, U);
@@ -7389,7 +7413,6 @@ predicate_comparison_value(A) ::= LEAST(T) LPAREN function_argument_list(B) RPAR
 predicate_comparison_value(A) ::= row_scalar_numeric_predicate_expression(V). {
     A = V;
 }
-
 predicate_row_scalar_expression(A) ::= IF(T) LPAREN expression(B) COMMA expression(C)
         COMMA expression(D) RPAREN(R). {
     A = mylite_sql_parser_make_three_argument_function(
@@ -7446,6 +7469,146 @@ predicate_row_scalar_expression(A) ::= row_scalar_temporal_predicate_expression(
     A = B;
 }
 predicate_row_scalar_expression(A) ::= row_scalar_numeric_predicate_expression(B). {
+    A = B;
+}
+predicate_row_scalar_expression(A) ::= row_scalar_arithmetic_predicate_expression(B). {
+    A = B;
+}
+
+row_scalar_arithmetic_predicate_expression(A) ::= row_scalar_arithmetic_additive(B). {
+    A = B;
+}
+
+row_scalar_arithmetic_additive(A) ::=
+    row_scalar_arithmetic_expression(B) PLUS(T) row_scalar_arithmetic_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_ADD, C);
+}
+row_scalar_arithmetic_additive(A) ::=
+    row_scalar_arithmetic_expression(B) MINUS(T) row_scalar_arithmetic_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_SUBTRACT, C);
+}
+row_scalar_arithmetic_additive(A) ::= row_scalar_arithmetic_multiplicative(B). {
+    A = B;
+}
+
+row_scalar_arithmetic_multiplicative(A) ::=
+    row_scalar_arithmetic_expression(B) STAR(T) row_scalar_arithmetic_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_MULTIPLY, C);
+}
+row_scalar_arithmetic_multiplicative(A) ::=
+    row_scalar_arithmetic_expression(B) SLASH(T) row_scalar_arithmetic_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_DIVIDE, C);
+}
+row_scalar_arithmetic_multiplicative(A) ::=
+    row_scalar_arithmetic_expression(B) DIV(T) row_scalar_arithmetic_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE, C);
+}
+row_scalar_arithmetic_multiplicative(A) ::=
+    row_scalar_arithmetic_expression(B) PERCENT(T) row_scalar_arithmetic_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_MODULO, C);
+}
+row_scalar_arithmetic_multiplicative(A) ::=
+    row_scalar_arithmetic_expression(B) MOD(T) row_scalar_arithmetic_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_MODULO, C);
+}
+row_scalar_arithmetic_multiplicative(A) ::= row_scalar_arithmetic_function(B). {
+    A = B;
+}
+
+row_scalar_arithmetic_expression(A) ::=
+    row_scalar_arithmetic_expression(B) PLUS(T) row_scalar_arithmetic_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_ADD, C);
+}
+row_scalar_arithmetic_expression(A) ::=
+    row_scalar_arithmetic_expression(B) MINUS(T) row_scalar_arithmetic_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_SUBTRACT, C);
+}
+row_scalar_arithmetic_expression(A) ::=
+    row_scalar_arithmetic_expression(B) STAR(T) row_scalar_arithmetic_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_MULTIPLY, C);
+}
+row_scalar_arithmetic_expression(A) ::=
+    row_scalar_arithmetic_expression(B) SLASH(T) row_scalar_arithmetic_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_DIVIDE, C);
+}
+row_scalar_arithmetic_expression(A) ::=
+    row_scalar_arithmetic_expression(B) DIV(T) row_scalar_arithmetic_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE, C);
+}
+row_scalar_arithmetic_expression(A) ::=
+    row_scalar_arithmetic_expression(B) PERCENT(T) row_scalar_arithmetic_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_MODULO, C);
+}
+row_scalar_arithmetic_expression(A) ::=
+    row_scalar_arithmetic_expression(B) MOD(T) row_scalar_arithmetic_expression(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_MODULO, C);
+}
+row_scalar_arithmetic_expression(A) ::= row_scalar_arithmetic_primary(B). {
+    A = B;
+}
+row_scalar_arithmetic_expression(A) ::= row_scalar_arithmetic_function(B). {
+    A = B;
+}
+
+row_scalar_arithmetic_function(A) ::= MOD(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_MOD_FUNCTION, B, C, R);
+}
+
+row_scalar_arithmetic_primary(A) ::= qualified_identifier(B). {
+    A = B;
+}
+row_scalar_arithmetic_primary(A) ::= literal(B). {
+    A = B;
+}
+row_scalar_arithmetic_primary(A) ::= PLUS(T) INTEGER(V). [UPLUS] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+row_scalar_arithmetic_primary(A) ::= PLUS(T) DECIMAL(V). [UPLUS] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_DECIMAL));
+}
+row_scalar_arithmetic_primary(A) ::= PLUS(T) FLOAT(V). [UPLUS] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_FLOAT));
+}
+row_scalar_arithmetic_primary(A) ::= MINUS(T) INTEGER(V). [UMINUS] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+row_scalar_arithmetic_primary(A) ::= MINUS(T) DECIMAL(V). [UMINUS] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_DECIMAL));
+}
+row_scalar_arithmetic_primary(A) ::= MINUS(T) FLOAT(V). [UMINUS] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_FLOAT));
+}
+row_scalar_arithmetic_primary(A) ::= row_scalar_numeric_predicate_expression(B). {
+    A = B;
+}
+row_scalar_arithmetic_primary(A) ::= string_length_expression(B). {
     A = B;
 }
 
@@ -7920,15 +8083,6 @@ select_order_key(A) ::= qualified_identifier(K). {
 }
 select_order_key(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
-}
-select_order_key(A) ::= qualified_identifier(B) PLUS(T) INTEGER(C). {
-    A = mylite_sql_parser_make_binary_expression(
-        state,
-        B,
-        T,
-        MYLITE_SQL_AST_OPERATOR_ADD,
-        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_INTEGER)
-    );
 }
 select_order_key(A) ::= selected_grouped_aggregate_expression(K). {
     A = K;

@@ -322,6 +322,12 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "mysql accepts tableless expression predicate upstream" \
+    "visible" \
+    "SELECT 'visible' WHERE 1 + 2 * 3 = 7;" \
+    "$DATABASE"
+
+expect_output \
     "mysql accepts string predicate literal upstream" \
     "1" \
     "SELECT i FROM numbers WHERE i = '1';" \

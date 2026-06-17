@@ -2870,6 +2870,7 @@ static bool predicate_node_is_supported_row_scalar_expression(
         row_scalar_expression_is_string_function(node->kind) ||
         is_row_scalar_json_expression(node) || row_scalar_expression_is_rand_function(node) ||
         row_scalar_numeric_function_kind_is_supported(node->kind) ||
+        predicate_node_is_integer_arithmetic_root(node) ||
         row_scalar_conversion_kind_from_expression(node) != PLANNED_ROW_SCALAR_CONVERSION_NONE ||
         node->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION) {
         return true;
@@ -2926,6 +2927,18 @@ static bool predicate_node_is_supported_row_scalar_expression(
     }
 
     return false;
+}
+
+static bool predicate_node_is_integer_arithmetic_root(const struct mylite_sql_ast_node *node) {
+    node = unwrap_parenthesized_predicate(node);
+    if (node == NULL) {
+        return false;
+    }
+    if (node->kind == MYLITE_SQL_AST_MOD_FUNCTION) {
+        return true;
+    }
+    return node->kind == MYLITE_SQL_AST_BINARY_EXPRESSION &&
+           integer_arithmetic_operator_is_attempt(mylite_sql_ast_node_operator(node));
 }
 
 static bool predicate_node_is_supported_row_scalar_predicate_value_expression(

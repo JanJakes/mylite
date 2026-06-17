@@ -255,6 +255,17 @@ static int plan_is_boolean_predicate(
             out_node_index
         );
     }
+    if (predicate_node_is_supported_row_scalar_expression(child_at(predicate_node, 0U))) {
+        return plan_row_scalar_expression_is_boolean_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            out_node_index
+        );
+    }
 
     int rc = resolve_predicate_column_with_source_index(
         database,
@@ -284,6 +295,49 @@ static int plan_is_boolean_predicate(
     }
 
     return append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+}
+
+static int plan_row_scalar_expression_is_boolean_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_BOOLEAN,
+        .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = MYLITE_OK;
+
+    node.row_scalar_expression = calloc(1U, sizeof(*node.row_scalar_expression));
+    if (node.row_scalar_expression == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = plan_row_scalar_expression(
+        database,
+        child_at(predicate_node, 0U),
+        true,
+        source_context,
+        NULL,
+        table_columns,
+        table_column_count,
+        node.row_scalar_expression
+    );
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(node.row_scalar_expression);
+        free(node.row_scalar_expression);
+    }
+    return rc;
 }
 
 static int plan_between_predicate(

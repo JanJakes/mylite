@@ -109,7 +109,7 @@ expect_output \
     "expression group having order" \
     "1	1
 3	1" \
-    "USE ${DATABASE}; "\
+    "USE ${DATABASE}; SET SESSION sql_mode = ''; "\
 "SELECT a, COUNT(*) FROM t1 GROUP BY a + 0 "\
 "HAVING COUNT(*) >= 1 AND a > 0 ORDER BY a + 0;"
 

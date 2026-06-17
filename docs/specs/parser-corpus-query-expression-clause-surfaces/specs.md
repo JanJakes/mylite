@@ -18,7 +18,8 @@ Primary MySQL references:
 The expectation script for this slice verifies representative MySQL behavior
 against MySQL 8.4.9:
 
-- arithmetic predicates such as `a + 1 > 1` are valid `WHERE` expressions;
+- arithmetic predicates such as `a + 1 > 1` are valid `WHERE` expressions and
+  are executable through the baseline row arithmetic predicate subset;
 - operator-bearing function and arithmetic expressions are valid `ORDER BY`,
   `GROUP BY`, and `HAVING` operands;
 - row tuple comparisons such as `(a,b) = (1,2)` are valid predicates;
@@ -75,7 +76,8 @@ In scope:
   but contain complete, recognized general-expression surfaces in `WHERE`,
   `ON`, `GROUP BY`, `HAVING`, `ORDER BY`, DML assignment, or subquery
   expression positions;
-- arithmetic, bitwise, and logical expression operators in query clauses;
+- arithmetic, bitwise, and logical expression operators in query clauses,
+  except the separately executable baseline row arithmetic predicate subset;
 - expression operators inside function arguments and aggregate arguments;
 - row tuple comparison and tuple `IN` surfaces;
 - postfix `IS` predicates over broader expression operands;
@@ -154,16 +156,20 @@ values_order_key ::= expression order_direction_opt.
 
 This slice does not install the broad grammar above directly. MyLite's current
 Lemon grammar and runtime planner are intentionally narrower. The implemented
-behavior is a fallback classifier that admits recognized surfaces as explicit
-unsupported placeholders after the normal parser fails.
+behavior is mostly a fallback classifier that admits recognized surfaces as
+explicit unsupported placeholders after the normal parser fails. The
+representative unparenthesized row arithmetic predicate cases are now handled by
+the normal parser/runtime through
+[baseline row arithmetic predicates](../baseline-row-arithmetic-predicates/specs.md).
 
 ## Runtime Behavior
 
-No SQLite fork hook is needed. Execution is intentionally unchanged.
-Recognized expression-clause query surfaces that fail normal parsing become
-unsupported-utility placeholders and return the existing deterministic
-unsupported diagnostic. Queries already supported by the normal parser keep
-their existing AST and runtime behavior.
+No SQLite fork hook is needed. Recognized expression-clause query surfaces that
+fail normal parsing become unsupported-utility placeholders and return the
+existing deterministic unsupported diagnostic. Queries already supported by the
+normal parser keep their existing AST and runtime behavior. The executable
+exception in this corpus slice is the separately documented row arithmetic
+predicate subset.
 
 This preserves correctness: MyLite must not accidentally route arbitrary MySQL
 expressions through SQLite with different type, collation, tuple, aggregate, or
@@ -178,8 +184,10 @@ Tests cover:
   qualified column-to-column range and membership predicates, `ROW(...)` comparisons,
   parenthesized full-text `MATCH`, `VALUES` string order keys, subquery
   expression predicates, multi-table `UPDATE`, and ordered `DELETE`;
-- parser placeholder acceptance for the representative expression-clause
-  surfaces;
+- parser placeholder acceptance for the still-unsupported representative
+  expression-clause surfaces;
+- normal parser/runtime execution for the row arithmetic predicate
+  representatives;
 - runtime unsupported diagnostics for recognized expression-clause surfaces;
 - regression coverage that existing simple predicates and flat joins continue
   to parse normally.
@@ -187,5 +195,7 @@ Tests cover:
 ## Compatibility Status
 
 This slice improves parser coverage by converting recognized general
-expression-clause syntax failures into unsupported placeholders. It does not add
-general executable expression semantics for table-backed query clauses.
+expression-clause syntax failures into unsupported placeholders. The row
+arithmetic predicate representatives have since moved from placeholders to
+normal execution, but the slice does not add general executable expression
+semantics for table-backed query clauses.

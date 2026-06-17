@@ -548,13 +548,20 @@ static int test_filtered_select_diagnostics(void) {
             .context = "literal-left comparison predicate",
         }
     );
-    failures += execute_error(
+    failures += expect_query_single_value(
         database,
-        "SELECT i FROM numbers WHERE i + 1 = 2",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_single_value_query){
+            .sql = "SELECT i FROM numbers WHERE i + 1 = 2",
+            .expected = "1",
+            .context = "row arithmetic comparison predicate",
+        }
+    );
+    failures += expect_query_single_value(
+        database,
+        (struct expected_single_value_query){
+            .sql = "SELECT 'visible' WHERE 1 + 2 * 3 = 7",
+            .expected = "visible",
+            .context = "tableless row arithmetic comparison predicate",
         }
     );
     failures += expect_query_single_value(

@@ -191,6 +191,7 @@ static int bind_select_non_in_predicate_node_parameters(
     if (node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_TRUTH ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL ||
+        node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_BOOLEAN ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN) {
         bool row_scalar_decimal_like =
             node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON &&

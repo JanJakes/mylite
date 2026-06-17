@@ -3329,6 +3329,7 @@ static bool planned_row_scalar_tableless_filter_node_is_supported(
     case PLANNED_SELECT_PREDICATE_ROW_SCALAR_TRUTH:
     case PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON:
     case PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL:
+    case PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_BOOLEAN:
     case PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN:
     case PLANNED_SELECT_PREDICATE_ROW_SCALAR_IN:
         if (!planned_row_scalar_tableless_filter_expression_is_supported(

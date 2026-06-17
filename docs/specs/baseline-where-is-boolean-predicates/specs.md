@@ -75,7 +75,7 @@ NOT column_reference IS UNKNOWN
 
 - `SELECT` source predicates may use unqualified names, the source table name,
   the selected schema plus table name, or a supported source table alias.
-- `DELETE` and `UPDATE` predicates remain unqualified descriptor-column forms.
+- single-table `DELETE` and `UPDATE` predicate columns share the qualified descriptor-column policy documented in [baseline qualified predicate columns](../baseline-qualified-predicate-columns/specs.md).
 
 The predicate is available wherever the shared descriptor-backed `WHERE`
 planner is already used:

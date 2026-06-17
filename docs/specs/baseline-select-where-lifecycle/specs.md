@@ -13,6 +13,10 @@ The feature is intentionally not full MySQL `WHERE` or expression support. It
 supports one persistent base table, descriptor-backed projections, and one
 simple predicate over one descriptor column.
 
+Later `WHERE` slices broadened this initial surface. Current single-source
+qualified predicate-column behavior is documented in
+[baseline qualified predicate columns](../baseline-qualified-predicate-columns/specs.md).
+
 ## Sources
 
 - MyLite README architecture: `README.md`

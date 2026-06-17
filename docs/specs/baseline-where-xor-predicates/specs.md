@@ -97,9 +97,7 @@ Each side of `XOR` may be any currently supported predicate expression:
 - parentheses;
 - nested `XOR`.
 
-`SELECT` predicate columns keep the existing source-qualified descriptor
-reference policy. `DELETE` and `UPDATE` predicates remain limited to
-unqualified descriptor columns.
+`SELECT`, single-table `DELETE`, and single-table `UPDATE` predicate columns follow the existing source-qualified descriptor reference policy documented in [baseline qualified predicate columns](../baseline-qualified-predicate-columns/specs.md).
 
 ## Unsupported SQL
 

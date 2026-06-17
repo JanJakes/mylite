@@ -85,7 +85,7 @@ shared descriptor-backed `WHERE` planner:
 `SELECT` source predicates keep the existing source-qualification policy:
 unqualified references, source table references, schema-table references, and
 supported table aliases are resolved through the selected single-source
-context. `DELETE` and `UPDATE` remain unqualified descriptor-column forms.
+context. Single-table `DELETE` and `UPDATE` now share the qualified descriptor-column policy documented in [baseline qualified predicate columns](../baseline-qualified-predicate-columns/specs.md).
 
 Keyword `NOT` records no warning. Existing `&&` and `||` deprecation warnings
 continue unchanged.
@@ -216,7 +216,7 @@ descriptor resolver:
 
 - table-backed `SELECT` and aggregate source filters may use the supported
   source-qualification forms for the single selected source table or alias;
-- `DELETE` and `UPDATE` predicates remain unqualified descriptor-column forms;
+- qualifier support for current single-table `DELETE` and `UPDATE` predicate columns is covered by [baseline qualified predicate columns](../baseline-qualified-predicate-columns/specs.md);
 - invisible descriptor columns may be named explicitly, matching the existing
   predicate subset;
 - unknown columns use the existing deterministic unknown-column diagnostics;

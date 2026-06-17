@@ -3018,6 +3018,50 @@ static int test_where_and_predicates(void) {
         }
     );
     failures += reset_numbers(database);
+    failures +=
+        execute_ok(database, "DELETE FROM numbers WHERE numbers.i BETWEEN -2 AND 1", &result);
+    failures += expect_int64(
+        mylite_result_affected_rows(result),
+        3,
+        "qualified delete between affected rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers ORDER BY id",
+            .values = between_delete_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "qualified delete between row state",
+        }
+    );
+    failures += reset_numbers(database);
+    failures +=
+        execute_ok(database, "DELETE FROM numbers WHERE app.numbers.i BETWEEN -2 AND 1", &result);
+    failures += expect_int64(
+        mylite_result_affected_rows(result),
+        3,
+        "schema-qualified delete between affected rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers ORDER BY id",
+            .values = between_delete_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "schema-qualified delete between row state",
+        }
+    );
+    failures += reset_numbers(database);
     failures += execute_ok(database, "DELETE FROM numbers WHERE i BETWEEN -2 AND nn", &result);
     failures += expect_int64(
         mylite_result_affected_rows(result),
@@ -3079,6 +3123,24 @@ static int test_where_and_predicates(void) {
         }
     );
     failures += reset_numbers(database);
+    failures += execute_ok(database, "DELETE FROM numbers WHERE numbers.i IN (-2, 1, 0)", &result);
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 3, "qualified delete in affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers ORDER BY id",
+            .values = between_delete_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "qualified delete in row state",
+        }
+    );
+    failures += reset_numbers(database);
     failures += execute_ok(
         database,
         "DELETE FROM predicate_values WHERE n BETWEEN JSON_LENGTH(j) AND JSON_LENGTH(j)",
@@ -3120,6 +3182,25 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "delete in limit row state",
+        }
+    );
+
+    failures += reset_numbers(database);
+    failures += execute_ok(database, "DELETE FROM numbers WHERE numbers.i IS TRUE", &result);
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 3, "qualified delete is affected rows");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers ORDER BY id",
+            .values = is_false_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "qualified delete is row state",
         }
     );
 
@@ -3282,15 +3363,18 @@ static int test_where_and_predicates(void) {
             .context = "scalar-literal between predicate",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(
         database,
-        "DELETE FROM numbers WHERE numbers.i BETWEEN -2 AND 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE supports only unqualified predicate columns",
-        }
+        "DELETE FROM numbers WHERE numbers.i BETWEEN -2 AND 1 AND id = -999",
+        &result
     );
+    failures += expect_int64(
+        mylite_result_affected_rows(result),
+        0,
+        "qualified delete between no-op affected rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_ok(
         database,
         "UPDATE numbers SET n = 1 WHERE numbers.i BETWEEN -2 AND 1 AND id = -999",
@@ -3403,15 +3487,18 @@ static int test_where_and_predicates(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(
         database,
-        "DELETE FROM numbers WHERE numbers.i IN (-2, 1, 0)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE supports only unqualified predicate columns",
-        }
+        "DELETE FROM numbers WHERE numbers.i IN (-2, 1, 0) AND id = -999",
+        &result
     );
+    failures += expect_int64(
+        mylite_result_affected_rows(result),
+        0,
+        "qualified delete in no-op affected rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_ok(
         database,
         "UPDATE numbers SET n = 1 WHERE numbers.i IN (-2, 1, 0) AND id = -999",
@@ -3477,15 +3564,15 @@ static int test_where_and_predicates(void) {
             .context = "row arithmetic is true after limited delete",
         }
     );
-    failures += execute_error(
-        database,
-        "DELETE FROM numbers WHERE numbers.i IS TRUE",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE supports only unqualified predicate columns",
-        }
+    failures +=
+        execute_ok(database, "DELETE FROM numbers WHERE numbers.i IS TRUE AND id = -999", &result);
+    failures += expect_int64(
+        mylite_result_affected_rows(result),
+        0,
+        "qualified delete is no-op affected rows"
     );
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_ok(
         database,
         "UPDATE numbers SET n = 1 WHERE numbers.i IS TRUE AND id = -999",
@@ -3680,6 +3767,7 @@ static int test_where_xor_predicates(void) {
         "22",
     };
     static const char *const delete_limited_rows[] = {"1", "2", "3"};
+    static const char *const qualified_delete_rows[] = {"2", "3"};
     static const char *const persisted_rows[] = {"33", "33", "33"};
     static const char *const scalar_xor_row[] = {"1"};
     static const char *const warning_rows[] = {"1", "4"};
@@ -4081,6 +4169,31 @@ static int test_where_xor_predicates(void) {
         }
     );
 
+    failures += reset_numbers(database);
+    failures +=
+        execute_ok(database, "DELETE FROM numbers WHERE numbers.id = 1 XOR nn = 8", &result);
+    if (result != NULL) {
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            2,
+            "qualified xor delete affected rows"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers ORDER BY id",
+            .values = qualified_delete_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "qualified xor delete rows",
+        }
+    );
+
     failures += execute_error(
         database,
         "SELECT id FROM numbers WHERE missing_left = 1 XOR id = 2",
@@ -4108,15 +4221,20 @@ static int test_where_xor_predicates(void) {
             .message_part = "Out of range value for column 'i' in WHERE",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(
         database,
-        "DELETE FROM numbers WHERE numbers.id = 1 XOR nn = 8",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE supports only unqualified predicate columns",
-        }
+        "DELETE FROM numbers WHERE (numbers.id = 1 XOR nn = 8) AND id = -999",
+        &result
     );
+    if (result != NULL) {
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            0,
+            "qualified delete xor no-op affected rows"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_ok(
         database,
         "UPDATE numbers SET n = 1 WHERE (numbers.id = 1 XOR nn = 8) AND id = -999",

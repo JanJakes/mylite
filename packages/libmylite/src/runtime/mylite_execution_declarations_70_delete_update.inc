@@ -13,8 +13,6 @@ static int plan_joined_delete(
     const struct mylite_sql_ast_node *statement,
     struct planned_delete *out_plan
 );
-static bool delete_where_clause_needs_source_context(const struct mylite_sql_ast_node *where_clause
-);
 static int reject_builtin_schema_joined_delete_source(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *source_node

@@ -244,13 +244,13 @@ Predicate and ordering column resolution uses MyLite column descriptors loaded
 in `ordinal_position` order. SQLite metadata is not consulted.
 
 Predicate column resolution preserves the `baseline-select-where-lifecycle`
-policy:
+policy as later expanded by
+[baseline qualified predicate columns](../baseline-qualified-predicate-columns/specs.md):
 
-- the supported predicate column must be one unqualified descriptor column;
+- the supported predicate column may be unqualified or matching table-,
+  alias-, or schema.table-qualified;
 - unknown predicate names fail with MySQL error `1054`, SQLSTATE `42S22`, and
-  message `Unknown column '<column>' in 'where clause'`;
-- table-qualified predicate columns are rejected with a deterministic
-  unsupported diagnostic.
+  message `Unknown column '<column>' in 'where clause'`.
 
 Ordering column resolution preserves the `baseline-select-order-limit-lifecycle`
 policy:
@@ -521,7 +521,7 @@ Coverage must include:
 - affected-row count, warning count, absence of result rows, and remaining rows
   after each delete;
 - unknown predicate columns and unknown ordering columns;
-- unsupported delete syntax rejected deterministically: aliases,
+- unsupported delete syntax rejected deterministically:
   table-qualified order columns, expression order keys, ordinal order keys,
   multiple sort keys, string/decimal/float/hex/bit limit literals, parameters,
   functions, joins, multi-table delete, `USING`, `PARTITION`, `LOW_PRIORITY`,

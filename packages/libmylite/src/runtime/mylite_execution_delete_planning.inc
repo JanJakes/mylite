@@ -21,7 +21,6 @@ static int plan_single_table_delete(
     const struct mylite_sql_ast_node *target_node = child_at(statement, 0U);
     const struct mylite_sql_ast_node *table_node = target_node;
     struct select_source_context source_context = {0};
-    const struct select_source_context *predicate_source_context = NULL;
     struct mylite_catalog_column_descriptor *table_columns = NULL;
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
@@ -53,14 +52,11 @@ static int plan_single_table_delete(
     );
     if (rc == MYLITE_OK && target_node != table_node) {
         rc = init_select_source_context(database, target_node, &out_plan->target, &source_context);
-        predicate_source_context = &source_context;
     }
-    if (rc == MYLITE_OK && predicate_source_context == NULL &&
-        delete_where_clause_needs_source_context(where_clause)) {
+    if (rc == MYLITE_OK && target_node == table_node) {
         source_context = (struct select_source_context){
             .source = &out_plan->target,
         };
-        predicate_source_context = &source_context;
     }
     if (rc == MYLITE_OK && (where_clause != NULL || order_clause != NULL || limit_clause != NULL)) {
         rc = mylite_execution_load_table_columns(
@@ -79,7 +75,7 @@ static int plan_single_table_delete(
         rc = plan_select_predicate_with_options(
             database,
             where_clause,
-            predicate_source_context,
+            &source_context,
             table_columns,
             table_column_count,
             &predicate_options,
@@ -93,7 +89,7 @@ static int plan_single_table_delete(
         rc = plan_select_order(
             database,
             order_clause,
-            predicate_source_context,
+            NULL,
             NULL,
             table_columns,
             table_column_count,
@@ -121,20 +117,6 @@ static int plan_single_table_delete(
     }
 
     return rc;
-}
-
-static bool delete_where_clause_needs_source_context(const struct mylite_sql_ast_node *where_clause
-) {
-    for (const struct mylite_sql_ast_node *node = where_clause; node != NULL;
-         node = node->next_sibling) {
-        if (node->kind == MYLITE_SQL_AST_SELECT_STATEMENT) {
-            return true;
-        }
-        if (delete_where_clause_needs_source_context(node->first_child)) {
-            return true;
-        }
-    }
-    return false;
 }
 
 static int plan_joined_delete(

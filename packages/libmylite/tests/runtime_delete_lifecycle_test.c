@@ -682,15 +682,7 @@ static int test_delete_diagnostics(void) {
             .message_part = "Unknown column 'missing' in 'order clause'",
         }
     );
-    failures += execute_error(
-        database,
-        "DELETE FROM numbers WHERE numbers.id = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "WHERE supports only unqualified predicate columns",
-        }
-    );
+    failures += expect_delete_ok(database, "DELETE FROM numbers WHERE numbers.id = -999", 0);
     failures += execute_error(
         database,
         "DELETE FROM numbers ORDER BY numbers.id LIMIT 1",

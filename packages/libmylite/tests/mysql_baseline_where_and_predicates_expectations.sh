@@ -404,6 +404,46 @@ expect_output \
 
 reset_numbers
 expect_output \
+    "qualified delete between predicate" \
+    "3	0	3" \
+    "DELETE FROM numbers WHERE numbers.i BETWEEN -2 AND 1; "\
+"SELECT ROW_COUNT(), @@warning_count, GROUP_CONCAT(id ORDER BY id) FROM numbers;" \
+    "$DATABASE"
+
+reset_numbers
+expect_output \
+    "schema-qualified delete between predicate" \
+    "3	0	3" \
+    "DELETE FROM numbers WHERE ${DATABASE}.numbers.i BETWEEN -2 AND 1; "\
+"SELECT ROW_COUNT(), @@warning_count, GROUP_CONCAT(id ORDER BY id) FROM numbers;" \
+    "$DATABASE"
+
+reset_numbers
+expect_output \
+    "qualified delete in predicate" \
+    "3	0	3" \
+    "DELETE FROM numbers WHERE numbers.i IN (-2, 1, 0); "\
+"SELECT ROW_COUNT(), @@warning_count, GROUP_CONCAT(id ORDER BY id) FROM numbers;" \
+    "$DATABASE"
+
+reset_numbers
+expect_output \
+    "qualified delete is predicate" \
+    "3	0	4" \
+    "DELETE FROM numbers WHERE numbers.i IS TRUE; "\
+"SELECT ROW_COUNT(), @@warning_count, GROUP_CONCAT(id ORDER BY id) FROM numbers;" \
+    "$DATABASE"
+
+reset_numbers
+expect_output \
+    "qualified delete xor predicate" \
+    "2	0	2,3" \
+    "DELETE FROM numbers WHERE numbers.id = 1 XOR nn = 8; "\
+"SELECT ROW_COUNT(), @@warning_count, GROUP_CONCAT(id ORDER BY id) FROM numbers;" \
+    "$DATABASE"
+
+reset_numbers
+expect_output \
     "delete conjunction order limit" \
     "1	0	1,2,3" \
     "DELETE FROM numbers WHERE id > 1 AND nn >= 6 ORDER BY id DESC LIMIT 1; "\

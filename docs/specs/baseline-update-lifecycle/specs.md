@@ -303,13 +303,13 @@ Assignment column resolution:
   diagnostic.
 
 Predicate column resolution preserves the `baseline-select-where-lifecycle`
-policy:
+policy as later expanded by
+[baseline qualified predicate columns](../baseline-qualified-predicate-columns/specs.md):
 
-- the supported predicate column must be one unqualified descriptor column;
+- the supported predicate column may be unqualified or matching table- or
+  schema.table-qualified;
 - unknown predicate names fail with MySQL error `1054`, SQLSTATE `42S22`, and
-  message `Unknown column '<column>' in 'where clause'`;
-- table-qualified predicate columns are rejected with a deterministic
-  unsupported diagnostic.
+  message `Unknown column '<column>' in 'where clause'`.
 
 Ordering column resolution preserves the
 `baseline-select-order-limit-lifecycle` policy:
@@ -645,8 +645,9 @@ This feature moves only the exact supported subset to partial support after
 implementation:
 
 - `UPDATE` single-table: persistent base tables only, with one unqualified
-  descriptor assignment, optional baseline `WHERE`, one supported `ORDER BY`
-  key, and `LIMIT row_count`;
+  descriptor assignment, optional baseline `WHERE` with the current qualified
+  predicate-column subset, one supported `ORDER BY` key, and
+  `LIMIT row_count`;
 - `=` assignment operator: one descriptor-column assignment in the supported
   `UPDATE` subset only;
 - `WHERE`: existing descriptor-driven integer/`NULL` predicate subset reused

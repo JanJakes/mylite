@@ -337,6 +337,9 @@ static bool select_statement_optional_clauses_contain_row_scalar_function(
 static bool select_optional_clause_contains_row_scalar_function(
     const struct mylite_sql_ast_node *clause
 );
+static bool select_order_key_is_supported_row_scalar_expression(
+    const struct mylite_sql_ast_node *order_key
+);
 static int execute_row_scalar_select_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,

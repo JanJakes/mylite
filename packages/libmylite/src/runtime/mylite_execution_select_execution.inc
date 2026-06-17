@@ -195,14 +195,14 @@ static bool select_optional_clause_contains_row_scalar_function(
 
         while (item != NULL) {
             if (item->kind == MYLITE_SQL_AST_ORDER_BY_ITEM &&
-                row_scalar_expression_contains_row_function(child_at(item, 0U))) {
+                select_order_key_is_supported_row_scalar_expression(child_at(item, 0U))) {
                 return true;
             }
             item = item->next_sibling;
         }
         return false;
     }
-    return row_scalar_expression_contains_row_function(order_child);
+    return select_order_key_is_supported_row_scalar_expression(order_child);
 }
 
 static int execute_row_scalar_select_statement(

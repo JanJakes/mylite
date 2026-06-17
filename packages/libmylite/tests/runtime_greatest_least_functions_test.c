@@ -579,13 +579,16 @@ static int test_greatest_least_diagnostics(void) {
             .context = "greatest predicate",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT n FROM t ORDER BY GREATEST(n, 2)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT n FROM t ORDER BY GREATEST(n, 2)",
+            .columns = columns_greatest_predicate,
+            .column_count =
+                sizeof(columns_greatest_predicate) / sizeof(columns_greatest_predicate[0]),
+            .values = values_greatest_predicate,
+            .row_count = 1U,
+            .context = "greatest order expression",
         }
     );
     failures += execute_error(

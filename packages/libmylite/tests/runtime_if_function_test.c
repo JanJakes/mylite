@@ -454,13 +454,15 @@ static int test_if_function_unsupported_forms(void) {
             .context = "IF column predicate RHS",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT id FROM t ORDER BY IF(1,id,id)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY IF(1,id,id)",
+            .columns = (const char *const[]){"id"},
+            .column_count = 1U,
+            .values = (const char *const[]){"1"},
+            .row_count = 1U,
+            .context = "IF order expression",
         }
     );
     failures += execute_error(

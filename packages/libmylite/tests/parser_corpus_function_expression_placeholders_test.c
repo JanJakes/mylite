@@ -27,8 +27,6 @@ static int test_function_expression_placeholders(void) {
         {.sql = "SELECT COUNT(DISTINCT a) FROM t1 GROUP BY b "
                 "HAVING COUNT(DISTINCT a) > 1",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "SELECT latin1_f FROM t1 ORDER BY latin1_f, HEX(latin1_f)",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT b FROM t1 GROUP BY CAST(b AS BINARY) LIKE ''",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT * FROM t1 WHERE word = CAST(0xDF AS CHAR)",

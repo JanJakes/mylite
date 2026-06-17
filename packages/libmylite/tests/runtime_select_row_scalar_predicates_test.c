@@ -41,6 +41,9 @@ static int test_select_row_scalar_predicates(void) {
     static const char *const ids_123[] = {"1", "2", "3"};
     static const char *const ids_13[] = {"1", "3"};
     static const char *const ids_23[] = {"2", "3"};
+    static const char *const ids_213[] = {"2", "1", "3"};
+    static const char *const ids_312[] = {"3", "1", "2"};
+    static const char *const ids_321[] = {"3", "2", "1"};
     static const char *const ids_3[] = {"3"};
     mylite_db *database = NULL;
     int failures = 0;
@@ -373,6 +376,47 @@ static int test_select_row_scalar_predicates(void) {
             .column_count = 1U,
             .row_count = 3U,
             .context = "row-scalar in mixed literal and function list predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred ORDER BY COALESCE(i, -1), id",
+            .values = ids_321,
+            .column_count = 1U,
+            .row_count = 3U,
+            .context = "row-scalar numeric order expression",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred "
+                   "ORDER BY JSON_UNQUOTE(JSON_EXTRACT(js, '$.a')) DESC, id",
+            .values = ids_213,
+            .column_count = 1U,
+            .row_count = 3U,
+            .context = "row-scalar json order expression",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred ORDER BY DATEDIFF(dt, '2024-01-01') DESC, id",
+            .values = ids_213,
+            .column_count = 1U,
+            .row_count = 3U,
+            .context = "row-scalar temporal order expression",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred ORDER BY HEX(b), id",
+            .values = ids_312,
+            .column_count = 1U,
+            .row_count = 3U,
+            .context = "row-scalar hex order expression",
         }
     );
     failures += expect_query_values(

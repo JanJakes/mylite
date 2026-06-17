@@ -137,7 +137,7 @@ static int test_aggregate_window_surfaces(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "ORDER BY supports only",
+            .message_part = "window functions support only descriptor columns in ORDER BY",
         }
     );
     failures += execute_error(

@@ -85,15 +85,6 @@ static int test_function_expression_placeholder_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT latin1_f FROM t1 ORDER BY latin1_f, HEX(latin1_f)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
-        }
-    );
-    failures += execute_error(
-        database,
         "INSERT INTO t1 VALUES (DATE_FORMAT('2004-02-02','%M'))",
         (struct expected_sql_error){
             .code = mysql_error_parse,

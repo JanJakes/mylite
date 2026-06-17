@@ -179,6 +179,10 @@ static int test_table_backed_concat(void) {
     static const char *const columns_limited[] = {"CONCAT(v, ':', id)"};
     static const char *const values_limited[] = {":3", "b:2"};
     static const char *const values_multi_order[] = {":3", "a:1", "b:2"};
+    static const char *const columns_order_ids[] = {"id"};
+    static const char *const values_concat_order[] = {"2", "3", "1"};
+    static const char *const values_nested_order[] = {"1", "3", "2"};
+    static const char *const values_multi_row_scalar_order[] = {"3", "1", "2"};
     static const char *const columns_labels[] = {"CONCAT(v, '-', id)", "alias_name"};
     static const char *const values_labels[] = {"a-1", "xapp"};
     static const char *const columns_nested_functions[] = {
@@ -299,6 +303,39 @@ static int test_table_backed_concat(void) {
             .values = values_multi_order,
             .row_count = 3U,
             .context = "table concat multi-key order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY CONCAT(v, n), id",
+            .columns = columns_order_ids,
+            .column_count = sizeof(columns_order_ids) / sizeof(columns_order_ids[0]),
+            .values = values_concat_order,
+            .row_count = 3U,
+            .context = "table concat order expression",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY LOWER(CONCAT(v, n)) DESC, id",
+            .columns = columns_order_ids,
+            .column_count = sizeof(columns_order_ids) / sizeof(columns_order_ids[0]),
+            .values = values_nested_order,
+            .row_count = 3U,
+            .context = "nested string order expression",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY IFNULL(n,'z'), CONCAT(v, id)",
+            .columns = columns_order_ids,
+            .column_count = sizeof(columns_order_ids) / sizeof(columns_order_ids[0]),
+            .values = values_multi_row_scalar_order,
+            .row_count = 3U,
+            .context = "multiple row-scalar order expressions",
         }
     );
     failures += expect_query(
@@ -443,6 +480,9 @@ static int test_table_backed_control_flow(void) {
     };
     static const char *const columns_limited[] = {"id", "IFNULL(v,'x')", "ISNULL(n)"};
     static const char *const values_limited[] = {"3", "A", "0", "2", "x", "0"};
+    static const char *const columns_order_ids[] = {"id"};
+    static const char *const values_ifnull_order[] = {"2", "3", "1"};
+    static const char *const values_case_order[] = {"1", "3", "2"};
     static const char *const columns_labels[] = {"IFNULL(v,'x')", "alias_name", "ISNULL(n)"};
     static const char *const values_labels[] = {"a", "a", "1"};
     static const char *const columns_qualified[] = {"id", "ifn"};
@@ -549,6 +589,28 @@ static int test_table_backed_control_flow(void) {
             .values = values_limited,
             .row_count = 2U,
             .context = "table control-flow where order limit",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY IFNULL(i,-1), id",
+            .columns = columns_order_ids,
+            .column_count = sizeof(columns_order_ids) / sizeof(columns_order_ids[0]),
+            .values = values_ifnull_order,
+            .row_count = 3U,
+            .context = "table IFNULL order expression",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY CASE WHEN i > 0 THEN 9 ELSE i END DESC, id",
+            .columns = columns_order_ids,
+            .column_count = sizeof(columns_order_ids) / sizeof(columns_order_ids[0]),
+            .values = values_case_order,
+            .row_count = 3U,
+            .context = "table CASE order expression",
         }
     );
     failures += expect_query(

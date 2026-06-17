@@ -7924,7 +7924,7 @@ select_order_key(A) ::= predicate_collate_expression(K). {
 select_order_key(A) ::= window_function_expression(K). {
     A = K;
 }
-select_order_key(A) ::= row_scalar_numeric_predicate_expression(K). {
+select_order_key(A) ::= predicate_row_scalar_expression(K). {
     A = K;
 }
 select_order_key(A) ::=
@@ -7938,10 +7938,6 @@ select_order_key(A) ::=
             .right = P,
             .escape = E,
         });
-}
-select_order_key(A) ::= FIELD(T) LPAREN function_argument_list(B) RPAREN(R). {
-    A = mylite_sql_parser_make_list_argument_function(
-        state, T, MYLITE_SQL_AST_FIELD_FUNCTION, B, R);
 }
 select_order_key(A) ::= FIELD(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(

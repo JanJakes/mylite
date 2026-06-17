@@ -175,6 +175,22 @@ b:2" \
     "SELECT CONCAT(v, ':', id) FROM t WHERE id >= 1 ORDER BY id DESC LIMIT 2;" \
     "$DATABASE"
 
+expect_output \
+    "table concat order expression" \
+    "2
+3
+1" \
+    "SELECT id FROM t ORDER BY CONCAT(v, n), id;" \
+    "$DATABASE"
+
+expect_output \
+    "nested string order expression" \
+    "1
+3
+2" \
+    "SELECT id FROM t ORDER BY LOWER(CONCAT(v, n)) DESC, id;" \
+    "$DATABASE"
+
 run_mysql \
     "CREATE TABLE posts(id INT, post_date DATETIME, post_type VARCHAR(20), "\
 "post_status VARCHAR(20)); "\
@@ -224,6 +240,30 @@ expect_output \
     "$nested_string_functions_expected" \
     "SELECT id, CONCAT(LOWER(v), ':', UPPER(n), ':', LENGTH(txt)), "\
 "LOWER(CONCAT(v, n)), LENGTH(CONCAT(v, n)) FROM t ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "control-flow IFNULL order expression" \
+    "2
+3
+1" \
+    "SELECT id FROM t ORDER BY IFNULL(i,-1), id;" \
+    "$DATABASE"
+
+expect_output \
+    "control-flow CASE order expression" \
+    "1
+3
+2" \
+    "SELECT id FROM t ORDER BY CASE WHEN i > 0 THEN 9 ELSE i END DESC, id;" \
+    "$DATABASE"
+
+expect_output \
+    "multiple row-scalar order expressions" \
+    "3
+1
+2" \
+    "SELECT id FROM t ORDER BY IFNULL(n,'z'), CONCAT(v, id);" \
     "$DATABASE"
 
 expect_error \

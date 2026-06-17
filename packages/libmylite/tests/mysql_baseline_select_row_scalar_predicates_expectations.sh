@@ -75,6 +75,10 @@ numeric-in	1,2,3
 not-in	2
 function-list-in	1,2,3
 mixed-list-in	1,2,3
+numeric-order	3,2,1
+json-order	2,1,3
+temporal-order	2,1,3
+hex-order	3,1,2
 json-in	1
 temporal-in	1
 digest-in	1
@@ -177,6 +181,14 @@ expect_output \
 "SELECT 'mixed-list-in', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
 "FROM expr_pred WHERE IFNULL(v, 'fallback') IN "\
 "('fallback', COALESCE(v, 'fallback')); "\
+"SELECT 'numeric-order', GROUP_CONCAT(id ORDER BY COALESCE(i, -1), id) "\
+"FROM expr_pred; "\
+"SELECT 'json-order', GROUP_CONCAT(id ORDER BY "\
+"JSON_UNQUOTE(JSON_EXTRACT(js, '$.a')) DESC, id) FROM expr_pred; "\
+"SELECT 'temporal-order', GROUP_CONCAT(id ORDER BY "\
+"DATEDIFF(dt, '2024-01-01') DESC, id) FROM expr_pred; "\
+"SELECT 'hex-order', GROUP_CONCAT(id ORDER BY HEX(b), id) "\
+"FROM expr_pred; "\
 "SELECT 'json-in', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
 "FROM expr_pred WHERE JSON_UNQUOTE(JSON_EXTRACT(js, '$.a')) IN ('1', '3'); "\
 "SELECT 'temporal-in', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\

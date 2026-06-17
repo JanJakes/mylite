@@ -158,6 +158,10 @@ static int unhex_argument_bytes(
             out_is_null
         );
     }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return mylite_execution_set_unknown_column_reference_error(database, expression);
+    }
 
     rc = unhex_scalar_argument_value(database, expression, cell, &handled_scalar);
     if (rc != MYLITE_OK || handled_scalar) {

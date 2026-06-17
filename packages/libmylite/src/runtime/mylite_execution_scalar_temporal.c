@@ -434,6 +434,37 @@ static int evaluate_unix_timestamp_scalar_argument(
         expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         return mylite_execution_date_add_set_unknown_identifier_error(database, expression);
     }
+    if (expression->kind == MYLITE_SQL_AST_SYSDATE_FUNCTION) {
+        struct session_scalar_cell cell = {0};
+        size_t text_length = 0U;
+
+        rc = mylite_execution_sysdate_scalar_value(database, expression, &cell);
+        if (rc != MYLITE_OK) {
+            mylite_execution_session_scalar_cell_deinit(&cell);
+            return rc;
+        }
+        if (cell.value == NULL) {
+            *out_is_null = true;
+            mylite_execution_session_scalar_cell_deinit(&cell);
+            return MYLITE_OK;
+        }
+        text_length = cell.has_value_size ? cell.value_size : strlen(cell.value);
+        if (text_length > mylite_execution_scalar_datetime_text_length &&
+            cell.value[mylite_execution_scalar_datetime_text_length] == '.') {
+            text_length = mylite_execution_scalar_datetime_text_length;
+        }
+        *out_text = (char *)malloc(text_length + 1U);
+        if (*out_text == NULL) {
+            mylite_execution_session_scalar_cell_deinit(&cell);
+            mylite_execution_set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        memcpy(*out_text, cell.value, text_length);
+        (*out_text)[text_length] = '\0';
+        *out_text_length = text_length;
+        mylite_execution_session_scalar_cell_deinit(&cell);
+        return MYLITE_OK;
+    }
     if (expression->kind != MYLITE_SQL_AST_LITERAL) {
         mylite_execution_set_unsupported_error(
             database,
@@ -2188,21 +2219,10 @@ static int temporal_constructor_scalar_integer_literal_value(
     const char *function_name,
     int64_t *out_value
 ) {
-    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    const char *message = "row-scalar SELECT integer literals must fit the signed 64-bit range";
     uint64_t magnitude = 0U;
 
-    if (snprintf(
-            message,
-            sizeof(message),
-            "%s() integer literals must fit the signed 64-bit range",
-            function_name == NULL ? "temporal constructor" : function_name
-        ) < 0) {
-        mylite_execution_set_runtime_error(
-            database,
-            "failed to format temporal constructor diagnostic"
-        );
-        return MYLITE_ERROR;
-    }
+    (void)function_name;
 
     if (literal == NULL || out_value == NULL ||
         mylite_execution_parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK ||
@@ -2239,7 +2259,11 @@ static int evaluate_temporal_extract_scalar_argument(
         "temporal extract functions support only string temporal literals and NULL";
     const char *nul_message = "temporal extract literals do not support NUL bytes";
 
-    if (is_calendar_name != 0) {
+    if (extract_kind == MYLITE_TEMPORAL_EXTRACT_TIME_TO_SEC) {
+        unsupported_message =
+            "temporal extract functions support only string temporal literals, descriptor "
+            "columns, and NULL";
+    } else if (is_calendar_name != 0) {
         unsupported_message =
             "calendar name functions support only string temporal literals and NULL";
         nul_message = "calendar name function literals do not support NUL bytes";
@@ -2263,6 +2287,10 @@ static int evaluate_temporal_extract_scalar_argument(
     *out_is_null = false;
 
     expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression != NULL && (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+                               expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        return mylite_execution_date_add_set_unknown_identifier_error(database, expression);
+    }
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_LITERAL) {
         mylite_execution_set_unsupported_error(database, unsupported_message);
         return MYLITE_ERROR;

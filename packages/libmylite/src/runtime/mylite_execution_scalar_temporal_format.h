@@ -50,6 +50,9 @@ int mylite_execution_scalar_date_format_numeric_comparison_value(
 bool mylite_execution_scalar_is_date_format_numeric_comparison_expression(
     const struct mylite_sql_ast_node *expression
 );
+bool mylite_execution_scalar_is_date_format_comparison_expression(
+    const struct mylite_sql_ast_node *expression
+);
 bool mylite_execution_date_format_numeric_comparison_sides(
     const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node **out_date_format,

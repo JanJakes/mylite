@@ -726,6 +726,21 @@ int mylite_execution_set_unknown_column_reference_error(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression
 );
+int mylite_execution_scalar_concat_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+int mylite_execution_scalar_greatest_least_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+int mylite_execution_scalar_subquery_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 void mylite_execution_set_illegal_mix_of_collations_error(
     struct mylite_db *database,
     const char *first_collation,

@@ -41,7 +41,46 @@ static bool is_scalar_projection_select_item_expression(const struct mylite_sql_
          mylite_sql_ast_node_literal_kind(expression) == MYLITE_SQL_AST_LITERAL_BIT)) {
         return true;
     }
-    return is_scalar_projection_expression(expression);
+    if (is_scalar_projection_expression(expression)) {
+        return true;
+    }
+    return is_executable_scalar_projection_attempt_expression(expression);
+}
+
+static bool is_executable_scalar_projection_attempt_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_any_value_function_expression(expression);
+    expression = unwrap_parenthesized_expression(expression);
+
+    if (expression == NULL || !is_scalar_projection_attempt_expression(expression)) {
+        return false;
+    }
+    if (is_unsupported_scalar_projection_literal_attempt(expression)) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return mylite_execution_scalar_is_date_format_comparison_expression(expression);
+    }
+    return true;
+}
+
+static bool is_unsupported_scalar_projection_literal_attempt(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(expression);
+
+        return literal_kind != MYLITE_SQL_AST_LITERAL_STRING &&
+               literal_kind != MYLITE_SQL_AST_LITERAL_HEX &&
+               literal_kind != MYLITE_SQL_AST_LITERAL_BIT &&
+               !is_scalar_projection_literal_expression(expression);
+    }
+    return false;
 }
 
 static bool select_statement_is_row_function_scalar_projection(

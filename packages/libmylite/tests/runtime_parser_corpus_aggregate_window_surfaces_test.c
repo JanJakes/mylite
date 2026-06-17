@@ -146,7 +146,7 @@ static int test_aggregate_window_surfaces(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SUM(expression) supports only string length expressions",
+            .message_part = "aggregate row-scalar arguments do not support / division",
         }
     );
     failures += execute_error(

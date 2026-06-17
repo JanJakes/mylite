@@ -335,7 +335,7 @@ MyLite-specific unsupported messages:
 | unsupported optional select clauses | `SUM(column) supports only WHERE` |
 | no descriptor table source | `SUM(column) supports only descriptor-backed table reads` |
 | unsupported aggregate argument after parsing | `SUM(column) supports only descriptor columns` |
-| unsupported aggregate expression after parsing | `SUM(expression) supports only string length expressions` |
+| unsupported row-scalar division after parsing | `aggregate row-scalar arguments do not support / division` |
 | aggregate result exceeds signed-64 range | `SUM(column) result exceeds MyLite signed 64-bit range` |
 
 ## Tests

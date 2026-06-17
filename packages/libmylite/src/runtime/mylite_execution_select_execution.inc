@@ -77,6 +77,40 @@ static int execute_select_from_plan(
     return finish_successful_result(database, result, out_result);
 }
 
+static bool expression_contains_generic_function_named(
+    const struct mylite_sql_ast_node *expression,
+    const char *function_name
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    bool found = false;
+
+    if (function_name == NULL || !scalar_arithmetic_node_stack_push(&stack, expression)) {
+        return false;
+    }
+    while (stack.count != 0U && !found) {
+        const struct mylite_sql_ast_node *current =
+            unwrap_parenthesized_expression(stack.items[--stack.count]);
+        size_t child_count = 0U;
+
+        if (current == NULL) {
+            continue;
+        }
+        if (generic_function_name_equals(current, function_name)) {
+            found = true;
+            break;
+        }
+        child_count = mylite_sql_ast_node_child_count(current);
+        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
+                scalar_arithmetic_node_stack_deinit(&stack);
+                return false;
+            }
+        }
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return found;
+}
+
 static bool select_statement_is_row_scalar_projection_attempt(
     const struct mylite_sql_ast_node *statement
 ) {
@@ -127,28 +161,13 @@ static bool select_statement_is_row_scalar_projection_attempt(
             return false;
         }
         if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
-            (row_scalar_expression_contains_row_function(expression) ||
+            ((expression != NULL && expression->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION) ||
+             row_scalar_expression_is_window_function(expression) ||
+             (has_row_source && row_scalar_expression_is_context_expression_attempt(expression)) ||
              (expression != NULL && expression->kind == MYLITE_SQL_AST_EXISTS_PREDICATE) ||
-             (has_row_source && row_scalar_expression_contains_numeric_function(expression)) ||
-             (has_row_source &&
-              row_scalar_expression_contains_base_conversion_function(expression)) ||
-             (has_row_source &&
-              row_scalar_expression_contains_numeric_extra_function(expression)) ||
-             (has_row_source && row_scalar_expression_contains_rand_function(expression)) ||
-             (has_row_source && row_scalar_expression_contains_any_value_function(expression)) ||
-             (has_row_source && row_scalar_expression_contains_conversion_expression(expression)) ||
-             (has_row_source && row_scalar_expression_is_concat_operator(expression)) ||
              generic_function_name_equals(expression, "GET_LOCK") ||
              generic_function_name_equals(expression, "RELEASE_LOCK") ||
-             (has_row_source &&
-              row_scalar_control_flow_condition_operator(expression) ==
-                  MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE) ||
-             (has_row_source &&
-              row_scalar_expression_contains_date_interval_second_function(expression)) ||
-             row_scalar_expression_contains_statement_time_function(expression) ||
-             (has_row_source && row_scalar_expression_contains_control_flow_function(expression)) ||
-             (has_row_source &&
-              row_scalar_expression_contains_integer_arithmetic_attempt(expression)) ||
+             expression_contains_generic_function_named(expression, "GET_LOCK") ||
              (has_row_source && expression != NULL && expression->kind == MYLITE_SQL_AST_LITERAL) ||
              (has_row_source && expression != NULL &&
               expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION))) {
@@ -183,7 +202,7 @@ static bool select_optional_clause_contains_row_scalar_function(
         return false;
     }
     if (clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
-        return row_scalar_expression_contains_row_function(child_at(clause, 0U));
+        return select_where_clause_contains_row_scalar_context_attempt(child_at(clause, 0U));
     }
     if (clause->kind != MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
         return false;
@@ -203,6 +222,28 @@ static bool select_optional_clause_contains_row_scalar_function(
         return false;
     }
     return select_order_key_is_supported_row_scalar_expression(order_child);
+}
+
+static bool select_where_clause_contains_row_scalar_context_attempt(
+    const struct mylite_sql_ast_node *predicate
+) {
+    predicate = unwrap_parenthesized_predicate(predicate);
+    if (predicate == NULL ||
+        row_scalar_expression_contains_integer_arithmetic_attempt(predicate) ||
+        row_scalar_control_flow_condition_operator(predicate) == MYLITE_SQL_AST_OPERATOR_LIKE ||
+        row_scalar_control_flow_condition_operator(predicate) == MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE) {
+        return false;
+    }
+    return row_scalar_expression_contains_row_function(predicate) ||
+           row_scalar_expression_contains_numeric_function(predicate) ||
+           row_scalar_expression_contains_base_conversion_function(predicate) ||
+           row_scalar_expression_contains_numeric_extra_function(predicate) ||
+           row_scalar_expression_contains_conversion_expression(predicate) ||
+           row_scalar_expression_contains_rand_function(predicate) ||
+           row_scalar_expression_contains_any_value_function(predicate) ||
+           row_scalar_expression_contains_date_interval_second_function(predicate) ||
+           row_scalar_expression_contains_control_flow_function(predicate) ||
+           row_scalar_expression_contains_statement_time_function(predicate);
 }
 
 static int execute_row_scalar_select_statement(

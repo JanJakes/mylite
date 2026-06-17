@@ -95,6 +95,12 @@ static int if_validation_stack_push(
 static void if_validation_stack_deinit(struct if_validation_stack *stack);
 static bool is_scalar_projection_select_item_expression(const struct mylite_sql_ast_node *expression
 );
+static bool is_executable_scalar_projection_attempt_expression(
+    const struct mylite_sql_ast_node *expression
+);
+static bool is_unsupported_scalar_projection_literal_attempt(
+    const struct mylite_sql_ast_node *expression
+);
 static bool is_scalar_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_collate_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_scalar_projection_expression_without_collate(
@@ -158,6 +164,7 @@ static bool is_string_slice_projection_expression(const struct mylite_sql_ast_no
 static bool is_string_search_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_strcmp_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_bitmask_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_concat_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_concat_ws_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_replace_projection_expression(const struct mylite_sql_ast_node *expression);
 static bool is_string_insert_projection_expression(const struct mylite_sql_ast_node *expression);
@@ -249,6 +256,7 @@ static bool is_scalar_projection_attempt_expression(const struct mylite_sql_ast_
 static bool is_scalar_value_projection_attempt_expression(
     const struct mylite_sql_ast_node *expression
 );
+static bool is_scalar_projection_known_function_attempt(enum mylite_sql_ast_node_kind kind);
 static bool is_scalar_arithmetic_attempt_expression(const struct mylite_sql_ast_node *expression);
 static bool scalar_arithmetic_attempt_node_is_admitted(
     const struct mylite_sql_ast_node *expression,

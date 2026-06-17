@@ -150,6 +150,18 @@ static int validate_if_value_node(
     if (expression->kind == MYLITE_SQL_AST_ISNULL_FUNCTION) {
         return validate_isnull_function_value_node(database, stack, expression, function_name);
     }
+    if (generic_function_name_equals(expression, "GET_LOCK")) {
+        const struct mylite_sql_ast_node *arguments = expression->first_child;
+
+        while (arguments != NULL && arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+            arguments = arguments->next_sibling;
+        }
+        if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 2U) {
+            set_native_function_parameter_count_error(database, "GET_LOCK");
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
     if (!is_if_non_function_value_expression(expression)) {
         set_if_unsupported_error(database, function_name);
         return MYLITE_ERROR;

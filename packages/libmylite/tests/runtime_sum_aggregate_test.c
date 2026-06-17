@@ -707,22 +707,22 @@ static int test_sum_diagnostics(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_sum_query(
         database,
-        "SELECT SUM(1) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SUM(expression) supports only string length expressions",
+        (struct expected_sum_query){
+            .sql = "SELECT SUM(1) FROM numbers",
+            .column = "SUM(1)",
+            .value = "4",
+            .context = "literal expression sum",
         }
     );
-    failures += execute_error(
+    failures += expect_sum_query(
         database,
-        "SELECT SUM(NULL) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SUM(expression) supports only string length expressions",
+        (struct expected_sum_query){
+            .sql = "SELECT SUM(NULL) FROM numbers",
+            .column = "SUM(NULL)",
+            .value = NULL,
+            .context = "null expression sum",
         }
     );
     failures += execute_error(
@@ -743,13 +743,13 @@ static int test_sum_diagnostics(void) {
             .message_part = "SELECT supports only descriptor table columns",
         }
     );
-    failures += execute_error(
+    failures += expect_sum_query(
         database,
-        "SELECT SUM(i + 1) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SUM(expression) supports only string length expressions",
+        (struct expected_sum_query){
+            .sql = "SELECT SUM(i + 1) FROM numbers",
+            .column = "SUM(i + 1)",
+            .value = "2147483650",
+            .context = "arithmetic expression sum",
         }
     );
     failures += execute_error(

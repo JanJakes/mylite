@@ -2872,7 +2872,12 @@ static bool predicate_node_is_supported_row_scalar_expression(
         row_scalar_numeric_function_kind_is_supported(node->kind) ||
         predicate_node_is_integer_arithmetic_root(node) ||
         row_scalar_conversion_kind_from_expression(node) != PLANNED_ROW_SCALAR_CONVERSION_NONE ||
-        node->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION) {
+        node->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION ||
+        node->kind == MYLITE_SQL_AST_PERIOD_ADD_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_PERIOD_DIFF_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_CONVERT_TZ_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION) {
         return true;
     }
 

@@ -724,22 +724,22 @@ static int test_avg_diagnostics(void) {
             .context = "avg block comment before paren",
         }
     );
-    failures += execute_error(
+    failures += expect_avg_query(
         database,
-        "SELECT AVG(1) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "AVG(column) supports only descriptor columns",
+        (struct expected_avg_query){
+            .sql = "SELECT AVG(1) FROM numbers",
+            .column = "AVG(1)",
+            .value = "1.0000",
+            .context = "literal expression avg",
         }
     );
-    failures += execute_error(
+    failures += expect_avg_query(
         database,
-        "SELECT AVG(NULL) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "AVG(column) supports only descriptor columns",
+        (struct expected_avg_query){
+            .sql = "SELECT AVG(NULL) FROM numbers",
+            .column = "AVG(NULL)",
+            .value = NULL,
+            .context = "null expression avg",
         }
     );
     failures += execute_error(
@@ -760,13 +760,13 @@ static int test_avg_diagnostics(void) {
             .message_part = "SELECT supports only descriptor table columns",
         }
     );
-    failures += execute_error(
+    failures += expect_avg_query(
         database,
-        "SELECT AVG(i + 1) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_avg_query){
+            .sql = "SELECT AVG(i + 1) FROM numbers",
+            .column = "AVG(i + 1)",
+            .value = "536870912.5000",
+            .context = "arithmetic expression avg",
         }
     );
     failures += execute_error(

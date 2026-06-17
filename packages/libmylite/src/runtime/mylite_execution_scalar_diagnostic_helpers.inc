@@ -2,9 +2,10 @@
 static void set_scalar_arithmetic_unsupported_error(struct mylite_db *database) {
     set_unsupported_error(
         database,
-        "SELECT scalar arithmetic projection supports only signed 64-bit integer, boolean, "
-        "NULL, and nested IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL() operands with +, "
-        "binary -, and * arithmetic plus unary +, unary -, %, infix MOD, MOD(), and infix DIV"
+        "SELECT scalar arithmetic projection supports only signed 64-bit +, binary -, and * "
+        "arithmetic over integer, boolean, NULL, and nested "
+        "IF()/IFNULL()/COALESCE()/NULLIF()/ISNULL() operands, plus unary +, unary -, %, "
+        "infix MOD, MOD(), and infix DIV"
     );
 }
 

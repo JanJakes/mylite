@@ -2835,6 +2835,7 @@ struct field_scalar_argument {
     int64_t integer;
     bool has_numeric_real;
     double numeric_real;
+    size_t numeric_scale;
     char *text;
     size_t text_length;
 };

@@ -1,4 +1,6 @@
 #include "mylite_execution_scalar.h"
+#include "mylite_execution_scalar_string_position.h"
+#include "mylite_execution_scalar_string_transform.h"
 
 #include "mylite_connection.h"
 #include "mylite_mysql_server_identity.h"
@@ -42,6 +44,9 @@ static int string_length_session_scalar_argument_value(
     struct session_scalar_cell *out_cell
 );
 static bool string_length_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression);
+static bool string_scalar_argument_is_binary_conversion(const struct mylite_sql_ast_node *expression
+);
+static bool string_scalar_argument_is_nested_value(const struct mylite_sql_ast_node *expression);
 static enum planned_string_length_function_kind string_length_function_kind(
     enum mylite_sql_ast_node_kind ast_kind
 );
@@ -86,6 +91,8 @@ static int evaluate_string_case_scalar_argument(
     bool *out_is_null
 );
 static bool string_case_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression);
+static bool string_case_argument_contains_binary_value(const struct mylite_sql_ast_node *expression
+);
 static enum planned_string_case_function_kind string_case_function_kind(
     enum mylite_sql_ast_node_kind ast_kind
 );
@@ -367,7 +374,8 @@ static int evaluate_string_length_scalar_argument(
         return MYLITE_OK;
     }
     *out_text = inout_cell->value;
-    *out_text_length = strlen(inout_cell->value);
+    *out_text_length =
+        inout_cell->has_value_size ? inout_cell->value_size : strlen(inout_cell->value);
     return MYLITE_OK;
 }
 
@@ -523,6 +531,88 @@ static int string_length_session_scalar_argument_value(
         out_cell->value = out_cell->integer_text;
         return MYLITE_OK;
     }
+    case MYLITE_SQL_AST_IDENTIFIER:
+    case MYLITE_SQL_AST_QUALIFIED_IDENTIFIER:
+        return mylite_execution_set_unknown_column_reference_error(database, expression);
+    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
+        return mylite_execution_cast_binary_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
+        return mylite_execution_convert_binary_type_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+        return mylite_execution_convert_using_binary_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
+        return mylite_execution_convert_using_charset_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_SCALAR_SUBQUERY:
+        return mylite_execution_scalar_subquery_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CONCAT_FUNCTION:
+        return mylite_execution_scalar_concat_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_CONCAT_WS_FUNCTION:
+        return mylite_execution_scalar_concat_ws_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_GREATEST_FUNCTION:
+    case MYLITE_SQL_AST_LEAST_FUNCTION:
+        return mylite_execution_scalar_greatest_least_function_value(
+            database,
+            expression,
+            out_cell
+        );
+    case MYLITE_SQL_AST_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_OCTET_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_BIT_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHAR_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHARACTER_LENGTH_FUNCTION:
+        return string_length_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_LOWER_FUNCTION:
+    case MYLITE_SQL_AST_LCASE_FUNCTION:
+    case MYLITE_SQL_AST_UPPER_FUNCTION:
+    case MYLITE_SQL_AST_UCASE_FUNCTION:
+        return string_case_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_LEFT_FUNCTION:
+    case MYLITE_SQL_AST_RIGHT_FUNCTION:
+    case MYLITE_SQL_AST_SUBSTRING_FUNCTION:
+    case MYLITE_SQL_AST_SUBSTR_FUNCTION:
+    case MYLITE_SQL_AST_MID_FUNCTION:
+        return mylite_execution_scalar_string_slice_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_LPAD_FUNCTION:
+    case MYLITE_SQL_AST_RPAD_FUNCTION:
+    case MYLITE_SQL_AST_REPEAT_FUNCTION:
+    case MYLITE_SQL_AST_SPACE_FUNCTION:
+        return mylite_execution_scalar_string_padding_function_value(
+            database,
+            expression,
+            out_cell
+        );
+    case MYLITE_SQL_AST_LOCATE_FUNCTION:
+    case MYLITE_SQL_AST_INSTR_FUNCTION:
+    case MYLITE_SQL_AST_POSITION_FUNCTION:
+        return mylite_execution_scalar_string_search_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_FIND_IN_SET_FUNCTION:
+        return mylite_execution_scalar_find_in_set_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_STRCMP_FUNCTION:
+        return mylite_execution_scalar_strcmp_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_SUBSTRING_INDEX_FUNCTION:
+        return mylite_execution_scalar_substring_index_function_value(
+            database,
+            expression,
+            out_cell
+        );
+    case MYLITE_SQL_AST_REPLACE_FUNCTION:
+        return mylite_execution_scalar_string_replace_function_value(
+            database,
+            expression,
+            out_cell
+        );
+    case MYLITE_SQL_AST_INSERT_STRING_FUNCTION:
+        return mylite_execution_scalar_string_insert_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_REVERSE_FUNCTION:
+        return mylite_execution_scalar_string_reverse_function_value(
+            database,
+            expression,
+            out_cell
+        );
+    case MYLITE_SQL_AST_SOUNDEX_FUNCTION:
+        return mylite_execution_scalar_soundex_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_QUOTE_FUNCTION:
+        return mylite_execution_scalar_quote_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_USER_VARIABLE:
         return mylite_execution_session_user_variable_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
@@ -548,7 +638,15 @@ static bool string_length_scalar_argument_is_admitted(const struct mylite_sql_as
     if (expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION) {
         return false;
     }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return true;
+    }
     if (mylite_execution_is_session_scalar_expression(expression)) {
+        return true;
+    }
+    if (string_scalar_argument_is_binary_conversion(expression) ||
+        string_scalar_argument_is_nested_value(expression)) {
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
@@ -575,6 +673,64 @@ static bool string_length_scalar_argument_is_admitted(const struct mylite_sql_as
             literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
             literal_kind == MYLITE_SQL_AST_LITERAL_FALSE ||
             literal_kind == MYLITE_SQL_AST_LITERAL_NULL) != 0;
+}
+
+static bool string_scalar_argument_is_binary_conversion(const struct mylite_sql_ast_node *expression
+) {
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    return expression->kind == MYLITE_SQL_AST_CAST_BINARY_EXPRESSION ||
+           expression->kind == MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION ||
+           expression->kind == MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION;
+}
+
+static bool string_scalar_argument_is_nested_value(const struct mylite_sql_ast_node *expression) {
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
+    case MYLITE_SQL_AST_SCALAR_SUBQUERY:
+    case MYLITE_SQL_AST_CONCAT_FUNCTION:
+    case MYLITE_SQL_AST_CONCAT_WS_FUNCTION:
+    case MYLITE_SQL_AST_GREATEST_FUNCTION:
+    case MYLITE_SQL_AST_LEAST_FUNCTION:
+    case MYLITE_SQL_AST_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_OCTET_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_BIT_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHAR_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHARACTER_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_LOWER_FUNCTION:
+    case MYLITE_SQL_AST_LCASE_FUNCTION:
+    case MYLITE_SQL_AST_UPPER_FUNCTION:
+    case MYLITE_SQL_AST_UCASE_FUNCTION:
+    case MYLITE_SQL_AST_LEFT_FUNCTION:
+    case MYLITE_SQL_AST_RIGHT_FUNCTION:
+    case MYLITE_SQL_AST_SUBSTRING_FUNCTION:
+    case MYLITE_SQL_AST_SUBSTR_FUNCTION:
+    case MYLITE_SQL_AST_MID_FUNCTION:
+    case MYLITE_SQL_AST_LPAD_FUNCTION:
+    case MYLITE_SQL_AST_RPAD_FUNCTION:
+    case MYLITE_SQL_AST_REPEAT_FUNCTION:
+    case MYLITE_SQL_AST_SPACE_FUNCTION:
+    case MYLITE_SQL_AST_LOCATE_FUNCTION:
+    case MYLITE_SQL_AST_INSTR_FUNCTION:
+    case MYLITE_SQL_AST_POSITION_FUNCTION:
+    case MYLITE_SQL_AST_FIND_IN_SET_FUNCTION:
+    case MYLITE_SQL_AST_STRCMP_FUNCTION:
+    case MYLITE_SQL_AST_SUBSTRING_INDEX_FUNCTION:
+    case MYLITE_SQL_AST_REPLACE_FUNCTION:
+    case MYLITE_SQL_AST_INSERT_STRING_FUNCTION:
+    case MYLITE_SQL_AST_REVERSE_FUNCTION:
+    case MYLITE_SQL_AST_SOUNDEX_FUNCTION:
+    case MYLITE_SQL_AST_QUOTE_FUNCTION:
+        return true;
+    default:
+        return false;
+    }
 }
 
 static enum planned_string_length_function_kind string_length_function_kind(
@@ -922,6 +1078,13 @@ static int evaluate_string_case_scalar_argument(
         );
         return MYLITE_ERROR;
     }
+    if (string_case_argument_contains_binary_value(expression)) {
+        mylite_execution_set_unsupported_error(
+            database,
+            "string case functions do not support binary values"
+        );
+        return MYLITE_ERROR;
+    }
 
     if (expression->kind == MYLITE_SQL_AST_LITERAL) {
         literal_kind = mylite_sql_ast_node_literal_kind(expression);
@@ -955,12 +1118,35 @@ static int evaluate_string_case_scalar_argument(
         return MYLITE_OK;
     }
     *out_text = inout_cell->value;
-    *out_text_length = strlen(inout_cell->value);
+    *out_text_length =
+        inout_cell->has_value_size ? inout_cell->value_size : strlen(inout_cell->value);
     return MYLITE_OK;
 }
 
 static bool string_case_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression) {
     return string_length_scalar_argument_is_admitted(expression);
+}
+
+static bool string_case_argument_contains_binary_value(const struct mylite_sql_ast_node *expression
+) {
+    size_t child_count = 0U;
+
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (string_scalar_argument_is_binary_conversion(expression)) {
+        return true;
+    }
+    child_count = mylite_sql_ast_node_child_count(expression);
+    for (size_t child_index = 0U; child_index < child_count; ++child_index) {
+        if (string_case_argument_contains_binary_value(
+                mylite_execution_child_at(expression, child_index)
+            )) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static enum planned_string_case_function_kind string_case_function_kind(
@@ -1140,7 +1326,8 @@ static int evaluate_string_trim_scalar_argument(
         return MYLITE_OK;
     }
     *out_text = inout_cell->value;
-    *out_text_length = strlen(inout_cell->value);
+    *out_text_length =
+        inout_cell->has_value_size ? inout_cell->value_size : strlen(inout_cell->value);
     return MYLITE_OK;
 }
 

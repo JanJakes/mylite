@@ -1161,6 +1161,36 @@ bool mylite_execution_scalar_is_date_format_numeric_comparison_expression(
     );
 }
 
+bool mylite_execution_scalar_is_date_format_comparison_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_ast_node *left = NULL;
+    const struct mylite_sql_ast_node *right = NULL;
+
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return false;
+    }
+    switch (mylite_sql_ast_node_operator(expression)) {
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+        break;
+    default:
+        return false;
+    }
+    left =
+        mylite_execution_unwrap_parenthesized_expression(mylite_execution_child_at(expression, 0U));
+    right =
+        mylite_execution_unwrap_parenthesized_expression(mylite_execution_child_at(expression, 1U));
+    return ((left != NULL && left->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION) ||
+            (right != NULL && right->kind == MYLITE_SQL_AST_DATE_FORMAT_FUNCTION)) != 0;
+}
+
 bool mylite_execution_date_format_numeric_comparison_sides(
     const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node **out_date_format,

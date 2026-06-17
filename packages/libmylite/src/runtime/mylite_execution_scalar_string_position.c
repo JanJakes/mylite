@@ -1,5 +1,6 @@
 #include "mylite_execution_scalar_string_position.h"
 #include "mylite_execution_scalar.h"
+#include "mylite_execution_scalar_numeric.h"
 
 #include "mylite_connection.h"
 #include "mylite_diagnostics.h"
@@ -16,6 +17,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+enum {
+    string_position_decimal_base = 10,
+};
 
 struct string_slice_right_bounds {
     size_t text_length;
@@ -105,6 +110,25 @@ static int string_slice_signed_position_value(
 static int string_slice_signed_integer_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    const char *unsupported_message,
+    const char *range_message,
+    int64_t *out_value,
+    bool *out_is_null
+);
+static bool string_slice_length_argument_is_scalar_integer_value(
+    const struct mylite_sql_ast_node *expression
+);
+static int string_slice_signed_scalar_integer_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *unsupported_message,
+    const char *range_message,
+    int64_t *out_value,
+    bool *out_is_null
+);
+static int string_slice_scalar_integer_cell_value(
+    struct mylite_db *database,
+    const struct session_scalar_cell *cell,
     const char *unsupported_message,
     const char *range_message,
     int64_t *out_value,
@@ -567,7 +591,7 @@ static int evaluate_string_slice_length_argument(
     if (!string_slice_length_argument_is_admitted(expression)) {
         mylite_execution_set_unsupported_error(
             database,
-            "string slice functions support only integer, boolean, and NULL length literals"
+            "string slice functions support only integer, boolean, NULL"
         );
         return MYLITE_ERROR;
     }
@@ -589,7 +613,7 @@ static int evaluate_string_slice_position_argument(
     if (!string_slice_length_argument_is_admitted(expression)) {
         mylite_execution_set_unsupported_error(
             database,
-            "string slice functions support only integer, boolean, and NULL position literals"
+            "string slice functions support only integer, boolean, NULL"
         );
         return MYLITE_ERROR;
     }
@@ -851,7 +875,7 @@ static bool string_slice_length_argument_is_admitted(const struct mylite_sql_ast
                 mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) != 0;
     }
     if (expression->kind != MYLITE_SQL_AST_LITERAL) {
-        return false;
+        return string_slice_length_argument_is_scalar_integer_value(expression);
     }
 
     literal_kind = mylite_sql_ast_node_literal_kind(expression);
@@ -859,6 +883,30 @@ static bool string_slice_length_argument_is_admitted(const struct mylite_sql_ast
             literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
             literal_kind == MYLITE_SQL_AST_LITERAL_FALSE ||
             literal_kind == MYLITE_SQL_AST_LITERAL_NULL) != 0;
+}
+
+static bool string_slice_length_argument_is_scalar_integer_value(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return mylite_execution_is_scalar_arithmetic_projection_expression(expression);
+    }
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_ABS_FUNCTION:
+    case MYLITE_SQL_AST_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_OCTET_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_BIT_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHAR_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHARACTER_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
+        return true;
+    default:
+        return false;
+    }
 }
 
 static int string_slice_signed_length_value(
@@ -870,7 +918,7 @@ static int string_slice_signed_length_value(
     return string_slice_signed_integer_value(
         database,
         expression,
-        "string slice functions support only integer, boolean, and NULL length literals",
+        "string slice functions support only integer, boolean, NULL",
         "string slice function length literals must fit the signed 64-bit range",
         out_value,
         out_is_null
@@ -886,7 +934,7 @@ static int string_slice_signed_position_value(
     return string_slice_signed_integer_value(
         database,
         expression,
-        "string slice functions support only integer, boolean, and NULL position literals",
+        "string slice functions support only integer, boolean, NULL",
         "string slice function position literals must fit the signed 64-bit range",
         out_value,
         out_is_null
@@ -923,6 +971,16 @@ static int string_slice_signed_integer_value(
             mylite_execution_unwrap_parenthesized_expression(mylite_execution_child_at(literal, 0U)
             );
     }
+    if (literal != NULL && string_slice_length_argument_is_scalar_integer_value(literal)) {
+        return string_slice_signed_scalar_integer_value(
+            database,
+            literal,
+            unsupported_message,
+            range_message,
+            out_value,
+            out_is_null
+        );
+    }
     if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
         mylite_execution_set_unsupported_error(database, unsupported_message);
         return MYLITE_ERROR;
@@ -944,6 +1002,128 @@ static int string_slice_signed_integer_value(
     if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER ||
         mylite_execution_parse_unsigned_integer_literal(&literal->span, &magnitude) != MYLITE_OK ||
         (is_negative && magnitude > (uint64_t)INT64_MAX + 1U) ||
+        (!is_negative && magnitude > (uint64_t)INT64_MAX)) {
+        mylite_execution_set_unsupported_error(database, range_message);
+        return MYLITE_ERROR;
+    }
+
+    if (is_negative && magnitude == (uint64_t)INT64_MAX + 1U) {
+        *out_value = INT64_MIN;
+    } else if (is_negative) {
+        *out_value = -(int64_t)magnitude;
+    } else {
+        *out_value = (int64_t)magnitude;
+    }
+    return MYLITE_OK;
+}
+
+static int string_slice_signed_scalar_integer_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *unsupported_message,
+    const char *range_message,
+    int64_t *out_value,
+    bool *out_is_null
+) {
+    struct session_scalar_cell cell = {0};
+    int rc = MYLITE_OK;
+
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        mylite_execution_set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+
+    if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        struct scalar_arithmetic_value value = {0};
+
+        rc = mylite_execution_evaluate_scalar_arithmetic_expression(database, expression, &value);
+        if (rc == MYLITE_OK) {
+            *out_is_null = value.is_null;
+            *out_value = value.integer;
+        }
+        return rc;
+    }
+
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_ABS_FUNCTION:
+        rc = mylite_execution_scalar_abs_function_value(database, expression, &cell);
+        break;
+    case MYLITE_SQL_AST_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_OCTET_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_BIT_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHAR_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHARACTER_LENGTH_FUNCTION:
+        rc = mylite_execution_scalar_string_length_function_value(database, expression, &cell);
+        break;
+    case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
+        rc = mylite_execution_scalar_bit_count_function_value(database, expression, &cell);
+        break;
+    default:
+        mylite_execution_set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = string_slice_scalar_integer_cell_value(
+            database,
+            &cell,
+            unsupported_message,
+            range_message,
+            out_value,
+            out_is_null
+        );
+    }
+    mylite_execution_session_scalar_cell_deinit(&cell);
+    return rc;
+}
+
+static int string_slice_scalar_integer_cell_value(
+    struct mylite_db *database,
+    const struct session_scalar_cell *cell,
+    const char *unsupported_message,
+    const char *range_message,
+    int64_t *out_value,
+    bool *out_is_null
+) {
+    const char *text = cell == NULL ? NULL : cell->value;
+    uint64_t magnitude = 0U;
+    bool is_negative = false;
+    size_t offset = 0U;
+
+    if (out_value == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = 0;
+    *out_is_null = false;
+    if (text == NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (text[0] == '-') {
+        is_negative = true;
+        offset = 1U;
+    } else if (text[0] == '+') {
+        offset = 1U;
+    }
+    if (text[offset] == '\0') {
+        mylite_execution_set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    for (size_t index = offset; text[index] != '\0'; ++index) {
+        unsigned digit = 0U;
+
+        if (text[index] < '0' || text[index] > '9') {
+            mylite_execution_set_unsupported_error(database, unsupported_message);
+            return MYLITE_ERROR;
+        }
+        digit = (unsigned)(text[index] - '0');
+        if (magnitude > (UINT64_MAX - (uint64_t)digit) / string_position_decimal_base) {
+            mylite_execution_set_unsupported_error(database, range_message);
+            return MYLITE_ERROR;
+        }
+        magnitude = magnitude * string_position_decimal_base + (uint64_t)digit;
+    }
+    if ((is_negative && magnitude > (uint64_t)INT64_MAX + 1U) ||
         (!is_negative && magnitude > (uint64_t)INT64_MAX)) {
         mylite_execution_set_unsupported_error(database, range_message);
         return MYLITE_ERROR;

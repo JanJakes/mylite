@@ -190,7 +190,21 @@ static int test_table_backed_scalar_functions_and_reopen(void) {
         NULL,
         NULL,
     };
+    static const char *const id_one[] = {"1"};
+    static const char *const order_desc_values[] = {"2", "1"};
     static const char *const reopen_values[] = {"200803", "61620000"};
+    static const char *const updated_values[] = {
+        "1",
+        "200803",
+        "2004-01-01 14:30:00",
+        "32303034",
+    };
+    static const char *const duplicate_values[] = {
+        "1",
+        "200804",
+        "2004-01-01 14:30:00",
+        "7A7A00",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -199,7 +213,7 @@ static int test_table_backed_scalar_functions_and_reopen(void) {
     failures += execute_ok(
         database,
         "CREATE TABLE t("
-        "id INT, p INT, n INT, dt VARCHAR(19), tz VARCHAR(6), s VARCHAR(20), "
+        "id INT PRIMARY KEY, p INT, n INT, dt VARCHAR(19), tz VARCHAR(6), s VARCHAR(20), "
         "b VARBINARY(20), body BLOB)",
         NULL
     );
@@ -226,6 +240,56 @@ static int test_table_backed_scalar_functions_and_reopen(void) {
             .context = "table-backed scalar functions",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE PERIOD_ADD(p,n) = 200803 ORDER BY id",
+            .columns = (const char *const[]){"id"},
+            .column_count = 1U,
+            .values = id_one,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .context = "period function predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE "
+                   "CONVERT_TZ(dt,'+00:00',tz) = '2004-01-01 14:30:00' ORDER BY id",
+            .columns = (const char *const[]){"id"},
+            .column_count = 1U,
+            .values = id_one,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .context = "convert_tz predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE HEX(WEIGHT_STRING(s AS BINARY(4))) = "
+                   "'61620000' ORDER BY id",
+            .columns = (const char *const[]){"id"},
+            .column_count = 1U,
+            .values = id_one,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .context = "weight string predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY PERIOD_ADD(200801,id) DESC",
+            .columns = (const char *const[]){"id"},
+            .column_count = 1U,
+            .values = order_desc_values,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .context = "period function order",
+        }
+    );
 
     mylite_close(database);
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen scalar table");
@@ -248,6 +312,60 @@ static int test_table_backed_scalar_functions_and_reopen(void) {
                 .row_count = 1U,
                 .warning_count = 0U,
                 .context = "reopen scalar functions",
+            }
+        );
+    }
+    if (failures == 0) {
+        failures += execute_ok(
+            database,
+            "UPDATE t SET p = PERIOD_ADD(p,n), s = CONVERT_TZ(dt,'+00:00',tz) WHERE id = 1",
+            NULL
+        );
+    }
+    if (failures == 0) {
+        failures += execute_ok(
+            database,
+            "UPDATE t SET b = WEIGHT_STRING(s AS BINARY(4)) WHERE id = 1",
+            NULL
+        );
+    }
+    if (failures == 0) {
+        failures += expect_query(
+            database,
+            (struct expected_query){
+                .sql = "SELECT id, p, s, HEX(b) FROM t WHERE id = 1",
+                .columns = (const char *const[]){"id", "p", "s", "HEX(b)"},
+                .column_count = 4U,
+                .values = updated_values,
+                .row_count = 1U,
+                .warning_count = 0U,
+                .context = "row-scalar update period timezone weight",
+            }
+        );
+    }
+    if (failures == 0) {
+        failures += execute_ok(
+            database,
+            "INSERT INTO t(id, p, n, dt, tz, s, b, body) "
+            "VALUES (1, 200901, 1, '2004-01-01 00:00:00', '+00:00', 'ignored', NULL, NULL) "
+            "ON DUPLICATE KEY UPDATE "
+            "p = PERIOD_ADD(p,1), "
+            "s = CONVERT_TZ(dt,'+00:00',tz), "
+            "b = WEIGHT_STRING('zz' AS BINARY(3))",
+            NULL
+        );
+    }
+    if (failures == 0) {
+        failures += expect_query(
+            database,
+            (struct expected_query){
+                .sql = "SELECT id, p, s, HEX(b) FROM t WHERE id = 1",
+                .columns = (const char *const[]){"id", "p", "s", "HEX(b)"},
+                .column_count = 4U,
+                .values = duplicate_values,
+                .row_count = 1U,
+                .warning_count = 0U,
+                .context = "row-scalar duplicate period timezone weight",
             }
         );
     }

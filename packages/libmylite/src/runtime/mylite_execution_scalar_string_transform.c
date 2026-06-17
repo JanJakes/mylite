@@ -34,6 +34,14 @@ static int evaluate_concat_ws_scalar_argument(
     bool *out_is_null
 );
 static bool concat_ws_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression);
+static bool concat_ws_scalar_argument_is_nested_scalar_value(
+    const struct mylite_sql_ast_node *expression
+);
+static int concat_ws_nested_scalar_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int string_replace_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -429,6 +437,8 @@ static int evaluate_concat_ws_scalar_argument(
     if (expression->kind == MYLITE_SQL_AST_LITERAL ||
         expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         rc = mylite_execution_literal_projection_value(database, expression, inout_cell);
+    } else if (concat_ws_scalar_argument_is_nested_scalar_value(expression)) {
+        rc = concat_ws_nested_scalar_argument_value(database, expression, inout_cell);
     } else {
         rc = mylite_execution_string_length_session_scalar_argument_value(
             database,
@@ -445,7 +455,8 @@ static int evaluate_concat_ws_scalar_argument(
     }
 
     *out_text = inout_cell->value;
-    *out_text_length = strlen(inout_cell->value);
+    *out_text_length =
+        inout_cell->has_value_size ? inout_cell->value_size : strlen(inout_cell->value);
     return MYLITE_OK;
 }
 
@@ -454,11 +465,41 @@ static bool concat_ws_scalar_argument_is_admitted(const struct mylite_sql_ast_no
     if (expression == NULL) {
         return false;
     }
-    if (expression->kind == MYLITE_SQL_AST_CONCAT_FUNCTION ||
-        expression->kind == MYLITE_SQL_AST_CONCAT_WS_FUNCTION) {
-        return false;
+    if (concat_ws_scalar_argument_is_nested_scalar_value(expression)) {
+        return true;
     }
     return mylite_execution_string_length_scalar_argument_is_admitted(expression);
+}
+
+static bool concat_ws_scalar_argument_is_nested_scalar_value(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    return expression->kind == MYLITE_SQL_AST_CONCAT_FUNCTION ||
+           expression->kind == MYLITE_SQL_AST_CONCAT_WS_FUNCTION ||
+           expression->kind == MYLITE_SQL_AST_GREATEST_FUNCTION ||
+           expression->kind == MYLITE_SQL_AST_LEAST_FUNCTION;
+}
+
+static int concat_ws_nested_scalar_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (expression->kind == MYLITE_SQL_AST_CONCAT_FUNCTION) {
+        return mylite_execution_scalar_concat_function_value(database, expression, out_cell);
+    }
+    if (expression->kind == MYLITE_SQL_AST_CONCAT_WS_FUNCTION) {
+        return mylite_execution_scalar_concat_ws_function_value(database, expression, out_cell);
+    }
+    return mylite_execution_scalar_greatest_least_function_value(database, expression, out_cell);
 }
 
 static int string_replace_function_value(
@@ -787,14 +828,14 @@ static int evaluate_string_insert_position_argument(
     if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
         mylite_execution_set_unsupported_error(
             database,
-            "INSERT() position supports only integer, boolean, and NULL literals"
+            "INSERT() position supports only integer, boolean, NULL"
         );
         return MYLITE_ERROR;
     }
     return mylite_execution_string_slice_signed_integer_value(
         database,
         expression,
-        "INSERT() position supports only integer, boolean, and NULL literals",
+        "INSERT() position supports only integer, boolean, NULL",
         "INSERT() position literals must fit the signed 64-bit range",
         out_position,
         out_is_null
@@ -816,14 +857,14 @@ static int evaluate_string_insert_length_argument(
     if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
         mylite_execution_set_unsupported_error(
             database,
-            "INSERT() length supports only integer, boolean, and NULL literals"
+            "INSERT() length supports only integer, boolean, NULL"
         );
         return MYLITE_ERROR;
     }
     return mylite_execution_string_slice_signed_integer_value(
         database,
         expression,
-        "INSERT() length supports only integer, boolean, and NULL literals",
+        "INSERT() length supports only integer, boolean, NULL",
         "INSERT() length literals must fit the signed 64-bit range",
         out_length,
         out_is_null
@@ -1441,14 +1482,14 @@ static int evaluate_substring_index_count_argument(
     if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
         mylite_execution_set_unsupported_error(
             database,
-            "SUBSTRING_INDEX() count supports only integer, boolean, and NULL literals"
+            "SUBSTRING_INDEX() count supports only integer, boolean, NULL"
         );
         return MYLITE_ERROR;
     }
     return mylite_execution_string_slice_signed_integer_value(
         database,
         expression,
-        "SUBSTRING_INDEX() count supports only integer, boolean, and NULL literals",
+        "SUBSTRING_INDEX() count supports only integer, boolean, NULL",
         "SUBSTRING_INDEX() count literals must fit the signed 64-bit range",
         out_count,
         out_is_null

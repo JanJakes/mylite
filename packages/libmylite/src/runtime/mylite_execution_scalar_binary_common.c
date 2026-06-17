@@ -221,6 +221,10 @@ int mylite_execution_scalar_binary_argument_bytes(
             out_is_null
         );
     }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        return mylite_execution_set_unknown_column_reference_error(database, expression);
+    }
 
     rc = mylite_execution_scalar_binary_argument_scalar_value(
         database,

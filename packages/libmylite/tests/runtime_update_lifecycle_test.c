@@ -1036,16 +1036,7 @@ static int test_update_diagnostics(void) {
             .message_part = "You can't specify target table 'numbers' for update in FROM clause",
         }
     );
-    failures += execute_error(
-        database,
-        "UPDATE numbers SET i = ABS(id)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "UPDATE supports only integer, boolean, NULL, and DEFAULT assignment values",
-        }
-    );
+    failures += expect_update_ok(database, "UPDATE numbers SET i = ABS(id)", 3);
 
     failures += execute_ok(
         database,

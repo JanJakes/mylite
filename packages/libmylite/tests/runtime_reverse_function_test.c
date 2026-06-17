@@ -384,13 +384,15 @@ static int test_reverse_diagnostics(void) {
             .context = "nested concat reverse argument",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT REVERSE((SELECT 'abc')) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "REVERSE() supports only string, integer, boolean, NULL",
+        (struct expected_query){
+            .sql = "SELECT REVERSE((SELECT 'abc')) FROM t",
+            .columns = (const char *const[]){"REVERSE((SELECT 'abc'))"},
+            .column_count = 1U,
+            .values = (const char *const[]){"cba"},
+            .row_count = 1U,
+            .context = "scalar-subquery reverse argument",
         }
     );
     failures += execute_error(

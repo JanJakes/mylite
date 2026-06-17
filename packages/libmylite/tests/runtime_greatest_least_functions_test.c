@@ -94,8 +94,8 @@ static int test_no_source_dual_and_do_greatest_least(void) {
     static const char *const values_no_source[] = {
         "2",
         "0",
-        "2",
-        "1",
+        "2.0",
+        "1.0",
         "3",
         "0",
         NULL,
@@ -397,6 +397,7 @@ static int test_greatest_least_diagnostics(void) {
     static const char *const values_concat_greatest[] = {"2x"};
     static const char *const columns_greatest_predicate[] = {"n"};
     static const char *const values_greatest_predicate[] = {"1"};
+    static const char *const values_greatest_update[] = {"2"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -591,14 +592,17 @@ static int test_greatest_least_diagnostics(void) {
             .context = "greatest order expression",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(database, "UPDATE t SET n = GREATEST(n, 2)", NULL);
+    failures += expect_query(
         database,
-        "UPDATE t SET n = GREATEST(n, 2)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "UPDATE supports only integer, boolean, NULL, and DEFAULT assignment values",
+        (struct expected_query){
+            .sql = "SELECT n FROM t",
+            .columns = columns_greatest_predicate,
+            .column_count =
+                sizeof(columns_greatest_predicate) / sizeof(columns_greatest_predicate[0]),
+            .values = values_greatest_update,
+            .row_count = 1U,
+            .context = "greatest update expression",
         }
     );
 

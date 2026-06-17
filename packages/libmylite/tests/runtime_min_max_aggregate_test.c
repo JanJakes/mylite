@@ -465,6 +465,24 @@ static int test_min_max_values_persistence_rename_and_drop(void) {
     failures += expect_aggregate_query(
         database,
         (struct expected_aggregate_query){
+            .sql = "SELECT MIN(LOWER(color)) FROM strings",
+            .column = "MIN(LOWER(color))",
+            .value = "blue",
+            .context = "row-scalar string minimum",
+        }
+    );
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
+            .sql = "SELECT MAX(CONCAT(color, '-x')) FROM strings",
+            .column = "MAX(CONCAT(color, '-x'))",
+            .value = "red-x",
+            .context = "row-scalar string maximum",
+        }
+    );
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
             .sql = "SELECT MIN(format) FROM strings",
             .column = "MIN(format)",
             .value = "basic",
@@ -870,22 +888,22 @@ static int test_min_max_diagnostics(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_aggregate_query(
         database,
-        "SELECT MIN(1) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "MIN/MAX supports only descriptor columns",
+        (struct expected_aggregate_query){
+            .sql = "SELECT MIN(1) FROM numbers",
+            .column = "MIN(1)",
+            .value = "1",
+            .context = "literal minimum",
         }
     );
-    failures += execute_error(
+    failures += expect_aggregate_query(
         database,
-        "SELECT MAX(NULL) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "MIN/MAX supports only descriptor columns",
+        (struct expected_aggregate_query){
+            .sql = "SELECT MAX(NULL) FROM numbers",
+            .column = "MAX(NULL)",
+            .value = NULL,
+            .context = "null maximum",
         }
     );
     failures += execute_error(

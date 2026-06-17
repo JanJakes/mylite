@@ -419,14 +419,16 @@ static int test_hex_diagnostics(void) {
                 "HEX() supports only integer, nonbinary string, and binary string columns",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(database, "UPDATE t SET v = HEX(v)", NULL);
+    failures += expect_query(
         database,
-        "UPDATE t SET v = HEX(v)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "VARCHAR values support only string, numeric, boolean, hex, NULL, and "
-                            "DEFAULT values",
+        (struct expected_query){
+            .sql = "SELECT v FROM t WHERE id = 1",
+            .columns = (const char *const[]){"v"},
+            .column_count = 1U,
+            .values = (const char *const[]){"616263"},
+            .row_count = 1U,
+            .context = "row-scalar HEX update",
         }
     );
 

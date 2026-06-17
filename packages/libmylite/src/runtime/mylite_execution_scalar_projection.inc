@@ -68,6 +68,9 @@ static bool is_scalar_projection_expression_without_collate(
     if (is_scalar_function_projection_expression(expression)) {
         return true;
     }
+    if (mylite_execution_scalar_is_date_format_numeric_comparison_expression(expression)) {
+        return true;
+    }
     if (is_scalar_logical_projection_expression(expression)) {
         return true;
     }
@@ -219,6 +222,9 @@ static bool is_string_scalar_function_projection_expression(
         return true;
     }
     if (is_format_truncate_projection_expression(expression)) {
+        return true;
+    }
+    if (is_concat_projection_expression(expression)) {
         return true;
     }
     if (is_concat_ws_projection_expression(expression)) {
@@ -576,8 +582,6 @@ static bool is_binary_string_projection_expression(const struct mylite_sql_ast_n
 }
 
 static bool is_hex_projection_expression(const struct mylite_sql_ast_node *expression) {
-    const struct mylite_sql_ast_node *argument = NULL;
-
     expression = unwrap_parenthesized_expression(expression);
 
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_HEX_FUNCTION) {
@@ -586,72 +590,10 @@ static bool is_hex_projection_expression(const struct mylite_sql_ast_node *expre
     if (mylite_sql_ast_node_child_count(expression) != 1U) {
         return false;
     }
-    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
-    if (argument == NULL) {
-        return false;
-    }
-    if (argument->kind == MYLITE_SQL_AST_LITERAL) {
-        enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(argument);
-
-        return (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
-                literal_kind == MYLITE_SQL_AST_LITERAL_HEX ||
-                literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
-                literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
-                literal_kind == MYLITE_SQL_AST_LITERAL_FALSE ||
-                literal_kind == MYLITE_SQL_AST_LITERAL_NULL) != 0;
-    }
-    if (argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
-        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(argument);
-        const struct mylite_sql_ast_node *literal =
-            unwrap_parenthesized_expression(child_at(argument, 0U));
-
-        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
-            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
-            return false;
-        }
-        return (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
-                mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) != 0;
-    }
-
-    switch (argument->kind) {
-    case MYLITE_SQL_AST_DATABASE_FUNCTION:
-    case MYLITE_SQL_AST_SCHEMA_FUNCTION:
-    case MYLITE_SQL_AST_USER_FUNCTION:
-    case MYLITE_SQL_AST_SESSION_USER_FUNCTION:
-    case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:
-    case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
-    case MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION:
-    case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
-    case MYLITE_SQL_AST_VERSION_FUNCTION:
-    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
-    case MYLITE_SQL_AST_SYSDATE_FUNCTION:
-    case MYLITE_SQL_AST_CURRENT_DATE_VALUE:
-    case MYLITE_SQL_AST_CURRENT_TIME_VALUE:
-    case MYLITE_SQL_AST_UTC_DATE_VALUE:
-    case MYLITE_SQL_AST_UTC_TIME_VALUE:
-    case MYLITE_SQL_AST_UTC_TIMESTAMP_VALUE:
-    case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
-    case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION:
-    case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
-    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
-    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
-    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
-    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
-    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
-    case MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION:
-    case MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION:
-    case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
-    case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
-    case MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION:
-        return true;
-    default:
-        return false;
-    }
+    return child_at(expression, 0U) != NULL;
 }
 
 static bool is_unhex_projection_expression(const struct mylite_sql_ast_node *expression) {
-    const struct mylite_sql_ast_node *argument = NULL;
-
     expression = unwrap_parenthesized_expression(expression);
 
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_UNHEX_FUNCTION) {
@@ -660,55 +602,7 @@ static bool is_unhex_projection_expression(const struct mylite_sql_ast_node *exp
     if (mylite_sql_ast_node_child_count(expression) != 1U) {
         return false;
     }
-    argument = unwrap_parenthesized_expression(child_at(expression, 0U));
-    if (argument == NULL) {
-        return false;
-    }
-    if (argument->kind == MYLITE_SQL_AST_LITERAL) {
-        enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(argument);
-
-        return (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
-                literal_kind == MYLITE_SQL_AST_LITERAL_HEX ||
-                literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
-                literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
-                literal_kind == MYLITE_SQL_AST_LITERAL_FALSE ||
-                literal_kind == MYLITE_SQL_AST_LITERAL_NULL) != 0;
-    }
-    if (argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
-        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(argument);
-        const struct mylite_sql_ast_node *literal =
-            unwrap_parenthesized_expression(child_at(argument, 0U));
-
-        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
-            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
-            return false;
-        }
-        return (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
-                mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_INTEGER) != 0;
-    }
-
-    switch (argument->kind) {
-    case MYLITE_SQL_AST_DATABASE_FUNCTION:
-    case MYLITE_SQL_AST_SCHEMA_FUNCTION:
-    case MYLITE_SQL_AST_USER_FUNCTION:
-    case MYLITE_SQL_AST_SESSION_USER_FUNCTION:
-    case MYLITE_SQL_AST_SYSTEM_USER_FUNCTION:
-    case MYLITE_SQL_AST_CURRENT_USER_FUNCTION:
-    case MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION:
-    case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
-    case MYLITE_SQL_AST_VERSION_FUNCTION:
-    case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
-    case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION:
-    case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
-    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
-    case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
-    case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
-    case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
-    case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
-        return true;
-    default:
-        return false;
-    }
+    return child_at(expression, 0U) != NULL;
 }
 
 static bool is_base64_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -1197,7 +1091,8 @@ static bool is_string_length_projection_expression(const struct mylite_sql_ast_n
     if (mylite_sql_ast_node_child_count(expression) != 1U) {
         return false;
     }
-    return mylite_execution_string_length_scalar_argument_is_admitted(child_at(expression, 0U));
+    return mylite_execution_string_length_scalar_argument_is_admitted(child_at(expression, 0U)) ||
+           is_scalar_projection_attempt_expression(child_at(expression, 0U));
 }
 
 static bool is_string_codepoint_projection_expression(const struct mylite_sql_ast_node *expression
@@ -1228,7 +1123,8 @@ static bool is_string_case_projection_expression(const struct mylite_sql_ast_nod
     if (mylite_sql_ast_node_child_count(expression) != 1U) {
         return false;
     }
-    return mylite_execution_string_case_scalar_argument_is_admitted(child_at(expression, 0U));
+    return mylite_execution_string_case_scalar_argument_is_admitted(child_at(expression, 0U)) ||
+           is_scalar_projection_attempt_expression(child_at(expression, 0U));
 }
 
 static bool is_string_trim_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -1390,6 +1286,39 @@ static bool is_string_padding_projection_expression(const struct mylite_sql_ast_
                ) != 0;
     }
     return false;
+}
+
+static bool is_concat_projection_expression(const struct mylite_sql_ast_node *expression) {
+    const struct mylite_sql_ast_node *arguments = NULL;
+    const struct mylite_sql_ast_node *argument = NULL;
+    size_t argument_count = 0U;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_CONCAT_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        return false;
+    }
+
+    arguments = child_at(expression, 0U);
+    if (arguments == NULL || arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        return false;
+    }
+
+    argument_count = mylite_sql_ast_node_child_count(arguments);
+    if (argument_count == 0U) {
+        return false;
+    }
+
+    argument = child_at(arguments, 0U);
+    for (size_t argument_index = 0U; argument_index < argument_count && argument != NULL;
+         ++argument_index) {
+        if (!concat_operator_scalar_argument_is_admitted(argument) &&
+            !is_scalar_projection_attempt_expression(argument)) {
+            return false;
+        }
+        argument = argument->next_sibling;
+    }
+    return argument == NULL;
 }
 
 static bool is_concat_ws_projection_expression(const struct mylite_sql_ast_node *expression) {
@@ -2397,7 +2326,8 @@ static bool scalar_concat_projection_node_is_admitted(
         }
         return scalar_arithmetic_node_stack_push(stack, child_at(expression, 0U));
     }
-    return concat_operator_scalar_argument_is_admitted(expression);
+    return concat_operator_scalar_argument_is_admitted(expression) ||
+           is_scalar_projection_attempt_expression(expression);
 }
 
 static bool is_scalar_arithmetic_operator(enum mylite_sql_ast_operator operator_kind) {
@@ -2595,6 +2525,22 @@ static bool is_scalar_value_projection_attempt_expression(
     case MYLITE_SQL_AST_GET_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_TIME_FORMAT_FUNCTION:
     case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
+    case MYLITE_SQL_AST_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_OCTET_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_BIT_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHAR_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHARACTER_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_LOWER_FUNCTION:
+    case MYLITE_SQL_AST_LCASE_FUNCTION:
+    case MYLITE_SQL_AST_UPPER_FUNCTION:
+    case MYLITE_SQL_AST_UCASE_FUNCTION:
+    case MYLITE_SQL_AST_HEX_FUNCTION:
+    case MYLITE_SQL_AST_UNHEX_FUNCTION:
+    case MYLITE_SQL_AST_DEFAULT_FUNCTION:
+    case MYLITE_SQL_AST_CONCAT_FUNCTION:
+    case MYLITE_SQL_AST_CONCAT_WS_FUNCTION:
+    case MYLITE_SQL_AST_GREATEST_FUNCTION:
+    case MYLITE_SQL_AST_LEAST_FUNCTION:
     case MYLITE_SQL_AST_LITERAL:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:
@@ -2603,9 +2549,269 @@ static bool is_scalar_value_projection_attempt_expression(
     case MYLITE_SQL_AST_UNARY_EXPRESSION:
         return is_scalar_value_projection_attempt_operand(expression);
     case MYLITE_SQL_AST_BINARY_EXPRESSION:
-        return is_scalar_arithmetic_attempt_expression(expression);
+        return (is_scalar_arithmetic_attempt_expression(expression) ||
+                mylite_execution_scalar_is_date_format_comparison_expression(expression)) != 0;
     default:
-        return is_scalar_function_expression(expression);
+        return is_scalar_projection_known_function_attempt(expression->kind);
+    }
+}
+
+static bool is_scalar_projection_known_function_attempt(enum mylite_sql_ast_node_kind kind) {
+    switch (kind) {
+    case MYLITE_SQL_AST_IF_FUNCTION:
+    case MYLITE_SQL_AST_IFNULL_FUNCTION:
+    case MYLITE_SQL_AST_COALESCE_FUNCTION:
+    case MYLITE_SQL_AST_NULLIF_FUNCTION:
+    case MYLITE_SQL_AST_ISNULL_FUNCTION:
+    case MYLITE_SQL_AST_PI_FUNCTION:
+    case MYLITE_SQL_AST_RAND_FUNCTION:
+    case MYLITE_SQL_AST_RAND_SEED_FUNCTION:
+    case MYLITE_SQL_AST_ABS_FUNCTION:
+    case MYLITE_SQL_AST_SIGN_FUNCTION:
+    case MYLITE_SQL_AST_CEIL_FUNCTION:
+    case MYLITE_SQL_AST_CEILING_FUNCTION:
+    case MYLITE_SQL_AST_FLOOR_FUNCTION:
+    case MYLITE_SQL_AST_ROUND_FUNCTION:
+    case MYLITE_SQL_AST_SQRT_FUNCTION:
+    case MYLITE_SQL_AST_DEGREES_FUNCTION:
+    case MYLITE_SQL_AST_RADIANS_FUNCTION:
+    case MYLITE_SQL_AST_ACOS_FUNCTION:
+    case MYLITE_SQL_AST_ASIN_FUNCTION:
+    case MYLITE_SQL_AST_SIN_FUNCTION:
+    case MYLITE_SQL_AST_COS_FUNCTION:
+    case MYLITE_SQL_AST_TAN_FUNCTION:
+    case MYLITE_SQL_AST_COT_FUNCTION:
+    case MYLITE_SQL_AST_ATAN_FUNCTION:
+    case MYLITE_SQL_AST_ATAN2_FUNCTION:
+    case MYLITE_SQL_AST_EXP_FUNCTION:
+    case MYLITE_SQL_AST_LN_FUNCTION:
+    case MYLITE_SQL_AST_LOG_FUNCTION:
+    case MYLITE_SQL_AST_LOG10_FUNCTION:
+    case MYLITE_SQL_AST_LOG2_FUNCTION:
+    case MYLITE_SQL_AST_POW_FUNCTION:
+    case MYLITE_SQL_AST_POWER_FUNCTION:
+    case MYLITE_SQL_AST_BIN_FUNCTION:
+    case MYLITE_SQL_AST_OCT_FUNCTION:
+    case MYLITE_SQL_AST_CONV_FUNCTION:
+    case MYLITE_SQL_AST_BIT_COUNT_FUNCTION:
+    case MYLITE_SQL_AST_CRC32_FUNCTION:
+    case MYLITE_SQL_AST_MD5_FUNCTION:
+    case MYLITE_SQL_AST_SHA_FUNCTION:
+    case MYLITE_SQL_AST_SHA1_FUNCTION:
+    case MYLITE_SQL_AST_SHA2_FUNCTION:
+    case MYLITE_SQL_AST_HEX_FUNCTION:
+    case MYLITE_SQL_AST_UNHEX_FUNCTION:
+    case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
+    case MYLITE_SQL_AST_FROM_BASE64_FUNCTION:
+    case MYLITE_SQL_AST_COMPRESS_FUNCTION:
+    case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
+    case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
+    case MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION:
+    case MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION:
+    case MYLITE_SQL_AST_UUID_FUNCTION:
+    case MYLITE_SQL_AST_IS_UUID_FUNCTION:
+    case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
+    case MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION:
+    case MYLITE_SQL_AST_CHAR_FUNCTION:
+    case MYLITE_SQL_AST_FORMAT_FUNCTION:
+    case MYLITE_SQL_AST_FORMAT_LOCALE_UNSUPPORTED:
+    case MYLITE_SQL_AST_TRUNCATE_FUNCTION:
+    case MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION:
+    case MYLITE_SQL_AST_TIMESTAMP_FUNCTION:
+    case MYLITE_SQL_AST_DATEDIFF_FUNCTION:
+    case MYLITE_SQL_AST_TIMESTAMPDIFF_FUNCTION:
+    case MYLITE_SQL_AST_TIMEDIFF_FUNCTION:
+    case MYLITE_SQL_AST_DATE_FUNCTION:
+    case MYLITE_SQL_AST_TIME_FUNCTION:
+    case MYLITE_SQL_AST_EXTRACT_FUNCTION:
+    case MYLITE_SQL_AST_QUARTER_FUNCTION:
+    case MYLITE_SQL_AST_WEEK_FUNCTION:
+    case MYLITE_SQL_AST_WEEKDAY_FUNCTION:
+    case MYLITE_SQL_AST_WEEKOFYEAR_FUNCTION:
+    case MYLITE_SQL_AST_YEARWEEK_FUNCTION:
+    case MYLITE_SQL_AST_YEAR_FUNCTION:
+    case MYLITE_SQL_AST_MONTH_FUNCTION:
+    case MYLITE_SQL_AST_MONTHNAME_FUNCTION:
+    case MYLITE_SQL_AST_DAY_FUNCTION:
+    case MYLITE_SQL_AST_DAYNAME_FUNCTION:
+    case MYLITE_SQL_AST_DAYOFMONTH_FUNCTION:
+    case MYLITE_SQL_AST_DAYOFWEEK_FUNCTION:
+    case MYLITE_SQL_AST_DAYOFYEAR_FUNCTION:
+    case MYLITE_SQL_AST_LAST_DAY_FUNCTION:
+    case MYLITE_SQL_AST_HOUR_FUNCTION:
+    case MYLITE_SQL_AST_MINUTE_FUNCTION:
+    case MYLITE_SQL_AST_SECOND_FUNCTION:
+    case MYLITE_SQL_AST_MICROSECOND_FUNCTION:
+    case MYLITE_SQL_AST_TIME_TO_SEC_FUNCTION:
+    case MYLITE_SQL_AST_TO_DAYS_FUNCTION:
+    case MYLITE_SQL_AST_TO_SECONDS_FUNCTION:
+    case MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION:
+    case MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION:
+    case MYLITE_SQL_AST_FROM_DAYS_FUNCTION:
+    case MYLITE_SQL_AST_MAKEDATE_FUNCTION:
+    case MYLITE_SQL_AST_MAKETIME_FUNCTION:
+    case MYLITE_SQL_AST_PERIOD_ADD_FUNCTION:
+    case MYLITE_SQL_AST_PERIOD_DIFF_FUNCTION:
+    case MYLITE_SQL_AST_CONVERT_TZ_FUNCTION:
+    case MYLITE_SQL_AST_ASCII_FUNCTION:
+    case MYLITE_SQL_AST_ORD_FUNCTION:
+    case MYLITE_SQL_AST_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_OCTET_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_BIT_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHAR_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_CHARACTER_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_LOWER_FUNCTION:
+    case MYLITE_SQL_AST_LCASE_FUNCTION:
+    case MYLITE_SQL_AST_UPPER_FUNCTION:
+    case MYLITE_SQL_AST_UCASE_FUNCTION:
+    case MYLITE_SQL_AST_LTRIM_FUNCTION:
+    case MYLITE_SQL_AST_RTRIM_FUNCTION:
+    case MYLITE_SQL_AST_TRIM_FUNCTION:
+    case MYLITE_SQL_AST_TRIM_LEADING_FUNCTION:
+    case MYLITE_SQL_AST_TRIM_TRAILING_FUNCTION:
+    case MYLITE_SQL_AST_LEFT_FUNCTION:
+    case MYLITE_SQL_AST_RIGHT_FUNCTION:
+    case MYLITE_SQL_AST_SUBSTRING_FUNCTION:
+    case MYLITE_SQL_AST_SUBSTR_FUNCTION:
+    case MYLITE_SQL_AST_MID_FUNCTION:
+    case MYLITE_SQL_AST_LPAD_FUNCTION:
+    case MYLITE_SQL_AST_RPAD_FUNCTION:
+    case MYLITE_SQL_AST_REPEAT_FUNCTION:
+    case MYLITE_SQL_AST_SPACE_FUNCTION:
+    case MYLITE_SQL_AST_EXPORT_SET_FUNCTION:
+    case MYLITE_SQL_AST_MAKE_SET_FUNCTION:
+    case MYLITE_SQL_AST_LOCATE_FUNCTION:
+    case MYLITE_SQL_AST_INSTR_FUNCTION:
+    case MYLITE_SQL_AST_POSITION_FUNCTION:
+    case MYLITE_SQL_AST_FIND_IN_SET_FUNCTION:
+    case MYLITE_SQL_AST_STRCMP_FUNCTION:
+    case MYLITE_SQL_AST_SUBSTRING_INDEX_FUNCTION:
+    case MYLITE_SQL_AST_REGEXP_LIKE_FUNCTION:
+    case MYLITE_SQL_AST_REGEXP_INSTR_FUNCTION:
+    case MYLITE_SQL_AST_REGEXP_SUBSTR_FUNCTION:
+    case MYLITE_SQL_AST_REGEXP_REPLACE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_VALID_FUNCTION:
+    case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
+    case MYLITE_SQL_AST_JSON_VALUE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_CONTAINS_FUNCTION:
+    case MYLITE_SQL_AST_JSON_CONTAINS_PATH_FUNCTION:
+    case MYLITE_SQL_AST_JSON_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_JSON_KEYS_FUNCTION:
+    case MYLITE_SQL_AST_JSON_TYPE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_SET_FUNCTION:
+    case MYLITE_SQL_AST_JSON_INSERT_FUNCTION:
+    case MYLITE_SQL_AST_JSON_REPLACE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_REMOVE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_ARRAY_FUNCTION:
+    case MYLITE_SQL_AST_JSON_OBJECT_FUNCTION:
+    case MYLITE_SQL_AST_REPLACE_FUNCTION:
+    case MYLITE_SQL_AST_INSERT_STRING_FUNCTION:
+    case MYLITE_SQL_AST_REVERSE_FUNCTION:
+    case MYLITE_SQL_AST_SOUNDEX_FUNCTION:
+    case MYLITE_SQL_AST_QUOTE_FUNCTION:
+    case MYLITE_SQL_AST_CHARSET_FUNCTION:
+    case MYLITE_SQL_AST_COLLATION_FUNCTION:
+    case MYLITE_SQL_AST_COERCIBILITY_FUNCTION:
+    case MYLITE_SQL_AST_ELT_FUNCTION:
+    case MYLITE_SQL_AST_FIELD_FUNCTION:
+    case MYLITE_SQL_AST_GREATEST_FUNCTION:
+    case MYLITE_SQL_AST_LEAST_FUNCTION:
+    case MYLITE_SQL_AST_INTERVAL_FUNCTION:
+    case MYLITE_SQL_AST_SCALAR_SUBQUERY:
+    case MYLITE_SQL_AST_USER_VARIABLE_ASSIGNMENT_EXPRESSION:
+    case MYLITE_SQL_AST_USER_VARIABLE:
+    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
+    case MYLITE_SQL_AST_CURRENT_TIMESTAMP_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SYSDATE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TIMESTAMP_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TIMEDIFF_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SEC_TO_TIME_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_FROM_UNIXTIME_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_FROM_DAYS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_MAKEDATE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_MAKETIME_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_PERIOD_ADD_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_PERIOD_DIFF_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_CONVERT_TZ_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TIME_TO_SEC_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TO_DAYS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TO_SECONDS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_DATE_FORMAT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TIME_FORMAT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_STR_TO_DATE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_DAYNAME_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_DAYOFMONTH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_DAYOFWEEK_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_DAYOFYEAR_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LAST_DAY_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_MONTHNAME_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_WEEKDAY_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_WEEKOFYEAR_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_YEARWEEK_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LOWER_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LCASE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_UPPER_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_UCASE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LTRIM_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_RTRIM_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LOCATE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_INSTR_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_ORD_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_EXPORT_SET_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_MAKE_SET_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_REGEXP_LIKE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_REGEXP_INSTR_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_REGEXP_SUBSTR_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_REGEXP_REPLACE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_VALID_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_EXTRACT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_CONTAINS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_CONTAINS_PATH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_LENGTH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_KEYS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_SET_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_INSERT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_REPLACE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_REMOVE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_QUOTE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_UNQUOTE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_CONCAT_WS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SOUNDEX_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_QUOTE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_ELT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_FIELD_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_LEAST_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_FIND_IN_SET_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_STRCMP_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SUBSTRING_INDEX_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_MD5_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SHA_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SHA1_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SHA2_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_TO_BASE64_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_FROM_BASE64_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_COMPRESS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_UNCOMPRESS_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_RANDOM_BYTES_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_IS_UUID_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_UUID_TO_BIN_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_BIN_TO_UUID_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_ADDTIME_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR:
+        return true;
+    default:
+        return false;
     }
 }
 

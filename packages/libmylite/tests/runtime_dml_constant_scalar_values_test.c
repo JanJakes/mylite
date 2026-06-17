@@ -119,6 +119,18 @@ static int test_constant_scalar_insert_replace_update(void) {
         "2024-05-07 08:09:10",
         "00:00:59",
     };
+    static const char *const row_scalar_update_rows[] = {
+        "2",
+        "abq-8",
+        "20",
+        "2024-05-08 08:09:10",
+    };
+    static const char *const row_scalar_duplicate_rows[] = {
+        "2",
+        "abq-8-20",
+        "40",
+        "2024-05-08 08:09:10",
+    };
     static const char *const string_literal_rows[] = {"3", "Cote d'Ivoire", "ab"};
     static const char *const values_literal_rows[] = {"ab", "c"};
     mylite_db *database = NULL;
@@ -225,6 +237,43 @@ static int test_constant_scalar_insert_replace_update(void) {
             .column_count = scalar_row_column_count,
             .row_count = 1U,
             .context = "update scalar row",
+        }
+    );
+    failures += expect_dml_result(
+        database,
+        "UPDATE scalars SET "
+        "v = CONCAT(LOWER(v), '-', COALESCE(i, 0)), "
+        "i = GREATEST(i, 20), "
+        "dt = DATE_ADD(dt, INTERVAL 1 DAY) "
+        "WHERE id = 2",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, i, dt FROM scalars WHERE id = 2",
+            .values = row_scalar_update_rows,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "row-dependent update scalar row",
+        }
+    );
+    failures += expect_dml_result(
+        database,
+        "INSERT INTO scalars(id, v, i, d) VALUES (2, 'ignored', 0, 0) "
+        "ON DUPLICATE KEY UPDATE "
+        "v = CONCAT(LOWER(v), '-', COALESCE(i, 0)), "
+        "i = GREATEST(i, 40)",
+        (struct expected_dml_result){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, i, dt FROM scalars WHERE id = 2",
+            .values = row_scalar_duplicate_rows,
+            .column_count = 4U,
+            .row_count = 1U,
+            .context = "row-dependent duplicate scalar row",
         }
     );
     failures += expect_dml_result(

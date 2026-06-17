@@ -662,6 +662,13 @@ static int bind_column_aggregate_parameters(
             &plan->aggregate_row_scalar_expression,
             &parameter_index
         );
+        if (rc == MYLITE_OK && plan->function == PLANNED_COLUMN_AGGREGATE_AVG) {
+            rc = bind_row_scalar_expression_parameters(
+                statement,
+                &plan->aggregate_row_scalar_expression,
+                &parameter_index
+            );
+        }
     }
     if (rc == MYLITE_OK && plan->has_separator) {
         rc = bind_planned_value_parameter(statement, parameter_index, &plan->separator);
@@ -859,14 +866,25 @@ static int bind_grouped_aggregate_row_scalar_expression_parameters(
     const struct planned_grouped_aggregate_item *item,
     int *parameter_index
 ) {
+    int rc = MYLITE_OK;
+
     if (item == NULL || !item->aggregate_uses_row_scalar_expression) {
         return MYLITE_OK;
     }
-    return bind_row_scalar_expression_parameters(
+    rc = bind_row_scalar_expression_parameters(
         statement,
         &item->aggregate_row_scalar_expression,
         parameter_index
     );
+
+    if (rc == MYLITE_OK && item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
+        rc = bind_row_scalar_expression_parameters(
+            statement,
+            &item->aggregate_row_scalar_expression,
+            parameter_index
+        );
+    }
+    return rc;
 }
 
 static int bind_grouped_key_parameters(

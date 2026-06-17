@@ -109,8 +109,19 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const g_max_values[] = {NULL, NULL, "1", "10", "2", "30"};
     static const char *const g_sum_columns[] = {"g", "SUM(n)"};
     static const char *const g_sum_values[] = {NULL, NULL, "1", "10", "2", "50"};
+    static const char *const g_sum_expression_columns[] = {"g", "SUM(n + 1)"};
+    static const char *const g_sum_expression_values[] = {NULL, NULL, "1", "11", "2", "52"};
     static const char *const g_avg_columns[] = {"g", "AVG(n)"};
     static const char *const g_avg_values[] = {NULL, NULL, "1", "10.0000", "2", "25.0000"};
+    static const char *const g_avg_expression_columns[] = {"g", "AVG(n + 1)"};
+    static const char *const g_avg_expression_values[] = {
+        NULL,
+        NULL,
+        "1",
+        "11.0000",
+        "2",
+        "26.0000",
+    };
     static const char *const g_bit_and_columns[] = {"g", "BIT_AND(n)"};
     static const char *const g_bit_and_values[] = {
         NULL,
@@ -689,12 +700,34 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
+            .sql = "SELECT g, SUM(n + 1) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_sum_expression_columns,
+            .column_count = 2U,
+            .values = g_sum_expression_values,
+            .row_count = 3U,
+            .context = "sum grouped row-scalar values",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
             .sql = "SELECT g, AVG(n) FROM grouped_numbers GROUP BY g ORDER BY g",
             .columns = g_avg_columns,
             .column_count = 2U,
             .values = g_avg_values,
             .row_count = 3U,
             .context = "avg grouped nullable values",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, AVG(n + 1) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_avg_expression_columns,
+            .column_count = 2U,
+            .values = g_avg_expression_values,
+            .row_count = 3U,
+            .context = "avg grouped row-scalar values",
         }
     );
     failures += expect_grouped_query(

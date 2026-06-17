@@ -213,7 +213,7 @@ static int session_binary_scalar_value(
     if (is_scalar_logical_projection_expression(expression)) {
         return scalar_logical_value(database, expression, out_cell);
     }
-    if (mylite_execution_scalar_is_date_format_numeric_comparison_expression(expression)) {
+    if (mylite_execution_scalar_is_date_format_comparison_expression(expression)) {
         return mylite_execution_scalar_date_format_numeric_comparison_value(
             database,
             expression,
@@ -301,6 +301,14 @@ static int scalar_concat_operator_value(
     free(cells);
     free(arguments);
     return rc;
+}
+
+int mylite_execution_scalar_concat_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    return scalar_concat_function_value(database, expression, out_cell);
 }
 
 static int scalar_concat_function_value(
@@ -693,10 +701,6 @@ static bool concat_operator_scalar_argument_is_admitted(const struct mylite_sql_
     if (expression == NULL) {
         return false;
     }
-    if (expression->kind == MYLITE_SQL_AST_CONCAT_FUNCTION ||
-        expression->kind == MYLITE_SQL_AST_CONCAT_WS_FUNCTION) {
-        return false;
-    }
     if (expression->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
         return true;
     }
@@ -727,6 +731,10 @@ static bool concat_operator_scalar_argument_is_nested_scalar_value(
     case MYLITE_SQL_AST_CONVERT_UNSIGNED_TYPE_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
+    case MYLITE_SQL_AST_CONCAT_FUNCTION:
+    case MYLITE_SQL_AST_CONCAT_WS_FUNCTION:
+    case MYLITE_SQL_AST_GREATEST_FUNCTION:
+    case MYLITE_SQL_AST_LEAST_FUNCTION:
     case MYLITE_SQL_AST_REPEAT_FUNCTION:
     case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
     case MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION:
@@ -877,6 +885,21 @@ static int evaluate_elt_scalar_index(
     *out_index = 0;
     *out_is_null = false;
 
+    if (concat_operator_scalar_argument_is_integer_arithmetic_expression(literal)) {
+        struct scalar_arithmetic_value value = {.is_null = false, .integer = 0};
+        int rc = evaluate_integer_default_expression(database, literal, &value);
+
+        if (rc != MYLITE_OK) {
+            set_unsupported_error(
+                database,
+                "ELT() index supports only signed integer, boolean, and NULL literals"
+            );
+            return MYLITE_ERROR;
+        }
+        *out_is_null = value.is_null;
+        *out_index = value.integer;
+        return MYLITE_OK;
+    }
     if (literal != NULL && literal->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(literal);
 
@@ -960,6 +983,25 @@ static int evaluate_elt_scalar_value(
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         return evaluate_elt_scalar_integer_value(database, expression, out_argument);
     }
+    if (concat_operator_scalar_argument_is_integer_arithmetic_expression(expression)) {
+        struct scalar_arithmetic_value value = {.is_null = false, .integer = 0};
+        int rc = evaluate_integer_default_expression(database, expression, &value);
+
+        if (rc != MYLITE_OK) {
+            set_unsupported_error(
+                database,
+                "ELT() supports only string, integer, boolean, and NULL value arguments"
+            );
+            return MYLITE_ERROR;
+        }
+        if (value.is_null) {
+            out_argument->is_null = true;
+        } else {
+            out_argument->domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
+            out_argument->integer = value.integer;
+        }
+        return MYLITE_OK;
+    }
     if (expression->kind != MYLITE_SQL_AST_LITERAL) {
         set_unsupported_error(
             database,
@@ -1015,11 +1057,6 @@ static int evaluate_elt_scalar_string_value(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (!field_ascii_text_is_supported(text, text_length)) {
-        free(text);
-        set_unsupported_error(database, "ELT() string literals support only ASCII values");
-        return MYLITE_ERROR;
-    }
 
     out_argument->domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING;
     out_argument->text = text;
@@ -1064,7 +1101,7 @@ static int evaluate_elt_scalar_integer_value(
         (!is_negative && magnitude > (uint64_t)INT64_MAX)) {
         set_unsupported_error(
             database,
-            "ELT() value integer literals must fit the signed 64-bit range"
+            "row-scalar SELECT integer literals must fit the signed 64-bit range"
         );
         return MYLITE_ERROR;
     }
@@ -1184,6 +1221,14 @@ static int field_function_value(
     return rc;
 }
 
+int mylite_execution_scalar_greatest_least_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    return greatest_least_function_value(database, expression, out_cell);
+}
+
 static int greatest_least_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -1194,6 +1239,7 @@ static int greatest_least_function_value(
     struct field_scalar_argument *values = NULL;
     enum planned_row_scalar_field_domain domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
     size_t argument_count = 0U;
+    size_t numeric_scale = 0U;
     size_t result_index = 0U;
     int rc = MYLITE_OK;
 
@@ -1233,7 +1279,8 @@ static int greatest_least_function_value(
         arguments,
         values,
         argument_count,
-        &domain
+        &domain,
+        &numeric_scale
     );
     if (rc == MYLITE_OK) {
         for (size_t argument_index = 0U; argument_index < argument_count; ++argument_index) {
@@ -1249,7 +1296,12 @@ static int greatest_least_function_value(
                 .is_greatest = expression->kind == MYLITE_SQL_AST_GREATEST_FUNCTION,
             }
         );
-        rc = format_greatest_least_scalar_result(database, &values[result_index], out_cell);
+        rc = format_greatest_least_scalar_result(
+            database,
+            &values[result_index],
+            numeric_scale,
+            out_cell
+        );
     }
 
 done:
@@ -1294,6 +1346,9 @@ static int interval_function_value(
     }
 
     rc = evaluate_interval_scalar_search_argument(database, child_at(expression, 0U), &search);
+    if (rc != MYLITE_OK) {
+        goto done;
+    }
     if (rc == MYLITE_OK && search.is_null) {
         rc = format_interval_scalar_result(database, -1, out_cell);
         goto done;
@@ -1588,12 +1643,14 @@ static int evaluate_greatest_least_scalar_arguments(
     const struct mylite_sql_ast_node *arguments,
     struct field_scalar_argument *values,
     size_t argument_count,
-    enum planned_row_scalar_field_domain *out_domain
+    enum planned_row_scalar_field_domain *out_domain,
+    size_t *out_numeric_scale
 ) {
     const struct mylite_sql_ast_node *argument = child_at(arguments, 0U);
     enum planned_row_scalar_field_domain domain = PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
+    size_t numeric_scale = 0U;
 
-    if (values == NULL || out_domain == NULL) {
+    if (values == NULL || out_domain == NULL || out_numeric_scale == NULL) {
         return MYLITE_MISUSE;
     }
     for (size_t argument_index = 0U; argument_index < argument_count; ++argument_index) {
@@ -1607,6 +1664,10 @@ static int evaluate_greatest_least_scalar_arguments(
         if (rc != MYLITE_OK) {
             return rc;
         }
+        if (values[argument_index].has_numeric_real &&
+            values[argument_index].numeric_scale > numeric_scale) {
+            numeric_scale = values[argument_index].numeric_scale;
+        }
         rc = merge_greatest_least_domain(database, values[argument_index].domain, &domain);
         if (rc != MYLITE_OK) {
             return rc;
@@ -1619,6 +1680,7 @@ static int evaluate_greatest_least_scalar_arguments(
     }
 
     *out_domain = domain;
+    *out_numeric_scale = numeric_scale;
     return MYLITE_OK;
 }
 
@@ -1797,6 +1859,7 @@ static int evaluate_greatest_least_scalar_decimal_argument(
     char *text = NULL;
     char *parse_end = NULL;
     size_t prefix_size = 0U;
+    size_t numeric_scale = 0U;
 
     if (out_argument == NULL) {
         return MYLITE_MISUSE;
@@ -1831,6 +1894,20 @@ static int evaluate_greatest_least_scalar_decimal_argument(
         );
         return MYLITE_ERROR;
     }
+    for (size_t index = 0U; index < span->length; ++index) {
+        if (span->text[index] == 'e' || span->text[index] == 'E') {
+            break;
+        }
+        if (span->text[index] == '.') {
+            for (size_t scale_index = index + 1U; scale_index < span->length; ++scale_index) {
+                if (span->text[scale_index] == 'e' || span->text[scale_index] == 'E') {
+                    break;
+                }
+                ++numeric_scale;
+            }
+            break;
+        }
+    }
 
     text = (char *)malloc(prefix_size + span->length + 1U);
     if (text == NULL) {
@@ -1858,6 +1935,7 @@ static int evaluate_greatest_least_scalar_decimal_argument(
     out_argument->has_numeric_real = true;
     out_argument->text = text;
     out_argument->text_length = prefix_size + span->length;
+    out_argument->numeric_scale = numeric_scale;
     return MYLITE_OK;
 }
 
@@ -1979,6 +2057,7 @@ static int field_ascii_text_compare_case_insensitive(
 static int format_greatest_least_scalar_result(
     struct mylite_db *database,
     const struct field_scalar_argument *value,
+    size_t numeric_scale,
     struct session_scalar_cell *out_cell
 ) {
     if (value == NULL || out_cell == NULL) {
@@ -2009,6 +2088,25 @@ static int format_greatest_least_scalar_result(
         out_cell->value = out_cell->owned_text;
         out_cell->value_size = value->text_length;
         out_cell->has_value_size = true;
+        return MYLITE_OK;
+    }
+
+    if (numeric_scale != 0U) {
+        int written = snprintf(
+            out_cell->integer_text,
+            sizeof(out_cell->integer_text),
+            "%" PRId64 ".",
+            value->integer
+        );
+
+        if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text) ||
+            numeric_scale >= sizeof(out_cell->integer_text) - (size_t)written) {
+            set_runtime_error(database, "failed to format GREATEST() or LEAST() value");
+            return MYLITE_ERROR;
+        }
+        memset(&out_cell->integer_text[written], '0', numeric_scale);
+        out_cell->integer_text[(size_t)written + numeric_scale] = '\0';
+        out_cell->value = out_cell->integer_text;
         return MYLITE_OK;
     }
 
@@ -2187,7 +2285,7 @@ static int evaluate_field_scalar_integer_argument(
         (!is_negative && magnitude > (uint64_t)INT64_MAX)) {
         set_unsupported_error(
             database,
-            "FIELD() integer literals must fit the signed 64-bit range"
+            "row-scalar SELECT integer literals must fit the signed 64-bit range"
         );
         return MYLITE_ERROR;
     }

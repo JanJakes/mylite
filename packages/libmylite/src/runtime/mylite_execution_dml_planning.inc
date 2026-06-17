@@ -741,8 +741,7 @@ static int plan_insert_duplicate_row_scalar_assignment(
         return MYLITE_OK;
     }
     arithmetic_attempt = row_scalar_expression_contains_integer_arithmetic_attempt(value_node);
-    if (!is_row_scalar_control_flow_expression(value_node) &&
-        !row_scalar_expression_contains_row_function(value_node) && !arithmetic_attempt) {
+    if (!row_scalar_expression_is_dml_assignment_context_attempt(value_node)) {
         return MYLITE_OK;
     }
 

@@ -306,9 +306,14 @@ static int append_column_aggregate_select_list_sql(
         );
     }
     if (plan->aggregate_uses_row_scalar_expression) {
-        rc = mylite_dynamic_string_append(string, column_aggregate_sql_function(plan->function));
-        if (rc == MYLITE_OK) {
-            rc = mylite_dynamic_string_append_char(string, '(');
+        if (plan->function == PLANNED_COLUMN_AGGREGATE_AVG) {
+            rc = mylite_dynamic_string_append(string, "SUM(");
+        } else {
+            rc =
+                mylite_dynamic_string_append(string, column_aggregate_sql_function(plan->function));
+            if (rc == MYLITE_OK) {
+                rc = mylite_dynamic_string_append_char(string, '(');
+            }
         }
         if (rc == MYLITE_OK) {
             rc = append_row_scalar_expression_sql(
@@ -318,6 +323,19 @@ static int append_column_aggregate_select_list_sql(
             );
         }
         if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append_char(string, ')');
+        }
+        if (rc == MYLITE_OK && plan->function == PLANNED_COLUMN_AGGREGATE_AVG) {
+            rc = mylite_dynamic_string_append(string, ", COUNT(");
+        }
+        if (rc == MYLITE_OK && plan->function == PLANNED_COLUMN_AGGREGATE_AVG) {
+            rc = append_row_scalar_expression_sql(
+                string,
+                &plan->aggregate_row_scalar_expression,
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK && plan->function == PLANNED_COLUMN_AGGREGATE_AVG) {
             rc = mylite_dynamic_string_append_char(string, ')');
         }
         return rc;
@@ -698,6 +716,13 @@ static int append_grouped_aggregate_select_item_sql(
     bool qualify = plan->source_count > 0U;
     int rc = MYLITE_OK;
 
+    if (item->aggregate_uses_row_scalar_expression) {
+        rc = append_grouped_aggregate_expression_sql(string, plan, item, next_parameter);
+        if (rc == MYLITE_OK && include_aliases && item->alias != NULL) {
+            rc = append_grouped_identifier_alias_sql(string, item->alias);
+        }
+        return rc;
+    }
     if (item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
         rc = mylite_dynamic_string_append(string, "SUM(");
         if (rc == MYLITE_OK) {
@@ -805,9 +830,16 @@ static int append_grouped_aggregate_expression_sql(
         if (next_parameter == NULL) {
             return MYLITE_ERROR;
         }
-        rc = mylite_dynamic_string_append(string, grouped_aggregate_sql_function(item->function));
-        if (rc == MYLITE_OK) {
-            rc = mylite_dynamic_string_append_char(string, '(');
+        if (item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
+            rc = mylite_dynamic_string_append(string, "SUM(");
+        } else {
+            rc = mylite_dynamic_string_append(
+                string,
+                grouped_aggregate_sql_function(item->function)
+            );
+            if (rc == MYLITE_OK) {
+                rc = mylite_dynamic_string_append_char(string, '(');
+            }
         }
         if (rc == MYLITE_OK) {
             rc = append_row_scalar_expression_sql(
@@ -817,6 +849,19 @@ static int append_grouped_aggregate_expression_sql(
             );
         }
         if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append_char(string, ')');
+        }
+        if (rc == MYLITE_OK && item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
+            rc = mylite_dynamic_string_append(string, ", COUNT(");
+        }
+        if (rc == MYLITE_OK && item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
+            rc = append_row_scalar_expression_sql(
+                string,
+                &item->aggregate_row_scalar_expression,
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK && item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
             rc = mylite_dynamic_string_append_char(string, ')');
         }
         return rc;

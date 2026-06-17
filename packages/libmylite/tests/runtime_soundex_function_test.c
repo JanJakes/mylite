@@ -457,13 +457,15 @@ static int test_soundex_diagnostics(void) {
             .context = "nested concat soundex argument",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT SOUNDEX((SELECT 'abc')) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SOUNDEX() supports only string, integer, boolean, NULL",
+        (struct expected_query){
+            .sql = "SELECT SOUNDEX((SELECT 'abc')) FROM t",
+            .columns = (const char *const[]){"SOUNDEX((SELECT 'abc'))"},
+            .column_count = 1U,
+            .values = (const char *const[]){"A120"},
+            .row_count = 1U,
+            .context = "scalar-subquery soundex argument",
         }
     );
     failures += execute_error(

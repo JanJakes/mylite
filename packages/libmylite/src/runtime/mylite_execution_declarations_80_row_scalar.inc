@@ -3180,6 +3180,21 @@ static bool row_scalar_column_descriptor_is_supported(
 static bool row_scalar_expression_contains_row_function(
     const struct mylite_sql_ast_node *expression
 );
+static bool row_scalar_expression_is_context_expression_attempt(
+    const struct mylite_sql_ast_node *expression
+);
+static bool row_scalar_expression_is_dml_assignment_context_attempt(
+    const struct mylite_sql_ast_node *expression
+);
+static bool row_scalar_expression_contains_default_function(
+    const struct mylite_sql_ast_node *expression
+);
+static bool row_scalar_expression_references_descriptor_column(
+    const struct mylite_sql_ast_node *expression
+);
+static bool row_scalar_expression_root_is_context_expression_attempt(
+    const struct mylite_sql_ast_node *expression
+);
 static bool row_scalar_expression_contains_numeric_function(
     const struct mylite_sql_ast_node *expression
 );
@@ -3208,6 +3223,9 @@ static bool row_scalar_expression_contains_statement_time_function(
     const struct mylite_sql_ast_node *expression
 );
 static bool row_scalar_expression_contains_integer_arithmetic_attempt(
+    const struct mylite_sql_ast_node *expression
+);
+static bool row_scalar_expression_contains_fractional_division_attempt(
     const struct mylite_sql_ast_node *expression
 );
 static bool integer_arithmetic_operator_is_attempt(enum mylite_sql_ast_operator operator_kind);

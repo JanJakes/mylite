@@ -574,7 +574,8 @@ static int evaluate_greatest_least_scalar_arguments(
     const struct mylite_sql_ast_node *arguments,
     struct field_scalar_argument *values,
     size_t argument_count,
-    enum planned_row_scalar_field_domain *out_domain
+    enum planned_row_scalar_field_domain *out_domain,
+    size_t *out_numeric_scale
 );
 static int evaluate_greatest_least_scalar_argument(
     struct mylite_db *database,
@@ -619,6 +620,7 @@ static int field_ascii_text_compare_case_insensitive(
 static int format_greatest_least_scalar_result(
     struct mylite_db *database,
     const struct field_scalar_argument *value,
+    size_t numeric_scale,
     struct session_scalar_cell *out_cell
 );
 static int evaluate_field_scalar_arguments(

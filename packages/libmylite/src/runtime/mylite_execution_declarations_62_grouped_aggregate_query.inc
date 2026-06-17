@@ -316,21 +316,13 @@ static int plan_grouped_column_aggregate_column(
     struct mylite_catalog_column_descriptor *out_column,
     size_t *out_source_index
 );
-static int plan_grouped_sum_row_scalar_expression(
+static int plan_grouped_aggregate_row_scalar_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *function,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_grouped_aggregate_item *out_item
-);
-static int plan_grouped_sum_row_scalar_column(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *column_node,
-    const struct select_source_context *source_context,
-    const struct mylite_catalog_column_descriptor *table_columns,
-    size_t table_column_count,
-    struct planned_row_scalar_expression *out_expression
 );
 static int plan_grouped_group_concat_options(
     struct mylite_db *database,
@@ -778,12 +770,6 @@ static int plan_column_aggregate_row_scalar_expression(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_column_aggregate *out_plan
-);
-static bool column_aggregate_sum_argument_is_row_scalar_expression(
-    const struct mylite_sql_ast_node *function
-);
-static bool column_aggregate_sum_argument_is_string_length_expression(
-    const struct mylite_sql_ast_node *argument
 );
 static int plan_column_group_concat_options(
     struct mylite_db *database,

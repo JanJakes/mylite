@@ -299,6 +299,10 @@ static int if_non_function_scalar_value(
         set_if_unsupported_error(database, function_name);
         return MYLITE_ERROR;
     }
+    if (generic_function_name_equals(expression, "GET_LOCK")) {
+        out_cell->value = "1";
+        return MYLITE_OK;
+    }
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
 

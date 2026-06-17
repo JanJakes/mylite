@@ -1895,7 +1895,7 @@ static int json_quote_scalar_argument(
 
     mylite_execution_set_unsupported_error(
         database,
-        "JSON_QUOTE() supports only string and NULL arguments"
+        "JSON_QUOTE() supports only string, NULL, and nonbinary string descriptor column arguments"
     );
     return MYLITE_ERROR;
 }

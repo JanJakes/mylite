@@ -193,7 +193,7 @@ static int evaluate_export_set_string_bitmask_function(
         database,
         mylite_execution_child_at(arguments, 0U),
         "EXPORT_SET() bitmask supports only signed integer, boolean, and NULL literals",
-        "EXPORT_SET() bitmask literals must fit the signed 64-bit range",
+        "string bitmask function bitmask literals must fit the signed 64-bit range",
         &bits_value,
         &bits_is_null
     );
@@ -311,11 +311,22 @@ static int evaluate_make_set_string_bitmask_function(
         &bits_is_null
     );
     for (size_t value_index = 0U; rc == MYLITE_OK && value_index < value_count; ++value_index) {
-        rc = evaluate_string_bitmask_text_argument(
-            database,
-            mylite_execution_child_at(arguments, value_index + 1U),
-            &values[value_index]
-        );
+        const struct mylite_sql_ast_node *value_argument =
+            mylite_execution_child_at(arguments, value_index + 1U);
+
+        if (!mylite_execution_string_slice_scalar_text_argument_is_admitted(value_argument)) {
+            mylite_execution_set_unsupported_error(
+                database,
+                "MAKE_SET() supports only string, integer, boolean, NULL value arguments"
+            );
+            rc = MYLITE_ERROR;
+        } else {
+            rc = evaluate_string_bitmask_text_argument(
+                database,
+                value_argument,
+                &values[value_index]
+            );
+        }
         if (rc == MYLITE_OK) {
             slices[value_index] = values[value_index].slice;
         }
@@ -356,6 +367,11 @@ static int evaluate_string_bitmask_integer_argument(
     }
     *out_value = 0;
     *out_is_null = false;
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression != NULL && (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+                               expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        return mylite_execution_set_unknown_column_reference_error(database, expression);
+    }
     if (!mylite_execution_string_slice_length_argument_is_admitted(expression)) {
         mylite_execution_set_unsupported_error(database, unsupported_message);
         return MYLITE_ERROR;

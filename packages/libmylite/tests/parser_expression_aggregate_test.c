@@ -1957,6 +1957,27 @@ static int test_min_max_aggregate(void) {
     failures += parser_test_expect_span_text(second_expression, "MAX(db.t.n)", "schema max span");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "SELECT MIN(LOWER(name)), MAX(CONCAT(name, '-x')) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    second_expression = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LOWER_FUNCTION,
+        "min lower argument"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(second_expression, 0U),
+        MYLITE_SQL_AST_CONCAT_FUNCTION,
+        "max concat argument"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parser_test_parse_sql("SELECT (MIN(id));", MYLITE_SQL_PARSE_OK, &result);
     select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
     first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
@@ -2204,6 +2225,19 @@ static int test_sum_aggregate(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures +=
+        parser_test_parse_sql("SELECT SUM(ABS(i)) FROM numbers;", MYLITE_SQL_PARSE_OK, &result);
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    sum_argument = parser_test_child_at(first_expression, 0U);
+    failures += parser_test_expect_node(
+        sum_argument,
+        MYLITE_SQL_AST_ABS_FUNCTION,
+        "sum numeric function argument"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parser_test_parse_sql("SELECT (SUM(id));", MYLITE_SQL_PARSE_OK, &result);
     select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
     first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
@@ -2442,6 +2476,15 @@ static int test_avg_aggregate(void) {
         "avg null aggregate"
     );
     mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql("SELECT AVG(id + 1) FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 0U),
+        MYLITE_SQL_AST_BINARY_EXPRESSION,
+        "avg identifier plus literal argument"
+    );
+    mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql("SELECT AVG(id, n) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql("SELECT AVG(*) FROM t;", MYLITE_SQL_PARSE_OK, &result);
@@ -2599,6 +2642,16 @@ static int test_bitwise_aggregate(void) {
         first_expression,
         MYLITE_SQL_AST_BIT_OR_AGGREGATE_FUNCTION,
         "bit_or null aggregate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parser_test_parse_sql("SELECT BIT_OR(id + 1) FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 0U),
+        MYLITE_SQL_AST_BINARY_EXPRESSION,
+        "bit_or arithmetic argument"
     );
     mylite_sql_parse_result_deinit(&result);
     failures +=

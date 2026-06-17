@@ -741,22 +741,22 @@ static int test_bitwise_diagnostics(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_bitwise_query(
         database,
-        "SELECT BIT_AND(1) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "BIT_AND/BIT_OR/BIT_XOR(column) supports only descriptor columns",
+        (struct expected_bitwise_query){
+            .sql = "SELECT BIT_AND(1) FROM numbers",
+            .column = "BIT_AND(1)",
+            .value = "1",
+            .context = "literal bit and",
         }
     );
-    failures += execute_error(
+    failures += expect_bitwise_query(
         database,
-        "SELECT BIT_OR(NULL) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "BIT_AND/BIT_OR/BIT_XOR(column) supports only descriptor columns",
+        (struct expected_bitwise_query){
+            .sql = "SELECT BIT_OR(NULL) FROM numbers",
+            .column = "BIT_OR(NULL)",
+            .value = "0",
+            .context = "null literal bit or",
         }
     );
     failures += execute_error(
@@ -777,13 +777,13 @@ static int test_bitwise_diagnostics(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_bitwise_query(
         database,
-        "SELECT BIT_AND(i + 1) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_bitwise_query){
+            .sql = "SELECT BIT_AND(i + 1) FROM numbers",
+            .column = "BIT_AND(i + 1)",
+            .value = "1",
+            .context = "arithmetic expression bit and",
         }
     );
     failures += expect_bitwise_query(

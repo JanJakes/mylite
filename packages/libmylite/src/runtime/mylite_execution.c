@@ -967,6 +967,14 @@ const char *mylite_execution_scalar_pi_text(void) {
     return scalar_pi_text;
 }
 
+int mylite_execution_scalar_subquery_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    return scalar_subquery_value(database, expression, out_cell);
+}
+
 int mylite_execution_scalar_rand_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

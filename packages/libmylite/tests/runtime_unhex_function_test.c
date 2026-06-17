@@ -300,6 +300,7 @@ static int test_table_backed_unhex_and_reopen(void) {
 }
 
 static int test_unhex_diagnostics(void) {
+    static const unsigned char update_value[] = {0x41};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -376,14 +377,17 @@ static int test_unhex_diagnostics(void) {
                 "UNHEX() supports only integer, nonbinary string, and binary string columns",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(database, "UPDATE t SET v = UNHEX(v)", NULL);
+    failures += expect_query(
         database,
-        "UPDATE t SET v = UNHEX(v)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "VARCHAR values support only string, numeric, boolean, hex, NULL, and "
-                            "DEFAULT values",
+        (struct expected_query){
+            .sql = "SELECT v FROM t WHERE id = 1",
+            .columns = (const char *const[]){"v"},
+            .column_count = 1U,
+            .values = (const struct expected_cell[]){{update_value, sizeof(update_value), false}},
+            .row_count = 1U,
+            .warning_count = 0U,
+            .context = "row-scalar UNHEX update",
         }
     );
 

@@ -64,6 +64,8 @@ static int evaluate_regexp_like_text_argument(
 static bool regexp_like_literal_or_unary_expression_is_admitted(
     const struct mylite_sql_ast_node *expression
 );
+static bool regexp_like_argument_contains_binary_value(const struct mylite_sql_ast_node *expression
+);
 static int evaluate_regexp_like_literal_text_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -339,17 +341,25 @@ static int regexp_like_function_value(
         }
     }
 
-    rc = evaluate_regexp_like_text_argument(
-        database,
-        mylite_execution_child_at(expression, 0U),
-        true,
-        &value_messages,
-        &value_cell,
-        &owned_value,
-        &value,
-        &value_length,
-        &value_is_null
-    );
+    if (regexp_like_argument_contains_binary_value(mylite_execution_child_at(expression, 0U))) {
+        mylite_execution_set_unsupported_error(
+            database,
+            "REGEXP_LIKE() does not support binary values"
+        );
+        rc = MYLITE_ERROR;
+    } else {
+        rc = evaluate_regexp_like_text_argument(
+            database,
+            mylite_execution_child_at(expression, 0U),
+            true,
+            &value_messages,
+            &value_cell,
+            &owned_value,
+            &value,
+            &value_length,
+            &value_is_null
+        );
+    }
     if (rc == MYLITE_OK) {
         rc = evaluate_regexp_like_text_argument(
             database,
@@ -786,6 +796,30 @@ static bool regexp_like_literal_or_unary_expression_is_admitted(
     }
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         return true;
+    }
+    return false;
+}
+
+static bool regexp_like_argument_contains_binary_value(const struct mylite_sql_ast_node *expression
+) {
+    size_t child_count = 0U;
+
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_CAST_BINARY_EXPRESSION ||
+        expression->kind == MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION ||
+        expression->kind == MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION) {
+        return true;
+    }
+    child_count = mylite_sql_ast_node_child_count(expression);
+    for (size_t child_index = 0U; child_index < child_count; ++child_index) {
+        if (regexp_like_argument_contains_binary_value(
+                mylite_execution_child_at(expression, child_index)
+            )) {
+            return true;
+        }
     }
     return false;
 }

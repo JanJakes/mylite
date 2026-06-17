@@ -584,7 +584,7 @@ static enum mylite_sql_parse_status scan_row_arithmetic_comparison_value_retry(
         !placeholder_scan_predicate_value_end(scan, value_start, false, &value_end)) {
         return MYLITE_SQL_PARSE_OK;
     }
-    if (placeholder_scan_row_arithmetic_value_has_operator(scan, value_start, value_end)) {
+    if (placeholder_scan_predicate_value_can_retry_as_row_scalar(scan, value_start, value_end)) {
         enum mylite_sql_parse_status status = append_row_arithmetic_predicate_value_retry(
             scan,
             value_start,
@@ -622,7 +622,11 @@ static enum mylite_sql_parse_status scan_row_arithmetic_between_value_retries(
     }
     upper_start = and_index + 1U;
 
-    if (placeholder_scan_row_arithmetic_value_has_operator(scan, lower_start, and_index - 1U)) {
+    if (placeholder_scan_predicate_value_can_retry_as_row_scalar(
+            scan,
+            lower_start,
+            and_index - 1U
+        )) {
         status = append_row_arithmetic_predicate_value_retry(
             scan,
             lower_start,
@@ -632,7 +636,7 @@ static enum mylite_sql_parse_status scan_row_arithmetic_between_value_retries(
         );
     }
     if (status == MYLITE_SQL_PARSE_OK &&
-        placeholder_scan_row_arithmetic_value_has_operator(scan, upper_start, upper_end)) {
+        placeholder_scan_predicate_value_can_retry_as_row_scalar(scan, upper_start, upper_end)) {
         status = append_row_arithmetic_predicate_value_retry(
             scan,
             upper_start,
@@ -675,15 +679,21 @@ static enum mylite_sql_parse_status scan_row_arithmetic_in_value_retries(
             value_end >= right_paren_index) {
             value_end = right_paren_index - 1U;
         }
-        if (value_end >= value_start &&
-            placeholder_scan_row_arithmetic_value_has_operator(scan, value_start, value_end)) {
-            status = append_row_arithmetic_predicate_value_retry(
+        if (value_end >= value_start) {
+            bool can_retry_value = placeholder_scan_predicate_value_can_retry_as_row_scalar(
                 scan,
                 value_start,
-                value_end,
-                retries,
-                inout_can_retry
+                value_end
             );
+            if (can_retry_value) {
+                status = append_row_arithmetic_predicate_value_retry(
+                    scan,
+                    value_start,
+                    value_end,
+                    retries,
+                    inout_can_retry
+                );
+            }
         }
         if (value_end + 1U >= right_paren_index ||
             !mylite_sql_parser_token_is_comma(&scan->tokens[value_end + 1U])) {
@@ -827,6 +837,52 @@ static bool placeholder_scan_row_arithmetic_value_has_operator(
                start_index + 1U,
                end_index - 1U
            );
+}
+
+static bool placeholder_scan_predicate_value_can_retry_as_row_scalar(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+) {
+    if (placeholder_scan_row_arithmetic_value_has_operator(scan, start_index, end_index)) {
+        return true;
+    }
+    if (!placeholder_scan_row_arithmetic_value_has_row_operand(scan, start_index, end_index)) {
+        return false;
+    }
+    return placeholder_scan_predicate_value_is_direct_row_scalar_expression(
+        scan,
+        start_index,
+        end_index
+    );
+}
+
+static bool placeholder_scan_predicate_value_is_direct_row_scalar_expression(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+) {
+    size_t right_paren_index = 0U;
+
+    if (scan == NULL || start_index > end_index || end_index >= scan->token_count) {
+        return false;
+    }
+    while (mylite_sql_parser_token_is_left_paren(&scan->tokens[start_index])) {
+        if (!placeholder_scan_find_matching_right_paren(scan, start_index, &right_paren_index) ||
+            right_paren_index != end_index || start_index + 1U >= end_index) {
+            return false;
+        }
+        ++start_index;
+        --end_index;
+    }
+    if (placeholder_scan_token_text_equals(scan, start_index, "CASE")) {
+        return placeholder_scan_token_text_equals(scan, end_index, "END");
+    }
+    return placeholder_scan_token_is_supported_row_scalar_value_function(scan, start_index) &&
+           start_index + 1U < scan->token_count &&
+           mylite_sql_parser_token_is_left_paren(&scan->tokens[start_index + 1U]) &&
+           placeholder_scan_find_matching_right_paren(scan, start_index + 1U, &right_paren_index) &&
+           right_paren_index == end_index;
 }
 
 static bool placeholder_scan_row_arithmetic_value_has_row_operand(
@@ -981,6 +1037,136 @@ static bool placeholder_scan_token_is_supported_row_arithmetic_value_function(
            placeholder_scan_token_text_equals(scan, index, "BIT_LENGTH") ||
            placeholder_scan_token_text_equals(scan, index, "OCTET_LENGTH") ||
            placeholder_scan_token_text_equals(scan, index, "MOD");
+}
+
+static bool placeholder_scan_token_is_supported_row_scalar_value_function(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    static const char *const value_functions[] = {
+        "CAST",
+        "CONVERT",
+        "IF",
+        "IFNULL",
+        "NULLIF",
+        "ISNULL",
+        "COALESCE",
+        "CONCAT",
+        "CONCAT_WS",
+        "FIELD",
+        "GREATEST",
+        "LEAST",
+        "INTERVAL",
+        "HEX",
+        "UNHEX",
+        "TO_BASE64",
+        "FROM_BASE64",
+        "MD5",
+        "SHA",
+        "SHA1",
+        "SHA2",
+        "COMPRESS",
+        "UNCOMPRESS",
+        "UNCOMPRESSED_LENGTH",
+        "RANDOM_BYTES",
+        "LOWER",
+        "LCASE",
+        "UPPER",
+        "UCASE",
+        "LTRIM",
+        "RTRIM",
+        "TRIM",
+        "LEFT",
+        "RIGHT",
+        "SUBSTRING",
+        "SUBSTR",
+        "MID",
+        "LPAD",
+        "RPAD",
+        "REPEAT",
+        "SPACE",
+        "LOCATE",
+        "INSTR",
+        "POSITION",
+        "REPLACE",
+        "INSERT",
+        "REVERSE",
+        "SOUNDEX",
+        "QUOTE",
+        "SUBSTRING_INDEX",
+        "FIND_IN_SET",
+        "STRCMP",
+        "REGEXP_LIKE",
+        "REGEXP_INSTR",
+        "REGEXP_SUBSTR",
+        "REGEXP_REPLACE",
+        "JSON_VALID",
+        "JSON_CONTAINS",
+        "JSON_CONTAINS_PATH",
+        "JSON_EXTRACT",
+        "JSON_UNQUOTE",
+        "JSON_LENGTH",
+        "JSON_KEYS",
+        "JSON_TYPE",
+        "JSON_QUOTE",
+        "JSON_ARRAY",
+        "JSON_OBJECT",
+        "JSON_SET",
+        "JSON_INSERT",
+        "JSON_REPLACE",
+        "JSON_REMOVE",
+        "DATE",
+        "DATEDIFF",
+        "TIMEDIFF",
+        "TIMESTAMPDIFF",
+        "TIMESTAMP",
+        "UNIX_TIMESTAMP",
+        "SEC_TO_TIME",
+        "FROM_UNIXTIME",
+        "FROM_DAYS",
+        "MAKEDATE",
+        "MAKETIME",
+        "TIME_TO_SEC",
+        "TO_DAYS",
+        "TO_SECONDS",
+        "DAYOFMONTH",
+        "DAYOFWEEK",
+        "DAYOFYEAR",
+        "DAYNAME",
+        "LAST_DAY",
+        "WEEK",
+        "WEEKDAY",
+        "WEEKOFYEAR",
+        "MONTH",
+        "MONTHNAME",
+        "YEAR",
+        "YEARWEEK",
+        "DATE_FORMAT",
+        "TIME_FORMAT",
+        "STR_TO_DATE",
+        "GET_FORMAT",
+        "PERIOD_ADD",
+        "PERIOD_DIFF",
+        "CONVERT_TZ",
+        "CHARSET",
+        "COLLATION",
+        "COERCIBILITY",
+        "UUID",
+        "IS_UUID",
+        "UUID_TO_BIN",
+        "BIN_TO_UUID",
+        "RAND",
+    };
+
+    if (placeholder_scan_token_is_supported_row_arithmetic_value_function(scan, index)) {
+        return true;
+    }
+    return placeholder_scan_token_text_equals_any(
+        scan,
+        index,
+        value_functions,
+        sizeof(value_functions) / sizeof(value_functions[0])
+    );
 }
 
 static bool placeholder_scan_token_stops_predicate_value(

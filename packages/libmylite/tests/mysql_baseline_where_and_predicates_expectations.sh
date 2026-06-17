@@ -75,6 +75,7 @@ expect_error() {
 reset_numbers() {
     run_mysql \
         "DROP TABLE IF EXISTS numbers; "\
+"DROP TABLE IF EXISTS predicate_values; "\
 "CREATE TABLE numbers ("\
 "id INT NOT NULL, i INT, iu INT UNSIGNED, b BIGINT, bu BIGINT UNSIGNED, "\
 "n INT NULL, nn INT NOT NULL, tie INT NULL); "\
@@ -82,7 +83,14 @@ reset_numbers() {
 "(1, -2, 0, -9223372036854775808, 0, NULL, 5, 1), "\
 "(2, 1, 2, 3, 4, 9, 6, 1), "\
 "(3, 2147483647, 4294967295, 9223372036854775807, 9223372036854775807, NULL, 7, 2), "\
-"(4, 0, 8, 8, 8, 9, 8, 2);" \
+"(4, 0, 8, 8, 8, 9, 8, 2); "\
+"CREATE TABLE predicate_values ("\
+"id INT NOT NULL, n INT NOT NULL, n_text VARCHAR(16) NOT NULL, j VARCHAR(64) NOT NULL, "\
+"d1 DATE NOT NULL, d2 DATE NOT NULL); "\
+"INSERT INTO predicate_values VALUES "\
+"(1, 2, '2', '[1,2]', '2024-01-01', '2024-01-03'), "\
+"(2, 1, '1', '[1]', '2024-02-01', '2024-02-02'), "\
+"(3, 3, '3', '[1,2]', '2024-03-01', '2024-03-03');" \
         "$DATABASE" >/dev/null
 }
 
@@ -354,10 +362,27 @@ expect_output \
 
 reset_numbers
 expect_output \
+    "update row-scalar predicate value" \
+    "3	0	1:10,2:10,3:10" \
+    "UPDATE predicate_values SET n = 10 WHERE n = CAST(n_text AS SIGNED); "\
+"SELECT ROW_COUNT(), @@warning_count, GROUP_CONCAT(CONCAT(id, ':', n) ORDER BY id) "\
+"FROM predicate_values;" \
+    "$DATABASE"
+
+reset_numbers
+expect_output \
     "delete conjunction affected rows" \
     "1	0	1,2,4" \
     "DELETE FROM numbers WHERE i > 1 AND n IS NULL; "\
 "SELECT ROW_COUNT(), @@warning_count, GROUP_CONCAT(id ORDER BY id) FROM numbers;" \
+    "$DATABASE"
+
+reset_numbers
+expect_output \
+    "delete row-scalar predicate value" \
+    "2	0	3" \
+    "DELETE FROM predicate_values WHERE n BETWEEN JSON_LENGTH(j) AND JSON_LENGTH(j); "\
+"SELECT ROW_COUNT(), @@warning_count, GROUP_CONCAT(id ORDER BY id) FROM predicate_values;" \
     "$DATABASE"
 
 reset_numbers
@@ -640,6 +665,60 @@ expect_output \
     "mysql accepts nested arithmetic mod predicate upstream" \
     "1" \
     "SELECT id FROM numbers WHERE (MOD((i + 2), nn) + 1) = 1 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts row-scalar cast comparison value upstream" \
+    "1
+2
+3" \
+    "SELECT id FROM predicate_values WHERE n = CAST(n_text AS SIGNED) ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts row-scalar cast between values upstream" \
+    "1
+2
+3" \
+    "SELECT id FROM predicate_values WHERE n BETWEEN CAST(n_text AS SIGNED) "\
+"AND CAST(n_text AS SIGNED) ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts row-scalar cast in-list value upstream" \
+    "1
+2
+3" \
+    "SELECT id FROM predicate_values WHERE n IN (CAST(n_text AS SIGNED), 99) ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts row-scalar cast not-in-list value upstream" \
+    "" \
+    "SELECT id FROM predicate_values WHERE n NOT IN (CAST(n_text AS SIGNED), 99) ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts row-scalar JSON between values upstream" \
+    "1
+2" \
+    "SELECT id FROM predicate_values WHERE n BETWEEN JSON_LENGTH(j) AND JSON_LENGTH(j) "\
+"ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts row-scalar JSON not-between values upstream" \
+    "3" \
+    "SELECT id FROM predicate_values WHERE n NOT BETWEEN JSON_LENGTH(j) AND JSON_LENGTH(j) "\
+"ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts row-scalar temporal between values upstream" \
+    "1
+2" \
+    "SELECT id FROM predicate_values WHERE n BETWEEN DATEDIFF(d2, d1) "\
+"AND DATEDIFF(d2, d1) ORDER BY id;" \
     "$DATABASE"
 
 expect_output \

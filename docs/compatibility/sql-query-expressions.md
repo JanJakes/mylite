@@ -60,11 +60,16 @@ as truth, comparison, `IS [NOT] NULL`, `IS [NOT] TRUE`/`FALSE`/`UNKNOWN`,
 redundant parenthesized wrapper around the arithmetic subject and nested
 arithmetic grouping inside larger predicate arithmetic. Documented arithmetic
 comparison RHS values, `[NOT] BETWEEN` bounds, and `[NOT] IN` list entries are
-also supported in the same single-table predicate envelope. MySQL-style string
-numeric warnings and zero-divisor warnings are recorded. It does not yet provide
-exact fixed-scale decimal metadata/results, binary/JSON/temporal coercion,
-arbitrary function families, broad DML assignment expressions, grouped/joined
-predicate expression surfaces, or full expression metadata.
+also supported in the same single-table predicate envelope. Direct supported
+row-scalar value expressions with row operands, including current conversion,
+JSON, temporal, string, numeric, control-flow, and arithmetic roots, are
+admitted in comparison RHS, `[NOT] BETWEEN` bounds, and `[NOT] IN` list entries
+for the documented single-table `SELECT`, `UPDATE`, and `DELETE` `WHERE` paths.
+MySQL-style string numeric warnings and zero-divisor warnings are recorded. It
+does not yet provide exact fixed-scale decimal metadata/results,
+binary/JSON/temporal coercion outside the covered function families, broad DML
+assignment expressions, grouped/joined predicate expression surfaces, or full
+expression metadata.
 
 The covered row-backed numeric functions include `ABS()`, `SIGN()`,
 `CEIL()` / `CEILING()`, `FLOOR()`, `ROUND()`, `SQRT()`, `DEGREES()`,
@@ -101,13 +106,13 @@ use MyLite's current string-key collation, binary collations use SQLite
 trailing-space parity, and general coercibility remain deferred.
 
 Row-scalar comparison predicates may compare the documented row-scalar subject
-forms, including the row arithmetic predicate subset, against
-compatible literals, descriptor-column RHS values, supported direct row-scalar
-RHS function expressions, and documented row arithmetic RHS values in the
-current single-table `SELECT` envelope. Row-scalar `BETWEEN` and `IN`
-predicates also admit documented row arithmetic value operands in the same
-single-table predicate envelope. Broad expression operands outside that
-documented row arithmetic subset remain deferred.
+forms, including the row arithmetic predicate subset, against compatible
+literals, descriptor-column RHS values, and supported direct row-scalar value
+expressions with row operands in the current single-table `SELECT`, `UPDATE`,
+and `DELETE` `WHERE` envelope. Row-scalar `BETWEEN` and `IN` predicates admit
+the same documented direct value operands. Column-only range bounds, joined
+`ON`, grouped `HAVING`, arbitrary expression composition, and metadata for
+generated predicate value expressions remain deferred.
 
 The limited user-variable surface exposes handle-local `@name` values in
 no-source/`DUAL` scalar `SELECT` lists, `DO` expressions, SQL-level prepared

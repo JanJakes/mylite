@@ -173,6 +173,16 @@ static bool placeholder_scan_row_arithmetic_value_has_operator(
     size_t start_index,
     size_t end_index
 );
+static bool placeholder_scan_predicate_value_can_retry_as_row_scalar(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+);
+static bool placeholder_scan_predicate_value_is_direct_row_scalar_expression(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+);
 static bool placeholder_scan_row_arithmetic_value_has_row_operand(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
@@ -197,6 +207,10 @@ static bool placeholder_scan_token_is_predicate_value_function_name(
     size_t index
 );
 static bool placeholder_scan_token_is_supported_row_arithmetic_value_function(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_is_supported_row_scalar_value_function(
     const struct placeholder_statement_scan *scan,
     size_t index
 );

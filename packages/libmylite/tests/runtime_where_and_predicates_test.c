@@ -286,6 +286,10 @@ static int test_where_and_predicates(void) {
     static const char *const arithmetic_row_membership_value_rows[] = {"1", "2"};
     static const char *const arithmetic_membership_rows[] = {"1", "4"};
     static const char *const arithmetic_mod_rows[] = {"1"};
+    static const char *const row_scalar_value_all_rows[] = {"1", "2", "3"};
+    static const char *const row_scalar_value_two_rows[] = {"1", "2"};
+    static const char *const row_scalar_value_update_rows[] = {"1", "10", "2", "10", "3", "10"};
+    static const char *const row_scalar_value_delete_rows[] = {"3"};
     static const char *const is_distinct_rows[] = {NULL, "9"};
     static const char *const is_count_row[] = {"2"};
     static const char *const is_grouped_rows[] = {"1", "2", "2", "1"};
@@ -1608,6 +1612,98 @@ static int test_where_and_predicates(void) {
     failures += expect_result(
         database,
         (struct expected_result){
+            .sql = "SELECT id FROM predicate_values "
+                   "WHERE n = CAST(n_text AS SIGNED) ORDER BY id",
+            .values = row_scalar_value_all_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row-scalar cast comparison value predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM predicate_values "
+                   "WHERE n BETWEEN CAST(n_text AS SIGNED) AND CAST(n_text AS SIGNED) "
+                   "ORDER BY id",
+            .values = row_scalar_value_all_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row-scalar cast between value predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM predicate_values "
+                   "WHERE n IN (CAST(n_text AS SIGNED), 99) ORDER BY id",
+            .values = row_scalar_value_all_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row-scalar cast in-list value predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM predicate_values "
+                   "WHERE n NOT IN (CAST(n_text AS SIGNED), 99) ORDER BY id",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row-scalar cast not-in-list value predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM predicate_values "
+                   "WHERE n BETWEEN JSON_LENGTH(j) AND JSON_LENGTH(j) ORDER BY id",
+            .values = row_scalar_value_two_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row-scalar JSON between value predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM predicate_values "
+                   "WHERE n NOT BETWEEN JSON_LENGTH(j) AND JSON_LENGTH(j) ORDER BY id",
+            .values = row_scalar_value_delete_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row-scalar JSON not-between value predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM predicate_values "
+                   "WHERE n BETWEEN DATEDIFF(d2, d1) AND DATEDIFF(d2, d1) ORDER BY id",
+            .values = row_scalar_value_two_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row-scalar temporal between value predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
             .sql = "SELECT id FROM numbers WHERE i IS TRUE && nn = 5",
             .values = in_warning_rows,
             .column_count = 1U,
@@ -2613,6 +2709,28 @@ static int test_where_and_predicates(void) {
     failures += reset_numbers(database);
     failures += execute_ok(
         database,
+        "UPDATE predicate_values SET n = 10 WHERE n = CAST(n_text AS SIGNED)",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 3, "update row-scalar value predicate");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, n FROM predicate_values ORDER BY id",
+            .values = row_scalar_value_update_rows,
+            .column_count = 2U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "update row-scalar value row state",
+        }
+    );
+    failures += reset_numbers(database);
+    failures += execute_ok(
+        database,
         "UPDATE numbers SET n = NULL WHERE i IN (-2, 1, 0) ORDER BY id DESC LIMIT 1",
         &result
     );
@@ -2850,6 +2968,28 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "delete in row state",
+        }
+    );
+    failures += reset_numbers(database);
+    failures += execute_ok(
+        database,
+        "DELETE FROM predicate_values WHERE n BETWEEN JSON_LENGTH(j) AND JSON_LENGTH(j)",
+        &result
+    );
+    failures +=
+        expect_int64(mylite_result_affected_rows(result), 2, "delete row-scalar value predicate");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM predicate_values ORDER BY id",
+            .values = row_scalar_value_delete_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "delete row-scalar value row state",
         }
     );
     failures += reset_numbers(database);
@@ -4922,6 +5062,9 @@ static int reset_numbers(mylite_db *database) {
     (void)execute_ok(database, "DROP TABLE IF EXISTS numbers", &result);
     mylite_result_free(result);
     result = NULL;
+    (void)execute_ok(database, "DROP TABLE IF EXISTS predicate_values", &result);
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_ok(
         database,
         "CREATE TABLE numbers (id INT NOT NULL, i INT, iu INT UNSIGNED, b BIGINT, "
@@ -4938,6 +5081,25 @@ static int reset_numbers(mylite_db *database) {
         "(3, 2147483647, 4294967295, 9223372036854775807, 9223372036854775807, NULL, 7, 2, "
         "2147483647), "
         "(4, 0, 8, 8, 8, 9, 8, 2, 0)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "CREATE TABLE predicate_values (id INT NOT NULL, n INT NOT NULL, "
+        "n_text VARCHAR(16) NOT NULL, j VARCHAR(64) NOT NULL, d1 DATE NOT NULL, "
+        "d2 DATE NOT NULL)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO predicate_values VALUES "
+        "(1, 2, '2', '[1,2]', '2024-01-01', '2024-01-03'), "
+        "(2, 1, '1', '[1]', '2024-02-01', '2024-02-02'), "
+        "(3, 3, '3', '[1,2]', '2024-03-01', '2024-03-03')",
         &result
     );
     mylite_result_free(result);

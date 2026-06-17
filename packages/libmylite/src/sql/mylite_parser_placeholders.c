@@ -79,6 +79,50 @@ static enum mylite_sql_parse_status feed_token_with_parser_token_override(
 static bool scan_can_retry_parenthesized_row_constructors(
     const struct placeholder_statement_scan *scan
 );
+static bool scan_can_retry_parenthesized_row_arithmetic_predicates(
+    const struct placeholder_statement_scan *scan,
+    bool *skip_tokens
+);
+static bool placeholder_scan_parenthesized_row_arithmetic_predicate_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t left_paren_index,
+    size_t *out_right_paren_index
+);
+static bool placeholder_scan_token_starts_row_arithmetic_predicate_subject(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_continues_row_arithmetic_predicate_subject(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_boolean_connective_is_in_predicate_context(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_parenthesized_row_arithmetic_has_suffix(
+    const struct placeholder_statement_scan *scan,
+    size_t right_paren_index
+);
+static bool placeholder_scan_parenthesized_row_arithmetic_has_operator(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+);
+static bool placeholder_scan_token_is_row_arithmetic_operator(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_starts_mod_function(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static enum mylite_sql_parse_status parse_parenthesized_row_arithmetic_predicate_tokens(
+    struct mylite_sql_parse_config config,
+    const struct placeholder_statement_scan *scan,
+    const bool *skip_tokens,
+    struct mylite_sql_parse_result *out_result
+);
 static bool scan_can_retry_tableless_select_limit(
     const struct placeholder_statement_scan *scan,
     size_t *out_limit_index

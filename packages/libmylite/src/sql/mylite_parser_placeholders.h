@@ -15,6 +15,11 @@ enum mylite_sql_parse_status mylite_sql_parser_try_parse_parenthesized_row_const
     struct mylite_sql_parse_result *result,
     bool *out_handled
 );
+enum mylite_sql_parse_status mylite_sql_parser_try_parse_parenthesized_row_arithmetic_predicate_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    bool *out_handled
+);
 enum mylite_sql_parse_status mylite_sql_parser_try_parse_tableless_select_limit_statement(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,

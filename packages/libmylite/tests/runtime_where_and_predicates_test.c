@@ -271,6 +271,7 @@ static int test_where_and_predicates(void) {
     static const char *const is_unsigned_true_rows[] = {"2", "3", "4"};
     static const char *const arithmetic_comparison_rows[] = {"3", "4"};
     static const char *const arithmetic_precedence_rows[] = {"1"};
+    static const char *const arithmetic_grouped_parenthesized_rows[] = {"4"};
     static const char *const arithmetic_membership_rows[] = {"1", "4"};
     static const char *const arithmetic_mod_rows[] = {"1"};
     static const char *const is_distinct_rows[] = {NULL, "9"};
@@ -1222,6 +1223,18 @@ static int test_where_and_predicates(void) {
     failures += expect_result(
         database,
         (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE (i + nn) > 7 ORDER BY id",
+            .values = arithmetic_comparison_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "parenthesized row arithmetic comparison predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
             .sql = "SELECT id FROM numbers WHERE i + nn * 2 = 8 ORDER BY id",
             .values = arithmetic_precedence_rows,
             .column_count = 1U,
@@ -1229,6 +1242,18 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "row arithmetic predicate precedence",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE ((i + nn) > 7 AND id = 4) ORDER BY id",
+            .values = arithmetic_grouped_parenthesized_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "grouped parenthesized row arithmetic comparison predicate",
         }
     );
     failures += expect_result(
@@ -1246,6 +1271,18 @@ static int test_where_and_predicates(void) {
     failures += expect_result(
         database,
         (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE (i + nn) BETWEEN 3 AND 8 ORDER BY id",
+            .values = between_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "parenthesized row arithmetic between predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
             .sql = "SELECT id FROM numbers WHERE i + nn IN (3, 8, NULL) ORDER BY id",
             .values = arithmetic_membership_rows,
             .column_count = 1U,
@@ -1253,6 +1290,18 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "row arithmetic in predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE (i + nn) IN (3, 8, NULL) ORDER BY id",
+            .values = arithmetic_membership_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "parenthesized row arithmetic in predicate",
         }
     );
     failures += expect_result(
@@ -1270,6 +1319,18 @@ static int test_where_and_predicates(void) {
     failures += expect_result(
         database,
         (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE (i + 1) IS TRUE ORDER BY id",
+            .values = is_all_rows,
+            .column_count = 1U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "parenthesized row arithmetic is true predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
             .sql = "SELECT id FROM numbers WHERE i + 0 IS FALSE ORDER BY id",
             .values = is_false_rows,
             .column_count = 1U,
@@ -1282,6 +1343,18 @@ static int test_where_and_predicates(void) {
     failures += expect_result(
         database,
         (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE (i + 0) IS FALSE ORDER BY id",
+            .values = is_false_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "parenthesized row arithmetic is false predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
             .sql = "SELECT id FROM numbers WHERE MOD(i + 2, nn) = 0 ORDER BY id",
             .values = arithmetic_mod_rows,
             .column_count = 1U,
@@ -1289,6 +1362,18 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "row arithmetic mod comparison predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE (MOD(i + 2, nn)) = 0 ORDER BY id",
+            .values = arithmetic_mod_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "parenthesized row arithmetic mod comparison predicate",
         }
     );
     failures += expect_result(

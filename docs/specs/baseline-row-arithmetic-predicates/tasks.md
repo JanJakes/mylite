@@ -8,7 +8,7 @@
       binding.
 - [x] Update parser/runtime/MySQL expectation tests.
 - [x] Update compatibility docs and remove stale deferred notes.
-- [x] Document parenthesized top-level arithmetic predicate roots as deferred
-      until the broader expression grammar is unified.
+- [x] Document parenthesized top-level arithmetic predicate roots as follow-up
+      work.
 - [x] Run focused tests, full workflow checks, release-gate review, commit, and
       push.

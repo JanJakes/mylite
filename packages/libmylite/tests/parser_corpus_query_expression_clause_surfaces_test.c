@@ -101,7 +101,10 @@ static int test_query_expression_clause_placeholders(void) {
 
     failures += parse_ok("SELECT a FROM t1 WHERE a = 1");
     failures += parse_ok("SELECT COUNT(*) FROM t1 WHERE a + 1 > 1");
+    failures += parse_ok("SELECT COUNT(*) FROM t1 WHERE (a + 1) > 1");
     failures += parse_ok("SELECT a FROM t1 WHERE a IN (SELECT a FROM t2 WHERE b + 1 > 20) "
+                         "ORDER BY a");
+    failures += parse_ok("SELECT a FROM t1 WHERE a IN (SELECT a FROM t2 WHERE (b + 1) > 20) "
                          "ORDER BY a");
     failures += parse_ok("SELECT t1.a, t2.a FROM t1 JOIN t2 ON t1.a = t2.a");
     failures += parse_ok("SELECT * FROM (SELECT 1) AS dt");

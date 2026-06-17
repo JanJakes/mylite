@@ -119,8 +119,10 @@ documented grammar or through the explicit unsupported-placeholder classifier.
 The executable arithmetic predicate root must contain an arithmetic operator or
 be a `MOD(left, right)` function call; a lone descriptor column remains on the
 existing descriptor predicate paths. Parenthesized top-level arithmetic
-predicate roots such as `(a + b) IS TRUE` and `(a + b) * 2 > 0` are deferred
-until MyLite has a unified expression grammar for table-backed predicates.
+predicate roots such as `(a + b) IS TRUE` are covered by the follow-up
+[baseline parenthesized row arithmetic predicates](../baseline-parenthesized-row-arithmetic-predicates/specs.md)
+slice. Nested arithmetic parentheses inside larger predicate arithmetic, such
+as `((a + b) * 2) > 0`, remain deferred.
 
 ## Runtime Semantics
 
@@ -179,7 +181,7 @@ Add or update MySQL-verified expectation tests and C runtime tests for:
 ## Deferred Work
 
 - General `WHERE expression` parsing and execution.
-- Parenthesized top-level row arithmetic predicate roots.
+- Nested arithmetic parentheses inside larger row arithmetic predicate roots.
 - Arithmetic predicates in joined `ON`, grouped `HAVING`, broad DML
   assignments, and aggregate/window expression surfaces not already documented.
 - Binary-string, JSON, temporal interval, unsigned-width, and full fixed-decimal

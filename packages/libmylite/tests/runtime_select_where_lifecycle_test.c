@@ -567,6 +567,14 @@ static int test_filtered_select_diagnostics(void) {
     failures += expect_query_single_value(
         database,
         (struct expected_single_value_query){
+            .sql = "SELECT 'visible' WHERE (1 + 2 * 3) = 7",
+            .expected = "visible",
+            .context = "parenthesized tableless row arithmetic comparison predicate",
+        }
+    );
+    failures += expect_query_single_value(
+        database,
+        (struct expected_single_value_query){
             .sql = "SELECT COUNT(*) FROM numbers WHERE i = NULL",
             .expected = "0",
             .context = "column equal null predicate",

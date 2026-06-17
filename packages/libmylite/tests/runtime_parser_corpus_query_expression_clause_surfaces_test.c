@@ -81,6 +81,16 @@ static int test_query_expression_clause_surfaces(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t1 WHERE (a + 1) > 1",
+            .values = arithmetic_predicate_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "parenthesized row arithmetic predicate support",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
             .sql = "SELECT a FROM t1 ORDER BY ABS(b - 5)",
             .values = function_order_key_rows,
             .column_count = 1U,
@@ -215,6 +225,16 @@ static int test_query_expression_clause_surfaces(void) {
             .column_count = 1U,
             .row_count = 2U,
             .context = "subquery row arithmetic predicate support",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT a FROM t1 WHERE a IN (SELECT a FROM t2 WHERE (b + 1) > 20) ORDER BY a",
+            .values = subquery_arithmetic_predicate_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "subquery parenthesized row arithmetic predicate support",
         }
     );
     failures += execute_error(

@@ -54,14 +54,15 @@ The limited table-backed arithmetic slice admits `+`, binary `-`, `*`, `/`,
 numeric and nonbinary string descriptor columns, numeric/string/boolean/`NULL`
 literals, covered row-backed numeric functions, and parentheses in one-base-table
 `SELECT` projections and ordering. The same arithmetic envelope is also admitted
-as unparenthesized truth, comparison, `IS [NOT] NULL`, `IS [NOT]
-TRUE`/`FALSE`/`UNKNOWN`, `[NOT] BETWEEN`, and `[NOT] IN` subjects in the
-documented single-table `SELECT` and existing descriptor subquery predicate
-paths. MySQL-style string numeric warnings and zero-divisor warnings are
-recorded. It does not yet provide parenthesized top-level arithmetic predicate
-roots, exact fixed-scale decimal metadata/results, binary/JSON/temporal
-coercion, arbitrary function families, broad DML assignment expressions,
-grouped/joined predicate expression surfaces, or full expression metadata.
+as truth, comparison, `IS [NOT] NULL`, `IS [NOT] TRUE`/`FALSE`/`UNKNOWN`,
+`[NOT] BETWEEN`, and `[NOT] IN` subjects in the documented single-table
+`SELECT` and existing descriptor subquery predicate paths, including one
+redundant parenthesized wrapper around the arithmetic subject. MySQL-style
+string numeric warnings and zero-divisor warnings are recorded. It does not
+yet provide nested arithmetic parentheses inside larger predicate arithmetic,
+exact fixed-scale decimal metadata/results, binary/JSON/temporal coercion,
+arbitrary function families, broad DML assignment expressions, grouped/joined
+predicate expression surfaces, or full expression metadata.
 
 The covered row-backed numeric functions include `ABS()`, `SIGN()`,
 `CEIL()` / `CEILING()`, `FLOOR()`, `ROUND()`, `SQRT()`, `DEGREES()`,
@@ -98,13 +99,13 @@ use MyLite's current string-key collation, binary collations use SQLite
 trailing-space parity, and general coercibility remain deferred.
 
 Row-scalar comparison predicates may compare the documented row-scalar subject
-forms, including the unparenthesized row arithmetic predicate subset, against
+forms, including the row arithmetic predicate subset, against
 compatible literals, descriptor-column RHS values, and supported direct
 row-scalar RHS function expressions in the current single-table `SELECT`
 envelope. Row-scalar `BETWEEN` predicates also admit direct supported
-row-scalar function bounds. Non-function expression bounds, parenthesized
-top-level arithmetic predicate roots, and broad expression operands remain
-deferred.
+row-scalar function bounds. Non-function expression bounds, nested arithmetic
+parentheses inside larger predicate arithmetic, and broad expression operands
+remain deferred.
 
 The limited user-variable surface exposes handle-local `@name` values in
 no-source/`DUAL` scalar `SELECT` lists, `DO` expressions, SQL-level prepared

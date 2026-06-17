@@ -125,6 +125,22 @@ enum mylite_sql_parse_status mylite_sql_parse(
     if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
         bool handled = false;
 
+        enum mylite_sql_parse_status row_arithmetic_status =
+            mylite_sql_parser_try_parse_parenthesized_row_arithmetic_predicate_statement(
+                config,
+                out_result,
+                &handled
+            );
+
+        if (handled) {
+            status = row_arithmetic_status;
+            out_result->status = row_arithmetic_status;
+        }
+    }
+
+    if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
+        bool handled = false;
+
         enum mylite_sql_parse_status tableless_limit_status =
             mylite_sql_parser_try_parse_tableless_select_limit_statement(
                 config,

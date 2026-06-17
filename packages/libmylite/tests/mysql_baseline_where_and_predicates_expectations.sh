@@ -426,9 +426,22 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "mysql accepts parenthesized arithmetic comparison predicate upstream" \
+    "3
+4" \
+    "SELECT id FROM numbers WHERE (i + nn) > 7 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
     "mysql accepts arithmetic predicate precedence upstream" \
     "1" \
     "SELECT id FROM numbers WHERE i + nn * 2 = 8 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts grouped parenthesized arithmetic comparison predicate upstream" \
+    "4" \
+    "SELECT id FROM numbers WHERE ((i + nn) > 7 AND id = 4) ORDER BY id;" \
     "$DATABASE"
 
 expect_output \
@@ -440,10 +453,25 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "mysql accepts parenthesized arithmetic between predicate upstream" \
+    "1
+2
+4" \
+    "SELECT id FROM numbers WHERE (i + nn) BETWEEN 3 AND 8 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
     "mysql accepts arithmetic in predicate upstream" \
     "1
 4" \
     "SELECT id FROM numbers WHERE i + nn IN (3, 8, NULL) ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts parenthesized arithmetic in predicate upstream" \
+    "1
+4" \
+    "SELECT id FROM numbers WHERE (i + nn) IN (3, 8, NULL) ORDER BY id;" \
     "$DATABASE"
 
 expect_output \
@@ -456,9 +484,30 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "mysql accepts parenthesized arithmetic boolean predicate upstream" \
+    "1
+2
+3
+4" \
+    "SELECT id FROM numbers WHERE (i + 1) IS TRUE ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts parenthesized arithmetic false predicate upstream" \
+    "4" \
+    "SELECT id FROM numbers WHERE (i + 0) IS FALSE ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
     "mysql accepts arithmetic mod predicate upstream" \
     "1" \
     "SELECT id FROM numbers WHERE MOD(i + 2, nn) = 0 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts parenthesized arithmetic mod predicate upstream" \
+    "1" \
+    "SELECT id FROM numbers WHERE (MOD(i + 2, nn)) = 0 ORDER BY id;" \
     "$DATABASE"
 
 expect_output \

@@ -158,9 +158,11 @@ This slice does not install the broad grammar above directly. MyLite's current
 Lemon grammar and runtime planner are intentionally narrower. The implemented
 behavior is mostly a fallback classifier that admits recognized surfaces as
 explicit unsupported placeholders after the normal parser fails. The
-representative unparenthesized row arithmetic predicate cases are now handled by
-the normal parser/runtime through
-[baseline row arithmetic predicates](../baseline-row-arithmetic-predicates/specs.md).
+representative row arithmetic predicate cases are now handled by the normal
+parser/runtime through
+[baseline row arithmetic predicates](../baseline-row-arithmetic-predicates/specs.md)
+and
+[baseline parenthesized row arithmetic predicates](../baseline-parenthesized-row-arithmetic-predicates/specs.md).
 
 ## Runtime Behavior
 

@@ -70,6 +70,15 @@ numeric-rhs	1,2
 concat-ws-rhs	1,2,3
 between-function-bounds	1,2
 between-string-function-bounds	1,2,3
+string-in	1
+numeric-in	1,2,3
+not-in	2
+function-list-in	1,2,3
+mixed-list-in	1,2,3
+json-in	1
+temporal-in	1
+digest-in	1
+compression-in	1
 EXPECTED
 )
 expect_output \
@@ -141,7 +150,27 @@ expect_output \
 "AND GREATEST(i, 10); "\
 "SELECT 'between-string-function-bounds', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
 "FROM expr_pred WHERE IFNULL(v, 'fallback') BETWEEN "\
-"COALESCE(v, 'fallback') AND CONCAT(IFNULL(v, 'fallback'), 'z');" \
+"COALESCE(v, 'fallback') AND CONCAT(IFNULL(v, 'fallback'), 'z'); "\
+"SELECT 'string-in', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE LOWER(v) IN ('ALPHA', 'gamma'); "\
+"SELECT 'numeric-in', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE COALESCE(i, 0) IN (0, 10); "\
+"SELECT 'not-in', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE HEX(b) NOT IN ('4142', 'FFFF'); "\
+"SELECT 'function-list-in', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE IFNULL(v, 'fallback') IN "\
+"(LOWER(v), COALESCE(v, 'fallback')); "\
+"SELECT 'mixed-list-in', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE IFNULL(v, 'fallback') IN "\
+"('fallback', COALESCE(v, 'fallback')); "\
+"SELECT 'json-in', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE JSON_UNQUOTE(JSON_EXTRACT(js, '$.a')) IN ('1', '3'); "\
+"SELECT 'temporal-in', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE DATEDIFF(dt, '2024-01-01') IN (1, 3); "\
+"SELECT 'digest-in', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE MD5(v) IN (MD5('Alpha'), MD5('missing')); "\
+"SELECT 'compression-in', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
+"FROM expr_pred WHERE UNCOMPRESSED_LENGTH(COMPRESS(v)) IN (0, 5);" \
     "$DATABASE"
 
 printf '%s\n' "mysql_baseline_select_row_scalar_predicates_expectations: ok"

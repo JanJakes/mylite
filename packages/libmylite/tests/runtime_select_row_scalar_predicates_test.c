@@ -319,6 +319,104 @@ static int test_select_row_scalar_predicates(void) {
             .context = "row-scalar between string function bounds",
         }
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE LOWER(v) IN ('ALPHA', 'gamma') "
+                   "ORDER BY id",
+            .values = ids_1,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row-scalar string in predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE COALESCE(i, 0) IN (0, 10) ORDER BY id",
+            .values = ids_123,
+            .column_count = 1U,
+            .row_count = 3U,
+            .context = "row-scalar numeric in predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE HEX(b) NOT IN ('4142', 'FFFF') "
+                   "ORDER BY id",
+            .values = ids_2,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row-scalar not in predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE IFNULL(v, 'fallback') IN "
+                   "(LOWER(v), COALESCE(v, 'fallback')) ORDER BY id",
+            .values = ids_123,
+            .column_count = 1U,
+            .row_count = 3U,
+            .context = "row-scalar in function list predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE IFNULL(v, 'fallback') IN "
+                   "('fallback', COALESCE(v, 'fallback')) ORDER BY id",
+            .values = ids_123,
+            .column_count = 1U,
+            .row_count = 3U,
+            .context = "row-scalar in mixed literal and function list predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE JSON_UNQUOTE(JSON_EXTRACT(js, '$.a')) "
+                   "IN ('1', '3') ORDER BY id",
+            .values = ids_1,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row-scalar json in predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE DATEDIFF(dt, '2024-01-01') IN (1, 3) "
+                   "ORDER BY id",
+            .values = ids_1,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row-scalar temporal in predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE MD5(v) IN (MD5('Alpha'), MD5('missing')) "
+                   "ORDER BY id",
+            .values = ids_1,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row-scalar digest in predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM expr_pred WHERE UNCOMPRESSED_LENGTH(COMPRESS(v)) IN (0, 5) "
+                   "ORDER BY id",
+            .values = ids_1,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row-scalar compression in predicate",
+        }
+    );
 
     mylite_close(database);
     return failures;

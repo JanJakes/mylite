@@ -1367,7 +1367,8 @@ static int append_select_predicate_non_exists_node_sql(
     if (node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_TRUTH ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL ||
-        node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN) {
+        node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN ||
+        node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IN) {
         return append_select_row_scalar_predicate_sql(string, node, next_parameter);
     }
     if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_SUBQUERY_IN) {
@@ -1418,7 +1419,8 @@ static int append_select_predicate_non_subquery_node_sql(
     if (node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_TRUTH ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON ||
         node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL ||
-        node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN) {
+        node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN ||
+        node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IN) {
         return append_select_row_scalar_predicate_sql(string, node, next_parameter);
     }
     if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_SUBQUERY_IN) {
@@ -1608,6 +1610,14 @@ static int append_select_row_scalar_predicate_sql(
     }
     if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN) {
         return append_select_row_scalar_between_predicate_term_sql(string, node, next_parameter);
+    }
+    if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IN) {
+        if (row_scalar_expression_uses_string_collation(node->row_scalar_expression)) {
+            rc = append_string_key_collation_sql(string);
+        }
+    }
+    if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IN) {
+        return append_select_in_value_list_sql(string, node, next_parameter);
     }
     if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL) {
         if (node->operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NULL) {
@@ -2762,10 +2772,20 @@ static int append_select_in_value_list_sql(
             rc = mylite_dynamic_string_append(string, ", ");
         }
         if (rc == MYLITE_OK) {
-            rc = append_numbered_parameter(string, *next_parameter);
-        }
-        if (rc == MYLITE_OK) {
-            ++(*next_parameter);
+            if (node->row_scalar_value_expressions != NULL &&
+                node->row_scalar_value_expressions[value_index].kind !=
+                    PLANNED_ROW_SCALAR_EXPRESSION_NONE) {
+                rc = append_row_scalar_expression_sql(
+                    string,
+                    &node->row_scalar_value_expressions[value_index],
+                    next_parameter
+                );
+            } else {
+                rc = append_numbered_parameter(string, *next_parameter);
+                if (rc == MYLITE_OK) {
+                    ++(*next_parameter);
+                }
+            }
         }
     }
     if (rc == MYLITE_OK) {

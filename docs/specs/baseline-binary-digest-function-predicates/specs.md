@@ -79,7 +79,9 @@ of the covered row-scalar function expressions and the predicate is:
 
 - comparison against an admitted scalar or row-scalar value expression;
 - `IS NULL` or `IS NOT NULL`;
-- `BETWEEN` or `NOT BETWEEN` with admitted scalar or row-scalar bounds.
+- `BETWEEN` or `NOT BETWEEN` with admitted scalar or row-scalar bounds;
+- nonvolatile row-scalar `IN` / `NOT IN` literal/function lists through
+  [baseline row-scalar IN predicates](../baseline-row-scalar-in-predicates/specs.md).
 
 The expression operands remain the same as in the existing function slices:
 supported descriptor columns, supported scalar literals, nested supported
@@ -90,7 +92,6 @@ literals.
 
 This slice does not add:
 
-- row-scalar `IN (...)` predicate subjects;
 - arbitrary expression arguments beyond the current row-scalar expression
   planner;
 - `ORDER BY`, `GROUP BY`, `HAVING`, window frame, generated-column, default, or
@@ -138,4 +139,6 @@ Tests cover:
 - MySQL-runtime-verified compression/decompression comparison,
   `UNCOMPRESSED_LENGTH()` `BETWEEN`, `COMPRESS()` `IS NULL`, and
   row-volatile `RANDOM_BYTES(id) IS NOT NULL` predicates.
+- Row-scalar `IN` / `NOT IN` coverage lives in
+  [baseline row-scalar IN predicates](../baseline-row-scalar-in-predicates/specs.md).
 - MyLite C runtime assertions for the same supported predicate contexts.

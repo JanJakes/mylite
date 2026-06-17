@@ -380,6 +380,17 @@ static int plan_in_predicate(
         set_unsupported_error(database, "WHERE supports only descriptor column IN predicates");
         return MYLITE_ERROR;
     }
+    if (predicate_node_is_supported_row_scalar_expression(child_at(predicate_node, 0U))) {
+        return plan_row_scalar_expression_in_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            out_node_index
+        );
+    }
     if (child_at(predicate_node, 0U) != NULL &&
         child_at(predicate_node, 0U)->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
         return plan_scalar_subquery_in_literal_predicate(
@@ -455,6 +466,75 @@ static int plan_in_predicate(
     }
     predicate->qualify_column_references = true;
 
+    return rc;
+}
+
+static int plan_row_scalar_expression_in_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    const struct mylite_sql_ast_node *right = child_at(predicate_node, 1U);
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_ROW_SCALAR_IN,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_NONE,
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = MYLITE_OK;
+
+    if (right == NULL || right->kind == MYLITE_SQL_AST_SELECT_STATEMENT) {
+        set_unsupported_error(database, "row-scalar IN predicates support only literal lists");
+        return MYLITE_ERROR;
+    }
+
+    node.row_scalar_expression = calloc(1U, sizeof(*node.row_scalar_expression));
+    if (node.row_scalar_expression == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    rc = plan_row_scalar_expression(
+        database,
+        child_at(predicate_node, 0U),
+        true,
+        source_context,
+        NULL,
+        table_columns,
+        table_column_count,
+        node.row_scalar_expression
+    );
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_in_value_list(
+            database,
+            right,
+            source_context,
+            table_columns,
+            table_column_count,
+            &node
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_value_array_deinit(node.values, node.value_count);
+        free(node.values);
+        if (node.row_scalar_value_expressions != NULL) {
+            for (size_t value_index = 0U; value_index < node.value_count; ++value_index) {
+                planned_row_scalar_expression_deinit(
+                    &node.row_scalar_value_expressions[value_index]
+                );
+            }
+        }
+        free(node.row_scalar_value_expressions);
+        planned_row_scalar_expression_deinit(node.row_scalar_expression);
+        free(node.row_scalar_expression);
+    }
     return rc;
 }
 
@@ -1008,6 +1088,90 @@ static int plan_in_subquery_inner_predicate(
         );
     }
     return rc;
+}
+
+static int plan_row_scalar_in_value_list(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_list,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node
+) {
+    size_t value_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_list == NULL || value_list->kind != MYLITE_SQL_AST_PREDICATE_VALUE_LIST) {
+        set_unsupported_error(database, "WHERE supports only nonempty IN predicate lists");
+        return MYLITE_ERROR;
+    }
+    value_count = mylite_sql_ast_node_child_count(value_list);
+    if (value_count == 0U) {
+        set_unsupported_error(database, "WHERE supports only nonempty IN predicate lists");
+        return MYLITE_ERROR;
+    }
+    if (value_count > SIZE_MAX / sizeof(*node->values) ||
+        value_count > SIZE_MAX / sizeof(*node->row_scalar_value_expressions)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    node->values = calloc(value_count, sizeof(*node->values));
+    node->row_scalar_value_expressions =
+        calloc(value_count, sizeof(*node->row_scalar_value_expressions));
+    if (node->values == NULL || node->row_scalar_value_expressions == NULL) {
+        set_nomem_error(database);
+        planned_value_array_deinit(node->values, value_count);
+        free(node->values);
+        free(node->row_scalar_value_expressions);
+        node->values = NULL;
+        node->row_scalar_value_expressions = NULL;
+        return MYLITE_NOMEM;
+    }
+    node->value_count = value_count;
+
+    for (size_t value_index = 0U; rc == MYLITE_OK && value_index < value_count; ++value_index) {
+        rc = plan_row_scalar_in_value(
+            database,
+            child_at(value_list, value_index),
+            source_context,
+            table_columns,
+            table_column_count,
+            node,
+            value_index
+        );
+    }
+    return rc;
+}
+
+static int plan_row_scalar_in_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node,
+    size_t value_index
+) {
+    if (predicate_node_is_supported_row_scalar_expression(value_node)) {
+        return plan_row_scalar_expression(
+            database,
+            value_node,
+            true,
+            source_context,
+            NULL,
+            table_columns,
+            table_column_count,
+            &node->row_scalar_value_expressions[value_index]
+        );
+    }
+
+    return plan_where_row_scalar_predicate_literal_value(
+        database,
+        node->row_scalar_expression,
+        value_node,
+        &node->values[value_index]
+    );
 }
 
 static int convert_predicate_in_value_list(

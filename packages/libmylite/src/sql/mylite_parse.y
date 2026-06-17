@@ -7177,6 +7177,9 @@ predicate_in_value(A) ::= SYSTEM_VARIABLE(T). {
 predicate_in_value(A) ::= user_variable(T). {
     A = T;
 }
+predicate_in_value(A) ::= predicate_row_scalar_expression(V). {
+    A = V;
+}
 
 predicate_range_value(A) ::= predicate_integer_value(V). {
     A = V;

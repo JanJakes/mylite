@@ -1088,6 +1088,7 @@ enum planned_select_predicate_kind {
     PLANNED_SELECT_PREDICATE_SCALAR_COUNT_SUBQUERY_COMPARISON = 16,
     PLANNED_SELECT_PREDICATE_SCALAR_AGGREGATE_SUBQUERY_COMPARISON = 17,
     PLANNED_SELECT_PREDICATE_SCALAR_AGGREGATE_SUBQUERY_BETWEEN = 18,
+    PLANNED_SELECT_PREDICATE_ROW_SCALAR_IN = 19,
 };
 
 struct planned_select_predicate_node {
@@ -1119,6 +1120,7 @@ struct planned_select_predicate_node {
     struct planned_row_scalar_expression *row_scalar_expression;
     struct planned_row_scalar_expression *row_scalar_value_expression;
     struct planned_row_scalar_expression *row_scalar_upper_value_expression;
+    struct planned_row_scalar_expression *row_scalar_value_expressions;
 };
 
 struct planned_select_predicate {

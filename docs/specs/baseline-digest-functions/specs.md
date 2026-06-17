@@ -82,8 +82,10 @@ MyLite supports:
   - `SHA2(column, 224|256|384|512|0|FALSE)`
 - Descriptor-backed `WHERE` predicates where supported row-scalar digest
   expressions appear as the predicate subject for comparison, `IS [NOT] NULL`,
-  and `[NOT] BETWEEN`. See
-  [baseline binary and digest function predicates](../baseline-binary-digest-function-predicates/specs.md).
+  `[NOT] BETWEEN`, and row-scalar `IN` / `NOT IN`. See
+  [baseline binary and digest function predicates](../baseline-binary-digest-function-predicates/specs.md)
+  and
+  [baseline row-scalar IN predicates](../baseline-row-scalar-in-predicates/specs.md).
 - `SHA2()` hash-length arguments as integer, signed integer, boolean, or `NULL`
   literal values in the baseline surface.
 - MySQL-compatible lowercase hexadecimal digest text and `NULL` propagation.
@@ -98,7 +100,7 @@ This slice does not implement:
   arguments such as `'224x'`.
 - Full expression arguments such as `MD5(1 + 2)` outside existing admitted
   session-scalar values.
-- Row-scalar `IN`, ordering/grouping, broad DML assignment, generated-column, or
+- Ordering/grouping, broad DML assignment, generated-column, or
   default-expression contexts.
 - FIPS-mode behavior that makes `MD5()` return `NULL`.
 - Binary connection-character-set metadata differences beyond the current

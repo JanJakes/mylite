@@ -14,8 +14,10 @@ SELECT id FROM t WHERE id = IF(1, 1, 0)
 ```
 
 The slice keeps MyLite's current predicate model. It does not introduce a
-general expression VM, row constructors, row-scalar `IN`, aggregate/window
-predicates, stored functions, spatial functions, or broad MySQL type coercion.
+general expression VM, row constructors, aggregate/window predicates, stored
+functions, spatial functions, or broad MySQL type coercion. Row-scalar `IN`
+predicates are covered separately by
+[baseline row-scalar IN predicates](../baseline-row-scalar-in-predicates/specs.md).
 
 ## Compatibility Evidence
 
@@ -126,7 +128,8 @@ remain outside this slice.
 
 ## Compatibility Limits
 
-- No row-scalar `IN (...)` or `NOT IN (...)` in this slice.
+- Row-scalar `IN (...)` and `NOT IN (...)` are covered by
+  [baseline row-scalar IN predicates](../baseline-row-scalar-in-predicates/specs.md).
 - No bare row-scalar truth predicates such as `WHERE IF(...)` in this slice.
 - No arbitrary `predicate_atom ::= expression` grammar widening.
 - No row constructors, `MATCH ... AGAINST`, full-text predicates, spatial
@@ -154,8 +157,7 @@ Add MySQL-runtime expectations and focused runtime tests for:
   row-scalar function bounds;
 - temporal row-scalar functions in predicates;
 - JSON row-scalar functions in predicates;
-- unsupported `IN` and aggregate/window predicate behavior stays outside this
-  slice.
+- unsupported aggregate/window predicate behavior stays outside this slice.
 
 Verification before marking done:
 

@@ -136,6 +136,15 @@ static void planned_select_predicate_deinit(struct planned_select_predicate *pre
             planned_value_deinit(&predicate->nodes[node_index].values[value_index]);
         }
         free(predicate->nodes[node_index].values);
+        for (size_t value_index = 0U;
+             value_index < predicate->nodes[node_index].value_count &&
+             predicate->nodes[node_index].row_scalar_value_expressions != NULL;
+             ++value_index) {
+            planned_row_scalar_expression_deinit(
+                &predicate->nodes[node_index].row_scalar_value_expressions[value_index]
+            );
+        }
+        free(predicate->nodes[node_index].row_scalar_value_expressions);
         if (predicate->nodes[node_index].row_scalar_expression != NULL) {
             planned_row_scalar_expression_deinit(predicate->nodes[node_index].row_scalar_expression
             );
@@ -187,6 +196,15 @@ static void planned_select_predicate_deinit_without_exists(
             planned_value_deinit(&predicate->nodes[node_index].values[value_index]);
         }
         free(predicate->nodes[node_index].values);
+        for (size_t value_index = 0U;
+             value_index < predicate->nodes[node_index].value_count &&
+             predicate->nodes[node_index].row_scalar_value_expressions != NULL;
+             ++value_index) {
+            planned_row_scalar_expression_deinit(
+                &predicate->nodes[node_index].row_scalar_value_expressions[value_index]
+            );
+        }
+        free(predicate->nodes[node_index].row_scalar_value_expressions);
         if (predicate->nodes[node_index].row_scalar_expression != NULL) {
             planned_row_scalar_expression_deinit(predicate->nodes[node_index].row_scalar_expression
             );

@@ -171,6 +171,9 @@ static int bind_select_predicate_node_parameters(
             parameter_index
         );
     }
+    if (node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IN) {
+        return bind_select_row_scalar_in_predicate_parameters(statement, node, parameter_index);
+    }
     if (node->kind == PLANNED_SELECT_PREDICATE_IN) {
         return bind_select_in_predicate_parameters(statement, node, parameter_index);
     }
@@ -313,6 +316,9 @@ static int bind_select_predicate_node_parameters_without_subqueries(
         node->kind == PLANNED_SELECT_PREDICATE_SCALAR_AGGREGATE_SUBQUERY_BETWEEN) {
         return MYLITE_ERROR;
     }
+    if (node->kind == PLANNED_SELECT_PREDICATE_ROW_SCALAR_IN) {
+        return bind_select_row_scalar_in_predicate_parameters(statement, node, parameter_index);
+    }
     if (node->kind == PLANNED_SELECT_PREDICATE_IN) {
         return bind_select_in_literal_predicate_parameters(statement, node, parameter_index);
     }
@@ -346,6 +352,23 @@ static int bind_select_in_literal_predicate_parameters(
     }
 
     return bind_select_in_value_list_parameters(statement, node, parameter_index);
+}
+
+static int bind_select_row_scalar_in_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
+    int *parameter_index
+) {
+    int rc = bind_row_scalar_expression_parameters(
+        statement,
+        node->row_scalar_expression,
+        parameter_index
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = bind_select_in_value_list_parameters(statement, node, parameter_index);
+    }
+    return rc;
 }
 
 static int bind_select_scalar_subquery_in_predicate_parameters(
@@ -462,8 +485,24 @@ static int bind_select_in_value_list_parameters(
 
     for (size_t value_index = 0U; rc == MYLITE_OK && value_index < node->value_count;
          ++value_index) {
-        rc = bind_planned_value_parameter(statement, *parameter_index, &node->values[value_index]);
-        if (rc == MYLITE_OK) {
+        if (node->row_scalar_value_expressions != NULL &&
+            node->row_scalar_value_expressions[value_index].kind !=
+                PLANNED_ROW_SCALAR_EXPRESSION_NONE) {
+            rc = bind_row_scalar_expression_parameters(
+                statement,
+                &node->row_scalar_value_expressions[value_index],
+                parameter_index
+            );
+        } else {
+            rc = bind_planned_value_parameter(
+                statement,
+                *parameter_index,
+                &node->values[value_index]
+            );
+        }
+        if (rc == MYLITE_OK && (node->row_scalar_value_expressions == NULL ||
+                                node->row_scalar_value_expressions[value_index].kind ==
+                                    PLANNED_ROW_SCALAR_EXPRESSION_NONE)) {
             ++(*parameter_index);
         }
     }

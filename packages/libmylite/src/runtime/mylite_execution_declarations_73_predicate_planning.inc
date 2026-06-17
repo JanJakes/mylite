@@ -954,6 +954,15 @@ static int plan_in_predicate(
     struct planned_select_predicate *predicate,
     size_t *out_node_index
 );
+static int plan_row_scalar_expression_in_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
 static int plan_in_literal_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
@@ -1013,6 +1022,23 @@ static int plan_in_subquery_inner_predicate(
     const struct mylite_catalog_column_descriptor *outer_columns,
     size_t outer_column_count,
     struct planned_in_subquery *subquery
+);
+static int plan_row_scalar_in_value_list(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_list,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node
+);
+static int plan_row_scalar_in_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node,
+    size_t value_index
 );
 static int convert_predicate_in_value_list(
     struct mylite_db *database,
@@ -1123,6 +1149,11 @@ static int bind_select_predicate_node_parameters_without_subqueries(
     int *parameter_index
 );
 static int bind_select_in_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
+    int *parameter_index
+);
+static int bind_select_row_scalar_in_predicate_parameters(
     sqlite3_stmt *statement,
     const struct planned_select_predicate_node *node,
     int *parameter_index

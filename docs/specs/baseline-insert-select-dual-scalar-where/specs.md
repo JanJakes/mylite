@@ -7,12 +7,13 @@ small scalar predicate filter. It applies to the shared row-scalar planner used
 by top-level `SELECT ... FROM DUAL`, row-scalar `INSERT ... SELECT ... FROM
 DUAL`, and row-scalar `REPLACE ... SELECT ... FROM DUAL`.
 
-The implementation remains deliberately narrow. It admits the existing
-scalar-literal predicate subset for `WHERE` on `DUAL` sources, keeps the
-already-supported `[NOT] EXISTS (subquery)` filter, and continues to reject
-general expression predicates, function predicates, source ordering, source
-limits, aliases, CTEs, joins, and arbitrary SQLite pass-through for this
-source class.
+The original implementation was deliberately narrow. A later source-free
+expression slice extends the same `FROM DUAL` path to the documented
+source-free row-scalar predicate envelope while preserving this slice's target
+validation, zero-row, and `[NOT] EXISTS (subquery)` behavior. It still rejects
+source ordering, source limits outside the top-level tableless scalar `SELECT`
+path, aliases, CTEs, joins, and arbitrary SQLite pass-through for this source
+class.
 
 ## Sources
 
@@ -60,14 +61,15 @@ records the runtime probes for this feature. Observed behavior:
   validation and reports zero affected rows.
 - `SELECT ... FROM DUAL WHERE scalar_predicate` returns either one row or no
   rows. Successful SELECT statements leave `ROW_COUNT() == -1`.
-- MySQL accepts broader expression predicates, no-source `SELECT ... WHERE`,
-  `ORDER BY`, and `LIMIT` in this area. Those are outside this slice.
+- Later source-free expression slices implement no-source `SELECT ... WHERE`,
+  source-free/`DUAL` `ORDER BY` and `LIMIT`, scalar-literal `BETWEEN`/`IN`,
+  function-left predicates, and symbolic logical operators in this area.
 
 ## Scope
 
 The implementation must add:
 
-- row-scalar `FROM DUAL WHERE scalar_literal_predicate` filtering for top-level
+- row-scalar `FROM DUAL WHERE source_free_predicate` filtering for top-level
   row-scalar `SELECT`, row-scalar `INSERT ... SELECT`, and row-scalar
   `REPLACE ... SELECT`;
 - scalar-literal predicate atoms over signed 64-bit decimal integer literals
@@ -76,7 +78,13 @@ The implementation must add:
   `<>`, `!=`, `<`, `<=`, `>`, and `>=`;
 - scalar-literal `IS [NOT] NULL`, `IS [NOT] TRUE`,
   `IS [NOT] FALSE`, and `IS [NOT] UNKNOWN`;
-- keyword `NOT`, `AND`, `OR`, `XOR`, and parentheses over admitted atoms;
+- scalar-literal `BETWEEN`/`NOT BETWEEN` and `IN`/`NOT IN` predicates admitted
+  by the later tableless scalar `WHERE` expression slice;
+- supported source-free row-scalar function truth, comparison, `IS`, range,
+  and membership predicates admitted by the later tableless scalar `WHERE`
+  expression slice;
+- keyword `NOT`, `AND`, `OR`, `XOR`, symbolic `&&`/`||`, and parentheses over
+  admitted atoms;
 - preservation of the existing `WHERE [NOT] EXISTS (select_statement)` filter;
 - MySQL-compatible affected-row and warning-count behavior for successful
   row-scalar DML source filters;
@@ -89,16 +97,15 @@ The implementation must add:
 
 This feature must not implement:
 
-- no-source `SELECT ... WHERE` grammar;
+- no-source `SELECT ... WHERE` grammar in this original slice; later
+  tableless expression slices cover it;
 - row-scalar `DUAL` source `ORDER BY`, `LIMIT`, locking clauses, grouping,
   `HAVING`, `DISTINCT`, wildcard `DUAL`, CTEs, joins, `TABLE`, `VALUES`, or
   parenthesized query expressions;
-- general expression predicates such as function comparisons, string
-  comparisons, arithmetic expression predicates, `BETWEEN`, `IN`, `LIKE`,
-  `REGEXP`, scalar subqueries, parameters, variables, row constructors, or
-  column references in the tableless `DUAL` filter;
-- deprecated symbolic logical operators `&&` and `||`; this slice admits only
-  keyword `AND`, `OR`, and `XOR`;
+- general expression predicates outside the documented source-free row-scalar
+  subset, such as `LIKE`, `REGEXP`, scalar subqueries outside the existing
+  `[NOT] EXISTS` / scalar-subquery `IS NULL` forms, parameters, row
+  constructors, or column references in the tableless `DUAL` filter;
 - broader target conversion, warning demotion, triggers, generated columns,
   privileges, or protocol metadata changes.
 
@@ -151,13 +158,26 @@ FROM DUAL
 ```sql
 scalar_literal
 scalar_literal comparison_operator scalar_literal
+scalar_literal BETWEEN predicate_value AND predicate_value
+scalar_literal NOT BETWEEN predicate_value AND predicate_value
+scalar_literal IN (predicate_value[, predicate_value ...])
+scalar_literal NOT IN (predicate_value[, predicate_value ...])
 scalar_literal IS [NOT] NULL
 scalar_literal IS [NOT] TRUE
 scalar_literal IS [NOT] FALSE
 scalar_literal IS [NOT] UNKNOWN
+source_free_row_scalar_function
+source_free_row_scalar_function comparison_operator predicate_value
+source_free_row_scalar_function IS [NOT] NULL
+source_free_row_scalar_function BETWEEN predicate_value AND predicate_value
+source_free_row_scalar_function NOT BETWEEN predicate_value AND predicate_value
+source_free_row_scalar_function IN (predicate_value[, predicate_value ...])
+source_free_row_scalar_function NOT IN (predicate_value[, predicate_value ...])
 NOT dual_scalar_predicate
 dual_scalar_predicate AND dual_scalar_predicate
+dual_scalar_predicate && dual_scalar_predicate
 dual_scalar_predicate OR dual_scalar_predicate
+dual_scalar_predicate || dual_scalar_predicate
 dual_scalar_predicate XOR dual_scalar_predicate
 (dual_scalar_predicate)
 EXISTS (select_statement)
@@ -165,7 +185,9 @@ NOT EXISTS (select_statement)
 ```
 
 `scalar_literal` is a supported signed decimal integer literal, `TRUE`,
-`FALSE`, or `NULL`.
+`FALSE`, or `NULL`. `predicate_value` is the current predicate value envelope
+accepted by the row-scalar predicate planner, and the row-scalar function
+predicate forms are limited to source-free planned expressions.
 
 ### MyLite Lemon-Syntax Snippet
 

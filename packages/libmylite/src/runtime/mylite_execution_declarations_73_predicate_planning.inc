@@ -972,6 +972,14 @@ static int plan_row_scalar_expression_in_predicate(
     struct planned_select_predicate *predicate,
     size_t *out_node_index
 );
+static int plan_row_scalar_predicate_left_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_in_literal_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,

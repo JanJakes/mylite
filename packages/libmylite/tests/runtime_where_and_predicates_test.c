@@ -2617,13 +2617,16 @@ static int test_where_and_predicates(void) {
                 "WHERE supports only integer, boolean, and exact quoted integer predicate literals",
         }
     );
-    failures += execute_error(
+    failures += expect_result(
         database,
-        "SELECT id FROM numbers WHERE 1 BETWEEN 1 AND 2",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE 1 BETWEEN 1 AND 2 ORDER BY id",
+            .values = is_delete_limited_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "scalar-literal between predicate",
         }
     );
     failures += execute_error(

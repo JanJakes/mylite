@@ -3317,9 +3317,11 @@ static bool planned_row_scalar_tableless_filter_node_is_supported(
 
     switch (node->kind) {
     case PLANNED_SELECT_PREDICATE_AND:
-        return node->operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_AND;
+        return node->operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_AND ||
+               node->operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND;
     case PLANNED_SELECT_PREDICATE_OR:
-        return node->operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_OR;
+        return node->operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_OR ||
+               node->operator_kind == MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR;
     case PLANNED_SELECT_PREDICATE_XOR:
         return node->operator_kind == MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR;
     case PLANNED_SELECT_PREDICATE_NOT:
@@ -3328,10 +3330,73 @@ static bool planned_row_scalar_tableless_filter_node_is_supported(
     case PLANNED_SELECT_PREDICATE_ROW_SCALAR_COMPARISON:
     case PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_NULL:
     case PLANNED_SELECT_PREDICATE_ROW_SCALAR_BETWEEN:
-        return (node->row_scalar_expression != NULL &&
-                node->row_scalar_expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE) != 0;
+    case PLANNED_SELECT_PREDICATE_ROW_SCALAR_IN:
+        if (!planned_row_scalar_tableless_filter_expression_is_supported(
+                node->row_scalar_expression
+            )) {
+            return false;
+        }
+        if (node->row_scalar_value_expression != NULL &&
+            !planned_row_scalar_tableless_filter_expression_is_supported(
+                node->row_scalar_value_expression
+            )) {
+            return false;
+        }
+        if (node->row_scalar_upper_value_expression != NULL &&
+            !planned_row_scalar_tableless_filter_expression_is_supported(
+                node->row_scalar_upper_value_expression
+            )) {
+            return false;
+        }
+        if (node->row_scalar_value_expressions != NULL) {
+            for (size_t value_index = 0U; value_index < node->value_count; ++value_index) {
+                if (node->row_scalar_value_expressions[value_index].kind !=
+                        PLANNED_ROW_SCALAR_EXPRESSION_NONE &&
+                    !planned_row_scalar_tableless_filter_expression_is_supported(
+                        &node->row_scalar_value_expressions[value_index]
+                    )) {
+                    return false;
+                }
+            }
+        }
+        return true;
     default:
         return false;
+    }
+}
+
+static bool planned_row_scalar_tableless_filter_expression_is_supported(
+    const struct planned_row_scalar_expression *expression
+) {
+    if (expression == NULL ||
+        !planned_row_scalar_tableless_filter_expression_kind_is_supported(expression->kind)) {
+        return false;
+    }
+
+    for (size_t argument_index = 0U; argument_index < expression->argument_count;
+         ++argument_index) {
+        if (!planned_row_scalar_tableless_filter_expression_is_supported(
+                &expression->arguments[argument_index]
+            )) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool planned_row_scalar_tableless_filter_expression_kind_is_supported(
+    enum planned_row_scalar_expression_kind kind
+) {
+    switch (kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
+        return false;
+    default:
+        return true;
     }
 }
 

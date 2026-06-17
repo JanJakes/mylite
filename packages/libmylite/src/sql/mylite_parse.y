@@ -6393,6 +6393,24 @@ predicate_atom(A) ::= predicate_scalar_literal(L) predicate_comparison_operator(
     A = mylite_sql_parser_make_comparison_predicate(
         state, L, O.token, O.operator_kind, C);
 }
+predicate_atom(A) ::= predicate_scalar_literal(C) BETWEEN(B)
+        predicate_range_value(L) AND predicate_range_value(U). {
+    A = mylite_sql_parser_make_between_predicate(state, C, B, L, U);
+}
+predicate_atom(A) ::= predicate_scalar_literal(C) NOT(N) BETWEEN(B)
+        predicate_range_value(L) AND predicate_range_value(U). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N, mylite_sql_parser_make_between_predicate(state, C, B, L, U));
+}
+predicate_atom(A) ::= predicate_scalar_literal(C) IN(I) LPAREN predicate_in_value_list(V)
+        RPAREN(R). {
+    A = mylite_sql_parser_make_in_predicate(state, C, I, V, R);
+}
+predicate_atom(A) ::= predicate_scalar_literal(C) NOT(N) IN(I) LPAREN
+        predicate_in_value_list(V) RPAREN(R). {
+    A = mylite_sql_parser_make_not_predicate(
+        state, N, mylite_sql_parser_make_in_predicate(state, C, I, V, R));
+}
 predicate_atom(A) ::= predicate_scalar_literal(V) IS(I) NULL(N). {
     A = mylite_sql_parser_make_is_null_predicate(
         state, V, I, MYLITE_SQL_AST_OPERATOR_IS_NULL, N);
@@ -7395,6 +7413,9 @@ predicate_row_scalar_expression(A) ::= COALESCE(T) LPAREN function_argument_list
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_COALESCE_FUNCTION, B, R);
 }
+predicate_row_scalar_expression(A) ::= CASE(T) searched_case_when_list(W) case_else_opt(E) END(R). {
+    A = mylite_sql_parser_make_searched_case_expression(state, T, W, E, R);
+}
 predicate_row_scalar_expression(A) ::= CONCAT(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_CONCAT_FUNCTION, B, R);
@@ -7959,9 +7980,6 @@ select_order_key(A) ::= RAND(T) LPAREN expression(B) COMMA function_argument_lis
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR, C, R);
-}
-select_order_key(A) ::= CASE(T) searched_case_when_list(W) case_else_opt(E) END(R). {
-    A = mylite_sql_parser_make_searched_case_expression(state, T, W, E, R);
 }
 select_order_key(A) ::= LPAREN(L) select_order_key(B) RPAREN(R). {
     A = mylite_sql_parser_make_parenthesized_expression(state, L, B, R);

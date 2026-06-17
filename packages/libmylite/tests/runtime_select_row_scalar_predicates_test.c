@@ -35,6 +35,7 @@ int main(void) {
 }
 
 static int test_select_row_scalar_predicates(void) {
+    static const char *const value_one[] = {"1"};
     static const char *const ids_1[] = {"1"};
     static const char *const ids_2[] = {"2"};
     static const char *const ids_12[] = {"1", "2"};
@@ -69,6 +70,137 @@ static int test_select_row_scalar_predicates(void) {
         "(2, 0, 'beta', UNHEX('4344'), JSON_OBJECT('a', 2), "
         "'2024-01-03 04:05:06', '00:01:01'), "
         "(3, NULL, NULL, NULL, NULL, NULL, NULL)"
+    );
+
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 WHERE IF(1, TRUE, FALSE)",
+            .values = value_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "tableless if truth predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 WHERE IF(0, TRUE, FALSE)",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .context = "tableless if false predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 WHERE COALESCE(NULL, 1)",
+            .values = value_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "tableless coalesce truth predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 WHERE IFNULL(NULL, 3) = 3",
+            .values = value_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "tableless ifnull comparison predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 WHERE NULLIF(1, 1) IS NULL",
+            .values = value_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "tableless nullif is null predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 WHERE ISNULL(NULL)",
+            .values = value_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "tableless isnull truth predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 WHERE CASE WHEN 1 THEN TRUE ELSE FALSE END",
+            .values = value_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "tableless case truth predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 WHERE 2 BETWEEN 1 AND 3",
+            .values = value_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "tableless scalar literal between predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 WHERE 1 IN (1, 2)",
+            .values = value_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "tableless scalar literal in predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 WHERE COALESCE(NULL, 2) IN (1, 2)",
+            .values = value_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "tableless coalesce in predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 FROM DUAL WHERE GREATEST(1, 2) IN (1, 2)",
+            .values = value_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "dual greatest in predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 WHERE COALESCE(NULL, 1) && NOT IF(0, TRUE, FALSE)",
+            .values = value_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "tableless deprecated and predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 WHERE IF(0, TRUE, FALSE) || TRUE",
+            .values = value_one,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "tableless deprecated or predicate",
+        }
     );
 
     failures += expect_query_values(

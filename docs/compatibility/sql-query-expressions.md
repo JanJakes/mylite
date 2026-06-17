@@ -21,12 +21,15 @@ The limited row-scalar control-flow family includes `IF()`, `IFNULL()`,
 projection lists, and a narrow joined simple `CASE` projection shape over
 integer descriptor/literal operands. Source-free and `DUAL` scalar `SELECT`
 queries admit documented `WHERE`, `ORDER BY`, and `LIMIT` clauses around the
-current scalar expression envelope. The current descriptor-backed `WHERE`
-predicate subset admits these function calls as row-scalar truth, comparison,
-`IS [NOT] NULL`, and `[NOT] BETWEEN` operands, and supported non-grouped
+current scalar expression envelope, including scalar-literal and source-free
+row-scalar truth, comparison, `IS [NOT] NULL`, range, membership, and logical
+predicate forms. The current descriptor-backed `WHERE` predicate subset admits
+these function calls as row-scalar truth, comparison, `IS [NOT] NULL`,
+`[NOT] BETWEEN`, and `[NOT] IN` operands, and supported non-grouped
 single-table `SELECT` paths admit documented row-scalar `ORDER BY` expression
 keys. It does not admit grouped ordering expressions, broad grouping
-expressions, or DML assignments.
+expressions, source-free system/session scalar predicates outside the
+documented row-scalar envelope, or DML assignments.
 
 The limited row-scalar comparison-extrema family includes `GREATEST()` and
 `LEAST()` in no-source, `DUAL`, `DO`, and single-table projection lists over

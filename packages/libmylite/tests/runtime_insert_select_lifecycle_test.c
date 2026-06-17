@@ -679,14 +679,10 @@ static int test_insert_select_dual_source_values_and_diagnostics(void) {
             .message_part = "Unknown column 'missing' in 'where clause'",
         }
     );
-    failures += execute_error(
+    failures += expect_dml_ok(
         database,
         "INSERT INTO dst(id, label) SELECT 23, 'x' FROM DUAL WHERE 2 BETWEEN 1 AND 3",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
-        }
+        1
     );
     failures += execute_error(
         database,
@@ -697,27 +693,15 @@ static int test_insert_select_dual_source_values_and_diagnostics(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_dml_ok_with_warnings(
         database,
         "INSERT INTO dst(id, label) SELECT 25, 'x' FROM DUAL WHERE 1 && 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "row-scalar SELECT FROM DUAL supports only scalar-literal or EXISTS WHERE "
-                "filtering",
-        }
+        (struct expected_dml_warning_status){.affected_rows = 1, .warning_count = 1U}
     );
-    failures += execute_error(
+    failures += expect_dml_ok_with_warnings(
         database,
         "INSERT INTO dst(id, label) SELECT 26, 'x' FROM DUAL WHERE 1 || 0",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "row-scalar SELECT FROM DUAL supports only scalar-literal or EXISTS WHERE "
-                "filtering",
-        }
+        (struct expected_dml_warning_status){.affected_rows = 1, .warning_count = 1U}
     );
 
     failures += execute_ok(

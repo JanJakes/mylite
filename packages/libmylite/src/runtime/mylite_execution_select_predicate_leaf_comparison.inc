@@ -166,7 +166,8 @@ static int plan_select_predicate_leaf_node(
                 out_predicate,
                 &node_index
             );
-        } else if (row_scalar_conversion_kind_from_expression(child_at(predicate_node, 0U)) !=
+        } else if (predicate_node_is_scalar_literal_expression(child_at(predicate_node, 0U)) ||
+                   row_scalar_conversion_kind_from_expression(child_at(predicate_node, 0U)) !=
                        PLANNED_ROW_SCALAR_CONVERSION_NONE ||
                    predicate_node_is_supported_row_scalar_expression(
                        child_at(predicate_node, 0U))) {
@@ -389,7 +390,8 @@ static int plan_select_predicate_leaf_node_without_exists(
                 out_predicate,
                 &node_index
             );
-        } else if (row_scalar_conversion_kind_from_expression(child_at(predicate_node, 0U)) !=
+        } else if (predicate_node_is_scalar_literal_expression(child_at(predicate_node, 0U)) ||
+                   row_scalar_conversion_kind_from_expression(child_at(predicate_node, 0U)) !=
                        PLANNED_ROW_SCALAR_CONVERSION_NONE ||
                    predicate_node_is_supported_row_scalar_expression(
                        child_at(predicate_node, 0U))) {
@@ -414,12 +416,13 @@ static int plan_select_predicate_leaf_node_without_exists(
             );
         }
     } else {
-        rc = plan_in_literal_predicate(
+        rc = plan_in_predicate(
             database,
             predicate_node,
             source_context,
             table_columns,
             table_column_count,
+            options,
             out_predicate,
             &node_index
         );

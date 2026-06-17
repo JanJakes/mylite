@@ -11,7 +11,9 @@ and the existing `NOT` / `AND` / `OR` predicate tree.
 
 The implementation is intentionally narrow. It supports one descriptor column on
 the left side and two supported integer, exact quoted integer string, or boolean
-bound literals. It does not introduce general expression evaluation.
+bound literals. Later row-scalar predicate slices also admit scalar-literal
+`BETWEEN` predicates through the shared predicate planner. Neither path
+introduces general expression evaluation.
 
 ## Sources
 
@@ -88,7 +90,9 @@ supported source aliases resolve through the selected single-source context.
 This phase does not add:
 
 - arbitrary expression operands on the left side or either bound;
-- literal-left range tests;
+- literal-left range tests in this original descriptor-backed slice; supported
+  scalar-literal `BETWEEN` predicates are covered by later row-scalar predicate
+  slices;
 - `NULL` bounds;
 - noninteger string bounds, decimal string numeric coercion, truncated string
   numeric predicate warnings, float, hex, bit, temporal, JSON, parameter,
@@ -354,9 +358,9 @@ Coverage must include:
   `BETWEEN`;
 - unknown predicate column and out-of-range bound diagnostics;
 - unsupported syntax: expression bounds, column bounds, table-qualified DML
-  predicate columns, literal-left ranges, `NULL` bounds, string/decimal/float/
-  hex/bit bounds, parameters, subqueries, functions, row constructors, and
-  symbolic `!`;
+  predicate columns, non-scalar-literal left ranges, `NULL` bounds, string/
+  decimal/float/hex/bit bounds, parameters, subqueries, functions, row
+  constructors, and symbolic `!`;
 - persistence, preamble preservation, independent file-backed handles, and
   cleanup of zero-initialized predicate structures.
 

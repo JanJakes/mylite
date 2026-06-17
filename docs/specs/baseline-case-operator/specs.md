@@ -19,13 +19,15 @@ supported scalar control-flow helpers, unary and binary signed-64 arithmetic
 currently admitted by scalar projection, scalar comparisons, keyword logical
 operators, scalar `IS`, and parenthesized expressions.
 
-This is still not a general expression engine. It does not admit table-backed
-`CASE`, descriptor-column expression projection, `WHERE CASE ...`, DML
-assignment `CASE`, strings, decimals, floats, hex, bit literals, temporal
-values, casts, collations, parameters, variables or session/system scalar
-reads inside `CASE`, nested `CASE`, using `CASE` as an operand of another
-scalar expression, subqueries, CTEs, row constructors, expression metadata, or
-arbitrary SQLite pass-through.
+This is still not a general expression engine. Later compatibility slices admit
+searched `CASE` in selected row-scalar contexts, including documented
+single-table projection, source-free/`DUAL` truth predicates, and hidden
+ordering keys. MyLite still does not admit broad descriptor-column expression
+projection, simple `CASE` predicate operands, DML assignment `CASE`, strings,
+decimals, floats, hex, bit literals, temporal values, casts, collations,
+parameters, variables or session/system scalar reads inside `CASE`, nested
+`CASE`, using `CASE` as an operand of another scalar expression, subqueries,
+CTEs, row constructors, expression metadata, or arbitrary SQLite pass-through.
 
 ## Compatibility Authority
 
@@ -92,9 +94,11 @@ is unified; this baseline rejects those forms deterministically.
   represent searched and simple `CASE` explicitly, with a `WHEN` list and an
   optional `ELSE` clause. It must not rely on `NULL` positional children because
   `mylite_sql_ast_node_append_child()` intentionally ignores `NULL` children.
-- Analyzer/runtime: the scalar projection analyzer accepts `CASE` only in the
-  existing no-source and `FROM DUAL` scalar select path. Runtime evaluation is
-  MyLite-owned and evaluates only the branch expressions MySQL would evaluate.
+- Analyzer/runtime: the original scalar projection analyzer accepts `CASE` in
+  the no-source and `FROM DUAL` scalar select path. Later row-scalar planning
+  admits searched `CASE` in documented table-backed/source-free predicate and
+  projection contexts. Runtime evaluation is MyLite-owned and evaluates only
+  the branch expressions MySQL would evaluate.
 - Catalog: not involved. This feature must not read or mutate schemas, table
   descriptors, descriptor versions, descriptor caches, catalog generation, or
   `sqlite_schema_generation`.
@@ -284,11 +288,11 @@ Expected diagnostics include:
 - Syntax errors for malformed `CASE` forms, including missing `WHEN`, missing
   condition, missing `THEN`, missing result, missing `END`, and stored-program
   `END CASE` terminator in scalar `SELECT`.
-- Unsupported scalar projection diagnostic for table-backed `CASE`, DML
-  assignment `CASE`, unsupported branch expressions, unsupported literals,
-  nested `CASE`, `CASE` operands inside larger scalar expressions, subqueries,
-  row constructors, parameters, and identifiers outside supported
-  literal/control-flow/scalar-expression forms.
+- Unsupported scalar projection diagnostic for table-backed `CASE` outside the
+  documented row-scalar subset, DML assignment `CASE`, unsupported branch
+  expressions, unsupported literals, nested `CASE`, `CASE` operands inside
+  larger scalar expressions, subqueries, row constructors, parameters, and
+  identifiers outside supported literal/control-flow/scalar-expression forms.
 - Existing arithmetic overflow diagnostic for evaluated or validation-relevant
   signed-64 scalar arithmetic overflow.
 - Existing division-by-zero warnings for evaluated supported `DIV`, modulo,
@@ -330,10 +334,10 @@ Runtime coverage should include:
 - default labels, explicit aliases, `FROM DUAL`, mixed scalar select lists,
   affected rows, warning count, absence of table result side effects, and
   following diagnostics snapshot behavior;
-- unsupported table-backed `CASE`, DML assignment `CASE`, strings, decimals,
-  floats, hex, bit literals, identifiers, parameters, subqueries, row
-  constructors, nested `CASE`, `CASE` as a larger scalar operand, and malformed
-  syntax;
+- unsupported table-backed `CASE` outside the documented row-scalar subset,
+  DML assignment `CASE`, strings, decimals, floats, hex, bit literals,
+  identifiers, parameters, subqueries, row constructors, nested `CASE`, `CASE`
+  as a larger scalar operand, and malformed syntax;
 - file-backed preamble preservation, unchanged catalog/schema-generation
   counters, independent handles, and zero-initialized cleanup for new runtime
   objects.
@@ -350,6 +354,6 @@ Update:
 - `docs/compatibility/sql-query-expressions.md`: include `CASE` in no-source
   and `FROM DUAL` scalar projection wording.
 
-Do not claim table-backed expression projection, DML assignment expressions,
-predicate `CASE`, full result type aggregation, string/collation behavior,
-subqueries, or expression metadata.
+Do not claim broad table-backed expression projection, simple `CASE` predicate
+operands, DML assignment expressions, full result type aggregation,
+string/collation behavior, subqueries, or expression metadata.

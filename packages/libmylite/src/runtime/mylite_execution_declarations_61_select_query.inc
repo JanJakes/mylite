@@ -526,6 +526,12 @@ static bool planned_row_scalar_tableless_filter_is_supported(
 static bool planned_row_scalar_tableless_filter_node_is_supported(
     const struct planned_select_predicate_node *node
 );
+static bool planned_row_scalar_tableless_filter_expression_is_supported(
+    const struct planned_row_scalar_expression *expression
+);
+static bool planned_row_scalar_tableless_filter_expression_kind_is_supported(
+    enum planned_row_scalar_expression_kind kind
+);
 static void planned_row_scalar_select_deinit(struct planned_row_scalar_select *plan);
 static int execute_row_scalar_select_from_plan(
     struct mylite_db *database,

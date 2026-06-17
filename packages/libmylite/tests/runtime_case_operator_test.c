@@ -482,13 +482,17 @@ static int test_case_operator_unsupported_forms(void) {
             .context = "row-column CASE condition",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT id FROM t WHERE CASE WHEN 1 THEN TRUE ELSE FALSE END",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "syntax",
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE CASE WHEN 1 THEN TRUE ELSE FALSE END",
+            .columns = (const char *const[]){"id"},
+            .column_count = 1U,
+            .values = (const char *const[]){"1"},
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "searched CASE truth predicate",
         }
     );
     failures += expect_query(

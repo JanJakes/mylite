@@ -72,12 +72,10 @@ static int plan_row_scalar_expression_is_null_predicate(
         return MYLITE_NOMEM;
     }
 
-    rc = plan_row_scalar_expression(
+    rc = plan_row_scalar_predicate_left_expression(
         database,
         child_at(predicate_node, 0U),
-        true,
         source_context,
-        NULL,
         table_columns,
         table_column_count,
         node.row_scalar_expression
@@ -380,7 +378,8 @@ static int plan_in_predicate(
         set_unsupported_error(database, "WHERE supports only descriptor column IN predicates");
         return MYLITE_ERROR;
     }
-    if (predicate_node_is_supported_row_scalar_expression(child_at(predicate_node, 0U))) {
+    if (predicate_node_is_scalar_literal_expression(child_at(predicate_node, 0U)) ||
+        predicate_node_is_supported_row_scalar_expression(child_at(predicate_node, 0U))) {
         return plan_row_scalar_expression_in_predicate(
             database,
             predicate_node,
@@ -498,12 +497,10 @@ static int plan_row_scalar_expression_in_predicate(
         return MYLITE_NOMEM;
     }
 
-    rc = plan_row_scalar_expression(
+    rc = plan_row_scalar_predicate_left_expression(
         database,
         child_at(predicate_node, 0U),
-        true,
         source_context,
-        NULL,
         table_columns,
         table_column_count,
         node.row_scalar_expression
@@ -536,6 +533,34 @@ static int plan_row_scalar_expression_in_predicate(
         free(node.row_scalar_expression);
     }
     return rc;
+}
+
+static int plan_row_scalar_predicate_left_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *node = unwrap_parenthesized_predicate(expression);
+
+    if (predicate_node_is_scalar_literal_expression(node)) {
+        if (node != NULL && node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+            return plan_row_scalar_integer_value(database, node, out_expression);
+        }
+        return plan_row_scalar_literal_value(database, node, out_expression);
+    }
+    return plan_row_scalar_expression(
+        database,
+        expression,
+        true,
+        source_context,
+        NULL,
+        table_columns,
+        table_column_count,
+        out_expression
+    );
 }
 
 static int plan_in_literal_predicate(

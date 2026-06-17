@@ -46,6 +46,19 @@ cleanup
 run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE};" >/dev/null
 
 predicate_expected=$(cat <<'EXPECTED'
+tableless-if-truth	1
+tableless-if-false	<empty>
+tableless-coalesce-truth	1
+tableless-ifnull-comparison	1
+tableless-nullif-is-null	1
+tableless-isnull-truth	1
+tableless-case-truth	1
+tableless-scalar-between	1
+tableless-scalar-in	1
+tableless-coalesce-in	1
+dual-greatest-in	1
+tableless-deprecated-and	1
+tableless-deprecated-or	1
 hex-eq	1
 lower-eq	1
 upper-rhs	2
@@ -116,6 +129,32 @@ expect_output \
 "(2, 0, 'beta', UNHEX('4344'), JSON_OBJECT('a', 2), "\
 "'2024-01-03 04:05:06', '00:01:01'), "\
 "(3, NULL, NULL, NULL, NULL, NULL, NULL); "\
+"SELECT 'tableless-if-truth', IFNULL(GROUP_CONCAT(x), '<empty>') "\
+"FROM (SELECT 1 AS x WHERE IF(1, TRUE, FALSE)) AS q; "\
+"SELECT 'tableless-if-false', IFNULL(GROUP_CONCAT(x), '<empty>') "\
+"FROM (SELECT 1 AS x WHERE IF(0, TRUE, FALSE)) AS q; "\
+"SELECT 'tableless-coalesce-truth', IFNULL(GROUP_CONCAT(x), '<empty>') "\
+"FROM (SELECT 1 AS x WHERE COALESCE(NULL, 1)) AS q; "\
+"SELECT 'tableless-ifnull-comparison', IFNULL(GROUP_CONCAT(x), '<empty>') "\
+"FROM (SELECT 1 AS x WHERE IFNULL(NULL, 3) = 3) AS q; "\
+"SELECT 'tableless-nullif-is-null', IFNULL(GROUP_CONCAT(x), '<empty>') "\
+"FROM (SELECT 1 AS x WHERE NULLIF(1, 1) IS NULL) AS q; "\
+"SELECT 'tableless-isnull-truth', IFNULL(GROUP_CONCAT(x), '<empty>') "\
+"FROM (SELECT 1 AS x WHERE ISNULL(NULL)) AS q; "\
+"SELECT 'tableless-case-truth', IFNULL(GROUP_CONCAT(x), '<empty>') "\
+"FROM (SELECT 1 AS x WHERE CASE WHEN 1 THEN TRUE ELSE FALSE END) AS q; "\
+"SELECT 'tableless-scalar-between', IFNULL(GROUP_CONCAT(x), '<empty>') "\
+"FROM (SELECT 1 AS x WHERE 2 BETWEEN 1 AND 3) AS q; "\
+"SELECT 'tableless-scalar-in', IFNULL(GROUP_CONCAT(x), '<empty>') "\
+"FROM (SELECT 1 AS x WHERE 1 IN (1, 2)) AS q; "\
+"SELECT 'tableless-coalesce-in', IFNULL(GROUP_CONCAT(x), '<empty>') "\
+"FROM (SELECT 1 AS x WHERE COALESCE(NULL, 2) IN (1, 2)) AS q; "\
+"SELECT 'dual-greatest-in', IFNULL(GROUP_CONCAT(x), '<empty>') "\
+"FROM (SELECT 1 AS x FROM DUAL WHERE GREATEST(1, 2) IN (1, 2)) AS q; "\
+"SELECT 'tableless-deprecated-and', IFNULL(GROUP_CONCAT(x), '<empty>') "\
+"FROM (SELECT 1 AS x WHERE COALESCE(NULL, 1) && NOT IF(0, TRUE, FALSE)) AS q; "\
+"SELECT 'tableless-deprecated-or', IFNULL(GROUP_CONCAT(x), '<empty>') "\
+"FROM (SELECT 1 AS x WHERE IF(0, TRUE, FALSE) || TRUE) AS q; "\
 "SELECT 'hex-eq', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\
 "FROM expr_pred WHERE HEX(b) = '4142'; "\
 "SELECT 'lower-eq', IFNULL(GROUP_CONCAT(id ORDER BY id), '') "\

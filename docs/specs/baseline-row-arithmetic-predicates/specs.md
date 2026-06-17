@@ -121,8 +121,10 @@ be a `MOD(left, right)` function call; a lone descriptor column remains on the
 existing descriptor predicate paths. Parenthesized top-level arithmetic
 predicate roots such as `(a + b) IS TRUE` are covered by the follow-up
 [baseline parenthesized row arithmetic predicates](../baseline-parenthesized-row-arithmetic-predicates/specs.md)
-slice. Nested arithmetic parentheses inside larger predicate arithmetic, such
-as `((a + b) * 2) > 0`, remain deferred.
+slice. Nested arithmetic parentheses inside larger predicate arithmetic are
+covered by the follow-up
+[baseline nested row arithmetic predicate parentheses](../baseline-nested-row-arithmetic-predicate-parentheses/specs.md)
+slice.
 
 ## Runtime Semantics
 
@@ -181,7 +183,8 @@ Add or update MySQL-verified expectation tests and C runtime tests for:
 ## Deferred Work
 
 - General `WHERE expression` parsing and execution.
-- Nested arithmetic parentheses inside larger row arithmetic predicate roots.
+- General parenthesized expression operands outside the documented row
+  arithmetic predicate roots.
 - Arithmetic predicates in joined `ON`, grouped `HAVING`, broad DML
   assignments, and aggregate/window expression surfaces not already documented.
 - Binary-string, JSON, temporal interval, unsigned-width, and full fixed-decimal

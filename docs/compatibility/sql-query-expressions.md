@@ -57,12 +57,12 @@ literals, covered row-backed numeric functions, and parentheses in one-base-tabl
 as truth, comparison, `IS [NOT] NULL`, `IS [NOT] TRUE`/`FALSE`/`UNKNOWN`,
 `[NOT] BETWEEN`, and `[NOT] IN` subjects in the documented single-table
 `SELECT` and existing descriptor subquery predicate paths, including one
-redundant parenthesized wrapper around the arithmetic subject. MySQL-style
-string numeric warnings and zero-divisor warnings are recorded. It does not
-yet provide nested arithmetic parentheses inside larger predicate arithmetic,
-exact fixed-scale decimal metadata/results, binary/JSON/temporal coercion,
-arbitrary function families, broad DML assignment expressions, grouped/joined
-predicate expression surfaces, or full expression metadata.
+redundant parenthesized wrapper around the arithmetic subject and nested
+arithmetic grouping inside larger predicate arithmetic. MySQL-style string
+numeric warnings and zero-divisor warnings are recorded. It does not yet
+provide exact fixed-scale decimal metadata/results, binary/JSON/temporal
+coercion, arbitrary function families, broad DML assignment expressions,
+grouped/joined predicate expression surfaces, or full expression metadata.
 
 The covered row-backed numeric functions include `ABS()`, `SIGN()`,
 `CEIL()` / `CEILING()`, `FLOOR()`, `ROUND()`, `SQRT()`, `DEGREES()`,
@@ -104,8 +104,8 @@ compatible literals, descriptor-column RHS values, and supported direct
 row-scalar RHS function expressions in the current single-table `SELECT`
 envelope. Row-scalar `BETWEEN` predicates also admit direct supported
 row-scalar function bounds. Non-function expression bounds, nested arithmetic
-parentheses inside larger predicate arithmetic, and broad expression operands
-remain deferred.
+grouping outside the row arithmetic predicate subject, and broad expression
+operands remain deferred.
 
 The limited user-variable surface exposes handle-local `@name` values in
 no-source/`DUAL` scalar `SELECT` lists, `DO` expressions, SQL-level prepared

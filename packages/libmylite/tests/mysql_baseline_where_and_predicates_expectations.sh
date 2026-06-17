@@ -433,6 +433,27 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "mysql accepts nested arithmetic comparison predicate upstream" \
+    "2
+3
+4" \
+    "SELECT id FROM numbers WHERE ((i + nn) * 2) > 10 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts multiple nested arithmetic comparison predicates upstream" \
+    "3
+4" \
+    "SELECT id FROM numbers WHERE ((i + nn) * 2) > 10 AND ((nn + tie) * 2) > 14 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts nested arithmetic equality predicate upstream" \
+    "4" \
+    "SELECT id FROM numbers WHERE ((i + nn) * 2) = 16 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
     "mysql accepts arithmetic predicate precedence upstream" \
     "1" \
     "SELECT id FROM numbers WHERE i + nn * 2 = 8 ORDER BY id;" \
@@ -461,6 +482,14 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "mysql accepts nested arithmetic between predicate upstream" \
+    "1
+2
+4" \
+    "SELECT id FROM numbers WHERE ((i + nn) * 2) BETWEEN 6 AND 16 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
     "mysql accepts arithmetic in predicate upstream" \
     "1
 4" \
@@ -472,6 +501,13 @@ expect_output \
     "1
 4" \
     "SELECT id FROM numbers WHERE (i + nn) IN (3, 8, NULL) ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts nested arithmetic in predicate upstream" \
+    "1
+4" \
+    "SELECT id FROM numbers WHERE ((i + nn) * 2) IN (6, 16, NULL) ORDER BY id;" \
     "$DATABASE"
 
 expect_output \
@@ -493,9 +529,27 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "mysql accepts nested arithmetic boolean predicate upstream" \
+    "1
+2
+3
+4" \
+    "SELECT id FROM numbers WHERE ((i + nn) * 2) IS TRUE ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
     "mysql accepts parenthesized arithmetic false predicate upstream" \
     "4" \
     "SELECT id FROM numbers WHERE (i + 0) IS FALSE ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts nested arithmetic false predicate upstream" \
+    "1
+2
+3
+4" \
+    "SELECT id FROM numbers WHERE ((i + nn) * 0) IS FALSE ORDER BY id;" \
     "$DATABASE"
 
 expect_output \
@@ -508,6 +562,12 @@ expect_output \
     "mysql accepts parenthesized arithmetic mod predicate upstream" \
     "1" \
     "SELECT id FROM numbers WHERE (MOD(i + 2, nn)) = 0 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts nested arithmetic mod predicate upstream" \
+    "1" \
+    "SELECT id FROM numbers WHERE (MOD((i + 2), nn) + 1) = 1 ORDER BY id;" \
     "$DATABASE"
 
 expect_output \

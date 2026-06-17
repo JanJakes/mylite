@@ -7,6 +7,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -32,8 +33,28 @@ struct mylite_sql_parse_error {
     struct mylite_sql_token token;
 };
 
+struct placeholder_row_arithmetic_subject_retry {
+    size_t start_index;
+    size_t end_index;
+    struct mylite_sql_token placeholder_token;
+};
+
+struct placeholder_row_arithmetic_subject_retries {
+    struct placeholder_row_arithmetic_subject_retry *items;
+    size_t count;
+    size_t capacity;
+};
+
+struct placeholder_ast_node_stack {
+    struct mylite_sql_ast_node **items;
+    size_t count;
+    size_t capacity;
+};
+
 enum {
     placeholder_initial_token_capacity = 16,
+    placeholder_row_arithmetic_retry_initial_capacity = 4,
+    placeholder_ast_node_stack_initial_capacity = 16,
     placeholder_create_scan_token_limit = 12,
     create_table_partition_min_token_count = 6,
     create_table_select_min_token_count = 5,
@@ -79,9 +100,10 @@ static enum mylite_sql_parse_status feed_token_with_parser_token_override(
 static bool scan_can_retry_parenthesized_row_constructors(
     const struct placeholder_statement_scan *scan
 );
-static bool scan_can_retry_parenthesized_row_arithmetic_predicates(
+static enum mylite_sql_parse_status scan_parenthesized_row_arithmetic_predicate_retries(
     const struct placeholder_statement_scan *scan,
-    bool *skip_tokens
+    struct placeholder_row_arithmetic_subject_retries *out_retries,
+    bool *out_can_retry
 );
 static bool placeholder_scan_parenthesized_row_arithmetic_predicate_starts_at(
     const struct placeholder_statement_scan *scan,
@@ -117,11 +139,85 @@ static bool placeholder_scan_token_starts_mod_function(
     const struct placeholder_statement_scan *scan,
     size_t index
 );
+static bool placeholder_row_arithmetic_subject_retries_push(
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    struct placeholder_row_arithmetic_subject_retry retry
+);
+static void placeholder_row_arithmetic_subject_retries_deinit(
+    struct placeholder_row_arithmetic_subject_retries *retries
+);
 static enum mylite_sql_parse_status parse_parenthesized_row_arithmetic_predicate_tokens(
     struct mylite_sql_parse_config config,
     const struct placeholder_statement_scan *scan,
-    const bool *skip_tokens,
+    const struct placeholder_row_arithmetic_subject_retries *retries,
     struct mylite_sql_parse_result *out_result
+);
+static enum mylite_sql_parse_status validate_parenthesized_row_arithmetic_retries(
+    const struct placeholder_statement_scan *scan,
+    const struct placeholder_row_arithmetic_subject_retries *retries
+);
+static enum mylite_sql_parse_status feed_parenthesized_row_arithmetic_retry_statement_tokens(
+    struct mylite_sql_parse_config config,
+    void *parser,
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_token_history *history,
+    bool *previous_token_was_dot,
+    const struct placeholder_statement_scan *scan,
+    const struct placeholder_row_arithmetic_subject_retries *retries
+);
+static enum mylite_sql_parse_status feed_parenthesized_row_arithmetic_retry_token(
+    struct mylite_sql_parse_config config,
+    void *parser,
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_token_history *history,
+    bool *previous_token_was_dot,
+    const struct mylite_sql_token *token
+);
+static enum mylite_sql_parse_status replace_parenthesized_row_arithmetic_retry_subjects(
+    struct mylite_sql_parse_config config,
+    const struct placeholder_statement_scan *scan,
+    const struct placeholder_row_arithmetic_subject_retries *retries,
+    struct mylite_sql_parse_result *out_result
+);
+static enum mylite_sql_parse_status replace_parenthesized_row_arithmetic_retry_subject(
+    struct mylite_sql_parse_config config,
+    const struct placeholder_statement_scan *scan,
+    const struct placeholder_row_arithmetic_subject_retry *retry,
+    struct mylite_sql_parse_result *out_result
+);
+static enum mylite_sql_parse_status parse_row_arithmetic_subject_expression_tokens(
+    struct mylite_sql_parse_config config,
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index,
+    struct mylite_sql_parse_result *out_result,
+    struct mylite_sql_ast_node **out_expression
+);
+static enum mylite_sql_parse_status feed_row_arithmetic_subject_expression_token(
+    struct mylite_sql_parse_config config,
+    void *parser,
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_parser_token_history *history,
+    bool *previous_token_was_dot,
+    const struct mylite_sql_token *token
+);
+static enum mylite_sql_parse_status find_row_arithmetic_placeholder_node(
+    struct mylite_sql_ast_node *node,
+    const struct mylite_sql_token *placeholder_token,
+    struct mylite_sql_ast_node **out_node
+);
+static bool row_arithmetic_placeholder_node_matches(
+    const struct mylite_sql_ast_node *node,
+    const struct mylite_sql_token *placeholder_token
+);
+static bool placeholder_ast_node_stack_push(
+    struct placeholder_ast_node_stack *stack,
+    struct mylite_sql_ast_node *node
+);
+static void placeholder_ast_node_stack_deinit(struct placeholder_ast_node_stack *stack);
+static void replace_row_arithmetic_placeholder_node(
+    struct mylite_sql_ast_node *placeholder,
+    const struct mylite_sql_ast_node *expression
 );
 static bool scan_can_retry_tableless_select_limit(
     const struct placeholder_statement_scan *scan,

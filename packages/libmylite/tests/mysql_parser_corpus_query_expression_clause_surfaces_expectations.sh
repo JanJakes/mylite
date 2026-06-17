@@ -100,6 +100,11 @@ expect_output \
     "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE a + 1 > 1;"
 
 expect_output \
+    "nested arithmetic predicate" \
+    "1" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE ((a + 1) * 2) > 4;"
+
+expect_output \
     "function order key" \
     "3
 1" \
@@ -197,6 +202,13 @@ expect_output \
 3" \
     "USE ${DATABASE}; "\
 "SELECT a FROM t1 WHERE a IN (SELECT a FROM t2 WHERE b + 1 > 20) ORDER BY a;"
+
+expect_output \
+    "subquery nested expression predicate" \
+    "1
+3" \
+    "USE ${DATABASE}; "\
+"SELECT a FROM t1 WHERE a IN (SELECT a FROM t2 WHERE ((b + 1) * 2) > 40) ORDER BY a;"
 
 expect_output \
     "string literal left BETWEEN datetime and string" \

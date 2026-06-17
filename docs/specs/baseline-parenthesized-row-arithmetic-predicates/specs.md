@@ -153,8 +153,10 @@ Add or update MySQL-verified expectation tests and C runtime/parser tests for:
 
 ## Deferred Work
 
-- Nested arithmetic parentheses inside a larger arithmetic expression, such as
-  `((a + b) * 2) > 0`.
+- General parenthesized expression operands outside the documented row
+  arithmetic predicate roots. Nested row arithmetic grouping such as
+  `((a + b) * 2) > 0` is covered by
+  [baseline nested row arithmetic predicate parentheses](../baseline-nested-row-arithmetic-predicate-parentheses/specs.md).
 - General `WHERE expression` parsing and execution.
 - Joined `ON`, grouped `HAVING`, and DML contexts beyond forms that already
   lower to the same documented predicate subset.

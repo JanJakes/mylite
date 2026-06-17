@@ -183,6 +183,11 @@ static bool placeholder_scan_predicate_value_is_direct_row_scalar_expression(
     size_t start_index,
     size_t end_index
 );
+static bool placeholder_scan_predicate_value_is_bare_row_operand(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+);
 static bool placeholder_scan_row_arithmetic_value_has_row_operand(
     const struct placeholder_statement_scan *scan,
     size_t start_index,

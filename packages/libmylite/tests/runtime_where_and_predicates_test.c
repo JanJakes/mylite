@@ -286,6 +286,12 @@ static int test_where_and_predicates(void) {
     static const char *const arithmetic_row_membership_value_rows[] = {"1", "2"};
     static const char *const arithmetic_membership_rows[] = {"1", "4"};
     static const char *const arithmetic_mod_rows[] = {"1"};
+    static const char *const column_upper_bound_rows[] = {"1", "2", "4"};
+    static const char *const column_lower_bound_rows[] = {"3"};
+    static const char *const column_membership_rows[] = {"4"};
+    static const char *const column_not_membership_rows[] = {"1", "2", "3"};
+    static const char *const column_value_update_rows[] = {"4", "13"};
+    static const char *const column_value_delete_rows[] = {"3"};
     static const char *const row_scalar_value_all_rows[] = {"1", "2", "3"};
     static const char *const row_scalar_value_two_rows[] = {"1", "2"};
     static const char *const row_scalar_value_update_rows[] = {"1", "10", "2", "10", "3", "10"};
@@ -1612,6 +1618,66 @@ static int test_where_and_predicates(void) {
     failures += expect_result(
         database,
         (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i BETWEEN -2 AND nn ORDER BY id",
+            .values = column_upper_bound_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "column upper bound between predicate value",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i BETWEEN nn AND 2147483647 ORDER BY id",
+            .values = column_lower_bound_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "column lower bound between predicate value",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i NOT BETWEEN -2 AND nn ORDER BY id",
+            .values = column_lower_bound_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "column not-between predicate value",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i IN (nn, 0) ORDER BY id",
+            .values = column_membership_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "column in-list predicate value",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i NOT IN (nn, 0) ORDER BY id",
+            .values = column_not_membership_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "column not-in-list predicate value",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
             .sql = "SELECT id FROM predicate_values "
                    "WHERE n = CAST(n_text AS SIGNED) ORDER BY id",
             .values = row_scalar_value_all_rows,
@@ -2667,6 +2733,27 @@ static int test_where_and_predicates(void) {
         }
     );
     failures += reset_numbers(database);
+    failures += execute_ok(database, "UPDATE numbers SET n = 13 WHERE i IN (nn, 0)", &result);
+    failures += expect_int64(
+        mylite_result_affected_rows(result),
+        1,
+        "update column in-list value affected rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id, n FROM numbers WHERE id = 4",
+            .values = column_value_update_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "update column in-list value row state",
+        }
+    );
+    failures += reset_numbers(database);
     failures += execute_ok(
         database,
         "UPDATE numbers SET n = NULL WHERE i BETWEEN -2 AND 1 ORDER BY id DESC LIMIT 1",
@@ -2931,6 +3018,27 @@ static int test_where_and_predicates(void) {
         }
     );
     failures += reset_numbers(database);
+    failures += execute_ok(database, "DELETE FROM numbers WHERE i BETWEEN -2 AND nn", &result);
+    failures += expect_int64(
+        mylite_result_affected_rows(result),
+        3,
+        "delete column between value affected rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers ORDER BY id",
+            .values = column_value_delete_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "delete column between value row state",
+        }
+    );
+    failures += reset_numbers(database);
     failures += execute_ok(
         database,
         "DELETE FROM numbers WHERE i BETWEEN -2 AND 1 ORDER BY id DESC LIMIT 1",
@@ -3140,13 +3248,16 @@ static int test_where_and_predicates(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_result(
         database,
-        "SELECT id FROM numbers WHERE i BETWEEN nn AND 2",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i BETWEEN nn AND 2",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "column lower bound unmatched between predicate value",
         }
     );
     failures += execute_error(
@@ -3233,13 +3344,16 @@ static int test_where_and_predicates(void) {
             .message_part = "SQL syntax",
         }
     );
-    failures += execute_error(
+    failures += expect_result(
         database,
-        "SELECT id FROM numbers WHERE i IN (nn)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQL syntax",
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i IN (nn)",
+            .values = NULL,
+            .column_count = 1U,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "column in-list unmatched predicate value",
         }
     );
     failures += execute_error(

@@ -571,7 +571,8 @@ static int test_date_format_predicates(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+            .message_part =
+                "DATE_FORMAT() numeric comparison supports only DATE_FORMAT(value, format)",
         }
     );
     failures += execute_error(

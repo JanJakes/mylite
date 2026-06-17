@@ -7,6 +7,7 @@
 
 enum {
     mysql_error_parse = 1064,
+    mysql_error_no_database = 1046,
 };
 
 struct expected_sql_error {
@@ -37,6 +38,11 @@ static int test_expression_residual_runtime(void) {
         .code = mysql_error_parse,
         .sqlstate = "42000",
         .message_part = "DO supports only",
+    };
+    struct expected_sql_error no_database = {
+        .code = mysql_error_no_database,
+        .sqlstate = "3D000",
+        .message_part = "No database selected",
     };
     int failures = 0;
 
@@ -75,10 +81,10 @@ static int test_expression_residual_runtime(void) {
     failures += execute_error(
         database,
         "SELECT f1, f2, f3 FROM t1 WHERE f1 BETWEEN f2 AND f3",
-        unsupported
+        no_database
     );
     failures +=
-        execute_error(database, "SELECT * FROM t2,t3 WHERE f2 IN (f3,'2003-04-05')", unsupported);
+        execute_error(database, "SELECT * FROM t2,t3 WHERE f2 IN (f3,'2003-04-05')", no_database);
     failures += execute_error(
         database,
         "SELECT argument FROM log_rows WHERE argument LIKE ('SET%')",

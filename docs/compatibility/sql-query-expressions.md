@@ -110,9 +110,9 @@ forms, including the row arithmetic predicate subset, against compatible
 literals, descriptor-column RHS values, and supported direct row-scalar value
 expressions with row operands in the current single-table `SELECT`, `UPDATE`,
 and `DELETE` `WHERE` envelope. Row-scalar `BETWEEN` and `IN` predicates admit
-the same documented direct value operands. Column-only range bounds, joined
-`ON`, grouped `HAVING`, arbitrary expression composition, and metadata for
-generated predicate value expressions remain deferred.
+the same documented direct value operands, plus documented bare descriptor-column
+value operands. Joined `ON`, grouped `HAVING`, arbitrary expression composition,
+and metadata for generated predicate value expressions remain deferred.
 
 The limited user-variable surface exposes handle-local `@name` values in
 no-source/`DUAL` scalar `SELECT` lists, `DO` expressions, SQL-level prepared

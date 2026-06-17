@@ -371,6 +371,15 @@ expect_output \
 
 reset_numbers
 expect_output \
+    "update column predicate value" \
+    "1	0	1:N,2:9,3:N,4:13" \
+    "UPDATE numbers SET n = 13 WHERE i IN (nn, 0); "\
+"SELECT ROW_COUNT(), @@warning_count, GROUP_CONCAT(CONCAT(id, ':', IFNULL(n, 'N')) ORDER BY id) "\
+"FROM numbers;" \
+    "$DATABASE"
+
+reset_numbers
+expect_output \
     "delete conjunction affected rows" \
     "1	0	1,2,4" \
     "DELETE FROM numbers WHERE i > 1 AND n IS NULL; "\
@@ -383,6 +392,14 @@ expect_output \
     "2	0	3" \
     "DELETE FROM predicate_values WHERE n BETWEEN JSON_LENGTH(j) AND JSON_LENGTH(j); "\
 "SELECT ROW_COUNT(), @@warning_count, GROUP_CONCAT(id ORDER BY id) FROM predicate_values;" \
+    "$DATABASE"
+
+reset_numbers
+expect_output \
+    "delete column predicate value" \
+    "3	0	3" \
+    "DELETE FROM numbers WHERE i BETWEEN -2 AND nn; "\
+"SELECT ROW_COUNT(), @@warning_count, GROUP_CONCAT(id ORDER BY id) FROM numbers;" \
     "$DATABASE"
 
 reset_numbers
@@ -566,6 +583,26 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "mysql accepts column upper between bound upstream" \
+    "1
+2
+4" \
+    "SELECT id FROM numbers WHERE i BETWEEN -2 AND nn ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts column lower between bound upstream" \
+    "3" \
+    "SELECT id FROM numbers WHERE i BETWEEN nn AND 2147483647 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts column not between bound upstream" \
+    "3" \
+    "SELECT id FROM numbers WHERE i NOT BETWEEN -2 AND nn ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
     "mysql accepts arithmetic in predicate upstream" \
     "1
 4" \
@@ -598,6 +635,20 @@ expect_output \
     "1
 3" \
     "SELECT id FROM numbers WHERE i NOT IN (nn - 5, 0) ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts column in-list value upstream" \
+    "4" \
+    "SELECT id FROM numbers WHERE i IN (nn, 0) ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts column not in-list value upstream" \
+    "1
+2
+3" \
+    "SELECT id FROM numbers WHERE i NOT IN (nn, 0) ORDER BY id;" \
     "$DATABASE"
 
 expect_output \

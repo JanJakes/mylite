@@ -12,11 +12,6 @@ static int test_exists_expression_surfaces(void);
 static int test_query_scalar_expression_placeholders(void);
 static int expect_statement_kind(struct expected_statement expected);
 static int parse_ok(const char *sql);
-static int parse_status(
-    const char *sql,
-    enum mylite_sql_parse_status expected_status,
-    const char *context
-);
 
 int main(void) {
     int failures = 0;
@@ -162,11 +157,7 @@ static int test_query_scalar_expression_placeholders(void) {
     for (size_t index = 0U; index < sizeof(statements) / sizeof(statements[0]); ++index) {
         failures += expect_statement_kind(statements[index]);
     }
-    failures += parse_status(
-        "SELECT id FROM t WHERE id IN (nn)",
-        MYLITE_SQL_PARSE_SYNTAX_ERROR,
-        "malformed descriptor IN predicate"
-    );
+    failures += parse_ok("SELECT id FROM t WHERE id IN (nn)");
     return failures;
 }
 
@@ -179,21 +170,6 @@ static int expect_statement_kind(struct expected_statement expected) {
     statement = parser_test_child_at(result.root, 0U);
     failures += parser_test_expect_node(statement, expected.kind, expected.sql);
     failures += parser_test_expect_child_count(statement, 0U, expected.sql);
-    mylite_sql_parse_result_deinit(&result);
-    return failures;
-}
-
-static int parse_status(
-    const char *sql,
-    enum mylite_sql_parse_status expected_status,
-    const char *context
-) {
-    struct mylite_sql_parse_result result;
-    int failures = parser_test_parse_sql(sql, expected_status, &result);
-
-    if (failures != 0) {
-        (void)parser_test_expect_true(0, context);
-    }
     mylite_sql_parse_result_deinit(&result);
     return failures;
 }

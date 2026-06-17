@@ -95,7 +95,6 @@ existing targeted runtime diagnostic.
 
 ## Deferred Work
 
-- Column-only range bounds such as `i BETWEEN nn AND 2`.
 - Joined `ON` predicates and grouped `HAVING` predicate values.
 - Source-free scalar expression values in table-backed predicates outside the
   current literal/session scalar subset.

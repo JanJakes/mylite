@@ -875,6 +875,9 @@ static bool placeholder_scan_predicate_value_is_direct_row_scalar_expression(
         ++start_index;
         --end_index;
     }
+    if (placeholder_scan_predicate_value_is_bare_row_operand(scan, start_index, end_index)) {
+        return true;
+    }
     if (placeholder_scan_token_text_equals(scan, start_index, "CASE")) {
         return placeholder_scan_token_text_equals(scan, end_index, "END");
     }
@@ -883,6 +886,15 @@ static bool placeholder_scan_predicate_value_is_direct_row_scalar_expression(
            mylite_sql_parser_token_is_left_paren(&scan->tokens[start_index + 1U]) &&
            placeholder_scan_find_matching_right_paren(scan, start_index + 1U, &right_paren_index) &&
            right_paren_index == end_index;
+}
+
+static bool placeholder_scan_predicate_value_is_bare_row_operand(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+) {
+    return start_index == end_index &&
+           placeholder_scan_token_is_row_arithmetic_value_identifier_operand(scan, start_index);
 }
 
 static bool placeholder_scan_row_arithmetic_value_has_row_operand(

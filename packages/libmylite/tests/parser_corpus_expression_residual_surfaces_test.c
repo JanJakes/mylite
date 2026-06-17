@@ -50,9 +50,9 @@ static int test_expression_residual_placeholders(void) {
         {.sql = "SELECT * FROM t1 WHERE NOT(NOT(a))",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT f1, f2, f3 FROM t1 WHERE f1 BETWEEN f2 AND f3",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
+         .kind = MYLITE_SQL_AST_SELECT_STATEMENT},
         {.sql = "SELECT * FROM t2,t3 WHERE f2 IN (f3,'2003-04-05')",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
+         .kind = MYLITE_SQL_AST_SELECT_STATEMENT},
         {.sql = "SELECT argument FROM log_rows WHERE argument LIKE ('SET%')",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT a - INTERVAL(b) MICROSECOND FROM t",
@@ -92,7 +92,9 @@ static int expect_statement_kind(struct expected_statement expected) {
     failures += parser_test_parse_sql(expected.sql, MYLITE_SQL_PARSE_OK, &result);
     statement = parser_test_child_at(result.root, 0U);
     failures += parser_test_expect_node(statement, expected.kind, expected.sql);
-    failures += parser_test_expect_child_count(statement, 0U, expected.sql);
+    if (expected.kind == MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT) {
+        failures += parser_test_expect_child_count(statement, 0U, expected.sql);
+    }
     mylite_sql_parse_result_deinit(&result);
     return failures;
 }

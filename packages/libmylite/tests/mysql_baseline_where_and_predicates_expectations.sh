@@ -466,6 +466,35 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "mysql accepts arithmetic comparison value upstream" \
+    "2" \
+    "SELECT id FROM numbers WHERE i = nn - 5 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts numeric function arithmetic comparison value upstream" \
+    "2" \
+    "SELECT id FROM numbers WHERE i = ABS(nn - 7) ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts arithmetic comparison value with row-scalar subject upstream" \
+    "1
+2
+3
+4" \
+    "SELECT id FROM numbers WHERE i + nn = nn + i ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts nested arithmetic comparison value upstream" \
+    "1
+2
+4" \
+    "SELECT id FROM numbers WHERE i < (nn + tie) * 2 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
     "mysql accepts arithmetic between predicate upstream" \
     "1
 2
@@ -490,6 +519,28 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "mysql accepts arithmetic between bounds upstream" \
+    "1
+2" \
+    "SELECT id FROM numbers WHERE i BETWEEN nn - 7 AND nn - 5 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts arithmetic between bounds with row-scalar subject upstream" \
+    "1
+2
+4" \
+    "SELECT id FROM numbers WHERE i + nn BETWEEN nn - 2 AND nn + 2 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts arithmetic not between bounds upstream" \
+    "3
+4" \
+    "SELECT id FROM numbers WHERE i NOT BETWEEN nn - 7 AND nn - 5 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
     "mysql accepts arithmetic in predicate upstream" \
     "1
 4" \
@@ -508,6 +559,27 @@ expect_output \
     "1
 4" \
     "SELECT id FROM numbers WHERE ((i + nn) * 2) IN (6, 16, NULL) ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts arithmetic in-list value upstream" \
+    "2
+4" \
+    "SELECT id FROM numbers WHERE i IN (nn - 5, 0) ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts arithmetic not in-list value upstream" \
+    "1
+3" \
+    "SELECT id FROM numbers WHERE i NOT IN (nn - 5, 0) ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "mysql accepts arithmetic in-list values with row-scalar subject upstream" \
+    "1
+2" \
+    "SELECT id FROM numbers WHERE i + nn IN (nn - 2, nn + 1, NULL) ORDER BY id;" \
     "$DATABASE"
 
 expect_output \

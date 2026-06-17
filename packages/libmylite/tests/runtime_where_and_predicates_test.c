@@ -276,6 +276,14 @@ static int test_where_and_predicates(void) {
     static const char *const arithmetic_nested_between_rows[] = {"1", "2", "4"};
     static const char *const arithmetic_precedence_rows[] = {"1"};
     static const char *const arithmetic_grouped_parenthesized_rows[] = {"4"};
+    static const char *const arithmetic_rhs_rows[] = {"2"};
+    static const char *const arithmetic_function_rhs_rows[] = {"2"};
+    static const char *const arithmetic_rhs_nested_rows[] = {"1", "2", "4"};
+    static const char *const arithmetic_between_bound_rows[] = {"1", "2"};
+    static const char *const arithmetic_not_between_bound_rows[] = {"3", "4"};
+    static const char *const arithmetic_membership_value_rows[] = {"2", "4"};
+    static const char *const arithmetic_not_membership_value_rows[] = {"1", "3"};
+    static const char *const arithmetic_row_membership_value_rows[] = {"1", "2"};
     static const char *const arithmetic_membership_rows[] = {"1", "4"};
     static const char *const arithmetic_mod_rows[] = {"1"};
     static const char *const is_distinct_rows[] = {NULL, "9"};
@@ -1300,6 +1308,54 @@ static int test_where_and_predicates(void) {
     failures += expect_result(
         database,
         (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i = nn - 5 ORDER BY id",
+            .values = arithmetic_rhs_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row arithmetic comparison value predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i = ABS(nn - 7) ORDER BY id",
+            .values = arithmetic_function_rhs_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row arithmetic numeric function comparison value predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i + nn = nn + i ORDER BY id",
+            .values = is_all_rows,
+            .column_count = 1U,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row arithmetic comparison value with row-scalar subject",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i < (nn + tie) * 2 ORDER BY id",
+            .values = arithmetic_rhs_nested_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "nested row arithmetic comparison value predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
             .sql = "SELECT id FROM numbers WHERE i + nn BETWEEN 3 AND 8 ORDER BY id",
             .values = between_rows,
             .column_count = 1U,
@@ -1336,6 +1392,42 @@ static int test_where_and_predicates(void) {
     failures += expect_result(
         database,
         (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i BETWEEN nn - 7 AND nn - 5 ORDER BY id",
+            .values = arithmetic_between_bound_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row arithmetic between bound predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i + nn BETWEEN nn - 2 AND nn + 2 ORDER BY id",
+            .values = arithmetic_nested_between_rows,
+            .column_count = 1U,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row arithmetic between bounds with row-scalar subject",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i NOT BETWEEN nn - 7 AND nn - 5 ORDER BY id",
+            .values = arithmetic_not_between_bound_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row arithmetic not between bound predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
             .sql = "SELECT id FROM numbers WHERE i + nn IN (3, 8, NULL) ORDER BY id",
             .values = arithmetic_membership_rows,
             .column_count = 1U,
@@ -1367,6 +1459,42 @@ static int test_where_and_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "nested row arithmetic in predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i IN (nn - 5, 0) ORDER BY id",
+            .values = arithmetic_membership_value_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row arithmetic in-list value predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i NOT IN (nn - 5, 0) ORDER BY id",
+            .values = arithmetic_not_membership_value_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row arithmetic not in-list value predicate",
+        }
+    );
+    failures += expect_result(
+        database,
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE i + nn IN (nn - 2, nn + 1, NULL) ORDER BY id",
+            .values = arithmetic_row_membership_value_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row arithmetic in-list values with row-scalar subject",
         }
     );
     failures += expect_result(

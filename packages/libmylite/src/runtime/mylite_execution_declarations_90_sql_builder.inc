@@ -1924,8 +1924,7 @@ static int append_row_scalar_numeric_extra_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
-static const char *row_scalar_numeric_extra_sql_name(
-    enum planned_row_scalar_numeric_extra_kind kind
+static const char *row_scalar_numeric_extra_sql_name(enum planned_row_scalar_numeric_extra_kind kind
 );
 static int append_row_scalar_uuid_expression_sql(
     struct mylite_dynamic_string *string,
@@ -2380,6 +2379,7 @@ static int append_is_boolean_rhs_term_sql(
 );
 static int append_select_between_predicate_term_sql(
     struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
     size_t *next_parameter
 );
 static int append_select_in_predicate_term_sql(

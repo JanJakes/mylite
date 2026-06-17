@@ -29,6 +29,10 @@ static int test_query_expression_clause_placeholders(void) {
         {.sql = "SELECT a, COUNT(*) FROM t1 GROUP BY a + 0 "
                 "HAVING COUNT(*) >= 1 AND a > 0 ORDER BY a + 0",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
+        {.sql = "SELECT a, COUNT(*) FROM t1 GROUP BY a HAVING a = b - 1",
+         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
+        {.sql = "SELECT t1.a FROM t1 JOIN t2 ON t1.a = t2.b - 1",
+         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT a FROM t1 WHERE (a,b) = (1,2)",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT a FROM t1 WHERE(a,b) = (1,2)",
@@ -104,6 +108,12 @@ static int test_query_expression_clause_placeholders(void) {
     failures += parse_ok("SELECT COUNT(*) FROM t1 WHERE (a + 1) > 1");
     failures += parse_ok("SELECT COUNT(*) FROM t1 WHERE ((a + 1) * 2) > 4");
     failures += parse_ok("SELECT COUNT(*) FROM t1 WHERE ((a + 1) * 2) > 4 AND ((b + 1) * 2) > 8");
+    failures += parse_ok("SELECT COUNT(*) FROM t1 WHERE a = b - 1");
+    failures += parse_ok("SELECT COUNT(*) FROM t1 WHERE a = ABS(b - 1)");
+    failures += parse_ok("SELECT COUNT(*) FROM t1 WHERE a + b = b + a");
+    failures += parse_ok("SELECT COUNT(*) FROM t1 WHERE a < (b + c) * 2");
+    failures += parse_ok("SELECT COUNT(*) FROM t1 WHERE a BETWEEN b - 7 AND b - 5");
+    failures += parse_ok("SELECT COUNT(*) FROM t1 WHERE a IN (b - 5, 0)");
     failures += parse_ok("SELECT a FROM t1 WHERE a IN (SELECT a FROM t2 WHERE b + 1 > 20) "
                          "ORDER BY a");
     failures += parse_ok("SELECT a FROM t1 WHERE a IN (SELECT a FROM t2 WHERE (b + 1) > 20) "

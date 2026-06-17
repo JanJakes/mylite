@@ -963,6 +963,15 @@ static int plan_between_predicate(
     struct planned_select_predicate *predicate,
     size_t *out_node_index
 );
+static int plan_between_predicate_bound(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *bound_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    bool upper_bound,
+    struct planned_select_predicate_node *node
+);
 static int plan_in_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
@@ -998,6 +1007,26 @@ static int plan_in_literal_predicate(
     size_t table_column_count,
     struct planned_select_predicate *predicate,
     size_t *out_node_index
+);
+static bool predicate_value_list_contains_row_scalar_predicate_value(
+    const struct mylite_sql_ast_node *value_list
+);
+static int plan_descriptor_in_value_list(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_list,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node
+);
+static int plan_descriptor_in_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node,
+    size_t value_index
 );
 static int plan_scalar_subquery_in_literal_predicate(
     struct mylite_db *database,

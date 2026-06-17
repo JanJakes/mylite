@@ -113,6 +113,46 @@ static int test_query_expression_clause_surfaces(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t1 WHERE a = b - 1",
+            .values = arithmetic_predicate_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row arithmetic comparison value support",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t1 WHERE a = ABS(b - 1)",
+            .values = arithmetic_predicate_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "numeric function arithmetic comparison value support",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t1 WHERE a BETWEEN b - 1 AND b + 1",
+            .values = arithmetic_predicate_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row arithmetic between value support",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t1 WHERE a IN (b - 1, 0)",
+            .values = arithmetic_predicate_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row arithmetic in-list value support",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
             .sql = "SELECT a FROM t1 ORDER BY ABS(b - 5)",
             .values = function_order_key_rows,
             .column_count = 1U,
@@ -187,6 +227,24 @@ static int test_query_expression_clause_surfaces(void) {
     failures += execute_error(
         database,
         "UPDATE t3 SET a4={d '1789-07-14'} WHERE a1=0",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT a, COUNT(*) FROM t1 GROUP BY a HAVING a = b - 1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT t1.a FROM t1 JOIN t2 ON t1.a = t2.b - 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

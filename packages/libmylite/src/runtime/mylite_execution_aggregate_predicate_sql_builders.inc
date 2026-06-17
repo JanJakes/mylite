@@ -1453,9 +1453,7 @@ static int append_select_predicate_column_term_sql(
     if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON &&
         (node->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE_BINARY ||
          (node->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE &&
-          row_scalar_expression_is_binary_sensitive_collate(
-              node->row_scalar_value_expression
-          )))) {
+          row_scalar_expression_is_binary_sensitive_collate(node->row_scalar_value_expression)))) {
         return append_select_like_binary_predicate_sql(string, predicate, node, next_parameter);
     }
 
@@ -1483,7 +1481,7 @@ static int append_select_predicate_column_term_sql(
                 node
             );
         } else if (node->kind == PLANNED_SELECT_PREDICATE_BETWEEN) {
-            rc = append_select_between_predicate_term_sql(string, next_parameter);
+            rc = append_select_between_predicate_term_sql(string, node, next_parameter);
         } else if (node->kind == PLANNED_SELECT_PREDICATE_IN) {
             rc = append_select_in_predicate_term_sql(string, node, next_parameter);
         } else {
@@ -1503,9 +1501,7 @@ static int append_select_predicate_column_term_sql_without_subqueries(
     if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON &&
         (node->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE_BINARY ||
          (node->operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE &&
-          row_scalar_expression_is_binary_sensitive_collate(
-              node->row_scalar_value_expression
-          )))) {
+          row_scalar_expression_is_binary_sensitive_collate(node->row_scalar_value_expression)))) {
         return append_select_like_binary_predicate_sql(string, predicate, node, next_parameter);
     }
 
@@ -1533,7 +1529,7 @@ static int append_select_predicate_column_term_sql_without_subqueries(
                 node
             );
         } else if (node->kind == PLANNED_SELECT_PREDICATE_BETWEEN) {
-            rc = append_select_between_predicate_term_sql(string, next_parameter);
+            rc = append_select_between_predicate_term_sql(string, node, next_parameter);
         } else if (node->kind == PLANNED_SELECT_PREDICATE_IN) {
             rc = append_select_in_literal_predicate_term_sql(string, node, next_parameter);
         } else {
@@ -2764,24 +2760,37 @@ static int append_is_boolean_rhs_term_sql(
 
 static int append_select_between_predicate_term_sql(
     struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node,
     size_t *next_parameter
 ) {
     int rc = mylite_dynamic_string_append(string, " BETWEEN ");
 
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && node->row_scalar_value_expression != NULL) {
+        rc = append_row_scalar_expression_sql(
+            string,
+            node->row_scalar_value_expression,
+            next_parameter
+        );
+    } else if (rc == MYLITE_OK) {
         rc = append_numbered_parameter(string, *next_parameter);
-    }
-    if (rc == MYLITE_OK) {
-        ++(*next_parameter);
+        if (rc == MYLITE_OK) {
+            ++(*next_parameter);
+        }
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(string, " AND ");
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && node->row_scalar_upper_value_expression != NULL) {
+        rc = append_row_scalar_expression_sql(
+            string,
+            node->row_scalar_upper_value_expression,
+            next_parameter
+        );
+    } else if (rc == MYLITE_OK) {
         rc = append_numbered_parameter(string, *next_parameter);
-    }
-    if (rc == MYLITE_OK) {
-        ++(*next_parameter);
+        if (rc == MYLITE_OK) {
+            ++(*next_parameter);
+        }
     }
 
     return rc;
@@ -3108,6 +3117,7 @@ static int append_select_order_item_sql(
         rc = mylite_dynamic_string_append_quoted_identifier(string, item->alias);
     } else if (item->kind == PLANNED_SELECT_ORDER_ITEM_ORDINAL) {
         enum { order_ordinal_text_capacity = 32 };
+
         char ordinal_text[order_ordinal_text_capacity];
 
         snprintf(ordinal_text, sizeof(ordinal_text), "%zu", item->ordinal);

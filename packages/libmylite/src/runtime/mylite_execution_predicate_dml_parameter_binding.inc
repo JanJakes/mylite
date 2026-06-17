@@ -288,13 +288,29 @@ static int bind_select_non_in_predicate_node_parameters(
         );
     }
 
-    rc = bind_planned_value_parameter(statement, *parameter_index, &node->value);
-    if (rc == MYLITE_OK) {
+    if (node->row_scalar_value_expression != NULL) {
+        rc = bind_row_scalar_expression_parameters(
+            statement,
+            node->row_scalar_value_expression,
+            parameter_index
+        );
+    } else {
+        rc = bind_planned_value_parameter(statement, *parameter_index, &node->value);
+    }
+    if (rc == MYLITE_OK && node->row_scalar_value_expression == NULL) {
         ++(*parameter_index);
     }
     if (rc == MYLITE_OK && node->kind == PLANNED_SELECT_PREDICATE_BETWEEN) {
-        rc = bind_planned_value_parameter(statement, *parameter_index, &node->upper_value);
-        if (rc == MYLITE_OK) {
+        if (node->row_scalar_upper_value_expression != NULL) {
+            rc = bind_row_scalar_expression_parameters(
+                statement,
+                node->row_scalar_upper_value_expression,
+                parameter_index
+            );
+        } else {
+            rc = bind_planned_value_parameter(statement, *parameter_index, &node->upper_value);
+        }
+        if (rc == MYLITE_OK && node->row_scalar_upper_value_expression == NULL) {
             ++(*parameter_index);
         }
     }

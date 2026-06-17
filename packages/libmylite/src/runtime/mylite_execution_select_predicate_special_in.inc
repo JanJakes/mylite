@@ -384,29 +384,72 @@ static int plan_between_predicate(
                 &node.compare_date_as_datetime
             );
         } else {
-            rc = convert_predicate_value(
+            rc = plan_between_predicate_bound(
                 database,
                 child_at(predicate_node, 1U),
-                &node.column,
-                &node.value
+                source_context,
+                table_columns,
+                table_column_count,
+                false,
+                &node
             );
             if (rc == MYLITE_OK) {
-                rc = convert_predicate_value(
+                rc = plan_between_predicate_bound(
                     database,
                     child_at(predicate_node, 2U),
-                    &node.column,
-                    &node.upper_value
+                    source_context,
+                    table_columns,
+                    table_column_count,
+                    true,
+                    &node
                 );
             }
         }
     }
     if (rc != MYLITE_OK) {
-        planned_value_deinit(&node.value);
-        planned_value_deinit(&node.upper_value);
+        planned_select_predicate_node_deinit_runtime_values(&node);
         return rc;
     }
 
     return append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+}
+
+static int plan_between_predicate_bound(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *bound_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    bool upper_bound,
+    struct planned_select_predicate_node *node
+) {
+    if (predicate_node_is_supported_row_scalar_predicate_value_expression(bound_node)) {
+        if (upper_bound) {
+            return plan_predicate_row_scalar_upper_value_expression(
+                database,
+                bound_node,
+                source_context,
+                table_columns,
+                table_column_count,
+                node
+            );
+        }
+        return plan_predicate_row_scalar_value_expression(
+            database,
+            bound_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            node
+        );
+    }
+
+    return convert_predicate_value(
+        database,
+        bound_node,
+        &node->column,
+        upper_bound ? &node->upper_value : &node->value
+    );
 }
 
 static int plan_in_predicate(
@@ -577,8 +620,7 @@ static int plan_row_scalar_expression_in_predicate(
         free(node.values);
         if (node.row_scalar_value_expressions != NULL) {
             for (size_t value_index = 0U; value_index < node.value_count; ++value_index) {
-                planned_row_scalar_expression_deinit(
-                    &node.row_scalar_value_expressions[value_index]
+                planned_row_scalar_expression_deinit(&node.row_scalar_value_expressions[value_index]
                 );
             }
         }
@@ -670,6 +712,17 @@ static int plan_in_literal_predicate(
                 &node.value_count,
                 &node.compare_date_as_datetime
             );
+        } else if (predicate_value_list_contains_row_scalar_predicate_value(
+                       child_at(predicate_node, 1U)
+                   )) {
+            rc = plan_descriptor_in_value_list(
+                database,
+                child_at(predicate_node, 1U),
+                source_context,
+                table_columns,
+                table_column_count,
+                &node
+            );
         } else {
             rc = convert_predicate_in_value_list(
                 database,
@@ -684,14 +737,123 @@ static int plan_in_literal_predicate(
         rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
     }
     if (rc != MYLITE_OK) {
-        for (size_t value_index = 0U; value_index < node.value_count; ++value_index) {
-            planned_value_deinit(&node.values[value_index]);
-        }
+        planned_value_array_deinit(node.values, node.value_count);
         free(node.values);
+        if (node.row_scalar_value_expressions != NULL) {
+            for (size_t value_index = 0U; value_index < node.value_count; ++value_index) {
+                planned_row_scalar_expression_deinit(&node.row_scalar_value_expressions[value_index]
+                );
+            }
+        }
+        free(node.row_scalar_value_expressions);
         return rc;
     }
 
     return rc;
+}
+
+static bool predicate_value_list_contains_row_scalar_predicate_value(
+    const struct mylite_sql_ast_node *value_list
+) {
+    size_t value_count = 0U;
+
+    if (value_list == NULL || value_list->kind != MYLITE_SQL_AST_PREDICATE_VALUE_LIST) {
+        return false;
+    }
+
+    value_count = mylite_sql_ast_node_child_count(value_list);
+    for (size_t value_index = 0U; value_index < value_count; ++value_index) {
+        if (predicate_node_is_supported_row_scalar_predicate_value_expression(
+                child_at(value_list, value_index)
+            )) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int plan_descriptor_in_value_list(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_list,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node
+) {
+    size_t value_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_list == NULL || value_list->kind != MYLITE_SQL_AST_PREDICATE_VALUE_LIST) {
+        set_unsupported_error(database, "WHERE supports only nonempty IN predicate lists");
+        return MYLITE_ERROR;
+    }
+    value_count = mylite_sql_ast_node_child_count(value_list);
+    if (value_count == 0U) {
+        set_unsupported_error(database, "WHERE supports only nonempty IN predicate lists");
+        return MYLITE_ERROR;
+    }
+    if (value_count > SIZE_MAX / sizeof(*node->values) ||
+        value_count > SIZE_MAX / sizeof(*node->row_scalar_value_expressions)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    node->values = calloc(value_count, sizeof(*node->values));
+    node->row_scalar_value_expressions =
+        calloc(value_count, sizeof(*node->row_scalar_value_expressions));
+    if (node->values == NULL || node->row_scalar_value_expressions == NULL) {
+        set_nomem_error(database);
+        planned_value_array_deinit(node->values, value_count);
+        free(node->values);
+        free(node->row_scalar_value_expressions);
+        node->values = NULL;
+        node->row_scalar_value_expressions = NULL;
+        return MYLITE_NOMEM;
+    }
+    node->value_count = value_count;
+
+    for (size_t value_index = 0U; rc == MYLITE_OK && value_index < value_count; ++value_index) {
+        rc = plan_descriptor_in_value(
+            database,
+            child_at(value_list, value_index),
+            source_context,
+            table_columns,
+            table_column_count,
+            node,
+            value_index
+        );
+    }
+    return rc;
+}
+
+static int plan_descriptor_in_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate_node *node,
+    size_t value_index
+) {
+    if (predicate_node_is_supported_row_scalar_predicate_value_expression(value_node)) {
+        return plan_row_scalar_expression(
+            database,
+            value_node,
+            true,
+            source_context,
+            NULL,
+            table_columns,
+            table_column_count,
+            &node->row_scalar_value_expressions[value_index]
+        );
+    }
+
+    return convert_predicate_in_value(
+        database,
+        value_node,
+        &node->column,
+        &node->values[value_index]
+    );
 }
 
 static int plan_scalar_subquery_in_literal_predicate(

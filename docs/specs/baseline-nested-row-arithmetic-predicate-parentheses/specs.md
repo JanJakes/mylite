@@ -144,7 +144,8 @@ Add MySQL-runtime expectation tests and MyLite parser/runtime tests for:
 
 - General `WHERE expression` parsing and execution.
 - Arbitrary expression operands outside the documented row-scalar arithmetic
-  subset.
+  subset; arithmetic predicate value operands are covered by
+  [baseline row arithmetic predicate values](../baseline-row-arithmetic-predicate-values/specs.md).
 - Joined `ON`, grouped `HAVING`, broad DML assignments, aggregate/window
   expression surfaces, and expression indexes beyond paths already documented.
 - Binary-string, JSON, temporal interval, unsigned-width, fixed-decimal, and

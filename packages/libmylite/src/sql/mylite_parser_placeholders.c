@@ -51,10 +51,22 @@ struct placeholder_ast_node_stack {
     size_t capacity;
 };
 
+struct row_arithmetic_retry_clone_work_item {
+    const struct mylite_sql_ast_node *source;
+    struct mylite_sql_ast_node *clone;
+};
+
+struct row_arithmetic_retry_clone_stack {
+    struct row_arithmetic_retry_clone_work_item *items;
+    size_t count;
+    size_t capacity;
+};
+
 enum {
     placeholder_initial_token_capacity = 16,
     placeholder_row_arithmetic_retry_initial_capacity = 4,
     placeholder_ast_node_stack_initial_capacity = 16,
+    row_arithmetic_retry_clone_stack_initial_capacity = 8,
     placeholder_create_scan_token_limit = 12,
     create_table_partition_min_token_count = 6,
     create_table_select_min_token_count = 5,
@@ -109,6 +121,101 @@ static bool placeholder_scan_parenthesized_row_arithmetic_predicate_starts_at(
     const struct placeholder_statement_scan *scan,
     size_t left_paren_index,
     size_t *out_right_paren_index
+);
+static bool placeholder_scan_can_retry_row_arithmetic_predicate_values(
+    const struct placeholder_statement_scan *scan
+);
+static enum mylite_sql_parse_status scan_row_arithmetic_predicate_value_retries(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry,
+    size_t *out_end_index
+);
+static enum mylite_sql_parse_status scan_row_arithmetic_comparison_value_retry(
+    const struct placeholder_statement_scan *scan,
+    size_t comparison_index,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry,
+    size_t *out_end_index
+);
+static enum mylite_sql_parse_status scan_row_arithmetic_between_value_retries(
+    const struct placeholder_statement_scan *scan,
+    size_t between_index,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry,
+    size_t *out_end_index
+);
+static enum mylite_sql_parse_status scan_row_arithmetic_in_value_retries(
+    const struct placeholder_statement_scan *scan,
+    size_t in_index,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry,
+    size_t *out_end_index
+);
+static bool placeholder_scan_token_is_in_where_predicate_context(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_predicate_value_end(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    bool stop_at_comma,
+    size_t *out_end_index
+);
+static bool placeholder_scan_between_lower_end(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t *out_and_index
+);
+static bool placeholder_scan_row_arithmetic_value_has_operator(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+);
+static bool placeholder_scan_row_arithmetic_value_has_row_operand(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+);
+static bool placeholder_scan_token_is_row_arithmetic_value_identifier_operand(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_row_arithmetic_value_has_operator_in_range(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+);
+static bool placeholder_scan_row_arithmetic_value_has_unsupported_function_call(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+);
+static bool placeholder_scan_token_is_predicate_value_function_name(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_is_supported_row_arithmetic_value_function(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_stops_predicate_value(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    bool stop_at_comma
+);
+static bool placeholder_scan_in_list_is_subquery(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+);
+static enum mylite_sql_parse_status append_row_arithmetic_predicate_value_retry(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry
 );
 static bool placeholder_scan_token_starts_row_arithmetic_predicate_subject(
     const struct placeholder_statement_scan *scan,
@@ -193,6 +300,27 @@ static enum mylite_sql_parse_status parse_row_arithmetic_subject_expression_toke
     struct mylite_sql_parse_result *out_result,
     struct mylite_sql_ast_node **out_expression
 );
+static struct mylite_sql_ast_node *clone_row_arithmetic_retry_expression_tree(
+    struct mylite_sql_ast *ast,
+    const struct mylite_sql_ast_node *node
+);
+static struct mylite_sql_ast_node *clone_row_arithmetic_retry_expression_node(
+    struct mylite_sql_ast *ast,
+    const struct mylite_sql_ast_node *node
+);
+static bool clone_row_arithmetic_retry_expression_children(
+    struct mylite_sql_ast *ast,
+    struct row_arithmetic_retry_clone_stack *stack,
+    const struct row_arithmetic_retry_clone_work_item *item
+);
+static bool row_arithmetic_retry_clone_stack_push(
+    struct row_arithmetic_retry_clone_stack *stack,
+    const struct mylite_sql_ast_node *source,
+    struct mylite_sql_ast_node *clone
+);
+static bool row_arithmetic_retry_clone_stack_reserve(struct row_arithmetic_retry_clone_stack *stack
+);
+static void row_arithmetic_retry_clone_stack_deinit(struct row_arithmetic_retry_clone_stack *stack);
 static enum mylite_sql_parse_status feed_row_arithmetic_subject_expression_token(
     struct mylite_sql_parse_config config,
     void *parser,

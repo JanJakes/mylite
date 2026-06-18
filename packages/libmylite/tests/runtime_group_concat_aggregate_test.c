@@ -103,12 +103,29 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
         "GROUP_CONCAT(name ORDER BY id SEPARATOR '')",
     };
     static const char *const empty_separator_values[] = {"alphabetadeltaecho"};
+    static const char *const ifnull_columns[] = {
+        "GROUP_CONCAT(IFNULL(name, '') ORDER BY id SEPARATOR ':')",
+    };
+    static const char *const ifnull_values[] = {"alpha:beta::delta:echo:"};
+    static const char *const concat_columns[] = {
+        "GROUP_CONCAT(CONCAT(name, note) ORDER BY id SEPARATOR '|')",
+    };
+    static const char *const concat_values[] = {"alphaA|betaB|deltaD|echoE"};
     static const char *const null_values[] = {NULL};
     static const char *const grouped_columns[] = {
         "g",
         "GROUP_CONCAT(name ORDER BY id SEPARATOR ':')"
     };
     static const char *const grouped_values[] = {"1", "alpha:beta", "2", "delta:echo", "3", NULL};
+    static const char *const grouped_ifnull_columns[] = {"g", "names"};
+    static const char *const grouped_ifnull_values[] = {
+        "1",
+        "alpha:beta:",
+        "2",
+        "delta:echo",
+        "3",
+        "",
+    };
     static const char *const grouped_having_columns[] = {"g", "names"};
     static const char *const grouped_having_values[] = {"2", "delta:echo"};
     static const char *const row_count_columns[] = {"ROW_COUNT()", "@@warning_count"};
@@ -243,6 +260,28 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT GROUP_CONCAT(IFNULL(name, '') ORDER BY id SEPARATOR ':') FROM items",
+            .columns = ifnull_columns,
+            .column_count = 1U,
+            .values = ifnull_values,
+            .row_count = 1U,
+            .context = "ifnull row-scalar value expression",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT GROUP_CONCAT(CONCAT(name, note) ORDER BY id SEPARATOR '|') FROM items",
+            .columns = concat_columns,
+            .column_count = 1U,
+            .values = concat_values,
+            .row_count = 1U,
+            .context = "concat row-scalar value expression",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT GROUP_CONCAT(name ORDER BY id) FROM items WHERE g = 99",
             .columns = (const char *const[]){"GROUP_CONCAT(name ORDER BY id)"},
             .column_count = 1U,
@@ -295,6 +334,18 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
             .values = grouped_values,
             .row_count = 3U,
             .context = "grouped group_concat",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, GROUP_CONCAT(IFNULL(name, '') ORDER BY id SEPARATOR ':') AS names "
+                   "FROM items GROUP BY g ORDER BY g",
+            .columns = grouped_ifnull_columns,
+            .column_count = 2U,
+            .values = grouped_ifnull_values,
+            .row_count = 3U,
+            .context = "grouped group_concat row-scalar value expression",
         }
     );
     failures += expect_query(
@@ -482,15 +533,13 @@ static int test_group_concat_diagnostics(void) {
             .message_part = "GROUP_CONCAT ORDER BY supports only NOT NULL integer",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(
         database,
         "SELECT GROUP_CONCAT(IFNULL(name, '') ORDER BY id) FROM diag",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "GROUP_CONCAT(column) supports only descriptor columns",
-        }
+        &result
     );
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_error(
         database,
         "SELECT GROUP_CONCAT(name ORDER BY id, sort_n) FROM diag",

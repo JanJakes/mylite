@@ -103,6 +103,10 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const readable_post_status_values[] = {"private", "1", "publish", "5"};
     static const char *const g_count_n_columns[] = {"g", "COUNT(n)"};
     static const char *const g_count_n_values[] = {NULL, "0", "1", "1", "2", "2"};
+    static const char *const g_count_ifnull_columns[] = {"g", "COUNT(IFNULL(n, 0))"};
+    static const char *const g_count_ifnull_values[] = {NULL, "1", "1", "2", "2", "2"};
+    static const char *const g_count_nullif_columns[] = {"g", "COUNT(NULLIF(n, 20))"};
+    static const char *const g_count_nullif_values[] = {NULL, "0", "1", "1", "2", "1"};
     static const char *const g_min_columns[] = {"g", "MIN(n)"};
     static const char *const g_min_values[] = {NULL, NULL, "1", "10", "2", "20"};
     static const char *const g_max_columns[] = {"g", "MAX(n)"};
@@ -662,6 +666,28 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = g_count_n_values,
             .row_count = 3U,
             .context = "count nullable column grouped by nullable key",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(IFNULL(n, 0)) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_count_ifnull_columns,
+            .column_count = 2U,
+            .values = g_count_ifnull_values,
+            .row_count = 3U,
+            .context = "count ifnull expression grouped by nullable key",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(NULLIF(n, 20)) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_count_nullif_columns,
+            .column_count = 2U,
+            .values = g_count_nullif_values,
+            .row_count = 3U,
+            .context = "count nullif expression grouped by nullable key",
         }
     );
     failures += expect_grouped_query(

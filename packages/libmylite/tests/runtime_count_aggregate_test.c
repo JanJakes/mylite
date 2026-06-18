@@ -855,6 +855,24 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
     failures += expect_count_query(
         database,
         (struct expected_count_query){
+            .sql = "SELECT COUNT(IFNULL(n, 0)) FROM numbers",
+            .column = "COUNT(IFNULL(n, 0))",
+            .value = "4",
+            .context = "row-scalar ifnull count expression",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(NULLIF(n, 20)) FROM numbers",
+            .column = "COUNT(NULLIF(n, 20))",
+            .value = "1",
+            .context = "row-scalar nullif count expression",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
             .sql = "SELECT ALL COUNT(n) FROM numbers",
             .column = "COUNT(n)",
             .value = "3",
@@ -2319,13 +2337,13 @@ static int test_count_aggregate_diagnostics(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_count_query(
         database,
-        "SELECT COUNT(id + 1) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(id + 1) FROM numbers",
+            .column = "COUNT(id + 1)",
+            .value = "4",
+            .context = "row-scalar arithmetic count expression",
         }
     );
     failures += execute_error(

@@ -6226,6 +6226,11 @@ selected_grouped_aggregate_expression(A) ::= COUNT(T) LPAREN(L) qualified_identi
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION, B, R);
 }
+selected_grouped_aggregate_expression(A) ::= COUNT(T) LPAREN(L)
+        count_row_scalar_aggregate_argument(B) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_one_argument_function(
+        state, T, L, MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION, B, R);
+}
 selected_grouped_aggregate_expression(A) ::= MIN(T) LPAREN(L) sum_aggregate_argument(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION, B, R);
@@ -6288,6 +6293,46 @@ sum_aggregate_argument(A) ::= qualified_identifier(B) STAR(T) qualified_identifi
         state, B, T, MYLITE_SQL_AST_OPERATOR_MULTIPLY, C);
 }
 sum_aggregate_argument(A) ::= qualified_identifier(B) SLASH(T) qualified_identifier(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_DIVIDE, C);
+}
+
+count_row_scalar_aggregate_argument(A) ::= string_length_expression(B). {
+    A = B;
+}
+count_row_scalar_aggregate_argument(A) ::= cast_convert_expression(B). {
+    A = B;
+}
+count_row_scalar_aggregate_argument(A) ::= aggregate_row_scalar_function(B). {
+    A = B;
+}
+count_row_scalar_aggregate_argument(A) ::= qualified_identifier(B) PLUS(T) qualified_identifier(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_ADD, C);
+}
+count_row_scalar_aggregate_argument(A) ::= qualified_identifier(B) PLUS(T)
+        qualified_identifier(C) PLUS(U) qualified_identifier(D). {
+    A = mylite_sql_parser_make_binary_expression(
+        state,
+        mylite_sql_parser_make_binary_expression(
+            state, B, T, MYLITE_SQL_AST_OPERATOR_ADD, C),
+        U,
+        MYLITE_SQL_AST_OPERATOR_ADD,
+        D);
+}
+count_row_scalar_aggregate_argument(A) ::= qualified_identifier(B) PLUS(T) aggregate_literal(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_ADD, C);
+}
+count_row_scalar_aggregate_argument(A) ::= qualified_identifier(B) MINUS(T) aggregate_literal(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_SUBTRACT, C);
+}
+count_row_scalar_aggregate_argument(A) ::= qualified_identifier(B) STAR(T) qualified_identifier(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_MULTIPLY, C);
+}
+count_row_scalar_aggregate_argument(A) ::= qualified_identifier(B) SLASH(T) qualified_identifier(C). {
     A = mylite_sql_parser_make_binary_expression(
         state, B, T, MYLITE_SQL_AST_OPERATOR_DIVIDE, C);
 }
@@ -6355,6 +6400,16 @@ aggregate_row_scalar_function(A) ::= COALESCE(T) LPAREN aggregate_scalar_functio
         RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_COALESCE_FUNCTION, B, R);
+}
+aggregate_row_scalar_function(A) ::= IFNULL(T) LPAREN aggregate_scalar_function_argument(B)
+        COMMA aggregate_scalar_function_argument(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_IFNULL_FUNCTION, B, C, R);
+}
+aggregate_row_scalar_function(A) ::= NULLIF(T) LPAREN aggregate_scalar_function_argument(B)
+        COMMA aggregate_scalar_function_argument(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_NULLIF_FUNCTION, B, C, R);
 }
 aggregate_row_scalar_function(A) ::= GREATEST(T) LPAREN aggregate_scalar_function_argument_list(B)
         RPAREN(R). {
@@ -11840,6 +11895,13 @@ expression(A) ::= COUNT(T) LPAREN(L) qualified_identifier(B) RPAREN(R) aggregate
     A = mylite_sql_parser_attach_function_window_clause(
         mylite_sql_parser_make_no_space_one_argument_function(
             state, T, L, MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION, B, R),
+        W);
+}
+expression(A) ::= COUNT(T) LPAREN(L) count_row_scalar_aggregate_argument(B) RPAREN(R)
+                  aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_no_space_one_argument_function(
+            state, T, L, MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION, B, R),
         W);
 }
 count_distinct_placeholder_argument(A) ::= aggregate_literal(B). {

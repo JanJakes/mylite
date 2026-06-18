@@ -8,14 +8,13 @@ file-backed `.mylite` opening, durable catalog descriptors, schema/table
 lifecycle, integer/`NULL` row values, descriptor-driven `SELECT`, the current
 joined descriptor-source envelope, and the baseline `WHERE` predicate subset.
 
-The feature is intentionally not full aggregate support. It admits one
-`COUNT(*)`, supported `COUNT(literal)`, `COUNT(column)`, or
-`COUNT(DISTINCT column)` select item, with either no table source, `FROM DUAL`,
-one persistent base table with optional baseline `WHERE`, descriptor `ORDER
-BY`, and `LIMIT` clauses, or for bare `COUNT(*)` only the current joined
-descriptor-source envelope. Grouped count forms are covered by grouped-
-aggregate specs. This slice does not add general aggregate expressions, window
-functions, or other aggregate functions.
+The feature is intentionally not full aggregate support. It admits supported
+`COUNT(*)`, `COUNT(literal)`, `COUNT(column)`, limited row-scalar `COUNT(expr)`,
+and `COUNT(DISTINCT column)` select items in the documented source envelopes.
+Bare `COUNT(*)` also uses the current joined descriptor-source envelope.
+Grouped count forms are covered by grouped-aggregate specs. This slice does
+not add broad aggregate expressions, window functions, or other aggregate
+functions.
 
 ## Sources
 
@@ -75,6 +74,9 @@ Observed against the local `mysql:8.4.9` runtime using TCP:
   error `1064`, SQLSTATE `42000`.
 - `COUNT(t.*)`, `COUNT()`, `COUNT(*, *)`, and `COUNT(* + 1)` fail with syntax
   error `1064`.
+- `COUNT(IFNULL(column, literal))` counts non-`NULL` row-scalar results.
+  `COUNT(NULLIF(column, literal))` skips row-scalar results that evaluate to
+  `NULL`.
 - `SELECT COUNT(*) FROM table WHERE ...` follows normal MySQL predicate
   semantics. This slice reuses only the already specified descriptor-driven
   integer/`NULL` predicate subset.
@@ -97,6 +99,8 @@ The implementation must add:
 - execution of `SELECT COUNT(*)` and `SELECT COUNT(*) FROM DUAL`;
 - descriptor-driven `SELECT COUNT(...) FROM table_name [WHERE predicate]
   [ORDER BY descriptor_order_key] [LIMIT row_count [OFFSET offset]]`;
+- limited descriptor-driven row-scalar `COUNT(expr)` over the existing
+  aggregate row-scalar expression subset, including grouped `COUNT(expr)`;
 - descriptor-driven `SELECT COUNT(*) FROM joined_descriptor_sources
   [WHERE predicate]` within the current inner/cartesian/comma/no-op
   `STRAIGHT_JOIN` and supported outer-join source envelope;
@@ -122,11 +126,11 @@ The implementation must add:
 
 This feature must not implement:
 
-- unsupported `COUNT(expr)` shapes, joined `COUNT(literal)`, joined
-  `COUNT(column)`, joined `COUNT(DISTINCT column)`, `COUNT()` with no
-  argument, `COUNT(table.*)`, aggregate arithmetic, aggregate comparisons,
-  table-backed mixed projections, multiple aggregate select items, or general
-  expression projection;
+- unsupported `COUNT(expr)` shapes outside the aggregate row-scalar subset,
+  joined `COUNT(literal)`, joined `COUNT(column)`, joined `COUNT(DISTINCT
+  column)`, `COUNT()` with no argument, `COUNT(table.*)`, aggregate
+  arithmetic, aggregate comparisons, table-backed mixed projections, or
+  general expression projection;
 - `GROUP BY`, `HAVING`, unsupported `ORDER BY` expressions, window `OVER`
   clauses, CTEs, subqueries, unions, locking clauses, query modifiers,
   optimizer hints, `INTO`, or arbitrary SQLite SQL pass-through;
@@ -170,6 +174,7 @@ Supported subset:
 SELECT COUNT(*)
 SELECT COUNT(*) FROM DUAL
 SELECT COUNT(...) FROM table_name [WHERE predicate] [ORDER BY order_key] [LIMIT limit]
+SELECT COUNT(row_scalar_expr) FROM table_name [WHERE predicate] [LIMIT limit]
 SELECT COUNT(*) FROM joined_descriptor_sources [WHERE predicate]
 ```
 
@@ -199,8 +204,10 @@ MyLite Lemon-syntax grammar snippets:
 
 ```lemon
 expression ::= count_star_function.
+expression ::= count_row_scalar_function.
 
 count_star_function ::= COUNT LPAREN STAR RPAREN.
+count_row_scalar_function ::= COUNT LPAREN count_row_scalar_argument RPAREN.
 ```
 
 The parser may admit `COUNT(*)` anywhere the expression grammar is currently
@@ -325,8 +332,8 @@ Fast C tests must cover:
 - zero-initialized cleanup for any new planner/result objects;
 - supported descriptor `ORDER BY`, `LIMIT 1`, `LIMIT 0`, `LIMIT 0, n`, and
   positive-offset `LIMIT` behavior for the single aggregate result row;
-- unsupported forms: unsupported `COUNT(expr)` shapes, `COUNT()`,
-  `COUNT(table.*)`, joined non-star count forms, multiple count items, mixed
+- unsupported forms: unsupported `COUNT(expr)` shapes outside the row-scalar
+  subset, `COUNT()`, `COUNT(table.*)`, joined non-star count forms, mixed
   projections, aliases outside the supported result-label envelope, aggregate
   arithmetic, unsupported `ORDER BY` expressions, `GROUP BY`, `HAVING`, CTEs,
   subqueries, window `OVER`, parameters, and unsupported predicate expressions;

@@ -1959,6 +1959,7 @@ struct planned_count {
 enum planned_count_expression_aggregate_item_kind {
     PLANNED_COUNT_EXPRESSION_AGGREGATE_STAR = 0,
     PLANNED_COUNT_EXPRESSION_AGGREGATE_NULLIF_PREDICATE = 1,
+    PLANNED_COUNT_EXPRESSION_AGGREGATE_ROW_SCALAR = 2,
 };
 
 struct planned_count_expression_aggregate_item {
@@ -1966,6 +1967,7 @@ struct planned_count_expression_aggregate_item {
     const struct mylite_sql_ast_node *expression;
     const struct mylite_sql_ast_node *alias;
     struct planned_select_predicate predicate;
+    struct planned_row_scalar_expression row_scalar_expression;
 };
 
 struct planned_count_expression_aggregate {

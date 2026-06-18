@@ -10,9 +10,10 @@ limited ordering, and the existing one-column aggregate and grouped aggregate
 execution paths.
 
 The feature is intentionally not full MySQL `GROUP_CONCAT()` support. It
-supports one descriptor column argument, optional one descriptor ordering key
-inside the aggregate, optional string-literal separator, and short untruncated
-results. Wider MySQL forms are explicitly deferred.
+supports one descriptor column or supported row-scalar expression argument,
+optional one descriptor ordering key inside the aggregate, optional
+string-literal separator, and short untruncated results. Wider MySQL forms are
+explicitly deferred.
 
 ## Sources
 
@@ -82,7 +83,7 @@ slice:
   `-1` and `@@warning_count` remains `0` for the short, untruncated outputs
   covered by this feature.
 - MySQL supports wider forms such as `DISTINCT`, multiple value expressions,
-  expression arguments, ordinal and expression order keys, multiple order keys,
+  broad expression arguments, ordinal and expression order keys, multiple order keys,
   binary result typing, window use, and `group_concat_max_len` truncation with
   warnings. MyLite defers these forms in this baseline slice.
 
@@ -92,8 +93,9 @@ The implementation must add:
 
 - parser and AST support for `GROUP_CONCAT` as a no-space-sensitive aggregate
   function name;
-- one descriptor column argument, optionally source-qualified where the
-  existing aggregate source envelope admits source qualifiers;
+- one descriptor column or supported row-scalar expression argument,
+  optionally source-qualified where the existing aggregate source envelope
+  admits source qualifiers;
 - optional one aggregate-local `ORDER BY` descriptor column with optional
   `ASC` or `DESC`;
 - optional `SEPARATOR` followed by an ordinary SQL string literal;
@@ -102,8 +104,8 @@ The implementation must add:
 - grouped form `SELECT group_column, GROUP_CONCAT(...) FROM table
   [WHERE ...] GROUP BY group_column [HAVING group_column_predicate]
   [ORDER BY group_column] [LIMIT ...]`;
-- integer and nonbinary string-family descriptor columns as concatenated
-  values;
+- integer and nonbinary string-family descriptor columns, plus supported
+  row-scalar expressions, as concatenated values;
 - aggregate-local order keys limited to `NOT NULL` columns in the current
   descriptor `ORDER BY` storage envelope: integer, `BIT`, `YEAR`, `DATE`,
   `TIME`, `DATETIME`, and `TIMESTAMP` descriptor columns;
@@ -126,7 +128,8 @@ This feature must not implement:
 
 - `GROUP_CONCAT(DISTINCT ...)`;
 - more than one concatenated expression;
-- expression arguments such as `GROUP_CONCAT(CONCAT(a, b))`;
+- row-scalar expression arguments outside the existing aggregate row-scalar
+  subset;
 - aggregate-local expression, ordinal, alias, or multiple-column ordering;
 - nullable aggregate-local order keys, string order keys, and
   collation-sensitive aggregate-local ordering;
@@ -155,7 +158,7 @@ This feature must not implement:
 - Lexer/parser/AST own syntax admission, no-space-sensitive function parsing,
   optional aggregate-local order/separator child nodes, and source spans. They
   do not inspect catalog descriptors, storage, or SQLite.
-- Analyzer/planner code resolves source tables, aggregate value columns,
+- Analyzer/planner code resolves source tables, aggregate value expressions,
   aggregate-local order columns, grouped columns, predicates, and result aliases
   against MyLite descriptors; rejects unsupported shapes; decodes separators;
   and lowers the supported subset to descriptor-safe SQLite.
@@ -177,7 +180,7 @@ This feature must not implement:
 Supported ungrouped form:
 
 ```sql
-SELECT GROUP_CONCAT(column_name [group_concat_order] [group_concat_separator]) [AS alias]
+SELECT GROUP_CONCAT(value_expr [group_concat_order] [group_concat_separator]) [AS alias]
   FROM table_name [WHERE predicate]
 ```
 
@@ -185,7 +188,7 @@ Supported grouped form:
 
 ```sql
 SELECT group_column,
-       GROUP_CONCAT(column_name [group_concat_order] [group_concat_separator]) [AS alias]
+       GROUP_CONCAT(value_expr [group_concat_order] [group_concat_separator]) [AS alias]
   FROM table_name [WHERE predicate]
   GROUP BY group_column
   [HAVING group_column_predicate]
@@ -219,8 +222,11 @@ grammar:
 
 ```lemon
 expression ::=
-    GROUP_CONCAT LPAREN qualified_identifier
+    GROUP_CONCAT LPAREN group_concat_value
         group_concat_order_opt group_concat_separator_opt RPAREN.
+
+group_concat_value ::= qualified_identifier.
+group_concat_value ::= supported_row_scalar_expression.
 
 group_concat_order_opt ::= .
 group_concat_order_opt ::= ORDER BY qualified_identifier order_direction_opt.
@@ -245,10 +251,11 @@ Missing default schema, unknown schema, unknown table, reserved `_mylite_*`
 schema/table names, and unsupported object kinds reuse existing descriptor
 diagnostics before any SQLite SQL is generated.
 
-The concatenated value column is resolved through MyLite descriptors, not
-SQLite metadata. This slice admits integer-family columns and nonbinary
-`CHAR`/`VARCHAR`/`TEXT` family columns. `NULL` value cells are skipped by the
-aggregate. All-`NULL` groups and empty inputs return SQL `NULL`.
+Descriptor-column value arguments are resolved through MyLite descriptors, not
+SQLite metadata. This slice admits integer-family columns, nonbinary
+`CHAR`/`VARCHAR`/`TEXT` family columns, and supported row-scalar expressions.
+`NULL` value cells are skipped by the aggregate. All-`NULL` groups and empty
+inputs return SQL `NULL`.
 
 The aggregate-local order column is resolved through MyLite descriptors and
 uses `NOT NULL` columns in the current descriptor `ORDER BY` storage envelope:
@@ -326,8 +333,9 @@ Diagnostics to cover:
 - unsupported aggregate-local order column type or nullable aggregate-local
   order column;
 - unsupported separator literal or decoded separator bytes;
-- unsupported `DISTINCT`, multiple value expressions, expression arguments,
-  expression/ordinal/multiple order keys, window use, scalar-subquery use, and
+- unsupported `DISTINCT`, multiple value expressions, unsupported row-scalar
+  expression arguments, expression/ordinal/multiple order keys, window use,
+  scalar-subquery use, and
   `HAVING` aggregate predicates over `GROUP_CONCAT`;
 - physical SQLite failures and allocation failures;
 - public API misuse only if a public surface changes, which this feature does
@@ -363,8 +371,8 @@ CTest name. Coverage must include:
   `sqlite_schema_generation` mutation for reads;
 - zero-initialized cleanup for new plan fields;
 - deterministic rejection of unsupported value types and unsupported syntax:
-  `DISTINCT`, multiple value expressions, expression arguments,
-  column-to-column expressions, aggregate-local ordinal/expression/multiple
+  `DISTINCT`, multiple value expressions, unsupported row-scalar expressions,
+  aggregate-local ordinal/expression/multiple
   order keys, nullable order keys, string order keys, `SEPARATOR NULL`,
   numeric separators, parameters, window forms, subqueries, joins, and
   aggregate predicates in `HAVING`.
@@ -376,8 +384,8 @@ unavailable, changing user-visible expectations is blocked.
 
 Update `COMPATIBILITY.md`, `docs/compatibility/functions-aggregate.md`, and
 `docs/compatibility/sql-query-expressions.md` only for this exact partial
-surface. Do not claim full `GROUP_CONCAT`, `DISTINCT`, expression arguments,
-expression ordering, string collation ordering, truncation warnings,
+surface. Do not claim full `GROUP_CONCAT`, `DISTINCT`, broad expression
+arguments, expression ordering, string collation ordering, truncation warnings,
 `group_concat_max_len`, binary result metadata, windows, or full grouping.
 
 ## Verification

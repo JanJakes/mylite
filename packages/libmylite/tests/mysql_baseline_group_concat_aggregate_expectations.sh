@@ -74,6 +74,8 @@ ids_desc	6,5,4,3,2,1
 names_pipe	alpha|beta|delta|echo
 names_double	alpha/beta/delta/echo
 names_empty	alphabetadeltaecho
+ifnull_values	alpha:beta::delta:echo:
+concat_values	alphaA|betaB|deltaD|echoE
 sort_asc	delta:beta:alpha:echo
 sort_desc	echo:alpha:beta:delta
 where_filtered	alpha|beta
@@ -105,6 +107,8 @@ expect_output \
 "SELECT 'names_pipe', GROUP_CONCAT(name ORDER BY id SEPARATOR '|') FROM t; "\
 "SELECT 'names_double', GROUP_CONCAT(name ORDER BY id SEPARATOR \"/\") FROM t; "\
 "SELECT 'names_empty', GROUP_CONCAT(name ORDER BY id SEPARATOR '') FROM t; "\
+"SELECT 'ifnull_values', GROUP_CONCAT(IFNULL(name, '') ORDER BY id SEPARATOR ':') FROM t; "\
+"SELECT 'concat_values', GROUP_CONCAT(CONCAT(name, notes) ORDER BY id SEPARATOR '|') FROM t; "\
 "SELECT 'sort_asc', GROUP_CONCAT(name ORDER BY sort_n ASC SEPARATOR ':') FROM t; "\
 "SELECT 'sort_desc', GROUP_CONCAT(name ORDER BY sort_n DESC SEPARATOR ':') FROM t; "\
 "SELECT 'where_filtered', GROUP_CONCAT(name ORDER BY id SEPARATOR '|') FROM t WHERE g = 1; "\

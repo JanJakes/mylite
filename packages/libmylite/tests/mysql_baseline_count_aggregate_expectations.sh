@@ -185,6 +185,7 @@ accepted_count_forms=$(run_mysql \
      SELECT COUNT(*) FROM t ORDER BY id;
      SELECT COUNT(n) FROM t ORDER BY id;
      SELECT COUNT(1) FROM t ORDER BY id;
+     SELECT COUNT(IFNULL(n, 0)), COUNT(NULLIF(n, 20)) FROM t;
      SELECT COUNT(DISTINCT n) FROM t ORDER BY id;
      SELECT COUNT(*) FROM t LIMIT 1;
      SELECT COUNT(n) FROM t LIMIT 1;
@@ -196,12 +197,13 @@ expect_value "count expr forms" "4	3	0" "$(printf '%s\n' "$accepted_count_forms"
 expect_value "count order by aggregate" "4" "$(printf '%s\n' "$accepted_count_forms" | sed -n '2p')"
 expect_value "count order by column" "3" "$(printf '%s\n' "$accepted_count_forms" | sed -n '3p')"
 expect_value "count order by literal" "4" "$(printf '%s\n' "$accepted_count_forms" | sed -n '4p')"
-expect_value "count order by distinct" "2" "$(printf '%s\n' "$accepted_count_forms" | sed -n '5p')"
-expect_value "count limit one returns row" "4" "$(printf '%s\n' "$accepted_count_forms" | sed -n '6p')"
-expect_value "count limit column" "3" "$(printf '%s\n' "$accepted_count_forms" | sed -n '7p')"
-expect_value "count limit literal" "4" "$(printf '%s\n' "$accepted_count_forms" | sed -n '8p')"
-expect_value "count limit distinct" "2" "$(printf '%s\n' "$accepted_count_forms" | sed -n '9p')"
-expect_value "count order by limit offset zero" "4" "$(printf '%s\n' "$accepted_count_forms" | sed -n '10p')"
+expect_value "count row-scalar expressions" "4	1" "$(printf '%s\n' "$accepted_count_forms" | sed -n '5p')"
+expect_value "count order by distinct" "2" "$(printf '%s\n' "$accepted_count_forms" | sed -n '6p')"
+expect_value "count limit one returns row" "4" "$(printf '%s\n' "$accepted_count_forms" | sed -n '7p')"
+expect_value "count limit column" "3" "$(printf '%s\n' "$accepted_count_forms" | sed -n '8p')"
+expect_value "count limit literal" "4" "$(printf '%s\n' "$accepted_count_forms" | sed -n '9p')"
+expect_value "count limit distinct" "2" "$(printf '%s\n' "$accepted_count_forms" | sed -n '10p')"
+expect_value "count order by limit offset zero" "4" "$(printf '%s\n' "$accepted_count_forms" | sed -n '11p')"
 
 limit_zero=$(run_mysql "USE ${DATABASE}; SELECT 'before'; SELECT COUNT(*) FROM t LIMIT 0; SELECT 'after';")
 expect_value "count limit zero before marker" "before" "$(printf '%s\n' "$limit_zero" | sed -n '1p')"

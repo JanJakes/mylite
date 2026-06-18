@@ -2010,6 +2010,13 @@ static int append_group_concat_call_sql(
     bool has_separator,
     size_t *next_parameter
 );
+static int append_group_concat_expression_call_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *value_expression,
+    const struct planned_select_order *order,
+    bool has_separator,
+    size_t *next_parameter
+);
 static const char *column_aggregate_sql_function(enum planned_column_aggregate_function function);
 static int build_grouped_aggregate_sql(
     const struct planned_grouped_aggregate *plan,

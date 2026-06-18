@@ -120,6 +120,16 @@ static int plan_grouped_aggregate_item(
         );
     }
     if (out_item->function == PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN) {
+        if (column_aggregate_argument_is_row_scalar_expression(aggregate_expression)) {
+            return plan_grouped_aggregate_row_scalar_expression(
+                database,
+                aggregate_expression,
+                source_context,
+                table_columns,
+                table_column_count,
+                out_item
+            );
+        }
         return plan_grouped_count_column(
             database,
             aggregate_expression,
@@ -288,15 +298,33 @@ static int plan_grouped_group_concat_options(
     size_t table_column_count,
     struct planned_grouped_aggregate_item *out_item
 ) {
-    int rc = plan_group_concat_value_column(
-        database,
-        function,
-        source_context,
-        table_columns,
-        table_column_count,
-        &out_item->aggregate_column,
-        &out_item->aggregate_column_source_index
-    );
+    int rc = MYLITE_OK;
+
+    function = unwrap_parenthesized_expression(function);
+    if (function == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (column_aggregate_argument_is_row_scalar_expression(function)) {
+        rc = plan_grouped_aggregate_row_scalar_expression(
+            database,
+            function,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_item
+        );
+    } else {
+        rc = plan_group_concat_value_column(
+            database,
+            function,
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_item->aggregate_column,
+            &out_item->aggregate_column_source_index
+        );
+    }
 
     if (rc == MYLITE_OK) {
         rc = plan_group_concat_order_column(
@@ -524,6 +552,9 @@ static enum planned_grouped_aggregate_function grouped_aggregate_function_from_e
         return PLANNED_GROUPED_AGGREGATE_COUNT_STAR;
     }
     if (count_function == PLANNED_COUNT_COLUMN) {
+        return PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN;
+    }
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION) {
         return PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN;
     }
     if (count_function == PLANNED_COUNT_LITERAL ||

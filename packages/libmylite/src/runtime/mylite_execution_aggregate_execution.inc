@@ -1260,6 +1260,7 @@ static int plan_column_aggregate(
                 database,
                 expression,
                 &source_context,
+                &out_plan->table,
                 table_columns,
                 table_column_count,
                 out_plan
@@ -1677,20 +1678,40 @@ static int plan_column_group_concat_options(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *function,
     const struct select_source_context *source_context,
+    const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_column_aggregate *out_plan
 ) {
     size_t value_source_index = 0U;
-    int rc = plan_group_concat_value_column(
-        database,
-        function,
-        source_context,
-        table_columns,
-        table_column_count,
-        &out_plan->aggregate_column,
-        &value_source_index
-    );
+    int rc = MYLITE_OK;
+
+    function = unwrap_parenthesized_expression(function);
+    if (function == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (column_aggregate_argument_is_row_scalar_expression(function)) {
+        rc = plan_column_aggregate_row_scalar_expression(
+            database,
+            function,
+            source_context,
+            table,
+            table_columns,
+            table_column_count,
+            out_plan
+        );
+    } else {
+        rc = plan_group_concat_value_column(
+            database,
+            function,
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_plan->aggregate_column,
+            &value_source_index
+        );
+    }
 
     (void)value_source_index;
     if (rc == MYLITE_OK) {

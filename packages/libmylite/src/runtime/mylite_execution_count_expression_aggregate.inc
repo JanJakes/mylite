@@ -211,7 +211,7 @@ static int collect_count_expression_aggregate_clauses(
     if (out_clauses->having_clause != NULL || out_clauses->order_clause != NULL) {
         set_unsupported_error(
             database,
-            "COUNT(NULLIF(predicate,FALSE)) aggregate supports only WHERE and LIMIT"
+            "COUNT expression aggregate supports only WHERE and LIMIT"
         );
         return MYLITE_ERROR;
     }
@@ -233,7 +233,7 @@ static int plan_count_expression_aggregate_source(
     if (from_clause == NULL || from_clause->kind == MYLITE_SQL_AST_FROM_DUAL) {
         set_unsupported_error(
             database,
-            "COUNT(NULLIF(predicate,FALSE)) aggregate requires a table source"
+            "COUNT expression aggregate requires a table source"
         );
         return MYLITE_ERROR;
     }
@@ -260,7 +260,7 @@ static int plan_count_expression_aggregate_source(
 
     set_unsupported_error(
         database,
-        "COUNT(NULLIF(predicate,FALSE)) aggregate supports only table and joined sources"
+        "COUNT expression aggregate supports only table and joined sources"
     );
     return MYLITE_ERROR;
 }
@@ -382,7 +382,7 @@ static int plan_count_expression_aggregate_items(
         select_list_is_wildcard(select_list)) {
         set_unsupported_error(
             database,
-            "COUNT(NULLIF(predicate,FALSE)) aggregate supports explicit count select items"
+            "COUNT expression aggregate supports explicit count select items"
         );
         return MYLITE_ERROR;
     }
@@ -443,40 +443,75 @@ static int append_count_expression_aggregate_item(
         item.kind = PLANNED_COUNT_EXPRESSION_AGGREGATE_STAR;
     } else {
         predicate_node = count_expression_aggregate_predicate_node(expression);
-        if (predicate_node == NULL) {
+        if (predicate_node != NULL) {
+            item.kind = PLANNED_COUNT_EXPRESSION_AGGREGATE_NULLIF_PREDICATE;
+            item.predicate.qualify_column_references =
+                select_source_context_is_joined(source_context);
+            rc = plan_select_predicate_node_without_exists(
+                database,
+                predicate_node,
+                source_context,
+                table_columns,
+                table_column_count,
+                &options,
+                &item.predicate
+            );
+            if (rc != MYLITE_OK) {
+                planned_select_predicate_deinit(&item.predicate);
+                return rc;
+            }
+        } else if (
+            expression->kind == MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION &&
+            mylite_sql_ast_node_child_count(expression) == 1U
+        ) {
+            const struct mylite_catalog_table_descriptor *table =
+                select_source_context_is_joined(source_context) ? NULL : &out_plan->source.table;
+            const struct mylite_sql_ast_node *argument = child_at(expression, 0U);
+
+            if (row_scalar_expression_contains_fractional_division_attempt(argument)) {
+                set_unsupported_error(
+                    database,
+                    "aggregate row-scalar arguments do not support / division"
+                );
+                return MYLITE_ERROR;
+            }
+            item.kind = PLANNED_COUNT_EXPRESSION_AGGREGATE_ROW_SCALAR;
+            rc = plan_row_scalar_expression(
+                database,
+                argument,
+                true,
+                source_context,
+                table,
+                table_columns,
+                table_column_count,
+                &item.row_scalar_expression
+            );
+            if (rc != MYLITE_OK) {
+                planned_row_scalar_expression_deinit(&item.row_scalar_expression);
+                return rc;
+            }
+        } else {
             set_unsupported_error(
                 database,
-                "COUNT(NULLIF(predicate,FALSE)) aggregate supports COUNT(*) and "
-                "COUNT(NULLIF(column predicate,FALSE)) select items"
+                "COUNT expression aggregate supports COUNT(*), "
+                "COUNT(NULLIF(column predicate,FALSE)), and COUNT(row-scalar expression) "
+                "select items"
             );
             return MYLITE_ERROR;
-        }
-        item.kind = PLANNED_COUNT_EXPRESSION_AGGREGATE_NULLIF_PREDICATE;
-        item.predicate.qualify_column_references = select_source_context_is_joined(source_context);
-        rc = plan_select_predicate_node_without_exists(
-            database,
-            predicate_node,
-            source_context,
-            table_columns,
-            table_column_count,
-            &options,
-            &item.predicate
-        );
-        if (rc != MYLITE_OK) {
-            planned_select_predicate_deinit(&item.predicate);
-            return rc;
         }
     }
 
     required_count = out_plan->item_count + 1U;
     if (required_count > SIZE_MAX / sizeof(*items)) {
         planned_select_predicate_deinit(&item.predicate);
+        planned_row_scalar_expression_deinit(&item.row_scalar_expression);
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
     items = realloc(out_plan->items, required_count * sizeof(*items));
     if (items == NULL) {
         planned_select_predicate_deinit(&item.predicate);
+        planned_row_scalar_expression_deinit(&item.row_scalar_expression);
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
@@ -531,7 +566,8 @@ static bool count_expression_aggregate_select_item_is_supported(
         *inout_has_count_star = true;
         return true;
     }
-    if (count_expression_aggregate_predicate_node(expression) != NULL) {
+    if (expression->kind == MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION &&
+        mylite_sql_ast_node_child_count(expression) == 1U) {
         *inout_has_expression_count = true;
         return true;
     }
@@ -548,6 +584,7 @@ static void planned_count_expression_aggregate_deinit(
 
     for (size_t item_index = 0U; item_index < plan->item_count; ++item_index) {
         planned_select_predicate_deinit(&plan->items[item_index].predicate);
+        planned_row_scalar_expression_deinit(&plan->items[item_index].row_scalar_expression);
     }
     free(plan->items);
     planned_select_deinit(&plan->source);
@@ -687,7 +724,9 @@ static int append_count_expression_aggregate_select_item_sql(
 
     if (rc == MYLITE_OK && item->kind == PLANNED_COUNT_EXPRESSION_AGGREGATE_STAR) {
         rc = mylite_dynamic_string_append(string, "*");
-    } else if (rc == MYLITE_OK) {
+    } else if (
+        rc == MYLITE_OK && item->kind == PLANNED_COUNT_EXPRESSION_AGGREGATE_NULLIF_PREDICATE
+    ) {
         rc = mylite_dynamic_string_append(string, "NULLIF((");
         if (rc == MYLITE_OK) {
             rc = append_select_predicate_expression_sql_without_exists(
@@ -699,6 +738,8 @@ static int append_count_expression_aggregate_select_item_sql(
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append(string, "), 0)");
         }
+    } else if (rc == MYLITE_OK && item->kind == PLANNED_COUNT_EXPRESSION_AGGREGATE_ROW_SCALAR) {
+        rc = append_row_scalar_expression_sql(string, &item->row_scalar_expression, next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, ')');
@@ -721,6 +762,12 @@ static int bind_count_expression_aggregate_parameters(
             rc = bind_select_predicate_parameters_without_exists(
                 statement,
                 &item->predicate,
+                &parameter_index
+            );
+        } else if (item->kind == PLANNED_COUNT_EXPRESSION_AGGREGATE_ROW_SCALAR) {
+            rc = bind_row_scalar_expression_parameters(
+                statement,
+                &item->row_scalar_expression,
                 &parameter_index
             );
         }

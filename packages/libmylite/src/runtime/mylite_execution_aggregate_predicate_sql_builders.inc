@@ -295,6 +295,15 @@ static int append_column_aggregate_select_list_sql(
     int rc = MYLITE_OK;
 
     if (plan->function == PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT) {
+        if (plan->aggregate_uses_row_scalar_expression) {
+            return append_group_concat_expression_call_sql(
+                string,
+                &plan->aggregate_row_scalar_expression,
+                &plan->aggregate_order,
+                plan->has_separator,
+                next_parameter
+            );
+        }
         return append_group_concat_call_sql(
             string,
             &plan->aggregate_column,
@@ -405,6 +414,52 @@ static int append_group_concat_call_sql(
             value_source_index,
             qualify_column_references
         );
+    }
+    if (rc == MYLITE_OK && has_separator) {
+        rc = mylite_dynamic_string_append(string, ", ");
+        if (rc == MYLITE_OK) {
+            rc = append_numbered_parameter(string, *next_parameter);
+        }
+        if (rc == MYLITE_OK) {
+            ++(*next_parameter);
+        }
+    }
+    if (rc == MYLITE_OK && order != NULL && order->has_order) {
+        rc = mylite_dynamic_string_append(string, " ORDER BY ");
+        if (rc == MYLITE_OK) {
+            rc = append_descriptor_value_sql_for_source(
+                string,
+                &order->column,
+                order->column_source_index,
+                order->qualify_column_reference
+            );
+        }
+        if (rc == MYLITE_OK) {
+            if (order->direction == PLANNED_SELECT_ORDER_DESC) {
+                rc = mylite_dynamic_string_append(string, " DESC");
+            } else {
+                rc = mylite_dynamic_string_append(string, " ASC");
+            }
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+
+    return rc;
+}
+
+static int append_group_concat_expression_call_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *value_expression,
+    const struct planned_select_order *order,
+    bool has_separator,
+    size_t *next_parameter
+) {
+    int rc = mylite_dynamic_string_append(string, "_mylite_group_concat(");
+
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_expression_sql(string, value_expression, next_parameter);
     }
     if (rc == MYLITE_OK && has_separator) {
         rc = mylite_dynamic_string_append(string, ", ");
@@ -716,6 +771,31 @@ static int append_grouped_aggregate_select_item_sql(
     bool qualify = plan->source_count > 0U;
     int rc = MYLITE_OK;
 
+    if (item->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
+        if (item->aggregate_uses_row_scalar_expression) {
+            rc = append_group_concat_expression_call_sql(
+                string,
+                &item->aggregate_row_scalar_expression,
+                &item->aggregate_order,
+                item->has_separator,
+                next_parameter
+            );
+        } else {
+            rc = append_group_concat_call_sql(
+                string,
+                &item->aggregate_column,
+                item->aggregate_column_source_index,
+                &item->aggregate_order,
+                qualify,
+                item->has_separator,
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK && include_aliases && item->alias != NULL) {
+            rc = append_grouped_identifier_alias_sql(string, item->alias);
+        }
+        return rc;
+    }
     if (item->aggregate_uses_row_scalar_expression) {
         rc = append_grouped_aggregate_expression_sql(string, plan, item, next_parameter);
         if (rc == MYLITE_OK && include_aliases && item->alias != NULL) {
@@ -752,22 +832,6 @@ static int append_grouped_aggregate_select_item_sql(
         }
         return rc;
     }
-    if (item->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
-        rc = append_group_concat_call_sql(
-            string,
-            &item->aggregate_column,
-            item->aggregate_column_source_index,
-            &item->aggregate_order,
-            qualify,
-            item->has_separator,
-            next_parameter
-        );
-        if (rc == MYLITE_OK && include_aliases && item->alias != NULL) {
-            rc = append_grouped_identifier_alias_sql(string, item->alias);
-        }
-        return rc;
-    }
-
     rc = append_grouped_aggregate_expression_sql(string, plan, item, next_parameter);
     if (rc == MYLITE_OK && include_aliases && item->alias != NULL) {
         rc = append_grouped_identifier_alias_sql(string, item->alias);

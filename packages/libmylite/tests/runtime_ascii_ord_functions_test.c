@@ -245,6 +245,11 @@ static int test_table_backed_codepoints_and_reopen(void) {
     };
     static const char *const columns_labels[] = {"ASCII(v)", "a", "ORD(v)", "o"};
     static const char *const values_labels[] = {"65", "65", "65", "65"};
+    static const char *const columns_predicate[] = {"id"};
+    static const char *const values_ascii_predicate[] = {"1"};
+    static const char *const values_ord_order[] = {"4", "1", "2", "3"};
+    static const char *const columns_dml[] = {"id", "a", "o"};
+    static const char *const values_dml[] = {"1", "97", "97", "2", "0", "0", "3", NULL, NULL};
     static const char *const columns_reopen[] = {"a", "o", "ba", "bo"};
     static const char *const values_reopen[] = {"240", "4036991362", NULL, NULL};
     char path[test_path_capacity];
@@ -314,6 +319,51 @@ static int test_table_backed_codepoints_and_reopen(void) {
             .values = values_labels,
             .row_count = 1U,
             .context = "ascii ord labels",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE ASCII(v) = 65 ORDER BY id",
+            .columns = columns_predicate,
+            .column_count = 1U,
+            .values = values_ascii_predicate,
+            .row_count = 1U,
+            .context = "ascii predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY ORD(v)",
+            .columns = columns_predicate,
+            .column_count = 1U,
+            .values = values_ord_order,
+            .row_count = 4U,
+            .context = "ord order rows",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE dml_codepoints(id INT, v VARCHAR(20), a INT, o VARCHAR(20))",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO dml_codepoints VALUES (1, 'a', NULL, NULL), (2, '', NULL, NULL), "
+        "(3, NULL, NULL, NULL)",
+        NULL
+    );
+    failures += execute_ok(database, "UPDATE dml_codepoints SET a = ASCII(v), o = ORD(v)", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, a, o FROM dml_codepoints ORDER BY id",
+            .columns = columns_dml,
+            .column_count = sizeof(columns_dml) / sizeof(columns_dml[0]),
+            .values = values_dml,
+            .row_count = 3U,
+            .context = "ascii ord update assignment rows",
         }
     );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
@@ -427,34 +477,6 @@ static int test_ascii_ord_diagnostics(void) {
             .message_part = "string codepoint functions do not support approximate numeric columns",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT id FROM t WHERE ASCII(v) = 97",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT id FROM t ORDER BY ORD(v)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
-        }
-    );
-    failures += execute_error(
-        database,
-        "UPDATE t SET v = ASCII(v)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
-        }
-    );
-
     mylite_close(database);
     remove_related_files(path);
     return failures;

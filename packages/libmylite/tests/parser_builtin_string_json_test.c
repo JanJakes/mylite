@@ -30,6 +30,7 @@ static int test_uuid_function(void);
 static int test_char_function(void);
 static int test_charset_collation_functions(void);
 static int test_string_length_functions(void);
+static int test_string_codepoint_contexts(void);
 static int test_string_case_functions(void);
 static int test_string_trim_functions(void);
 static int test_string_slice_functions(void);
@@ -72,6 +73,7 @@ int main(void) {
     failures += test_char_function();
     failures += test_charset_collation_functions();
     failures += test_string_length_functions();
+    failures += test_string_codepoint_contexts();
     failures += test_string_case_functions();
     failures += test_string_trim_functions();
     failures += test_string_slice_functions();
@@ -4393,6 +4395,32 @@ static int test_string_length_functions(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "SELECT id FROM t ORDER BY LENGTH(v) DESC;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        parser_test_first_child_kind(select, MYLITE_SQL_AST_ORDER_BY_CLAUSE),
+        MYLITE_SQL_AST_ORDER_BY_CLAUSE,
+        "length order by clause"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "UPDATE t SET bytes = LENGTH(v), chars = CHAR_LENGTH(v), bits = BIT_LENGTH(v);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_UPDATE_STATEMENT,
+        "length update statement"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "CREATE TABLE lengths (length INT, char_length INT, bit_length INT);",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -4402,6 +4430,72 @@ static int test_string_length_functions(void) {
         select,
         MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
         "string length identifiers"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_string_codepoint_contexts(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *predicate = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parser_test_parse_sql(
+        "SELECT ASCII(v), ORD(v) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures +=
+        parser_test_expect_node(expression, MYLITE_SQL_AST_ASCII_FUNCTION, "ascii function");
+    expression = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+    failures += parser_test_expect_node(expression, MYLITE_SQL_AST_ORD_FUNCTION, "ord function");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM t WHERE ASCII(v) = 65;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    where_clause = parser_test_child_at(parser_test_child_at(result.root, 0U), 2U);
+    predicate = parser_test_child_at(where_clause, 0U);
+    failures +=
+        parser_test_expect_node(predicate, MYLITE_SQL_AST_COMPARISON_PREDICATE, "ascii where");
+    failures += parser_test_expect_node(
+        parser_test_child_at(predicate, 0U),
+        MYLITE_SQL_AST_ASCII_FUNCTION,
+        "ascii where lhs"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parser_test_parse_sql("SELECT id FROM t ORDER BY ORD(v);", MYLITE_SQL_PARSE_OK, &result);
+    select = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        parser_test_first_child_kind(select, MYLITE_SQL_AST_ORDER_BY_CLAUSE),
+        MYLITE_SQL_AST_ORDER_BY_CLAUSE,
+        "ord order by clause"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "UPDATE t SET a = ASCII(v), o = ORD(v);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_UPDATE_STATEMENT,
+        "ascii ord update statement"
     );
     mylite_sql_parse_result_deinit(&result);
 

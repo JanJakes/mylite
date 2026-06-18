@@ -4,7 +4,9 @@
 
 This phase adds a narrow MySQL-compatible `ASCII(expr)` and `ORD(expr)` scalar
 function slice. The supported surface covers no-source scalar `SELECT`,
-`SELECT ... FROM DUAL`, `DO`, and single-table row-scalar `SELECT` projection.
+`SELECT ... FROM DUAL`, `DO`, single-table row-scalar `SELECT` projection,
+descriptor-backed `WHERE` predicates, non-grouped `ORDER BY` expressions, and
+single-table `UPDATE` assignments.
 
 Core supported behavior:
 
@@ -14,12 +16,12 @@ Core supported behavior:
 - empty non-`NULL` input returns `0`;
 - `NULL` input returns `NULL`;
 - integer and boolean inputs use their visible decimal text before evaluation;
-- table-backed row-scalar projection is descriptor-driven and uses private
+- table-backed row-scalar contexts are descriptor-driven and use private
   MyLite SQLite scalar helpers for row values.
 
-This phase intentionally does not add `ASCII()` or `ORD()` in predicates, DML
-assignments, ordering/grouping expressions, generated columns, defaults,
-parameters, subqueries, arbitrary expression trees, or expression metadata.
+This phase intentionally does not add `ASCII()` or `ORD()` in grouping
+expressions, generated columns, defaults, parameters, subqueries, arbitrary
+expression trees outside the documented value subset, or expression metadata.
 
 ## Sources and Evidence
 
@@ -64,8 +66,8 @@ Runtime probes establish the behavior used by this phase:
   count error `1582 / 42000`.
 
 MySQL accepts broader behavior such as expression arguments, character-set
-introducers beyond the current MyLite parser surface, use in predicates and DML
-assignments, collations, parameters, and full expression metadata. Those forms
+introducers beyond the current MyLite parser surface, grouping expressions,
+collations, parameters, subqueries, and full expression metadata. Those forms
 remain outside this baseline.
 
 ## Ownership Boundaries
@@ -109,15 +111,16 @@ SELECT codepoint_item[, codepoint_item ...] FROM DUAL
 DO codepoint_expr[, codepoint_expr ...]
 ```
 
-Single-table row-backed forms, with at least one select item containing
-`ASCII()` or `ORD()`:
+Single-table row-backed forms, with at least one select item or admitted
+predicate/order expression containing `ASCII()` or `ORD()`:
 
 ```sql
 SELECT row_scalar_item[, row_scalar_item ...]
 FROM table_name [AS alias]
 [WHERE predicate]
-[ORDER BY descriptor_column [ASC | DESC]]
+[ORDER BY descriptor_column | codepoint_expr [ASC | DESC]]
 [LIMIT row_count]
+UPDATE table_name SET column_name = codepoint_expr [WHERE predicate]
 ```
 
 The admitted expression shape is:
@@ -158,9 +161,8 @@ deferred for this slice.
 
 The following remain outside this phase:
 
-- `WHERE ASCII(column) ...`, `HAVING ORD(...) ...`, expression `ORDER BY`,
-  grouping, aggregate arguments, and distinct expression rows;
-- DML assignment values such as `UPDATE t SET c = ASCII(v)`;
+- `HAVING ORD(...) ...`, grouping, aggregate arguments, and distinct expression
+  rows;
 - scalar subqueries, correlated subqueries, CTEs, joins beyond the already
   supported row-scalar source envelope, parameters, user variables, and stored
   functions;
@@ -252,6 +254,6 @@ Supported successful evaluations produce `warning_count == 0`.
 ## Compatibility Notes
 
 `COMPATIBILITY.md` and `docs/compatibility/functions-string.md` mark
-`ASCII()` and `ORD()` as limited support. The compatibility text must avoid
-claiming predicate, DML assignment, ordering/grouping expression, subquery,
+`ASCII()` and `ORD()` green for the documented baseline expression-context
+subset. The compatibility text must avoid claiming grouping, subquery,
 parameter, complete character-set metadata, or general expression support.

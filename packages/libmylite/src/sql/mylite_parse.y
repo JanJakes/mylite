@@ -5038,6 +5038,17 @@ dml_constant_scalar_value(A) ::= BIT_COUNT(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_BIT_COUNT_FUNCTION, B, R);
 }
+dml_constant_scalar_value(A) ::= ASCII(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_ASCII_FUNCTION, B, R);
+}
+dml_constant_scalar_value(A) ::= ORD(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_ORD_FUNCTION, B, R);
+}
+dml_constant_scalar_value(A) ::= string_length_expression(B). {
+    A = B;
+}
 dml_constant_scalar_value(A) ::= DATE_ADD(T) LPAREN(L) STRING(B) COMMA INTERVAL expression(C)
     date_interval_unit(U) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_three_argument_function(
@@ -7934,6 +7945,14 @@ row_scalar_string_predicate_expression(A) ::= RANDOM_BYTES(T) LPAREN expression(
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION, B, R);
 }
+row_scalar_string_predicate_expression(A) ::= ASCII(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_ASCII_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= ORD(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_ORD_FUNCTION, B, R);
+}
 row_scalar_string_predicate_expression(A) ::= LOWER(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_LOWER_FUNCTION, B, R);
@@ -8261,6 +8280,9 @@ select_order_key(A) ::= window_function_expression(K). {
     A = K;
 }
 select_order_key(A) ::= predicate_row_scalar_expression(K). {
+    A = K;
+}
+select_order_key(A) ::= string_length_expression(K). {
     A = K;
 }
 select_order_key(A) ::= period_timezone_predicate_expression(K). {

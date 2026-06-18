@@ -12,12 +12,12 @@ CHAR_LENGTH(expr)
 CHARACTER_LENGTH(expr)
 ```
 
-The supported slice covers no-source, `FROM DUAL`, `DO`, and single-table
-row-scalar `SELECT` projection contexts. A later
-`baseline-string-function-predicates` slice reuses this row-scalar expression
-for narrow descriptor-backed `WHERE` predicates. This phase deliberately does
-not add general expression predicates, expression ordering, DML assignments,
-generated columns, or arbitrary nested expression planning.
+The supported slice covers no-source, `FROM DUAL`, `DO`, single-table
+row-scalar `SELECT` projection, descriptor-backed `WHERE` predicates,
+non-grouped `ORDER BY` expressions, and single-table `UPDATE` assignments.
+This phase deliberately does not add grouping expressions, generated columns,
+parameters, subqueries, expression metadata, or arbitrary nested expression
+planning outside the documented value subset.
 
 The core behavior is:
 
@@ -117,15 +117,16 @@ SELECT string_length_item[, string_length_item ...] FROM DUAL
 DO string_length_expr[, string_length_expr ...]
 ```
 
-Single-table row-backed forms, with at least one select item containing a
-string-length function:
+Single-table row-backed forms, with at least one select item or admitted
+predicate/order expression containing a string-length function:
 
 ```sql
 SELECT row_scalar_item[, row_scalar_item ...]
 FROM table_name [AS alias]
 [WHERE predicate]
-[ORDER BY descriptor_column [ASC | DESC]]
+[ORDER BY descriptor_column | length_expr [ASC | DESC]]
 [LIMIT row_count]
+UPDATE table_name SET column_name = length_expr [WHERE predicate]
 ```
 
 The admitted function expression shape is:
@@ -169,11 +170,9 @@ formatting semantics outside the existing dedicated slices.
 
 The following remain outside this phase:
 
-- length-function predicate shapes outside the later
+- length-function predicate shapes outside the
   `baseline-string-function-predicates` subset, `HAVING LENGTH(...) ...`,
-  expression `ORDER BY`, grouping, distinct expression rows, and aggregate
-  arguments;
-- DML assignment values such as `UPDATE t SET c = LENGTH(v)`;
+  grouping, distinct expression rows, and aggregate arguments;
 - scalar subqueries, correlated subqueries, CTEs, joins beyond the already
   supported row-scalar source envelope, parameters, user variables, and stored
   functions;
@@ -312,9 +311,12 @@ Add a new `runtime_string_length_functions` C test and register it as
   integer, decimal, and temporal descriptors;
 - aliases, explicit invisible column references, existing `WHERE`/`ORDER BY`/
   `LIMIT` row envelope reuse, and reopen persistence;
+- descriptor-backed `WHERE`, non-grouped `ORDER BY`, and single-table `UPDATE`
+  assignment contexts;
 - wrong arity diagnostics for all function names;
 - unknown column and unsupported expression diagnostics;
-- unsupported predicate/order/DML/nested forms rejected deterministically;
+- unsupported grouping/subquery/parameter/nested forms rejected
+  deterministically;
 - preservation of existing lexer, parser, scalar expression, row-scalar,
   string, binary string, `BIT`, temporal, runtime lifecycle, file-backed, and
   full check suites.

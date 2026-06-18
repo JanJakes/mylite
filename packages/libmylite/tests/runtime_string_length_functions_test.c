@@ -232,6 +232,7 @@ static int test_table_backed_lengths_and_reopen(void) {
     static const char *const length_not_null_predicate_rows[] = {"1", "3"};
     static const char *const length_null_predicate_rows[] = {"2", "4"};
     static const char *const length_truth_predicate_rows[] = {"1"};
+    static const char *const length_order_rows[] = {"2", "3", "1", "4"};
     static const char *const columns_case_length[] = {"id", "chars"};
     static const char *const case_length_rows[] = {
         "1",
@@ -245,6 +246,10 @@ static int test_table_backed_lengths_and_reopen(void) {
     };
     static const char *const columns_status[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const values_two_rows_no_warnings[] = {"2", "0"};
+    static const char *const columns_length_dml[] = {"id", "bytes", "chars", "bits"};
+    static const char *const values_length_dml[] = {
+        "1", "1", "1", "8", "2", "2", "1", "16", "3", NULL, NULL, NULL,
+    };
     static const char *const columns_mutated[] = {"id", "txt"};
     static const char *const mutated_rows[] = {"1", "hit", "3", "byte"};
     static const char *const columns_reopen[] = {"bytes", "chars", "hidden_bytes"};
@@ -443,6 +448,17 @@ static int test_table_backed_lengths_and_reopen(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT id FROM predicates ORDER BY LENGTH(v) DESC, id",
+            .columns = columns_id,
+            .column_count = 1U,
+            .values = length_order_rows,
+            .row_count = 4U,
+            .context = "length order rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT id, CHAR_LENGTH(CASE WHEN v LIKE 'A%' THEN v ELSE txt END) AS chars "
                    "FROM predicates ORDER BY id",
             .columns = columns_case_length,
@@ -450,6 +466,44 @@ static int test_table_backed_lengths_and_reopen(void) {
             .values = case_length_rows,
             .row_count = 4U,
             .context = "char_length searched case like rows",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE length_dml(id INT, v VARCHAR(20), bytes INT, chars INT, bits INT)",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO length_dml VALUES (1, 'a', NULL, NULL, NULL), "
+        "(2, '\xC3\xA9', NULL, NULL, NULL), (3, NULL, NULL, NULL, NULL)",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "UPDATE length_dml SET bytes = LENGTH(v), chars = CHAR_LENGTH(v), bits = BIT_LENGTH(v)",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .columns = columns_status,
+            .column_count = 2U,
+            .values = values_two_rows_no_warnings,
+            .row_count = 1U,
+            .context = "length update assignment status",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, bytes, chars, bits FROM length_dml ORDER BY id",
+            .columns = columns_length_dml,
+            .column_count = sizeof(columns_length_dml) / sizeof(columns_length_dml[0]),
+            .values = values_length_dml,
+            .row_count = 3U,
+            .context = "length update assignment rows",
         }
     );
     failures +=
@@ -537,6 +591,7 @@ static int test_table_backed_lengths_and_reopen(void) {
 static int test_string_length_diagnostics(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
+    mylite_result *result = NULL;
     int failures = 0;
 
     failures += open_app_database(&database, "diagnostics", path, sizeof(path));
@@ -689,22 +744,40 @@ static int test_string_length_diagnostics(void) {
                 "string length functions do not support RAND() arguments in table-backed SELECT",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT id FROM t ORDER BY LENGTH(v)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY LENGTH(v)",
+            .columns = (const char *const[]){"id"},
+            .column_count = 1U,
+            .values = (const char *const[]){"1"},
+            .row_count = 1U,
+            .context = "length order diagnostic success",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(database, "UPDATE t SET v = LENGTH(v)", &result);
+    if (failures == 0) {
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            1,
+            "length update diagnostic affected"
+        );
+        failures += expect_size(
+            mylite_result_warning_count(result),
+            0U,
+            "length update diagnostic warnings"
+        );
+    }
+    mylite_result_free(result);
+    failures += expect_query(
         database,
-        "UPDATE t SET v = LENGTH(v)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT v FROM t",
+            .columns = (const char *const[]){"v"},
+            .column_count = 1U,
+            .values = (const char *const[]){"1"},
+            .row_count = 1U,
+            .context = "length update diagnostic success",
         }
     );
     failures += execute_error(

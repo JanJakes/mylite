@@ -319,6 +319,7 @@ static const struct mylite_sql_ast_node *window_function_null_treatment_node(
     const struct mylite_sql_ast_node *expression
 );
 static bool window_function_has_arguments(enum planned_window_function_kind kind);
+static bool window_function_ignores_frame_clause(enum planned_window_function_kind kind);
 static int plan_row_scalar_window_function_arguments(
     struct mylite_db *database,
     enum planned_window_function_kind kind,

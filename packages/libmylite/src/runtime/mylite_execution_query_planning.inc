@@ -1093,11 +1093,14 @@ static int plan_row_scalar_window_function_expression(
                 table_column_count,
                 out_expression
             );
+        } else if (clause->kind == MYLITE_SQL_AST_WINDOW_FRAME_CLAUSE &&
+                   window_function_ignores_frame_clause(kind)) {
+            /* Ranking/distribution functions accept but do not observe frame clauses. */
         } else {
             set_window_function_unsupported_error(
                 database,
                 function_name,
-                "supports only PARTITION BY and ORDER BY"
+                "supports only PARTITION BY, ORDER BY, and ranking/distribution frame clauses"
             );
             rc = MYLITE_ERROR;
         }
@@ -1193,6 +1196,26 @@ static bool window_function_has_arguments(enum planned_window_function_kind kind
     case PLANNED_WINDOW_FUNCTION_DENSE_RANK:
     case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
     case PLANNED_WINDOW_FUNCTION_CUME_DIST:
+        break;
+    }
+    return false;
+}
+
+static bool window_function_ignores_frame_clause(enum planned_window_function_kind kind) {
+    switch (kind) {
+    case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
+    case PLANNED_WINDOW_FUNCTION_RANK:
+    case PLANNED_WINDOW_FUNCTION_DENSE_RANK:
+    case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
+    case PLANNED_WINDOW_FUNCTION_CUME_DIST:
+    case PLANNED_WINDOW_FUNCTION_NTILE:
+        return true;
+    case PLANNED_WINDOW_FUNCTION_NONE:
+    case PLANNED_WINDOW_FUNCTION_LAG:
+    case PLANNED_WINDOW_FUNCTION_LEAD:
+    case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
         break;
     }
     return false;

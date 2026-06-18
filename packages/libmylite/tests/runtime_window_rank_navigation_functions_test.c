@@ -140,6 +140,56 @@ static int test_window_rank_distribution_results(void) {
         "200", "1",  "1",  "1",  "3",  "10", "200", "1",  "1",  "1",  "1",  "10", "100", "3",
         "2",   "2",  "5",  "20", "50", "1",  "1",   "1",  "4",  "20", NULL, "2",  "2",   "2",
     };
+    static const char *const frame_columns[] = {"id", "r", "dr", "pr", "cd", "nt"};
+    static const char *const frame_values[] = {
+        "4",
+        "1",
+        "1",
+        "0",
+        "0.14285714285714285",
+        "1",
+        "6",
+        "2",
+        "2",
+        "0.16666666666666666",
+        "0.2857142857142857",
+        "1",
+        "7",
+        "3",
+        "3",
+        "0.3333333333333333",
+        "0.42857142857142855",
+        "1",
+        "5",
+        "4",
+        "4",
+        "0.5",
+        "0.5714285714285714",
+        "2",
+        "1",
+        "5",
+        "5",
+        "0.6666666666666666",
+        "0.7142857142857143",
+        "2",
+        "2",
+        "6",
+        "6",
+        "0.8333333333333334",
+        "1",
+        "3",
+        "3",
+        "6",
+        "6",
+        "0.8333333333333334",
+        "1",
+        "3",
+    };
+    static const char *const partition_frame_columns[] = {"id", "r", "dr", "nt"};
+    static const char *const partition_frame_values[] = {
+        "7", "1", "1", "1", "6", "2", "2", "2", "2", "1", "1", "1", "3", "1",
+        "1", "1", "1", "3", "2", "2", "5", "1", "1", "1", "4", "2", "2", "2",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = open_app_database(&database, path, sizeof(path));
@@ -191,6 +241,44 @@ static int test_window_rank_distribution_results(void) {
             .values = partition_values,
             .row_count = seed_post_count,
             .context = "partitioned rank distribution",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, "
+                   "RANK() OVER (ORDER BY created_at "
+                   "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS r, "
+                   "DENSE_RANK() OVER (ORDER BY created_at RANGE CURRENT ROW) AS dr, "
+                   "PERCENT_RANK() OVER (ORDER BY created_at ROWS 1 PRECEDING) AS pr, "
+                   "CUME_DIST() OVER "
+                   "(ORDER BY created_at ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING) AS cd, "
+                   "NTILE(3) OVER "
+                   "(ORDER BY created_at ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) AS nt "
+                   "FROM posts ORDER BY created_at, id",
+            .columns = frame_columns,
+            .column_count = sizeof(frame_columns) / sizeof(frame_columns[0]),
+            .values = frame_values,
+            .row_count = seed_post_count,
+            .context = "rank distribution frame clauses",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, "
+                   "RANK() OVER (PARTITION BY author_id ORDER BY created_at DESC "
+                   "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS r, "
+                   "DENSE_RANK() OVER (PARTITION BY author_id ORDER BY created_at DESC "
+                   "RANGE CURRENT ROW) AS dr, "
+                   "NTILE(2) OVER (PARTITION BY author_id ORDER BY created_at DESC "
+                   "ROWS 1 PRECEDING) AS nt "
+                   "FROM posts ORDER BY author_id, created_at DESC, id",
+            .columns = partition_frame_columns,
+            .column_count = sizeof(partition_frame_columns) / sizeof(partition_frame_columns[0]),
+            .values = partition_frame_values,
+            .row_count = seed_post_count,
+            .context = "partitioned rank distribution frame clauses",
         }
     );
 
@@ -433,11 +521,13 @@ static int test_window_function_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id, ROW_NUMBER() OVER (ORDER BY id ROWS CURRENT ROW) AS rn FROM posts",
+        "SELECT id, FIRST_VALUE(title) OVER (ORDER BY id ROWS CURRENT ROW) AS first_title "
+        "FROM posts",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "supports only PARTITION BY and ORDER BY",
+            .message_part = "FIRST_VALUE() supports only PARTITION BY, ORDER BY, and "
+                            "ranking/distribution frame clauses",
         }
     );
     failures += execute_error(

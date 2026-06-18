@@ -79,6 +79,7 @@ int main(void) {
 static int test_no_source_and_table_row_number(void) {
     static const char *const column_rn[] = {"rn"};
     static const char *const columns_id_rn[] = {"id", "rn"};
+    static const char *const columns_id_two_rn[] = {"id", "rn_rows", "rn_range"};
     static const char *const columns_partitioned[] = {"id", "author_id", "rn"};
     static const char *const columns_category[] = {"id", "category", "rn"};
     static const char *const value_one[] = {"1"};
@@ -117,6 +118,10 @@ static int test_no_source_and_table_row_number(void) {
         "6",
         "3",
         "7",
+    };
+    static const char *const values_frame_clauses[] = {
+        "4", "1", "1", "6", "2", "2", "7", "3", "3", "5", "4",
+        "4", "1", "5", "5", "2", "6", "6", "3", "7", "7",
     };
     static const char *const values_desc_nulls[] = {
         "2",
@@ -216,6 +221,21 @@ static int test_no_source_and_table_row_number(void) {
             .values = values_asc_nulls,
             .row_count = seed_post_count,
             .context = "ascending nullable order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, "
+                   "ROW_NUMBER() OVER (ORDER BY created_at "
+                   "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS rn_rows, "
+                   "ROW_NUMBER() OVER (ORDER BY created_at RANGE CURRENT ROW) AS rn_range "
+                   "FROM posts ORDER BY created_at, id",
+            .columns = columns_id_two_rn,
+            .column_count = sizeof(columns_id_two_rn) / sizeof(columns_id_two_rn[0]),
+            .values = values_frame_clauses,
+            .row_count = seed_post_count,
+            .context = "row_number frame clauses",
         }
     );
     failures += expect_query(
@@ -370,21 +390,12 @@ static int test_row_number_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ROWS BETWEEN "
-        "UNBOUNDED PRECEDING AND CURRENT ROW) AS rn FROM posts",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "ROW_NUMBER() supports only PARTITION BY and ORDER BY",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT id, ROW_NUMBER() OVER (base_window ORDER BY id) AS rn FROM posts",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "ROW_NUMBER() supports only PARTITION BY and ORDER BY",
+            .message_part = "ROW_NUMBER() supports only PARTITION BY, ORDER BY, and "
+                            "ranking/distribution frame clauses",
         }
     );
 

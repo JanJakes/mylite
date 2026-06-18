@@ -129,6 +129,21 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "row number frame clauses" \
+    "4	1	1
+6	2	2
+7	3	3
+5	4	4
+1	5	5
+2	6	6
+3	7	7" \
+    "SELECT id, ROW_NUMBER() OVER "\
+"(ORDER BY created_at ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), "\
+"ROW_NUMBER() OVER (ORDER BY created_at RANGE CURRENT ROW) "\
+"FROM posts ORDER BY created_at, id;" \
+    "$DATABASE"
+
+expect_output \
     "descending null order" \
     "2	1
 3	2

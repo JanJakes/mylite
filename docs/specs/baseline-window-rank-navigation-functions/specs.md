@@ -11,10 +11,12 @@ the existing descriptor-driven `ROW_NUMBER()` window projection path to:
 The support is intentionally narrow. It accepts these functions only in the
 current row-scalar projection envelope: no-source or `FROM DUAL` for empty
 windows, or one descriptor-backed table source with optional one-column
-`PARTITION BY`, optional one-column `ORDER BY`, existing single-table `WHERE`,
-outer `ORDER BY`, and `LIMIT`. It does not implement named windows, explicit
-frames, expression keys, multi-key windows, grouped selects, joins, predicates,
-DML contexts, or general window expression planning.
+`PARTITION BY`, optional one-column `ORDER BY`, supported inline
+rank/distribution frame clauses, existing single-table `WHERE`, outer
+`ORDER BY`, and `LIMIT`. It does not implement named windows,
+frame-sensitive navigation/value frame clauses, expression keys, multi-key
+windows, grouped selects, joins, predicates, DML contexts, or general window
+expression planning.
 
 ## Sources And Evidence
 
@@ -101,6 +103,10 @@ window_spec_opt ::= empty
 window_spec_opt ::= window_partition_clause
 window_spec_opt ::= window_order_clause
 window_spec_opt ::= window_partition_clause window_order_clause
+window_spec_opt ::= window_frame_clause
+window_spec_opt ::= window_partition_clause window_frame_clause
+window_spec_opt ::= window_order_clause window_frame_clause
+window_spec_opt ::= window_partition_clause window_order_clause window_frame_clause
 
 window_partition_clause ::= PARTITION BY qualified_identifier
 window_order_clause ::= ORDER BY qualified_identifier order_direction_opt
@@ -128,10 +134,13 @@ Supported statement envelope:
 - one unqualified or source-qualified descriptor column in `PARTITION BY`;
 - one unqualified or source-qualified descriptor column in window `ORDER BY`;
 - optional `ASC` / `DESC` in window `ORDER BY`.
+- inline `ROWS` / `RANGE` frame clauses for `RANK()`, `DENSE_RANK()`,
+  `PERCENT_RANK()`, `CUME_DIST()`, and `NTILE()` as documented by
+  [baseline window rank frame clauses](../baseline-window-rank-frame-clauses/specs.md).
 
 Deferred syntax and behavior:
 
-- named windows, window inheritance, explicit frames, `ROWS`, `RANGE`,
+- named windows, window inheritance, frame-sensitive navigation/value frames,
   `GROUPS`, `EXCLUDE`, and `FROM LAST`;
 - multi-key `PARTITION BY` or window `ORDER BY`;
 - expression, ordinal, parameter, collation, or function window keys;
@@ -161,7 +170,9 @@ Deferred syntax and behavior:
 For admitted statements, MyLite lowers supported functions to SQLite native
 window SQL after descriptor validation. The generated SQL uses quoted
 identifiers and existing row-scalar source, predicate, order, and limit
-builders.
+builders. Inline frame clauses on ranking and distribution functions are
+accepted and ignored, matching the observed MySQL behavior that they do not
+affect those results.
 
 `PARTITION BY` groups `NULL` values together. Window `ORDER BY` defaults to
 ascending order. `WHERE` filters rows before window evaluation. Outer
@@ -188,7 +199,7 @@ Supported statements leave `warning_count == 0`.
 The implementation must diagnose:
 
 - syntax errors for missing `OVER`, malformed argument lists, named-window
-  forms, explicit frame clauses, and unsupported grammar;
+  forms, frame-sensitive value-function frame clauses, and unsupported grammar;
 - MySQL-shaped 1210 / `HY000` incorrect-argument errors for `NTILE(0)` and
   invalid `NTH_VALUE()` integer indexes;
 - MySQL-shaped syntax errors for `NTILE(NULL)`, signed `NTILE()` arguments,
@@ -211,6 +222,7 @@ Add:
   registered as `libmylite.runtime.window_rank_navigation_functions`.
 
 Coverage must include no-source rank/distribution values, table ranking,
-distribution, partitioned ranking, `NTILE`, navigation defaults, `FIRST_VALUE`,
-`LAST_VALUE`, `NTH_VALUE`, nullable values, metadata, unknown columns,
-incorrect integer arguments, and unsupported argument domains.
+distribution, partitioned ranking, rank/distribution frame clauses, `NTILE`,
+navigation defaults, `FIRST_VALUE`, `LAST_VALUE`, `NTH_VALUE`, nullable values,
+metadata, unknown columns, incorrect integer arguments, unsupported argument
+domains, and frame-sensitive value-function frame rejection.

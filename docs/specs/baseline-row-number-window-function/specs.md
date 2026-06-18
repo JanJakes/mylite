@@ -12,7 +12,8 @@ SELECT id, ROW_NUMBER() OVER (PARTITION BY group_id ORDER BY sort_key DESC) AS r
 
 The implementation is deliberately limited. It is not a general window
 framework and it does not add arbitrary expressions, subqueries, joins, CTEs,
-named windows, frame clauses, or window functions outside projection lists.
+named windows, frame-sensitive functions, or window functions outside
+projection lists.
 MyLite resolves all table, column, alias, predicate, order, and limit metadata
 through MyLite descriptors, then lowers the verified window expression to
 SQLite's native `row_number()` execution path over the generated physical table.
@@ -66,7 +67,10 @@ Runtime probes establish the behavior used by this slice:
   `LIMIT` applies after window numbering and result ordering.
 - `ROW_NUMBER()` without `OVER` and `ROW_NUMBER(1) OVER ()` are syntax errors.
 - MySQL supports multi-key partition/order lists, named windows, and frame
-  clauses for `ROW_NUMBER()`. MyLite defers those broader forms in this phase.
+  clauses for `ROW_NUMBER()`. MyLite admits inline frame clauses for
+  rank/distribution-style functions in
+  [baseline window rank frame clauses](../baseline-window-rank-frame-clauses/specs.md);
+  broader named-window and multi-key forms remain deferred.
 - MySQL rejects window functions in unsupported contexts such as `WHERE` with
   error 3593. MyLite may use a narrower deterministic unsupported diagnostic
   until broader expression planning admits such syntax.
@@ -82,6 +86,10 @@ window_spec_opt ::= empty
 window_spec_opt ::= window_partition_clause
 window_spec_opt ::= window_order_clause
 window_spec_opt ::= window_partition_clause window_order_clause
+window_spec_opt ::= window_frame_clause
+window_spec_opt ::= window_partition_clause window_frame_clause
+window_spec_opt ::= window_order_clause window_frame_clause
+window_spec_opt ::= window_partition_clause window_order_clause window_frame_clause
 
 window_partition_clause ::= PARTITION BY qualified_identifier
 window_order_clause ::= ORDER BY qualified_identifier order_direction_opt
@@ -104,6 +112,8 @@ Supported statement envelope:
 - one unqualified or source-qualified descriptor column in `PARTITION BY`;
 - one unqualified or source-qualified descriptor column in window `ORDER BY`;
 - optional `ASC` / `DESC` in window `ORDER BY`.
+- inline `ROWS` / `RANGE` frame clauses in the documented rank-style frame
+  subset.
 
 Deferred syntax and behavior:
 
@@ -112,8 +122,8 @@ Deferred syntax and behavior:
   subqueries as row sources;
 - window functions in `WHERE`, `HAVING`, `GROUP BY`, DML assignments,
   generated columns, defaults, predicates, and nested scalar expressions;
-- named windows, window inheritance, frame clauses, `RANGE` / `ROWS` / `GROUPS`,
-  `EXCLUDE`, multi-key partitioning, multi-key ordering, expression partition
+- named windows, window inheritance, `GROUPS`, `EXCLUDE`, multi-key partitioning,
+  multi-key ordering, expression partition
   keys, expression order keys, ordinal order keys, table-qualified keys for
   unrelated sources, collations in the window spec, parameters, and arbitrary
   scalar expression arguments;
@@ -225,7 +235,7 @@ set remains the existing SELECT convention.
 The implementation must diagnose:
 
 - syntax errors for missing `OVER`, arguments to `ROW_NUMBER`, malformed window
-  clauses, named windows, frame clauses, and unsupported grammar;
+  clauses, named windows, and unsupported grammar;
 - missing default schema, unknown schema, unknown table, and reserved
   `_mylite_*` target names through existing table-resolution diagnostics;
 - unsupported source shapes such as joins, comma sources, derived tables, CTEs,
@@ -253,6 +263,8 @@ The test suite must cover:
 - table-backed `ROW_NUMBER() OVER ()` mixed with descriptor columns;
 - `PARTITION BY` over nullable integer and string columns;
 - window `ORDER BY` default direction, `ASC`, and `DESC`;
+- inline `ROWS` and `RANGE` frame clauses that do not affect
+  `ROW_NUMBER()` numbering;
 - `NULL` ordering in ascending and descending window order;
 - duplicate window order keys without overclaiming tie order;
 - `WHERE`, outer `ORDER BY`, and outer `LIMIT` interaction;

@@ -122,6 +122,41 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "rank distribution frame clauses" \
+    "4	1	1	0	0.14285714285714285	1
+6	2	2	0.16666666666666666	0.2857142857142857	1
+7	3	3	0.3333333333333333	0.42857142857142855	1
+5	4	4	0.5	0.5714285714285714	2
+1	5	5	0.6666666666666666	0.7142857142857143	2
+2	6	6	0.8333333333333334	1	3
+3	6	6	0.8333333333333334	1	3" \
+    "SELECT id, RANK() OVER "\
+"(ORDER BY created_at ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), "\
+"DENSE_RANK() OVER (ORDER BY created_at RANGE CURRENT ROW), "\
+"PERCENT_RANK() OVER (ORDER BY created_at ROWS 1 PRECEDING), "\
+"CUME_DIST() OVER (ORDER BY created_at ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING), "\
+"NTILE(3) OVER (ORDER BY created_at ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) "\
+"FROM posts ORDER BY created_at, id;" \
+    "$DATABASE"
+
+expect_output \
+    "partitioned rank distribution frame clauses" \
+    "7	1	1	1
+6	2	2	2
+2	1	1	1
+3	1	1	1
+1	3	2	2
+5	1	1	1
+4	2	2	2" \
+    "SELECT id, RANK() OVER "\
+"(PARTITION BY author_id ORDER BY created_at DESC "\
+"ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), "\
+"DENSE_RANK() OVER (PARTITION BY author_id ORDER BY created_at DESC RANGE CURRENT ROW), "\
+"NTILE(2) OVER (PARTITION BY author_id ORDER BY created_at DESC ROWS 1 PRECEDING) "\
+"FROM posts ORDER BY author_id, created_at DESC, id;" \
+    "$DATABASE"
+
+expect_output \
     "navigation and frame-value functions" \
     "1	a	NULL	x	b	c	a	a	NULL
 2	b	a	x	c	d	a	b	b

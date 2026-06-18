@@ -250,6 +250,32 @@ expect_error \
     "USE ${DATABASE}; SET SESSION sql_mode = 'ANSI_QUOTES'; "\
 "SELECT ADDTIME(\"01:02:03\", \"00:00:01\");"
 
+row_context_expected=$(cat <<EXPECTED
+1	2008-01-02 13:29:21	2008-01-02 13:29:13	01:02:07	01:01:59
+2	2008-01-02 00:30:00	2008-01-01 23:30:00	-00:30:00	-01:30:00
+1
+1
+1	2008-01-02 13:29:13	01:02:07
+2	2008-01-01 23:30:00	-00:30:00
+EXPECTED
+)
+expect_output \
+    "row-backed addtime subtime contexts" \
+    "$row_context_expected" \
+    "USE ${DATABASE}; SET SESSION sql_mode = ''; "\
+"DROP TABLE IF EXISTS shifts; "\
+"CREATE TABLE shifts("\
+"id INT, dt DATETIME, tm TIME, delta TIME, out_dt VARCHAR(32), out_tm VARCHAR(32)); "\
+"INSERT INTO shifts VALUES "\
+"(1, '2008-01-02 13:29:17', '01:02:03', '00:00:04', NULL, NULL), "\
+"(2, '2008-01-02 00:00:00', '-01:00:00', '00:30:00', NULL, NULL); "\
+"SELECT id, ADDTIME(dt, delta), SUBTIME(dt, delta), ADDTIME(tm, delta), SUBTIME(tm, delta) "\
+"FROM shifts ORDER BY id; "\
+"SELECT id FROM shifts WHERE ADDTIME(tm, delta) = '01:02:07'; "\
+"SELECT id FROM shifts ORDER BY ADDTIME(tm, delta) DESC LIMIT 1; "\
+"UPDATE shifts SET out_dt = SUBTIME(dt, delta), out_tm = ADDTIME(tm, delta); "\
+"SELECT id, out_dt, out_tm FROM shifts ORDER BY id;"
+
 deferred_expected=$(cat <<EXPECTED
 00:00:02	01:02:04	27:05:07	838:59:59	-838:59:59
 EXPECTED

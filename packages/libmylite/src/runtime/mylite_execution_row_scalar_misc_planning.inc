@@ -1340,6 +1340,10 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_DATEDIFF_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_TIMEDIFF_FUNCTION ||
             current->kind == MYLITE_SQL_AST_TIMEDIFF_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_ADDTIME_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_ADDTIME_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_SUBTIME_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_TIMESTAMPDIFF_FUNCTION ||
             current->kind == MYLITE_SQL_AST_TIMESTAMP_FUNCTION ||
             current->kind == MYLITE_SQL_AST_TIMESTAMP_ARGUMENT_COUNT_ERROR ||

@@ -118,6 +118,26 @@ static int bind_row_scalar_timediff_expression_parameters(
     return rc;
 }
 
+static int bind_row_scalar_addtime_subtime_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->argument_count != 2U) {
+        return MYLITE_ERROR;
+    }
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 2U; ++argument_index) {
+        rc = bind_row_scalar_non_concat_expression_parameters(
+            statement,
+            &expression->arguments[argument_index],
+            parameter_index
+        );
+    }
+    return rc;
+}
+
 static int bind_row_scalar_timestampdiff_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,

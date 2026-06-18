@@ -404,6 +404,8 @@ static int append_row_scalar_uuid_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ADDTIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUBTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
@@ -558,6 +560,8 @@ static int append_row_scalar_uuid_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ADDTIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUBTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
@@ -670,6 +674,8 @@ static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_exp
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ADDTIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUBTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMP:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
@@ -918,6 +924,47 @@ static int append_row_scalar_timediff_expression_sql(
 
     rc = mylite_dynamic_string_append(string, "_mylite_timediff(");
     for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 4U; ++argument_index) {
+        if (argument_index != 0U) {
+            rc = mylite_dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_non_concat_expression_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_row_scalar_addtime_subtime_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    const char *function_name = NULL;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->argument_count != 2U || expression->arguments == NULL) {
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_ADDTIME) {
+        function_name = "_mylite_addtime";
+    } else if (expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_SUBTIME) {
+        function_name = "_mylite_subtime";
+    } else {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append(string, function_name);
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, '(');
+    }
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 2U; ++argument_index) {
         if (argument_index != 0U) {
             rc = mylite_dynamic_string_append(string, ", ");
         }

@@ -624,6 +624,8 @@ static int row_scalar_collate_base_charset(
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ADDTIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUBTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
     case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
@@ -2254,6 +2256,14 @@ static int plan_row_scalar_temporal_function_expression(
         set_native_function_parameter_count_error(database, "TIMEDIFF");
         *out_handled = true;
         return MYLITE_ERROR;
+    case MYLITE_SQL_AST_ADDTIME_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "ADDTIME");
+        *out_handled = true;
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_SUBTIME_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "SUBTIME");
+        *out_handled = true;
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_DATEDIFF_FUNCTION:
         *out_handled = true;
         return plan_row_scalar_datediff_expression(
@@ -2268,6 +2278,18 @@ static int plan_row_scalar_temporal_function_expression(
     case MYLITE_SQL_AST_TIMEDIFF_FUNCTION:
         *out_handled = true;
         return plan_row_scalar_timediff_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    case MYLITE_SQL_AST_ADDTIME_FUNCTION:
+    case MYLITE_SQL_AST_SUBTIME_FUNCTION:
+        *out_handled = true;
+        return plan_row_scalar_addtime_subtime_expression(
             database,
             expression,
             has_source,

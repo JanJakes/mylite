@@ -18,6 +18,7 @@
 #include "mylite_rand.h"
 #include "mylite_random_bytes.h"
 #include "mylite_regexp.h"
+#include "mylite_execution_scalar_temporal_format.h"
 #include "mylite_sqlite_registration.h"
 #include "mylite_string_base64.h"
 #include "mylite_string_bitmask.h"
@@ -279,6 +280,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_timediff_function(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_time_arithmetic_functions(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_unix_timestamp_function(sqlite);

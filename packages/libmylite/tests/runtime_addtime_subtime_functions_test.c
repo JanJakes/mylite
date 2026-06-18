@@ -17,6 +17,8 @@ enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
     core_column_count = 12,
+    row_context_column_count = 5,
+    update_context_column_count = 3,
     label_column_count = 2,
     whitespace_column_count = 2,
     mysql_error_parse = 1064,
@@ -125,6 +127,36 @@ static int test_addtime_subtime_values_and_file_safety(void) {
     };
     static const char *const row_count_columns[] = {"ROW_COUNT()"};
     static const char *const row_count_values[] = {"0"};
+    static const char *const row_context_columns[] = {
+        "id",
+        "ADDTIME(dt, delta)",
+        "SUBTIME(dt, delta)",
+        "ADDTIME(tm, delta)",
+        "SUBTIME(tm, delta)",
+    };
+    static const char *const row_context_values[] = {
+        "1",
+        "2008-01-02 13:29:21",
+        "2008-01-02 13:29:13",
+        "01:02:07",
+        "01:01:59",
+        "2",
+        "2008-01-02 00:30:00",
+        "2008-01-01 23:30:00",
+        "-00:30:00",
+        "-01:30:00",
+    };
+    static const char *const row_id_columns[] = {"id"};
+    static const char *const row_id_values[] = {"1"};
+    static const char *const update_context_columns[] = {"id", "out_dt", "out_tm"};
+    static const char *const update_context_values[] = {
+        "1",
+        "2008-01-02 13:29:13",
+        "01:02:07",
+        "2",
+        "2008-01-01 23:30:00",
+        "-00:30:00",
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -204,6 +236,73 @@ static int test_addtime_subtime_values_and_file_safety(void) {
             .values = row_count_values,
             .row_count = 1U,
             .context = "row count after ADDTIME DO",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE shifts("
+        "id INT, dt DATETIME, tm TIME, delta TIME, out_dt VARCHAR(32), out_tm VARCHAR(32))",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO shifts VALUES "
+        "(1, '2008-01-02 13:29:17', '01:02:03', '00:00:04', NULL, NULL),"
+        "(2, '2008-01-02 00:00:00', '-01:00:00', '00:30:00', NULL, NULL)",
+        NULL
+    );
+    session = mylite_connection_session_state(database);
+    catalog_generation = session->catalog_generation;
+    sqlite_schema_generation = session->sqlite_schema_generation;
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, ADDTIME(dt, delta), SUBTIME(dt, delta), "
+                   "ADDTIME(tm, delta), SUBTIME(tm, delta) FROM shifts ORDER BY id",
+            .columns = row_context_columns,
+            .column_count = row_context_column_count,
+            .values = row_context_values,
+            .row_count = 2U,
+            .context = "row-backed ADDTIME and SUBTIME projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM shifts WHERE ADDTIME(tm, delta) = '01:02:07'",
+            .columns = row_id_columns,
+            .column_count = 1U,
+            .values = row_id_values,
+            .row_count = 1U,
+            .context = "row-backed ADDTIME predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM shifts ORDER BY ADDTIME(tm, delta) DESC LIMIT 1",
+            .columns = row_id_columns,
+            .column_count = 1U,
+            .values = row_id_values,
+            .row_count = 1U,
+            .context = "row-backed ADDTIME ordering",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "UPDATE shifts SET out_dt = SUBTIME(dt, delta), out_tm = ADDTIME(tm, delta)",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, out_dt, out_tm FROM shifts ORDER BY id",
+            .columns = update_context_columns,
+            .column_count = update_context_column_count,
+            .values = update_context_values,
+            .row_count = 2U,
+            .context = "row-backed ADDTIME and SUBTIME update",
         }
     );
 

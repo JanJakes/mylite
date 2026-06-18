@@ -10,11 +10,12 @@ SUBTIME(expr1, expr2)
 ```
 
 This feature covers the common two-argument function shape for no-source
-`SELECT`, `SELECT ... FROM DUAL`, and `DO` statements. It is not a general
-temporal-expression implementation. It deliberately limits operands to
-canonical string literals and `NULL`, reuses the existing MyLite-owned
-datetime-second arithmetic for datetime results, and adds MyLite-owned canonical
-time arithmetic for time results.
+`SELECT`, `SELECT ... FROM DUAL`, `DO`, and the current single-table row-scalar
+query/DML contexts. It is not a general temporal-expression implementation. It
+deliberately limits operands to canonical string values, supported descriptor
+columns, and `NULL`, reuses the existing MyLite-owned datetime-second
+arithmetic for datetime results, and adds MyLite-owned canonical time arithmetic
+for time results.
 
 ## Sources
 
@@ -68,6 +69,10 @@ expectations for this slice:
 MyLite supports this exact subset:
 
 - no-source `SELECT`, `SELECT ... FROM DUAL`, and `DO` scalar expressions;
+- single-table row-scalar projection, equality predicate, and `ORDER BY`
+  expression keys;
+- non-key single-table `UPDATE` assignment targets where the target can store
+  the resulting canonical temporal text;
 - `ADDTIME(expr1, expr2)` and `SUBTIME(expr1, expr2)` with exactly two
   arguments;
 - ordinary expression parentheses around operands;
@@ -85,7 +90,10 @@ MyLite supports this exact subset:
   `1000-01-01 00:00:00` through `9999-12-31 23:59:59`;
 - time operands must be canonical values in MyLite's current `TIME` range
   `-838:59:59` through `838:59:59`;
-- `expr2` limited to the same canonical time string and `NULL` subset;
+- `expr2` limited to the same canonical time string and `NULL` subset, plus
+  supported row-backed `TIME` and nonbinary string-family descriptor columns;
+- row-backed `expr1` may reference supported `DATETIME`, `TIMESTAMP`, `TIME`,
+  and nonbinary string-family descriptor columns;
 - successful datetime results return `YYYY-MM-DD HH:MM:SS`;
 - successful time results return `[-]HH:MM:SS` or `[-]HHH:MM:SS`, with at least
   two hour digits and no negative zero;
@@ -101,17 +109,17 @@ the current slice.
 
 This slice intentionally does not support:
 
-- table-backed row-scalar `ADDTIME()` / `SUBTIME()` projection;
-- predicates, ordering, grouping, DML assignments, defaults, generated columns,
-  check constraints, or arbitrary expression evaluation with these functions;
+- grouping, aggregate expressions, defaults, generated columns, check
+  constraints, or arbitrary expression evaluation with these functions;
+- DML assignments outside the current non-key single-table row-scalar subset;
 - numeric time operands, compact temporal numeric forms, decimal/fractional
   seconds, day-hour strings such as `1 02:03:04`, relaxed time strings, plus
   signs on time strings, date-only strings, zero or partial-zero temporal
   values, time-zone effects, or warning-returning invalid temporal conversion;
 - result clamping for out-of-range `TIME` values;
 - datetime results below year 1000 or above year 9999;
-- parameters, user variables, subqueries, column references, function calls, or
-  arithmetic expressions as operands;
+- parameters, user variables, subqueries, nested function calls, or arithmetic
+  expressions as operands;
 - protocol-grade temporal result metadata. The public result currently exposes
   text/`NULL` scalar values.
 
@@ -205,10 +213,11 @@ Required diagnostics:
 - Lexer/parser/AST: add nonreserved function tokens, two function AST node
   kinds, and two argument-count error node kinds. Do not introduce general
   function-call parsing.
-- Analyzer/planner/runtime: no catalog resolution and no table planning are
-  needed for this no-source scalar slice. The evaluator uses MyLite-owned
-  string decoding, canonical temporal validation, signed time conversion, and
-  existing datetime-second arithmetic.
+- Analyzer/planner/runtime: scalar contexts evaluate directly through the
+  MyLite scalar evaluator, while row-backed contexts resolve descriptor columns
+  and lower to registered private SQLite scalar functions. The evaluator uses
+  MyLite-owned string decoding, canonical temporal validation, signed time
+  conversion, and existing datetime-second arithmetic.
 - Catalog: untouched. These functions do not read or mutate descriptors,
   descriptor caches, catalog generation, or `sqlite_schema_generation`.
 - Result builder: returns a single text/`NULL` scalar cell through existing
@@ -216,8 +225,9 @@ Required diagnostics:
   explicit alias.
 - Storage/VFS/file format: untouched. The functions are pure scalar evaluation
   and must not modify SQLite payload or the MyLite preamble.
-- SQLite: no public SQLite API hook and no SQLite fork patch are required for
-  this slice.
+- SQLite: row-backed contexts use private SQLite scalar functions registered by
+  MyLite on each connection; no public SQLite fork patch is required for this
+  slice.
 
 ## Tests
 
@@ -232,13 +242,16 @@ Add fast C coverage under `packages/libmylite/tests/`:
   add/subtract, negative time first arguments, three-digit-hour values, `NULL`
   short-circuiting, aliases, `FROM DUAL`, `DO`, independent handles, and
   `ROW_COUNT()` behavior;
+- runtime covers row-backed projection, equality predicate, `ORDER BY`, and
+  non-key single-table `UPDATE` assignment contexts over supported descriptor
+  columns;
 - current SQL mode behavior for double-quoted strings, `ANSI_QUOTES`, and
   `NO_BACKSLASH_ESCAPES`;
 - deterministic diagnostics for unsupported first operands, unsupported second
   operands, invalid datetime/time strings, embedded NUL, result overflow, and
   unknown identifiers;
-- file preamble and catalog generation remain unchanged across scalar
-  evaluation.
+- file preamble and catalog generation remain unchanged across supported
+  expression evaluation.
 
 Add a MySQL 8.4.9 expectation artifact:
 

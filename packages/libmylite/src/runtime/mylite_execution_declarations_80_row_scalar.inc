@@ -2864,6 +2864,42 @@ static int plan_row_scalar_timediff_string_literal(
     const struct mylite_sql_ast_node *expression,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_addtime_subtime_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_addtime_subtime_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *function_name,
+    bool second_argument,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_addtime_subtime_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const char *function_name,
+    bool second_argument,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_addtime_subtime_string_literal(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *function_name,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_timestampdiff_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

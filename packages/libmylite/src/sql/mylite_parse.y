@@ -5065,6 +5065,10 @@ dml_constant_scalar_value(A) ::= ADDTIME(T) LPAREN expression(B) COMMA expressio
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_ADDTIME_FUNCTION, B, C, R);
 }
+dml_constant_scalar_value(A) ::= SUBTIME(T) LPAREN expression(B) COMMA expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_SUBTIME_FUNCTION, B, C, R);
+}
 dml_constant_scalar_value(A) ::= TIMESTAMP(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_TIMESTAMP_FUNCTION, B, R);
@@ -8043,6 +8047,16 @@ row_scalar_temporal_predicate_expression(A) ::= TIMEDIFF(T) LPAREN expression(B)
         expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_TIMEDIFF_FUNCTION, B, C, R);
+}
+row_scalar_temporal_predicate_expression(A) ::= ADDTIME(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_ADDTIME_FUNCTION, B, C, R);
+}
+row_scalar_temporal_predicate_expression(A) ::= SUBTIME(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_SUBTIME_FUNCTION, B, C, R);
 }
 row_scalar_temporal_predicate_expression(A) ::= TIMESTAMPDIFF(T) LPAREN timestampdiff_unit(U)
         COMMA expression(B) COMMA expression(C) RPAREN(R). {

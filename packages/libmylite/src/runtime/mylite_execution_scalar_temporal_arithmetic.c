@@ -6,6 +6,8 @@
 #include "mylite_date_format.h"
 #include "mylite_date_interval_second.h"
 #include "mylite_diagnostics.h"
+#include "mylite_sqlite_bootstrap.h"
+#include "mylite_sqlite_registration.h"
 #include "mylite_temporal_arithmetic.h"
 
 #include <mylite/mylite.h>
@@ -39,6 +41,7 @@ enum {
     time_maximum_minute_or_second = 59,
     time_second_per_minute = 60,
     time_second_per_hour = 3600,
+    time_arithmetic_sqlite_argument_count = 2,
 };
 
 enum scalar_time_arithmetic_input_kind {
@@ -127,6 +130,22 @@ static int date_interval_format(
 );
 static const char *time_arithmetic_function_name(enum mylite_sql_ast_node_kind kind);
 static bool time_arithmetic_function_subtracts(enum mylite_sql_ast_node_kind kind);
+static void addtime_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void subtime_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static int time_arithmetic_sqlite_result(
+    sqlite3_context *context,
+    bool subtract,
+    const char *function_name,
+    sqlite3_value *first_value,
+    sqlite3_value *second_value
+);
+static int sqlite_value_text_pointer(
+    sqlite3_context *context,
+    sqlite3_value *value,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
 static int set_time_arithmetic_unsupported_error(
     struct mylite_db *database,
     const char *function_name,
@@ -158,6 +177,35 @@ static int time_arithmetic_decode_string_argument(
     char **out_text,
     size_t *out_text_length
 );
+static int time_arithmetic_text_value(
+    struct mylite_db *database,
+    bool subtract,
+    const char *function_name,
+    const char *first_value,
+    size_t first_value_length,
+    bool first_is_null,
+    const char *second_value,
+    size_t second_value_length,
+    bool second_is_null,
+    char **out_text,
+    bool *out_is_null
+);
+static int time_arithmetic_first_text_argument(
+    struct mylite_db *database,
+    const char *function_name,
+    const char *value,
+    size_t value_length,
+    bool is_null,
+    struct scalar_time_arithmetic_input *out_input
+);
+static int time_arithmetic_second_text_argument(
+    struct mylite_db *database,
+    const char *function_name,
+    const char *value,
+    size_t value_length,
+    bool is_null,
+    struct scalar_time_arithmetic_input *out_input
+);
 static int time_arithmetic_apply_datetime(
     struct mylite_db *database,
     const char *function_name,
@@ -177,6 +225,11 @@ static int time_arithmetic_format_time(
     const char *function_name,
     int64_t seconds,
     struct session_scalar_cell *out_cell
+);
+static int copy_time_arithmetic_result(
+    struct mylite_db *database,
+    const struct session_scalar_cell *cell,
+    char **out_text
 );
 static bool time_arithmetic_seconds_in_range(int64_t seconds);
 static bool checked_int64_add(int64_t left, int64_t right, int64_t *out_result);
@@ -1079,6 +1132,80 @@ int mylite_execution_scalar_addtime_subtime_value(
     return time_arithmetic_apply_time(database, function_name, &first, second_seconds, out_cell);
 }
 
+int mylite_execution_addtime_subtime_text_value(
+    struct mylite_db *database,
+    enum mylite_sql_ast_node_kind kind,
+    const char *first_value,
+    size_t first_value_length,
+    bool first_is_null,
+    const char *second_value,
+    size_t second_value_length,
+    bool second_is_null,
+    char **out_text,
+    bool *out_is_null
+) {
+    const char *function_name = time_arithmetic_function_name(kind);
+
+    if (!mylite_execution_is_time_arithmetic_function_kind(kind)) {
+        function_name = "ADDTIME";
+        return set_time_arithmetic_unsupported_error(
+            database,
+            function_name,
+            "supports only ADDTIME() and SUBTIME()"
+        );
+    }
+    return time_arithmetic_text_value(
+        database,
+        time_arithmetic_function_subtracts(kind),
+        function_name,
+        first_value,
+        first_value_length,
+        first_is_null,
+        second_value,
+        second_value_length,
+        second_is_null,
+        out_text,
+        out_is_null
+    );
+}
+
+int mylite_sqlite_register_time_arithmetic_functions(sqlite3 *sqlite) {
+    static struct mylite_sqlite_function_registration registrations[] = {
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_addtime",
+            .argument_count = time_arithmetic_sqlite_argument_count,
+            .text_representation = SQLITE_UTF8 | SQLITE_DETERMINISTIC,
+            .application_data = NULL,
+            .scalar_callback = addtime_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_subtime",
+            .argument_count = time_arithmetic_sqlite_argument_count,
+            .text_representation = SQLITE_UTF8 | SQLITE_DETERMINISTIC,
+            .application_data = NULL,
+            .scalar_callback = subtime_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+    };
+
+    return mylite_sqlite_register_functions(
+        sqlite,
+        registrations,
+        sizeof(registrations) / sizeof(registrations[0])
+    );
+}
+
 bool mylite_execution_is_time_arithmetic_function_kind(enum mylite_sql_ast_node_kind kind) {
     switch (kind) {
     case MYLITE_SQL_AST_ADDTIME_FUNCTION:
@@ -1101,6 +1228,129 @@ static const char *time_arithmetic_function_name(enum mylite_sql_ast_node_kind k
 
 static bool time_arithmetic_function_subtracts(enum mylite_sql_ast_node_kind kind) {
     return kind == MYLITE_SQL_AST_SUBTIME_FUNCTION;
+}
+
+static void addtime_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    if (context == NULL || argc != time_arithmetic_sqlite_argument_count || argv == NULL ||
+        argv[0] == NULL || argv[1] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite ADDTIME callback", -1);
+        return;
+    }
+    (void)time_arithmetic_sqlite_result(context, false, "ADDTIME", argv[0], argv[1]);
+}
+
+static void subtime_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    if (context == NULL || argc != time_arithmetic_sqlite_argument_count || argv == NULL ||
+        argv[0] == NULL || argv[1] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite SUBTIME callback", -1);
+        return;
+    }
+    (void)time_arithmetic_sqlite_result(context, true, "SUBTIME", argv[0], argv[1]);
+}
+
+static int time_arithmetic_sqlite_result(
+    sqlite3_context *context,
+    bool subtract,
+    const char *function_name,
+    sqlite3_value *first_value,
+    sqlite3_value *second_value
+) {
+    struct mylite_db *database = mylite_sqlite_bootstrap_owner_from_context(context);
+    const char *first_text = NULL;
+    const char *second_text = NULL;
+    size_t first_text_length = 0U;
+    size_t second_text_length = 0U;
+    bool first_is_null = false;
+    bool second_is_null = false;
+    bool result_is_null = false;
+    char *result = NULL;
+    int rc = MYLITE_OK;
+
+    if (database == NULL) {
+        sqlite3_result_error(context, "missing MyLite time arithmetic owner", -1);
+        return MYLITE_ERROR;
+    }
+
+    rc = sqlite_value_text_pointer(
+        context,
+        first_value,
+        &first_text,
+        &first_text_length,
+        &first_is_null
+    );
+    if (rc == MYLITE_OK) {
+        rc = sqlite_value_text_pointer(
+            context,
+            second_value,
+            &second_text,
+            &second_text_length,
+            &second_is_null
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = time_arithmetic_text_value(
+        database,
+        subtract,
+        function_name,
+        first_text,
+        first_text_length,
+        first_is_null,
+        second_text,
+        second_text_length,
+        second_is_null,
+        &result,
+        &result_is_null
+    );
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            sqlite3_result_error_nomem(context);
+        } else {
+            sqlite3_result_error(context, "MyLite time arithmetic failed", -1);
+        }
+        free(result);
+        return rc;
+    }
+    if (result_is_null) {
+        sqlite3_result_null(context);
+    } else {
+        sqlite3_result_text(context, result, -1, SQLITE_TRANSIENT);
+    }
+    free(result);
+    return MYLITE_OK;
+}
+
+static int sqlite_value_text_pointer(
+    sqlite3_context *context,
+    sqlite3_value *value,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    const unsigned char *text = NULL;
+    int text_length = 0;
+
+    if (value == NULL || out_text == NULL || out_text_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+    if (sqlite3_value_type(value) == SQLITE_NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    text = sqlite3_value_text(value);
+    text_length = sqlite3_value_bytes(value);
+    if (text == NULL || text_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return MYLITE_NOMEM;
+    }
+    *out_text = (const char *)text;
+    *out_text_length = (size_t)text_length;
+    return MYLITE_OK;
 }
 
 static int set_time_arithmetic_unsupported_error(
@@ -1318,6 +1568,150 @@ static int time_arithmetic_decode_string_argument(
     return rc;
 }
 
+static int time_arithmetic_text_value(
+    struct mylite_db *database,
+    bool subtract,
+    const char *function_name,
+    const char *first_value,
+    size_t first_value_length,
+    bool first_is_null,
+    const char *second_value,
+    size_t second_value_length,
+    bool second_is_null,
+    char **out_text,
+    bool *out_is_null
+) {
+    struct scalar_time_arithmetic_input first = {0};
+    struct scalar_time_arithmetic_input second = {0};
+    struct session_scalar_cell cell = {0};
+    int64_t second_seconds = 0;
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_is_null = false;
+
+    rc = time_arithmetic_first_text_argument(
+        database,
+        function_name,
+        first_value,
+        first_value_length,
+        first_is_null,
+        &first
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (first.kind == SCALAR_TIME_ARITHMETIC_INPUT_NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+
+    rc = time_arithmetic_second_text_argument(
+        database,
+        function_name,
+        second_value,
+        second_value_length,
+        second_is_null,
+        &second
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (second.kind == SCALAR_TIME_ARITHMETIC_INPUT_NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+
+    second_seconds = second.time_seconds;
+    if (subtract && checked_int64_negate(second_seconds, &second_seconds)) {
+        return set_time_arithmetic_unsupported_error(
+            database,
+            function_name,
+            "result is outside the supported time or datetime range"
+        );
+    }
+    if (first.kind == SCALAR_TIME_ARITHMETIC_INPUT_DATETIME) {
+        rc = time_arithmetic_apply_datetime(database, function_name, &first, second_seconds, &cell);
+    } else {
+        rc = time_arithmetic_apply_time(database, function_name, &first, second_seconds, &cell);
+    }
+    if (rc == MYLITE_OK) {
+        rc = copy_time_arithmetic_result(database, &cell, out_text);
+    }
+    mylite_execution_session_scalar_cell_deinit(&cell);
+    return rc;
+}
+
+static int time_arithmetic_first_text_argument(
+    struct mylite_db *database,
+    const char *function_name,
+    const char *value,
+    size_t value_length,
+    bool is_null,
+    struct scalar_time_arithmetic_input *out_input
+) {
+    if (out_input == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_input = (struct scalar_time_arithmetic_input){0};
+    if (is_null) {
+        out_input->kind = SCALAR_TIME_ARITHMETIC_INPUT_NULL;
+        return MYLITE_OK;
+    }
+    if (value == NULL) {
+        return set_time_arithmetic_unsupported_error(
+            database,
+            function_name,
+            "supports only canonical datetime strings, canonical time strings, and NULL"
+        );
+    }
+    if (value_length == datetime_text_length &&
+        mylite_temporal_arithmetic_parse_datetime_text(value, value_length, &out_input->datetime)) {
+        out_input->kind = SCALAR_TIME_ARITHMETIC_INPUT_DATETIME;
+        return MYLITE_OK;
+    }
+    if (time_text_to_seconds(value, value_length, &out_input->time_seconds)) {
+        out_input->kind = SCALAR_TIME_ARITHMETIC_INPUT_TIME;
+        return MYLITE_OK;
+    }
+    return set_time_arithmetic_unsupported_error(
+        database,
+        function_name,
+        "supports only canonical YYYY-MM-DD HH:MM:SS datetime or canonical [-]HH:MM:SS time "
+        "values"
+    );
+}
+
+static int time_arithmetic_second_text_argument(
+    struct mylite_db *database,
+    const char *function_name,
+    const char *value,
+    size_t value_length,
+    bool is_null,
+    struct scalar_time_arithmetic_input *out_input
+) {
+    if (out_input == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_input = (struct scalar_time_arithmetic_input){0};
+    if (is_null) {
+        out_input->kind = SCALAR_TIME_ARITHMETIC_INPUT_NULL;
+        return MYLITE_OK;
+    }
+    if (value == NULL || !time_text_to_seconds(value, value_length, &out_input->time_seconds)) {
+        return set_time_arithmetic_unsupported_error(
+            database,
+            function_name,
+            "time argument supports only canonical [-]HH:MM:SS time values"
+        );
+    }
+    out_input->kind = SCALAR_TIME_ARITHMETIC_INPUT_TIME;
+    return MYLITE_OK;
+}
+
 static int time_arithmetic_apply_datetime(
     struct mylite_db *database,
     const char *function_name,
@@ -1423,6 +1817,32 @@ static int time_arithmetic_format_time(
     }
     memcpy(out_cell->owned_text, buffer, (size_t)written + 1U);
     out_cell->value = out_cell->owned_text;
+    return MYLITE_OK;
+}
+
+static int copy_time_arithmetic_result(
+    struct mylite_db *database,
+    const struct session_scalar_cell *cell,
+    char **out_text
+) {
+    size_t text_length = 0U;
+    char *copy = NULL;
+
+    if (cell == NULL || out_text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    if (cell->value == NULL) {
+        return MYLITE_OK;
+    }
+    text_length = strlen(cell->value);
+    copy = (char *)malloc(text_length + 1U);
+    if (copy == NULL) {
+        mylite_execution_set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    memcpy(copy, cell->value, text_length + 1U);
+    *out_text = copy;
     return MYLITE_OK;
 }
 

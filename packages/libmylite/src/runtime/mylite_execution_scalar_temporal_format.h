@@ -3,6 +3,7 @@
 
 #include "mylite_ast.h"
 #include "mylite_date_interval_second.h"
+#include "sqlite3.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -22,6 +23,19 @@ int mylite_execution_scalar_addtime_subtime_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+int mylite_execution_addtime_subtime_text_value(
+    struct mylite_db *database,
+    enum mylite_sql_ast_node_kind kind,
+    const char *first_value,
+    size_t first_value_length,
+    bool first_is_null,
+    const char *second_value,
+    size_t second_value_length,
+    bool second_is_null,
+    char **out_text,
+    bool *out_is_null
+);
+int mylite_sqlite_register_time_arithmetic_functions(sqlite3 *sqlite);
 int mylite_execution_scalar_date_format_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

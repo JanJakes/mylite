@@ -105,6 +105,13 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_ADDTIME:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUBTIME:
+        return bind_row_scalar_addtime_subtime_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
         return bind_row_scalar_timestampdiff_expression_parameters(
             statement,

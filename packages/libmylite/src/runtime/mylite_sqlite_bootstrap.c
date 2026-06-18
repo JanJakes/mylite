@@ -1,6 +1,7 @@
 #include "mylite_sqlite_bootstrap.h"
 
 #include "mylite_base_conversion.h"
+#include "mylite_bitwise.h"
 #include "mylite_bitwise_aggregate.h"
 #include "mylite_cast_convert.h"
 #include "mylite_convert_tz.h"
@@ -241,6 +242,9 @@ static int initialize_function_registration_surface(
 
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_bitwise_aggregate_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_bitwise_functions(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_group_concat_aggregate_function(sqlite);

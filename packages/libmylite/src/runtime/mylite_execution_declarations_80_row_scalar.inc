@@ -419,6 +419,22 @@ static int plan_row_scalar_integer_arithmetic_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_bitwise_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_bitwise_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_integer_arithmetic_frame(
     struct mylite_db *database,
     const struct row_scalar_integer_arithmetic_plan_frame *frame,
@@ -3279,11 +3295,17 @@ static bool row_scalar_expression_contains_statement_time_function(
 static bool row_scalar_expression_contains_integer_arithmetic_attempt(
     const struct mylite_sql_ast_node *expression
 );
+static bool row_scalar_expression_contains_bitwise_attempt(
+    const struct mylite_sql_ast_node *expression
+);
+static bool row_scalar_expression_is_bitwise_attempt(const struct mylite_sql_ast_node *expression);
 static bool row_scalar_expression_contains_fractional_division_attempt(
     const struct mylite_sql_ast_node *expression
 );
 static bool integer_arithmetic_operator_is_attempt(enum mylite_sql_ast_operator operator_kind);
 static bool integer_arithmetic_operator_is_supported(enum mylite_sql_ast_operator operator_kind);
+static bool bitwise_operator_is_attempt(enum mylite_sql_ast_operator operator_kind);
+static bool bitwise_operator_is_supported(enum mylite_sql_ast_operator operator_kind);
 static bool select_list_is_wildcard(const struct mylite_sql_ast_node *select_list);
 static struct result_column_metadata_context result_column_metadata_context_init(void);
 static void result_column_metadata_context_deinit(struct result_column_metadata_context *context);

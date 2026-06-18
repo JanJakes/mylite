@@ -104,6 +104,10 @@
     COMMAND mylite_runtime_scalar_bitwise_projection_test
   )
   add_test(
+    NAME libmylite.runtime.row_bitwise_expressions
+    COMMAND mylite_runtime_row_bitwise_expressions_test
+  )
+  add_test(
     NAME libmylite.runtime.abs_function
     COMMAND mylite_runtime_abs_function_test
   )

@@ -33,6 +33,7 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
         for (size_t argument_index = 0U;

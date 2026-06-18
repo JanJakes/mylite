@@ -164,6 +164,7 @@ static bool select_statement_is_row_scalar_projection_attempt(
             ((expression != NULL && expression->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION) ||
              row_scalar_expression_is_window_function(expression) ||
              (has_row_source && row_scalar_expression_is_context_expression_attempt(expression)) ||
+             (has_row_source && row_scalar_expression_contains_bitwise_attempt(expression)) ||
              (expression != NULL && expression->kind == MYLITE_SQL_AST_EXISTS_PREDICATE) ||
              generic_function_name_equals(expression, "GET_LOCK") ||
              generic_function_name_equals(expression, "RELEASE_LOCK") ||
@@ -1777,6 +1778,7 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
         populate_scalar_binary_numeric_result_column_descriptor(
             descriptor,
             (struct scalar_binary_numeric_result_column_shape){
@@ -2207,6 +2209,7 @@ static int populate_window_value_function_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:

@@ -73,6 +73,8 @@ static int bind_row_scalar_control_flow_frame_parameters(
                 expression,
                 parameter_index
             );
+        case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
+            return bind_row_scalar_expression_parameters(statement, expression, parameter_index);
         case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
         case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
             return bind_row_scalar_reversed_arguments_parameters(
@@ -198,6 +200,8 @@ static int bind_row_scalar_control_flow_frame_parameters(
                 expression,
                 parameter_index
             );
+        case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
+            return bind_row_scalar_expression_parameters(statement, expression, parameter_index);
         case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
         case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
             return bind_row_scalar_reversed_arguments_parameters(

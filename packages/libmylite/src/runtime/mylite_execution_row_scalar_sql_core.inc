@@ -26,6 +26,8 @@ static int append_row_scalar_expression_sql(
             expression,
             next_parameter
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
+        return append_row_scalar_bitwise_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
         return append_row_scalar_concat_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
@@ -545,6 +547,7 @@ static int append_row_scalar_window_function_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
@@ -783,6 +786,7 @@ static int append_row_scalar_conversion_base_expression_sql(
         return append_row_scalar_column_sql(string, expression);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
@@ -949,6 +953,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
@@ -1137,6 +1142,8 @@ static int append_row_scalar_non_control_flow_expression_sql(
             expression,
             next_parameter
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
+        return append_row_scalar_bitwise_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
         return append_row_scalar_conversion_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
@@ -1311,6 +1318,8 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
         return append_row_scalar_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
         return append_row_scalar_integer_arithmetic_function_call_sql(string, stack, expression);
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
+        return append_row_scalar_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
         return append_row_scalar_string_length_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:

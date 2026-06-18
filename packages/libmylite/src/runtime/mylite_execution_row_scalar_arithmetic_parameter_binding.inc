@@ -80,6 +80,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
         return bind_row_scalar_expression_parameters(statement, expression, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
@@ -205,6 +206,8 @@ static int bind_row_scalar_integer_arithmetic_frame_parameters(
             rc = row_scalar_integer_arithmetic_bind_stack_push(stack, &expression->arguments[0]);
         }
         return rc;
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
+        return bind_row_scalar_expression_parameters(statement, expression, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:
         return bind_row_scalar_string_length_expression_parameters(

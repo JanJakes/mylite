@@ -1550,6 +1550,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA = 96,
     PLANNED_ROW_SCALAR_EXPRESSION_ADDTIME = 97,
     PLANNED_ROW_SCALAR_EXPRESSION_SUBTIME = 98,
+    PLANNED_ROW_SCALAR_EXPRESSION_BITWISE = 99,
 };
 
 enum row_scalar_control_flow_bind_mode {

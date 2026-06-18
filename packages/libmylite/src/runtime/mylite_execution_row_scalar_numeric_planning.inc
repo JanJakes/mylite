@@ -174,6 +174,7 @@ static int validate_row_scalar_numeric_function_argument(
         }
         break;
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_ELT:

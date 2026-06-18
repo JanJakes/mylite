@@ -237,6 +237,7 @@ static int append_row_scalar_json_extract_document_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
@@ -357,6 +358,7 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
@@ -681,6 +683,7 @@ static int append_row_scalar_json_set_document_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
@@ -927,6 +930,7 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
@@ -1060,6 +1064,7 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
@@ -1892,6 +1897,8 @@ static int append_row_scalar_control_flow_argument_sql(
             expression,
             next_parameter
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
+        return append_row_scalar_bitwise_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
         return append_row_scalar_greatest_least_expression_sql(string, expression, next_parameter);
@@ -2034,6 +2041,8 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
             expression,
             next_parameter
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
+        return append_row_scalar_bitwise_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
         return append_row_scalar_greatest_least_expression_sql(string, expression, next_parameter);
@@ -2158,6 +2167,8 @@ static int append_row_scalar_control_flow_leaf_condition_argument_sql(
             expression,
             next_parameter
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
+        return append_row_scalar_bitwise_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
         return append_row_scalar_greatest_least_expression_sql(string, expression, next_parameter);

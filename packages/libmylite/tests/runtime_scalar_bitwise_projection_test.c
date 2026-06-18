@@ -455,13 +455,17 @@ static int test_scalar_bitwise_overflow_and_unsupported_forms(void) {
             .message_part = "limited numeric bitwise",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT id&1 FROM t ORDER BY id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports",
+        (struct expected_query){
+            .sql = "SELECT id&1 FROM t ORDER BY id",
+            .columns = (const char *const[]){"id&1"},
+            .column_count = 1U,
+            .values = (const char *const[]){NULL, "1", "0"},
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row bitwise projection",
         }
     );
     failures += execute_error(

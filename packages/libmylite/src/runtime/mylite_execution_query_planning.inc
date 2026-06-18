@@ -33,6 +33,17 @@ static int plan_row_scalar_expression(
         return rc;
     }
 
+    if (has_source && row_scalar_expression_is_bitwise_attempt(expression)) {
+        return plan_row_scalar_bitwise_expression(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+
     if (has_source && row_scalar_expression_contains_integer_arithmetic_attempt(expression)) {
         return plan_row_scalar_integer_arithmetic_expression(
             database,
@@ -633,6 +644,7 @@ static int row_scalar_collate_base_charset(
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
@@ -1745,6 +1757,130 @@ static int copy_lowercase_function_name(const char *source, char *destination, s
     }
     destination[length] = '\0';
     return MYLITE_OK;
+}
+
+static int plan_row_scalar_bitwise_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *current = unwrap_parenthesized_expression(expression);
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    size_t argument_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_expression == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (current == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (current->kind != MYLITE_SQL_AST_UNARY_EXPRESSION &&
+        current->kind != MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        set_unsupported_error(
+            database,
+            "table-backed bitwise expression supports only top-level ~, &, |, ^, <<, and >>"
+        );
+        return MYLITE_ERROR;
+    }
+
+    operator_kind = mylite_sql_ast_node_operator(current);
+    if (!bitwise_operator_is_supported(operator_kind)) {
+        set_unsupported_error(
+            database,
+            "table-backed bitwise expression supports only ~, &, |, ^, <<, and >>"
+        );
+        return MYLITE_ERROR;
+    }
+    argument_count = operator_kind == MYLITE_SQL_AST_OPERATOR_BITWISE_NOT ? 1U : 2U;
+    if (mylite_sql_ast_node_child_count(current) != argument_count) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(argument_count, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_BITWISE;
+    out_expression->operator_kind = operator_kind;
+    out_expression->argument_count = argument_count;
+
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < argument_count;
+         ++argument_index) {
+        rc = plan_row_scalar_bitwise_argument(
+            database,
+            child_at(current, argument_index),
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_expression->arguments[argument_index]
+        );
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(out_expression);
+    }
+    return rc;
+}
+
+static int plan_row_scalar_bitwise_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const char unsupported_message[] =
+        "table-backed bitwise expression supports only integer descriptor columns, signed integer "
+        "literals, booleans, NULL, nested bitwise expressions, and supported integer expression "
+        "operands";
+    const char range_message[] =
+        "table-backed bitwise expression integer operands must fit the signed 64-bit range";
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(expression);
+
+        if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER &&
+            literal_kind != MYLITE_SQL_AST_LITERAL_TRUE &&
+            literal_kind != MYLITE_SQL_AST_LITERAL_FALSE &&
+            literal_kind != MYLITE_SQL_AST_LITERAL_NULL) {
+            set_unsupported_error(database, unsupported_message);
+            return MYLITE_ERROR;
+        }
+    }
+    if (row_scalar_expression_is_bitwise_attempt(expression)) {
+        return plan_row_scalar_bitwise_expression(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    return plan_row_scalar_integer_like_argument(
+        database,
+        expression,
+        true,
+        source_context,
+        table_columns,
+        table_column_count,
+        unsupported_message,
+        range_message,
+        out_expression
+    );
 }
 
 static int plan_row_scalar_integer_arithmetic_expression(

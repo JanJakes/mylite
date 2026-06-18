@@ -1512,6 +1512,7 @@ static bool row_scalar_expression_contains_context_expression_attempt(
            row_scalar_expression_contains_date_interval_second_function(expression) ||
            row_scalar_expression_contains_control_flow_function(expression) ||
            row_scalar_expression_contains_statement_time_function(expression) ||
+           row_scalar_expression_contains_bitwise_attempt(expression) ||
            row_scalar_expression_contains_integer_arithmetic_attempt(expression) ||
            row_scalar_expression_is_concat_operator(expression);
 }
@@ -1554,6 +1555,7 @@ static bool row_scalar_expression_is_predicate_value_context_attempt(
         row_scalar_base_conversion_kind_is_supported(node->kind) ||
         row_scalar_numeric_extra_kind_is_supported(node->kind) ||
         row_scalar_expression_is_concat_operator(node) ||
+        row_scalar_expression_is_bitwise_attempt(node) ||
         row_scalar_conversion_kind_from_expression(node) != PLANNED_ROW_SCALAR_CONVERSION_NONE ||
         node->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION ||
         node->kind == MYLITE_SQL_AST_PERIOD_ADD_FUNCTION ||
@@ -1570,7 +1572,11 @@ static bool row_scalar_expression_is_predicate_value_context_attempt(
         return true;
     }
     if (node->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
-        return integer_arithmetic_operator_is_attempt(mylite_sql_ast_node_operator(node));
+        return integer_arithmetic_operator_is_attempt(mylite_sql_ast_node_operator(node)) ||
+               bitwise_operator_is_attempt(mylite_sql_ast_node_operator(node));
+    }
+    if (node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return bitwise_operator_is_attempt(mylite_sql_ast_node_operator(node));
     }
 
     switch (node->kind) {
@@ -1725,6 +1731,7 @@ static bool row_scalar_expression_root_is_context_expression_attempt(
         row_scalar_base_conversion_kind_is_supported(expression->kind) ||
         row_scalar_numeric_extra_kind_is_supported(expression->kind) ||
         row_scalar_expression_is_concat_operator(expression) ||
+        row_scalar_expression_is_bitwise_attempt(expression) ||
         row_scalar_expression_contains_integer_arithmetic_attempt(expression) ||
         row_scalar_conversion_kind_from_expression(expression) !=
             PLANNED_ROW_SCALAR_CONVERSION_NONE ||
@@ -2032,6 +2039,55 @@ static bool row_scalar_expression_contains_integer_arithmetic_attempt(
     return found;
 }
 
+static bool row_scalar_expression_contains_bitwise_attempt(
+    const struct mylite_sql_ast_node *expression
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    bool found = false;
+
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        return false;
+    }
+    while (stack.count != 0U && !found) {
+        const struct mylite_sql_ast_node *current = stack.items[--stack.count];
+        size_t child_count = 0U;
+
+        current = unwrap_parenthesized_expression(current);
+        if (current == NULL) {
+            continue;
+        }
+        if (row_scalar_expression_is_bitwise_attempt(current)) {
+            found = true;
+            break;
+        }
+        if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
+            continue;
+        }
+        child_count = mylite_sql_ast_node_child_count(current);
+        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
+                scalar_arithmetic_node_stack_deinit(&stack);
+                return false;
+            }
+        }
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+
+    return found;
+}
+
+static bool row_scalar_expression_is_bitwise_attempt(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION ||
+        expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return bitwise_operator_is_attempt(mylite_sql_ast_node_operator(expression));
+    }
+    return false;
+}
+
 static bool row_scalar_expression_contains_fractional_division_attempt(
     const struct mylite_sql_ast_node *expression
 ) {
@@ -2098,6 +2154,25 @@ static bool integer_arithmetic_operator_is_supported(enum mylite_sql_ast_operato
         break;
     }
     return false;
+}
+
+static bool bitwise_operator_is_attempt(enum mylite_sql_ast_operator operator_kind) {
+    switch (operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_XOR:
+    case MYLITE_SQL_AST_OPERATOR_LEFT_SHIFT:
+    case MYLITE_SQL_AST_OPERATOR_RIGHT_SHIFT:
+        return true;
+    default:
+        break;
+    }
+    return false;
+}
+
+static bool bitwise_operator_is_supported(enum mylite_sql_ast_operator operator_kind) {
+    return bitwise_operator_is_attempt(operator_kind);
 }
 
 static bool row_scalar_expression_contains_date_interval_second_function(

@@ -211,6 +211,52 @@ static const char *row_scalar_numeric_function_sql_name(
     return NULL;
 }
 
+static int append_row_scalar_bitwise_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    const char *function_name = NULL;
+
+    if (expression == NULL || expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_BITWISE) {
+        return MYLITE_ERROR;
+    }
+    function_name = row_scalar_bitwise_sql_name(expression);
+    if (function_name == NULL) {
+        return MYLITE_ERROR;
+    }
+    return append_row_scalar_registered_function_expression_sql(
+        string,
+        function_name,
+        expression,
+        next_parameter
+    );
+}
+
+static const char *row_scalar_bitwise_sql_name(
+    const struct planned_row_scalar_expression *expression
+) {
+    if (expression == NULL) {
+        return NULL;
+    }
+    switch (expression->operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
+        return "_mylite_bitwise_not";
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
+        return "_mylite_bitwise_and";
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
+        return "_mylite_bitwise_or";
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_XOR:
+        return "_mylite_bitwise_xor";
+    case MYLITE_SQL_AST_OPERATOR_LEFT_SHIFT:
+        return "_mylite_bitwise_lshift";
+    case MYLITE_SQL_AST_OPERATOR_RIGHT_SHIFT:
+        return "_mylite_bitwise_rshift";
+    default:
+        return NULL;
+    }
+}
+
 static int append_row_scalar_base_conversion_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -386,6 +432,7 @@ static int append_row_scalar_uuid_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
@@ -542,6 +589,7 @@ static int append_row_scalar_uuid_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
@@ -659,6 +707,7 @@ static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_exp
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:

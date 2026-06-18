@@ -4446,11 +4446,8 @@ static int test_string_codepoint_contexts(void) {
     const struct mylite_sql_ast_node *statement = NULL;
     int failures = 0;
 
-    failures += parser_test_parse_sql(
-        "SELECT ASCII(v), ORD(v) FROM t;",
-        MYLITE_SQL_PARSE_OK,
-        &result
-    );
+    failures +=
+        parser_test_parse_sql("SELECT ASCII(v), ORD(v) FROM t;", MYLITE_SQL_PARSE_OK, &result);
     select = parser_test_child_at(result.root, 0U);
     select_list = parser_test_child_at(select, 0U);
     expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);

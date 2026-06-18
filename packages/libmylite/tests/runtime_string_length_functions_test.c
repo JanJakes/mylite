@@ -248,7 +248,18 @@ static int test_table_backed_lengths_and_reopen(void) {
     static const char *const values_two_rows_no_warnings[] = {"2", "0"};
     static const char *const columns_length_dml[] = {"id", "bytes", "chars", "bits"};
     static const char *const values_length_dml[] = {
-        "1", "1", "1", "8", "2", "2", "1", "16", "3", NULL, NULL, NULL,
+        "1",
+        "1",
+        "1",
+        "8",
+        "2",
+        "2",
+        "1",
+        "16",
+        "3",
+        NULL,
+        NULL,
+        NULL,
     };
     static const char *const columns_mutated[] = {"id", "txt"};
     static const char *const mutated_rows[] = {"1", "hit", "3", "byte"};

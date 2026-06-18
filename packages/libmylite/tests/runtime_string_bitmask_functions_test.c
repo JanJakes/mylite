@@ -267,6 +267,19 @@ static int test_table_backed_bitmask_and_reopen(void) {
         NULL,
         NULL,
     };
+    static const char *const columns_count[] = {"COUNT(*)"};
+    static const char *const values_count_one[] = {"1"};
+    static const char *const columns_id[] = {"id"};
+    static const char *const values_export_set_predicate[] = {"1"};
+    static const char *const columns_order[] = {"id", "made"};
+    static const char *const values_order[] = {
+        "3",
+        NULL,
+        "1",
+        "N",
+        "2",
+        "on",
+    };
     static const char *const columns_reopen[] = {"id", "exported"};
     static const char *const values_reopen[] = {
         "1",
@@ -334,6 +347,41 @@ static int test_table_backed_bitmask_and_reopen(void) {
             .values = values_integer_expression_bitmask,
             .row_count = 3U,
             .context = "table bitmask integer expression arguments",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t WHERE MAKE_SET(bits, 'a') = 'a'",
+            .columns = columns_count,
+            .column_count = sizeof(columns_count) / sizeof(columns_count[0]),
+            .values = values_count_one,
+            .row_count = 1U,
+            .context = "make_set predicate count",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE EXPORT_SET(bits, on_label, off_label, sep, 1) = "
+                   "on_label ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_export_set_predicate,
+            .row_count = 1U,
+            .context = "export_set predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, MAKE_SET(bits, off_label, on_label) AS made FROM t "
+                   "ORDER BY MAKE_SET(bits, off_label, on_label), id",
+            .columns = columns_order,
+            .column_count = sizeof(columns_order) / sizeof(columns_order[0]),
+            .values = values_order,
+            .row_count = 3U,
+            .context = "bitmask order expression rows",
         }
     );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
@@ -514,14 +562,22 @@ static int test_bitmask_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT COUNT(*) FROM t WHERE MAKE_SET(bits, 'a') = 'a'",
+        "SELECT id FROM t WHERE MAKE_SET(bits, 'a')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "utility statement is not supported",
         }
     );
-
+    failures += execute_error(
+        database,
+        "SELECT id FROM t WHERE EXPORT_SET(bits, 'Y', 'N')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
     mylite_close(database);
     remove_related_files(path);
     return failures;

@@ -10,9 +10,11 @@ SUBSTRING_INDEX(str, delim, count)
 
 The supported surface matches the current row-scalar string-function envelope:
 no-source scalar `SELECT`, `SELECT ... FROM DUAL`, `DO`, and single-table
-row-scalar `SELECT` projection. It does not add expression predicates,
-expression ordering, DML assignment values, generated columns, defaults, or a
-general expression engine.
+row-scalar `SELECT` projection. The current extension also admits direct
+descriptor-backed `WHERE` comparison, `IS [NOT] NULL`, `[NOT] BETWEEN`, and
+non-grouped single-table `ORDER BY SUBSTRING_INDEX(...)` expression contexts.
+It does not add DML assignment values, generated columns, defaults, grouping
+expressions, or a general expression engine.
 
 Core behavior:
 
@@ -79,9 +81,9 @@ Runtime probes establish the behavior used by this phase:
 
 MySQL also accepts deferred behavior such as decimal count rounding, string
 numeric count conversion, out-of-range count conversion with warning `1292`,
-binary-string result typing, predicates over `SUBSTRING_INDEX()` expressions,
-arbitrary nested functions, and unsupported expression arguments. Those forms
-remain outside this baseline.
+binary-string result typing, broad predicate contexts, arbitrary nested
+functions, and unsupported expression arguments. Those forms remain outside
+this baseline.
 
 ## Ownership Boundaries
 
@@ -129,9 +131,16 @@ Single-table row-backed forms, with at least one select item containing a
 SELECT row_scalar_item[, row_scalar_item ...]
 FROM table_name [AS alias]
 [WHERE predicate]
-[ORDER BY descriptor_column [ASC | DESC]]
+[ORDER BY descriptor_column_or_direct_substring_index_expr [ASC | DESC]]
 [LIMIT row_count]
 ```
+
+Supported `WHERE` predicates additionally admit a direct `SUBSTRING_INDEX(...)`
+call as the left side of comparison, `IS [NOT] NULL`, and `[NOT] BETWEEN`
+predicates when function arguments fit the same row-scalar value/count
+envelopes. Supported expression ordering is limited to non-grouped
+single-table `SELECT ORDER BY SUBSTRING_INDEX(...)` keys over the same direct
+expression envelope.
 
 The admitted expression shape is:
 
@@ -187,9 +196,8 @@ values, parameters, user variables, and binary-string metadata are deferred.
 
 The following remain outside this phase:
 
-- `WHERE SUBSTRING_INDEX(column, '.', 1) ...`, `HAVING SUBSTRING_INDEX(...)`,
-  expression `ORDER BY`, grouping, distinct expression rows, and aggregate
-  arguments;
+- bare truth predicates, `HAVING SUBSTRING_INDEX(...)`, grouped expression
+  `ORDER BY`, grouping, distinct expression rows, and aggregate arguments;
 - DML assignment values such as
   `UPDATE t SET c = SUBSTRING_INDEX(v, '.', 1)`;
 - arbitrary nested row functions outside the supported row-scalar value and
@@ -305,8 +313,8 @@ plus parser coverage in `parser_test.c`. Coverage must include:
 - diagnostics for wrong arity, unknown columns, supported integer count
   expressions, unsupported count expressions, unsupported nested row functions
   outside the supported value/integer subsets, binary and approximate
-  descriptor columns, hex/binary/parameter scalar arguments, predicates,
-  ordering expressions, and DML assignment use;
+  descriptor columns, hex/binary/parameter scalar arguments, broad predicates,
+  grouped ordering expressions, and DML assignment use;
 - MySQL-runtime expectation script coverage for every newly admitted
   user-visible behavior and for MySQL-accepted but deferred behavior.
 

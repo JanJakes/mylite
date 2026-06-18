@@ -330,6 +330,20 @@ static int test_table_backed_padding_and_reopen(void) {
         NULL,
         "   ",
     };
+    static const char *const columns_count[] = {"COUNT(*)"};
+    static const char *const values_count_one[] = {"1"};
+    static const char *const columns_id[] = {"id"};
+    static const char *const values_repeat_null_rows[] = {"3"};
+    static const char *const values_space_rows[] = {"2"};
+    static const char *const columns_padding_order[] = {"id", "padded"};
+    static const char *const values_padding_order[] = {
+        "3",
+        NULL,
+        "2",
+        "000\xC3\xA9\xF0\x9F\x99\x82",
+        "1",
+        "00abc",
+    };
     static const char *const columns_reopen[] = {"id", "padded"};
     static const char *const values_reopen[] = {
         "1",
@@ -401,6 +415,62 @@ static int test_table_backed_padding_and_reopen(void) {
             .values = values_integer_expression_padding,
             .row_count = 3U,
             .context = "table padding integer expression arguments",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t WHERE LPAD(v, 5, '0') = '00abc'",
+            .columns = columns_count,
+            .column_count = sizeof(columns_count) / sizeof(columns_count[0]),
+            .values = values_count_one,
+            .row_count = 1U,
+            .context = "lpad predicate count",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t WHERE RPAD(v, 5, '0') BETWEEN 'abc00' AND 'abc00'",
+            .columns = columns_count,
+            .column_count = sizeof(columns_count) / sizeof(columns_count[0]),
+            .values = values_count_one,
+            .row_count = 1U,
+            .context = "rpad between predicate count",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE REPEAT(v, 2) IS NULL ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_repeat_null_rows,
+            .row_count = 1U,
+            .context = "repeat is null predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE SPACE(id) = '  ' ORDER BY id",
+            .columns = columns_id,
+            .column_count = sizeof(columns_id) / sizeof(columns_id[0]),
+            .values = values_space_rows,
+            .row_count = 1U,
+            .context = "space predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, LPAD(v, 5, '0') AS padded FROM t "
+                   "ORDER BY LPAD(v, 5, '0'), id",
+            .columns = columns_padding_order,
+            .column_count = sizeof(columns_padding_order) / sizeof(columns_padding_order[0]),
+            .values = values_padding_order,
+            .row_count = 3U,
+            .context = "padding order expression rows",
         }
     );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
@@ -601,14 +671,13 @@ static int test_padding_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT COUNT(*) FROM t WHERE LPAD(v, 5, '0') = '00abc'",
+        "SELECT id FROM t WHERE LPAD(v, 5, '0')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "utility statement is not supported",
         }
     );
-
     mylite_close(database);
     remove_related_files(path);
     return failures;

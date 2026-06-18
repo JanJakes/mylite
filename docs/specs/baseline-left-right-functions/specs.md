@@ -12,9 +12,12 @@ RIGHT(str, len)
 The supported slice covers no-source scalar `SELECT`, `SELECT ... FROM DUAL`,
 `DO`, and single-table row-scalar `SELECT` projection contexts. It fixes the
 current `LEFT` keyword/function conflict without weakening `LEFT JOIN` parsing,
-and adds the matching `RIGHT()` function token. It deliberately does not add
-general expression predicates, expression ordering, DML assignment values,
-generated columns, defaults, or arbitrary nested expression planning.
+and adds the matching `RIGHT()` function token. The current extension also
+admits direct descriptor-backed `WHERE` comparison, `IS [NOT] NULL`,
+`[NOT] BETWEEN`, and non-grouped single-table `ORDER BY LEFT(...)` /
+`ORDER BY RIGHT(...)` expression contexts. It deliberately does not add DML
+assignment values, generated columns, defaults, grouping expressions, or
+arbitrary nested expression planning.
 
 Core supported behavior:
 
@@ -74,7 +77,7 @@ Runtime probes establish the behavior used by this phase:
   `ROW_COUNT()` report `-1`.
 
 MySQL also accepts deferred behavior such as noninteger `len` conversion,
-string `len` conversion, binary-string slicing, predicates over `LEFT()`, and
+string `len` conversion, binary-string slicing, broad predicate contexts, and
 arbitrary nested functions. Those forms remain outside this baseline.
 
 ## Ownership Boundaries
@@ -123,9 +126,16 @@ string-slice function:
 SELECT row_scalar_item[, row_scalar_item ...]
 FROM table_name [AS alias]
 [WHERE predicate]
-[ORDER BY descriptor_column [ASC | DESC]]
+[ORDER BY descriptor_column_or_direct_string_slice_expr [ASC | DESC]]
 [LIMIT row_count]
 ```
+
+Supported `WHERE` predicates additionally admit a direct `LEFT(...)` or
+`RIGHT(...)` call as the left side of comparison, `IS [NOT] NULL`, and
+`[NOT] BETWEEN` predicates when the function arguments fit the same row-scalar
+value and length envelopes. Supported expression ordering is limited to
+non-grouped single-table `SELECT ORDER BY LEFT(...)` / `RIGHT(...)` keys over
+the same direct expression envelope.
 
 The admitted expression shape is:
 
@@ -181,7 +191,7 @@ remain deferred.
 
 The following remain outside this phase:
 
-- `WHERE LEFT(column, 1) ...`, `HAVING LEFT(...) ...`, expression `ORDER BY`,
+- bare truth predicates, `HAVING LEFT(...) ...`, grouped expression `ORDER BY`,
   grouping, distinct expression rows, and aggregate arguments;
 - DML assignment values such as `UPDATE t SET c = LEFT(v, 1)`;
 - arbitrary nested row functions outside the supported row-scalar value and
@@ -283,7 +293,8 @@ Diagnostics:
 
 `COMPATIBILITY.md` and `docs/compatibility/functions-string.md` mark `LEFT()`
 and `RIGHT()` as limited support for no-source, `DUAL`, `DO`, and single-table
-row-scalar `SELECT` projection only. Broader predicate, DML, ordering/grouping,
+row-scalar `SELECT` projection plus documented direct predicate and
+non-grouped ordering contexts. Broader predicate, DML, grouped ordering,
 binary, coercion, and metadata behavior remains documented as unsupported.
 
 ## Performance And Storage Impact

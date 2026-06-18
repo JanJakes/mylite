@@ -191,6 +191,15 @@ expect_output \
 "(SELECT COUNT(*) FROM t WHERE LEFT(v, 1) = 'a');" \
     "$DATABASE"
 
+expect_output \
+    "table predicate and order expression" \
+    "1
+1	a
+3	NULL" \
+    "SELECT id FROM t WHERE LEFT(v, 1) = 'a' ORDER BY id; "\
+"SELECT id, LEFT(v, 1) FROM t WHERE id IN (1, 3) ORDER BY LEFT(v, 1) DESC, id;" \
+    "$DATABASE"
+
 expect_error \
     "left rejects zero arguments as syntax" \
     1064 \

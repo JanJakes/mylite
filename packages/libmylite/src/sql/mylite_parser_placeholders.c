@@ -206,12 +206,29 @@ static enum mylite_sql_parse_status scan_row_scalar_predicate_subject_retry(
     bool *inout_can_retry,
     size_t *out_end_index
 );
+static enum mylite_sql_parse_status append_row_scalar_predicate_subject_retry(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry
+);
+static bool placeholder_scan_token_is_retryable_row_scalar_context_function(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
 static bool placeholder_scan_token_is_top_level_where_predicate_context(
     const struct placeholder_statement_scan *scan,
     size_t index
 );
 static bool placeholder_scan_row_scalar_predicate_subject_has_valid_suffix(
     const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+);
+static bool placeholder_scan_row_scalar_predicate_subject_uses_truth_placeholder(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
     size_t end_index
 );
 static enum mylite_sql_parse_status scan_row_arithmetic_predicate_value_retries(

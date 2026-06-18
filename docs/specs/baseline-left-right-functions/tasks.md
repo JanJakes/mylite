@@ -17,6 +17,7 @@
 - [x] Implement no-source, `DUAL`, and `DO` scalar execution.
 - [x] Implement descriptor-backed row-scalar projection execution using
   descriptor-built SQLite expressions.
+- [x] Extend direct row-backed predicate and non-grouped order-key contexts.
 - [x] Add runtime and parser tests under `packages/libmylite/tests/`.
 - [x] Update `COMPATIBILITY.md` and detailed compatibility docs with limited
   support wording.

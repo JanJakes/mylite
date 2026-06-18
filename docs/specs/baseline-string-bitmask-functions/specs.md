@@ -10,10 +10,12 @@ MAKE_SET(bits, value[, value ...])
 ```
 
 The supported surface covers no-source scalar `SELECT`, `SELECT ... FROM DUAL`,
-`DO`, and single-table row-scalar `SELECT` projection contexts. It deliberately
-does not add predicates over these functions, expression ordering, grouping,
-DML assignment expressions, generated columns, defaults, parameters, subqueries,
-or arbitrary nested expression planning.
+`DO`, and single-table row-scalar `SELECT` projection contexts. The current
+extension also admits direct descriptor-backed `WHERE` comparison,
+`IS [NOT] NULL`, `[NOT] BETWEEN`, and non-grouped single-table `ORDER BY`
+expression contexts for these functions. It deliberately does not add DML
+assignment expressions, generated columns, defaults, grouping expressions,
+parameters, subqueries, or arbitrary nested expression planning.
 
 Core supported behavior:
 
@@ -94,7 +96,7 @@ Runtime probes establish the behavior used by this phase:
 MySQL also accepts deferred behavior such as string and decimal bitmask/count
 conversion with warnings, unsigned integer literals outside the signed-64
 range, non-ASCII collation-sensitive result typing, binary string metadata,
-predicates over these functions, arbitrary nested functions, and DML assignment
+broad predicate contexts, arbitrary nested functions, and DML assignment
 expressions. Those forms remain outside this baseline.
 
 ## Ownership Boundaries
@@ -144,9 +146,15 @@ string-bitmask function:
 SELECT row_scalar_item[, row_scalar_item ...]
 FROM table_name [AS alias]
 [WHERE predicate]
-[ORDER BY descriptor_column [ASC | DESC]]
+[ORDER BY descriptor_column_or_direct_string_bitmask_expr [ASC | DESC]]
 [LIMIT row_count]
 ```
+
+Supported `WHERE` predicates additionally admit a direct `EXPORT_SET(...)` or
+`MAKE_SET(...)` call as the left side of comparison, `IS [NOT] NULL`, and
+`[NOT] BETWEEN` predicates when function arguments fit the same row-scalar
+value/count envelopes. Supported expression ordering is limited to non-grouped
+single-table direct function keys over the same expression envelope.
 
 The admitted expression shape is:
 
@@ -224,7 +232,7 @@ parameters, and user variables are deferred.
 
 The following remain outside this phase:
 
-- `WHERE EXPORT_SET(...) ...`, `HAVING MAKE_SET(...) ...`, expression
+- bare truth predicates, `HAVING MAKE_SET(...) ...`, grouped expression
   `ORDER BY`, grouping, distinct expression rows, and aggregate arguments;
 - DML assignment values such as `UPDATE t SET c = MAKE_SET(bits, 'a', 'b')`;
 - arbitrary nested row functions outside the supported row-scalar value and

@@ -575,6 +575,20 @@ static int test_table_backed_string_slices_and_reopen(void) {
     static const char *const substring_null_safe_rows[] = {"3"};
     static const char *const substring_is_not_null_rows[] = {"1", "2", "4"};
     static const char *const substring_not_equal_rows[] = {"1"};
+    static const char *const left_predicate_rows[] = {"1"};
+    static const char *const right_is_not_null_rows[] = {"1", "2"};
+    static const char *const columns_left_order[] = {"id", "l"};
+    static const char *const values_left_order[] = {"1", "a", "3", NULL};
+    static const char *const substring_index_predicate_rows[] = {"1"};
+    static const char *const columns_substring_index_order[] = {"id", "s"};
+    static const char *const values_substring_index_order[] = {
+        "3",
+        NULL,
+        "2",
+        "AaA",
+        "1",
+        "www",
+    };
     static const char *const columns_substring_index_reopen[] = {"s", "tail"};
     static const char *const values_substring_index_reopen[] = {"www.mysql", "c"};
     char path[test_path_capacity];
@@ -880,6 +894,64 @@ static int test_table_backed_string_slices_and_reopen(void) {
             .values = substring_not_equal_rows,
             .row_count = 1U,
             .context = "substring not equal predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE LEFT(v, 1) = 'a' ORDER BY id",
+            .columns = columns_id,
+            .column_count = 1U,
+            .values = left_predicate_rows,
+            .row_count = 1U,
+            .context = "left predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE RIGHT(v, 1) IS NOT NULL ORDER BY id",
+            .columns = columns_id,
+            .column_count = 1U,
+            .values = right_is_not_null_rows,
+            .row_count = 2U,
+            .context = "right is not null predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, LEFT(v, 1) AS l FROM t WHERE id IN (1, 3) "
+                   "ORDER BY LEFT(v, 1) DESC, id",
+            .columns = columns_left_order,
+            .column_count = sizeof(columns_left_order) / sizeof(columns_left_order[0]),
+            .values = values_left_order,
+            .row_count = 2U,
+            .context = "left order expression rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM si WHERE SUBSTRING_INDEX(v, '.', 1) = 'www' ORDER BY id",
+            .columns = columns_id,
+            .column_count = 1U,
+            .values = substring_index_predicate_rows,
+            .row_count = 1U,
+            .context = "substring_index predicate rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, SUBSTRING_INDEX(v, '.', 1) AS s FROM si WHERE id IN (1, 2, 3) "
+                   "ORDER BY SUBSTRING_INDEX(v, '.', 1), id",
+            .columns = columns_substring_index_order,
+            .column_count =
+                sizeof(columns_substring_index_order) / sizeof(columns_substring_index_order[0]),
+            .values = values_substring_index_order,
+            .row_count = 3U,
+            .context = "substring_index order expression rows",
         }
     );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
@@ -1283,7 +1355,7 @@ static int test_string_slice_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id FROM t WHERE SUBSTRING_INDEX(v, '.', 1) = 'a'",
+        "SELECT id FROM t WHERE LEFT(v, 1)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -1292,7 +1364,7 @@ static int test_string_slice_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id FROM t ORDER BY SUBSTRING_INDEX(v, '.', 1)",
+        "SELECT id FROM t WHERE SUBSTRING_INDEX(v, '.', 1)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

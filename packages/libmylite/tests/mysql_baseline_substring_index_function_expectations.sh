@@ -190,6 +190,17 @@ expect_output \
     "SELECT COUNT(*) FROM t WHERE SUBSTRING_INDEX(v, '.', 1) = 'www';" \
     "$DATABASE"
 
+expect_output \
+    "table predicate and order expression" \
+    "1
+3	NULL
+2	AaA
+1	www" \
+    "SELECT id FROM t WHERE SUBSTRING_INDEX(v, '.', 1) = 'www' ORDER BY id; "\
+"SELECT id, SUBSTRING_INDEX(v, '.', 1) FROM t WHERE id IN (1, 2, 3) "\
+"ORDER BY SUBSTRING_INDEX(v, '.', 1), id;" \
+    "$DATABASE"
+
 expect_error \
     "substring index rejects zero arguments" \
     1582 \

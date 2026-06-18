@@ -79,6 +79,8 @@ static bool lexer_parenthesized_expression_has_top_level_comma(const struct myli
 static struct mylite_sql_token make_synthetic_row_constructor_token(
     const struct mylite_sql_token *left_paren
 );
+static bool parse_result_is_unsupported_utility_script(const struct mylite_sql_parse_result *result
+);
 static void record_parse_error(
     struct mylite_sql_parse_result *result,
     struct mylite_sql_parse_error error
@@ -89,6 +91,22 @@ enum mylite_sql_parse_status mylite_sql_parse(
     struct mylite_sql_parse_result *out_result
 ) {
     enum mylite_sql_parse_status status = mylite_sql_parser_parse_with_lemon(config, out_result);
+
+    if (status == MYLITE_SQL_PARSE_OK && parse_result_is_unsupported_utility_script(out_result)) {
+        bool handled = false;
+
+        enum mylite_sql_parse_status row_arithmetic_status =
+            mylite_sql_parser_try_parse_parenthesized_row_arithmetic_predicate_statement(
+                config,
+                out_result,
+                &handled
+            );
+
+        if (handled) {
+            status = row_arithmetic_status;
+            out_result->status = row_arithmetic_status;
+        }
+    }
 
     if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
         bool handled = false;
@@ -712,6 +730,18 @@ static struct mylite_sql_token make_synthetic_row_constructor_token(
 
     token.flags |= MYLITE_SQL_TOKEN_SYNTHETIC_ROW_CONSTRUCTOR;
     return token;
+}
+
+static bool parse_result_is_unsupported_utility_script(const struct mylite_sql_parse_result *result
+) {
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (result == NULL || result->root == NULL || result->root->kind != MYLITE_SQL_AST_SCRIPT) {
+        return false;
+    }
+
+    statement = mylite_sql_parser_child_at(result->root, 0U);
+    return statement != NULL && statement->kind == MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT;
 }
 
 static void record_parse_error(

@@ -8,6 +8,7 @@
 - [x] Extend lexer/parser/AST support for the admitted function forms.
 - [x] Add MyLite-owned scalar and row-backed runtime implementation.
 - [x] Register private SQLite helper functions for row-backed projection.
+- [x] Extend direct row-backed predicate and non-grouped order-key contexts.
 - [x] Add parser, runtime, persistence, file-format, diagnostics, and MySQL
   expectation tests.
 - [x] Update `COMPATIBILITY.md` and `docs/compatibility/functions-string.md`.

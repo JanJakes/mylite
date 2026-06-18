@@ -153,6 +153,19 @@ expect_output \
 "MAKE_SET(ABS(i), txt, on_label, off_label) FROM t ORDER BY id;" \
     "$DATABASE"
 
+expect_output \
+    "table predicate and order expression" \
+    "1
+1
+3	NULL
+1	N
+2	on" \
+    "SELECT COUNT(*) FROM t WHERE MAKE_SET(bits, 'a') = 'a'; "\
+"SELECT id FROM t WHERE EXPORT_SET(bits, on_label, off_label, sep, 1) = on_label ORDER BY id; "\
+"SELECT id, MAKE_SET(bits, off_label, on_label) FROM t "\
+"ORDER BY MAKE_SET(bits, off_label, on_label), id;" \
+    "$DATABASE"
+
 expect_error \
     "export_set rejects zero arguments" \
     1582 \

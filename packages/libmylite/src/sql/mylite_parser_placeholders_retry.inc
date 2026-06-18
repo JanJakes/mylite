@@ -508,7 +508,7 @@ static enum mylite_sql_parse_status scan_row_scalar_predicate_subject_retry(
     if (scan == NULL || retries == NULL || inout_can_retry == NULL || out_end_index == NULL ||
         start_index + 1U >= scan->token_count ||
         !placeholder_scan_token_is_top_level_where_predicate_context(scan, start_index) ||
-        !placeholder_scan_token_text_equals(scan, start_index, "STRCMP") ||
+        !placeholder_scan_token_is_retryable_row_scalar_context_function(scan, start_index) ||
         !placeholder_scan_token_is_supported_row_scalar_value_function(scan, start_index) ||
         !mylite_sql_parser_token_is_left_paren(&scan->tokens[start_index + 1U]) ||
         !placeholder_scan_find_matching_right_paren(scan, start_index + 1U, &right_paren_index) ||
@@ -522,17 +522,93 @@ static enum mylite_sql_parse_status scan_row_scalar_predicate_subject_retry(
             start_index,
             right_paren_index
         ) ||
-        !placeholder_scan_row_scalar_predicate_subject_has_valid_suffix(scan, right_paren_index)) {
+        !placeholder_scan_row_scalar_predicate_subject_has_valid_suffix(
+            scan,
+            start_index,
+            right_paren_index
+        )) {
         return MYLITE_SQL_PARSE_OK;
     }
     *out_end_index = right_paren_index;
-    return append_row_arithmetic_predicate_value_retry(
+    if (placeholder_scan_row_scalar_predicate_subject_uses_truth_placeholder(
+            scan,
+            start_index,
+            right_paren_index
+        )) {
+        return append_row_arithmetic_predicate_value_retry(
+            scan,
+            start_index,
+            right_paren_index,
+            retries,
+            inout_can_retry
+        );
+    }
+    return append_row_scalar_predicate_subject_retry(
         scan,
         start_index,
         right_paren_index,
         retries,
         inout_can_retry
     );
+}
+
+static enum mylite_sql_parse_status append_row_scalar_predicate_subject_retry(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry
+) {
+    static const char placeholder_text[] = "__mylite_row_scalar_subject";
+    struct placeholder_row_arithmetic_subject_retry retry;
+
+    if (scan == NULL || retries == NULL || inout_can_retry == NULL || start_index > end_index ||
+        end_index >= scan->token_count) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+
+    retry = (struct placeholder_row_arithmetic_subject_retry){
+        .start_index = start_index,
+        .end_index = end_index,
+        .placeholder_token = {
+            .kind = MYLITE_SQL_TOKEN_IDENTIFIER,
+            .text = placeholder_text,
+            .length = sizeof(placeholder_text) - 1U,
+            .offset = scan->tokens[start_index].offset,
+        },
+    };
+    if (!placeholder_row_arithmetic_subject_retries_push(retries, retry)) {
+        placeholder_row_arithmetic_subject_retries_deinit(retries);
+        return MYLITE_SQL_PARSE_NOMEM;
+    }
+    *inout_can_retry = true;
+    return MYLITE_SQL_PARSE_OK;
+}
+
+static bool placeholder_scan_token_is_retryable_row_scalar_context_function(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    static const char *const function_names[] = {
+        "LEFT",
+        "RIGHT",
+        "LPAD",
+        "RPAD",
+        "REPEAT",
+        "SPACE",
+        "EXPORT_SET",
+        "MAKE_SET",
+        "SUBSTRING_INDEX",
+        "STRCMP",
+    };
+
+    for (size_t name_index = 0U; name_index < sizeof(function_names) / sizeof(function_names[0]);
+         ++name_index) {
+        if (placeholder_scan_token_text_equals(scan, index, function_names[name_index])) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool placeholder_scan_token_is_top_level_where_predicate_context(
@@ -573,15 +649,16 @@ static bool placeholder_scan_token_is_top_level_where_predicate_context(
 
 static bool placeholder_scan_row_scalar_predicate_subject_has_valid_suffix(
     const struct placeholder_statement_scan *scan,
+    size_t start_index,
     size_t end_index
 ) {
     size_t suffix_index = end_index + 1U;
 
-    if (scan == NULL || end_index >= scan->token_count) {
+    if (scan == NULL || start_index >= scan->token_count || end_index >= scan->token_count) {
         return false;
     }
     if (suffix_index >= scan->token_count) {
-        return true;
+        return placeholder_scan_token_text_equals(scan, start_index, "STRCMP");
     }
     if (placeholder_scan_token_is_comparison_operator(scan, suffix_index) ||
         placeholder_scan_token_text_equals(scan, suffix_index, "IS") ||
@@ -590,6 +667,24 @@ static bool placeholder_scan_row_scalar_predicate_subject_has_valid_suffix(
     }
     if (placeholder_scan_token_text_equals(scan, suffix_index, "NOT")) {
         return placeholder_scan_token_text_equals(scan, suffix_index + 1U, "BETWEEN");
+    }
+    return placeholder_scan_token_text_equals(scan, start_index, "STRCMP") &&
+           placeholder_scan_token_stops_predicate_value(scan, suffix_index, false);
+}
+
+static bool placeholder_scan_row_scalar_predicate_subject_uses_truth_placeholder(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+) {
+    size_t suffix_index = end_index + 1U;
+
+    if (scan == NULL || start_index >= scan->token_count || end_index >= scan->token_count ||
+        !placeholder_scan_token_text_equals(scan, start_index, "STRCMP")) {
+        return false;
+    }
+    if (suffix_index >= scan->token_count) {
+        return true;
     }
     return placeholder_scan_token_stops_predicate_value(scan, suffix_index, false);
 }
@@ -863,7 +958,7 @@ static bool placeholder_scan_row_bitwise_order_key_can_retry(
     if (scan == NULL || start_index > end_index || end_index >= scan->token_count) {
         return false;
     }
-    if (placeholder_scan_token_text_equals(scan, start_index, "STRCMP") &&
+    if (placeholder_scan_token_is_retryable_row_scalar_context_function(scan, start_index) &&
         placeholder_scan_row_arithmetic_value_has_row_operand(scan, start_index, end_index) &&
         placeholder_scan_predicate_value_is_direct_row_scalar_expression(
             scan,
@@ -1659,6 +1754,8 @@ static bool placeholder_scan_token_is_supported_row_scalar_value_function(
         "UUID_TO_BIN",
         "BIN_TO_UUID",
         "RAND",
+        "EXPORT_SET",
+        "MAKE_SET",
     };
 
     if (placeholder_scan_token_is_supported_row_arithmetic_value_function(scan, index)) {

@@ -172,6 +172,22 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "table predicate and order expression" \
+    "1
+1
+3
+2
+3	NULL
+2	000é🙂
+1	00abc" \
+    "SELECT COUNT(*) FROM t WHERE LPAD(v, 5, '0') = '00abc'; "\
+"SELECT COUNT(*) FROM t WHERE RPAD(v, 5, '0') BETWEEN 'abc00' AND 'abc00'; "\
+"SELECT id FROM t WHERE REPEAT(v, 2) IS NULL ORDER BY id; "\
+"SELECT id FROM t WHERE SPACE(id) = '  ' ORDER BY id; "\
+"SELECT id, LPAD(v, 5, '0') FROM t ORDER BY LPAD(v, 5, '0'), id;" \
+    "$DATABASE"
+
+expect_output \
     "mysql accepted deferred conversion and binary forms" \
     "??hi	hi??	xx	2020	00004142	41420000	41424142" \
     "SELECT LPAD('hi', 3.5, '?'), RPAD('hi', '4', '?'), REPEAT('x', 1.5), "\

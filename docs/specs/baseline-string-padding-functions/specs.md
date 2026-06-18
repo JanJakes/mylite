@@ -12,10 +12,12 @@ SPACE(count)
 ```
 
 The supported surface covers no-source scalar `SELECT`, `SELECT ... FROM DUAL`,
-`DO`, and single-table row-scalar `SELECT` projection contexts. It deliberately
-does not add expression predicates, expression ordering, grouping expressions,
-DML assignment expressions, generated columns, defaults, or arbitrary nested
-expression planning.
+`DO`, and single-table row-scalar `SELECT` projection contexts. The current
+extension also admits direct descriptor-backed `WHERE` comparison,
+`IS [NOT] NULL`, `[NOT] BETWEEN`, and non-grouped single-table `ORDER BY`
+expression contexts for these functions. It deliberately does not add DML
+assignment expressions, generated columns, defaults, grouping expressions, or
+arbitrary nested expression planning.
 
 Core supported behavior:
 
@@ -96,7 +98,7 @@ Runtime probes establish the behavior used by this phase:
   `ROW_COUNT()` report `-1`.
 
 MySQL also accepts deferred behavior such as decimal or string length/count
-conversion, binary-string padding/repetition, predicates over these functions,
+conversion, binary-string padding/repetition, broad predicate contexts,
 arbitrary nested functions, and non-ASCII collation-sensitive result typing.
 Those forms remain outside this baseline.
 
@@ -149,9 +151,16 @@ string-padding function:
 SELECT row_scalar_item[, row_scalar_item ...]
 FROM table_name [AS alias]
 [WHERE predicate]
-[ORDER BY descriptor_column [ASC | DESC]]
+[ORDER BY descriptor_column_or_direct_string_padding_expr [ASC | DESC]]
 [LIMIT row_count]
 ```
+
+Supported `WHERE` predicates additionally admit a direct `LPAD(...)`,
+`RPAD(...)`, `REPEAT(...)`, or `SPACE(...)` call as the left side of comparison,
+`IS [NOT] NULL`, and `[NOT] BETWEEN` predicates when function arguments fit the
+same row-scalar value/count envelopes. Supported expression ordering is limited
+to non-grouped single-table direct function keys over the same expression
+envelope.
 
 The admitted expression shape is:
 
@@ -209,7 +218,7 @@ remain deferred.
 
 The following remain outside this phase:
 
-- `WHERE LPAD(column, 3, '0') ...`, `HAVING REPEAT(...) ...`, expression
+- bare truth predicates, `HAVING REPEAT(...) ...`, grouped expression
   `ORDER BY`, grouping, distinct expression rows, and aggregate arguments;
 - DML assignment values such as `UPDATE t SET c = LPAD(v, 5, '0')`;
 - arbitrary nested row functions outside the supported row-scalar value and
@@ -314,9 +323,10 @@ the existing physical SQLite failure path.
 
 Update `COMPATIBILITY.md` and `docs/compatibility/functions-string.md` to mark
 `LPAD()`, `RPAD()`, `REPEAT()`, and `SPACE()` as limited. Do not claim support
-for binary string result typing, full collation coercion, expression predicates,
-ordering/grouping expressions, DML assignments, parameters, general expression
-counts beyond the supported integer subset, or noninteger rounding.
+for binary string result typing, full collation coercion, broad predicate
+contexts, grouped ordering/grouping expressions, DML assignments, parameters,
+general expression counts beyond the supported integer subset, or noninteger
+rounding.
 
 ## Test Plan
 

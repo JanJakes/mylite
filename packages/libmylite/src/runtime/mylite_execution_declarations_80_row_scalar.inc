@@ -427,6 +427,12 @@ static int plan_row_scalar_integer_arithmetic_frame(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count
 );
+static int plan_row_scalar_integer_arithmetic_unary(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression,
+    struct row_scalar_integer_arithmetic_plan_stack *stack
+);
 static int plan_row_scalar_integer_arithmetic_binary(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

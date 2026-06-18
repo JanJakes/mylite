@@ -1817,6 +1817,14 @@ static int plan_row_scalar_integer_arithmetic_frame(
             stack
         );
     }
+    if (current->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return plan_row_scalar_integer_arithmetic_unary(
+            database,
+            current,
+            frame->out_expression,
+            stack
+        );
+    }
     if (current->kind == MYLITE_SQL_AST_MOD_FUNCTION) {
         return plan_row_scalar_integer_arithmetic_operator(
             database,
@@ -1924,9 +1932,57 @@ static int plan_row_scalar_integer_arithmetic_frame(
         database,
         "table-backed arithmetic expression supports only descriptor columns, numeric and string "
         "literals, booleans, NULL, numeric temporal extractor functions, parentheses, and "
-        "+, binary -, *, /, DIV, and MOD operators"
+        "unary +, unary -, binary +, binary -, *, /, DIV, and MOD operators"
     );
     return MYLITE_ERROR;
+}
+
+static int plan_row_scalar_integer_arithmetic_unary(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression,
+    struct row_scalar_integer_arithmetic_plan_stack *stack
+) {
+    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+        return row_scalar_integer_arithmetic_plan_stack_push(
+            database,
+            stack,
+            (struct row_scalar_integer_arithmetic_plan_frame){
+                .expression = child_at(expression, 0U),
+                .out_expression = out_expression,
+            }
+        );
+    }
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+        set_unsupported_error(
+            database,
+            "table-backed arithmetic expression supports only unary + and unary -"
+        );
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(2U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC;
+    out_expression->arithmetic_operator = MYLITE_SQL_AST_OPERATOR_SUBTRACT;
+    out_expression->argument_count = 2U;
+    out_expression->arguments[0].kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+    out_expression->arguments[0].value = (struct planned_value){.is_null = false, .integer = 0};
+
+    return row_scalar_integer_arithmetic_plan_stack_push(
+        database,
+        stack,
+        (struct row_scalar_integer_arithmetic_plan_frame){
+            .expression = child_at(expression, 0U),
+            .out_expression = &out_expression->arguments[1],
+        }
+    );
 }
 
 static int plan_row_scalar_integer_arithmetic_binary(

@@ -7705,6 +7705,14 @@ period_timezone_predicate_expression(A) ::=
 row_scalar_arithmetic_predicate_expression(A) ::= row_scalar_arithmetic_additive(B). {
     A = B;
 }
+row_scalar_arithmetic_predicate_expression(A) ::= PLUS(T) qualified_identifier(B). [UPLUS] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_POSITIVE, B);
+}
+row_scalar_arithmetic_predicate_expression(A) ::= MINUS(T) qualified_identifier(B). [UMINUS] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_NEGATIVE, B);
+}
 
 row_scalar_arithmetic_additive(A) ::=
     row_scalar_arithmetic_expression(B) PLUS(T) row_scalar_arithmetic_expression(C). {
@@ -7801,6 +7809,14 @@ row_scalar_arithmetic_primary(A) ::= qualified_identifier(B). {
 }
 row_scalar_arithmetic_primary(A) ::= literal(B). {
     A = B;
+}
+row_scalar_arithmetic_primary(A) ::= PLUS(T) qualified_identifier(B). [UPLUS] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_POSITIVE, B);
+}
+row_scalar_arithmetic_primary(A) ::= MINUS(T) qualified_identifier(B). [UMINUS] {
+    A = mylite_sql_parser_make_unary_expression(
+        state, T, MYLITE_SQL_AST_OPERATOR_NEGATIVE, B);
 }
 row_scalar_arithmetic_primary(A) ::= PLUS(T) INTEGER(V). [UPLUS] {
     A = mylite_sql_parser_make_unary_expression(
@@ -8082,6 +8098,19 @@ row_scalar_string_predicate_expression(A) ::= SOUNDEX(T) LPAREN expression(B) RP
 row_scalar_string_predicate_expression(A) ::= QUOTE(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_QUOTE_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= BIN(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_BIN_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= OCT(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_OCT_FUNCTION, B, R);
+}
+row_scalar_string_predicate_expression(A) ::= CONV(T) LPAREN expression(B) COMMA
+        expression(C) COMMA expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_CONV_FUNCTION, B, C, D, R);
 }
 
 row_scalar_json_predicate_expression(A) ::= JSON_EXTRACT(T) LPAREN expression(B) COMMA

@@ -748,6 +748,32 @@ static int test_table_backed_signed_integer_arithmetic(void) {
     static const char *const values_families[] = {"4", "5", "7", "6", "3"};
     static const char *const columns_signed_literal[] = {"signed_literal", "signed_subtract"};
     static const char *const values_signed_literal[] = {"-3", "7"};
+    static const char *const columns_unary[] = {
+        "negative_i",
+        "positive_i",
+        "add_negative_i",
+        "negative_sum",
+        "nested_unary",
+    };
+    static const char *const values_unary[] = {
+        "-3",
+        "3",
+        "-1",
+        "-5",
+        "-3",
+        "-7",
+        "7",
+        "-12",
+        "-2",
+        "-7",
+        "2",
+        "-2",
+        "2",
+        "2",
+        "2",
+    };
+    static const char *const columns_unary_predicate[] = {"id"};
+    static const char *const values_unary_predicate[] = {"1", "2"};
     static const char *const columns_qualified_table[] = {"t.a+t.i"};
     static const char *const columns_qualified_alias[] = {"x.a+x.i"};
     static const char *const values_qualified[] = {"5"};
@@ -840,6 +866,29 @@ static int test_table_backed_signed_integer_arithmetic(void) {
             .values = values_signed_literal,
             .row_count = 1U,
             .context = "signed integer literal arithmetic projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT -i AS negative_i, +i AS positive_i, a + -i AS add_negative_i, "
+                   "-(a+i) AS negative_sum, +(-i) AS nested_unary FROM t ORDER BY id",
+            .columns = columns_unary,
+            .column_count = sizeof(columns_unary) / sizeof(columns_unary[0]),
+            .values = values_unary,
+            .row_count = 3U,
+            .context = "table-backed unary arithmetic projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE -i < 0 ORDER BY id",
+            .columns = columns_unary_predicate,
+            .column_count = sizeof(columns_unary_predicate) / sizeof(columns_unary_predicate[0]),
+            .values = values_unary_predicate,
+            .row_count = 2U,
+            .context = "table-backed unary arithmetic predicate",
         }
     );
     failures += expect_query(
@@ -956,15 +1005,6 @@ static int test_table_backed_signed_integer_arithmetic(void) {
             .row_count = 1U,
             .warning_count = 4U,
             .context = "table arithmetic division and modulo projection",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT a + -i FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "arithmetic expression supports unary signs only on numeric literals",
         }
     );
 

@@ -196,6 +196,21 @@ static int test_bin_oct_values_and_file_safety(void) {
         "1",    "1",     "0b100", "12",         "1100",
         "14",   "10001", "2",     NULL,         "0b10001",
     };
+    static const char *const predicate_columns[] = {"id"};
+    static const char *const predicate_values[] = {"0", "12"};
+    static const char *const order_columns[] = {"id", "BIN(id)"};
+    static const char *const order_values[] = {
+        NULL,
+        NULL,
+        "0",
+        "0",
+        "1",
+        "1",
+        "12",
+        "1100",
+        "-1",
+        bin_all_ones,
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -307,6 +322,33 @@ static int test_bin_oct_values_and_file_safety(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "table-backed BIN/OCT values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM row_values "
+                   "WHERE BIN(id)='1100' OR OCT(id)='0' ORDER BY id",
+            .columns = predicate_columns,
+            .column_count = 1U,
+            .values = predicate_values,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "BIN/OCT predicate values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id,BIN(id) FROM row_values ORDER BY BIN(id),id",
+            .columns = order_columns,
+            .column_count = 2U,
+            .values = order_values,
+            .row_count = row_result_count,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "BIN order values",
         }
     );
 

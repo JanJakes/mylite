@@ -124,6 +124,22 @@ expect_output \
     "DO 0; SELECT -(1+2), @@warning_count, ROW_COUNT(); SELECT @@warning_count, ROW_COUNT();" \
     "$DATABASE"
 
+expect_output_with_headers \
+    "row-backed unary arithmetic" \
+    "-id
+0
+-1
+NULL" \
+    "SELECT -id FROM t ORDER BY id IS NULL, id;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "row-backed unary predicate" \
+    "id
+1" \
+    "SELECT id FROM t WHERE -id < 0 ORDER BY id;" \
+    "$DATABASE"
+
 expect_error \
     "child overflow under unary" \
     1690 \
@@ -142,8 +158,7 @@ expect_error \
 
 accepted_but_deferred=$(run_mysql_with_headers \
     "SELECT -(-9223372036854775807 - 1);
-     SELECT -'2', +'2', -1.5, +1.5, -@@warning_count, +VERSION();
-     SELECT -id FROM t ORDER BY id IS NULL, id;" \
+     SELECT -'2', +'2', -1.5, +1.5, -@@warning_count, +VERSION();" \
     "$DATABASE"
 )
 expect_value \
@@ -151,11 +166,7 @@ expect_value \
     "-(-9223372036854775807 - 1)
 9223372036854775808
 -'2'	2	-1.5	1.5	-@@warning_count	+VERSION()
--2	2	-1.5	1.5	0	8.4.9
--id
-0
--1
-NULL" \
+-2	2	-1.5	1.5	0	8.4.9" \
     "$accepted_but_deferred"
 
 printf '%s\n' "mysql_baseline_scalar_unary_arithmetic_projection_expectations: ok"

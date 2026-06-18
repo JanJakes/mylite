@@ -171,6 +171,19 @@ static int test_conv_values_and_file_safety(void) {
         "-1", NULL,     "x0", "10", "1010", "A",   "10", "A",          "xB",
         "35", "100011", "23", "35", NULL,   "x10",
     };
+    static const char *const predicate_columns[] = {"id"};
+    static const char *const predicate_values[] = {"10", "35"};
+    static const char *const order_columns[] = {"id", "CONV(id,10,2)"};
+    static const char *const order_values[] = {
+        NULL,
+        NULL,
+        "35",
+        "100011",
+        "10",
+        "1010",
+        "-1",
+        row_all_ones,
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -260,6 +273,33 @@ static int test_conv_values_and_file_safety(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "table-backed CONV values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM row_values "
+                   "WHERE CONV(id,10,16)='A' OR CONV(id,10,16)='23' ORDER BY id",
+            .columns = predicate_columns,
+            .column_count = 1U,
+            .values = predicate_values,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "CONV predicate values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id,CONV(id,10,2) FROM row_values ORDER BY CONV(id,10,2),id",
+            .columns = order_columns,
+            .column_count = 2U,
+            .values = order_values,
+            .row_count = 4U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "CONV order values",
         }
     );
 

@@ -98,10 +98,11 @@ All observed statements return zero warnings.
 MyLite supports row arithmetic predicate value expressions in the existing
 single-table descriptor-backed `SELECT` predicate envelope and the supported
 query shapes that reuse that predicate planner. The admitted arithmetic
-operators and operands are the current row arithmetic subset: `+`, binary `-`,
-`*`, `/`, `DIV`, `%`, infix `MOD`, `MOD(left, right)`, numeric/string/boolean
-and `NULL` literals, descriptor columns already accepted by row arithmetic, and
-the documented covered row numeric and string-length function operands.
+operators and operands are the current row arithmetic subset: unary `+` and
+unary `-` over descriptor columns, binary `+`, binary `-`, `*`, `/`, `DIV`,
+`%`, infix `MOD`, `MOD(left, right)`, numeric/string/boolean and `NULL`
+literals, descriptor columns already accepted by row arithmetic, and the
+documented covered row numeric and string-length function operands.
 
 This slice admits arithmetic values in:
 

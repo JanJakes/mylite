@@ -2003,6 +2003,15 @@ static bool row_scalar_expression_contains_integer_arithmetic_attempt(
             found = true;
             break;
         }
+        if (current->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+            enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(current);
+
+            if (operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+                operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+                found = true;
+                break;
+            }
+        }
         if (current->kind == MYLITE_SQL_AST_MOD_FUNCTION) {
             found = true;
             break;

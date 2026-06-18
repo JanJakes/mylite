@@ -297,6 +297,25 @@ NULL	NULL	NULL	NULL	NULL	NULL" \
        FROM t ORDER BY id IS NULL,id;" \
     "$DATABASE"
 
+expect_output_with_headers \
+    "row-backed conv predicates" \
+    "id
+10" \
+    "SELECT id FROM t
+      WHERE CONV(id,10,16)='A' OR CONV(id,10,16)='23'
+      ORDER BY id;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "row-backed conv order key" \
+    "id	CONV(id,10,2)
+NULL	NULL
+10	1010
+-1	1111111111111111111111111111111111111111111111111111111111111111" \
+    "SELECT id,CONV(id,10,2) FROM t
+      ORDER BY CONV(id,10,2),id;" \
+    "$DATABASE"
+
 accepted_but_deferred=$(run_mysql_with_headers \
     "SELECT CONV('6E',18,8),CONV('a',16,2),CONV('zz',36,10),
             CONV(12.75,10,2),CONV(-12.75,10,-2),CONV(1e1,10,2),

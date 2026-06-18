@@ -49,22 +49,24 @@ approximate `FLOAT`/`DOUBLE` descriptor comparisons, ranges, and membership
 predicates; incompatible descriptor families still return the current targeted
 unsupported diagnostics rather than falling back to SQLite coercion.
 
-The limited table-backed arithmetic slice admits `+`, binary `-`, `*`, `/`,
-`DIV`, `%`, infix `MOD`, and `MOD(left, right)` row-scalar expressions over
+The limited table-backed arithmetic slice admits unary `+`, unary `-`, binary
+`+`, binary `-`, `*`, `/`, `DIV`, `%`, infix `MOD`, and `MOD(left, right)`
+row-scalar expressions over
 numeric and nonbinary string descriptor columns, numeric/string/boolean/`NULL`
 literals, covered row-backed numeric functions, and parentheses in one-base-table
 `SELECT` projections and ordering. The same arithmetic envelope is also admitted
 as truth, comparison, `IS [NOT] NULL`, `IS [NOT] TRUE`/`FALSE`/`UNKNOWN`,
 `[NOT] BETWEEN`, and `[NOT] IN` subjects in the documented single-table
-`SELECT` and existing descriptor subquery predicate paths, including one
-redundant parenthesized wrapper around the arithmetic subject and nested
-arithmetic grouping inside larger predicate arithmetic. Documented arithmetic
-comparison RHS values, `[NOT] BETWEEN` bounds, and `[NOT] IN` list entries are
-also supported in the same single-table predicate envelope. Direct supported
-row-scalar value expressions with row operands, including current conversion,
-JSON, temporal, string, numeric, control-flow, and arithmetic roots, are
-admitted in comparison RHS, `[NOT] BETWEEN` bounds, and `[NOT] IN` list entries
-for the documented single-table `SELECT`, `UPDATE`, and `DELETE` `WHERE` paths.
+`SELECT` and existing descriptor subquery predicate paths, with standalone
+unary predicate roots limited to descriptor columns, one redundant parenthesized
+wrapper around non-unary arithmetic subjects, and nested arithmetic grouping
+inside larger predicate arithmetic. Documented arithmetic comparison RHS values,
+`[NOT] BETWEEN` bounds, and `[NOT] IN` list entries are also supported in the
+same single-table predicate envelope. Direct supported row-scalar value
+expressions with row operands, including current conversion, JSON, temporal,
+string, numeric, control-flow, and arithmetic roots, are admitted in comparison
+RHS, `[NOT] BETWEEN` bounds, and `[NOT] IN` list entries for the documented
+single-table `SELECT`, `UPDATE`, and `DELETE` `WHERE` paths.
 MySQL-style string numeric warnings and zero-divisor warnings are recorded. It
 does not yet provide exact fixed-scale decimal metadata/results,
 binary/JSON/temporal coercion outside the covered function families, broad DML
@@ -82,6 +84,13 @@ descriptor columns, nonbinary string-family descriptor columns, and
 integer/string/boolean/`NULL` literals. Binary, JSON, temporal, arbitrary
 decimal-literal coercion, exact-decimal result typing, negative-zero
 floating-point display parity, and broad expression metadata remain deferred.
+
+The covered row-backed base-conversion functions include `BIN()`, `OCT()`, and
+`CONV()` over integer-domain operands in single-table projections, supported
+comparison predicates, `ORDER BY` expression keys, and nested supported
+row-scalar expressions. Broader string/decimal/float/hex/bit row coercion,
+non-ASCII collation parity for the returned text, and exact expression metadata
+remain deferred.
 
 The limited row-scalar `CAST()` / `CONVERT()` slice admits binary, character,
 signed integer, unsigned integer, `USING BINARY`, and `USING

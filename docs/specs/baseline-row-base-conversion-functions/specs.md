@@ -12,6 +12,7 @@ Admitted forms:
 SELECT BIN(expr), OCT(expr), CONV(expr, expr, expr) FROM table_name;
 SELECT CONCAT('0b', BIN(expr)) FROM table_name;
 SELECT CASE WHEN predicate THEN CONV(expr, 10, 16) END FROM table_name;
+SELECT id FROM table_name WHERE BIN(expr) = '1010' ORDER BY OCT(expr);
 ```
 
 The row-backed operand domain is intentionally integer-only in this phase:
@@ -66,7 +67,8 @@ This slice does not claim the full MySQL coercion surface. Deferred behavior:
 - string, binary-string, hex, bit, decimal, and floating row operands;
 - unsigned integer row literals above signed-64 range in the row-backed path;
 - descriptor string/decimal/float column coercion;
-- expression metadata beyond the current generic row-scalar text result shape.
+- expression metadata beyond the current generic row-scalar text result shape;
+- non-ASCII collation parity for the text returned by base-conversion calls.
 
 Those gaps remain tracked in the numeric compatibility rows.
 
@@ -79,5 +81,6 @@ The test suite must cover:
 - table-backed `CONV(id, 10, 2)`, `CONV(id, 10, 16)`, signed output, and invalid
   base `NULL` behavior;
 - row warning behavior for invalid `CONV()` input digits;
+- row-scalar comparison predicates and `ORDER BY` expression keys;
 - nested row-scalar use under supported functions/control-flow;
 - unchanged scalar no-source behavior and wrong-arity errors.

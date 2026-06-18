@@ -280,6 +280,8 @@ static int test_scalar_arithmetic_values_and_file_safety(void) {
 static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
     static const char *const columns_table_arithmetic[] = {"1+id"};
     static const char *const values_table_arithmetic[] = {NULL, "1", "2"};
+    static const char *const columns_table_unary[] = {"-id"};
+    static const char *const values_table_unary[] = {NULL, "0", "-1"};
     static const char *const columns_count_arithmetic[] = {"COUNT(*)+3"};
     static const char *const values_count_arithmetic[] = {"6"};
     static const char *const columns_unsigned_table_arithmetic[] = {"age*3"};
@@ -468,6 +470,17 @@ static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT -id FROM t ORDER BY id",
+            .columns = columns_table_unary,
+            .column_count = sizeof(columns_table_unary) / sizeof(columns_table_unary[0]),
+            .values = values_table_unary,
+            .row_count = 3U,
+            .context = "table-backed unary arithmetic projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT COUNT(*)+3 FROM t",
             .columns = columns_count_arithmetic,
             .column_count = sizeof(columns_count_arithmetic) / sizeof(columns_count_arithmetic[0]),
@@ -486,15 +499,6 @@ static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
             .values = values_unsigned_table_arithmetic,
             .row_count = 1U,
             .context = "table-backed unsigned scalar arithmetic projection",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT -id FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "row-scalar SELECT supports only signed integer literals",
         }
     );
     failures += expect_query(

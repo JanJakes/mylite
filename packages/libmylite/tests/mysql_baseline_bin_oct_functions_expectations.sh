@@ -146,6 +146,28 @@ NULL	NULL	NULL	NULL	NULL" \
        FROM t ORDER BY id IS NULL,id;" \
     "$DATABASE"
 
+expect_output_with_headers \
+    "row-backed bin oct predicates" \
+    "id
+0
+2" \
+    "SELECT id FROM t
+      WHERE BIN(id)='10' OR OCT(id)='0'
+      ORDER BY id;" \
+    "$DATABASE"
+
+expect_output_with_headers \
+    "row-backed bin order key" \
+    "id	BIN(id)
+NULL	NULL
+0	0
+1	1
+2	10
+-1	1111111111111111111111111111111111111111111111111111111111111111" \
+    "SELECT id,BIN(id) FROM t
+      ORDER BY BIN(id),id;" \
+    "$DATABASE"
+
 expect_output \
     "select child warning staging" \
     "NULL	NULL	0	0

@@ -507,11 +507,7 @@ static int validate_row_scalar_collate_expression(
         return rc;
     }
     if (!text_equals_ascii_case_insensitive(charset, collation_info->charset)) {
-        set_collation_not_valid_for_charset_error(
-            database,
-            collation_info->collation,
-            charset
-        );
+        set_collation_not_valid_for_charset_error(database, collation_info->collation, charset);
         return MYLITE_ERROR;
     }
 
@@ -540,8 +536,8 @@ static int row_scalar_collate_base_charset(
 
     switch (base_expression->kind) {
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
-        *out_charset = base_expression->value.is_text ? database->session.character_set_connection
-                                                      : "binary";
+        *out_charset =
+            base_expression->value.is_text ? database->session.character_set_connection : "binary";
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         if (column_descriptor_is_string_family(&base_expression->column) &&
@@ -1093,9 +1089,11 @@ static int plan_row_scalar_window_function_expression(
                 table_column_count,
                 out_expression
             );
-        } else if (clause->kind == MYLITE_SQL_AST_WINDOW_FRAME_CLAUSE &&
-                   (window_function_accepts_ignored_frame_clause(kind) ||
-                    window_function_uses_frame_clause(kind))) {
+        } else if (
+            clause->kind == MYLITE_SQL_AST_WINDOW_FRAME_CLAUSE &&
+            (window_function_accepts_ignored_frame_clause(kind) ||
+             window_function_uses_frame_clause(kind))
+        ) {
             rc = plan_row_scalar_window_frame_clause(
                 database,
                 function_name,
@@ -1370,6 +1368,23 @@ static int plan_row_scalar_window_function_argument(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
+    if (window_function_argument_is_row_scalar_value_expression(
+            (struct window_function_argument_position){
+                .kind = kind,
+                .argument_index = argument_index,
+            }
+        )) {
+        return plan_row_scalar_window_function_value_argument(
+            database,
+            function_name,
+            unwrapped,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_argument
+        );
+    }
     if (unwrapped->kind == MYLITE_SQL_AST_IDENTIFIER ||
         unwrapped->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         if (!has_source) {
@@ -1394,6 +1409,19 @@ static int plan_row_scalar_window_function_argument(
         }
         return plan_row_scalar_literal_value(database, unwrapped, out_argument);
     }
+    if (argument_index == window_function_integer_argument_index(kind)) {
+        if (unwrapped->kind == MYLITE_SQL_AST_UNARY_EXPRESSION &&
+            (kind == PLANNED_WINDOW_FUNCTION_LAG || kind == PLANNED_WINDOW_FUNCTION_LEAD)) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        set_window_function_unsupported_error(
+            database,
+            function_name,
+            window_function_integer_argument_unsupported_message(kind)
+        );
+        return MYLITE_ERROR;
+    }
 
     set_window_function_unsupported_error(
         database,
@@ -1403,11 +1431,130 @@ static int plan_row_scalar_window_function_argument(
     return MYLITE_ERROR;
 }
 
+static bool window_function_argument_is_row_scalar_value_expression(
+    struct window_function_argument_position position
+) {
+    switch (position.kind) {
+    case PLANNED_WINDOW_FUNCTION_LAG:
+    case PLANNED_WINDOW_FUNCTION_LEAD:
+        return position.argument_index == 0U || position.argument_index == 2U;
+    case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+        return position.argument_index == 0U;
+    case PLANNED_WINDOW_FUNCTION_NONE:
+    case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
+    case PLANNED_WINDOW_FUNCTION_RANK:
+    case PLANNED_WINDOW_FUNCTION_DENSE_RANK:
+    case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
+    case PLANNED_WINDOW_FUNCTION_CUME_DIST:
+    case PLANNED_WINDOW_FUNCTION_NTILE:
+        break;
+    }
+    return false;
+}
+
+static int plan_row_scalar_window_function_value_argument(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct mylite_sql_ast_node *argument,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_argument
+) {
+    int rc = plan_row_scalar_expression(
+        database,
+        argument,
+        has_source,
+        source_context,
+        NULL,
+        table_columns,
+        table_column_count,
+        out_argument
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (out_argument->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN &&
+        !window_function_argument_column_descriptor_is_supported(
+            database,
+            function_name,
+            0U,
+            &out_argument->column
+        )) {
+        planned_row_scalar_expression_deinit(out_argument);
+        return MYLITE_ERROR;
+    }
+    if (!planned_row_scalar_window_value_argument_is_supported(out_argument)) {
+        set_window_function_unsupported_error(
+            database,
+            function_name,
+            "value arguments do not support nested window or aggregate functions"
+        );
+        planned_row_scalar_expression_deinit(out_argument);
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static bool planned_row_scalar_window_value_argument_is_supported(
+    const struct planned_row_scalar_expression *argument
+) {
+    if (argument == NULL) {
+        return false;
+    }
+    switch (argument->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
+        return false;
+    default:
+        break;
+    }
+
+    for (size_t argument_index = 0U; argument_index < argument->argument_count; ++argument_index) {
+        if (!planned_row_scalar_window_value_argument_is_supported(
+                &argument->arguments[argument_index]
+            )) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool window_function_signed_integer_argument_is_supported(
     enum planned_window_function_kind kind,
     size_t argument_index
 ) {
     return kind == PLANNED_WINDOW_FUNCTION_NTH_VALUE && argument_index == 1U;
+}
+
+static const char *window_function_integer_argument_unsupported_message(
+    enum planned_window_function_kind kind
+) {
+    switch (kind) {
+    case PLANNED_WINDOW_FUNCTION_LAG:
+    case PLANNED_WINDOW_FUNCTION_LEAD:
+        return "offset arguments support only scalar literals";
+    case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+        return "index arguments support only scalar literals";
+    case PLANNED_WINDOW_FUNCTION_NTILE:
+        return "bucket count supports only scalar literals";
+    case PLANNED_WINDOW_FUNCTION_NONE:
+    case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
+    case PLANNED_WINDOW_FUNCTION_RANK:
+    case PLANNED_WINDOW_FUNCTION_DENSE_RANK:
+    case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
+    case PLANNED_WINDOW_FUNCTION_CUME_DIST:
+    case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
+        break;
+    }
+    return "arguments support only scalar literals";
 }
 
 static int set_unknown_window_argument_column_error(
@@ -1484,7 +1631,7 @@ static bool window_function_argument_column_descriptor_is_supported(
         set_window_function_unsupported_error(
             database,
             function_name,
-            "offset and default arguments support only scalar literals"
+            "offset arguments support only scalar literals"
         );
         return false;
     }
@@ -2066,8 +2213,8 @@ static int plan_row_scalar_bitwise_expression(
         return MYLITE_ERROR;
     }
 
-    out_expression->arguments =
-        (struct planned_row_scalar_expression *)calloc(argument_count, sizeof(*out_expression->arguments));
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(argument_count, sizeof(*out_expression->arguments));
     if (out_expression->arguments == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -2114,7 +2261,8 @@ static int plan_row_scalar_bitwise_argument(
         return MYLITE_ERROR;
     }
     if (expression->kind == MYLITE_SQL_AST_LITERAL) {
-        enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(expression);
+        enum mylite_sql_ast_literal_kind literal_kind =
+            mylite_sql_ast_node_literal_kind(expression);
 
         if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER &&
             literal_kind != MYLITE_SQL_AST_LITERAL_TRUE &&
@@ -2526,7 +2674,11 @@ static int plan_row_scalar_integer_arithmetic_literal(
         }
         if (mylite_sql_ast_node_literal_kind(child) == MYLITE_SQL_AST_LITERAL_DECIMAL ||
             mylite_sql_ast_node_literal_kind(child) == MYLITE_SQL_AST_LITERAL_FLOAT) {
-            return plan_row_scalar_greatest_least_decimal_value(database, unwrapped, out_expression);
+            return plan_row_scalar_greatest_least_decimal_value(
+                database,
+                unwrapped,
+                out_expression
+            );
         }
         set_unsupported_error(
             database,

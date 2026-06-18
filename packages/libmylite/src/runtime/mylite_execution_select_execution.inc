@@ -185,7 +185,8 @@ static bool select_statement_optional_clauses_contain_row_scalar_function(
 ) {
     const struct mylite_sql_ast_node *optional_clause = NULL;
 
-    for (optional_clause = select_statement_optional_clause_start(statement); optional_clause != NULL;
+    for (optional_clause = select_statement_optional_clause_start(statement);
+         optional_clause != NULL;
          optional_clause = optional_clause->next_sibling) {
         if (select_optional_clause_contains_row_scalar_function(optional_clause)) {
             return true;
@@ -229,10 +230,10 @@ static bool select_where_clause_contains_row_scalar_context_attempt(
     const struct mylite_sql_ast_node *predicate
 ) {
     predicate = unwrap_parenthesized_predicate(predicate);
-    if (predicate == NULL ||
-        row_scalar_expression_contains_integer_arithmetic_attempt(predicate) ||
+    if (predicate == NULL || row_scalar_expression_contains_integer_arithmetic_attempt(predicate) ||
         row_scalar_control_flow_condition_operator(predicate) == MYLITE_SQL_AST_OPERATOR_LIKE ||
-        row_scalar_control_flow_condition_operator(predicate) == MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE) {
+        row_scalar_control_flow_condition_operator(predicate) ==
+            MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE) {
         return false;
     }
     return row_scalar_expression_contains_context_expression_attempt(predicate);
@@ -377,10 +378,7 @@ static int row_scalar_select_step_error(
     return mylite_sqlite_status_to_mylite(sqlite_rc);
 }
 
-static bool map_numeric_row_scalar_step_error(
-    struct mylite_db *database,
-    const char *message
-) {
+static bool map_numeric_row_scalar_step_error(struct mylite_db *database, const char *message) {
     if (strcmp(message, "BIGINT value is out of range in 'abs(...)'") == 0 ||
         strcmp(message, "DOUBLE value is out of range in 'cot(0)'") == 0 ||
         strcmp(message, "DOUBLE value is out of range") == 0) {
@@ -1512,7 +1510,8 @@ static int row_scalar_integer_width_enter_frame(
     return row_scalar_integer_width_push_result(stack, (struct row_scalar_integer_width_result){0});
 }
 
-static int row_scalar_integer_width_finish_unary_frame(struct row_scalar_integer_width_stack *stack
+static int row_scalar_integer_width_finish_unary_frame(
+    struct row_scalar_integer_width_stack *stack
 ) {
     struct row_scalar_integer_width_result operand = {0};
     int rc = row_scalar_integer_width_pop_result(stack, &operand);
@@ -1536,7 +1535,8 @@ static int row_scalar_integer_width_finish_unary_frame(struct row_scalar_integer
     );
 }
 
-static int row_scalar_integer_width_finish_binary_frame(struct row_scalar_integer_width_stack *stack
+static int row_scalar_integer_width_finish_binary_frame(
+    struct row_scalar_integer_width_stack *stack
 ) {
     struct row_scalar_integer_width_result left = {0};
     struct row_scalar_integer_width_result right = {0};
@@ -1911,10 +1911,10 @@ static int populate_row_scalar_expression_result_column_descriptor(
                 database,
                 descriptor,
                 (struct scalar_connection_string_result_column_shape){
-                    .display_length = (scalar_exact_decimal_part_capacity +
-                                       scalar_format_max_decimals +
-                                       scalar_format_grouping_overhead) *
-                                      scalar_connection_max_bytes_per_character(database),
+                    .display_length =
+                        (scalar_exact_decimal_part_capacity + scalar_format_max_decimals +
+                         scalar_format_grouping_overhead) *
+                        scalar_connection_max_bytes_per_character(database),
                     .extra_flags = 0U,
                     .nullable = true,
                 }
@@ -1926,8 +1926,8 @@ static int populate_row_scalar_expression_result_column_descriptor(
                 descriptor,
                 (struct scalar_binary_numeric_result_column_shape){
                     .logical_type = MYLITE_RESULT_LOGICAL_TYPE_NEWDECIMAL,
-                    .display_length = scalar_exact_decimal_part_capacity +
-                                      scalar_format_max_decimals,
+                    .display_length =
+                        scalar_exact_decimal_part_capacity + scalar_format_max_decimals,
                     .decimals = scalar_format_max_decimals,
                     .extra_flags = 0U,
                     .nullable = true,
@@ -2184,6 +2184,7 @@ static int populate_window_value_function_result_column_descriptor(
     struct mylite_result_column_descriptor *descriptor
 ) {
     const struct planned_row_scalar_expression *argument = NULL;
+    int rc = MYLITE_OK;
 
     if (expression == NULL || descriptor == NULL || expression->argument_count == 0U ||
         expression->arguments == NULL) {
@@ -2191,125 +2192,28 @@ static int populate_window_value_function_result_column_descriptor(
     }
 
     argument = &expression->arguments[0];
-    switch (argument->kind) {
-    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+    if (argument->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
         return populate_window_value_column_result_column_descriptor(
             database,
             &argument->column,
             descriptor
         );
-    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+    }
+    if (argument->kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE) {
         return populate_window_value_literal_result_column_descriptor(
             database,
             &argument->value,
             descriptor
         );
-    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
-    case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
-    case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
-    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
-    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
-    case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
-    case PLANNED_ROW_SCALAR_EXPRESSION_ELT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
-    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
-    case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
-    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_COMPARISON:
-    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
-    case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
-    case PLANNED_ROW_SCALAR_EXPRESSION_ADDTIME:
-    case PLANNED_ROW_SCALAR_EXPRESSION_SUBTIME:
-    case PLANNED_ROW_SCALAR_EXPRESSION_TIMEDIFF:
-    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
-    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMP:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
-    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
-    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
-    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
-    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
-    case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
-    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
-    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
-    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_SOUNDEX:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
-    case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
-    case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
-    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_INSTR:
-    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_SUBSTR:
-    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_REPLACE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALUE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_KEYS:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SET:
-    case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
-    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
-    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
-    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
-    case PLANNED_ROW_SCALAR_EXPRESSION_COMPRESS:
-    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS:
-    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:
-    case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
-    case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST:
-    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
-    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
-    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
-    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
-    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
-    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
-    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
-    case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
-    case PLANNED_ROW_SCALAR_EXPRESSION_IF:
-    case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
-    case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
-    case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
-    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
-    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
-    case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
-    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
-        break;
     }
 
-    set_unsupported_error(
-        database,
-        "window value metadata supports only literal and column values"
-    );
-    return MYLITE_ERROR;
+    rc = populate_row_scalar_expression_result_column_descriptor(database, argument, descriptor);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    descriptor->nullable = true;
+    descriptor->flags &= ~((uint32_t)MYLITE_RESULT_COLUMN_FLAG_NOT_NULL);
+    return MYLITE_OK;
 }
 
 static int populate_window_value_column_result_column_descriptor(
@@ -2495,9 +2399,8 @@ static void populate_row_scalar_digest_result_column_descriptor(
     struct mylite_result_column_descriptor *descriptor
 ) {
     const enum mylite_digest_algorithm algorithm = row_scalar_digest_algorithm(expression);
-    const uint64_t display_length =
-        (uint64_t)mylite_digest_hex_length(algorithm) *
-        scalar_connection_max_bytes_per_character(database);
+    const uint64_t display_length = (uint64_t)mylite_digest_hex_length(algorithm) *
+                                    scalar_connection_max_bytes_per_character(database);
 
     populate_scalar_connection_string_result_column_descriptor(
         database,
@@ -2533,6 +2436,12 @@ static int populate_row_scalar_compress_result_column_descriptor(
             rc = populate_window_value_column_result_column_descriptor(
                 database,
                 &expression->arguments[0].column,
+                &argument_descriptor
+            );
+        } else {
+            rc = populate_row_scalar_expression_result_column_descriptor(
+                database,
+                &expression->arguments[0],
                 &argument_descriptor
             );
         }

@@ -323,6 +323,36 @@ static int test_window_navigation_results(void) {
         "1", "a", "a", "2", "b", "b", "3", "c", "c", "4", "d",
         "d", "5", "e", "e", "6", "f", "f", "7", "g", "g",
     };
+    static const char *const expression_argument_columns[] = {
+        "id",
+        "lag_expr",
+        "lead_expr",
+        "first_expr",
+        "nth_expr",
+    };
+    static const char *const expression_argument_values[] = {
+        "1",      "xa",     "12",     "aalpha", NULL,     "2",      "aalpha", "13",     "aalpha",
+        "12",     "3",      "balpha", "14",     "aalpha", "12",     "4",      "cAlpha", "15",
+        "aalpha", "12",     "5",      NULL,     "16",     "aalpha", "12",     "6",      "ebeta",
+        "17",     "aalpha", "12",     "7",      NULL,     "107",    "aalpha", "12",
+    };
+    static const char *const column_default_columns[] = {"id", "lag_default"};
+    static const char *const column_default_values[] = {
+        "1",
+        "alpha",
+        "2",
+        "a",
+        "3",
+        "b",
+        "4",
+        "c",
+        "5",
+        "d",
+        "6",
+        "e",
+        "7",
+        "f",
+    };
     static const char *const value_frame_columns[] = {
         "id",
         "first_running",
@@ -425,6 +455,36 @@ static int test_window_navigation_results(void) {
             .values = zero_offset_values,
             .row_count = seed_post_count,
             .context = "zero offset navigation",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, "
+                   "LAG(CONCAT(title, category), 1, CONCAT('x', title)) "
+                   "OVER (ORDER BY id) AS lag_expr, "
+                   "LEAD(id + 10, 1, id + 100) OVER (ORDER BY id) AS lead_expr, "
+                   "FIRST_VALUE(CONCAT(title, category)) OVER (ORDER BY id) AS first_expr, "
+                   "NTH_VALUE(id + 10, 2) OVER (ORDER BY id) AS nth_expr "
+                   "FROM posts ORDER BY id",
+            .columns = expression_argument_columns,
+            .column_count =
+                sizeof(expression_argument_columns) / sizeof(expression_argument_columns[0]),
+            .values = expression_argument_values,
+            .row_count = seed_post_count,
+            .context = "window value and default expression arguments",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, LAG(title, 1, category) OVER (ORDER BY id) AS lag_default "
+                   "FROM posts ORDER BY id",
+            .columns = column_default_columns,
+            .column_count = sizeof(column_default_columns) / sizeof(column_default_columns[0]),
+            .values = column_default_values,
+            .row_count = seed_post_count,
+            .context = "window column default argument",
         }
     );
     failures += expect_query(
@@ -778,7 +838,7 @@ static int test_window_function_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "supports only descriptor-column and scalar-literal arguments",
+            .message_part = "You have an error",
         }
     );
     failures += execute_error(
@@ -787,7 +847,7 @@ static int test_window_function_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "offset and default arguments support only scalar literals",
+            .message_part = "offset arguments support only scalar literals",
         }
     );
 

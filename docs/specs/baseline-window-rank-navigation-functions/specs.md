@@ -91,10 +91,10 @@ window_rank_expr ::= NTILE LPAREN literal_integer RPAREN OVER LPAREN window_spec
 
 window_nav_expr ::= LAG LPAREN value_arg RPAREN OVER LPAREN window_spec_opt RPAREN
 window_nav_expr ::= LAG LPAREN value_arg COMMA literal_integer RPAREN OVER LPAREN window_spec_opt RPAREN
-window_nav_expr ::= LAG LPAREN value_arg COMMA literal_integer COMMA literal_value RPAREN OVER LPAREN window_spec_opt RPAREN
+window_nav_expr ::= LAG LPAREN value_arg COMMA literal_integer COMMA value_arg RPAREN OVER LPAREN window_spec_opt RPAREN
 window_nav_expr ::= LEAD LPAREN value_arg RPAREN OVER LPAREN window_spec_opt RPAREN
 window_nav_expr ::= LEAD LPAREN value_arg COMMA literal_integer RPAREN OVER LPAREN window_spec_opt RPAREN
-window_nav_expr ::= LEAD LPAREN value_arg COMMA literal_integer COMMA literal_value RPAREN OVER LPAREN window_spec_opt RPAREN
+window_nav_expr ::= LEAD LPAREN value_arg COMMA literal_integer COMMA value_arg RPAREN OVER LPAREN window_spec_opt RPAREN
 window_nav_expr ::= FIRST_VALUE LPAREN value_arg RPAREN OVER LPAREN window_spec_opt RPAREN
 window_nav_expr ::= LAST_VALUE LPAREN value_arg RPAREN OVER LPAREN window_spec_opt RPAREN
 window_nav_expr ::= NTH_VALUE LPAREN value_arg COMMA literal_integer RPAREN OVER LPAREN window_spec_opt RPAREN
@@ -116,10 +116,11 @@ order_direction_opt ::= ASC
 order_direction_opt ::= DESC
 ```
 
-`value_arg` may be a descriptor column from the single source or a scalar
-literal. `literal_integer` is an integer literal planned by the row-scalar
-literal path. `literal_value` is a string, integer, boolean, or `NULL` literal.
-Default and offset arguments do not accept descriptor columns in this phase.
+`value_arg` may be a descriptor column, scalar literal, or supported row-scalar
+value expression from the single-source row-scalar envelope, as expanded by
+[baseline window value argument expressions](../baseline-window-value-argument-expressions/specs.md).
+`literal_integer` is an integer literal planned by the row-scalar literal path.
+Offset and index arguments do not accept descriptor columns in this phase.
 
 Supported statement envelope:
 
@@ -148,7 +149,8 @@ Deferred syntax and behavior:
   selects, and general optimizer planning for windows;
 - window functions in predicates, `GROUP BY`, `HAVING`, DML assignments,
   defaults, generated columns, or nested scalar expressions;
-- descriptor-column offsets or defaults for `LAG()` and `LEAD()`;
+- user-variable, parameter-marker, local-variable, or descriptor-column offsets
+  for `LAG()` and `LEAD()`;
 - approximate numeric, JSON, spatial, enum, and set column arguments.
 
 ## Ownership Boundaries
@@ -207,8 +209,8 @@ The implementation must diagnose:
 - unknown value, partition, and window order columns before SQLite SQL
   generation;
 - unsupported source shapes, non-projection contexts, expression keys, multiple
-  keys, non-literal offsets/defaults, and unsupported descriptor types with
-  deterministic MyLite diagnostics;
+  keys, non-literal offsets, and unsupported descriptor types with deterministic
+  MyLite diagnostics;
 - allocation and SQLite execution failures through existing runtime error
   handling.
 

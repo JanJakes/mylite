@@ -1613,6 +1613,11 @@ struct window_function_argument_count_request {
     size_t argument_count;
 };
 
+struct window_function_argument_position {
+    enum planned_window_function_kind kind;
+    size_t argument_index;
+};
+
 enum planned_row_scalar_field_domain {
     PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE = 0,
     PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING = 1,

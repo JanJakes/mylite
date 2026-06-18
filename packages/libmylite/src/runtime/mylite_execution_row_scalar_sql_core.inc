@@ -63,11 +63,7 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_timediff_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_ADDTIME:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUBTIME:
-        return append_row_scalar_addtime_subtime_expression_sql(
-            string,
-            expression,
-            next_parameter
-        );
+        return append_row_scalar_addtime_subtime_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
         return append_row_scalar_timestampdiff_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMP:
@@ -249,17 +245,9 @@ static int append_row_scalar_expression_sql(
             next_parameter
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
-        return append_row_scalar_base_conversion_expression_sql(
-            string,
-            expression,
-            next_parameter
-        );
+        return append_row_scalar_base_conversion_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
-        return append_row_scalar_numeric_extra_expression_sql(
-            string,
-            expression,
-            next_parameter
-        );
+        return append_row_scalar_numeric_extra_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST: {
         const char *function_name = row_scalar_digest_sql_function_name(expression->digest_kind);
 
@@ -566,6 +554,7 @@ static int append_row_scalar_window_frame_bound_sql(
     const struct planned_window_frame_bound *bound
 ) {
     enum { window_frame_bound_text_capacity = 32 };
+
     char buffer[window_frame_bound_text_capacity];
     int written = 0;
     int rc = MYLITE_OK;
@@ -606,121 +595,10 @@ static int append_row_scalar_window_function_argument_sql(
     const struct planned_row_scalar_expression *argument,
     size_t *next_parameter
 ) {
-    int rc = MYLITE_OK;
-
     if (argument == NULL || next_parameter == NULL) {
         return MYLITE_ERROR;
     }
-    switch (argument->kind) {
-    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
-        rc = append_numbered_parameter(string, *next_parameter);
-        if (rc == MYLITE_OK) {
-            ++(*next_parameter);
-        }
-        return rc;
-    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
-        return append_descriptor_value_sql_for_source(string, &argument->column, 0U, false);
-    case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
-    case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
-    case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
-    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
-    case PLANNED_ROW_SCALAR_EXPRESSION_BITWISE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
-    case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
-    case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
-    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
-    case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
-    case PLANNED_ROW_SCALAR_EXPRESSION_ELT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
-    case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
-    case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
-    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_TIME_FORMAT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STR_TO_DATE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_COMPARISON:
-    case PLANNED_ROW_SCALAR_EXPRESSION_DATE_INTERVAL_SECOND:
-    case PLANNED_ROW_SCALAR_EXPRESSION_DATEDIFF:
-    case PLANNED_ROW_SCALAR_EXPRESSION_TIMEDIFF:
-    case PLANNED_ROW_SCALAR_EXPRESSION_ADDTIME:
-    case PLANNED_ROW_SCALAR_EXPRESSION_SUBTIME:
-    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMPDIFF:
-    case PLANNED_ROW_SCALAR_EXPRESSION_TIMESTAMP:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CODEPOINT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_CASE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_TRIM:
-    case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
-    case PLANNED_ROW_SCALAR_EXPRESSION_TEMPORAL_EXTRACT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_SEC_TO_TIME:
-    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_UNIXTIME:
-    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_DAYS:
-    case PLANNED_ROW_SCALAR_EXPRESSION_MAKEDATE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_MAKETIME:
-    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_ADD:
-    case PLANNED_ROW_SCALAR_EXPRESSION_PERIOD_DIFF:
-    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERT_TZ:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_PADDING:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_BITMASK:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SEARCH:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REPLACE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_INSERT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_REVERSE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_SOUNDEX:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRING_QUOTE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_SUBSTRING_INDEX:
-    case PLANNED_ROW_SCALAR_EXPRESSION_FIND_IN_SET:
-    case PLANNED_ROW_SCALAR_EXPRESSION_STRCMP:
-    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_LIKE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_INSTR:
-    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_SUBSTR:
-    case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_REPLACE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALUE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_KEYS:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SET:
-    case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
-    case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST:
-    case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
-    case PLANNED_ROW_SCALAR_EXPRESSION_FROM_BASE64:
-    case PLANNED_ROW_SCALAR_EXPRESSION_UNHEX:
-    case PLANNED_ROW_SCALAR_EXPRESSION_COMPRESS:
-    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESS:
-    case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:
-    case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
-    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
-    case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
-    case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
-    case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
-    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
-    case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
-    case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
-    case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
-    case PLANNED_ROW_SCALAR_EXPRESSION_IF:
-    case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
-    case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_NULLIF:
-    case PLANNED_ROW_SCALAR_EXPRESSION_ISNULL:
-    case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_LOGICAL_CONDITION:
-    case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
-        break;
-    }
-    return MYLITE_ERROR;
+    return append_row_scalar_expression_sql(string, argument, next_parameter);
 }
 
 static const char *window_function_sql_name(enum planned_window_function_kind kind) {
@@ -1815,11 +1693,8 @@ static int append_row_scalar_elt_expression_sql(
         }
         rc = mylite_dynamic_string_append(string, " WHEN ");
         if (rc == MYLITE_OK) {
-            rc = append_row_scalar_expression_sql(
-                string,
-                &expression->arguments[0],
-                next_parameter
-            );
+            rc =
+                append_row_scalar_expression_sql(string, &expression->arguments[0], next_parameter);
         }
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append(string, " = ");

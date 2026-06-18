@@ -197,8 +197,35 @@ expect_output \
 5	e	e
 6	f	f
 7	g	g" \
-    "SELECT id, LAG(title,0,'x') OVER (ORDER BY id), "\
+"SELECT id, LAG(title,0,'x') OVER (ORDER BY id), "\
 "LEAD(title,0,'z') OVER (ORDER BY id) FROM posts ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "window value and default expression arguments" \
+    "1	xa	12	aalpha	NULL
+2	aalpha	13	aalpha	12
+3	balpha	14	aalpha	12
+4	cAlpha	15	aalpha	12
+5	NULL	16	aalpha	12
+6	ebeta	17	aalpha	12
+7	NULL	107	aalpha	12" \
+    "SELECT id, LAG(CONCAT(title, category), 1, CONCAT('x', title)) OVER (ORDER BY id), "\
+"LEAD(id + 10, 1, id + 100) OVER (ORDER BY id), "\
+"FIRST_VALUE(CONCAT(title, category)) OVER (ORDER BY id), "\
+"NTH_VALUE(id + 10, 2) OVER (ORDER BY id) FROM posts ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "window column default argument" \
+    "1	alpha
+2	a
+3	b
+4	c
+5	d
+6	e
+7	f" \
+    "SELECT id, LAG(title, 1, category) OVER (ORDER BY id) FROM posts ORDER BY id;" \
     "$DATABASE"
 
 expect_output \
@@ -346,6 +373,14 @@ expect_error \
     42000 \
     "near '-1) OVER (ORDER BY id) FROM posts' at line 1" \
     "SELECT LEAD(title,-1) OVER (ORDER BY id) FROM posts;" \
+    "$DATABASE"
+
+expect_error \
+    "lag rejects column offset" \
+    1327 \
+    42000 \
+    "Undeclared variable: id" \
+    "SELECT LAG(title,id,'x') OVER (ORDER BY id) FROM posts;" \
     "$DATABASE"
 
 expect_error \

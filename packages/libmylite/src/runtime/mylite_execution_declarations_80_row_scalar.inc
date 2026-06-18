@@ -185,9 +185,7 @@ static int plan_row_scalar_base_conversion_argument(
 static enum planned_row_scalar_base_conversion_kind row_scalar_base_conversion_kind_from_ast(
     enum mylite_sql_ast_node_kind ast_kind
 );
-static const char *row_scalar_base_conversion_display_name(
-    enum mylite_sql_ast_node_kind ast_kind
-);
+static const char *row_scalar_base_conversion_display_name(enum mylite_sql_ast_node_kind ast_kind);
 static bool row_scalar_base_conversion_kind_is_error(enum mylite_sql_ast_node_kind ast_kind);
 static bool row_scalar_base_conversion_kind_is_supported(enum mylite_sql_ast_node_kind ast_kind);
 static int plan_row_scalar_numeric_extra_expression(
@@ -260,9 +258,7 @@ static bool row_scalar_numeric_extra_format_truncate_column_is_supported(
 static enum planned_row_scalar_numeric_extra_kind row_scalar_numeric_extra_kind_from_ast(
     enum mylite_sql_ast_node_kind ast_kind
 );
-static const char *row_scalar_numeric_extra_display_name(
-    enum mylite_sql_ast_node_kind ast_kind
-);
+static const char *row_scalar_numeric_extra_display_name(enum mylite_sql_ast_node_kind ast_kind);
 static bool row_scalar_numeric_extra_kind_is_error(enum mylite_sql_ast_node_kind ast_kind);
 static bool row_scalar_numeric_extra_kind_is_supported(enum mylite_sql_ast_node_kind ast_kind);
 static bool row_scalar_numeric_extra_expression_needs_real_sql_context(
@@ -346,9 +342,28 @@ static int plan_row_scalar_window_function_argument(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_argument
 );
+static bool window_function_argument_is_row_scalar_value_expression(
+    struct window_function_argument_position position
+);
+static int plan_row_scalar_window_function_value_argument(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct mylite_sql_ast_node *argument,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_argument
+);
+static bool planned_row_scalar_window_value_argument_is_supported(
+    const struct planned_row_scalar_expression *argument
+);
 static bool window_function_signed_integer_argument_is_supported(
     enum planned_window_function_kind kind,
     size_t argument_index
+);
+static const char *window_function_integer_argument_unsupported_message(
+    enum planned_window_function_kind kind
 );
 static int set_unknown_window_argument_column_error(
     struct mylite_db *database,

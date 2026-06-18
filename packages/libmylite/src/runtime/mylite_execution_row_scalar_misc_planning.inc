@@ -1491,23 +1491,29 @@ static bool row_scalar_expression_is_context_expression_attempt(
     if (row_scalar_expression_root_is_context_expression_attempt(expression)) {
         return true;
     }
-    if (row_scalar_expression_contains_row_function(expression) ||
-        row_scalar_expression_contains_numeric_function(expression) ||
-        row_scalar_expression_contains_base_conversion_function(expression) ||
-        row_scalar_expression_contains_numeric_extra_function(expression) ||
-        row_scalar_expression_contains_conversion_expression(expression) ||
-        row_scalar_expression_contains_rand_function(expression) ||
-        row_scalar_expression_contains_any_value_function(expression) ||
-        row_scalar_expression_contains_date_interval_second_function(expression) ||
-        row_scalar_expression_contains_control_flow_function(expression) ||
-        row_scalar_expression_contains_statement_time_function(expression) ||
-        row_scalar_expression_contains_integer_arithmetic_attempt(expression) ||
-        row_scalar_expression_is_concat_operator(expression)) {
+    if (row_scalar_expression_contains_context_expression_attempt(expression)) {
         return true;
     }
     return row_scalar_control_flow_condition_operator(expression) ==
                MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE ||
            row_scalar_control_flow_condition_operator(expression) == MYLITE_SQL_AST_OPERATOR_LIKE;
+}
+
+static bool row_scalar_expression_contains_context_expression_attempt(
+    const struct mylite_sql_ast_node *expression
+) {
+    return row_scalar_expression_contains_row_function(expression) ||
+           row_scalar_expression_contains_numeric_function(expression) ||
+           row_scalar_expression_contains_base_conversion_function(expression) ||
+           row_scalar_expression_contains_numeric_extra_function(expression) ||
+           row_scalar_expression_contains_conversion_expression(expression) ||
+           row_scalar_expression_contains_rand_function(expression) ||
+           row_scalar_expression_contains_any_value_function(expression) ||
+           row_scalar_expression_contains_date_interval_second_function(expression) ||
+           row_scalar_expression_contains_control_flow_function(expression) ||
+           row_scalar_expression_contains_statement_time_function(expression) ||
+           row_scalar_expression_contains_integer_arithmetic_attempt(expression) ||
+           row_scalar_expression_is_concat_operator(expression);
 }
 
 static bool row_scalar_expression_is_dml_assignment_context_attempt(
@@ -1523,6 +1529,112 @@ static bool row_scalar_expression_is_dml_assignment_context_attempt(
         return false;
     }
     return row_scalar_expression_is_context_expression_attempt(expression);
+}
+
+static bool row_scalar_expression_is_predicate_value_context_attempt(
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_ast_node *node = unwrap_parenthesized_predicate(expression);
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+
+    if (node == NULL) {
+        return false;
+    }
+
+    operator_kind = row_scalar_control_flow_condition_operator(node);
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE ||
+        operator_kind == MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE) {
+        return false;
+    }
+    if (is_row_scalar_control_flow_expression(node) ||
+        row_scalar_expression_is_string_function(node->kind) ||
+        is_row_scalar_json_expression(node) ||
+        row_scalar_expression_is_rand_function(node) ||
+        row_scalar_numeric_function_kind_is_supported(node->kind) ||
+        row_scalar_base_conversion_kind_is_supported(node->kind) ||
+        row_scalar_numeric_extra_kind_is_supported(node->kind) ||
+        row_scalar_expression_is_concat_operator(node) ||
+        row_scalar_conversion_kind_from_expression(node) != PLANNED_ROW_SCALAR_CONVERSION_NONE ||
+        node->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION ||
+        node->kind == MYLITE_SQL_AST_PERIOD_ADD_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_PERIOD_DIFF_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_CONVERT_TZ_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION ||
+        mylite_execution_is_date_interval_second_function_kind(node->kind) ||
+        mylite_execution_is_temporal_extract_function_kind(node->kind) ||
+        mylite_execution_is_charset_collation_function_kind(node->kind)) {
+        return true;
+    }
+    if (node->kind == MYLITE_SQL_AST_MOD_FUNCTION) {
+        return true;
+    }
+    if (node->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        return integer_arithmetic_operator_is_attempt(mylite_sql_ast_node_operator(node));
+    }
+
+    switch (node->kind) {
+    case MYLITE_SQL_AST_CONCAT_FUNCTION:
+    case MYLITE_SQL_AST_CONCAT_WS_FUNCTION:
+    case MYLITE_SQL_AST_FIELD_FUNCTION:
+    case MYLITE_SQL_AST_ELT_FUNCTION:
+    case MYLITE_SQL_AST_GREATEST_FUNCTION:
+    case MYLITE_SQL_AST_LEAST_FUNCTION:
+    case MYLITE_SQL_AST_INTERVAL_FUNCTION:
+    case MYLITE_SQL_AST_HEX_FUNCTION:
+    case MYLITE_SQL_AST_UNHEX_FUNCTION:
+    case MYLITE_SQL_AST_TO_BASE64_FUNCTION:
+    case MYLITE_SQL_AST_FROM_BASE64_FUNCTION:
+    case MYLITE_SQL_AST_MD5_FUNCTION:
+    case MYLITE_SQL_AST_SHA_FUNCTION:
+    case MYLITE_SQL_AST_SHA1_FUNCTION:
+    case MYLITE_SQL_AST_SHA2_FUNCTION:
+    case MYLITE_SQL_AST_COMPRESS_FUNCTION:
+    case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
+    case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
+    case MYLITE_SQL_AST_UUID_FUNCTION:
+    case MYLITE_SQL_AST_IS_UUID_FUNCTION:
+    case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
+    case MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION:
+    case MYLITE_SQL_AST_CHAR_FUNCTION:
+    case MYLITE_SQL_AST_DATE_FORMAT_FUNCTION:
+    case MYLITE_SQL_AST_TIME_FORMAT_FUNCTION:
+    case MYLITE_SQL_AST_STR_TO_DATE_FUNCTION:
+    case MYLITE_SQL_AST_DATEDIFF_FUNCTION:
+    case MYLITE_SQL_AST_TIMEDIFF_FUNCTION:
+    case MYLITE_SQL_AST_ADDTIME_FUNCTION:
+    case MYLITE_SQL_AST_SUBTIME_FUNCTION:
+    case MYLITE_SQL_AST_TIMESTAMPDIFF_FUNCTION:
+    case MYLITE_SQL_AST_TIMESTAMP_FUNCTION:
+    case MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION:
+    case MYLITE_SQL_AST_SEC_TO_TIME_FUNCTION:
+    case MYLITE_SQL_AST_FROM_UNIXTIME_FUNCTION:
+    case MYLITE_SQL_AST_FROM_DAYS_FUNCTION:
+    case MYLITE_SQL_AST_MAKEDATE_FUNCTION:
+    case MYLITE_SQL_AST_MAKETIME_FUNCTION:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool row_scalar_expression_is_aggregate_argument_context_attempt(
+    const struct mylite_sql_ast_node *function
+) {
+    const struct mylite_sql_ast_node *argument = NULL;
+
+    function = unwrap_parenthesized_expression(function);
+    if (function == NULL) {
+        return false;
+    }
+    argument = child_at(function, 0U);
+
+    if (argument == NULL) {
+        return false;
+    }
+    return (argument->kind != MYLITE_SQL_AST_IDENTIFIER &&
+            argument->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) != 0;
 }
 
 static bool row_scalar_expression_contains_default_function(

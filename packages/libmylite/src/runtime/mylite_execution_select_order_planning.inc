@@ -560,7 +560,7 @@ static bool select_order_key_is_supported_row_scalar_expression(
         return false;
     }
     if (row_scalar_expression_is_context_expression_attempt(order_key) ||
-        predicate_node_is_supported_row_scalar_expression(order_key) ||
+        row_scalar_expression_is_predicate_value_context_attempt(order_key) ||
         select_order_key_is_searched_case_expression(order_key) ||
         select_order_key_is_like_predicate(order_key) ||
         select_order_key_is_collate_expression(order_key)) {

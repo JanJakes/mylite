@@ -320,7 +320,6 @@ static bool predicate_node_is_scalar_literal_expression(
 static bool predicate_node_is_supported_row_scalar_expression(
     const struct mylite_sql_ast_node *predicate_node
 );
-static bool predicate_node_is_integer_arithmetic_root(const struct mylite_sql_ast_node *node);
 static bool predicate_node_is_supported_row_scalar_predicate_value_expression(
     const struct mylite_sql_ast_node *predicate_node
 );

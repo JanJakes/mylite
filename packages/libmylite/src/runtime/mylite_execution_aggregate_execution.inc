@@ -1478,13 +1478,7 @@ static enum planned_column_aggregate_function select_list_column_aggregate_funct
 static bool column_aggregate_argument_is_row_scalar_expression(
     const struct mylite_sql_ast_node *function
 ) {
-    const struct mylite_sql_ast_node *argument = child_at(function, 0U);
-
-    if (argument == NULL) {
-        return false;
-    }
-    return (argument->kind != MYLITE_SQL_AST_IDENTIFIER &&
-            argument->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) != 0;
+    return row_scalar_expression_is_aggregate_argument_context_attempt(function);
 }
 
 static bool column_aggregate_function_is_bitwise(enum planned_column_aggregate_function function) {

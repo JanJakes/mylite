@@ -3216,11 +3216,20 @@ static bool row_scalar_column_descriptor_is_supported(
 static bool row_scalar_expression_contains_row_function(
     const struct mylite_sql_ast_node *expression
 );
+static bool row_scalar_expression_contains_context_expression_attempt(
+    const struct mylite_sql_ast_node *expression
+);
 static bool row_scalar_expression_is_context_expression_attempt(
     const struct mylite_sql_ast_node *expression
 );
 static bool row_scalar_expression_is_dml_assignment_context_attempt(
     const struct mylite_sql_ast_node *expression
+);
+static bool row_scalar_expression_is_predicate_value_context_attempt(
+    const struct mylite_sql_ast_node *expression
+);
+static bool row_scalar_expression_is_aggregate_argument_context_attempt(
+    const struct mylite_sql_ast_node *function
 );
 static bool row_scalar_expression_contains_default_function(
     const struct mylite_sql_ast_node *expression

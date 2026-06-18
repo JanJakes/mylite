@@ -73,6 +73,11 @@ contains a row-scalar expression attempt, route to row-scalar planning, and let
 the planner accept or reject the exact expression with the existing
 MySQL-shaped diagnostics.
 
+The classifier is a private runtime boundary, not an ABI surface. It separates
+ordinary context attempts, predicate-value roots, DML assignment attempts, and
+aggregate arguments so each caller can keep its context-specific exclusions
+while sharing the same row-scalar family coverage.
+
 The common classifier covers the already-planned families:
 
 - control-flow expressions;

@@ -234,16 +234,7 @@ static bool select_where_clause_contains_row_scalar_context_attempt(
         row_scalar_control_flow_condition_operator(predicate) == MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE) {
         return false;
     }
-    return row_scalar_expression_contains_row_function(predicate) ||
-           row_scalar_expression_contains_numeric_function(predicate) ||
-           row_scalar_expression_contains_base_conversion_function(predicate) ||
-           row_scalar_expression_contains_numeric_extra_function(predicate) ||
-           row_scalar_expression_contains_conversion_expression(predicate) ||
-           row_scalar_expression_contains_rand_function(predicate) ||
-           row_scalar_expression_contains_any_value_function(predicate) ||
-           row_scalar_expression_contains_date_interval_second_function(predicate) ||
-           row_scalar_expression_contains_control_flow_function(predicate) ||
-           row_scalar_expression_contains_statement_time_function(predicate);
+    return row_scalar_expression_contains_context_expression_attempt(predicate);
 }
 
 static int execute_row_scalar_select_statement(

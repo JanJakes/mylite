@@ -134,8 +134,7 @@ static void addtime_sqlite_callback(sqlite3_context *context, int argc, sqlite3_
 static void subtime_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static int time_arithmetic_sqlite_result(
     sqlite3_context *context,
-    bool subtract,
-    const char *function_name,
+    enum mylite_sql_ast_node_kind kind,
     sqlite3_value *first_value,
     sqlite3_value *second_value
 );
@@ -179,8 +178,7 @@ static int time_arithmetic_decode_string_argument(
 );
 static int time_arithmetic_text_value(
     struct mylite_db *database,
-    bool subtract,
-    const char *function_name,
+    enum mylite_sql_ast_node_kind kind,
     const char *first_value,
     size_t first_value_length,
     bool first_is_null,
@@ -192,7 +190,7 @@ static int time_arithmetic_text_value(
 );
 static int time_arithmetic_first_text_argument(
     struct mylite_db *database,
-    const char *function_name,
+    enum mylite_sql_ast_node_kind kind,
     const char *value,
     size_t value_length,
     bool is_null,
@@ -200,7 +198,7 @@ static int time_arithmetic_first_text_argument(
 );
 static int time_arithmetic_second_text_argument(
     struct mylite_db *database,
-    const char *function_name,
+    enum mylite_sql_ast_node_kind kind,
     const char *value,
     size_t value_length,
     bool is_null,
@@ -1144,20 +1142,16 @@ int mylite_execution_addtime_subtime_text_value(
     char **out_text,
     bool *out_is_null
 ) {
-    const char *function_name = time_arithmetic_function_name(kind);
-
     if (!mylite_execution_is_time_arithmetic_function_kind(kind)) {
-        function_name = "ADDTIME";
         return set_time_arithmetic_unsupported_error(
             database,
-            function_name,
+            "ADDTIME",
             "supports only ADDTIME() and SUBTIME()"
         );
     }
     return time_arithmetic_text_value(
         database,
-        time_arithmetic_function_subtracts(kind),
-        function_name,
+        kind,
         first_value,
         first_value_length,
         first_is_null,
@@ -1236,7 +1230,7 @@ static void addtime_sqlite_callback(sqlite3_context *context, int argc, sqlite3_
         sqlite3_result_error(context, "invalid MyLite ADDTIME callback", -1);
         return;
     }
-    (void)time_arithmetic_sqlite_result(context, false, "ADDTIME", argv[0], argv[1]);
+    (void)time_arithmetic_sqlite_result(context, MYLITE_SQL_AST_ADDTIME_FUNCTION, argv[0], argv[1]);
 }
 
 static void subtime_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
@@ -1245,13 +1239,12 @@ static void subtime_sqlite_callback(sqlite3_context *context, int argc, sqlite3_
         sqlite3_result_error(context, "invalid MyLite SUBTIME callback", -1);
         return;
     }
-    (void)time_arithmetic_sqlite_result(context, true, "SUBTIME", argv[0], argv[1]);
+    (void)time_arithmetic_sqlite_result(context, MYLITE_SQL_AST_SUBTIME_FUNCTION, argv[0], argv[1]);
 }
 
 static int time_arithmetic_sqlite_result(
     sqlite3_context *context,
-    bool subtract,
-    const char *function_name,
+    enum mylite_sql_ast_node_kind kind,
     sqlite3_value *first_value,
     sqlite3_value *second_value
 ) {
@@ -1293,8 +1286,7 @@ static int time_arithmetic_sqlite_result(
 
     rc = time_arithmetic_text_value(
         database,
-        subtract,
-        function_name,
+        kind,
         first_text,
         first_text_length,
         first_is_null,
@@ -1570,8 +1562,7 @@ static int time_arithmetic_decode_string_argument(
 
 static int time_arithmetic_text_value(
     struct mylite_db *database,
-    bool subtract,
-    const char *function_name,
+    enum mylite_sql_ast_node_kind kind,
     const char *first_value,
     size_t first_value_length,
     bool first_is_null,
@@ -1584,7 +1575,9 @@ static int time_arithmetic_text_value(
     struct scalar_time_arithmetic_input first = {0};
     struct scalar_time_arithmetic_input second = {0};
     struct session_scalar_cell cell = {0};
+    const char *function_name = time_arithmetic_function_name(kind);
     int64_t second_seconds = 0;
+    bool subtract = time_arithmetic_function_subtracts(kind);
     int rc = MYLITE_OK;
 
     if (out_text == NULL || out_is_null == NULL) {
@@ -1595,7 +1588,7 @@ static int time_arithmetic_text_value(
 
     rc = time_arithmetic_first_text_argument(
         database,
-        function_name,
+        kind,
         first_value,
         first_value_length,
         first_is_null,
@@ -1611,7 +1604,7 @@ static int time_arithmetic_text_value(
 
     rc = time_arithmetic_second_text_argument(
         database,
-        function_name,
+        kind,
         second_value,
         second_value_length,
         second_is_null,
@@ -1647,12 +1640,14 @@ static int time_arithmetic_text_value(
 
 static int time_arithmetic_first_text_argument(
     struct mylite_db *database,
-    const char *function_name,
+    enum mylite_sql_ast_node_kind kind,
     const char *value,
     size_t value_length,
     bool is_null,
     struct scalar_time_arithmetic_input *out_input
 ) {
+    const char *function_name = time_arithmetic_function_name(kind);
+
     if (out_input == NULL) {
         return MYLITE_MISUSE;
     }
@@ -1687,12 +1682,14 @@ static int time_arithmetic_first_text_argument(
 
 static int time_arithmetic_second_text_argument(
     struct mylite_db *database,
-    const char *function_name,
+    enum mylite_sql_ast_node_kind kind,
     const char *value,
     size_t value_length,
     bool is_null,
     struct scalar_time_arithmetic_input *out_input
 ) {
+    const char *function_name = time_arithmetic_function_name(kind);
+
     if (out_input == NULL) {
         return MYLITE_MISUSE;
     }

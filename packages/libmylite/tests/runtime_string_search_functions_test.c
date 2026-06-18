@@ -968,6 +968,20 @@ static int test_table_backed_strcmp_and_reopen(void) {
         "timestamp_cmp",
     };
     static const char *const values_type_coverage[] = {"0", "0", "0"};
+    static const char *const columns_predicate_truth[] = {"id"};
+    static const char *const values_predicate_truth[] = {"1", "2"};
+    static const char *const columns_predicate_equal[] = {"id"};
+    static const char *const values_predicate_equal[] = {"1", "2"};
+    static const char *const columns_predicate_null[] = {"id"};
+    static const char *const values_predicate_null[] = {"3"};
+    static const char *const columns_predicate_not_null[] = {"id"};
+    static const char *const values_predicate_not_null[] = {"1", "2"};
+    static const char *const columns_predicate_between[] = {"id"};
+    static const char *const values_predicate_between[] = {"1", "2"};
+    static const char *const columns_predicate_not_between[] = {"id"};
+    static const char *const values_predicate_not_between[] = {"1"};
+    static const char *const columns_order_expression[] = {"id", "cmp"};
+    static const char *const values_order_expression[] = {"2", "0", "1", "-1", "3", NULL};
     static const char *const columns_reopen[] = {"id", "cmp"};
     static const char *const values_reopen[] = {"1", "0", "2", "0"};
     char path[test_path_capacity];
@@ -1032,6 +1046,87 @@ static int test_table_backed_strcmp_and_reopen(void) {
             .values = values_type_coverage,
             .row_count = 1U,
             .context = "table strcmp descriptor type coverage",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM s WHERE STRCMP(v, 'zzz') ORDER BY id",
+            .columns = columns_predicate_truth,
+            .column_count = sizeof(columns_predicate_truth) / sizeof(columns_predicate_truth[0]),
+            .values = values_predicate_truth,
+            .row_count = 2U,
+            .context = "strcmp predicate truth",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM s WHERE STRCMP(v, 'abc') = 0 ORDER BY id",
+            .columns = columns_predicate_equal,
+            .column_count = sizeof(columns_predicate_equal) / sizeof(columns_predicate_equal[0]),
+            .values = values_predicate_equal,
+            .row_count = 2U,
+            .context = "strcmp predicate comparison",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM s WHERE STRCMP(v, 'abc') IS NULL ORDER BY id",
+            .columns = columns_predicate_null,
+            .column_count = sizeof(columns_predicate_null) / sizeof(columns_predicate_null[0]),
+            .values = values_predicate_null,
+            .row_count = 1U,
+            .context = "strcmp predicate null test",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM s WHERE STRCMP(v, 'abc') IS NOT NULL ORDER BY id",
+            .columns = columns_predicate_not_null,
+            .column_count =
+                sizeof(columns_predicate_not_null) / sizeof(columns_predicate_not_null[0]),
+            .values = values_predicate_not_null,
+            .row_count = 2U,
+            .context = "strcmp predicate not null test",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM s WHERE STRCMP(t, 'beta') BETWEEN -1 AND 0 ORDER BY id",
+            .columns = columns_predicate_between,
+            .column_count =
+                sizeof(columns_predicate_between) / sizeof(columns_predicate_between[0]),
+            .values = values_predicate_between,
+            .row_count = 2U,
+            .context = "strcmp predicate between",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM s WHERE STRCMP(t, 'beta') NOT BETWEEN 0 AND 0 ORDER BY id",
+            .columns = columns_predicate_not_between,
+            .column_count =
+                sizeof(columns_predicate_not_between) / sizeof(columns_predicate_not_between[0]),
+            .values = values_predicate_not_between,
+            .row_count = 1U,
+            .context = "strcmp predicate not between",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, STRCMP(t, 'beta') AS cmp FROM s "
+                   "ORDER BY STRCMP(t, 'beta') DESC, id",
+            .columns = columns_order_expression,
+            .column_count = sizeof(columns_order_expression) / sizeof(columns_order_expression[0]),
+            .values = values_order_expression,
+            .row_count = 3U,
+            .context = "strcmp order expression",
         }
     );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
@@ -1456,24 +1551,6 @@ static int test_string_search_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "string search functions support only ASCII text values",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT id FROM t WHERE STRCMP('a', v) = 0",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT id FROM t ORDER BY STRCMP('a', v)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(

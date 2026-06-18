@@ -460,13 +460,22 @@ static enum mylite_sql_parse_status scan_parenthesized_row_arithmetic_predicate_
         for (size_t index = 0U; index < scan->token_count; ++index) {
             size_t end_index = 0U;
 
-            status = scan_row_arithmetic_predicate_value_retries(
+            status = scan_row_scalar_predicate_subject_retry(
                 scan,
                 index,
                 out_retries,
                 out_can_retry,
                 &end_index
             );
+            if (status == MYLITE_SQL_PARSE_OK && end_index == index) {
+                status = scan_row_arithmetic_predicate_value_retries(
+                    scan,
+                    index,
+                    out_retries,
+                    out_can_retry,
+                    &end_index
+                );
+            }
             if (status != MYLITE_SQL_PARSE_OK) {
                 placeholder_row_arithmetic_subject_retries_deinit(out_retries);
                 return status;
@@ -482,6 +491,107 @@ static enum mylite_sql_parse_status scan_parenthesized_row_arithmetic_predicate_
         placeholder_row_arithmetic_subject_retries_deinit(out_retries);
     }
     return status;
+}
+
+static enum mylite_sql_parse_status scan_row_scalar_predicate_subject_retry(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry,
+    size_t *out_end_index
+) {
+    size_t right_paren_index = 0U;
+
+    if (out_end_index != NULL) {
+        *out_end_index = start_index;
+    }
+    if (scan == NULL || retries == NULL || inout_can_retry == NULL || out_end_index == NULL ||
+        start_index + 1U >= scan->token_count ||
+        !placeholder_scan_token_is_top_level_where_predicate_context(scan, start_index) ||
+        !placeholder_scan_token_text_equals(scan, start_index, "STRCMP") ||
+        !placeholder_scan_token_is_supported_row_scalar_value_function(scan, start_index) ||
+        !mylite_sql_parser_token_is_left_paren(&scan->tokens[start_index + 1U]) ||
+        !placeholder_scan_find_matching_right_paren(scan, start_index + 1U, &right_paren_index) ||
+        !placeholder_scan_predicate_value_is_direct_row_scalar_expression(
+            scan,
+            start_index,
+            right_paren_index
+        ) ||
+        !placeholder_scan_row_arithmetic_value_has_row_operand(
+            scan,
+            start_index,
+            right_paren_index
+        ) ||
+        !placeholder_scan_row_scalar_predicate_subject_has_valid_suffix(scan, right_paren_index)) {
+        return MYLITE_SQL_PARSE_OK;
+    }
+    *out_end_index = right_paren_index;
+    return append_row_arithmetic_predicate_value_retry(
+        scan,
+        start_index,
+        right_paren_index,
+        retries,
+        inout_can_retry
+    );
+}
+
+static bool placeholder_scan_token_is_top_level_where_predicate_context(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    int paren_depth = 0;
+    bool in_where = false;
+
+    if (scan == NULL || index >= scan->token_count) {
+        return false;
+    }
+    for (size_t cursor = 0U; cursor < index; ++cursor) {
+        if (placeholder_scan_token_text_equals(scan, cursor, "WHERE")) {
+            in_where = true;
+            paren_depth = 0;
+            continue;
+        }
+        if (!in_where) {
+            continue;
+        }
+        if (placeholder_scan_token_stops_predicate_clause_search(scan, cursor)) {
+            return false;
+        }
+        if (mylite_sql_parser_token_is_left_paren(&scan->tokens[cursor])) {
+            ++paren_depth;
+            continue;
+        }
+        if (mylite_sql_parser_token_is_right_paren(&scan->tokens[cursor])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+        }
+    }
+    return in_where && paren_depth == 0;
+}
+
+static bool placeholder_scan_row_scalar_predicate_subject_has_valid_suffix(
+    const struct placeholder_statement_scan *scan,
+    size_t end_index
+) {
+    size_t suffix_index = end_index + 1U;
+
+    if (scan == NULL || end_index >= scan->token_count) {
+        return false;
+    }
+    if (suffix_index >= scan->token_count) {
+        return true;
+    }
+    if (placeholder_scan_token_is_comparison_operator(scan, suffix_index) ||
+        placeholder_scan_token_text_equals(scan, suffix_index, "IS") ||
+        placeholder_scan_token_text_equals(scan, suffix_index, "BETWEEN")) {
+        return true;
+    }
+    if (placeholder_scan_token_text_equals(scan, suffix_index, "NOT")) {
+        return placeholder_scan_token_text_equals(scan, suffix_index + 1U, "BETWEEN");
+    }
+    return placeholder_scan_token_stops_predicate_value(scan, suffix_index, false);
 }
 
 static enum mylite_sql_parse_status scan_row_bitwise_order_key_retries(
@@ -753,6 +863,15 @@ static bool placeholder_scan_row_bitwise_order_key_can_retry(
     if (scan == NULL || start_index > end_index || end_index >= scan->token_count) {
         return false;
     }
+    if (placeholder_scan_token_text_equals(scan, start_index, "STRCMP") &&
+        placeholder_scan_row_arithmetic_value_has_row_operand(scan, start_index, end_index) &&
+        placeholder_scan_predicate_value_is_direct_row_scalar_expression(
+            scan,
+            start_index,
+            end_index
+        )) {
+        return true;
+    }
     if (placeholder_scan_row_arithmetic_value_has_unsupported_function_call(
             scan,
             start_index,
@@ -760,8 +879,10 @@ static bool placeholder_scan_row_bitwise_order_key_can_retry(
         )) {
         return false;
     }
-    return placeholder_scan_row_arithmetic_value_has_row_operand(scan, start_index, end_index) &&
-           placeholder_scan_row_bitwise_range_has_operator(scan, start_index, end_index);
+    if (!placeholder_scan_row_arithmetic_value_has_row_operand(scan, start_index, end_index)) {
+        return false;
+    }
+    return placeholder_scan_row_bitwise_range_has_operator(scan, start_index, end_index);
 }
 
 static bool placeholder_scan_row_bitwise_range_has_operator(

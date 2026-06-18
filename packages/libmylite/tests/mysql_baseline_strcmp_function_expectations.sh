@@ -198,6 +198,54 @@ expect_output \
 "STRCMP(dt, '2024-01-02 03:04:05'), STRCMP(ts, '2024-01-02 03:04:06') "\
 "FROM typed ORDER BY id;"
 
+expect_output \
+    "table-backed predicate truth" \
+    "1
+2" \
+    "USE ${DATABASE}; SET NAMES utf8mb4; "\
+"SELECT id FROM s WHERE STRCMP(v, 'zzz') ORDER BY id;"
+
+expect_output \
+    "table-backed predicate comparison" \
+    "1
+2" \
+    "USE ${DATABASE}; SET NAMES utf8mb4; "\
+"SELECT id FROM s WHERE STRCMP(v, 'abc') = 0 ORDER BY id;"
+
+expect_output \
+    "table-backed predicate null test" \
+    "3" \
+    "USE ${DATABASE}; SET NAMES utf8mb4; "\
+"SELECT id FROM s WHERE STRCMP(v, 'abc') IS NULL ORDER BY id;"
+
+expect_output \
+    "table-backed predicate not null test" \
+    "1
+2" \
+    "USE ${DATABASE}; SET NAMES utf8mb4; "\
+"SELECT id FROM s WHERE STRCMP(v, 'abc') IS NOT NULL ORDER BY id;"
+
+expect_output \
+    "table-backed predicate between" \
+    "1
+2" \
+    "USE ${DATABASE}; SET NAMES utf8mb4; "\
+"SELECT id FROM s WHERE STRCMP(t, 'beta') BETWEEN -1 AND 0 ORDER BY id;"
+
+expect_output \
+    "table-backed predicate not between" \
+    "1" \
+    "USE ${DATABASE}; SET NAMES utf8mb4; "\
+"SELECT id FROM s WHERE STRCMP(t, 'beta') NOT BETWEEN 0 AND 0 ORDER BY id;"
+
+expect_output \
+    "table-backed order expression" \
+    "2	0
+1	-1
+3	NULL" \
+    "USE ${DATABASE}; SET NAMES utf8mb4; "\
+"SELECT id, STRCMP(t, 'beta') FROM s ORDER BY STRCMP(t, 'beta') DESC, id;"
+
 time_expected=$(cat <<EXPECTED
 1	-1	0
 2	NULL	NULL

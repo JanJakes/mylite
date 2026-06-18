@@ -68,6 +68,9 @@ MyLite supports:
 - single-table row-scalar `SELECT` projection using the existing row envelope:
   `FROM table [AS alias]`, optional existing `WHERE`, descriptor-column
   `ORDER BY`, and existing `LIMIT`;
+- descriptor-backed single-table `WHERE` truth, comparison, `IS [NOT] NULL`,
+  and `[NOT] BETWEEN` predicate contexts for direct `STRCMP()` calls;
+- non-grouped single-table `ORDER BY STRCMP(...)` expression keys;
 - exactly two-argument `STRCMP(left, right)` calls;
 - supported nested row-scalar value functions inside `STRCMP()` arguments,
   including the current string, integer-producing, conversion, JSON, numeric,
@@ -112,9 +115,9 @@ This slice intentionally does not support:
 - row-backed `TIME` columns;
 - nested functions outside the supported row-scalar value subset, arithmetic,
   aggregate, window, CTE, or joined-table expression arguments;
-- predicates, expression `ORDER BY`, grouping expressions, aggregate
-  arguments, DML assignments, defaults, generated columns, indexes,
-  constraints, or arbitrary SQLite pass-through.
+- grouped `ORDER BY`, grouping expressions, aggregate arguments, DML
+  assignments, defaults, generated columns, indexes, constraints, or arbitrary
+  SQLite pass-through.
 
 ## Grammar
 
@@ -132,6 +135,12 @@ expression(A) ::= STRCMP(T) LPAREN expression(B) RPAREN(R).
 expression(A) ::= STRCMP(T) LPAREN expression(B) COMMA expression(C)
                   COMMA function_argument_list(D) RPAREN(R).
 ```
+
+Direct `STRCMP(...)` subjects in row-backed `WHERE` predicates and direct
+non-grouped `ORDER BY STRCMP(...)` keys are admitted through MyLite's
+placeholder retry scanner. The retry parses the statement with an integer
+placeholder, parses the original `STRCMP()` expression through the ordinary
+expression grammar, and splices that AST back into the statement.
 
 Analyzer/runtime acceptance for this feature is narrower:
 
@@ -170,10 +179,11 @@ No-source, `DUAL`, and `DO` evaluation is MyLite-owned:
 5. Compare byte-by-byte after ASCII case folding.
 6. Return `-1`, `0`, or `1`; do not expose raw byte differences.
 
-Table-backed projection execution stays SQLite-backed. MyLite resolves
-descriptors, builds generated SQLite SQL over stable physical table names,
-binds literal/session arguments, and lets SQLite scan/filter/order/limit rows.
-The generated function call uses a registered MyLite scalar helper:
+Table-backed projection, predicate, and order-key execution stays
+SQLite-backed. MyLite resolves descriptors, builds generated SQLite SQL over
+stable physical table names, binds literal/session arguments, and lets SQLite
+scan/filter/order/limit rows. The generated function call uses a registered
+MyLite scalar helper:
 
 ```sql
 _mylite_strcmp_ascii_ci(<left>, <right>)
@@ -255,11 +265,11 @@ Tests must cover:
 - deterministic rejection of `TIME` descriptor columns, with MySQL 8.4.9
   evidence for why this behavior is deferred;
 - row envelope preservation with existing `WHERE`, descriptor `ORDER BY`, and
-  `LIMIT`;
+  `LIMIT`, plus direct `STRCMP()` predicate and order-key contexts;
 - unknown column diagnostics in row-scalar projection;
 - deterministic rejection for binary columns, approximate columns, non-ASCII
-  text, unsupported hex/binary literals, parameters, nested calls, predicate
-  use, DML assignment use, and ordering expression use;
+  text, unsupported hex/binary literals, parameters, nested calls, DML
+  assignment use, and grouped ordering expression use;
 - reopen/file-format safety indirectly through a table-backed projection
   reopening the same file and checking the `.mylite` preamble;
 - existing parser, runtime scalar, row-scalar, statement context, catalog,
@@ -276,6 +286,6 @@ Update:
 - `docs/compatibility/type-system-literals-conversion.md` only if literal
   conversion wording needs to include `STRCMP()`.
 
-Do not document broad `STRCMP()` collation, binary, predicate, DML assignment,
-ordering-expression, grouping, generated-column, default-expression, or nested
+Do not document broad `STRCMP()` collation, binary, DML assignment,
+grouped-ordering, grouping, generated-column, default-expression, or nested
 expression support.

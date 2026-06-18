@@ -11,6 +11,8 @@
 - [x] Register a MyLite SQLite scalar helper for ASCII case-insensitive
   normalized string comparison.
 - [x] Add scalar and row-scalar projection runtime support.
+- [x] Extend direct row-backed `STRCMP()` predicate and non-grouped order-key
+  contexts.
 - [x] Add focused runtime tests.
 - [x] Update `COMPATIBILITY.md` and string/literal/query compatibility docs.
 - [x] Run focused parser/runtime tests and MySQL expectation script.

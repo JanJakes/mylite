@@ -199,6 +199,21 @@ static bool placeholder_scan_parenthesized_row_arithmetic_predicate_starts_at(
 static bool placeholder_scan_can_retry_row_arithmetic_predicate_values(
     const struct placeholder_statement_scan *scan
 );
+static enum mylite_sql_parse_status scan_row_scalar_predicate_subject_retry(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry,
+    size_t *out_end_index
+);
+static bool placeholder_scan_token_is_top_level_where_predicate_context(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_row_scalar_predicate_subject_has_valid_suffix(
+    const struct placeholder_statement_scan *scan,
+    size_t end_index
+);
 static enum mylite_sql_parse_status scan_row_arithmetic_predicate_value_retries(
     const struct placeholder_statement_scan *scan,
     size_t start_index,

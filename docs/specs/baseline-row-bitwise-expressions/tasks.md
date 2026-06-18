@@ -12,3 +12,8 @@
 - [x] Update compatibility documentation.
 - [x] Run focused verification, release-gate review, full check workflow, commit,
   and push.
+- [x] Admit and verify parenthesized row bitwise comparison predicates.
+- [x] Admit and verify direct row bitwise `ORDER BY` keys.
+- [x] Update compatibility documentation for predicate/order support.
+- [x] Run focused verification, release-gate review, full check workflow, commit,
+  and push the predicate/order extension.

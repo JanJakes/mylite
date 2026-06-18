@@ -116,6 +116,16 @@ NULL" \
     "$DATABASE"
 
 expect_output_with_headers \
+    "row bitwise predicate operator coverage" \
+    "id
+-1
+2
+5" \
+    "SELECT id FROM bits WHERE (id|mask)=7 OR (id^mask)=1
+     OR (~id)=0 OR (id>>shift_count)=1 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output_with_headers \
     "row bitwise order key" \
     "id	key_value
 5	192

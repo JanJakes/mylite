@@ -39,6 +39,7 @@ struct expected_query {
 };
 
 static int test_row_bitwise_projection_and_file_safety(void);
+static int test_row_bitwise_predicates_and_ordering(void);
 static int test_row_bitwise_unsupported_operands(void);
 static int test_row_bitwise_independent_handles(void);
 static int prepare_bits_table(mylite_db *database);
@@ -73,6 +74,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_row_bitwise_projection_and_file_safety();
+    failures += test_row_bitwise_predicates_and_ordering();
     failures += test_row_bitwise_unsupported_operands();
     failures += test_row_bitwise_independent_handles();
 
@@ -222,6 +224,92 @@ static int test_row_bitwise_projection_and_file_safety(void) {
         expected_preamble,
         sizeof(expected_preamble),
         "file preamble unchanged"
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_row_bitwise_predicates_and_ordering(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "predicates_ordering") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open predicates file");
+    failures += prepare_bits_table(database);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id,mask FROM bits WHERE (id&mask) >= 3 ORDER BY id&mask,id",
+            .columns = (const char *const[]){"id", "mask"},
+            .column_count = 2U,
+            .values = (const char *const[]){"-1", "3", "5", "6"},
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row bitwise comparison predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM bits WHERE (id&mask) <=> NULL ORDER BY id",
+            .columns = (const char *const[]){"id"},
+            .column_count = 1U,
+            .values = (const char *const[]){NULL},
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row bitwise null-safe predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM bits WHERE (id|mask)=7 OR (id^mask)=1 "
+                   "OR (~id)=0 OR (id>>shift_count)=1 ORDER BY id",
+            .columns = (const char *const[]){"id"},
+            .column_count = 1U,
+            .values = (const char *const[]){"-1", "2", "5"},
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row bitwise predicate operator coverage",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id,mask<<id AS key_value FROM bits "
+                   "ORDER BY mask<<id DESC,id",
+            .columns = (const char *const[]){"id", "key_value"},
+            .column_count = 2U,
+            .values =
+                (const char *const[]){
+                    "5",
+                    "192",
+                    "2",
+                    "12",
+                    "1",
+                    "6",
+                    "0",
+                    "3",
+                    "-1",
+                    "0",
+                    NULL,
+                    NULL,
+                },
+            .row_count = row_count,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "row bitwise order key",
+        }
     );
 
     mylite_close(database);

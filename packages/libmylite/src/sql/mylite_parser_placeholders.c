@@ -72,6 +72,20 @@ enum {
     create_table_select_min_token_count = 5,
     cte_placeholder_min_token_count = 5,
     alter_table_partition_min_token_count = 5,
+    row_bitwise_order_by_min_token_count = 5,
+};
+
+enum placeholder_row_bitwise_order_key_end_mode {
+    PLACEHOLDER_ROW_BITWISE_ORDER_KEY_END_NORMAL = 0,
+    PLACEHOLDER_ROW_BITWISE_ORDER_KEY_END_SKIP_COMMA = 1,
+};
+
+struct placeholder_row_bitwise_order_key_end {
+    size_t end_index;
+    size_t next_index;
+    enum placeholder_row_bitwise_order_key_end_mode mode;
+    size_t *out_end_index;
+    size_t *out_next_index;
 };
 
 static bool scan_can_retry_select_result_option_before_duplicate(
@@ -116,6 +130,66 @@ static enum mylite_sql_parse_status scan_parenthesized_row_arithmetic_predicate_
     const struct placeholder_statement_scan *scan,
     struct placeholder_row_arithmetic_subject_retries *out_retries,
     bool *out_can_retry
+);
+static enum mylite_sql_parse_status scan_row_bitwise_order_key_retries(
+    const struct placeholder_statement_scan *scan,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry
+);
+static enum mylite_sql_parse_status scan_row_bitwise_order_items(
+    const struct placeholder_statement_scan *scan,
+    size_t item_start,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry,
+    size_t *out_next_index
+);
+static enum mylite_sql_parse_status append_row_bitwise_order_key_retry(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry
+);
+static bool placeholder_scan_row_bitwise_order_key_end(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t *out_end_index,
+    size_t *out_next_index
+);
+static bool placeholder_scan_token_updates_row_bitwise_order_depth(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    int *inout_paren_depth,
+    size_t *inout_end_index,
+    bool *out_stop
+);
+static bool placeholder_scan_finish_row_bitwise_order_key(
+    const struct placeholder_statement_scan *scan,
+    struct placeholder_row_bitwise_order_key_end key_end
+);
+static bool placeholder_scan_token_starts_top_level_order_by(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    int paren_depth
+);
+static bool placeholder_scan_token_stops_row_bitwise_order_key(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_row_bitwise_order_key_can_retry(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+);
+static bool placeholder_scan_row_bitwise_range_has_operator(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+);
+static bool placeholder_scan_range_has_top_level_bitwise_operator(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
 );
 static bool placeholder_scan_parenthesized_row_arithmetic_predicate_starts_at(
     const struct placeholder_statement_scan *scan,
@@ -202,6 +276,12 @@ static bool placeholder_scan_row_arithmetic_value_has_operator_in_range(
     size_t start_index,
     size_t end_index
 );
+static bool placeholder_scan_row_arithmetic_value_has_operator_at(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index,
+    size_t index
+);
 static bool placeholder_scan_row_arithmetic_value_has_unsupported_function_call(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
@@ -256,6 +336,16 @@ static bool placeholder_scan_parenthesized_row_arithmetic_has_operator(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
     size_t end_index
+);
+static bool placeholder_scan_parenthesized_row_arithmetic_has_operator_at(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index,
+    size_t index
+);
+static bool placeholder_scan_token_is_row_bitwise_operator(
+    const struct placeholder_statement_scan *scan,
+    size_t index
 );
 static bool placeholder_scan_token_is_row_arithmetic_operator(
     const struct placeholder_statement_scan *scan,

@@ -456,30 +456,371 @@ static enum mylite_sql_parse_status scan_parenthesized_row_arithmetic_predicate_
         index = right_paren_index;
     }
 
-    if (!placeholder_scan_can_retry_row_arithmetic_predicate_values(scan)) {
+    if (placeholder_scan_can_retry_row_arithmetic_predicate_values(scan)) {
+        for (size_t index = 0U; index < scan->token_count; ++index) {
+            size_t end_index = 0U;
+
+            status = scan_row_arithmetic_predicate_value_retries(
+                scan,
+                index,
+                out_retries,
+                out_can_retry,
+                &end_index
+            );
+            if (status != MYLITE_SQL_PARSE_OK) {
+                placeholder_row_arithmetic_subject_retries_deinit(out_retries);
+                return status;
+            }
+            if (end_index > index) {
+                index = end_index;
+            }
+        }
+    }
+
+    status = scan_row_bitwise_order_key_retries(scan, out_retries, out_can_retry);
+    if (status != MYLITE_SQL_PARSE_OK) {
+        placeholder_row_arithmetic_subject_retries_deinit(out_retries);
+    }
+    return status;
+}
+
+static enum mylite_sql_parse_status scan_row_bitwise_order_key_retries(
+    const struct placeholder_statement_scan *scan,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry
+) {
+    int paren_depth = 0;
+
+    if (scan == NULL || retries == NULL || inout_can_retry == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    if (scan->token_count < row_bitwise_order_by_min_token_count ||
+        !placeholder_scan_token_text_equals(scan, 0U, "SELECT")) {
         return MYLITE_SQL_PARSE_OK;
     }
 
-    for (size_t index = 0U; index < scan->token_count; ++index) {
-        size_t end_index = 0U;
+    for (size_t index = 0U; index + 1U < scan->token_count; ++index) {
+        if (mylite_sql_parser_token_is_left_paren(&scan->tokens[index]) ||
+            mylite_sql_parser_token_is_right_paren(&scan->tokens[index])) {
+            paren_depth += mylite_sql_parser_token_is_left_paren(&scan->tokens[index]) ? 1 : -1;
+            if (paren_depth < 0) {
+                return MYLITE_SQL_PARSE_OK;
+            }
+            continue;
+        }
+        if (!placeholder_scan_token_starts_top_level_order_by(scan, index, paren_depth)) {
+            continue;
+        }
 
-        status = scan_row_arithmetic_predicate_value_retries(
-            scan,
-            index,
-            out_retries,
-            out_can_retry,
-            &end_index
-        );
+        enum mylite_sql_parse_status status =
+            scan_row_bitwise_order_items(scan, index + 2U, retries, inout_can_retry, &index);
+
         if (status != MYLITE_SQL_PARSE_OK) {
-            placeholder_row_arithmetic_subject_retries_deinit(out_retries);
             return status;
         }
-        if (end_index > index) {
-            index = end_index;
+    }
+    return MYLITE_SQL_PARSE_OK;
+}
+
+static enum mylite_sql_parse_status scan_row_bitwise_order_items(
+    const struct placeholder_statement_scan *scan,
+    size_t item_start,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry,
+    size_t *out_next_index
+) {
+    if (out_next_index != NULL) {
+        *out_next_index = item_start;
+    }
+    while (item_start < scan->token_count) {
+        size_t item_end = 0U;
+        size_t next_index = item_start;
+
+        if (!placeholder_scan_row_bitwise_order_key_end(scan, item_start, &item_end, &next_index)) {
+            break;
+        }
+        if (placeholder_scan_row_bitwise_order_key_can_retry(scan, item_start, item_end)) {
+            enum mylite_sql_parse_status status = append_row_bitwise_order_key_retry(
+                scan,
+                item_start,
+                item_end,
+                retries,
+                inout_can_retry
+            );
+
+            if (status != MYLITE_SQL_PARSE_OK) {
+                return status;
+            }
+        }
+        if (next_index <= item_start) {
+            break;
+        }
+        item_start = next_index;
+        if (out_next_index != NULL) {
+            *out_next_index = item_start;
         }
     }
-
     return MYLITE_SQL_PARSE_OK;
+}
+
+static enum mylite_sql_parse_status append_row_bitwise_order_key_retry(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry
+) {
+    static const char placeholder_text[] = "__mylite_row_bitwise_order_key";
+    struct placeholder_row_arithmetic_subject_retry retry;
+
+    if (scan == NULL || retries == NULL || inout_can_retry == NULL || start_index > end_index ||
+        end_index >= scan->token_count) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+
+    retry = (struct placeholder_row_arithmetic_subject_retry){
+        .start_index = start_index,
+        .end_index = end_index,
+        .placeholder_token = {
+            .kind = MYLITE_SQL_TOKEN_IDENTIFIER,
+            .text = placeholder_text,
+            .length = sizeof(placeholder_text) - 1U,
+            .offset = scan->tokens[start_index].offset,
+        },
+    };
+    if (!placeholder_row_arithmetic_subject_retries_push(retries, retry)) {
+        placeholder_row_arithmetic_subject_retries_deinit(retries);
+        return MYLITE_SQL_PARSE_NOMEM;
+    }
+    *inout_can_retry = true;
+    return MYLITE_SQL_PARSE_OK;
+}
+
+static bool placeholder_scan_row_bitwise_order_key_end(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t *out_end_index,
+    size_t *out_next_index
+) {
+    int paren_depth = 0;
+    size_t end_index = SIZE_MAX;
+
+    if (out_end_index != NULL) {
+        *out_end_index = 0U;
+    }
+    if (out_next_index != NULL) {
+        *out_next_index = start_index;
+    }
+    if (scan == NULL || out_end_index == NULL || out_next_index == NULL ||
+        start_index >= scan->token_count) {
+        return false;
+    }
+
+    for (size_t index = start_index; index < scan->token_count; ++index) {
+        bool stop = false;
+
+        if (placeholder_scan_token_updates_row_bitwise_order_depth(
+                scan,
+                index,
+                &paren_depth,
+                &end_index,
+                &stop
+            )) {
+            if (stop) {
+                break;
+            }
+            continue;
+        }
+        if (paren_depth != 0) {
+            end_index = index;
+            continue;
+        }
+        if (mylite_sql_parser_token_is_comma(&scan->tokens[index])) {
+            return placeholder_scan_finish_row_bitwise_order_key(
+                scan,
+                (struct placeholder_row_bitwise_order_key_end){
+                    .end_index = end_index,
+                    .next_index = index + 1U,
+                    .mode = PLACEHOLDER_ROW_BITWISE_ORDER_KEY_END_NORMAL,
+                    .out_end_index = out_end_index,
+                    .out_next_index = out_next_index,
+                }
+            );
+        }
+        if (placeholder_scan_token_text_equals(scan, index, "ASC") ||
+            placeholder_scan_token_text_equals(scan, index, "DESC")) {
+            return placeholder_scan_finish_row_bitwise_order_key(
+                scan,
+                (struct placeholder_row_bitwise_order_key_end){
+                    .end_index = end_index,
+                    .next_index = index + 1U,
+                    .mode = PLACEHOLDER_ROW_BITWISE_ORDER_KEY_END_SKIP_COMMA,
+                    .out_end_index = out_end_index,
+                    .out_next_index = out_next_index,
+                }
+            );
+        }
+        if (placeholder_scan_token_stops_row_bitwise_order_key(scan, index)) {
+            break;
+        }
+        end_index = index;
+    }
+
+    if (end_index == SIZE_MAX || paren_depth != 0) {
+        return false;
+    }
+    *out_end_index = end_index;
+    *out_next_index = end_index + 1U;
+    return true;
+}
+
+static bool placeholder_scan_token_updates_row_bitwise_order_depth(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    int *inout_paren_depth,
+    size_t *inout_end_index,
+    bool *out_stop
+) {
+    if (out_stop != NULL) {
+        *out_stop = false;
+    }
+    if (mylite_sql_parser_token_is_left_paren(&scan->tokens[index])) {
+        ++*inout_paren_depth;
+        *inout_end_index = index;
+        return true;
+    }
+    if (!mylite_sql_parser_token_is_right_paren(&scan->tokens[index])) {
+        return false;
+    }
+    if (*inout_paren_depth == 0) {
+        if (out_stop != NULL) {
+            *out_stop = true;
+        }
+        return true;
+    }
+    --*inout_paren_depth;
+    *inout_end_index = index;
+    return true;
+}
+
+static bool placeholder_scan_finish_row_bitwise_order_key(
+    const struct placeholder_statement_scan *scan,
+    struct placeholder_row_bitwise_order_key_end key_end
+) {
+    if (key_end.end_index == SIZE_MAX) {
+        return false;
+    }
+    *key_end.out_end_index = key_end.end_index;
+    *key_end.out_next_index = key_end.next_index;
+    if (key_end.mode == PLACEHOLDER_ROW_BITWISE_ORDER_KEY_END_SKIP_COMMA &&
+        *key_end.out_next_index < scan->token_count &&
+        mylite_sql_parser_token_is_comma(&scan->tokens[*key_end.out_next_index])) {
+        ++*key_end.out_next_index;
+    }
+    return true;
+}
+
+static bool placeholder_scan_token_starts_top_level_order_by(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    int paren_depth
+) {
+    return paren_depth == 0 && placeholder_scan_token_text_equals(scan, index, "ORDER") &&
+           placeholder_scan_token_text_equals(scan, index + 1U, "BY");
+}
+
+static bool placeholder_scan_token_stops_row_bitwise_order_key(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return placeholder_scan_token_text_equals(scan, index, "LIMIT") ||
+           placeholder_scan_token_text_equals(scan, index, "OFFSET") ||
+           placeholder_scan_token_text_equals(scan, index, "FETCH") ||
+           placeholder_scan_token_text_equals(scan, index, "FOR") ||
+           placeholder_scan_token_text_equals(scan, index, "LOCK") ||
+           placeholder_scan_token_text_equals(scan, index, "UNION") ||
+           placeholder_scan_token_text_equals(scan, index, "EXCEPT") ||
+           placeholder_scan_token_text_equals(scan, index, "INTERSECT") ||
+           placeholder_scan_token_text_equals(scan, index, "PROCEDURE") ||
+           placeholder_token_is_semicolon(&scan->tokens[index]);
+}
+
+static bool placeholder_scan_row_bitwise_order_key_can_retry(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+) {
+    if (scan == NULL || start_index > end_index || end_index >= scan->token_count) {
+        return false;
+    }
+    if (placeholder_scan_row_arithmetic_value_has_unsupported_function_call(
+            scan,
+            start_index,
+            end_index
+        )) {
+        return false;
+    }
+    return placeholder_scan_row_arithmetic_value_has_row_operand(scan, start_index, end_index) &&
+           placeholder_scan_row_bitwise_range_has_operator(scan, start_index, end_index);
+}
+
+static bool placeholder_scan_row_bitwise_range_has_operator(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+) {
+    size_t right_paren_index = 0U;
+
+    if (scan == NULL || start_index > end_index || end_index >= scan->token_count) {
+        return false;
+    }
+    while (start_index < end_index &&
+           mylite_sql_parser_token_is_left_paren(&scan->tokens[start_index]) &&
+           placeholder_scan_find_matching_right_paren(scan, start_index, &right_paren_index) &&
+           right_paren_index == end_index) {
+        ++start_index;
+        --end_index;
+    }
+    return placeholder_scan_range_has_top_level_bitwise_operator(scan, start_index, end_index);
+}
+
+static bool placeholder_scan_range_has_top_level_bitwise_operator(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+) {
+    int paren_depth = 0;
+
+    if (scan == NULL || start_index > end_index || end_index >= scan->token_count) {
+        return false;
+    }
+    for (size_t index = start_index; index <= end_index; ++index) {
+        const struct mylite_sql_token *token = NULL;
+
+        if (mylite_sql_parser_token_is_left_paren(&scan->tokens[index])) {
+            ++paren_depth;
+            continue;
+        }
+        if (mylite_sql_parser_token_is_right_paren(&scan->tokens[index])) {
+            --paren_depth;
+            if (paren_depth < 0) {
+                return false;
+            }
+            continue;
+        }
+        if (paren_depth != 0 || !placeholder_scan_token_is_row_bitwise_operator(scan, index)) {
+            continue;
+        }
+
+        token = &scan->tokens[index];
+        if (token->operator_kind == MYLITE_SQL_OPERATOR_BITWISE_NOT) {
+            return index < end_index;
+        }
+        if (index > start_index && index < end_index) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool placeholder_scan_parenthesized_row_arithmetic_predicate_starts_at(
@@ -956,15 +1297,37 @@ static bool placeholder_scan_row_arithmetic_value_has_operator_in_range(
         if (paren_depth != 0) {
             continue;
         }
-        if (placeholder_scan_token_starts_mod_function(scan, index)) {
-            return true;
-        }
-        if (index > start_index && index < end_index &&
-            placeholder_scan_token_is_row_arithmetic_operator(scan, index)) {
+        if (placeholder_scan_row_arithmetic_value_has_operator_at(
+                scan,
+                start_index,
+                end_index,
+                index
+            )) {
             return true;
         }
     }
     return false;
+}
+
+static bool placeholder_scan_row_arithmetic_value_has_operator_at(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index,
+    size_t index
+) {
+    if (placeholder_scan_token_starts_mod_function(scan, index)) {
+        return true;
+    }
+    if (placeholder_scan_token_is_row_bitwise_operator(scan, index)) {
+        const struct mylite_sql_token *token = &scan->tokens[index];
+
+        if (token->operator_kind == MYLITE_SQL_OPERATOR_BITWISE_NOT) {
+            return index < end_index;
+        }
+        return index > start_index && index < end_index;
+    }
+    return index > start_index && index < end_index &&
+           placeholder_scan_token_is_row_arithmetic_operator(scan, index);
 }
 
 static bool placeholder_scan_row_arithmetic_value_has_unsupported_function_call(
@@ -1240,13 +1603,12 @@ static enum mylite_sql_parse_status append_row_arithmetic_predicate_value_retry(
     retry = (struct placeholder_row_arithmetic_subject_retry){
         .start_index = start_index,
         .end_index = end_index,
-        .placeholder_token =
-            {
-                .kind = MYLITE_SQL_TOKEN_INTEGER,
-                .text = placeholder_text,
-                .length = sizeof(placeholder_text) - 1U,
-                .offset = scan->tokens[start_index].offset,
-            },
+        .placeholder_token = {
+            .kind = MYLITE_SQL_TOKEN_INTEGER,
+            .text = placeholder_text,
+            .length = sizeof(placeholder_text) - 1U,
+            .offset = scan->tokens[start_index].offset,
+        },
     };
     if (!placeholder_row_arithmetic_subject_retries_push(retries, retry)) {
         placeholder_row_arithmetic_subject_retries_deinit(retries);
@@ -1350,15 +1712,56 @@ static bool placeholder_scan_parenthesized_row_arithmetic_has_operator(
         if (paren_depth != 0) {
             continue;
         }
-        if (placeholder_scan_token_starts_mod_function(scan, index)) {
-            return true;
-        }
-        if (index > start_index && index + 1U < end_index &&
-            placeholder_scan_token_is_row_arithmetic_operator(scan, index)) {
+        if (placeholder_scan_parenthesized_row_arithmetic_has_operator_at(
+                scan,
+                start_index,
+                end_index,
+                index
+            )) {
             return true;
         }
     }
     return false;
+}
+
+static bool placeholder_scan_parenthesized_row_arithmetic_has_operator_at(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index,
+    size_t index
+) {
+    if (placeholder_scan_token_starts_mod_function(scan, index)) {
+        return true;
+    }
+    if (placeholder_scan_token_is_row_bitwise_operator(scan, index)) {
+        const struct mylite_sql_token *token = &scan->tokens[index];
+
+        if (token->operator_kind == MYLITE_SQL_OPERATOR_BITWISE_NOT) {
+            return index + 1U < end_index;
+        }
+        return index > start_index && index + 1U < end_index;
+    }
+    return index > start_index && index + 1U < end_index &&
+           placeholder_scan_token_is_row_arithmetic_operator(scan, index);
+}
+
+static bool placeholder_scan_token_is_row_bitwise_operator(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    const struct mylite_sql_token *token = NULL;
+
+    if (scan == NULL || index >= scan->token_count) {
+        return false;
+    }
+    token = &scan->tokens[index];
+    return token->kind == MYLITE_SQL_TOKEN_OPERATOR &&
+           (token->operator_kind == MYLITE_SQL_OPERATOR_BITWISE_NOT ||
+            token->operator_kind == MYLITE_SQL_OPERATOR_BITWISE_XOR ||
+            token->operator_kind == MYLITE_SQL_OPERATOR_LEFT_SHIFT ||
+            token->operator_kind == MYLITE_SQL_OPERATOR_RIGHT_SHIFT ||
+            token->operator_kind == MYLITE_SQL_OPERATOR_BITWISE_AND ||
+            token->operator_kind == MYLITE_SQL_OPERATOR_BITWISE_OR);
 }
 
 static bool placeholder_scan_token_is_row_arithmetic_operator(
@@ -1863,7 +2266,8 @@ static bool row_arithmetic_retry_clone_stack_push(
     return true;
 }
 
-static bool row_arithmetic_retry_clone_stack_reserve(struct row_arithmetic_retry_clone_stack *stack
+static bool row_arithmetic_retry_clone_stack_reserve(
+    struct row_arithmetic_retry_clone_stack *stack
 ) {
     struct row_arithmetic_retry_clone_work_item *items = NULL;
     size_t capacity = row_arithmetic_retry_clone_stack_initial_capacity;
@@ -1888,7 +2292,8 @@ static bool row_arithmetic_retry_clone_stack_reserve(struct row_arithmetic_retry
     return true;
 }
 
-static void row_arithmetic_retry_clone_stack_deinit(struct row_arithmetic_retry_clone_stack *stack
+static void row_arithmetic_retry_clone_stack_deinit(
+    struct row_arithmetic_retry_clone_stack *stack
 ) {
     if (stack == NULL) {
         return;
@@ -2373,8 +2778,10 @@ static bool scan_select_locking_clause_end(
         }
         if (placeholder_scan_token_text_equals(scan, index, "NOWAIT")) {
             ++index;
-        } else if (placeholder_scan_token_text_equals(scan, index, "SKIP") &&
-                   placeholder_scan_token_text_equals(scan, index + 1U, "LOCKED")) {
+        } else if (
+            placeholder_scan_token_text_equals(scan, index, "SKIP") &&
+            placeholder_scan_token_text_equals(scan, index + 1U, "LOCKED")
+        ) {
             index += 2U;
         }
         *out_end_index = index;
@@ -3681,7 +4088,8 @@ static bool scan_alter_table_algorithm_lock_tail(
     return false;
 }
 
-static size_t alter_table_placeholder_name_end_index(const struct placeholder_statement_scan *scan
+static size_t alter_table_placeholder_name_end_index(
+    const struct placeholder_statement_scan *scan
 ) {
     size_t index = 2U;
 

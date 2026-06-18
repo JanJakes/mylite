@@ -1588,6 +1588,26 @@ enum planned_window_function_kind {
     PLANNED_WINDOW_FUNCTION_NTH_VALUE = 11,
 };
 
+enum planned_window_frame_unit {
+    PLANNED_WINDOW_FRAME_UNIT_NONE = 0,
+    PLANNED_WINDOW_FRAME_UNIT_ROWS = 1,
+    PLANNED_WINDOW_FRAME_UNIT_RANGE = 2,
+};
+
+enum planned_window_frame_bound_kind {
+    PLANNED_WINDOW_FRAME_BOUND_NONE = 0,
+    PLANNED_WINDOW_FRAME_BOUND_UNBOUNDED_PRECEDING = 1,
+    PLANNED_WINDOW_FRAME_BOUND_UNBOUNDED_FOLLOWING = 2,
+    PLANNED_WINDOW_FRAME_BOUND_CURRENT_ROW = 3,
+    PLANNED_WINDOW_FRAME_BOUND_VALUE_PRECEDING = 4,
+    PLANNED_WINDOW_FRAME_BOUND_VALUE_FOLLOWING = 5,
+};
+
+struct planned_window_frame_bound {
+    enum planned_window_frame_bound_kind kind;
+    uint64_t value;
+};
+
 struct window_function_argument_count_request {
     enum planned_window_function_kind kind;
     size_t argument_count;
@@ -1732,6 +1752,7 @@ struct planned_row_scalar_expression {
     uint32_t rand_seed;
     bool window_has_partition;
     bool window_has_order;
+    bool window_has_frame;
     bool conversion_ascii_only;
     const char *conversion_charset;
     const char *conversion_collation;
@@ -1740,6 +1761,9 @@ struct planned_row_scalar_expression {
         conversion_steps[planned_row_scalar_conversion_step_capacity];
     size_t conversion_step_count;
     enum planned_select_order_direction window_order_direction;
+    enum planned_window_frame_unit window_frame_unit;
+    struct planned_window_frame_bound window_frame_start;
+    struct planned_window_frame_bound window_frame_end;
     struct mylite_catalog_column_descriptor window_partition_column;
     struct mylite_catalog_column_descriptor window_order_column;
     struct mylite_catalog_column_descriptor column;

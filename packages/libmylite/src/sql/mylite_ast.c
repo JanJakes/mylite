@@ -415,6 +415,28 @@ void mylite_sql_ast_node_set_order_direction(
     node->payload.order_direction.kind = direction;
 }
 
+void mylite_sql_ast_node_set_window_frame_unit(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_window_frame_unit unit
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.window_frame.unit = unit;
+}
+
+void mylite_sql_ast_node_set_window_frame_bound_kind(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_window_frame_bound_kind bound_kind
+) {
+    if (node == NULL) {
+        return;
+    }
+
+    node->payload.window_frame_bound.kind = bound_kind;
+}
+
 void mylite_sql_ast_node_set_column_visibility(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_column_visibility visibility
@@ -903,6 +925,26 @@ enum mylite_sql_ast_order_direction mylite_sql_ast_node_order_direction(
     }
 
     return node->payload.order_direction.kind;
+}
+
+enum mylite_sql_ast_window_frame_unit mylite_sql_ast_node_window_frame_unit(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_WINDOW_FRAME_CLAUSE) {
+        return MYLITE_SQL_AST_WINDOW_FRAME_UNIT_NONE;
+    }
+
+    return node->payload.window_frame.unit;
+}
+
+enum mylite_sql_ast_window_frame_bound_kind mylite_sql_ast_node_window_frame_bound_kind(
+    const struct mylite_sql_ast_node *node
+) {
+    if (node == NULL || node->kind != MYLITE_SQL_AST_WINDOW_FRAME_BOUND) {
+        return MYLITE_SQL_AST_WINDOW_FRAME_BOUND_NONE;
+    }
+
+    return node->payload.window_frame_bound.kind;
 }
 
 enum mylite_sql_ast_column_visibility mylite_sql_ast_node_column_visibility(

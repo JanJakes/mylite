@@ -517,10 +517,88 @@ static int append_row_scalar_window_function_expression_sql(
     if (rc == MYLITE_OK && expression->window_has_order) {
         rc = append_select_order_direction_sql(string, expression->window_order_direction);
     }
+    if (rc == MYLITE_OK && expression->window_has_frame &&
+        (expression->window_has_partition || expression->window_has_order)) {
+        rc = mylite_dynamic_string_append_char(string, ' ');
+    }
+    if (rc == MYLITE_OK && expression->window_has_frame) {
+        rc = append_row_scalar_window_frame_sql(string, expression);
+    }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, ')');
     }
     return rc;
+}
+
+static int append_row_scalar_window_frame_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || !expression->window_has_frame) {
+        return MYLITE_ERROR;
+    }
+    if (expression->window_frame_unit == PLANNED_WINDOW_FRAME_UNIT_ROWS) {
+        rc = mylite_dynamic_string_append(string, "ROWS ");
+    } else if (expression->window_frame_unit == PLANNED_WINDOW_FRAME_UNIT_RANGE) {
+        rc = mylite_dynamic_string_append(string, "RANGE ");
+    } else {
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && expression->window_frame_end.kind != PLANNED_WINDOW_FRAME_BOUND_NONE) {
+        rc = mylite_dynamic_string_append(string, "BETWEEN ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_window_frame_bound_sql(string, &expression->window_frame_start);
+    }
+    if (rc == MYLITE_OK && expression->window_frame_end.kind != PLANNED_WINDOW_FRAME_BOUND_NONE) {
+        rc = mylite_dynamic_string_append(string, " AND ");
+    }
+    if (rc == MYLITE_OK && expression->window_frame_end.kind != PLANNED_WINDOW_FRAME_BOUND_NONE) {
+        rc = append_row_scalar_window_frame_bound_sql(string, &expression->window_frame_end);
+    }
+    return rc;
+}
+
+static int append_row_scalar_window_frame_bound_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_window_frame_bound *bound
+) {
+    enum { window_frame_bound_text_capacity = 32 };
+    char buffer[window_frame_bound_text_capacity];
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    if (bound == NULL) {
+        return MYLITE_ERROR;
+    }
+    switch (bound->kind) {
+    case PLANNED_WINDOW_FRAME_BOUND_UNBOUNDED_PRECEDING:
+        return mylite_dynamic_string_append(string, "UNBOUNDED PRECEDING");
+    case PLANNED_WINDOW_FRAME_BOUND_UNBOUNDED_FOLLOWING:
+        return mylite_dynamic_string_append(string, "UNBOUNDED FOLLOWING");
+    case PLANNED_WINDOW_FRAME_BOUND_CURRENT_ROW:
+        return mylite_dynamic_string_append(string, "CURRENT ROW");
+    case PLANNED_WINDOW_FRAME_BOUND_VALUE_PRECEDING:
+    case PLANNED_WINDOW_FRAME_BOUND_VALUE_FOLLOWING:
+        written = snprintf(buffer, sizeof(buffer), "%" PRIu64, bound->value);
+        if (written < 0 || (size_t)written >= sizeof(buffer)) {
+            return MYLITE_ERROR;
+        }
+        rc = mylite_dynamic_string_append(string, buffer);
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(
+                string,
+                bound->kind == PLANNED_WINDOW_FRAME_BOUND_VALUE_PRECEDING ? " PRECEDING"
+                                                                          : " FOLLOWING"
+            );
+        }
+        return rc;
+    case PLANNED_WINDOW_FRAME_BOUND_NONE:
+        break;
+    }
+    return MYLITE_ERROR;
 }
 
 static int append_row_scalar_window_function_argument_sql(

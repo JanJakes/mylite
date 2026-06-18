@@ -1094,13 +1094,20 @@ static int plan_row_scalar_window_function_expression(
                 out_expression
             );
         } else if (clause->kind == MYLITE_SQL_AST_WINDOW_FRAME_CLAUSE &&
-                   window_function_ignores_frame_clause(kind)) {
-            /* Ranking/distribution functions accept but do not observe frame clauses. */
+                   (window_function_accepts_ignored_frame_clause(kind) ||
+                    window_function_uses_frame_clause(kind))) {
+            rc = plan_row_scalar_window_frame_clause(
+                database,
+                function_name,
+                clause,
+                window_function_uses_frame_clause(kind),
+                out_expression
+            );
         } else {
             set_window_function_unsupported_error(
                 database,
                 function_name,
-                "supports only PARTITION BY, ORDER BY, and ranking/distribution frame clauses"
+                "supports only PARTITION BY, ORDER BY, and baseline frame clauses"
             );
             rc = MYLITE_ERROR;
         }
@@ -1201,7 +1208,7 @@ static bool window_function_has_arguments(enum planned_window_function_kind kind
     return false;
 }
 
-static bool window_function_ignores_frame_clause(enum planned_window_function_kind kind) {
+static bool window_function_accepts_ignored_frame_clause(enum planned_window_function_kind kind) {
     switch (kind) {
     case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
     case PLANNED_WINDOW_FUNCTION_RANK:
@@ -1209,13 +1216,33 @@ static bool window_function_ignores_frame_clause(enum planned_window_function_ki
     case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
     case PLANNED_WINDOW_FUNCTION_CUME_DIST:
     case PLANNED_WINDOW_FUNCTION_NTILE:
-        return true;
-    case PLANNED_WINDOW_FUNCTION_NONE:
     case PLANNED_WINDOW_FUNCTION_LAG:
     case PLANNED_WINDOW_FUNCTION_LEAD:
+        return true;
+    case PLANNED_WINDOW_FUNCTION_NONE:
     case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
     case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
     case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+        break;
+    }
+    return false;
+}
+
+static bool window_function_uses_frame_clause(enum planned_window_function_kind kind) {
+    switch (kind) {
+    case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+        return true;
+    case PLANNED_WINDOW_FUNCTION_NONE:
+    case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
+    case PLANNED_WINDOW_FUNCTION_RANK:
+    case PLANNED_WINDOW_FUNCTION_DENSE_RANK:
+    case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
+    case PLANNED_WINDOW_FUNCTION_CUME_DIST:
+    case PLANNED_WINDOW_FUNCTION_NTILE:
+    case PLANNED_WINDOW_FUNCTION_LAG:
+    case PLANNED_WINDOW_FUNCTION_LEAD:
         break;
     }
     return false;
@@ -1682,6 +1709,220 @@ static int plan_row_scalar_window_order_clause(
         out_expression->window_order_direction = PLANNED_SELECT_ORDER_DESC;
     }
     return MYLITE_OK;
+}
+
+static int plan_row_scalar_window_frame_clause(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct mylite_sql_ast_node *frame_clause,
+    bool store_frame,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum mylite_sql_ast_window_frame_unit ast_unit =
+        mylite_sql_ast_node_window_frame_unit(frame_clause);
+    enum planned_window_frame_unit unit = PLANNED_WINDOW_FRAME_UNIT_NONE;
+    struct planned_window_frame_bound start_bound = {0};
+    struct planned_window_frame_bound end_bound = {
+        .kind = PLANNED_WINDOW_FRAME_BOUND_CURRENT_ROW,
+        .value = 0U,
+    };
+    const struct mylite_sql_ast_node *end_node = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_expression->window_has_frame) {
+        set_window_function_unsupported_error(
+            database,
+            function_name,
+            "supports only one frame clause"
+        );
+        return MYLITE_ERROR;
+    }
+    if (ast_unit == MYLITE_SQL_AST_WINDOW_FRAME_UNIT_ROWS) {
+        unit = PLANNED_WINDOW_FRAME_UNIT_ROWS;
+    } else if (ast_unit == MYLITE_SQL_AST_WINDOW_FRAME_UNIT_RANGE) {
+        unit = PLANNED_WINDOW_FRAME_UNIT_RANGE;
+    } else {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = plan_row_scalar_window_frame_bound(
+        database,
+        function_name,
+        unit,
+        store_frame,
+        child_at(frame_clause, 0U),
+        &start_bound
+    );
+    end_node = child_at(frame_clause, 1U);
+    if (rc == MYLITE_OK && end_node != NULL) {
+        rc = plan_row_scalar_window_frame_bound(
+            database,
+            function_name,
+            unit,
+            store_frame,
+            end_node,
+            &end_bound
+        );
+    }
+    if (rc == MYLITE_OK && start_bound.kind == PLANNED_WINDOW_FRAME_BOUND_UNBOUNDED_FOLLOWING) {
+        set_window_function_unsupported_error(
+            database,
+            function_name,
+            "frame start cannot be UNBOUNDED FOLLOWING"
+        );
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && end_bound.kind == PLANNED_WINDOW_FRAME_BOUND_UNBOUNDED_PRECEDING) {
+        set_window_function_unsupported_error(
+            database,
+            function_name,
+            "frame end cannot be UNBOUNDED PRECEDING"
+        );
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && !planned_window_frame_bounds_are_ordered(&start_bound, &end_bound)) {
+        set_window_function_unsupported_error(
+            database,
+            function_name,
+            "frame start cannot be after frame end"
+        );
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && store_frame) {
+        out_expression->window_has_frame = true;
+        out_expression->window_frame_unit = unit;
+        out_expression->window_frame_start = start_bound;
+        out_expression->window_frame_end =
+            end_node == NULL ? (struct planned_window_frame_bound){0} : end_bound;
+    }
+    return rc;
+}
+
+static int plan_row_scalar_window_frame_bound(
+    struct mylite_db *database,
+    const char *function_name,
+    enum planned_window_frame_unit unit,
+    bool store_frame,
+    const struct mylite_sql_ast_node *bound_node,
+    struct planned_window_frame_bound *out_bound
+) {
+    enum mylite_sql_ast_window_frame_bound_kind ast_kind =
+        mylite_sql_ast_node_window_frame_bound_kind(bound_node);
+    struct planned_window_frame_bound bound = {0};
+    int rc = MYLITE_OK;
+
+    if (bound_node == NULL || out_bound == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    switch (ast_kind) {
+    case MYLITE_SQL_AST_WINDOW_FRAME_BOUND_UNBOUNDED_PRECEDING:
+        bound.kind = PLANNED_WINDOW_FRAME_BOUND_UNBOUNDED_PRECEDING;
+        break;
+    case MYLITE_SQL_AST_WINDOW_FRAME_BOUND_UNBOUNDED_FOLLOWING:
+        bound.kind = PLANNED_WINDOW_FRAME_BOUND_UNBOUNDED_FOLLOWING;
+        break;
+    case MYLITE_SQL_AST_WINDOW_FRAME_BOUND_CURRENT_ROW:
+        bound.kind = PLANNED_WINDOW_FRAME_BOUND_CURRENT_ROW;
+        break;
+    case MYLITE_SQL_AST_WINDOW_FRAME_BOUND_VALUE_PRECEDING:
+        bound.kind = PLANNED_WINDOW_FRAME_BOUND_VALUE_PRECEDING;
+        rc = plan_row_scalar_window_frame_offset(
+            database,
+            function_name,
+            unit,
+            store_frame,
+            bound_node,
+            &bound.value
+        );
+        break;
+    case MYLITE_SQL_AST_WINDOW_FRAME_BOUND_VALUE_FOLLOWING:
+        bound.kind = PLANNED_WINDOW_FRAME_BOUND_VALUE_FOLLOWING;
+        rc = plan_row_scalar_window_frame_offset(
+            database,
+            function_name,
+            unit,
+            store_frame,
+            bound_node,
+            &bound.value
+        );
+        break;
+    case MYLITE_SQL_AST_WINDOW_FRAME_BOUND_NONE:
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        *out_bound = bound;
+    }
+    return rc;
+}
+
+static int plan_row_scalar_window_frame_offset(
+    struct mylite_db *database,
+    const char *function_name,
+    enum planned_window_frame_unit unit,
+    bool store_frame,
+    const struct mylite_sql_ast_node *bound_node,
+    uint64_t *out_value
+) {
+    const struct mylite_sql_ast_node *value_node =
+        unwrap_parenthesized_expression(child_at(bound_node, 0U));
+    uint64_t value = 0U;
+
+    if (store_frame && unit == PLANNED_WINDOW_FRAME_UNIT_RANGE) {
+        set_window_function_unsupported_error(
+            database,
+            function_name,
+            "RANGE frame offsets are not supported"
+        );
+        return MYLITE_ERROR;
+    }
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_INTEGER ||
+        parse_unsigned_integer_literal(&value_node->span, &value) != MYLITE_OK ||
+        value > (uint64_t)INT64_MAX) {
+        set_window_function_unsupported_error(
+            database,
+            function_name,
+            "frame offsets support only nonnegative integer literals in signed 64-bit range"
+        );
+        return MYLITE_ERROR;
+    }
+    *out_value = value;
+    return MYLITE_OK;
+}
+
+static bool planned_window_frame_bounds_are_ordered(
+    const struct planned_window_frame_bound *start_bound,
+    const struct planned_window_frame_bound *end_bound
+) {
+    int start_rank = planned_window_frame_bound_rank(start_bound);
+    int end_rank = planned_window_frame_bound_rank(end_bound);
+
+    return start_rank <= end_rank;
+}
+
+static int planned_window_frame_bound_rank(const struct planned_window_frame_bound *bound) {
+    if (bound == NULL) {
+        return -1;
+    }
+    switch (bound->kind) {
+    case PLANNED_WINDOW_FRAME_BOUND_UNBOUNDED_PRECEDING:
+        return 0;
+    case PLANNED_WINDOW_FRAME_BOUND_VALUE_PRECEDING:
+        return 1;
+    case PLANNED_WINDOW_FRAME_BOUND_CURRENT_ROW:
+        return 2;
+    case PLANNED_WINDOW_FRAME_BOUND_VALUE_FOLLOWING:
+        return 3;
+    case PLANNED_WINDOW_FRAME_BOUND_UNBOUNDED_FOLLOWING:
+        return 4;
+    case PLANNED_WINDOW_FRAME_BOUND_NONE:
+        break;
+    }
+    return -1;
 }
 
 static bool window_key_column_descriptor_is_supported(

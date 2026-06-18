@@ -857,6 +857,21 @@ enum mylite_sql_ast_order_direction {
     MYLITE_SQL_AST_ORDER_DIRECTION_DESC = 2,
 };
 
+enum mylite_sql_ast_window_frame_unit {
+    MYLITE_SQL_AST_WINDOW_FRAME_UNIT_NONE = 0,
+    MYLITE_SQL_AST_WINDOW_FRAME_UNIT_ROWS = 1,
+    MYLITE_SQL_AST_WINDOW_FRAME_UNIT_RANGE = 2,
+};
+
+enum mylite_sql_ast_window_frame_bound_kind {
+    MYLITE_SQL_AST_WINDOW_FRAME_BOUND_NONE = 0,
+    MYLITE_SQL_AST_WINDOW_FRAME_BOUND_UNBOUNDED_PRECEDING = 1,
+    MYLITE_SQL_AST_WINDOW_FRAME_BOUND_UNBOUNDED_FOLLOWING = 2,
+    MYLITE_SQL_AST_WINDOW_FRAME_BOUND_CURRENT_ROW = 3,
+    MYLITE_SQL_AST_WINDOW_FRAME_BOUND_VALUE_PRECEDING = 4,
+    MYLITE_SQL_AST_WINDOW_FRAME_BOUND_VALUE_FOLLOWING = 5,
+};
+
 enum mylite_sql_ast_column_visibility {
     MYLITE_SQL_AST_COLUMN_VISIBILITY_VISIBLE = 0,
     MYLITE_SQL_AST_COLUMN_VISIBILITY_INVISIBLE = 1,
@@ -1023,6 +1038,14 @@ struct mylite_sql_ast_order_direction_payload {
     enum mylite_sql_ast_order_direction kind;
 };
 
+struct mylite_sql_ast_window_frame_payload {
+    enum mylite_sql_ast_window_frame_unit unit;
+};
+
+struct mylite_sql_ast_window_frame_bound_payload {
+    enum mylite_sql_ast_window_frame_bound_kind kind;
+};
+
 struct mylite_sql_ast_column_visibility_payload {
     enum mylite_sql_ast_column_visibility kind;
 };
@@ -1056,6 +1079,8 @@ union mylite_sql_ast_node_payload {
     struct mylite_sql_ast_temporal_fractional_precision_payload temporal_fractional_precision;
     struct mylite_sql_ast_nullability_payload nullability;
     struct mylite_sql_ast_order_direction_payload order_direction;
+    struct mylite_sql_ast_window_frame_payload window_frame;
+    struct mylite_sql_ast_window_frame_bound_payload window_frame_bound;
     struct mylite_sql_ast_column_visibility_payload column_visibility;
     struct mylite_sql_ast_alter_table_options_payload alter_table_options;
     struct mylite_sql_ast_show_tables_payload show_tables;
@@ -1179,6 +1204,14 @@ void mylite_sql_ast_node_set_order_direction(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_order_direction direction
 );
+void mylite_sql_ast_node_set_window_frame_unit(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_window_frame_unit unit
+);
+void mylite_sql_ast_node_set_window_frame_bound_kind(
+    struct mylite_sql_ast_node *node,
+    enum mylite_sql_ast_window_frame_bound_kind bound_kind
+);
 void mylite_sql_ast_node_set_column_visibility(
     struct mylite_sql_ast_node *node,
     enum mylite_sql_ast_column_visibility visibility
@@ -1284,6 +1317,12 @@ enum mylite_sql_ast_nullability mylite_sql_ast_node_nullability(
     const struct mylite_sql_ast_node *node
 );
 enum mylite_sql_ast_order_direction mylite_sql_ast_node_order_direction(
+    const struct mylite_sql_ast_node *node
+);
+enum mylite_sql_ast_window_frame_unit mylite_sql_ast_node_window_frame_unit(
+    const struct mylite_sql_ast_node *node
+);
+enum mylite_sql_ast_window_frame_bound_kind mylite_sql_ast_node_window_frame_bound_kind(
     const struct mylite_sql_ast_node *node
 );
 enum mylite_sql_ast_column_visibility mylite_sql_ast_node_column_visibility(

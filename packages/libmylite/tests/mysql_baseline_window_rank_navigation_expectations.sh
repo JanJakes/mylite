@@ -201,6 +201,105 @@ expect_output \
 "LEAD(title,0,'z') OVER (ORDER BY id) FROM posts ORDER BY id;" \
     "$DATABASE"
 
+expect_output \
+    "value function row frames" \
+    "4	d	d	NULL	d	c	f
+6	d	f	f	f	c	g
+7	d	g	f	g	c	e
+5	d	e	f	e	c	a
+1	d	a	f	a	c	b
+2	d	b	f	b	c	c
+3	d	c	f	c	c	NULL" \
+    "SELECT id, "\
+"FIRST_VALUE(title) OVER (ORDER BY created_at ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), "\
+"LAST_VALUE(title) OVER (ORDER BY created_at ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), "\
+"NTH_VALUE(title,2) OVER (ORDER BY created_at ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), "\
+"FIRST_VALUE(title) OVER (ORDER BY created_at ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING), "\
+"LAST_VALUE(title) OVER (ORDER BY created_at ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING), "\
+"NTH_VALUE(title,2) OVER (ORDER BY created_at ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING) "\
+"FROM posts ORDER BY created_at, id;" \
+    "$DATABASE"
+
+expect_output \
+    "value function range frames" \
+    "4	d	d	NULL
+6	d	f	f
+7	d	g	f
+5	d	e	f
+1	d	a	f
+2	d	c	f
+3	d	c	f" \
+    "SELECT id, "\
+"FIRST_VALUE(title) OVER (ORDER BY created_at RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), "\
+"LAST_VALUE(title) OVER (ORDER BY created_at RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), "\
+"NTH_VALUE(title,2) OVER (ORDER BY created_at RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) "\
+"FROM posts ORDER BY created_at, id;" \
+    "$DATABASE"
+
+expect_output \
+    "value function offset frames" \
+    "4	d	d	NULL	d	f	f
+6	d	f	f	d	g	f
+7	f	g	g	f	e	g
+5	g	e	e	g	a	e
+1	e	a	a	e	b	a
+2	a	b	b	a	c	b
+3	b	c	c	b	c	c" \
+    "SELECT id, "\
+"FIRST_VALUE(title) OVER (ORDER BY created_at ROWS 1 PRECEDING), "\
+"LAST_VALUE(title) OVER (ORDER BY created_at ROWS 1 PRECEDING), "\
+"NTH_VALUE(title,2) OVER (ORDER BY created_at ROWS 1 PRECEDING), "\
+"FIRST_VALUE(title) OVER (ORDER BY created_at ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING), "\
+"LAST_VALUE(title) OVER (ORDER BY created_at ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING), "\
+"NTH_VALUE(title,2) OVER (ORDER BY created_at ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) "\
+"FROM posts ORDER BY created_at, id;" \
+    "$DATABASE"
+
+expect_output \
+    "value function empty offset frames" \
+    "4	NULL	NULL
+6	NULL	NULL
+7	NULL	NULL
+5	NULL	NULL
+1	NULL	NULL
+2	NULL	NULL
+3	NULL	NULL" \
+    "SELECT id, "\
+"FIRST_VALUE(title) OVER (ORDER BY created_at ROWS BETWEEN 1 PRECEDING AND 2 PRECEDING), "\
+"FIRST_VALUE(title) OVER (ORDER BY created_at ROWS BETWEEN 2 FOLLOWING AND 1 FOLLOWING) "\
+"FROM posts ORDER BY created_at, id;" \
+    "$DATABASE"
+
+expect_output \
+    "lag lead ignored frames" \
+    "4	NULL	f
+6	d	g
+7	f	e
+5	g	a
+1	e	b
+2	a	c
+3	b	NULL" \
+    "SELECT id, "\
+"LAG(title) OVER (ORDER BY created_at ROWS BETWEEN CURRENT ROW AND CURRENT ROW), "\
+"LEAD(title) OVER (ORDER BY created_at ROWS BETWEEN CURRENT ROW AND CURRENT ROW) "\
+"FROM posts ORDER BY created_at, id;" \
+    "$DATABASE"
+
+expect_output \
+    "ignored range offset frames" \
+    "4	1	NULL
+6	2	d
+7	3	f
+5	4	g
+1	5	e
+2	6	a
+3	6	b" \
+    "SELECT id, "\
+"RANK() OVER (ORDER BY created_at RANGE 1 PRECEDING), "\
+"LAG(title) OVER (ORDER BY created_at RANGE 1 PRECEDING) "\
+"FROM posts ORDER BY created_at, id;" \
+    "$DATABASE"
+
 expect_error \
     "ntile rejects zero bucket count" \
     1210 \
@@ -255,6 +354,22 @@ expect_error \
     42000 \
     "near '1) OVER ()' at line 1" \
     "SELECT RANK(1) OVER ();" \
+    "$DATABASE"
+
+expect_error \
+    "invalid ignored frame boundary" \
+    3584 \
+    HY000 \
+    "frame start cannot be UNBOUNDED FOLLOWING" \
+    "SELECT id, RANK() OVER (ORDER BY id ROWS BETWEEN UNBOUNDED FOLLOWING AND CURRENT ROW) FROM posts;" \
+    "$DATABASE"
+
+expect_error \
+    "invalid frame bound order" \
+    3586 \
+    HY000 \
+    "frame start or end is negative, NULL or of non-integral type" \
+    "SELECT id, FIRST_VALUE(title) OVER (ORDER BY id ROWS BETWEEN CURRENT ROW AND 1 PRECEDING) FROM posts;" \
     "$DATABASE"
 
 expect_error \

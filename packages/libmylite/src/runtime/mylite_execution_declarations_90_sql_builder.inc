@@ -1343,6 +1343,14 @@ static int append_row_scalar_window_function_argument_sql(
     const struct planned_row_scalar_expression *argument,
     size_t *next_parameter
 );
+static int append_row_scalar_window_frame_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression
+);
+static int append_row_scalar_window_frame_bound_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_window_frame_bound *bound
+);
 static const char *window_function_sql_name(enum planned_window_function_kind kind);
 static int append_row_scalar_rand_expression_sql(
     struct mylite_dynamic_string *string,

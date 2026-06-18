@@ -323,6 +323,56 @@ static int test_window_navigation_results(void) {
         "1", "a", "a", "2", "b", "b", "3", "c", "c", "4", "d",
         "d", "5", "e", "e", "6", "f", "f", "7", "g", "g",
     };
+    static const char *const value_frame_columns[] = {
+        "id",
+        "first_running",
+        "last_running",
+        "nth_running",
+        "first_forward",
+        "last_forward",
+        "nth_forward",
+    };
+    static const char *const value_frame_values[] = {
+        "4", "d", "d", NULL, "d", "c", "f", "6", "d", "f", "f", "f", "c", "g", "7",  "d", "g",
+        "f", "g", "c", "e",  "5", "d", "e", "f", "e", "c", "a", "1", "d", "a", "f",  "a", "c",
+        "b", "2", "d", "b",  "f", "b", "c", "c", "3", "d", "c", "f", "c", "c", NULL,
+    };
+    static const char *const range_frame_columns[] =
+        {"id", "first_range", "last_range", "nth_range"};
+    static const char *const range_frame_values[] = {
+        "4", "d", "d", NULL, "6", "d", "f", "f", "7", "d", "g", "f", "5", "d",
+        "e", "f", "1", "d",  "a", "f", "2", "d", "c", "f", "3", "d", "c", "f",
+    };
+    static const char *const offset_frame_columns[] = {
+        "id",
+        "first_rows",
+        "last_rows",
+        "nth_rows",
+        "first_between",
+        "last_between",
+        "nth_between",
+    };
+    static const char *const offset_frame_values[] = {
+        "4", "d", "d", NULL, "d", "f", "f", "6", "d", "f", "f", "d", "g", "f", "7", "f", "g",
+        "g", "f", "e", "g",  "5", "g", "e", "e", "g", "a", "e", "1", "e", "a", "a", "e", "b",
+        "a", "2", "a", "b",  "b", "a", "c", "b", "3", "b", "c", "c", "b", "c", "c",
+    };
+    static const char *const empty_offset_frame_columns[] =
+        {"id", "empty_preceding", "empty_following"};
+    static const char *const empty_offset_frame_values[] = {
+        "4",  NULL, NULL, "6",  NULL, NULL, "7",  NULL, NULL, "5",  NULL,
+        NULL, "1",  NULL, NULL, "2",  NULL, NULL, "3",  NULL, NULL,
+    };
+    static const char *const lag_lead_frame_columns[] = {"id", "lag_title", "lead_title"};
+    static const char *const lag_lead_frame_values[] = {
+        "4", NULL, "f", "6", "d", "g", "7", "f", "e", "5",  "g",
+        "a", "1",  "e", "b", "2", "a", "c", "3", "b", NULL,
+    };
+    static const char *const ignored_range_offset_columns[] = {"id", "rank_range", "lag_range"};
+    static const char *const ignored_range_offset_values[] = {
+        "4", "1", NULL, "6", "2", "d", "7", "3", "f", "5", "4",
+        "g", "1", "5",  "e", "2", "6", "a", "3", "6", "b",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = open_app_database(&database, path, sizeof(path));
@@ -375,6 +425,125 @@ static int test_window_navigation_results(void) {
             .values = zero_offset_values,
             .row_count = seed_post_count,
             .context = "zero offset navigation",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, "
+                   "FIRST_VALUE(title) OVER (ORDER BY created_at "
+                   "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS first_running, "
+                   "LAST_VALUE(title) OVER (ORDER BY created_at "
+                   "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS last_running, "
+                   "NTH_VALUE(title, 2) OVER (ORDER BY created_at "
+                   "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS nth_running, "
+                   "FIRST_VALUE(title) OVER (ORDER BY created_at "
+                   "ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING) AS first_forward, "
+                   "LAST_VALUE(title) OVER (ORDER BY created_at "
+                   "ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING) AS last_forward, "
+                   "NTH_VALUE(title, 2) OVER (ORDER BY created_at "
+                   "ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING) AS nth_forward "
+                   "FROM posts ORDER BY created_at, id",
+            .columns = value_frame_columns,
+            .column_count = sizeof(value_frame_columns) / sizeof(value_frame_columns[0]),
+            .values = value_frame_values,
+            .row_count = seed_post_count,
+            .context = "value function row frames",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, "
+                   "FIRST_VALUE(title) OVER (ORDER BY created_at "
+                   "RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS first_range, "
+                   "LAST_VALUE(title) OVER (ORDER BY created_at "
+                   "RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS last_range, "
+                   "NTH_VALUE(title, 2) OVER (ORDER BY created_at "
+                   "RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS nth_range "
+                   "FROM posts ORDER BY created_at, id",
+            .columns = range_frame_columns,
+            .column_count = sizeof(range_frame_columns) / sizeof(range_frame_columns[0]),
+            .values = range_frame_values,
+            .row_count = seed_post_count,
+            .context = "value function range frames",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, "
+                   "FIRST_VALUE(title) OVER (ORDER BY created_at ROWS 1 PRECEDING) "
+                   "AS first_rows, "
+                   "LAST_VALUE(title) OVER (ORDER BY created_at ROWS 1 PRECEDING) "
+                   "AS last_rows, "
+                   "NTH_VALUE(title, 2) OVER (ORDER BY created_at ROWS 1 PRECEDING) "
+                   "AS nth_rows, "
+                   "FIRST_VALUE(title) OVER "
+                   "(ORDER BY created_at ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) "
+                   "AS first_between, "
+                   "LAST_VALUE(title) OVER "
+                   "(ORDER BY created_at ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) "
+                   "AS last_between, "
+                   "NTH_VALUE(title, 2) OVER "
+                   "(ORDER BY created_at ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING) "
+                   "AS nth_between "
+                   "FROM posts ORDER BY created_at, id",
+            .columns = offset_frame_columns,
+            .column_count = sizeof(offset_frame_columns) / sizeof(offset_frame_columns[0]),
+            .values = offset_frame_values,
+            .row_count = seed_post_count,
+            .context = "value function offset frames",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, "
+                   "FIRST_VALUE(title) OVER "
+                   "(ORDER BY created_at ROWS BETWEEN 1 PRECEDING AND 2 PRECEDING) "
+                   "AS empty_preceding, "
+                   "FIRST_VALUE(title) OVER "
+                   "(ORDER BY created_at ROWS BETWEEN 2 FOLLOWING AND 1 FOLLOWING) "
+                   "AS empty_following "
+                   "FROM posts ORDER BY created_at, id",
+            .columns = empty_offset_frame_columns,
+            .column_count =
+                sizeof(empty_offset_frame_columns) / sizeof(empty_offset_frame_columns[0]),
+            .values = empty_offset_frame_values,
+            .row_count = seed_post_count,
+            .context = "value function empty offset frames",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, "
+                   "LAG(title) OVER (ORDER BY created_at "
+                   "ROWS BETWEEN CURRENT ROW AND CURRENT ROW) AS lag_title, "
+                   "LEAD(title) OVER (ORDER BY created_at "
+                   "ROWS BETWEEN CURRENT ROW AND CURRENT ROW) AS lead_title "
+                   "FROM posts ORDER BY created_at, id",
+            .columns = lag_lead_frame_columns,
+            .column_count = sizeof(lag_lead_frame_columns) / sizeof(lag_lead_frame_columns[0]),
+            .values = lag_lead_frame_values,
+            .row_count = seed_post_count,
+            .context = "lag lead ignored frames",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, "
+                   "RANK() OVER (ORDER BY created_at RANGE 1 PRECEDING) AS rank_range, "
+                   "LAG(title) OVER (ORDER BY created_at RANGE 1 PRECEDING) AS lag_range "
+                   "FROM posts ORDER BY created_at, id",
+            .columns = ignored_range_offset_columns,
+            .column_count =
+                sizeof(ignored_range_offset_columns) / sizeof(ignored_range_offset_columns[0]),
+            .values = ignored_range_offset_values,
+            .row_count = seed_post_count,
+            .context = "ignored range offset frames",
         }
     );
 
@@ -521,13 +690,32 @@ static int test_window_function_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT id, FIRST_VALUE(title) OVER (ORDER BY id ROWS CURRENT ROW) AS first_title "
+        "SELECT id, RANK() OVER (ORDER BY id ROWS BETWEEN UNBOUNDED FOLLOWING AND "
+        "CURRENT ROW) AS r FROM posts",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "RANK() frame start cannot be UNBOUNDED FOLLOWING",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id, FIRST_VALUE(title) OVER (ORDER BY id RANGE 1 PRECEDING) AS first_title "
         "FROM posts",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "FIRST_VALUE() supports only PARTITION BY, ORDER BY, and "
-                            "ranking/distribution frame clauses",
+            .message_part = "FIRST_VALUE() RANGE frame offsets are not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT id, FIRST_VALUE(title) OVER "
+        "(ORDER BY id ROWS BETWEEN CURRENT ROW AND 1 PRECEDING) AS first_title FROM posts",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "FIRST_VALUE() frame start cannot be after frame end",
         }
     );
     failures += execute_error(

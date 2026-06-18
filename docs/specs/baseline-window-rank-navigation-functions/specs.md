@@ -67,9 +67,9 @@ MySQL 8.4.9 observations used by this slice:
   not exist. Without a third argument, missing rows return `NULL`. `NULL` and
   signed offset forms are rejected as syntax errors by the MySQL parser.
 - `FIRST_VALUE(value)`, `LAST_VALUE(value)`, and `NTH_VALUE(value, n)` use the
-  default frame. With `ORDER BY id`, `LAST_VALUE()` returns the current row
-  value and `NTH_VALUE(value, 2)` returns `NULL` until the frame contains a
-  second row.
+  default frame when no explicit frame is supplied. The follow-up
+  [baseline window value frame clauses](../baseline-window-value-frame-clauses/specs.md)
+  slice covers executable baseline `ROWS` / `RANGE` frames.
 - `NTH_VALUE(value, 0)`, `NTH_VALUE(value, -1)`, and
   `NTH_VALUE(value, NULL)` return error 1210 / `HY000` with an
   "Incorrect arguments" message.
@@ -140,8 +140,8 @@ Supported statement envelope:
 
 Deferred syntax and behavior:
 
-- named windows, window inheritance, frame-sensitive navigation/value frames,
-  `GROUPS`, `EXCLUDE`, and `FROM LAST`;
+- named windows, window inheritance, `GROUPS`, `EXCLUDE`, `FROM LAST`, and
+  frame forms outside the baseline value-frame slice;
 - multi-key `PARTITION BY` or window `ORDER BY`;
 - expression, ordinal, parameter, collation, or function window keys;
 - joins, derived tables, CTEs, grouped selects, aggregate windows, compound

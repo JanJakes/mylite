@@ -319,7 +319,8 @@ static const struct mylite_sql_ast_node *window_function_null_treatment_node(
     const struct mylite_sql_ast_node *expression
 );
 static bool window_function_has_arguments(enum planned_window_function_kind kind);
-static bool window_function_ignores_frame_clause(enum planned_window_function_kind kind);
+static bool window_function_accepts_ignored_frame_clause(enum planned_window_function_kind kind);
+static bool window_function_uses_frame_clause(enum planned_window_function_kind kind);
 static int plan_row_scalar_window_function_arguments(
     struct mylite_db *database,
     enum planned_window_function_kind kind,
@@ -400,6 +401,34 @@ static int plan_row_scalar_window_order_clause(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_window_frame_clause(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct mylite_sql_ast_node *frame_clause,
+    bool store_frame,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_window_frame_bound(
+    struct mylite_db *database,
+    const char *function_name,
+    enum planned_window_frame_unit unit,
+    bool store_frame,
+    const struct mylite_sql_ast_node *bound_node,
+    struct planned_window_frame_bound *out_bound
+);
+static int plan_row_scalar_window_frame_offset(
+    struct mylite_db *database,
+    const char *function_name,
+    enum planned_window_frame_unit unit,
+    bool store_frame,
+    const struct mylite_sql_ast_node *bound_node,
+    uint64_t *out_value
+);
+static bool planned_window_frame_bounds_are_ordered(
+    const struct planned_window_frame_bound *start_bound,
+    const struct planned_window_frame_bound *end_bound
+);
+static int planned_window_frame_bound_rank(const struct planned_window_frame_bound *bound);
 static bool window_key_column_descriptor_is_supported(
     struct mylite_db *database,
     const char *function_name,

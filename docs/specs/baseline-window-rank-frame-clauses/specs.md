@@ -47,10 +47,10 @@ existing supported `PARTITION BY` and `ORDER BY` keys, then ignores the frame
 clause before lowering to SQLite SQL because the frame is not semantically
 observed by these functions.
 
-Navigation and frame-value functions keep rejecting frame clauses in this
-slice. `FIRST_VALUE()`, `LAST_VALUE()`, and `NTH_VALUE()` depend on frame
-boundaries, so accepting their frame clauses requires storing and emitting a
-real frame model instead of ignoring syntax.
+Navigation value frames are handled by the later
+[baseline window value frame clauses](../baseline-window-value-frame-clauses/specs.md)
+slice. `LAG()` and `LEAD()` follow the same validate-then-ignore policy as the
+ranking and distribution functions for the baseline frame subset.
 
 Named windows, inherited window specs, expression keys, multiple keys, grouped
 selects, joins, predicates, DML contexts, aggregate windows, and arbitrary

@@ -395,7 +395,7 @@ static int test_row_number_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "ROW_NUMBER() supports only PARTITION BY, ORDER BY, and "
-                            "ranking/distribution frame clauses",
+                            "baseline frame clauses",
         }
     );
 

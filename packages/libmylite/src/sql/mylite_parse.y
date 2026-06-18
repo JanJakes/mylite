@@ -9069,11 +9069,11 @@ window_frame_unit(A) ::= RANGE(T). {
     A = T;
 }
 
-window_frame_bound(A) ::= UNBOUNDED(U) PRECEDING. {
-    A = mylite_sql_parser_make_window_frame_bound(state, U, NULL);
+window_frame_bound(A) ::= UNBOUNDED PRECEDING(P). {
+    A = mylite_sql_parser_make_window_frame_bound(state, P, NULL);
 }
-window_frame_bound(A) ::= UNBOUNDED(U) FOLLOWING. {
-    A = mylite_sql_parser_make_window_frame_bound(state, U, NULL);
+window_frame_bound(A) ::= UNBOUNDED FOLLOWING(F). {
+    A = mylite_sql_parser_make_window_frame_bound(state, F, NULL);
 }
 window_frame_bound(A) ::= CURRENT(T) ROW. {
     A = mylite_sql_parser_make_window_frame_bound(state, T, NULL);

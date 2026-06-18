@@ -223,6 +223,10 @@ static int test_table_backed_reverse_and_reopen(void) {
     };
     static const char *const columns_limited[] = {"id", "rv"};
     static const char *const values_limited[] = {"1", "cbA"};
+    static const char *const columns_order[] = {"id", "rv"};
+    static const char *const values_order[] = {"2", NULL, "1", "cbA"};
+    static const char *const columns_update[] = {"id", "outv"};
+    static const char *const values_update[] = {"1", "cba"};
     static const char *const columns_labels[] = {"REVERSE(v)", "reversed"};
     static const char *const values_labels[] = {"cbA", "cbA"};
     static const char *const columns_reopen[] = {"id", "rv"};
@@ -274,6 +278,35 @@ static int test_table_backed_reverse_and_reopen(void) {
             .values = values_limited,
             .row_count = 1U,
             .context = "table reverse envelope",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, REVERSE(v) AS rv FROM t ORDER BY REVERSE(v), id",
+            .columns = columns_order,
+            .column_count = sizeof(columns_order) / sizeof(columns_order[0]),
+            .values = values_order,
+            .row_count = 2U,
+            .context = "reverse order expression",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE reverse_update(id INT, src VARCHAR(20), outv VARCHAR(20))",
+        NULL
+    );
+    failures += execute_ok(database, "INSERT INTO reverse_update VALUES (1, 'abc', '')", NULL);
+    failures += execute_ok(database, "UPDATE reverse_update SET outv = REVERSE(src)", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, outv FROM reverse_update ORDER BY id",
+            .columns = columns_update,
+            .column_count = sizeof(columns_update) / sizeof(columns_update[0]),
+            .values = values_update,
+            .row_count = 1U,
+            .context = "reverse update assignment",
         }
     );
     failures += expect_query(

@@ -240,6 +240,10 @@ static int test_table_backed_soundex_and_reopen(void) {
     };
     static const char *const columns_limited[] = {"id", "sv"};
     static const char *const values_limited[] = {"1", "R163"};
+    static const char *const columns_order[] = {"id", "sv"};
+    static const char *const values_order[] = {"2", NULL, "1", "R163"};
+    static const char *const columns_update[] = {"id", "outv"};
+    static const char *const values_update[] = {"1", "R163"};
     static const char *const columns_sounds_like[] = {
         "id",
         "sv_match",
@@ -313,6 +317,35 @@ static int test_table_backed_soundex_and_reopen(void) {
             .values = values_limited,
             .row_count = 1U,
             .context = "table soundex envelope",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, SOUNDEX(v) AS sv FROM t ORDER BY SOUNDEX(v), id",
+            .columns = columns_order,
+            .column_count = sizeof(columns_order) / sizeof(columns_order[0]),
+            .values = values_order,
+            .row_count = 2U,
+            .context = "soundex order expression",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE soundex_update(id INT, src VARCHAR(20), outv VARCHAR(20))",
+        NULL
+    );
+    failures += execute_ok(database, "INSERT INTO soundex_update VALUES (1, 'Robert', '')", NULL);
+    failures += execute_ok(database, "UPDATE soundex_update SET outv = SOUNDEX(src)", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, outv FROM soundex_update ORDER BY id",
+            .columns = columns_update,
+            .column_count = sizeof(columns_update) / sizeof(columns_update[0]),
+            .values = values_update,
+            .row_count = 1U,
+            .context = "soundex update assignment",
         }
     );
     failures += expect_query(

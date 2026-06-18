@@ -180,6 +180,43 @@ expect_output \
     "SELECT id, TRIM(v) AS trimmed_v FROM t WHERE id >= 1 ORDER BY id DESC LIMIT 2;" \
     "$DATABASE"
 
+expect_output \
+    "trim order expression" \
+    "3	NULL
+1	AbC
+2	xYz" \
+    "SELECT id, TRIM(v) AS tv FROM t ORDER BY TRIM(v), id;" \
+    "$DATABASE"
+
+ltrim_order_expected=$(printf '%s\t%s\n%s\t%s\n%s\t%s' "3" "NULL" "1" "AbC  " "2" "xYz")
+expect_output \
+    "ltrim order expression" \
+    "$ltrim_order_expected" \
+    "SELECT id, LTRIM(v) AS lv FROM t ORDER BY LTRIM(v), id;" \
+    "$DATABASE"
+
+expect_output \
+    "rtrim order expression" \
+    "3	NULL
+1	  AbC
+2	xYz" \
+    "SELECT id, RTRIM(v) AS rv FROM t ORDER BY RTRIM(v), id;" \
+    "$DATABASE"
+
+run_mysql \
+    "CREATE TABLE trim_update(id INT, src VARCHAR(20), outv VARCHAR(20)); "\
+"INSERT INTO trim_update VALUES (1, '  abc  ', ''), (2, '  xyz  ', ''); "\
+"UPDATE trim_update SET outv = TRIM(src) WHERE id = 1; "\
+"UPDATE trim_update SET outv = LTRIM(src), src = RTRIM(src) WHERE id = 2;" \
+    "$DATABASE" >/dev/null
+
+trim_update_expected=$(printf '%s\t%s\t%s\n%s\t%s\t%s' "1" "abc" "  abc  " "2" "xyz  " "  xyz")
+expect_output \
+    "update assignment" \
+    "$trim_update_expected" \
+    "SELECT id, outv, src FROM trim_update ORDER BY id;" \
+    "$DATABASE"
+
 labels_expected=$(cat <<\EXPECTED
 implicit_trim	explicit_trim	ltrim_label	RTRIM(v)
 AbC	a	AbC  	  AbC

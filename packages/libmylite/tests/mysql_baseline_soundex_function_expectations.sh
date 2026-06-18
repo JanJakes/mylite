@@ -134,6 +134,26 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "soundex order expression" \
+    "3	NULL
+2	A2613
+1	R163" \
+    "SELECT id, SOUNDEX(v) FROM strings ORDER BY SOUNDEX(v), id;" \
+    "$DATABASE"
+
+run_mysql \
+    "CREATE TABLE soundex_update(id INT, src VARCHAR(20), outv VARCHAR(20)); "\
+"INSERT INTO soundex_update VALUES (1, 'Robert', ''); "\
+"UPDATE soundex_update SET outv = SOUNDEX(src);" \
+    "$DATABASE" >/dev/null
+
+expect_output \
+    "update assignment" \
+    "1	R163" \
+    "SELECT id, outv FROM soundex_update ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
     "select status" \
     "A120
 -1	0" \
@@ -161,3 +181,5 @@ expect_error \
     "Incorrect parameter count in the call to native function 'SOUNDEX'" \
     "SELECT SOUNDEX('a', 'b');" \
     "$DATABASE"
+
+printf '%s\n' "mysql_baseline_soundex_function_expectations: ok"

@@ -241,6 +241,10 @@ static int test_table_backed_quote_and_reopen(void) {
     };
     static const char *const columns_limited[] = {"id", "qv"};
     static const char *const values_limited[] = {"1", "'a\\'b'"};
+    static const char *const columns_order[] = {"id", "qv"};
+    static const char *const values_order[] = {"1", "'a\\'b'", "2", "NULL"};
+    static const char *const columns_update[] = {"id", "outv"};
+    static const char *const values_update[] = {"1", "'a\\'b'"};
     static const char *const columns_literal[] = {"id", "qs", "qd", "qn"};
     static const char *const values_literal[] = {"1", "'row'", "'1.50'", "NULL"};
     static const char *const columns_labels[] = {"QUOTE(v)", "quoted"};
@@ -294,6 +298,35 @@ static int test_table_backed_quote_and_reopen(void) {
             .values = values_limited,
             .row_count = 1U,
             .context = "table quote envelope",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, QUOTE(v) AS qv FROM t ORDER BY QUOTE(v), id",
+            .columns = columns_order,
+            .column_count = sizeof(columns_order) / sizeof(columns_order[0]),
+            .values = values_order,
+            .row_count = 2U,
+            .context = "quote order expression",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE quote_update(id INT, src VARCHAR(20), outv VARCHAR(40))",
+        NULL
+    );
+    failures += execute_ok(database, "INSERT INTO quote_update VALUES (1, 'a\\'b', '')", NULL);
+    failures += execute_ok(database, "UPDATE quote_update SET outv = QUOTE(src)", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, outv FROM quote_update ORDER BY id",
+            .columns = columns_update,
+            .column_count = sizeof(columns_update) / sizeof(columns_update[0]),
+            .values = values_update,
+            .row_count = 1U,
+            .context = "quote update assignment",
         }
     );
     failures += expect_query(

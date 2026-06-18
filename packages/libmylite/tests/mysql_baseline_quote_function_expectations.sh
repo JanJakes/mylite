@@ -223,6 +223,25 @@ expect_output \
     "$table_sql" \
     "$DATABASE"
 
+expect_output \
+    "table-backed order expression" \
+    "1	'a\\'b'
+2	NULL" \
+    "SELECT id, QUOTE(v) FROM t ORDER BY QUOTE(v), id;" \
+    "$DATABASE"
+
+run_mysql \
+    "CREATE TABLE quote_update(id INT, src VARCHAR(20), outv VARCHAR(40)); "\
+"INSERT INTO quote_update VALUES (1, CONCAT('a', CHAR(39), 'b'), ''); "\
+"UPDATE quote_update SET outv = QUOTE(src);" \
+    "$DATABASE" >/dev/null
+
+expect_output \
+    "update assignment" \
+    "1	'a\\'b'" \
+    "SELECT id, outv FROM quote_update ORDER BY id;" \
+    "$DATABASE"
+
 labels_expected=$(printf "%s\t%s\n%s\t%s" "q" "QUOTE('b')" "'b'" "'b'")
 expect_output_with_headers \
     "labels and whitespace" \

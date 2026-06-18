@@ -199,6 +199,11 @@ static bool placeholder_scan_parenthesized_row_arithmetic_predicate_starts_at(
 static bool placeholder_scan_can_retry_row_arithmetic_predicate_values(
     const struct placeholder_statement_scan *scan
 );
+static enum mylite_sql_parse_status scan_row_scalar_non_predicate_context_retries(
+    const struct placeholder_statement_scan *scan,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry
+);
 static enum mylite_sql_parse_status scan_row_scalar_predicate_subject_retry(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
@@ -230,6 +235,47 @@ static bool placeholder_scan_row_scalar_predicate_subject_uses_truth_placeholder
     const struct placeholder_statement_scan *scan,
     size_t start_index,
     size_t end_index
+);
+static enum mylite_sql_parse_status scan_row_scalar_update_assignment_retries(
+    const struct placeholder_statement_scan *scan,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry
+);
+static bool placeholder_scan_top_level_update_set_index(
+    const struct placeholder_statement_scan *scan,
+    size_t *out_set_index
+);
+static bool placeholder_scan_update_target_is_single_table(
+    const struct placeholder_statement_scan *scan,
+    size_t set_index
+);
+static bool placeholder_scan_update_assignment_equal_index(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t *out_equal_index
+);
+static bool placeholder_scan_update_assignment_value_end(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t *out_end_index,
+    size_t *out_next_index
+);
+static bool placeholder_scan_update_assignment_value_can_retry_as_followup_row_scalar(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
+);
+static bool placeholder_scan_token_is_retryable_update_assignment_row_scalar_function(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_is_update_assignment_equal(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
+static bool placeholder_scan_token_stops_update_assignment_list(
+    const struct placeholder_statement_scan *scan,
+    size_t index
 );
 static enum mylite_sql_parse_status scan_row_arithmetic_predicate_value_retries(
     const struct placeholder_statement_scan *scan,

@@ -169,6 +169,25 @@ expect_output \
     "SELECT id, REVERSE(v) FROM t WHERE id >= 1 ORDER BY id ASC LIMIT 1;" \
     "$DATABASE"
 
+expect_output \
+    "order expression" \
+    "2	NULL
+1	cbA" \
+    "SELECT id, REVERSE(v) FROM t ORDER BY REVERSE(v), id;" \
+    "$DATABASE"
+
+run_mysql \
+    "CREATE TABLE reverse_update(id INT, src VARCHAR(20), outv VARCHAR(20)); "\
+"INSERT INTO reverse_update VALUES (1, 'abc', ''); "\
+"UPDATE reverse_update SET outv = REVERSE(src);" \
+    "$DATABASE" >/dev/null
+
+expect_output \
+    "update assignment" \
+    "1	cba" \
+    "SELECT id, outv FROM reverse_update ORDER BY id;" \
+    "$DATABASE"
+
 labels_expected=$(cat <<\EXPECTED
 REVERSE(v)	reversed
 cbA	cbA

@@ -238,6 +238,21 @@ static int test_table_backed_trim_functions_and_reopen(void) {
     static const char *const values_explicit[] = {"AbC", "AbC  ", "  AbC", "a", "  AbC  "};
     static const char *const columns_limited[] = {"id", "trimmed_v"};
     static const char *const values_limited[] = {"3", NULL, "2", "xYz"};
+    static const char *const columns_order_trim[] = {"id", "tv"};
+    static const char *const values_order_trim[] = {"3", NULL, "1", "AbC", "2", "xYz"};
+    static const char *const columns_order_ltrim[] = {"id", "lv"};
+    static const char *const values_order_ltrim[] = {"3", NULL, "1", "AbC  ", "2", "xYz"};
+    static const char *const columns_order_rtrim[] = {"id", "rv"};
+    static const char *const values_order_rtrim[] = {"3", NULL, "1", "  AbC", "2", "xYz"};
+    static const char *const columns_update[] = {"id", "outv", "src"};
+    static const char *const values_update[] = {
+        "1",
+        "abc",
+        "  abc  ",
+        "2",
+        "xyz  ",
+        "  xyz",
+    };
     static const char *const columns_qualified[] = {"tv_alias", "lv_alias", "rv_alias"};
     static const char *const values_qualified[] = {"AbC", "AbC  ", "  AbC"};
     static const char *const columns_labels[] = {"TRIM(v)", "ltrim_alias", "RTRIM(v)"};
@@ -307,6 +322,66 @@ static int test_table_backed_trim_functions_and_reopen(void) {
             .values = values_limited,
             .row_count = 2U,
             .context = "table trim row envelope",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, TRIM(v) AS tv FROM t ORDER BY TRIM(v), id",
+            .columns = columns_order_trim,
+            .column_count = sizeof(columns_order_trim) / sizeof(columns_order_trim[0]),
+            .values = values_order_trim,
+            .row_count = 3U,
+            .context = "trim order expression",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, LTRIM(v) AS lv FROM t ORDER BY LTRIM(v), id",
+            .columns = columns_order_ltrim,
+            .column_count = sizeof(columns_order_ltrim) / sizeof(columns_order_ltrim[0]),
+            .values = values_order_ltrim,
+            .row_count = 3U,
+            .context = "ltrim order expression",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, RTRIM(v) AS rv FROM t ORDER BY RTRIM(v), id",
+            .columns = columns_order_rtrim,
+            .column_count = sizeof(columns_order_rtrim) / sizeof(columns_order_rtrim[0]),
+            .values = values_order_rtrim,
+            .row_count = 3U,
+            .context = "rtrim order expression",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE trim_update(id INT, src VARCHAR(20), outv VARCHAR(20))",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO trim_update VALUES (1, '  abc  ', ''), (2, '  xyz  ', '')",
+        NULL
+    );
+    failures += execute_ok(database, "UPDATE trim_update SET outv = TRIM(src) WHERE id = 1", NULL);
+    failures += execute_ok(
+        database,
+        "UPDATE trim_update SET outv = LTRIM(src), src = RTRIM(src) WHERE id = 2",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, outv, src FROM trim_update ORDER BY id",
+            .columns = columns_update,
+            .column_count = sizeof(columns_update) / sizeof(columns_update[0]),
+            .values = values_update,
+            .row_count = 2U,
+            .context = "trim update assignment",
         }
     );
     failures += expect_query(

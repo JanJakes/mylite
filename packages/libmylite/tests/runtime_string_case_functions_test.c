@@ -195,6 +195,12 @@ static int test_table_backed_case_functions_and_reopen(void) {
     };
     static const char *const columns_limited[] = {"id", "uv"};
     static const char *const values_limited[] = {"3", NULL, "2", "XYZ"};
+    static const char *const columns_order_lower[] = {"id", "lv"};
+    static const char *const values_order_lower[] = {"3", NULL, "1", "alpha", "2", "xyz"};
+    static const char *const columns_order_upper[] = {"id", "uv"};
+    static const char *const values_order_upper[] = {"3", NULL, "1", "ALPHA", "2", "XYZ"};
+    static const char *const columns_update[] = {"id", "outv"};
+    static const char *const values_update[] = {"1", "alpha", "2", "XYZ"};
     static const char *const columns_labels[] = {"LOWER(v)", "upper_alias", "UCASE(txt)"};
     static const char *const values_labels[] = {"alpha", "AB", "MIXED"};
     static const char *const columns_reopen[] = {"lv", "uv"};
@@ -252,6 +258,51 @@ static int test_table_backed_case_functions_and_reopen(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT id, LOWER(v) AS lv FROM t ORDER BY LOWER(v), id",
+            .columns = columns_order_lower,
+            .column_count = sizeof(columns_order_lower) / sizeof(columns_order_lower[0]),
+            .values = values_order_lower,
+            .row_count = 3U,
+            .context = "string case lower order expression",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, UPPER(v) AS uv FROM t ORDER BY UPPER(v), id",
+            .columns = columns_order_upper,
+            .column_count = sizeof(columns_order_upper) / sizeof(columns_order_upper[0]),
+            .values = values_order_upper,
+            .row_count = 3U,
+            .context = "string case upper order expression",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE case_update(id INT, src VARCHAR(20), outv VARCHAR(20))",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO case_update VALUES (1, 'Alpha', ''), (2, 'xYz', '')",
+        NULL
+    );
+    failures += execute_ok(database, "UPDATE case_update SET outv = LOWER(src) WHERE id = 1", NULL);
+    failures += execute_ok(database, "UPDATE case_update SET outv = UPPER(src) WHERE id = 2", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, outv FROM case_update ORDER BY id",
+            .columns = columns_update,
+            .column_count = sizeof(columns_update) / sizeof(columns_update[0]),
+            .values = values_update,
+            .row_count = 2U,
+            .context = "string case update assignment",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT LOWER(v), UPPER(c) AS upper_alias, UCASE(txt) FROM t WHERE id = 1",
             .columns = columns_labels,
             .column_count = sizeof(columns_labels) / sizeof(columns_labels[0]),
@@ -304,6 +355,16 @@ static int test_string_case_diagnostics(void) {
         "INSERT INTO t VALUES (1, 'abc', X'6162', b'101', 1.5), "
         "(2, '\xC3\x89', X'c389', b'010', -2.5)",
         NULL
+    );
+    failures += execute_ok(database, "CREATE TABLE joined_source(id INT)", NULL);
+    failures += execute_error(
+        database,
+        "UPDATE t JOIN joined_source ON t.id = joined_source.id SET t.v = LOWER(t.v)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
     );
     failures += execute_error(
         database,

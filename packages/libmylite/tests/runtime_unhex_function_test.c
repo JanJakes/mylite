@@ -219,6 +219,18 @@ static int test_table_backed_unhex_and_reopen(void) {
         {(const unsigned char *)"2", 1U, false},
         {NULL, 0U, true},
     };
+    static const char *const columns_order[] = {"id", "uv"};
+    static const struct expected_cell values_order[] = {
+        {(const unsigned char *)"3", 1U, false},
+        {NULL, 0U, true},
+        {(const unsigned char *)"1", 1U, false},
+        {value_41, sizeof(value_41), false},
+    };
+    static const char *const columns_update[] = {"id", "outv"};
+    static const struct expected_cell values_update[] = {
+        {(const unsigned char *)"1", 1U, false},
+        {value_41, sizeof(value_41), false},
+    };
     static const char *const columns_reopen[] = {"uv", "ubi"};
     static const struct expected_cell values_reopen[] = {
         {value_41, sizeof(value_41), false},
@@ -268,6 +280,38 @@ static int test_table_backed_unhex_and_reopen(void) {
             .row_count = 2U,
             .warning_count = 1U,
             .context = "table unhex row envelope",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, UNHEX(v) AS uv FROM t WHERE id IN (1, 3) "
+                   "ORDER BY UNHEX(v), id",
+            .columns = columns_order,
+            .column_count = sizeof(columns_order) / sizeof(columns_order[0]),
+            .values = values_order,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .context = "unhex order expression",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE unhex_update(id INT, src VARCHAR(10), outv VARBINARY(10))",
+        NULL
+    );
+    failures += execute_ok(database, "INSERT INTO unhex_update VALUES (1, '41', X'')", NULL);
+    failures += execute_ok(database, "UPDATE unhex_update SET outv = UNHEX(src)", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, outv FROM unhex_update ORDER BY id",
+            .columns = columns_update,
+            .column_count = sizeof(columns_update) / sizeof(columns_update[0]),
+            .values = values_update,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .context = "unhex update assignment",
         }
     );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));

@@ -155,6 +155,36 @@ expect_output \
     "SELECT id, UPPER(v) AS upper_v FROM t WHERE id >= 1 ORDER BY id DESC LIMIT 2;" \
     "$DATABASE"
 
+expect_output \
+    "lower order expression" \
+    "3	NULL
+1	abc
+2	xyz" \
+    "SELECT id, LOWER(v) AS lower_v FROM t ORDER BY LOWER(v), id;" \
+    "$DATABASE"
+
+expect_output \
+    "upper order expression" \
+    "3	NULL
+1	ABC
+2	XYZ" \
+    "SELECT id, UPPER(v) AS upper_v FROM t ORDER BY UPPER(v), id;" \
+    "$DATABASE"
+
+run_mysql \
+    "CREATE TABLE case_update(id INT, src VARCHAR(20), outv VARCHAR(20)); "\
+"INSERT INTO case_update VALUES (1, 'Alpha', ''), (2, 'xYz', ''); "\
+"UPDATE case_update SET outv = LOWER(src) WHERE id = 1; "\
+"UPDATE case_update SET outv = UPPER(src) WHERE id = 2;" \
+    "$DATABASE" >/dev/null
+
+expect_output \
+    "update assignment" \
+    "1	alpha
+2	XYZ" \
+    "SELECT id, outv FROM case_update ORDER BY id;" \
+    "$DATABASE"
+
 labels_expected=$(cat <<\EXPECTED
 LOWER(v)	u	LCASE(v)	UCASE(v)
 abc	ABC	abc	ABC

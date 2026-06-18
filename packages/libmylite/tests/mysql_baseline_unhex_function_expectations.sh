@@ -154,6 +154,25 @@ expect_output \
     "SELECT id, HEX(UNHEX(v)) AS h FROM t WHERE id >= 1 ORDER BY id DESC LIMIT 2;" \
     "$DATABASE"
 
+expect_output \
+    "order expression" \
+    "3	NULL
+1	41" \
+    "SELECT id, HEX(UNHEX(v)) AS h FROM t WHERE id IN (1, 3) ORDER BY UNHEX(v), id;" \
+    "$DATABASE"
+
+run_mysql \
+    "CREATE TABLE unhex_update(id INT, src VARCHAR(10), outv VARBINARY(10)); "\
+"INSERT INTO unhex_update VALUES (1, '41', X''); "\
+"UPDATE unhex_update SET outv = UNHEX(src);" \
+    "$DATABASE" >/dev/null
+
+expect_output \
+    "update assignment" \
+    "1	41" \
+    "SELECT id, HEX(outv) FROM unhex_update ORDER BY id;" \
+    "$DATABASE"
+
 expect_error \
     "unhex rejects zero arguments" \
     1582 \

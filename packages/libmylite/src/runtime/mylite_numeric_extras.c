@@ -13,7 +13,6 @@
 
 enum {
     crc32_bits_per_byte = 8,
-    crc32_text_capacity = 16,
     decimal_base = 10,
     exact_decimal_part_capacity = 82,
     format_max_decimals = 30,
@@ -291,8 +290,6 @@ static bool numeric_extra_operation_from_context(
 static void crc32_result(sqlite3_context *context, sqlite3_value *value) {
     const unsigned char *bytes = NULL;
     size_t byte_count = 0U;
-    char text[crc32_text_capacity];
-    int written = 0;
     uint32_t checksum = 0U;
 
     if (sqlite3_value_type(value) == SQLITE_NULL) {
@@ -312,12 +309,7 @@ static void crc32_result(sqlite3_context *context, sqlite3_value *value) {
     }
 
     checksum = crc32_checksum(bytes, byte_count);
-    written = snprintf(text, sizeof(text), "%" PRIu32, checksum);
-    if (written < 0 || (size_t)written >= sizeof(text)) {
-        sqlite3_result_error(context, "failed to format MyLite CRC32() value", -1);
-        return;
-    }
-    sqlite3_result_text(context, text, -1, SQLITE_TRANSIENT);
+    sqlite3_result_int64(context, (sqlite3_int64)checksum);
 }
 
 static void format_result(sqlite3_context *context, sqlite3_value **argv) {

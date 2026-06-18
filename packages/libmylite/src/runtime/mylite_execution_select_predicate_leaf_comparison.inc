@@ -1938,6 +1938,10 @@ static int plan_row_scalar_expression_comparison_predicate(
         table_column_count,
         node.row_scalar_expression
     );
+    if (rc == MYLITE_OK && !node.row_scalar_compare_as_real &&
+        row_scalar_numeric_extra_expression_needs_real_sql_context(node.row_scalar_expression)) {
+        node.row_scalar_compare_as_real = true;
+    }
     if (rc == MYLITE_OK) {
         if (comparison_operator_is_like(node.operator_kind)) {
             rc = plan_comparison_predicate_like_value(
@@ -2035,6 +2039,10 @@ static int plan_row_scalar_expression_between_predicate(
         table_column_count,
         node.row_scalar_expression
     );
+    if (rc == MYLITE_OK && !node.row_scalar_compare_as_real &&
+        row_scalar_numeric_extra_expression_needs_real_sql_context(node.row_scalar_expression)) {
+        node.row_scalar_compare_as_real = true;
+    }
     if (rc == MYLITE_OK && node.row_scalar_compare_as_real) {
         rc = plan_where_scalar_decimal_literal_value(
             database,

@@ -265,6 +265,9 @@ static const char *row_scalar_numeric_extra_display_name(
 );
 static bool row_scalar_numeric_extra_kind_is_error(enum mylite_sql_ast_node_kind ast_kind);
 static bool row_scalar_numeric_extra_kind_is_supported(enum mylite_sql_ast_node_kind ast_kind);
+static bool row_scalar_numeric_extra_expression_needs_real_sql_context(
+    const struct planned_row_scalar_expression *expression
+);
 static int normalize_row_scalar_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *source_expression,

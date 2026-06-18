@@ -7961,6 +7961,24 @@ row_scalar_numeric_predicate_expression(A) ::= BIT_COUNT(T) LPAREN expression(B)
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_BIT_COUNT_FUNCTION, B, R);
 }
+row_scalar_numeric_predicate_expression(A) ::= CRC32(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_CRC32_FUNCTION, B, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= FORMAT(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_FORMAT_FUNCTION, B, C, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= PI(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_PI_FUNCTION, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= TRUNCATE(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_TRUNCATE_FUNCTION, B, C, R);
+}
 
 row_scalar_string_predicate_expression(A) ::= HEX(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(

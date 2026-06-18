@@ -3234,10 +3234,23 @@ static int append_select_order_item_sql(
     } else if (item->kind == PLANNED_SELECT_ORDER_ITEM_FIELD ||
                item->kind == PLANNED_SELECT_ORDER_ITEM_RAND ||
                item->kind == PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR) {
+        bool real_order_key = false;
+
         if (next_parameter == NULL || item->expression == NULL) {
             return MYLITE_ERROR;
         }
-        rc = append_row_scalar_expression_sql(string, item->expression, next_parameter);
+        real_order_key =
+            item->kind == PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR &&
+            row_scalar_numeric_extra_expression_needs_real_sql_context(item->expression);
+        if (real_order_key) {
+            rc = mylite_dynamic_string_append(string, "CAST(");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_expression_sql(string, item->expression, next_parameter);
+        }
+        if (rc == MYLITE_OK && real_order_key) {
+            rc = mylite_dynamic_string_append(string, " AS REAL)");
+        }
     } else {
         rc = append_descriptor_value_sql_for_source(
             string,

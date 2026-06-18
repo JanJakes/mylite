@@ -70,10 +70,19 @@ run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE};
                label VARCHAR(20),
                payload VARBINARY(20)
            );
+           CREATE TABLE sort_metrics(
+               id INT,
+               amount DECIMAL(8,3),
+               places INT
+           );
            INSERT INTO metrics VALUES
                (1,1234.555,2,'MySQL',X'616263'),
                (2,-1.004,2,'mysql',NULL),
-               (3,NULL,NULL,NULL,X'');" \
+               (3,NULL,NULL,NULL,X'');
+           INSERT INTO sort_metrics VALUES
+               (1,2.0,0),
+               (2,10.0,0),
+               (3,-1.0,0);" \
     >/dev/null
 
 crc32_values=$(run_mysql \
@@ -112,6 +121,82 @@ expect_value "row-backed numeric functions" \
 2	2501908538	NULL	-1.00	-1.000	c=2501908538	3.141593	p=3.141593
 3	NULL	0	NULL	NULL	NULL	3.141593	p=3.141593" \
     "$row_values"
+
+crc32_predicates=$(run_mysql \
+    "SELECT id FROM metrics "\
+"WHERE CRC32(label)=3259397556 OR CRC32(payload)=0 ORDER BY id;" \
+    "$DATABASE")
+expect_value "crc32 predicates" \
+    "1
+3" \
+    "$crc32_predicates"
+
+format_predicates=$(run_mysql \
+    "SELECT id FROM metrics "\
+"WHERE FORMAT(amount,places)='1,234.56' OR FORMAT(amount,places) IS NULL ORDER BY id;" \
+    "$DATABASE")
+expect_value "format predicates" \
+    "1
+3" \
+    "$format_predicates"
+
+truncate_predicates=$(run_mysql \
+    "SELECT id FROM metrics WHERE TRUNCATE(amount,places) IS NULL ORDER BY id;" \
+    "$DATABASE")
+expect_value "truncate predicates" "3" "$truncate_predicates"
+
+pi_predicates=$(run_mysql \
+    "SELECT id FROM metrics WHERE PI()>3 AND PI()<4 ORDER BY id;" \
+    "$DATABASE")
+expect_value "pi predicates" \
+    "1
+2
+3" \
+    "$pi_predicates"
+
+truncate_numeric_predicates=$(run_mysql \
+    "SELECT id FROM sort_metrics WHERE TRUNCATE(amount,places)<3 ORDER BY id;" \
+    "$DATABASE")
+expect_value "truncate numeric predicates" \
+    "1
+3" \
+    "$truncate_numeric_predicates"
+
+crc32_order=$(run_mysql \
+    "SELECT id FROM metrics ORDER BY CRC32(label), id;" \
+    "$DATABASE")
+expect_value "crc32 order" \
+    "3
+2
+1" \
+    "$crc32_order"
+
+format_order=$(run_mysql \
+    "SELECT id FROM metrics ORDER BY FORMAT(amount,places), id;" \
+    "$DATABASE")
+expect_value "format order" \
+    "3
+2
+1" \
+    "$format_order"
+
+truncate_order=$(run_mysql \
+    "SELECT id FROM sort_metrics ORDER BY TRUNCATE(amount,places), id;" \
+    "$DATABASE")
+expect_value "truncate order" \
+    "3
+1
+2" \
+    "$truncate_order"
+
+pi_order=$(run_mysql \
+    "SELECT id FROM metrics ORDER BY PI(), id DESC;" \
+    "$DATABASE")
+expect_value "pi order" \
+    "3
+2
+1" \
+    "$pi_order"
 
 status=$(run_mysql "SELECT CRC32('ok'), FORMAT(1,2), TRUNCATE(1.9,0); SELECT @@warning_count, ROW_COUNT();" | tail -n 1)
 expect_value "supported status" "0	-1" "$status"

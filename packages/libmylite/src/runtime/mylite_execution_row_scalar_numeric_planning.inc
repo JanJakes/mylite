@@ -1119,3 +1119,14 @@ static bool row_scalar_numeric_extra_kind_is_supported(enum mylite_sql_ast_node_
            row_scalar_numeric_extra_kind_is_error(ast_kind) ||
            ast_kind == MYLITE_SQL_AST_FORMAT_LOCALE_UNSUPPORTED;
 }
+
+static bool row_scalar_numeric_extra_expression_needs_real_sql_context(
+    const struct planned_row_scalar_expression *expression
+) {
+    if (expression == NULL || expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA) {
+        return false;
+    }
+
+    return expression->numeric_extra_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_TRUNCATE ||
+           expression->numeric_extra_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_PI;
+}

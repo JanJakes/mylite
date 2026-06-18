@@ -186,6 +186,14 @@ static int test_numeric_values_and_file_safety(void) {
         "-1.000",   "c=2501908538", "3.141593",  "p=3.141593", "3",        NULL,
         "0",        NULL,           NULL,        NULL,         "3.141593", "p=3.141593",
     };
+    static const char *const id_columns[] = {"id"};
+    static const char *const crc32_predicate_values[] = {"1", "3"};
+    static const char *const format_predicate_values[] = {"1", "3"};
+    static const char *const truncate_predicate_values[] = {"3"};
+    static const char *const truncate_numeric_predicate_values[] = {"1", "3"};
+    static const char *const truncate_numeric_order_values[] = {"3", "1", "2"};
+    static const char *const pi_predicate_values[] = {"1", "2", "3"};
+    static const char *const descending_id_values[] = {"3", "2", "1"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -222,6 +230,16 @@ static int test_numeric_values_and_file_safety(void) {
         "(1,1234.555,2,'MySQL',X'616263'),"
         "(2,-1.004,2,'mysql',NULL),"
         "(3,NULL,NULL,NULL,X'')",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE sort_metrics(id INT, amount DECIMAL(8,3), places INT)",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO sort_metrics VALUES (1,2.0,0),(2,10.0,0),(3,-1.0,0)",
         NULL
     );
     session = mylite_connection_session_state(database);
@@ -293,6 +311,129 @@ static int test_numeric_values_and_file_safety(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "row-backed numeric functions",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM metrics "
+                   "WHERE CRC32(label)=3259397556 OR CRC32(payload)=0 "
+                   "ORDER BY id",
+            .columns = id_columns,
+            .column_count = 1U,
+            .values = crc32_predicate_values,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "crc32 predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM metrics "
+                   "WHERE FORMAT(amount,places)='1,234.56' OR FORMAT(amount,places) IS NULL "
+                   "ORDER BY id",
+            .columns = id_columns,
+            .column_count = 1U,
+            .values = format_predicate_values,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "format predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM metrics WHERE TRUNCATE(amount,places) IS NULL ORDER BY id",
+            .columns = id_columns,
+            .column_count = 1U,
+            .values = truncate_predicate_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "truncate predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM metrics WHERE PI()>3 AND PI()<4 ORDER BY id",
+            .columns = id_columns,
+            .column_count = 1U,
+            .values = pi_predicate_values,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "pi predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM sort_metrics "
+                   "WHERE TRUNCATE(amount,places)<3 "
+                   "ORDER BY id",
+            .columns = id_columns,
+            .column_count = 1U,
+            .values = truncate_numeric_predicate_values,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "truncate numeric predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM metrics ORDER BY CRC32(label),id",
+            .columns = id_columns,
+            .column_count = 1U,
+            .values = descending_id_values,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "crc32 order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM metrics ORDER BY FORMAT(amount,places),id",
+            .columns = id_columns,
+            .column_count = 1U,
+            .values = descending_id_values,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "format order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM sort_metrics ORDER BY TRUNCATE(amount,places),id",
+            .columns = id_columns,
+            .column_count = 1U,
+            .values = truncate_numeric_order_values,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "truncate order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM metrics ORDER BY PI(),id DESC",
+            .columns = id_columns,
+            .column_count = 1U,
+            .values = descending_id_values,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "pi order",
         }
     );
 

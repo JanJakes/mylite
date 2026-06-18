@@ -3,11 +3,12 @@
 ## Summary
 
 This slice extends the scalar `CRC32()`, `FORMAT()`, `TRUNCATE()`, and `PI()`
-baselines into MyLite's single-table row-scalar projection path. These
-functions already parse and execute in no-source, `FROM DUAL`, and `DO`
-contexts. The new behavior keeps the same syntax and scalar semantics, while
-admitting descriptor-backed row execution for the narrow value domains that can
-be lowered safely to SQLite scalar callbacks.
+baselines into MyLite's single-table row-scalar path. These functions already
+parse and execute in no-source, `FROM DUAL`, and `DO` contexts. The new
+behavior keeps the same syntax and scalar semantics, while admitting
+descriptor-backed row projection, supported comparison predicates, `ORDER BY`
+expression keys, and covered nesting for the narrow value domains that can be
+lowered safely to SQLite scalar callbacks.
 
 ## Supported Surface
 
@@ -39,8 +40,9 @@ row_scalar_numeric_extra ::= PI LPAREN RPAREN.
 
 ## Semantics
 
-`CRC32()` returns an unsigned CRC-32 decimal text result and returns `NULL` for
-`NULL`. It does not alter diagnostics for supported inputs.
+`CRC32()` returns an unsigned 32-bit CRC value with MySQL-visible decimal text
+and returns `NULL` for `NULL`. It does not alter diagnostics for supported
+inputs.
 
 `FORMAT()` rounds half away from zero, clamps decimal places above 30 to 30,
 treats negative decimal-place counts as zero places, inserts comma group
@@ -64,8 +66,8 @@ This is not a full expression-engine slice. It does not add:
 - three-argument `FORMAT()` locale behavior;
 - warning-producing string, binary, `BIT`, temporal, or approximate numeric
   coercion for `FORMAT()` / `TRUNCATE()`;
-- predicates, grouping, ordering, DML assignment, expression defaults, or
-  generated-column use beyond the row-scalar projection/nesting envelope;
+- grouping, DML assignment, expression defaults, or generated-column use beyond
+  the row-scalar projection/predicate/order/nesting envelope;
 - exact protocol-grade result metadata for these expressions;
 - no-source expression forms that are currently outside the scalar baseline,
   such as no-source `CRC32(1+2)`.
@@ -77,6 +79,7 @@ Coverage must include:
 - MySQL 8.4.9 expectation probes for row-backed `CRC32()`, `FORMAT()`,
   `TRUNCATE()`, and `PI()` values;
 - focused MyLite runtime tests for table-backed projection, aliases, supported
-  nesting inside `CONCAT()`, and `NULL` handling;
+  nesting inside `CONCAT()`, comparison predicates, `ORDER BY` expression keys,
+  and `NULL` handling;
 - preservation of existing scalar, `FROM DUAL`, `DO`, arity, and unsupported
   locale diagnostics.

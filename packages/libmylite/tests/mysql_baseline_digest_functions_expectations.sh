@@ -221,6 +221,40 @@ expect_output \
 "SELECT GROUP_CONCAT(id ORDER BY id) FROM t WHERE SHA2(v,NULL) IS NULL;" \
     "$DATABASE"
 
+update_expected=$(cat <<\EXPECTED
+1	0	0
+1	900150983cd24fb0d6963f7d28e17f72	a9993e364706816aba3e25717850c26c9cd0d89d	a9993e364706816aba3e25717850c26c9cd0d89d	ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f
+2	0	0
+0	0	0
+1	abc	900150983cd24fb0d6963f7d28e17f72	a9993e364706816aba3e25717850c26c9cd0d89d	a9993e364706816aba3e25717850c26c9cd0d89d	ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
+EXPECTED
+)
+expect_output \
+    "digest UPDATE and duplicate-key assignments" \
+    "$update_expected" \
+    "CREATE TABLE digest_update(id INT PRIMARY KEY, v VARCHAR(10), "\
+"out_md5 VARCHAR(32), out_sha VARCHAR(40), out_sha1 VARCHAR(40), "\
+"out_sha2 VARCHAR(128)); "\
+"INSERT INTO digest_update VALUES (1,'abc',NULL,NULL,NULL,NULL); "\
+"UPDATE digest_update SET out_md5=MD5(v), out_sha=SHA(v), out_sha1=SHA1(v), "\
+"out_sha2=SHA2(v,512); "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT id,out_md5,out_sha,out_sha1,out_sha2 FROM digest_update; "\
+"CREATE TABLE digest_duplicate(id INT PRIMARY KEY, v VARCHAR(10), "\
+"out_md5 VARCHAR(32), out_sha VARCHAR(40), out_sha1 VARCHAR(40), "\
+"out_sha2 VARCHAR(64)); "\
+"INSERT INTO digest_duplicate VALUES (1,'abc',NULL,NULL,NULL,NULL); "\
+"INSERT INTO digest_duplicate VALUES (1,'def',NULL,NULL,NULL,NULL) "\
+"ON DUPLICATE KEY UPDATE out_md5=MD5(v), out_sha=SHA(v), out_sha1=SHA1(v), "\
+"out_sha2=SHA2(v,256); "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"INSERT INTO digest_duplicate VALUES (1,'def',NULL,NULL,NULL,NULL) "\
+"ON DUPLICATE KEY UPDATE out_md5=MD5(v), out_sha=SHA(v), out_sha1=SHA1(v), "\
+"out_sha2=SHA2(v,256); "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT id,v,out_md5,out_sha,out_sha1,out_sha2 FROM digest_duplicate;" \
+    "$DATABASE"
+
 expect_error \
     "md5 rejects zero arguments" \
     1582 \

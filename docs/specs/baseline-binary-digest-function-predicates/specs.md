@@ -95,7 +95,9 @@ This slice does not add:
 - arbitrary expression arguments beyond the current row-scalar expression
   planner;
 - `ORDER BY`, `GROUP BY`, `HAVING`, window frame, generated-column, default, or
-  broad DML assignment contexts;
+  broad DML assignment contexts outside the compatible row-scalar update subset
+  documented by
+  [baseline binary, digest, and compression UPDATE contexts](../baseline-binary-digest-compression-update-contexts/specs.md);
 - new AES, password, or statement digest functions;
 - new SQLite fork hooks.
 

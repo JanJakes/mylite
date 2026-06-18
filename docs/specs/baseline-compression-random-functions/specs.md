@@ -10,7 +10,11 @@ This slice implements the MySQL 8.4.9-compatible baseline for:
 - `RANDOM_BYTES(expr)`
 
 The functions are supported in direct scalar statements, `DO`, `DUAL` queries,
-row-backed projections, and selected descriptor-backed `WHERE` predicates. The
+row-backed projections, selected descriptor-backed `WHERE` predicates, and
+compatible non-key single-table `UPDATE` / duplicate-key assignments documented
+by
+[baseline binary, digest, and compression UPDATE contexts](../baseline-binary-digest-compression-update-contexts/specs.md).
+The
 implementation covers common scalar argument forms already supported by
 adjacent binary-string functions: string literals, binary literals, integer and
 boolean literals, `NULL`, supported session scalars/system variables, binary
@@ -192,7 +196,8 @@ Testing must include:
 
 - MyLite does not emulate MySQL replication safety warnings for
   nondeterministic functions.
-- Ordering/grouping, broad DML assignment, generated-column, and
+- Ordering/grouping, broad DML assignment outside the documented compatible
+  row-scalar update subset, generated-column, and
   default-expression contexts remain outside this baseline.
 - Very large compression inputs beyond a 32-bit stored length are rejected by
   MyLite runtime limits rather than attempting MySQL large-object behavior.

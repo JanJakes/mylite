@@ -86,6 +86,9 @@ MyLite supports:
   [baseline binary and digest function predicates](../baseline-binary-digest-function-predicates/specs.md)
   and
   [baseline row-scalar IN predicates](../baseline-row-scalar-in-predicates/specs.md).
+- Compatible non-key single-table `UPDATE` and duplicate-key assignments for
+  the documented row-scalar digest subset. See
+  [baseline binary, digest, and compression UPDATE contexts](../baseline-binary-digest-compression-update-contexts/specs.md).
 - `SHA2()` hash-length arguments as integer, signed integer, boolean, or `NULL`
   literal values in the baseline surface.
 - MySQL-compatible lowercase hexadecimal digest text and `NULL` propagation.
@@ -100,7 +103,8 @@ This slice does not implement:
   arguments such as `'224x'`.
 - Full expression arguments such as `MD5(1 + 2)` outside existing admitted
   session-scalar values.
-- Ordering/grouping, broad DML assignment, generated-column, or
+- Ordering/grouping, broad DML assignment outside the documented compatible
+  row-scalar update subset, generated-column, or
   default-expression contexts.
 - FIPS-mode behavior that makes `MD5()` return `NULL`.
 - Binary connection-character-set metadata differences beyond the current

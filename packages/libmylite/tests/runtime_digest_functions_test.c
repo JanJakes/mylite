@@ -51,6 +51,7 @@ static int test_no_source_dual_do_and_warnings(void);
 static int test_dml_constant_digest_values(void);
 static int test_table_backed_digest_projection(void);
 static int test_table_backed_digest_predicates(void);
+static int test_digest_update_contexts(void);
 static int test_digest_diagnostics(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -80,6 +81,7 @@ int main(void) {
     failures += test_dml_constant_digest_values();
     failures += test_table_backed_digest_projection();
     failures += test_table_backed_digest_predicates();
+    failures += test_digest_update_contexts();
     failures += test_digest_diagnostics();
 
     return failures == 0 ? 0 : 1;
@@ -511,6 +513,140 @@ static int test_table_backed_digest_predicates(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "digest is null predicate",
+        }
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_digest_update_contexts(void) {
+    static const char *const columns[] = {
+        "id",
+        "out_md5",
+        "out_sha",
+        "out_sha1",
+        "out_sha2",
+    };
+    static const char *const values[] = {
+        "1",
+        "900150983cd24fb0d6963f7d28e17f72",
+        "a9993e364706816aba3e25717850c26c9cd0d89d",
+        "a9993e364706816aba3e25717850c26c9cd0d89d",
+        ("ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1"
+         "a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"),
+    };
+    static const char *const duplicate_columns[] = {
+        "id",
+        "v",
+        "out_md5",
+        "out_sha",
+        "out_sha1",
+        "out_sha2",
+    };
+    static const char *const duplicate_values[] = {
+        "1",
+        "abc",
+        "900150983cd24fb0d6963f7d28e17f72",
+        "a9993e364706816aba3e25717850c26c9cd0d89d",
+        "a9993e364706816aba3e25717850c26c9cd0d89d",
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open update db");
+    failures += execute_ok(database, "CREATE DATABASE app", NULL);
+    failures += execute_ok(database, "USE app", NULL);
+    failures += execute_ok(
+        database,
+        "CREATE TABLE digest_update("
+        "id INT PRIMARY KEY, v VARCHAR(10), out_md5 VARCHAR(32), out_sha VARCHAR(40), "
+        "out_sha1 VARCHAR(40), out_sha2 VARCHAR(128)"
+        ")",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO digest_update VALUES (1, 'abc', NULL, NULL, NULL, NULL)",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "UPDATE digest_update SET out_md5 = MD5(v), out_sha = SHA(v), "
+                   "out_sha1 = SHA1(v), out_sha2 = SHA2(v,512)",
+            .column_count = 0U,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 1,
+            .context = "digest update assignments",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id,out_md5,out_sha,out_sha1,out_sha2 FROM digest_update",
+            .columns = columns,
+            .column_count = sizeof(columns) / sizeof(columns[0]),
+            .values = values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "digest update values",
+        }
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE digest_duplicate("
+        "id INT PRIMARY KEY, v VARCHAR(10), out_md5 VARCHAR(32), out_sha VARCHAR(40), "
+        "out_sha1 VARCHAR(40), out_sha2 VARCHAR(64)"
+        ")",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO digest_duplicate VALUES (1, 'abc', NULL, NULL, NULL, NULL)",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "INSERT INTO digest_duplicate VALUES (1, 'def', NULL, NULL, NULL, NULL) "
+                   "ON DUPLICATE KEY UPDATE out_md5 = MD5(v), out_sha = SHA(v), "
+                   "out_sha1 = SHA1(v), out_sha2 = SHA2(v,256)",
+            .column_count = 0U,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 2,
+            .context = "digest duplicate assignment changed",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "INSERT INTO digest_duplicate VALUES (1, 'def', NULL, NULL, NULL, NULL) "
+                   "ON DUPLICATE KEY UPDATE out_md5 = MD5(v), out_sha = SHA(v), "
+                   "out_sha1 = SHA1(v), out_sha2 = SHA2(v,256)",
+            .column_count = 0U,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "digest duplicate assignment unchanged",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id,v,out_md5,out_sha,out_sha1,out_sha2 FROM digest_duplicate",
+            .columns = duplicate_columns,
+            .column_count = sizeof(duplicate_columns) / sizeof(duplicate_columns[0]),
+            .values = duplicate_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "digest duplicate values",
         }
     );
 

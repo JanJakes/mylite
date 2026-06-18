@@ -41,6 +41,7 @@ struct expected_query {
     const struct expected_cell *values;
     size_t row_count;
     size_t warning_count;
+    int64_t affected_rows;
     const char *context;
 };
 
@@ -63,6 +64,7 @@ static int test_scalar_compression_random_functions(void);
 static int test_compression_random_dual_do_and_arity(void);
 static int test_table_backed_compression_random_functions(void);
 static int test_table_backed_compression_random_predicates(void);
+static int test_compression_random_update_contexts(void);
 static int test_compression_random_diagnostics(void);
 static int test_compression_random_metadata(void);
 static int setup_database(mylite_db **out_database);
@@ -108,6 +110,7 @@ static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_uint32(uint32_t actual, uint32_t expected, const char *context);
 static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
 static int expect_uint16(uint16_t actual, uint16_t expected, const char *context);
+static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_text(const char *actual, const char *expected, const char *context);
 static int expect_contains(const char *actual, const char *needle, const char *context);
 static int expect_bytes_contains(
@@ -125,6 +128,7 @@ int main(void) {
     failures += test_compression_random_dual_do_and_arity();
     failures += test_table_backed_compression_random_functions();
     failures += test_table_backed_compression_random_predicates();
+    failures += test_compression_random_update_contexts();
     failures += test_compression_random_diagnostics();
     failures += test_compression_random_metadata();
 
@@ -351,6 +355,148 @@ static int test_table_backed_compression_random_predicates(void) {
             .warning_count = 0U,
             .context = "random bytes is not null predicate",
         }
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_compression_random_update_contexts(void) {
+    static const struct expected_cell update_values[] = {
+        CELL_TEXT("abc"),
+        CELL_TEXT("abc"),
+        CELL_TEXT("3"),
+    };
+    static const struct expected_cell duplicate_values[] = {
+        CELL_TEXT("1"),
+        CELL_TEXT("abc"),
+        CELL_TEXT("abc"),
+        CELL_TEXT("3"),
+    };
+    mylite_db *database = NULL;
+    int failures = setup_database(&database);
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE update_t("
+        "id INT PRIMARY KEY, v VARCHAR(20), n INT, out_compress VARBINARY(64), "
+        "out_uncompress VARBINARY(20), out_length INT, out_random VARBINARY(16)"
+        ")",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO update_t VALUES (1, 'abc', 4, NULL, NULL, NULL, NULL)",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "UPDATE update_t SET out_compress = COMPRESS(v), "
+                   "out_uncompress = UNCOMPRESS(COMPRESS(v)), "
+                   "out_length = UNCOMPRESSED_LENGTH(COMPRESS(v)), "
+                   "out_random = RANDOM_BYTES(n)",
+            .column_count = 0U,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 1,
+            .context = "compression random update assignments",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT UNCOMPRESS(out_compress), out_uncompress, out_length FROM update_t",
+            .column_count = 3U,
+            .values = update_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "compression random update values",
+        }
+    );
+    failures += expect_single_value_size(
+        database,
+        "SELECT out_random FROM update_t",
+        4U,
+        0U,
+        "random bytes update assignment size"
+    );
+
+    failures += execute_ok(
+        database,
+        "CREATE TABLE duplicate_t("
+        "id INT PRIMARY KEY, v VARCHAR(20), out_compress VARBINARY(64), "
+        "out_uncompress VARBINARY(20), out_length INT"
+        ")",
+        NULL
+    );
+    failures +=
+        execute_ok(database, "INSERT INTO duplicate_t VALUES (1, 'abc', NULL, NULL, NULL)", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "INSERT INTO duplicate_t VALUES (1, 'def', NULL, NULL, NULL) "
+                   "ON DUPLICATE KEY UPDATE out_compress = COMPRESS(v), "
+                   "out_uncompress = UNCOMPRESS(COMPRESS(v)), "
+                   "out_length = UNCOMPRESSED_LENGTH(COMPRESS(v))",
+            .column_count = 0U,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 2,
+            .context = "compression duplicate assignment changed",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "INSERT INTO duplicate_t VALUES (1, 'def', NULL, NULL, NULL) "
+                   "ON DUPLICATE KEY UPDATE out_compress = COMPRESS(v), "
+                   "out_uncompress = UNCOMPRESS(COMPRESS(v)), "
+                   "out_length = UNCOMPRESSED_LENGTH(COMPRESS(v))",
+            .column_count = 0U,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "compression duplicate assignment unchanged",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id,UNCOMPRESS(out_compress),out_uncompress,out_length FROM duplicate_t",
+            .column_count = 4U,
+            .values = duplicate_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "compression duplicate values",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE random_duplicate_t(id INT PRIMARY KEY, n INT, out_random VARBINARY(16))",
+        NULL
+    );
+    failures += execute_ok(database, "INSERT INTO random_duplicate_t VALUES (1, 4, NULL)", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "INSERT INTO random_duplicate_t VALUES (1, 99, NULL) "
+                   "ON DUPLICATE KEY UPDATE out_random = RANDOM_BYTES(n)",
+            .column_count = 0U,
+            .row_count = 0U,
+            .warning_count = 0U,
+            .affected_rows = 2,
+            .context = "random duplicate assignment changed",
+        }
+    );
+    failures += expect_single_value_size(
+        database,
+        "SELECT out_random FROM random_duplicate_t",
+        4U,
+        0U,
+        "random bytes duplicate assignment size"
     );
 
     mylite_close(database);
@@ -624,6 +770,11 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
             expected.warning_count,
             expected.context
         );
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            expected.affected_rows,
+            expected.context
+        );
     }
     for (size_t row = 0U; failures == 0 && row < expected.row_count; ++row) {
         for (size_t column = 0U; column < expected.column_count; ++column) {
@@ -831,6 +982,20 @@ static int expect_uint64(uint64_t actual, uint64_t expected, const char *context
 static int expect_uint16(uint16_t actual, uint16_t expected, const char *context) {
     if (actual != expected) {
         fprintf(stderr, "%s: expected %u, got %u\n", context, (unsigned)expected, (unsigned)actual);
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_int64(int64_t actual, int64_t expected, const char *context) {
+    if (actual != expected) {
+        fprintf(
+            stderr,
+            "%s: expected %lld, got %lld\n",
+            context,
+            (long long)expected,
+            (long long)actual
+        );
         return 1;
     }
     return 0;

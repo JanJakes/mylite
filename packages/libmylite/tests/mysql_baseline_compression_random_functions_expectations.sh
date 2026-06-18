@@ -160,6 +160,51 @@ expect_output \
 "SELECT COUNT(*) FROM t WHERE RANDOM_BYTES(id) IS NOT NULL;" \
     "$DATABASE"
 
+update_expected=$(cat <<EXPECTED
+1	0	0
+616263	616263	3	4
+2	0	0
+0	0	0
+1	616263	616263	3
+2	0	0
+4
+EXPECTED
+)
+expect_output \
+    "compression random UPDATE and duplicate-key assignments" \
+    "$update_expected" \
+    "CREATE TABLE update_t(id INT PRIMARY KEY, v VARCHAR(20), n INT, "\
+"out_compress VARBINARY(64), out_uncompress VARBINARY(20), out_length INT, "\
+"out_random VARBINARY(16)); "\
+"INSERT INTO update_t VALUES (1,'abc',4,NULL,NULL,NULL,NULL); "\
+"UPDATE update_t SET out_compress=COMPRESS(v), "\
+"out_uncompress=UNCOMPRESS(COMPRESS(v)), "\
+"out_length=UNCOMPRESSED_LENGTH(COMPRESS(v)), out_random=RANDOM_BYTES(n); "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT HEX(UNCOMPRESS(out_compress)), HEX(out_uncompress), out_length, "\
+"LENGTH(out_random) FROM update_t; "\
+"CREATE TABLE duplicate_t(id INT PRIMARY KEY, v VARCHAR(20), "\
+"out_compress VARBINARY(64), out_uncompress VARBINARY(20), out_length INT); "\
+"INSERT INTO duplicate_t VALUES (1,'abc',NULL,NULL,NULL); "\
+"INSERT INTO duplicate_t VALUES (1,'def',NULL,NULL,NULL) "\
+"ON DUPLICATE KEY UPDATE out_compress=COMPRESS(v), "\
+"out_uncompress=UNCOMPRESS(COMPRESS(v)), "\
+"out_length=UNCOMPRESSED_LENGTH(COMPRESS(v)); "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"INSERT INTO duplicate_t VALUES (1,'def',NULL,NULL,NULL) "\
+"ON DUPLICATE KEY UPDATE out_compress=COMPRESS(v), "\
+"out_uncompress=UNCOMPRESS(COMPRESS(v)), "\
+"out_length=UNCOMPRESSED_LENGTH(COMPRESS(v)); "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT id,HEX(UNCOMPRESS(out_compress)),HEX(out_uncompress),out_length FROM duplicate_t; "\
+"CREATE TABLE random_duplicate_t(id INT PRIMARY KEY, n INT, out_random VARBINARY(16)); "\
+"INSERT INTO random_duplicate_t VALUES (1,4,NULL); "\
+"INSERT INTO random_duplicate_t VALUES (1,99,NULL) "\
+"ON DUPLICATE KEY UPDATE out_random=RANDOM_BYTES(n); "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT LENGTH(out_random) FROM random_duplicate_t;" \
+    "$DATABASE"
+
 expect_error \
     "random zero length" \
     1690 \

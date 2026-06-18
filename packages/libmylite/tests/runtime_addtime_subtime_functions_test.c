@@ -238,6 +238,17 @@ static int test_addtime_subtime_values_and_file_safety(void) {
             .context = "row count after ADDTIME DO",
         }
     );
+    session = mylite_connection_session_state(database);
+    failures += expect_int64(
+        (int64_t)session->catalog_generation,
+        (int64_t)catalog_generation,
+        "scalar ADDTIME leaves catalog generation unchanged"
+    );
+    failures += expect_int64(
+        (int64_t)session->sqlite_schema_generation,
+        (int64_t)sqlite_schema_generation,
+        "scalar ADDTIME leaves sqlite schema generation unchanged"
+    );
 
     failures += execute_ok(
         database,

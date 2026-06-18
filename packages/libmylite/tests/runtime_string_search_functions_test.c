@@ -240,6 +240,20 @@ static int test_table_backed_string_searches_and_reopen(void) {
         "POSITION('bar' IN s)",
     };
     static const char *const values_labels[] = {"4", "4", "4"};
+    static const char *const columns_predicate_truth[] = {"id"};
+    static const char *const values_predicate_truth[] = {"1", "2"};
+    static const char *const columns_predicate_comparison[] = {"id"};
+    static const char *const values_predicate_comparison[] = {"2", "1"};
+    static const char *const columns_predicate_null[] = {"id"};
+    static const char *const values_predicate_null[] = {"3"};
+    static const char *const columns_predicate_not_null[] = {"id"};
+    static const char *const values_predicate_not_null[] = {"1", "2"};
+    static const char *const columns_predicate_between[] = {"id"};
+    static const char *const values_predicate_between[] = {"1", "2"};
+    static const char *const columns_predicate_not_between[] = {"id"};
+    static const char *const values_predicate_not_between[] = {"2"};
+    static const char *const columns_order_expression[] = {"id", "pos"};
+    static const char *const values_order_expression[] = {"1", "4", "2", "3", "3", NULL};
     static const char *const columns_reopen[] = {"id", "loc", "instr"};
     static const char *const values_reopen[] = {"1", "4", "4", "2", "3", "3"};
     char path[test_path_capacity];
@@ -329,6 +343,90 @@ static int test_table_backed_string_searches_and_reopen(void) {
             .values = values_labels,
             .row_count = 1U,
             .context = "string search labels",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE LOCATE('bar', s) ORDER BY id",
+            .columns = columns_predicate_truth,
+            .column_count = sizeof(columns_predicate_truth) / sizeof(columns_predicate_truth[0]),
+            .values = values_predicate_truth,
+            .row_count = 2U,
+            .context = "string search predicate truth",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE LOCATE('bar', s) > 0 "
+                   "ORDER BY INSTR(s, 'bar'), id",
+            .columns = columns_predicate_comparison,
+            .column_count =
+                sizeof(columns_predicate_comparison) / sizeof(columns_predicate_comparison[0]),
+            .values = values_predicate_comparison,
+            .row_count = 2U,
+            .context = "string search predicate comparison and order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE INSTR(s, 'bar') IS NULL ORDER BY id",
+            .columns = columns_predicate_null,
+            .column_count = sizeof(columns_predicate_null) / sizeof(columns_predicate_null[0]),
+            .values = values_predicate_null,
+            .row_count = 1U,
+            .context = "string search predicate null test",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE INSTR(s, 'bar') IS NOT NULL ORDER BY id",
+            .columns = columns_predicate_not_null,
+            .column_count =
+                sizeof(columns_predicate_not_null) / sizeof(columns_predicate_not_null[0]),
+            .values = values_predicate_not_null,
+            .row_count = 2U,
+            .context = "string search predicate not null test",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE POSITION('bar' IN s) BETWEEN 3 AND 4 ORDER BY id",
+            .columns = columns_predicate_between,
+            .column_count =
+                sizeof(columns_predicate_between) / sizeof(columns_predicate_between[0]),
+            .values = values_predicate_between,
+            .row_count = 2U,
+            .context = "string search predicate between",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t WHERE POSITION('bar' IN s) NOT BETWEEN 4 AND 4 "
+                   "ORDER BY id",
+            .columns = columns_predicate_not_between,
+            .column_count =
+                sizeof(columns_predicate_not_between) / sizeof(columns_predicate_not_between[0]),
+            .values = values_predicate_not_between,
+            .row_count = 1U,
+            .context = "string search predicate not between",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, POSITION('bar' IN s) AS pos FROM t "
+                   "ORDER BY POSITION('bar' IN s) DESC, id",
+            .columns = columns_order_expression,
+            .column_count = sizeof(columns_order_expression) / sizeof(columns_order_expression[0]),
+            .values = values_order_expression,
+            .row_count = 3U,
+            .context = "string search order expression",
         }
     );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));
@@ -1103,24 +1201,6 @@ static int test_string_search_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "string search functions support only ASCII text values",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT id FROM t WHERE LOCATE('a', v) = 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT id FROM t ORDER BY LOCATE('a', v)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(

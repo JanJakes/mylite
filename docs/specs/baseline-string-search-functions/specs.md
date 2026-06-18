@@ -13,9 +13,11 @@ POSITION(substr IN str)
 
 The supported surface matches the current row-scalar string-function envelope:
 no-source scalar `SELECT`, `SELECT ... FROM DUAL`, `DO`, and single-table
-row-scalar `SELECT` projection. It does not add expression predicates,
-expression ordering, DML assignment values, generated columns, defaults, or a
-general expression engine.
+row-scalar `SELECT` projection. It also admits the same descriptor-backed
+single-table `WHERE` truth/comparison/`IS [NOT] NULL`/`[NOT] BETWEEN`
+predicates and non-grouped `ORDER BY` expression contexts used by the
+row-scalar expression baseline. It does not add DML assignment values,
+generated columns, defaults, or a general expression engine.
 
 For this baseline, MyLite implements MySQL's one-based position behavior over
 ASCII nonbinary text values using the existing ASCII `utf8mb4_0900_ai_ci`
@@ -76,7 +78,7 @@ Runtime probes establish the behavior used by this phase:
 
 MySQL also accepts broader behavior such as noninteger argument rounding,
 string-to-number position conversion, binary-string case-sensitive matching,
-full Unicode collation folding, expression predicates, arbitrary nested
+full Unicode collation folding, grouped expression ordering, arbitrary nested
 function arguments, and DML assignment expressions. Those forms remain outside
 this baseline.
 
@@ -127,8 +129,8 @@ string-search function:
 ```sql
 SELECT row_scalar_item[, row_scalar_item ...]
 FROM table_name [AS alias]
-[WHERE predicate]
-[ORDER BY descriptor_column [ASC | DESC]]
+[WHERE descriptor_backed_row_scalar_predicate]
+[ORDER BY descriptor_column_or_row_scalar_expression [ASC | DESC]]
 [LIMIT row_count]
 ```
 
@@ -189,7 +191,7 @@ user variables, and full Unicode collation behavior are deferred.
 
 The following remain outside this phase:
 
-- `WHERE LOCATE(...) ...`, `HAVING LOCATE(...) ...`, expression `ORDER BY`,
+- `HAVING LOCATE(...) ...`, grouped or aggregate expression `ORDER BY`,
   grouping, distinct expression rows, and aggregate arguments;
 - DML assignment values such as `UPDATE t SET c = LOCATE('x', v)`;
 - arbitrary nested row functions outside the supported row-scalar value and
@@ -210,6 +212,14 @@ expression(A) ::= LOCATE(T) LPAREN expression(B) COMMA expression(C)
                   COMMA expression(D) RPAREN(R).
 expression(A) ::= INSTR(T) LPAREN expression(B) COMMA expression(C) RPAREN(R).
 expression(A) ::= POSITION(T) LPAREN(L) expression(B) IN expression(C) RPAREN(R).
+row_scalar_numeric_predicate_expression(A) ::= LOCATE(T) LPAREN expression(B)
+                  COMMA expression(C) RPAREN(R).
+row_scalar_numeric_predicate_expression(A) ::= LOCATE(T) LPAREN expression(B)
+                  COMMA expression(C) COMMA expression(D) RPAREN(R).
+row_scalar_numeric_predicate_expression(A) ::= INSTR(T) LPAREN expression(B)
+                  COMMA expression(C) RPAREN(R).
+row_scalar_numeric_predicate_expression(A) ::= POSITION(T) LPAREN(L)
+                  expression(B) IN expression(C) RPAREN(R).
 ```
 
 Wrong-arity `LOCATE()` and `INSTR()` forms produce function-argument-count AST
@@ -266,15 +276,17 @@ as `libmylite.runtime.string_search_functions`. Coverage must include:
   boundaries, signed positions, `NULL`, integer, and boolean conversion;
 - table-backed row-scalar projection over descriptor integer, `DECIMAL`,
   temporal, `CHAR`, `VARCHAR`, and `TEXT` values;
+- descriptor-backed `WHERE` truth, comparison, `IS [NOT] NULL`, and
+  `[NOT] BETWEEN` predicates plus non-grouped single-table `ORDER BY`
+  expression contexts;
 - schema/table resolution and existing row envelope behavior inherited from
   the row-scalar path;
 - wrong arity for `LOCATE()` and `INSTR()`;
 - unsupported `POSITION` whitespace and wrong-shape syntax;
 - supported integer `pos` expressions;
 - unsupported nested functions outside the supported value/integer subsets,
-  expression predicates, expression ordering, DML assignment values, binary
-  strings, non-ASCII values, unsupported `pos` operands, parameters, and
-  general expressions;
+  grouped expression ordering, DML assignment values, binary strings, non-ASCII
+  values, unsupported `pos` operands, parameters, and general expressions;
 - MySQL expectation script coverage for user-visible results, errors,
   `ROW_COUNT()`, and `@@warning_count`.
 

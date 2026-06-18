@@ -164,6 +164,54 @@ expect_output \
     "SELECT id, LOCATE('bar', s, id + 3), LOCATE('2', n, ABS(id)) FROM t ORDER BY id;" \
     "$DATABASE"
 
+expect_output \
+    "table string search predicate truth" \
+    "1
+2" \
+    "SELECT id FROM t WHERE LOCATE('bar', s) ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "table string search predicate comparison and order" \
+    "2
+1" \
+    "SELECT id FROM t WHERE LOCATE('bar', s) > 0 ORDER BY INSTR(s, 'bar'), id;" \
+    "$DATABASE"
+
+expect_output \
+    "table string search predicate null test" \
+    "3" \
+    "SELECT id FROM t WHERE INSTR(s, 'bar') IS NULL ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "table string search predicate not null test" \
+    "1
+2" \
+    "SELECT id FROM t WHERE INSTR(s, 'bar') IS NOT NULL ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "table string search predicate between" \
+    "1
+2" \
+    "SELECT id FROM t WHERE POSITION('bar' IN s) BETWEEN 3 AND 4 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "table string search predicate not between" \
+    "2" \
+    "SELECT id FROM t WHERE POSITION('bar' IN s) NOT BETWEEN 4 AND 4 ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
+    "table string search order expression" \
+    "1	4
+2	3
+3	NULL" \
+    "SELECT id, POSITION('bar' IN s) FROM t ORDER BY POSITION('bar' IN s) DESC, id;" \
+    "$DATABASE"
+
 expect_error \
     "locate too few arguments" \
     1582 \

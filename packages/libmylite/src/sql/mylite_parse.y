@@ -7995,6 +7995,26 @@ row_scalar_numeric_predicate_expression(A) ::= TRUNCATE(T) LPAREN expression(B) 
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_TRUNCATE_FUNCTION, B, C, R);
 }
+row_scalar_numeric_predicate_expression(A) ::= LOCATE(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_LOCATE_FUNCTION, B, C, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= LOCATE(T) LPAREN expression(B) COMMA
+        expression(C) COMMA expression(D) RPAREN(R). {
+    A = mylite_sql_parser_make_three_argument_function(
+        state, T, MYLITE_SQL_AST_LOCATE_FUNCTION, B, C, D, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= INSTR(T) LPAREN expression(B) COMMA
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_INSTR_FUNCTION, B, C, R);
+}
+row_scalar_numeric_predicate_expression(A) ::= POSITION(T) LPAREN(L) expression(B) IN
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_two_argument_function(
+        state, T, L, MYLITE_SQL_AST_POSITION_FUNCTION, B, C, R);
+}
 
 row_scalar_string_predicate_expression(A) ::= HEX(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(

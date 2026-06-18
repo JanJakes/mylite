@@ -107,6 +107,9 @@ routing:
 - existing normally parsed expression statements keep their current AST and
   runtime paths;
 - newly admitted residual forms return `MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT`;
+- forms implemented by later baseline slices, such as table-backed
+  `ORDER BY ADDTIME(...)`, leave this residual bucket and use their normal
+  statement AST and runtime diagnostics;
 - runtime execution returns the existing `1064 / 42000` unsupported utility
   diagnostic with no result rows, no warnings, no catalog mutation, and no
   variable side effects;

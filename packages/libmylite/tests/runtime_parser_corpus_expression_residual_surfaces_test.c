@@ -71,7 +71,7 @@ static int test_expression_residual_runtime(void) {
     failures += execute_error(
         database,
         "SELECT * FROM t1 ORDER BY ADDTIME(a, '00:00:00') DESC",
-        unsupported
+        no_database
     );
     failures +=
         execute_error(database, "SELECT 1 FROM t1 GROUP BY INSERT(a,'1','11','1')", unsupported);

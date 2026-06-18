@@ -42,7 +42,7 @@ static int test_expression_residual_placeholders(void) {
         {.sql = "SELECT _latin1'B' BETWEEN _latin1'a' AND _latin1'c'",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT * FROM t1 ORDER BY ADDTIME(a, '00:00:00') DESC",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
+         .kind = MYLITE_SQL_AST_SELECT_STATEMENT},
         {.sql = "SELECT 1 FROM t1 GROUP BY INSERT(a,'1','11','1')",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT 1 FROM r GROUP BY MAKE_SET(1,c) WITH ROLLUP",

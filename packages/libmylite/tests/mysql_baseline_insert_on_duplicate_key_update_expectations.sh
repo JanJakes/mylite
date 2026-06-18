@@ -124,6 +124,21 @@ expect_output \
 run_mysql "DROP TABLE s;" "$DATABASE" >/dev/null
 
 expect_output \
+    "row-scalar temporal duplicate update assignment" \
+    "2	0	0
+0	0	0
+1	12	12:34:56" \
+    "CREATE TABLE tm(id INT PRIMARY KEY, h INT, out_tm VARCHAR(32)); "\
+"INSERT INTO tm VALUES (1,12,NULL); "\
+"INSERT INTO tm VALUES (1,99,NULL) ON DUPLICATE KEY UPDATE out_tm=MAKETIME(h,34,56); "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"INSERT INTO tm VALUES (1,99,NULL) ON DUPLICATE KEY UPDATE out_tm=MAKETIME(h,34,56); "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT id,h,out_tm FROM tm;" \
+    "$DATABASE"
+run_mysql "DROP TABLE tm;" "$DATABASE" >/dev/null
+
+expect_output \
     "multi-row row-by-row duplicate handling" \
     "4	1	0
 1	20

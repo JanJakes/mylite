@@ -284,6 +284,9 @@ static int test_table_backed_base64_and_reopen(void) {
 }
 
 static int test_base64_diagnostics(void) {
+    static const struct expected_cell update_values[] = {
+        {(const unsigned char *)"WVdKag==", 8U, false},
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -361,13 +364,16 @@ static int test_base64_diagnostics(void) {
                 "FROM_BASE64() supports only integer, nonbinary string, and binary string columns",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(database, "UPDATE t SET v = TO_BASE64(v)", NULL);
+    failures += expect_query(
         database,
-        "UPDATE t SET v = TO_BASE64(v)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT v FROM t",
+            .column_count = 1U,
+            .values = update_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .context = "TO_BASE64 update assignment",
         }
     );
 

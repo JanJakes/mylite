@@ -1008,7 +1008,7 @@ static int build_insert_duplicate_update_sql(
 ) {
     struct mylite_dynamic_string string;
     size_t executable_assignment_count = count_executable_insert_duplicate_assignments(plan);
-    size_t next_parameter = 0U;
+    size_t next_parameter = 1U;
     int rc = MYLITE_OK;
 
     *out_sql = NULL;
@@ -1022,10 +1022,6 @@ static int build_insert_duplicate_update_sql(
         mylite_dynamic_string_deinit(&string);
         return MYLITE_ERROR;
     }
-    next_parameter =
-        insert_duplicate_update_assignment_parameter_count(plan) + conflicting_index->part_count +
-        1U;
-
     rc = mylite_dynamic_string_append(&string, "UPDATE ");
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_quoted_identifier(&string, plan->table.physical_name);
@@ -1034,13 +1030,17 @@ static int build_insert_duplicate_update_sql(
         rc = mylite_dynamic_string_append(&string, " SET ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_insert_duplicate_assignments_sql(&string, plan);
+        rc = append_insert_duplicate_assignments_sql(&string, plan, &next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(&string, " WHERE ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_insert_duplicate_key_predicate_sql(&string, plan, conflicting_index);
+        rc = append_insert_duplicate_key_predicate_sql(
+            &string,
+            conflicting_index,
+            &next_parameter
+        );
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(&string, " AND ");
@@ -1065,14 +1065,19 @@ static int build_insert_duplicate_update_sql(
 
 static int append_insert_duplicate_key_predicate_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_insert *plan,
-    const struct loaded_index_info *conflicting_index
+    const struct loaded_index_info *conflicting_index,
+    size_t *next_parameter
 ) {
-    return append_insert_duplicate_key_predicate_sql_from_parameters(
+    int rc = append_insert_duplicate_key_predicate_sql_from_parameters(
         string,
         conflicting_index,
-        insert_duplicate_update_assignment_parameter_count(plan) + 1U
+        *next_parameter
     );
+
+    if (rc == MYLITE_OK) {
+        *next_parameter += conflicting_index->part_count;
+    }
+    return rc;
 }
 
 static int append_insert_duplicate_key_predicate_sql_from_parameters(
@@ -1109,10 +1114,10 @@ static int append_insert_duplicate_key_predicate_sql_from_parameters(
 
 static int append_insert_duplicate_assignments_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_insert *plan
+    const struct planned_insert *plan,
+    size_t *next_parameter
 ) {
     int rc = MYLITE_OK;
-    size_t parameter_index = 1U;
     bool has_previous = false;
 
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->duplicate_update.assignment_count;
@@ -1141,11 +1146,11 @@ static int append_insert_duplicate_assignments_sql(
             rc = append_row_scalar_expression_sql(
                 string,
                 plan->duplicate_update.assignments[index].row_scalar_expression,
-                &parameter_index
+                next_parameter
             );
         } else if (rc == MYLITE_OK) {
-            rc = append_numbered_parameter(string, parameter_index);
-            ++parameter_index;
+            rc = append_numbered_parameter(string, *next_parameter);
+            ++(*next_parameter);
         }
         has_previous = true;
     }

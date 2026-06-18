@@ -249,12 +249,13 @@ static int build_insert_duplicate_update_sql(
 );
 static int append_insert_duplicate_key_predicate_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_insert *plan,
-    const struct loaded_index_info *conflicting_index
+    const struct loaded_index_info *conflicting_index,
+    size_t *next_parameter
 );
 static int append_insert_duplicate_assignments_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_insert *plan
+    const struct planned_insert *plan,
+    size_t *next_parameter
 );
 static int append_insert_duplicate_changed_conditions_sql(
     struct mylite_dynamic_string *string,

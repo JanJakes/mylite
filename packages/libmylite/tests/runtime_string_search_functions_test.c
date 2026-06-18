@@ -1304,7 +1304,7 @@ static int test_string_search_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+            .message_part = "string search functions support only ASCII text values",
         }
     );
     failures += execute_error(
@@ -1442,7 +1442,7 @@ static int test_string_search_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+            .message_part = "string search functions support only ASCII text values",
         }
     );
     failures += execute_error(
@@ -1559,7 +1559,7 @@ static int test_string_search_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+            .message_part = "string search functions support only ASCII text values",
         }
     );
     failures += execute_error(

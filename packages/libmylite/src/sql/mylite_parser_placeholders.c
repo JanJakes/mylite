@@ -241,9 +241,25 @@ static enum mylite_sql_parse_status scan_row_scalar_update_assignment_retries(
     struct placeholder_row_arithmetic_subject_retries *retries,
     bool *inout_can_retry
 );
+static enum mylite_sql_parse_status scan_row_scalar_duplicate_update_assignment_retries(
+    const struct placeholder_statement_scan *scan,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry
+);
+static enum mylite_sql_parse_status scan_row_scalar_assignment_list_retries(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry,
+    bool use_literal_placeholder
+);
 static bool placeholder_scan_top_level_update_set_index(
     const struct placeholder_statement_scan *scan,
     size_t *out_set_index
+);
+static bool placeholder_scan_top_level_duplicate_update_index(
+    const struct placeholder_statement_scan *scan,
+    size_t *out_update_index
 );
 static bool placeholder_scan_update_target_is_single_table(
     const struct placeholder_statement_scan *scan,

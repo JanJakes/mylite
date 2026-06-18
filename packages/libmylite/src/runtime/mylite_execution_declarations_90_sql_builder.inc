@@ -2531,21 +2531,20 @@ static int append_single_update_target_sql(
     const struct planned_update *plan
 );
 static bool planned_update_needs_target_alias(const struct planned_update *plan);
-static size_t update_assignment_parameter_count(const struct planned_update *plan);
-static size_t planned_row_scalar_expression_parameter_count(
-    const struct planned_row_scalar_expression *expression
-);
 static int append_update_assignment_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_update *plan
+    const struct planned_update *plan,
+    size_t *next_parameter
 );
 static int append_update_date_interval_assignment_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_update *plan
+    const struct planned_update *plan,
+    size_t *next_parameter
 );
 static int append_update_multiple_assignments_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_update *plan
+    const struct planned_update *plan,
+    size_t *next_parameter
 );
 static int append_update_auto_update_columns_sql(
     struct mylite_dynamic_string *string,

@@ -284,6 +284,10 @@
     COMMAND mylite_runtime_string_search_functions_test
   )
   add_test(
+    NAME libmylite.runtime.string_row_scalar_update_contexts
+    COMMAND mylite_runtime_string_row_scalar_update_contexts_test
+  )
+  add_test(
     NAME libmylite.runtime.date_add_second
     COMMAND mylite_runtime_date_add_second_test
   )

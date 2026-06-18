@@ -1036,32 +1036,6 @@ static size_t count_executable_insert_duplicate_assignments(const struct planned
     return count;
 }
 
-static size_t insert_duplicate_update_assignment_parameter_count(
-    const struct planned_insert *plan
-) {
-    size_t count = 0U;
-
-    if (plan == NULL) {
-        return 0U;
-    }
-    for (size_t index = 0U; index < plan->duplicate_update.assignment_count; ++index) {
-        const struct planned_insert_duplicate_update_assignment *assignment =
-            &plan->duplicate_update.assignments[index];
-
-        if (insert_duplicate_assignment_is_noop(assignment)) {
-            continue;
-        }
-        if (assignment->value_kind == PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_ROW_SCALAR) {
-            count += planned_row_scalar_expression_parameter_count(
-                assignment->row_scalar_expression
-            );
-        } else {
-            ++count;
-        }
-    }
-    return count;
-}
-
 static void set_insert_duplicate_arithmetic_unsupported_error(struct mylite_db *database) {
     set_unsupported_error(
         database,

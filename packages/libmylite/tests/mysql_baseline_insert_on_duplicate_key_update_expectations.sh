@@ -109,6 +109,21 @@ expect_output \
 run_mysql "DROP TABLE t;" "$DATABASE" >/dev/null
 
 expect_output \
+    "row-scalar string duplicate update assignment" \
+    "2	0	0
+0	0	0
+1	Alpha Beta	2	lp" \
+    "CREATE TABLE s(id INT PRIMARY KEY, txt VARCHAR(32), n INT, out_txt VARCHAR(32)); "\
+"INSERT INTO s VALUES (1,'Alpha Beta',2,NULL); "\
+"INSERT INTO s VALUES (1,'ignored',9,NULL) ON DUPLICATE KEY UPDATE out_txt=SUBSTRING(txt,2,n); "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"INSERT INTO s VALUES (1,'ignored',9,NULL) ON DUPLICATE KEY UPDATE out_txt=SUBSTRING(txt,2,n); "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT id,txt,n,out_txt FROM s;" \
+    "$DATABASE"
+run_mysql "DROP TABLE s;" "$DATABASE" >/dev/null
+
+expect_output \
     "multi-row row-by-row duplicate handling" \
     "4	1	0
 1	20

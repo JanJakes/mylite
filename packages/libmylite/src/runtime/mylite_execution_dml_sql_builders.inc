@@ -201,7 +201,7 @@ static int append_joined_delete_from_sql(
 
 static int build_update_sql(const struct planned_update *plan, char **out_sql) {
     struct mylite_dynamic_string string;
-    size_t next_parameter = update_assignment_parameter_count(plan) + 1U;
+    size_t next_parameter = 1U;
     int rc = MYLITE_OK;
 
     *out_sql = NULL;
@@ -215,7 +215,7 @@ static int build_update_sql(const struct planned_update *plan, char **out_sql) {
         rc = mylite_dynamic_string_append(&string, " SET ");
     }
     if (rc == MYLITE_OK) {
-        rc = append_update_assignment_sql(&string, plan);
+        rc = append_update_assignment_sql(&string, plan, &next_parameter);
     }
     if (rc == MYLITE_OK) {
         rc = append_update_auto_update_columns_sql(&string, plan, &next_parameter);
@@ -270,64 +270,15 @@ static bool planned_update_needs_target_alias(const struct planned_update *plan)
     return true;
 }
 
-static size_t update_assignment_parameter_count(const struct planned_update *plan) {
-    if (planned_update_has_multiple_assignments(plan)) {
-        size_t parameter_count = 0U;
-
-        for (size_t index = 0U; index < plan->assignment_count; ++index) {
-            const struct planned_update_assignment *assignment = &plan->assignments[index];
-
-            if (planned_update_assignment_is_noop(assignment)) {
-                continue;
-            }
-            if (assignment->value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
-                parameter_count +=
-                    planned_row_scalar_expression_parameter_count(&assignment->row_scalar_expression
-                    );
-            } else {
-                ++parameter_count;
-            }
-        }
-        return parameter_count;
-    }
-    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL) {
-        return update_date_interval_parameter_count;
-    }
-    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY) {
-        return 0U;
-    }
-    if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
-        return planned_row_scalar_expression_parameter_count(&plan->assignment_row_scalar_expression
-        );
-    }
-    return 1U;
-}
-
-static size_t planned_row_scalar_expression_parameter_count(
-    const struct planned_row_scalar_expression *expression
-) {
-    size_t count = 0U;
-
-    if (expression == NULL) {
-        return 0U;
-    }
-    if (expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE) {
-        ++count;
-    }
-    for (size_t index = 0U; index < expression->argument_count; ++index) {
-        count += planned_row_scalar_expression_parameter_count(&expression->arguments[index]);
-    }
-    return count;
-}
-
 static int append_update_assignment_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_update *plan
+    const struct planned_update *plan,
+    size_t *next_parameter
 ) {
     int rc = MYLITE_OK;
 
     if (planned_update_has_multiple_assignments(plan)) {
-        return append_update_multiple_assignments_sql(string, plan);
+        return append_update_multiple_assignments_sql(string, plan, next_parameter);
     }
 
     rc = mylite_dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
@@ -338,7 +289,7 @@ static int append_update_assignment_sql(
         return rc;
     }
     if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL) {
-        return append_update_date_interval_assignment_sql(string, plan);
+        return append_update_date_interval_assignment_sql(string, plan, next_parameter);
     }
     if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY) {
         return mylite_dynamic_string_append_quoted_identifier(
@@ -347,23 +298,31 @@ static int append_update_assignment_sql(
         );
     }
     if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
-        size_t next_parameter = 1U;
-
         return append_row_scalar_expression_sql(
             string,
             &plan->assignment_row_scalar_expression,
-            &next_parameter
+            next_parameter
         );
     }
     if (plan->assignment_value_kind != PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
-        return mylite_dynamic_string_append(string, "?1");
+        rc = append_numbered_parameter(string, *next_parameter);
+        if (rc == MYLITE_OK) {
+            ++(*next_parameter);
+        }
+        return rc;
     }
 
     rc = mylite_dynamic_string_append_quoted_identifier(string, plan->assignment_column.name);
     if (rc == MYLITE_OK && plan->arithmetic_operator == MYLITE_SQL_AST_OPERATOR_ADD) {
-        rc = mylite_dynamic_string_append(string, " + ?1");
+        rc = mylite_dynamic_string_append(string, " + ");
     } else if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(string, " - ?1");
+        rc = mylite_dynamic_string_append(string, " - ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_numbered_parameter(string, *next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        ++(*next_parameter);
     }
 
     return rc;
@@ -371,17 +330,27 @@ static int append_update_assignment_sql(
 
 static int append_update_date_interval_assignment_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_update *plan
+    const struct planned_update *plan,
+    size_t *next_parameter
 ) {
-    return append_update_date_interval_function_sql(string, &plan->assignment_column, 1U);
+    int rc = append_update_date_interval_function_sql(
+        string,
+        &plan->assignment_column,
+        *next_parameter
+    );
+
+    if (rc == MYLITE_OK) {
+        *next_parameter += update_date_interval_parameter_count;
+    }
+    return rc;
 }
 
 static int append_update_multiple_assignments_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_update *plan
+    const struct planned_update *plan,
+    size_t *next_parameter
 ) {
     size_t emitted_count = 0U;
-    size_t next_parameter = 1U;
     int rc = MYLITE_OK;
 
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
@@ -405,12 +374,12 @@ static int append_update_multiple_assignments_sql(
                 rc = append_row_scalar_expression_sql(
                     string,
                     &plan->assignments[index].row_scalar_expression,
-                    &next_parameter
+                    next_parameter
                 );
             } else {
-                rc = append_numbered_parameter(string, next_parameter);
+                rc = append_numbered_parameter(string, *next_parameter);
                 if (rc == MYLITE_OK) {
-                    ++next_parameter;
+                    ++(*next_parameter);
                 }
             }
         }

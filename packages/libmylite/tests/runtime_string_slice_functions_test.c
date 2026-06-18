@@ -1022,6 +1022,8 @@ static int test_string_slice_diagnostics(void) {
     static const char *const substring_index_count_values[] = {"abc", "\xC3\xA9"};
     static const char *const substring_index_nested_columns[] = {"s"};
     static const char *const substring_index_nested_values[] = {"a", "\xC3\xA9"};
+    static const char *const substring_index_update_columns[] = {"id", "v"};
+    static const char *const substring_index_update_values[] = {"1", "abc", "2", "\xC3\xA9"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -1371,13 +1373,17 @@ static int test_string_slice_diagnostics(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += execute_ok(database, "UPDATE t SET v = SUBSTRING_INDEX(v, '.', 1)", NULL);
+    failures += expect_query(
         database,
-        "UPDATE t SET v = SUBSTRING_INDEX(v, '.', 1)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT id, v FROM t ORDER BY id",
+            .columns = substring_index_update_columns,
+            .column_count =
+                sizeof(substring_index_update_columns) / sizeof(substring_index_update_columns[0]),
+            .values = substring_index_update_values,
+            .row_count = 2U,
+            .context = "SUBSTRING_INDEX update assignment",
         }
     );
     failures += execute_error(

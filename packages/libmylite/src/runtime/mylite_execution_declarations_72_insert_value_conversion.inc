@@ -149,7 +149,6 @@ static bool insert_duplicate_assignment_is_same_column_values_reference(
     const struct planned_insert_duplicate_update_assignment *assignment
 );
 static size_t count_executable_insert_duplicate_assignments(const struct planned_insert *plan);
-static size_t insert_duplicate_update_assignment_parameter_count(const struct planned_insert *plan);
 static void set_insert_duplicate_arithmetic_unsupported_error(struct mylite_db *database);
 static int validate_update_string_key_value(
     struct mylite_db *database,

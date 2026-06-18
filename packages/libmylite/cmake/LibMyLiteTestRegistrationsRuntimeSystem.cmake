@@ -176,6 +176,10 @@
     COMMAND mylite_runtime_numeric_format_truncate_crc32_test
   )
   add_test(
+    NAME libmylite.runtime.row_scalar_numeric_comparison_update_contexts
+    COMMAND mylite_runtime_row_scalar_numeric_comparison_update_contexts_test
+  )
+  add_test(
     NAME libmylite.runtime.hex_function
     COMMAND mylite_runtime_hex_function_test
   )

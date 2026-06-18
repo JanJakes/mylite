@@ -827,6 +827,18 @@ static bool placeholder_scan_token_is_retryable_update_assignment_row_scalar_fun
         "REVERSE",
         "SOUNDEX",
         "UNHEX",
+        "JSON_EXTRACT",
+        "JSON_UNQUOTE",
+        "JSON_LENGTH",
+        "JSON_KEYS",
+        "JSON_TYPE",
+        "JSON_QUOTE",
+        "JSON_ARRAY",
+        "JSON_OBJECT",
+        "JSON_SET",
+        "JSON_INSERT",
+        "JSON_REPLACE",
+        "JSON_REMOVE",
     };
 
     for (size_t name_index = 0U; name_index < sizeof(function_names) / sizeof(function_names[0]);

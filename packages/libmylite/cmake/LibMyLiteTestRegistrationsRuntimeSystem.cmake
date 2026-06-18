@@ -433,6 +433,10 @@
     COMMAND mylite_runtime_json_introspection_functions_test
   )
   add_test(
+    NAME libmylite.runtime.json_row_scalar_contexts
+    COMMAND mylite_runtime_json_row_scalar_contexts_test
+  )
+  add_test(
     NAME libmylite.runtime.scalar_comparison_projection
     COMMAND mylite_runtime_scalar_comparison_projection_test
   )

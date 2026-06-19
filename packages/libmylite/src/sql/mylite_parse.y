@@ -12230,13 +12230,16 @@ expression(A) ::= GROUP_CONCAT(T) LPAREN(L) expression(B)
         mylite_sql_parser_make_group_concat_function(state, T, L, B, O, S, R),
         W);
 }
-expression(A) ::= GROUP_CONCAT(T) LPAREN expression(B) COMMA function_argument_list(C)
+expression(A) ::= GROUP_CONCAT(T) LPAREN(L) expression(B) COMMA function_argument_list(C)
     group_concat_order_opt(O) group_concat_separator_opt(S) RPAREN(R) aggregate_window_opt(W). {
-    (void)O;
-    (void)S;
+    struct mylite_sql_ast_node *value = mylite_sql_parser_make_list_argument_function(
+        state,
+        T,
+        MYLITE_SQL_AST_CONCAT_FUNCTION,
+        mylite_sql_parser_prepend_function_argument(state, B, C),
+        R);
     A = mylite_sql_parser_attach_function_window_clause(
-        mylite_sql_parser_make_generic_function(
-            state, T, mylite_sql_parser_prepend_function_argument(state, B, C), R),
+        mylite_sql_parser_make_group_concat_function(state, T, L, value, O, S, R),
         W);
 }
 expression(A) ::= GROUP_CONCAT(T) LPAREN DISTINCT expression(B)

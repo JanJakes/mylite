@@ -39,6 +39,7 @@ int main(void) {
 static int test_aggregate_window_surfaces(void) {
     static const char *const supported_sum_rows[] = {"30"};
     static const char *const supported_group_concat_rows[] = {"ann|bob"};
+    static const char *const supported_group_concat_multi_arg_rows[] = {"ann|,bob|"};
     static const char *const nth_from_first_rows[] = {"1", "1", "2", "1"};
     mylite_db *database = NULL;
     int failures = 0;
@@ -158,13 +159,14 @@ static int test_aggregate_window_surfaces(void) {
             .message_part = "GROUP BY supports only descriptor group columns",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT GROUP_CONCAT(name,'|') FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+        (struct expected_query){
+            .sql = "SELECT GROUP_CONCAT(name,'|') FROM numbers",
+            .values = supported_group_concat_multi_arg_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "supported GROUP_CONCAT multi-argument row value",
         }
     );
     failures += execute_error(

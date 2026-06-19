@@ -111,6 +111,14 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
         "GROUP_CONCAT(CONCAT(name, note) ORDER BY id SEPARATOR '|')",
     };
     static const char *const concat_values[] = {"alphaA|betaB|deltaD|echoE"};
+    static const char *const multi_arg_columns[] = {
+        "GROUP_CONCAT(name, id ORDER BY id)",
+    };
+    static const char *const multi_arg_values[] = {"alpha1,beta2,delta4,echo5"};
+    static const char *const multi_arg_separator_columns[] = {
+        "GROUP_CONCAT(name, ':', id ORDER BY id SEPARATOR '|')",
+    };
+    static const char *const multi_arg_separator_values[] = {"alpha:1|beta:2|delta:4|echo:5"};
     static const char *const null_values[] = {NULL};
     static const char *const grouped_columns[] = {
         "g",
@@ -277,6 +285,28 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
             .values = concat_values,
             .row_count = 1U,
             .context = "concat row-scalar value expression",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT GROUP_CONCAT(name, id ORDER BY id) FROM items",
+            .columns = multi_arg_columns,
+            .column_count = 1U,
+            .values = multi_arg_values,
+            .row_count = 1U,
+            .context = "multi-argument row value expression",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT GROUP_CONCAT(name, ':', id ORDER BY id SEPARATOR '|') FROM items",
+            .columns = multi_arg_separator_columns,
+            .column_count = 1U,
+            .values = multi_arg_separator_values,
+            .row_count = 1U,
+            .context = "multi-argument row value expression with explicit separator",
         }
     );
     failures += expect_query(

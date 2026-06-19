@@ -76,6 +76,8 @@ names_double	alpha/beta/delta/echo
 names_empty	alphabetadeltaecho
 ifnull_values	alpha:beta::delta:echo:
 concat_values	alphaA|betaB|deltaD|echoE
+multi_expr	alpha1,beta2,delta4,echo5
+multi_expr_separator	alpha:1|beta:2|delta:4|echo:5
 sort_asc	delta:beta:alpha:echo
 sort_desc	echo:alpha:beta:delta
 where_filtered	alpha|beta
@@ -109,6 +111,8 @@ expect_output \
 "SELECT 'names_empty', GROUP_CONCAT(name ORDER BY id SEPARATOR '') FROM t; "\
 "SELECT 'ifnull_values', GROUP_CONCAT(IFNULL(name, '') ORDER BY id SEPARATOR ':') FROM t; "\
 "SELECT 'concat_values', GROUP_CONCAT(CONCAT(name, notes) ORDER BY id SEPARATOR '|') FROM t; "\
+"SELECT 'multi_expr', GROUP_CONCAT(name, id ORDER BY id) FROM t; "\
+"SELECT 'multi_expr_separator', GROUP_CONCAT(name, ':', id ORDER BY id SEPARATOR '|') FROM t; "\
 "SELECT 'sort_asc', GROUP_CONCAT(name ORDER BY sort_n ASC SEPARATOR ':') FROM t; "\
 "SELECT 'sort_desc', GROUP_CONCAT(name ORDER BY sort_n DESC SEPARATOR ':') FROM t; "\
 "SELECT 'where_filtered', GROUP_CONCAT(name ORDER BY id SEPARATOR '|') FROM t WHERE g = 1; "\
@@ -125,7 +129,6 @@ expect_output \
 
 wider_mysql_expected=$(cat <<'EXPECTED'
 distinct	alpha,beta,delta,echo
-multi_expr	alpha1,beta2,delta4,echo5
 ordinal_order	echo,delta,beta,alpha
 expression_order	alpha,beta,delta,echo
 multi_order	delta,beta,alpha,echo
@@ -135,9 +138,8 @@ EXPECTED
 expect_output \
     "wider mysql forms intentionally deferred by mylite" \
     "$wider_mysql_expected" \
-    "SET SESSION sql_mode = ''; "\
+"SET SESSION sql_mode = ''; "\
 "SELECT 'distinct', GROUP_CONCAT(DISTINCT name ORDER BY name) FROM t; "\
-"SELECT 'multi_expr', GROUP_CONCAT(name, id ORDER BY id) FROM t; "\
 "SELECT 'ordinal_order', GROUP_CONCAT(name ORDER BY 1 DESC) FROM t; "\
 "SELECT 'expression_order', GROUP_CONCAT(name ORDER BY id + 1) FROM t; "\
 "SELECT 'multi_order', GROUP_CONCAT(name ORDER BY sort_n, id DESC) FROM t; "\

@@ -10,8 +10,9 @@ limited ordering, and the existing one-column aggregate and grouped aggregate
 execution paths.
 
 The feature is intentionally not full MySQL `GROUP_CONCAT()` support. It
-supports one descriptor column or supported row-scalar expression argument,
-optional one descriptor ordering key inside the aggregate, optional
+supports one or more descriptor column or supported row-scalar expression
+arguments as a single per-row concatenated value, optional one descriptor
+ordering key inside the aggregate, optional
 string-literal separator, and short untruncated results. Wider MySQL forms are
 explicitly deferred.
 
@@ -82,10 +83,10 @@ slice:
 - After a successful aggregate `SELECT`, a subsequent `ROW_COUNT()` returns
   `-1` and `@@warning_count` remains `0` for the short, untruncated outputs
   covered by this feature.
-- MySQL supports wider forms such as `DISTINCT`, multiple value expressions,
-  broad expression arguments, ordinal and expression order keys, multiple order keys,
-  binary result typing, window use, and `group_concat_max_len` truncation with
-  warnings. MyLite defers these forms in this baseline slice.
+- MySQL supports wider forms such as `DISTINCT`, ordinal and expression order
+  keys, multiple order keys, binary result typing, window use, and
+  `group_concat_max_len` truncation with warnings. MyLite defers these forms
+  in this baseline slice.
 
 ## Scope
 
@@ -93,9 +94,10 @@ The implementation must add:
 
 - parser and AST support for `GROUP_CONCAT` as a no-space-sensitive aggregate
   function name;
-- one descriptor column or supported row-scalar expression argument,
+- one or more descriptor column or supported row-scalar expression arguments,
   optionally source-qualified where the existing aggregate source envelope
-  admits source qualifiers;
+  admits source qualifiers; multiple arguments are lowered through the existing
+  `CONCAT()` row-scalar value semantics for each row before aggregation;
 - optional one aggregate-local `ORDER BY` descriptor column with optional
   `ASC` or `DESC`;
 - optional `SEPARATOR` followed by an ordinary SQL string literal;
@@ -127,7 +129,6 @@ The implementation must add:
 This feature must not implement:
 
 - `GROUP_CONCAT(DISTINCT ...)`;
-- more than one concatenated expression;
 - row-scalar expression arguments outside the existing aggregate row-scalar
   subset;
 - aggregate-local expression, ordinal, alias, or multiple-column ordering;
@@ -227,6 +228,7 @@ expression ::=
 
 group_concat_value ::= qualified_identifier.
 group_concat_value ::= supported_row_scalar_expression.
+group_concat_value ::= group_concat_value COMMA supported_row_scalar_expression.
 
 group_concat_order_opt ::= .
 group_concat_order_opt ::= ORDER BY qualified_identifier order_direction_opt.
@@ -333,9 +335,8 @@ Diagnostics to cover:
 - unsupported aggregate-local order column type or nullable aggregate-local
   order column;
 - unsupported separator literal or decoded separator bytes;
-- unsupported `DISTINCT`, multiple value expressions, unsupported row-scalar
-  expression arguments, expression/ordinal/multiple order keys, window use,
-  scalar-subquery use, and
+- unsupported `DISTINCT`, unsupported row-scalar expression arguments,
+  expression/ordinal/multiple order keys, window use, scalar-subquery use, and
   `HAVING` aggregate predicates over `GROUP_CONCAT`;
 - physical SQLite failures and allocation failures;
 - public API misuse only if a public surface changes, which this feature does
@@ -371,8 +372,8 @@ CTest name. Coverage must include:
   `sqlite_schema_generation` mutation for reads;
 - zero-initialized cleanup for new plan fields;
 - deterministic rejection of unsupported value types and unsupported syntax:
-  `DISTINCT`, multiple value expressions, unsupported row-scalar expressions,
-  aggregate-local ordinal/expression/multiple
+  `DISTINCT`, unsupported row-scalar expressions, aggregate-local
+  ordinal/expression/multiple
   order keys, nullable order keys, string order keys, `SEPARATOR NULL`,
   numeric separators, parameters, window forms, subqueries, joins, and
   aggregate predicates in `HAVING`.

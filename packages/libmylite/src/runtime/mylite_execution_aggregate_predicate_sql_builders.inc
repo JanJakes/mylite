@@ -329,6 +329,7 @@ static int append_column_aggregate_select_item_sql(
                 string,
                 &item->aggregate_row_scalar_expression,
                 &item->aggregate_order,
+                item->aggregate_is_distinct,
                 item->has_separator,
                 next_parameter
             );
@@ -339,6 +340,7 @@ static int append_column_aggregate_select_item_sql(
             0U,
             &item->aggregate_order,
             false,
+            item->aggregate_is_distinct,
             item->has_separator,
             next_parameter
         );
@@ -463,10 +465,14 @@ static int append_group_concat_call_sql(
     size_t value_source_index,
     const struct planned_select_order *order,
     bool qualify_column_references,
+    bool is_distinct,
     bool has_separator,
     size_t *next_parameter
 ) {
-    int rc = mylite_dynamic_string_append(string, "_mylite_group_concat(");
+    int rc = mylite_dynamic_string_append(
+        string,
+        is_distinct ? "_mylite_group_concat_distinct(" : "_mylite_group_concat("
+    );
 
     if (rc == MYLITE_OK) {
         rc = append_descriptor_column_name_sql_for_source(
@@ -514,10 +520,14 @@ static int append_group_concat_expression_call_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *value_expression,
     const struct planned_select_order *order,
+    bool is_distinct,
     bool has_separator,
     size_t *next_parameter
 ) {
-    int rc = mylite_dynamic_string_append(string, "_mylite_group_concat(");
+    int rc = mylite_dynamic_string_append(
+        string,
+        is_distinct ? "_mylite_group_concat_distinct(" : "_mylite_group_concat("
+    );
 
     if (rc == MYLITE_OK) {
         rc = append_row_scalar_expression_sql(string, value_expression, next_parameter);
@@ -851,6 +861,7 @@ static int append_grouped_aggregate_select_item_sql(
                 string,
                 &item->aggregate_row_scalar_expression,
                 &item->aggregate_order,
+                item->aggregate_is_distinct,
                 item->has_separator,
                 next_parameter
             );
@@ -861,6 +872,7 @@ static int append_grouped_aggregate_select_item_sql(
                 item->aggregate_column_source_index,
                 &item->aggregate_order,
                 qualify,
+                item->aggregate_is_distinct,
                 item->has_separator,
                 next_parameter
             );

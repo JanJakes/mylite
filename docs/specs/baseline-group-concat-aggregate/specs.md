@@ -83,10 +83,10 @@ slice:
 - After a successful aggregate `SELECT`, a subsequent `ROW_COUNT()` returns
   `-1` and `@@warning_count` remains `0` for the short, untruncated outputs
   covered by this feature.
-- MySQL supports wider forms such as `DISTINCT`, ordinal and expression order
-  keys, multiple order keys, binary result typing, window use, and
-  `group_concat_max_len` truncation with warnings. MyLite defers these forms
-  in this baseline slice.
+- MySQL supports wider forms such as multi-expression `DISTINCT`, ordinal and
+  expression order keys, multiple order keys, binary result typing, window use,
+  and `group_concat_max_len` truncation with warnings. MyLite defers these
+  forms in this baseline slice.
 
 ## Scope
 
@@ -128,7 +128,7 @@ The implementation must add:
 
 This feature must not implement:
 
-- `GROUP_CONCAT(DISTINCT ...)`;
+- `GROUP_CONCAT(DISTINCT expr, expr...)` tuple-distinct semantics;
 - row-scalar expression arguments outside the existing aggregate row-scalar
   subset;
 - aggregate-local expression, ordinal, alias, or multiple-column ordering;
@@ -185,6 +185,13 @@ SELECT GROUP_CONCAT(value_expr [group_concat_order] [group_concat_separator]) [A
   FROM table_name [WHERE predicate]
 ```
 
+The single-value `DISTINCT` variant is supported in the same envelope:
+
+```sql
+SELECT GROUP_CONCAT(DISTINCT value_expr [group_concat_order] [group_concat_separator]) [AS alias]
+  FROM table_name [WHERE predicate]
+```
+
 Supported grouped form:
 
 ```sql
@@ -225,10 +232,15 @@ grammar:
 expression ::=
     GROUP_CONCAT LPAREN group_concat_value
         group_concat_order_opt group_concat_separator_opt RPAREN.
+expression ::=
+    GROUP_CONCAT LPAREN DISTINCT group_concat_single_value
+        group_concat_order_opt group_concat_separator_opt RPAREN.
 
 group_concat_value ::= qualified_identifier.
 group_concat_value ::= supported_row_scalar_expression.
 group_concat_value ::= group_concat_value COMMA supported_row_scalar_expression.
+group_concat_single_value ::= qualified_identifier.
+group_concat_single_value ::= supported_row_scalar_expression.
 
 group_concat_order_opt ::= .
 group_concat_order_opt ::= ORDER BY qualified_identifier order_direction_opt.
@@ -385,9 +397,10 @@ unavailable, changing user-visible expectations is blocked.
 
 Update `COMPATIBILITY.md`, `docs/compatibility/functions-aggregate.md`, and
 `docs/compatibility/sql-query-expressions.md` only for this exact partial
-surface. Do not claim full `GROUP_CONCAT`, `DISTINCT`, broad expression
-arguments, expression ordering, string collation ordering, truncation warnings,
-`group_concat_max_len`, binary result metadata, windows, or full grouping.
+surface. Do not claim full `GROUP_CONCAT`, multi-expression `DISTINCT`, broad
+expression arguments, expression ordering, string collation ordering,
+truncation warnings, `group_concat_max_len`, binary result metadata, windows,
+or full grouping.
 
 ## Verification
 

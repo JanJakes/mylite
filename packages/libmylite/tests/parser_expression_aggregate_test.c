@@ -2819,8 +2819,13 @@ static int test_group_concat_aggregate(void) {
     first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
     failures += parser_test_expect_node(
         first_expression,
-        MYLITE_SQL_AST_GENERIC_FUNCTION,
-        "group_concat distinct placeholder"
+        MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION,
+        "group_concat distinct aggregate"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 1U),
+        MYLITE_SQL_AST_GROUP_CONCAT_DISTINCT_MODIFIER,
+        "group_concat distinct marker"
     );
     mylite_sql_parse_result_deinit(&result);
     failures +=
@@ -2829,8 +2834,13 @@ static int test_group_concat_aggregate(void) {
     first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
     failures += parser_test_expect_node(
         first_expression,
-        MYLITE_SQL_AST_GENERIC_FUNCTION,
-        "multi-argument group_concat placeholder"
+        MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION,
+        "multi-argument group_concat aggregate"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 0U),
+        MYLITE_SQL_AST_CONCAT_FUNCTION,
+        "multi-argument group_concat row value"
     );
     mylite_sql_parse_result_deinit(&result);
     failures +=

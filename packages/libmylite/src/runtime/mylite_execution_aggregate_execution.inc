@@ -1928,6 +1928,7 @@ static int plan_column_group_concat_options(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
+    out_plan->aggregate_is_distinct = group_concat_is_distinct(function);
     if (column_aggregate_argument_is_row_scalar_expression(function)) {
         rc = plan_column_aggregate_row_scalar_expression(
             database,

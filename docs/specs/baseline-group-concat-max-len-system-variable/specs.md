@@ -133,9 +133,10 @@ This feature does not implement:
   privilege semantics, or `SET_VAR` optimizer hints;
 - result metadata changes around MySQL's documented binary/nonbinary and
   `<= 512` threshold behavior;
-- `GROUP_CONCAT(DISTINCT ...)`, unsupported expression arguments, expression or
-  ordinal ordering, nullable or string aggregate-local order keys, multiple
-  aggregate-local order keys, window functions, joins, or any other
+- `GROUP_CONCAT(DISTINCT expr, expr...)`, unsupported expression arguments,
+  expression or ordinal ordering, nullable or string aggregate-local order
+  keys, multiple aggregate-local order keys, window functions, joins, or any
+  other
   `GROUP_CONCAT()` form deferred by
   `baseline-group-concat-aggregate`;
 - binary string truncation, invalid UTF-8 output, or collation-sensitive

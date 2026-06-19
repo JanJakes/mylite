@@ -119,6 +119,16 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
         "GROUP_CONCAT(name, ':', id ORDER BY id SEPARATOR '|')",
     };
     static const char *const multi_arg_separator_values[] = {"alpha:1|beta:2|delta:4|echo:5"};
+    static const char *const distinct_columns[] = {
+        "GROUP_CONCAT(DISTINCT name ORDER BY sort_n)",
+    };
+    static const char *const distinct_values[] = {"alpha,beta,delta,echo"};
+    static const char *const distinct_separator_columns[] = {"names"};
+    static const char *const distinct_separator_values[] = {"alpha|beta|delta|echo"};
+    static const char *const distinct_ifnull_columns[] = {
+        "GROUP_CONCAT(DISTINCT IFNULL(name, '') ORDER BY sort_n SEPARATOR ':')",
+    };
+    static const char *const distinct_ifnull_values[] = {"alpha:beta:delta:echo:"};
     static const char *const null_values[] = {NULL};
     static const char *const grouped_columns[] = {
         "g",
@@ -136,6 +146,13 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
     };
     static const char *const grouped_having_columns[] = {"g", "names"};
     static const char *const grouped_having_values[] = {"2", "delta:echo"};
+    static const char *const grouped_distinct_columns[] = {"g", "names"};
+    static const char *const grouped_distinct_values[] = {
+        "1",
+        "alpha:beta",
+        "2",
+        "delta:echo",
+    };
     static const char *const row_count_columns[] = {"ROW_COUNT()", "@@warning_count"};
     static const char *const row_count_values[] = {"-1", "0"};
     static const char *const all_empty_columns[] = {"GROUP_CONCAT(name ORDER BY id)"};
@@ -166,6 +183,22 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
         execute_discard(database, "CREATE TABLE empty_names (id INT NOT NULL, name VARCHAR(20))");
     failures +=
         execute_discard(database, "INSERT INTO empty_names VALUES (1, ''), (2, ''), (3, NULL)");
+    failures += execute_discard(
+        database,
+        "CREATE TABLE duplicate_names (g INT, id INT NOT NULL, name VARCHAR(20), "
+        "sort_n INT NOT NULL)"
+    );
+    failures += execute_discard(
+        database,
+        "INSERT INTO duplicate_names VALUES "
+        "(1, 1, 'alpha', 1), "
+        "(1, 2, 'beta', 2), "
+        "(1, 3, 'alpha', 1), "
+        "(2, 4, 'delta', 3), "
+        "(2, 5, 'echo', 4), "
+        "(2, 6, 'delta', 3), "
+        "(2, 7, NULL, 5)"
+    );
 
     catalog = mylite_connection_catalog_for_test(database);
     if (catalog != NULL) {
@@ -312,6 +345,41 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT GROUP_CONCAT(DISTINCT name ORDER BY sort_n) FROM duplicate_names",
+            .columns = distinct_columns,
+            .column_count = 1U,
+            .values = distinct_values,
+            .row_count = 1U,
+            .context = "distinct row value expression",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT GROUP_CONCAT(DISTINCT name ORDER BY sort_n SEPARATOR '|') AS names "
+                   "FROM duplicate_names",
+            .columns = distinct_separator_columns,
+            .column_count = 1U,
+            .values = distinct_separator_values,
+            .row_count = 1U,
+            .context = "distinct row value expression with explicit separator",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT GROUP_CONCAT(DISTINCT IFNULL(name, '') ORDER BY sort_n SEPARATOR ':') "
+                   "FROM duplicate_names",
+            .columns = distinct_ifnull_columns,
+            .column_count = 1U,
+            .values = distinct_ifnull_values,
+            .row_count = 1U,
+            .context = "distinct row-scalar value expression",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT GROUP_CONCAT(name ORDER BY id) FROM items WHERE g = 99",
             .columns = (const char *const[]){"GROUP_CONCAT(name ORDER BY id)"},
             .column_count = 1U,
@@ -388,6 +456,18 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
             .values = grouped_having_values,
             .row_count = 1U,
             .context = "grouped group_concat with group-column having",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, GROUP_CONCAT(DISTINCT name ORDER BY sort_n SEPARATOR ':') AS names "
+                   "FROM duplicate_names GROUP BY g ORDER BY g",
+            .columns = grouped_distinct_columns,
+            .column_count = 2U,
+            .values = grouped_distinct_values,
+            .row_count = 2U,
+            .context = "grouped distinct group_concat",
         }
     );
     failures += expect_query(

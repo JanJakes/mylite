@@ -366,6 +366,7 @@ static const struct mylite_sql_ast_node *group_concat_order_node(
 static const struct mylite_sql_ast_node *group_concat_separator_node(
     const struct mylite_sql_ast_node *function
 );
+static bool group_concat_is_distinct(const struct mylite_sql_ast_node *function);
 static enum planned_grouped_aggregate_function grouped_aggregate_function_from_expression(
     const struct mylite_sql_ast_node *expression
 );

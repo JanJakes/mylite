@@ -40,10 +40,12 @@ falling through to SQLite-compatible behavior.
 
 MySQL `GROUP_CONCAT()` accepts one or more expressions before optional
 aggregate-local `ORDER BY` and `SEPARATOR` clauses, and the `DISTINCT` modifier
-may apply to that expression list. MyLite executes supported multi-expression
-`GROUP_CONCAT(expr, expr...)` forms by applying existing per-row `CONCAT()`
-semantics before aggregation. `GROUP_CONCAT(DISTINCT expr, expr... ORDER BY ...
-SEPARATOR ...)` remains a parser placeholder.
+may apply to that expression list. MyLite executes supported single-expression
+`GROUP_CONCAT(DISTINCT expr ...)` forms in the existing descriptor-backed
+envelope and supported multi-expression `GROUP_CONCAT(expr, expr...)` forms by
+applying existing per-row `CONCAT()` semantics before aggregation.
+`GROUP_CONCAT(DISTINCT expr, expr... ORDER BY ... SEPARATOR ...)` remains a
+parser placeholder.
 
 ### Grouping Keys
 
@@ -128,7 +130,7 @@ Runtime must continue to:
 - report existing unsupported grouped-aggregate diagnostics for non-descriptor
   group keys or unsupported aggregate arguments;
 - report generic unsupported-function diagnostics for parser-only
-  `GROUP_CONCAT(DISTINCT ...)` placeholders.
+  multi-expression `GROUP_CONCAT(DISTINCT ...)` placeholders.
 
 ## Tests
 
@@ -144,6 +146,6 @@ query movement.
 ## Compatibility Status
 
 This slice improves parser compatibility for common aggregate/window syntax.
-It does not mark full aggregate expression execution, `GROUP_CONCAT(DISTINCT)`
-execution, general expression grouping, `WITH ROLLUP` execution, or
-aggregate-window execution as supported.
+It does not mark full aggregate expression execution, multi-expression
+`GROUP_CONCAT(DISTINCT)` execution, general expression grouping, `WITH ROLLUP`
+execution, or aggregate-window execution as supported.

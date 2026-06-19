@@ -115,6 +115,7 @@ static int test_group_concat_and_group_keys(void) {
     const struct mylite_sql_ast_node *select_list = NULL;
     const struct mylite_sql_ast_node *function = NULL;
     const struct mylite_sql_ast_node *argument_list = NULL;
+    const struct mylite_sql_ast_node *value_function = NULL;
     const struct mylite_sql_ast_node *group_clause = NULL;
     int failures = 0;
 
@@ -132,11 +133,17 @@ static int test_group_concat_and_group_keys(void) {
     );
     select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
     function = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
-    argument_list = parser_test_child_at(function, 1U);
+    value_function = parser_test_child_at(function, 0U);
+    argument_list = parser_test_child_at(value_function, 0U);
     failures += parser_test_expect_node(
         function,
-        MYLITE_SQL_AST_GENERIC_FUNCTION,
-        "multi-argument GROUP_CONCAT placeholder"
+        MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION,
+        "multi-argument GROUP_CONCAT aggregate"
+    );
+    failures += parser_test_expect_node(
+        value_function,
+        MYLITE_SQL_AST_CONCAT_FUNCTION,
+        "multi-argument GROUP_CONCAT row value"
     );
     failures += parser_test_expect_node(
         argument_list,

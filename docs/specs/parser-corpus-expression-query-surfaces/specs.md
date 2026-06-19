@@ -73,8 +73,9 @@ existing runtime diagnostics for unsupported grouped execution.
 
 MySQL accepts `DISTINCT` in several aggregate forms, including expression
 arguments and `GROUP_CONCAT(DISTINCT expr ...)`. MyLite already supports
-`COUNT(DISTINCT descriptor_column)` and non-distinct grouped aggregates. This
-slice admits common DISTINCT aggregate syntax:
+`COUNT(DISTINCT descriptor_column)`, single-expression `GROUP_CONCAT(DISTINCT
+expr ...)` in its documented envelope, and non-distinct grouped aggregates.
+This slice admits common DISTINCT aggregate syntax:
 
 - `COUNT(DISTINCT expr[, expr...])`;
 - `SUM(DISTINCT expr)` and `AVG(DISTINCT expr)`;

@@ -2072,6 +2072,7 @@ struct planned_column_aggregate {
     enum mylite_sql_ast_operator aggregate_projection_operator;
     struct planned_row_scalar_expression aggregate_projection_rhs;
     struct planned_select_order aggregate_order;
+    bool aggregate_is_distinct;
     bool has_separator;
     struct planned_value separator;
     struct planned_value count_literal;
@@ -2131,6 +2132,7 @@ struct planned_grouped_aggregate_item {
     bool aggregate_uses_row_scalar_expression;
     struct planned_row_scalar_expression aggregate_row_scalar_expression;
     struct planned_select_order aggregate_order;
+    bool aggregate_is_distinct;
     bool has_separator;
     struct planned_value separator;
 };

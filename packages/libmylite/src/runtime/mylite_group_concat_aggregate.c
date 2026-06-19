@@ -26,10 +26,22 @@ enum {
     utf8_continuation_tag = 0x80,
 };
 
+struct mylite_group_concat_config {
+    bool is_distinct;
+};
+
+struct mylite_group_concat_distinct_value {
+    char *bytes;
+    size_t size;
+    struct mylite_group_concat_distinct_value *next;
+};
+
 struct mylite_group_concat_state {
     char *bytes;
     size_t size;
     size_t capacity;
+    struct mylite_group_concat_distinct_value *distinct_values;
+    struct mylite_group_concat_distinct_value *last_distinct_value;
     uint64_t cut_ordinal;
     bool saw_value;
     bool truncated;
@@ -48,7 +60,14 @@ static int group_concat_append_value(
     struct mylite_db *database,
     struct mylite_group_concat_state *state,
     sqlite3_value *value,
-    sqlite3_value *separator
+    sqlite3_value *separator,
+    const struct mylite_group_concat_config *config
+);
+static int group_concat_record_distinct_value(
+    struct mylite_group_concat_state *state,
+    const unsigned char *bytes,
+    size_t byte_count,
+    bool *out_duplicate
 );
 static int group_concat_append_bytes(
     struct mylite_group_concat_state *state,
@@ -65,13 +84,15 @@ static int group_concat_append_cut_warning(
 static void group_concat_state_deinit(struct mylite_group_concat_state *state);
 
 int mylite_sqlite_register_group_concat_aggregate_function(sqlite3 *sqlite) {
+    static struct mylite_group_concat_config plain_config = {.is_distinct = false};
+    static struct mylite_group_concat_config distinct_config = {.is_distinct = true};
     static struct mylite_sqlite_function_registration registrations[] = {
         {
             .kind = MYLITE_SQLITE_FUNCTION_AGGREGATE,
             .name = "_mylite_group_concat",
             .argument_count = 1,
             .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
-            .application_data = NULL,
+            .application_data = &plain_config,
             .scalar_callback = NULL,
             .step_callback = group_concat_step,
             .final_callback = group_concat_final,
@@ -84,7 +105,33 @@ int mylite_sqlite_register_group_concat_aggregate_function(sqlite3 *sqlite) {
             .name = "_mylite_group_concat",
             .argument_count = 2,
             .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
-            .application_data = NULL,
+            .application_data = &plain_config,
+            .scalar_callback = NULL,
+            .step_callback = group_concat_step,
+            .final_callback = group_concat_final,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_AGGREGATE,
+            .name = "_mylite_group_concat_distinct",
+            .argument_count = 1,
+            .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
+            .application_data = &distinct_config,
+            .scalar_callback = NULL,
+            .step_callback = group_concat_step,
+            .final_callback = group_concat_final,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_AGGREGATE,
+            .name = "_mylite_group_concat_distinct",
+            .argument_count = 2,
+            .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
+            .application_data = &distinct_config,
             .scalar_callback = NULL,
             .step_callback = group_concat_step,
             .final_callback = group_concat_final,
@@ -102,6 +149,7 @@ int mylite_sqlite_register_group_concat_aggregate_function(sqlite3 *sqlite) {
 }
 
 static void group_concat_step(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    const struct mylite_group_concat_config *config = NULL;
     struct mylite_db *database = NULL;
     struct mylite_group_concat_state *state = NULL;
     sqlite3_value *separator = NULL;
@@ -130,6 +178,7 @@ static void group_concat_step(sqlite3_context *context, int argc, sqlite3_value 
         return;
     }
 
+    config = sqlite3_user_data(context);
     database = mylite_sqlite_bootstrap_owner_from_context(context);
     if (database == NULL) {
         sqlite3_result_error(context, "missing MyLite GROUP_CONCAT owner", -1);
@@ -144,7 +193,7 @@ static void group_concat_step(sqlite3_context *context, int argc, sqlite3_value 
     if (argc == 2) {
         separator = argv[1];
     }
-    rc = group_concat_append_value(context, database, state, argv[0], separator);
+    rc = group_concat_append_value(context, database, state, argv[0], separator, config);
     if (rc == MYLITE_NOMEM) {
         sqlite3_result_error_nomem(context);
     } else if (rc != MYLITE_OK) {
@@ -201,7 +250,8 @@ static int group_concat_append_value(
     struct mylite_db *database,
     struct mylite_group_concat_state *state,
     sqlite3_value *value,
-    sqlite3_value *separator
+    sqlite3_value *separator,
+    const struct mylite_group_concat_config *config
 ) {
     static const unsigned char default_separator[] = ",";
 
@@ -212,6 +262,7 @@ static int group_concat_append_value(
     size_t limit = group_concat_size_limit(database->session.group_concat_max_len);
     uint64_t ordinal = database->session.group_concat_value_ordinal;
     bool complete = true;
+    bool duplicate = false;
     int rc = MYLITE_OK;
 
     if (state == NULL || value == NULL) {
@@ -232,6 +283,18 @@ static int group_concat_append_value(
         separator_byte_count = sqlite3_value_bytes(separator);
         if ((separator_bytes == NULL && separator_byte_count != 0) || separator_byte_count < 0) {
             return MYLITE_NOMEM;
+        }
+    }
+
+    if (config != NULL && config->is_distinct) {
+        rc = group_concat_record_distinct_value(
+            state,
+            value_bytes,
+            (size_t)value_byte_count,
+            &duplicate
+        );
+        if (rc != MYLITE_OK || duplicate) {
+            return rc;
         }
     }
 
@@ -272,6 +335,55 @@ static int group_concat_append_value(
         state->truncated = true;
         state->cut_ordinal = ordinal;
     }
+    return MYLITE_OK;
+}
+
+static int group_concat_record_distinct_value(
+    struct mylite_group_concat_state *state,
+    const unsigned char *bytes,
+    size_t byte_count,
+    bool *out_duplicate
+) {
+    struct mylite_group_concat_distinct_value *current = NULL;
+    struct mylite_group_concat_distinct_value *entry = NULL;
+    size_t allocation_size = byte_count == 0U ? 1U : byte_count;
+
+    if (state == NULL || out_duplicate == NULL || (bytes == NULL && byte_count != 0U)) {
+        return MYLITE_MISUSE;
+    }
+    *out_duplicate = false;
+
+    current = state->distinct_values;
+    while (current != NULL) {
+        if (current->size == byte_count &&
+            (byte_count == 0U || memcmp(current->bytes, bytes, byte_count) == 0)) {
+            *out_duplicate = true;
+            return MYLITE_OK;
+        }
+        current = current->next;
+    }
+
+    entry = malloc(sizeof(*entry));
+    if (entry == NULL) {
+        return MYLITE_NOMEM;
+    }
+    *entry = (struct mylite_group_concat_distinct_value){0};
+    entry->bytes = malloc(allocation_size);
+    if (entry->bytes == NULL) {
+        free(entry);
+        return MYLITE_NOMEM;
+    }
+    if (byte_count != 0U) {
+        memcpy(entry->bytes, bytes, byte_count);
+    }
+    entry->size = byte_count;
+
+    if (state->last_distinct_value == NULL) {
+        state->distinct_values = entry;
+    } else {
+        state->last_distinct_value->next = entry;
+    }
+    state->last_distinct_value = entry;
     return MYLITE_OK;
 }
 
@@ -418,8 +530,18 @@ static int group_concat_append_cut_warning(
 }
 
 static void group_concat_state_deinit(struct mylite_group_concat_state *state) {
+    struct mylite_group_concat_distinct_value *current = NULL;
+
     if (state == NULL) {
         return;
+    }
+    current = state->distinct_values;
+    while (current != NULL) {
+        struct mylite_group_concat_distinct_value *next = current->next;
+
+        free(current->bytes);
+        free(current);
+        current = next;
     }
     free(state->bytes);
     *state = (struct mylite_group_concat_state){0};

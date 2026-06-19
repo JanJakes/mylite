@@ -2036,6 +2036,7 @@ static int append_group_concat_call_sql(
     size_t value_source_index,
     const struct planned_select_order *order,
     bool qualify_column_references,
+    bool is_distinct,
     bool has_separator,
     size_t *next_parameter
 );
@@ -2043,6 +2044,7 @@ static int append_group_concat_expression_call_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *value_expression,
     const struct planned_select_order *order,
+    bool is_distinct,
     bool has_separator,
     size_t *next_parameter
 );

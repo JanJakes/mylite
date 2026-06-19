@@ -305,6 +305,7 @@ static int plan_grouped_group_concat_options(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
+    out_item->aggregate_is_distinct = group_concat_is_distinct(function);
     if (column_aggregate_argument_is_row_scalar_expression(function)) {
         rc = plan_grouped_aggregate_row_scalar_expression(
             database,
@@ -539,6 +540,18 @@ static const struct mylite_sql_ast_node *group_concat_separator_node(
         child = child->next_sibling;
     }
     return NULL;
+}
+
+static bool group_concat_is_distinct(const struct mylite_sql_ast_node *function) {
+    const struct mylite_sql_ast_node *child = child_at(function, 1U);
+
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_GROUP_CONCAT_DISTINCT_MODIFIER) {
+            return true;
+        }
+        child = child->next_sibling;
+    }
+    return false;
 }
 
 static enum planned_grouped_aggregate_function grouped_aggregate_function_from_expression(

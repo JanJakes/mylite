@@ -625,6 +625,43 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_group_concat_function(
     return function;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_group_concat_distinct_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_token left_paren,
+    const struct mylite_sql_token *distinct_token,
+    struct mylite_sql_ast_node *value,
+    struct mylite_sql_ast_node *order_clause,
+    struct mylite_sql_ast_node *separator,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_ast_node *function = mylite_sql_parser_make_group_concat_function(
+        state,
+        function_token,
+        left_paren,
+        value,
+        order_clause,
+        separator,
+        right_paren
+    );
+    struct mylite_sql_ast_node *distinct = NULL;
+
+    if (function == NULL) {
+        return NULL;
+    }
+    distinct = mylite_sql_parser_make_node(
+        state,
+        MYLITE_SQL_AST_GROUP_CONCAT_DISTINCT_MODIFIER,
+        mylite_sql_parser_span_from_token(distinct_token)
+    );
+    if (distinct == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(function, distinct);
+    return function;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_attach_function_window_clause(
     struct mylite_sql_ast_node *function,
     struct mylite_sql_ast_node *window_clause

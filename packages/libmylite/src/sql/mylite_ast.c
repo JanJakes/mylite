@@ -2192,6 +2192,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "bit_xor_aggregate_function";
     case MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION:
         return "group_concat_aggregate_function";
+    case MYLITE_SQL_AST_GROUP_CONCAT_DISTINCT_MODIFIER:
+        return "group_concat_distinct_modifier";
     case MYLITE_SQL_AST_STD_AGGREGATE_FUNCTION:
         return "std_aggregate_function";
     case MYLITE_SQL_AST_STDDEV_AGGREGATE_FUNCTION:

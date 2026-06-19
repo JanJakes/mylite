@@ -151,6 +151,7 @@ static int test_distinct_aggregate_placeholders(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *select_list = NULL;
     const struct mylite_sql_ast_node *expression = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
     int failures = 0;
 
     failures += parse_ok("SELECT COUNT(DISTINCT CONCAT(c, 'x')), COUNT(DISTINCT c, n) FROM t");
@@ -167,8 +168,29 @@ static int test_distinct_aggregate_placeholders(void) {
     expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
     failures += parser_test_expect_node(
         expression,
-        MYLITE_SQL_AST_GENERIC_FUNCTION,
-        "GROUP_CONCAT DISTINCT placeholder"
+        MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION,
+        "GROUP_CONCAT DISTINCT aggregate"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(expression, 0U),
+        "c",
+        "GROUP_CONCAT DISTINCT value"
+    );
+    order_clause = parser_test_child_at(expression, 1U);
+    failures += parser_test_expect_node(
+        order_clause,
+        MYLITE_SQL_AST_ORDER_BY_CLAUSE,
+        "GROUP_CONCAT DISTINCT order"
+    );
+    failures += parser_test_expect_literal(
+        parser_test_child_at(expression, 2U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "GROUP_CONCAT DISTINCT separator"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression, 3U),
+        MYLITE_SQL_AST_GROUP_CONCAT_DISTINCT_MODIFIER,
+        "GROUP_CONCAT DISTINCT marker"
     );
     mylite_sql_parse_result_deinit(&result);
 

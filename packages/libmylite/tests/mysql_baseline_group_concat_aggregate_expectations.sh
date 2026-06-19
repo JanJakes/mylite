@@ -78,6 +78,9 @@ ifnull_values	alpha:beta::delta:echo:
 concat_values	alphaA|betaB|deltaD|echoE
 multi_expr	alpha1,beta2,delta4,echo5
 multi_expr_separator	alpha:1|beta:2|delta:4|echo:5
+distinct	alpha,beta,delta,echo
+distinct_separator	alpha|beta|delta|echo
+distinct_ifnull	alpha:beta:delta:echo:
 sort_asc	delta:beta:alpha:echo
 sort_desc	echo:alpha:beta:delta
 where_filtered	alpha|beta
@@ -87,6 +90,8 @@ grouped	1	alpha:beta
 grouped	2	delta:echo
 grouped	3	<NULL>
 grouped_having	2	delta:echo
+grouped_distinct	1	alpha:beta
+grouped_distinct	2	delta:echo
 status	-1	0
 space_ignore	alpha,beta,delta,echo
 EXPECTED
@@ -103,6 +108,16 @@ expect_output \
 "(2,4,'delta','D',-1), "\
 "(2,5,'echo','E',7), "\
 "(3,6,NULL,NULL,8); "\
+"CREATE TABLE duplicate_names(g INT, id INT NOT NULL, name VARCHAR(20), sort_n INT NOT NULL) "\
+"ENGINE=InnoDB; "\
+"INSERT INTO duplicate_names VALUES "\
+"(1,1,'alpha',1), "\
+"(1,2,'beta',2), "\
+"(1,3,'alpha',1), "\
+"(2,4,'delta',3), "\
+"(2,5,'echo',4), "\
+"(2,6,'delta',3), "\
+"(2,7,NULL,5); "\
 "SELECT 'ids_default', GROUP_CONCAT(id ORDER BY id) FROM t; "\
 "SELECT 'ids_asc', GROUP_CONCAT(id ORDER BY id ASC) FROM t; "\
 "SELECT 'ids_desc', GROUP_CONCAT(id ORDER BY id DESC) FROM t; "\
@@ -113,6 +128,11 @@ expect_output \
 "SELECT 'concat_values', GROUP_CONCAT(CONCAT(name, notes) ORDER BY id SEPARATOR '|') FROM t; "\
 "SELECT 'multi_expr', GROUP_CONCAT(name, id ORDER BY id) FROM t; "\
 "SELECT 'multi_expr_separator', GROUP_CONCAT(name, ':', id ORDER BY id SEPARATOR '|') FROM t; "\
+"SELECT 'distinct', GROUP_CONCAT(DISTINCT name ORDER BY sort_n) FROM duplicate_names; "\
+"SELECT 'distinct_separator', GROUP_CONCAT(DISTINCT name ORDER BY sort_n SEPARATOR '|') "\
+"FROM duplicate_names; "\
+"SELECT 'distinct_ifnull', GROUP_CONCAT(DISTINCT IFNULL(name, '') ORDER BY sort_n SEPARATOR ':') "\
+"FROM duplicate_names; "\
 "SELECT 'sort_asc', GROUP_CONCAT(name ORDER BY sort_n ASC SEPARATOR ':') FROM t; "\
 "SELECT 'sort_desc', GROUP_CONCAT(name ORDER BY sort_n DESC SEPARATOR ':') FROM t; "\
 "SELECT 'where_filtered', GROUP_CONCAT(name ORDER BY id SEPARATOR '|') FROM t WHERE g = 1; "\
@@ -122,13 +142,15 @@ expect_output \
 "FROM t GROUP BY g ORDER BY g; "\
 "SELECT 'grouped_having', g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') "\
 "FROM t GROUP BY g HAVING g = 2; "\
+"SELECT 'grouped_distinct', g, GROUP_CONCAT(DISTINCT name ORDER BY sort_n SEPARATOR ':') "\
+"FROM duplicate_names GROUP BY g ORDER BY g; "\
 "SELECT 'status', ROW_COUNT(), @@warning_count; "\
 "SET SESSION sql_mode = 'IGNORE_SPACE'; "\
 "SELECT 'space_ignore', GROUP_CONCAT (name ORDER BY id) FROM t;" \
     "$DATABASE"
 
 wider_mysql_expected=$(cat <<'EXPECTED'
-distinct	alpha,beta,delta,echo
+multi_expr_distinct	alpha1,beta2,delta4,echo5
 ordinal_order	echo,delta,beta,alpha
 expression_order	alpha,beta,delta,echo
 multi_order	delta,beta,alpha,echo
@@ -139,7 +161,7 @@ expect_output \
     "wider mysql forms intentionally deferred by mylite" \
     "$wider_mysql_expected" \
 "SET SESSION sql_mode = ''; "\
-"SELECT 'distinct', GROUP_CONCAT(DISTINCT name ORDER BY name) FROM t; "\
+"SELECT 'multi_expr_distinct', GROUP_CONCAT(DISTINCT name, id ORDER BY id) FROM t; "\
 "SELECT 'ordinal_order', GROUP_CONCAT(name ORDER BY 1 DESC) FROM t; "\
 "SELECT 'expression_order', GROUP_CONCAT(name ORDER BY id + 1) FROM t; "\
 "SELECT 'multi_order', GROUP_CONCAT(name ORDER BY sort_n, id DESC) FROM t; "\

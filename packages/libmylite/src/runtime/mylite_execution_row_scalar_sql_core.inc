@@ -266,6 +266,55 @@ static int append_row_scalar_expression_sql(
             expression,
             next_parameter
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_GET_LOCK:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_get_lock",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_FREE_LOCK:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_is_free_lock",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_USED_LOCK:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_is_used_lock",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_LOCK:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_release_lock",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_ALL_LOCKS:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_release_all_locks",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_ICU_VERSION:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_icu_version",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_BENCHMARK:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_benchmark",
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
         return append_row_scalar_numeric_function_expression_sql(
             string,
@@ -782,6 +831,13 @@ static int append_row_scalar_conversion_base_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_INET_NTOA:
     case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_SET:
     case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_GET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GET_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_FREE_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_USED_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_ALL_LOCKS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ICU_VERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BENCHMARK:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
         return append_row_scalar_expression_sql(string, expression, next_parameter);
@@ -1019,6 +1075,13 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_INET_NTOA:
     case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_SET:
     case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_GET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GET_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_FREE_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_USED_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_ALL_LOCKS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ICU_VERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BENCHMARK:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
@@ -1222,6 +1285,13 @@ static int append_row_scalar_non_control_flow_expression_sql(
             expression,
             next_parameter
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_GET_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_FREE_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_USED_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_ALL_LOCKS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ICU_VERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BENCHMARK:
     case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST:
         return append_row_scalar_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
@@ -1439,6 +1509,13 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_INET_NTOA:
     case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_SET:
     case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_GET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GET_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_FREE_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_USED_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_ALL_LOCKS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_ICU_VERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BENCHMARK:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:

@@ -300,6 +300,78 @@ static int session_scalar_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int generic_system_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static bool generic_system_function_name_equals(
+    const struct mylite_sql_ast_node *expression,
+    const char *name
+);
+static const struct mylite_sql_ast_node *generic_system_function_arguments(
+    const struct mylite_sql_ast_node *expression
+);
+static int generic_named_lock_get_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+);
+static int generic_named_lock_is_free_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+);
+static int generic_named_lock_is_used_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+);
+static int generic_named_lock_release_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+);
+static int generic_named_lock_release_all_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+);
+static int generic_icu_version_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+);
+static int generic_benchmark_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+);
+static int generic_system_string_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    struct session_scalar_cell *out_cell,
+    const char **out_text,
+    size_t *out_text_size
+);
+static int generic_system_int64_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    bool null_is_zero,
+    int64_t *out_value,
+    bool *out_is_null
+);
+static int generic_system_format_int64(
+    struct mylite_db *database,
+    int64_t value,
+    struct session_scalar_cell *out_cell
+);
+static int generic_system_format_uint64(
+    struct mylite_db *database,
+    uint64_t value,
+    struct session_scalar_cell *out_cell
+);
+static int append_scalar_benchmark_negative_warning(struct mylite_db *database, int64_t count);
 static int scalar_concat_operator_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

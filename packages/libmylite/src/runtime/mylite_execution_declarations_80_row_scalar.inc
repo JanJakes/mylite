@@ -2321,16 +2321,73 @@ static bool row_scalar_numeric_function_kind_is_integer_like_runtime_argument(
 static int plan_row_scalar_get_lock_function(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_release_lock_function(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_is_free_lock_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_is_used_lock_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_release_all_locks_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_icu_version_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_benchmark_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_named_lock_function(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct row_scalar_named_lock_function lock_function,
     struct planned_row_scalar_expression *out_expression
 );

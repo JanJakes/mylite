@@ -16,6 +16,7 @@
 #include "mylite_json_functions.h"
 #include "mylite_last_insert_id.h"
 #include "mylite_like.h"
+#include "mylite_named_locks.h"
 #include "mylite_numeric_extras.h"
 #include "mylite_numeric_functions.h"
 #include "mylite_period_functions.h"
@@ -322,6 +323,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_last_insert_id_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_named_lock_functions(sqlite);
     }
     if (rc != MYLITE_OK) {
         return rc;

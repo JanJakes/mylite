@@ -123,6 +123,442 @@ static int scalar_subquery_inner_value(
     return MYLITE_ERROR;
 }
 
+static int generic_system_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *arguments = generic_system_function_arguments(expression);
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (generic_system_function_name_equals(expression, "GET_LOCK")) {
+        return generic_named_lock_get_value(database, arguments, out_cell);
+    }
+    if (generic_system_function_name_equals(expression, "IS_FREE_LOCK")) {
+        return generic_named_lock_is_free_value(database, arguments, out_cell);
+    }
+    if (generic_system_function_name_equals(expression, "IS_USED_LOCK")) {
+        return generic_named_lock_is_used_value(database, arguments, out_cell);
+    }
+    if (generic_system_function_name_equals(expression, "RELEASE_LOCK")) {
+        return generic_named_lock_release_value(database, arguments, out_cell);
+    }
+    if (generic_system_function_name_equals(expression, "RELEASE_ALL_LOCKS")) {
+        return generic_named_lock_release_all_value(database, arguments, out_cell);
+    }
+    if (generic_system_function_name_equals(expression, "ICU_VERSION")) {
+        return generic_icu_version_value(database, arguments, out_cell);
+    }
+    if (generic_system_function_name_equals(expression, "BENCHMARK")) {
+        return generic_benchmark_value(database, arguments, out_cell);
+    }
+    set_unsupported_error(database, "unsupported generic scalar function");
+    return MYLITE_ERROR;
+}
+
+static bool generic_system_function_name_equals(
+    const struct mylite_sql_ast_node *expression,
+    const char *name
+) {
+    const struct mylite_sql_ast_node *function_name = NULL;
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_GENERIC_FUNCTION) {
+        return false;
+    }
+    function_name = expression->first_child;
+    while (function_name != NULL) {
+        if (function_name->kind == MYLITE_SQL_AST_IDENTIFIER &&
+            source_span_text_equals_ascii_case_insensitive(&function_name->span, name)) {
+            return true;
+        }
+        function_name = function_name->next_sibling;
+    }
+    return false;
+}
+
+static const struct mylite_sql_ast_node *generic_system_function_arguments(
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_ast_node *current = NULL;
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_GENERIC_FUNCTION) {
+        return NULL;
+    }
+    current = expression->first_child;
+    while (current != NULL) {
+        if (current->kind == MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+            return current;
+        }
+        current = current->next_sibling;
+    }
+    return NULL;
+}
+
+static int generic_named_lock_get_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+) {
+    struct session_scalar_cell name_cell = {0};
+    const char *name = NULL;
+    size_t name_size = 0U;
+    int64_t timeout = 0;
+    int64_t value = 0;
+    bool timeout_is_null = false;
+    int rc = MYLITE_OK;
+
+    if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 2U) {
+        set_native_function_parameter_count_error(database, "GET_LOCK");
+        return MYLITE_ERROR;
+    }
+    rc = generic_system_string_argument(
+        database,
+        child_at(arguments, 0U),
+        &name_cell,
+        &name,
+        &name_size
+    );
+    if (rc == MYLITE_OK) {
+        rc = generic_system_int64_argument(
+            database,
+            child_at(arguments, 1U),
+            true,
+            &timeout,
+            &timeout_is_null
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_named_lock_get(
+            database,
+            (struct mylite_named_lock_name){.data = name, .size = name_size},
+            timeout,
+            &value
+        );
+    }
+    mylite_execution_session_scalar_cell_deinit(&name_cell);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return generic_system_format_int64(database, value, out_cell);
+}
+
+static int generic_named_lock_is_free_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+) {
+    struct session_scalar_cell name_cell = {0};
+    const char *name = NULL;
+    size_t name_size = 0U;
+    int64_t value = 0;
+    int rc = MYLITE_OK;
+
+    if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 1U) {
+        set_native_function_parameter_count_error(database, "IS_FREE_LOCK");
+        return MYLITE_ERROR;
+    }
+    rc = generic_system_string_argument(
+        database,
+        child_at(arguments, 0U),
+        &name_cell,
+        &name,
+        &name_size
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_named_lock_is_free(
+            database,
+            (struct mylite_named_lock_name){.data = name, .size = name_size},
+            &value
+        );
+    }
+    mylite_execution_session_scalar_cell_deinit(&name_cell);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return generic_system_format_int64(database, value, out_cell);
+}
+
+static int generic_named_lock_is_used_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+) {
+    struct session_scalar_cell name_cell = {0};
+    const char *name = NULL;
+    size_t name_size = 0U;
+    uint64_t connection_id = 0U;
+    int is_null = 1;
+    int rc = MYLITE_OK;
+
+    if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 1U) {
+        set_native_function_parameter_count_error(database, "IS_USED_LOCK");
+        return MYLITE_ERROR;
+    }
+    rc = generic_system_string_argument(
+        database,
+        child_at(arguments, 0U),
+        &name_cell,
+        &name,
+        &name_size
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_named_lock_is_used(
+            database,
+            (struct mylite_named_lock_name){.data = name, .size = name_size},
+            &connection_id,
+            &is_null
+        );
+    }
+    mylite_execution_session_scalar_cell_deinit(&name_cell);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_null) {
+        out_cell->value = NULL;
+        return MYLITE_OK;
+    }
+    return generic_system_format_uint64(database, connection_id, out_cell);
+}
+
+static int generic_named_lock_release_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+) {
+    struct session_scalar_cell name_cell = {0};
+    const char *name = NULL;
+    size_t name_size = 0U;
+    int64_t value = 0;
+    int is_null = 1;
+    int rc = MYLITE_OK;
+
+    if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 1U) {
+        set_native_function_parameter_count_error(database, "RELEASE_LOCK");
+        return MYLITE_ERROR;
+    }
+    rc = generic_system_string_argument(
+        database,
+        child_at(arguments, 0U),
+        &name_cell,
+        &name,
+        &name_size
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_named_lock_release(
+            database,
+            (struct mylite_named_lock_name){.data = name, .size = name_size},
+            &value,
+            &is_null
+        );
+    }
+    mylite_execution_session_scalar_cell_deinit(&name_cell);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_null) {
+        out_cell->value = NULL;
+        return MYLITE_OK;
+    }
+    return generic_system_format_int64(database, value, out_cell);
+}
+
+static int generic_named_lock_release_all_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+) {
+    uint64_t count = 0U;
+    int rc = MYLITE_OK;
+
+    if (arguments != NULL && mylite_sql_ast_node_child_count(arguments) != 0U) {
+        set_native_function_parameter_count_error(database, "RELEASE_ALL_LOCKS");
+        return MYLITE_ERROR;
+    }
+    rc = mylite_named_lock_release_all(database, &count);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return generic_system_format_uint64(database, count, out_cell);
+}
+
+static int generic_icu_version_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+) {
+    if (arguments != NULL && mylite_sql_ast_node_child_count(arguments) != 0U) {
+        set_native_function_parameter_count_error(database, "ICU_VERSION");
+        return MYLITE_ERROR;
+    }
+    out_cell->value = "77.1";
+    return MYLITE_OK;
+}
+
+static int generic_benchmark_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+) {
+    struct session_scalar_cell expression_cell = {0};
+    int64_t count = 0;
+    bool count_is_null = false;
+    int rc = MYLITE_OK;
+
+    if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 2U) {
+        set_native_function_parameter_count_error(database, "BENCHMARK");
+        return MYLITE_ERROR;
+    }
+    rc = generic_system_int64_argument(
+        database,
+        child_at(arguments, 0U),
+        false,
+        &count,
+        &count_is_null
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (count_is_null) {
+        out_cell->value = NULL;
+        return MYLITE_OK;
+    }
+    if (count < 0) {
+        rc = append_scalar_benchmark_negative_warning(database, count);
+        if (rc == MYLITE_OK) {
+            out_cell->value = NULL;
+        }
+        return rc;
+    }
+    if (count > 0) {
+        rc = session_scalar_value(database, child_at(arguments, 1U), &expression_cell);
+        mylite_execution_session_scalar_cell_deinit(&expression_cell);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    return generic_system_format_int64(database, 0, out_cell);
+}
+
+static int generic_system_string_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    struct session_scalar_cell *out_cell,
+    const char **out_text,
+    size_t *out_text_size
+) {
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL || out_text == NULL || out_text_size == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    *out_text = NULL;
+    *out_text_size = 0U;
+    rc = session_scalar_value(database, argument, out_cell);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (out_cell->value == NULL) {
+        return MYLITE_OK;
+    }
+    *out_text = out_cell->value;
+    *out_text_size = out_cell->has_value_size ? out_cell->value_size : strlen(out_cell->value);
+    return MYLITE_OK;
+}
+
+static int generic_system_int64_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    bool null_is_zero,
+    int64_t *out_value,
+    bool *out_is_null
+) {
+    struct session_scalar_cell cell = {0};
+    char *end = NULL;
+    int64_t value = 0;
+    int rc = MYLITE_OK;
+    enum { integer_radix = 10 };
+
+    if (out_value == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = 0;
+    *out_is_null = false;
+    rc = session_scalar_value(database, argument, &cell);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (cell.value == NULL) {
+        *out_is_null = !null_is_zero;
+        mylite_execution_session_scalar_cell_deinit(&cell);
+        return MYLITE_OK;
+    }
+    errno = 0;
+    value = strtoll(cell.value, &end, integer_radix);
+    if (errno == ERANGE || end == cell.value || (end != NULL && *end != '\0')) {
+        value = 0;
+    }
+    *out_value = value;
+    mylite_execution_session_scalar_cell_deinit(&cell);
+    return MYLITE_OK;
+}
+
+static int generic_system_format_int64(
+    struct mylite_db *database,
+    int64_t value,
+    struct session_scalar_cell *out_cell
+) {
+    int written =
+        snprintf(out_cell->integer_text, sizeof(out_cell->integer_text), "%" PRId64, value);
+
+    if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+        set_runtime_error(database, "failed to format system function value");
+        return MYLITE_ERROR;
+    }
+    out_cell->value = out_cell->integer_text;
+    return MYLITE_OK;
+}
+
+static int generic_system_format_uint64(
+    struct mylite_db *database,
+    uint64_t value,
+    struct session_scalar_cell *out_cell
+) {
+    int written =
+        snprintf(out_cell->integer_text, sizeof(out_cell->integer_text), "%" PRIu64, value);
+
+    if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+        set_runtime_error(database, "failed to format system function value");
+        return MYLITE_ERROR;
+    }
+    out_cell->value = out_cell->integer_text;
+    return MYLITE_OK;
+}
+
+static int append_scalar_benchmark_negative_warning(struct mylite_db *database, int64_t count) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect count value: '%" PRId64 "' for function benchmark",
+        count
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "failed to format BENCHMARK() warning");
+        return MYLITE_ERROR;
+    }
+    return mylite_diagnostics_append_warning(
+        &database->diagnostics,
+        mysql_warning_incorrect_count,
+        "HY000",
+        message
+    );
+}
+
 static int session_scalar_value_without_case(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -156,6 +592,8 @@ static int session_scalar_value_without_case(
         return scalar_comparison_value(database, expression, out_cell);
     case MYLITE_SQL_AST_MOD_FUNCTION:
         return scalar_arithmetic_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_GENERIC_FUNCTION:
+        return generic_system_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_IF_FUNCTION:
         return if_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_IFNULL_FUNCTION:

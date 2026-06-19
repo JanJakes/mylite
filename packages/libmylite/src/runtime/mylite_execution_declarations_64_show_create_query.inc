@@ -39,6 +39,12 @@ static int validate_isnull_function_value_node(
     const struct mylite_sql_ast_node *expression,
     const char *function_name
 );
+static int validate_generic_system_if_value_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_handled
+);
+static bool is_if_admitted_session_scalar_expression(const struct mylite_sql_ast_node *expression);
 static int validate_case_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression
@@ -113,6 +119,9 @@ static bool is_user_variable_assignment_projection_expression(
 static bool is_last_insert_id_set_projection_expression(const struct mylite_sql_ast_node *expression
 );
 static bool is_scalar_function_projection_expression(const struct mylite_sql_ast_node *expression);
+static bool is_named_lock_and_info_projection_expression(
+    const struct mylite_sql_ast_node *expression
+);
 static bool is_numeric_scalar_function_projection_expression(
     const struct mylite_sql_ast_node *expression
 );

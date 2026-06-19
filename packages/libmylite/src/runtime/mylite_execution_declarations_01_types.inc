@@ -1555,6 +1555,13 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_INET_NTOA = 101,
     PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_SET = 102,
     PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_GET = 103,
+    PLANNED_ROW_SCALAR_EXPRESSION_GET_LOCK = 104,
+    PLANNED_ROW_SCALAR_EXPRESSION_IS_FREE_LOCK = 105,
+    PLANNED_ROW_SCALAR_EXPRESSION_IS_USED_LOCK = 106,
+    PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_LOCK = 107,
+    PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_ALL_LOCKS = 108,
+    PLANNED_ROW_SCALAR_EXPRESSION_ICU_VERSION = 109,
+    PLANNED_ROW_SCALAR_EXPRESSION_BENCHMARK = 110,
 };
 
 enum row_scalar_control_flow_bind_mode {
@@ -1724,7 +1731,7 @@ struct substring_text_bounds {
 struct row_scalar_named_lock_function {
     const char *function_name;
     size_t argument_count;
-    int64_t result;
+    enum planned_row_scalar_expression_kind expression_kind;
 };
 
 struct planned_row_scalar_expression {

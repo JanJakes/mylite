@@ -32,6 +32,10 @@
     COMMAND mylite_runtime_version_function_test
   )
   add_test(
+    NAME libmylite.runtime.named_lock_and_info_functions
+    COMMAND mylite_runtime_named_lock_and_info_functions_test
+  )
+  add_test(
     NAME libmylite.runtime.if_function
     COMMAND mylite_runtime_if_function_test
   )

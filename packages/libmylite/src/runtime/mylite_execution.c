@@ -37,6 +37,7 @@
 #include "mylite_json.h"
 #include "mylite_mysql_error_codes.h"
 #include "mylite_mysql_server_identity.h"
+#include "mylite_named_locks.h"
 #include "mylite_parser.h"
 #include "mylite_period_functions.h"
 #include "mylite_rand.h"

@@ -299,9 +299,17 @@ static int if_non_function_scalar_value(
         set_if_unsupported_error(database, function_name);
         return MYLITE_ERROR;
     }
-    if (generic_function_name_equals(expression, "GET_LOCK")) {
-        out_cell->value = "1";
-        return MYLITE_OK;
+    if (generic_function_name_equals(expression, "GET_LOCK") ||
+        generic_function_name_equals(expression, "IS_FREE_LOCK") ||
+        generic_function_name_equals(expression, "IS_USED_LOCK") ||
+        generic_function_name_equals(expression, "RELEASE_LOCK") ||
+        generic_function_name_equals(expression, "RELEASE_ALL_LOCKS") ||
+        generic_function_name_equals(expression, "ICU_VERSION") ||
+        generic_function_name_equals(expression, "BENCHMARK")) {
+        return generic_system_function_value(database, expression, out_cell);
+    }
+    if (is_if_admitted_session_scalar_expression(expression)) {
+        return session_scalar_value(database, expression, out_cell);
     }
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);

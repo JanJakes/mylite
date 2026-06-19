@@ -58,10 +58,81 @@ static int plan_row_scalar_non_control_flow_expression(
         return plan_row_scalar_literal_value(database, expression, out_expression);
     }
     if (generic_function_name_equals(expression, "GET_LOCK")) {
-        return plan_row_scalar_get_lock_function(database, expression, out_expression);
+        return plan_row_scalar_get_lock_function(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
     }
     if (generic_function_name_equals(expression, "RELEASE_LOCK")) {
-        return plan_row_scalar_release_lock_function(database, expression, out_expression);
+        return plan_row_scalar_release_lock_function(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (generic_function_name_equals(expression, "IS_FREE_LOCK")) {
+        return plan_row_scalar_is_free_lock_function(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (generic_function_name_equals(expression, "IS_USED_LOCK")) {
+        return plan_row_scalar_is_used_lock_function(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (generic_function_name_equals(expression, "RELEASE_ALL_LOCKS")) {
+        return plan_row_scalar_release_all_locks_function(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (generic_function_name_equals(expression, "ICU_VERSION")) {
+        return plan_row_scalar_icu_version_function(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (generic_function_name_equals(expression, "BENCHMARK")) {
+        return plan_row_scalar_benchmark_function(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
     }
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         return plan_row_scalar_integer_value(database, expression, out_expression);
@@ -653,15 +724,23 @@ static bool row_scalar_numeric_function_kind_is_integer_like_runtime_argument(
 static int plan_row_scalar_get_lock_function(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 ) {
     return plan_row_scalar_named_lock_function(
         database,
         expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
         (struct row_scalar_named_lock_function){
             .function_name = "GET_LOCK",
             .argument_count = 2U,
-            .result = 1,
+            .expression_kind = PLANNED_ROW_SCALAR_EXPRESSION_GET_LOCK,
         },
         out_expression
     );
@@ -670,15 +749,148 @@ static int plan_row_scalar_get_lock_function(
 static int plan_row_scalar_release_lock_function(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 ) {
     return plan_row_scalar_named_lock_function(
         database,
         expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
         (struct row_scalar_named_lock_function){
             .function_name = "RELEASE_LOCK",
             .argument_count = 1U,
-            .result = 1,
+            .expression_kind = PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_LOCK,
+        },
+        out_expression
+    );
+}
+
+static int plan_row_scalar_is_free_lock_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    return plan_row_scalar_named_lock_function(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        (struct row_scalar_named_lock_function){
+            .function_name = "IS_FREE_LOCK",
+            .argument_count = 1U,
+            .expression_kind = PLANNED_ROW_SCALAR_EXPRESSION_IS_FREE_LOCK,
+        },
+        out_expression
+    );
+}
+
+static int plan_row_scalar_is_used_lock_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    return plan_row_scalar_named_lock_function(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        (struct row_scalar_named_lock_function){
+            .function_name = "IS_USED_LOCK",
+            .argument_count = 1U,
+            .expression_kind = PLANNED_ROW_SCALAR_EXPRESSION_IS_USED_LOCK,
+        },
+        out_expression
+    );
+}
+
+static int plan_row_scalar_release_all_locks_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    return plan_row_scalar_named_lock_function(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        (struct row_scalar_named_lock_function){
+            .function_name = "RELEASE_ALL_LOCKS",
+            .argument_count = 0U,
+            .expression_kind = PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_ALL_LOCKS,
+        },
+        out_expression
+    );
+}
+
+static int plan_row_scalar_icu_version_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    return plan_row_scalar_named_lock_function(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        (struct row_scalar_named_lock_function){
+            .function_name = "ICU_VERSION",
+            .argument_count = 0U,
+            .expression_kind = PLANNED_ROW_SCALAR_EXPRESSION_ICU_VERSION,
+        },
+        out_expression
+    );
+}
+
+static int plan_row_scalar_benchmark_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    return plan_row_scalar_named_lock_function(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        (struct row_scalar_named_lock_function){
+            .function_name = "BENCHMARK",
+            .argument_count = 2U,
+            .expression_kind = PLANNED_ROW_SCALAR_EXPRESSION_BENCHMARK,
         },
         out_expression
     );
@@ -687,27 +899,57 @@ static int plan_row_scalar_release_lock_function(
 static int plan_row_scalar_named_lock_function(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
     struct row_scalar_named_lock_function lock_function,
     struct planned_row_scalar_expression *out_expression
 ) {
     const struct mylite_sql_ast_node *arguments =
         expression == NULL ? NULL : expression->first_child;
+    int rc = MYLITE_OK;
 
     while (arguments != NULL && arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
         arguments = arguments->next_sibling;
     }
 
-    if (arguments == NULL ||
-        mylite_sql_ast_node_child_count(arguments) != lock_function.argument_count) {
+    if ((arguments == NULL && lock_function.argument_count != 0U) ||
+        (arguments != NULL &&
+         mylite_sql_ast_node_child_count(arguments) != lock_function.argument_count)) {
         set_native_function_parameter_count_error(database, lock_function.function_name);
         return MYLITE_ERROR;
     }
 
-    *out_expression = (struct planned_row_scalar_expression){
-        .kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE,
-        .value = (struct planned_value){.is_null = false, .integer = lock_function.result},
-    };
-    return MYLITE_OK;
+    out_expression->kind = lock_function.expression_kind;
+    out_expression->argument_count = lock_function.argument_count;
+    if (lock_function.argument_count == 0U) {
+        return MYLITE_OK;
+    }
+    out_expression->arguments = (struct planned_row_scalar_expression *)calloc(
+        lock_function.argument_count,
+        sizeof(*out_expression->arguments)
+    );
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < lock_function.argument_count; ++index) {
+        rc = plan_row_scalar_non_concat_expression(
+            database,
+            child_at(arguments, index),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            false,
+            &out_expression->arguments[index]
+        );
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(out_expression);
+    }
+    return rc;
 }
 
 static bool generic_function_name_equals(

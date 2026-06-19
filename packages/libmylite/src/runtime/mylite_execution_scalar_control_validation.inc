@@ -91,6 +91,20 @@ static bool is_session_scalar_expression(const struct mylite_sql_ast_node *expre
     }
 }
 
+static bool is_if_admitted_session_scalar_expression(const struct mylite_sql_ast_node *expression) {
+    expression = unwrap_any_value_function_expression(expression);
+
+    if (expression == NULL) {
+        return false;
+    }
+    switch (expression->kind) {
+    case MYLITE_SQL_AST_UNIX_TIMESTAMP_FUNCTION:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static int validate_if_value_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -150,20 +164,68 @@ static int validate_if_value_node(
     if (expression->kind == MYLITE_SQL_AST_ISNULL_FUNCTION) {
         return validate_isnull_function_value_node(database, stack, expression, function_name);
     }
-    if (generic_function_name_equals(expression, "GET_LOCK")) {
-        const struct mylite_sql_ast_node *arguments = expression->first_child;
+    if (expression->kind == MYLITE_SQL_AST_GENERIC_FUNCTION) {
+        bool handled = false;
+        int rc = validate_generic_system_if_value_node(database, expression, &handled);
 
-        while (arguments != NULL && arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
-            arguments = arguments->next_sibling;
+        if (handled || rc != MYLITE_OK) {
+            return rc;
         }
-        if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 2U) {
-            set_native_function_parameter_count_error(database, "GET_LOCK");
-            return MYLITE_ERROR;
-        }
+    }
+    if (is_if_admitted_session_scalar_expression(expression)) {
         return MYLITE_OK;
     }
     if (!is_if_non_function_value_expression(expression)) {
         set_if_unsupported_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int validate_generic_system_if_value_node(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_handled
+) {
+    const struct mylite_sql_ast_node *arguments = NULL;
+    const char *function_name = NULL;
+    size_t expected_count = 0U;
+    size_t actual_count = 0U;
+
+    if (out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (generic_function_name_equals(expression, "GET_LOCK")) {
+        function_name = "GET_LOCK";
+        expected_count = 2U;
+    } else if (generic_function_name_equals(expression, "IS_FREE_LOCK")) {
+        function_name = "IS_FREE_LOCK";
+        expected_count = 1U;
+    } else if (generic_function_name_equals(expression, "IS_USED_LOCK")) {
+        function_name = "IS_USED_LOCK";
+        expected_count = 1U;
+    } else if (generic_function_name_equals(expression, "RELEASE_LOCK")) {
+        function_name = "RELEASE_LOCK";
+        expected_count = 1U;
+    } else if (generic_function_name_equals(expression, "RELEASE_ALL_LOCKS")) {
+        function_name = "RELEASE_ALL_LOCKS";
+        expected_count = 0U;
+    } else if (generic_function_name_equals(expression, "ICU_VERSION")) {
+        function_name = "ICU_VERSION";
+        expected_count = 0U;
+    } else if (generic_function_name_equals(expression, "BENCHMARK")) {
+        function_name = "BENCHMARK";
+        expected_count = 2U;
+    } else {
+        return MYLITE_OK;
+    }
+
+    *out_handled = true;
+    arguments = generic_system_function_arguments(expression);
+    actual_count = arguments == NULL ? 0U : mylite_sql_ast_node_child_count(arguments);
+    if (actual_count != expected_count) {
+        set_native_function_parameter_count_error(database, function_name);
         return MYLITE_ERROR;
     }
     return MYLITE_OK;

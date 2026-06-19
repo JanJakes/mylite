@@ -1,6 +1,7 @@
 #include "mylite_connection.h"
 
 #include "mylite_file_open.h"
+#include "mylite_named_locks.h"
 #include "sqlite3.h"
 
 #include <stdatomic.h>
@@ -318,6 +319,7 @@ static void destroy_database_handle(struct mylite_db *database) {
         return;
     }
 
+    mylite_named_lock_release_all_for_connection(database->session.connection_id);
     unregister_processlist_session(database);
     if (database->sqlite != NULL && database->session.user_transaction_active) {
         (void)sqlite3_exec(database->sqlite, "ROLLBACK", NULL, NULL, NULL);

@@ -166,9 +166,21 @@ static bool select_statement_is_row_scalar_projection_attempt(
              (has_row_source && row_scalar_expression_is_context_expression_attempt(expression)) ||
              (has_row_source && row_scalar_expression_contains_bitwise_attempt(expression)) ||
              (expression != NULL && expression->kind == MYLITE_SQL_AST_EXISTS_PREDICATE) ||
-             generic_function_name_equals(expression, "GET_LOCK") ||
-             generic_function_name_equals(expression, "RELEASE_LOCK") ||
-             expression_contains_generic_function_named(expression, "GET_LOCK") ||
+             (has_row_source && generic_function_name_equals(expression, "GET_LOCK")) ||
+             (has_row_source && generic_function_name_equals(expression, "IS_FREE_LOCK")) ||
+             (has_row_source && generic_function_name_equals(expression, "IS_USED_LOCK")) ||
+             (has_row_source && generic_function_name_equals(expression, "RELEASE_LOCK")) ||
+             (has_row_source && generic_function_name_equals(expression, "RELEASE_ALL_LOCKS")) ||
+             (has_row_source && generic_function_name_equals(expression, "ICU_VERSION")) ||
+             (has_row_source && generic_function_name_equals(expression, "BENCHMARK")) ||
+             (has_row_source && expression_contains_generic_function_named(expression, "GET_LOCK")) ||
+             (has_row_source && expression_contains_generic_function_named(expression, "IS_FREE_LOCK")) ||
+             (has_row_source && expression_contains_generic_function_named(expression, "IS_USED_LOCK")) ||
+             (has_row_source && expression_contains_generic_function_named(expression, "RELEASE_LOCK")) ||
+             (has_row_source &&
+              expression_contains_generic_function_named(expression, "RELEASE_ALL_LOCKS")) ||
+             (has_row_source && expression_contains_generic_function_named(expression, "ICU_VERSION")) ||
+             (has_row_source && expression_contains_generic_function_named(expression, "BENCHMARK")) ||
              (has_row_source && expression != NULL && expression->kind == MYLITE_SQL_AST_LITERAL) ||
              (has_row_source && expression != NULL &&
               expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION))) {
@@ -1867,6 +1879,12 @@ static int populate_row_scalar_expression_result_column_descriptor(
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_SET:
     case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_GET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GET_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_FREE_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_USED_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_ALL_LOCKS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BENCHMARK:
         populate_scalar_binary_numeric_result_column_descriptor(
             descriptor,
             (struct scalar_binary_numeric_result_column_shape){
@@ -1875,6 +1893,17 @@ static int populate_row_scalar_expression_result_column_descriptor(
                 .decimals = 0U,
                 .extra_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED,
                 .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_ICU_VERSION:
+        populate_scalar_connection_string_result_column_descriptor(
+            database,
+            descriptor,
+            (struct scalar_connection_string_result_column_shape){
+                .display_length = 4U * scalar_connection_max_bytes_per_character(database),
+                .extra_flags = 0U,
+                .nullable = false,
             }
         );
         return MYLITE_OK;

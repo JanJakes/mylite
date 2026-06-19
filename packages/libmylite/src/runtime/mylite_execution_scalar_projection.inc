@@ -162,9 +162,23 @@ static bool is_row_constructor_projection_expression(const struct mylite_sql_ast
 static bool is_scalar_function_projection_expression(const struct mylite_sql_ast_node *expression) {
     return (is_numeric_scalar_function_projection_expression(expression) ||
             is_string_scalar_function_projection_expression(expression) ||
+            is_named_lock_and_info_projection_expression(expression) ||
             is_scalar_conversion_projection_expression(expression) ||
             is_temporal_scalar_function_projection_expression(expression) ||
             is_json_scalar_function_projection_expression(expression)) != 0;
+}
+
+static bool is_named_lock_and_info_projection_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    return (generic_function_name_equals(expression, "GET_LOCK") ||
+            generic_function_name_equals(expression, "IS_FREE_LOCK") ||
+            generic_function_name_equals(expression, "IS_USED_LOCK") ||
+            generic_function_name_equals(expression, "RELEASE_LOCK") ||
+            generic_function_name_equals(expression, "RELEASE_ALL_LOCKS") ||
+            generic_function_name_equals(expression, "ICU_VERSION") ||
+            generic_function_name_equals(expression, "BENCHMARK")) != 0;
 }
 
 static bool is_numeric_scalar_function_projection_expression(

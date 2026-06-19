@@ -444,6 +444,8 @@ static int session_scalar_value(
         return scalar_comparison_value(database, expression, out_cell);
     case MYLITE_SQL_AST_MOD_FUNCTION:
         return scalar_arithmetic_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_GENERIC_FUNCTION:
+        return generic_system_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_ABS_FUNCTION:
         return mylite_execution_scalar_abs_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SIGN_FUNCTION:

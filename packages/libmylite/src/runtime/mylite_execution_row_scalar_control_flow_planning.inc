@@ -1249,7 +1249,15 @@ static int plan_row_scalar_control_flow_comparison_operand(
         return MYLITE_ERROR;
     }
     if (generic_function_name_equals(expression, "GET_LOCK")) {
-        return plan_row_scalar_get_lock_function(database, expression, out_expression);
+        return plan_row_scalar_get_lock_function(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
     }
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         return plan_row_scalar_integer_value(database, expression, out_expression);
@@ -1971,7 +1979,15 @@ static int plan_row_scalar_control_flow_condition_argument(
         return MYLITE_ERROR;
     }
     if (generic_function_name_equals(expression, "GET_LOCK")) {
-        return plan_row_scalar_get_lock_function(database, expression, out_expression);
+        return plan_row_scalar_get_lock_function(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
     }
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         return plan_row_scalar_integer_value(database, expression, out_expression);
@@ -2502,7 +2518,15 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_GET_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_FREE_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_IS_USED_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_LOCK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_ALL_LOCKS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_BENCHMARK:
         return PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
+    case PLANNED_ROW_SCALAR_EXPRESSION_ICU_VERSION:
+        return PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING;
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
         if (expression->numeric_extra_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT) {
             return PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING;

@@ -36,6 +36,9 @@ static int apply_set_system_variable_cell_value(
             value_kind
         );
     }
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT) {
+        return apply_set_max_error_count_cell_value(database, target, value, value_kind);
+    }
     if (mylite_execution_system_variable_is_timeout(target->kind)) {
         return apply_set_timeout_system_variable_cell_value(database, target, value, value_kind);
     }

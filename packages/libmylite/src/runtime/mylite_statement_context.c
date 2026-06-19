@@ -42,6 +42,14 @@ int mylite_statement_context_begin(
     mylite_statement_context_deinit(context);
     reset_statement_fields(context, database, sql, sql_size);
     mylite_diagnostics_reset(mylite_connection_diagnostics(database));
+    mylite_diagnostics_set_max_warning_count(
+        mylite_connection_diagnostics(database),
+        (size_t)database->session.max_error_count
+    );
+    mylite_diagnostics_set_notes_enabled(
+        mylite_connection_diagnostics(database),
+        mylite_connection_sql_notes_enabled(database)
+    );
 
     return MYLITE_OK;
 }

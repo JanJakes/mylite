@@ -365,6 +365,13 @@ int mylite_execution_scalar_hex_numeric_runtime_value(
             out_value->integer = database->session.information_schema_stats_expiry;
         }
         return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT:
+        if (system_variable_expression_has_global_scope(expression)) {
+            out_value->integer = max_error_count_default_value;
+        } else {
+            out_value->integer = database->session.max_error_count;
+        }
+        return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
         out_value->integer = foreign_key_checks_system_variable_uint64_value(
             database,

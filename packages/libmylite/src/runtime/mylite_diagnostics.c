@@ -38,7 +38,11 @@ void mylite_diagnostics_init(struct mylite_diagnostics *diagnostics) {
 
     diagnostics->warnings = NULL;
     diagnostics->warning_count = 0U;
+    diagnostics->warning_total_count = 0U;
+    diagnostics->error_warning_total_count = 0U;
     diagnostics->warning_capacity = 0U;
+    diagnostics->max_warning_count = SIZE_MAX;
+    diagnostics->notes_enabled = true;
     mylite_diagnostics_reset(diagnostics);
 }
 
@@ -50,6 +54,8 @@ void mylite_diagnostics_deinit(struct mylite_diagnostics *diagnostics) {
     free(diagnostics->warnings);
     diagnostics->warnings = NULL;
     diagnostics->warning_count = 0U;
+    diagnostics->warning_total_count = 0U;
+    diagnostics->error_warning_total_count = 0U;
     diagnostics->warning_capacity = 0U;
     mylite_diagnostics_reset(diagnostics);
 }
@@ -61,6 +67,8 @@ void mylite_diagnostics_reset(struct mylite_diagnostics *diagnostics) {
 
     mylite_diagnostics_clear_condition(diagnostics);
     diagnostics->warning_count = 0U;
+    diagnostics->warning_total_count = 0U;
+    diagnostics->error_warning_total_count = 0U;
 }
 
 void mylite_diagnostics_clear_condition(struct mylite_diagnostics *diagnostics) {
@@ -109,10 +117,37 @@ int mylite_diagnostics_replace(
         mylite_diagnostics_deinit(&copy);
         return rc;
     }
+    copy.condition = source->condition;
+    if (source->max_warning_count == 0U) {
+        mylite_diagnostics_clear_condition(&copy);
+    }
+    copy.warning_total_count = source->warning_total_count;
+    copy.error_warning_total_count = source->error_warning_total_count;
+    copy.max_warning_count = source->max_warning_count;
+    copy.notes_enabled = source->notes_enabled;
 
     mylite_diagnostics_deinit(destination);
     *destination = copy;
     return MYLITE_OK;
+}
+
+void mylite_diagnostics_set_max_warning_count(
+    struct mylite_diagnostics *diagnostics,
+    size_t max_warning_count
+) {
+    if (diagnostics == NULL) {
+        return;
+    }
+
+    diagnostics->max_warning_count = max_warning_count;
+}
+
+void mylite_diagnostics_set_notes_enabled(struct mylite_diagnostics *diagnostics, bool enabled) {
+    if (diagnostics == NULL) {
+        return;
+    }
+
+    diagnostics->notes_enabled = enabled;
 }
 
 void mylite_diagnostics_set_error(
@@ -182,6 +217,9 @@ int mylite_diagnostics_append_note(
     const char *sqlstate,
     const char *message
 ) {
+    if (diagnostics != NULL && !diagnostics->notes_enabled) {
+        return MYLITE_OK;
+    }
     return append_warning_with_level(diagnostics, "Note", code, sqlstate, message);
 }
 
@@ -198,9 +236,24 @@ static int append_warning_with_level(
     if (diagnostics == NULL) {
         return MYLITE_MISUSE;
     }
+    if (diagnostics->warning_total_count == SIZE_MAX) {
+        mylite_diagnostics_set_error(diagnostics, MYLITE_NOMEM, "HY001", "too many warnings");
+        return MYLITE_NOMEM;
+    }
+    ++diagnostics->warning_total_count;
+    if (strcmp(level, "Error") == 0) {
+        if (diagnostics->error_warning_total_count == SIZE_MAX) {
+            mylite_diagnostics_set_error(diagnostics, MYLITE_NOMEM, "HY001", "too many warnings");
+            return MYLITE_NOMEM;
+        }
+        ++diagnostics->error_warning_total_count;
+    }
     if (diagnostics->warning_count == SIZE_MAX) {
         mylite_diagnostics_set_error(diagnostics, MYLITE_NOMEM, "HY001", "too many warnings");
         return MYLITE_NOMEM;
+    }
+    if (diagnostics->warning_count >= diagnostics->max_warning_count) {
+        return MYLITE_OK;
     }
 
     rc = reserve_warnings(diagnostics, diagnostics->warning_count + 1U);
@@ -265,6 +318,22 @@ size_t mylite_diagnostics_warning_count(const struct mylite_diagnostics *diagnos
     }
 
     return diagnostics->warning_count;
+}
+
+size_t mylite_diagnostics_warning_total_count(const struct mylite_diagnostics *diagnostics) {
+    if (diagnostics == NULL) {
+        return 0U;
+    }
+
+    return diagnostics->warning_total_count;
+}
+
+size_t mylite_diagnostics_error_warning_total_count(const struct mylite_diagnostics *diagnostics) {
+    if (diagnostics == NULL) {
+        return 0U;
+    }
+
+    return diagnostics->error_warning_total_count;
 }
 
 const struct mylite_diagnostic_record *mylite_diagnostics_warning_at(

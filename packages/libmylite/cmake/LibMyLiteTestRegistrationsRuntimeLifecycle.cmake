@@ -343,6 +343,10 @@
     COMMAND mylite_runtime_sql_notes_system_variable_test
   )
   add_test(
+    NAME libmylite.runtime.max_error_count_system_variable
+    COMMAND mylite_runtime_max_error_count_system_variable_test
+  )
+  add_test(
     NAME libmylite.runtime.sql_warnings_system_variable
     COMMAND mylite_runtime_sql_warnings_system_variable_test
   )

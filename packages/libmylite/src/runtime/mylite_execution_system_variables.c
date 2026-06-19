@@ -103,6 +103,7 @@ static const struct mylite_execution_system_variable_descriptor system_variable_
     {"lower_case_file_system", MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM, true, true},
     {"lower_case_table_names", MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES, true, true},
     {"max_allowed_packet", MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET, true, true},
+    {"max_error_count", MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT, true, true},
     {"old_alter_table", MYLITE_EXECUTION_SYSTEM_VARIABLE_OLD_ALTER_TABLE, false, false},
     {"pid_file", MYLITE_EXECUTION_SYSTEM_VARIABLE_PID_FILE, true, true},
     {"plugin_dir", MYLITE_EXECUTION_SYSTEM_VARIABLE_PLUGIN_DIR, true, true},
@@ -405,6 +406,7 @@ bool mylite_execution_system_variable_allows_global_scope(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PID_FILE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PLUGIN_DIR:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PORT:

@@ -309,7 +309,7 @@ static int append_show_count_warnings_row(struct mylite_db *database, mylite_res
         return rc;
     }
 
-    count = condition_count + (uint64_t)mylite_diagnostics_warning_count(diagnostics);
+    count = condition_count + (uint64_t)mylite_diagnostics_warning_total_count(diagnostics);
     rc = format_uint64(database, count, count_text, sizeof(count_text));
     if (rc == MYLITE_OK) {
         rc = mylite_result_append_text_row(result, values);
@@ -395,7 +395,7 @@ static int previous_diagnostics_condition_count(
         return MYLITE_MISUSE;
     }
 
-    warning_count = (uint64_t)mylite_diagnostics_warning_count(diagnostics);
+    warning_count = (uint64_t)mylite_diagnostics_warning_total_count(diagnostics);
     if (diagnostics_has_error_condition(diagnostics) && warning_count == UINT64_MAX) {
         return MYLITE_NOMEM;
     }
@@ -427,14 +427,7 @@ static int previous_diagnostics_error_count(
         return MYLITE_MISUSE;
     }
 
-    for (size_t index = 0U; index < mylite_diagnostics_warning_count(diagnostics); ++index) {
-        if (diagnostic_record_level_is_error(mylite_diagnostics_warning_at(diagnostics, index))) {
-            if (count == UINT64_MAX) {
-                return MYLITE_NOMEM;
-            }
-            ++count;
-        }
-    }
+    count = (uint64_t)mylite_diagnostics_error_warning_total_count(diagnostics);
     if (diagnostics_has_error_condition(diagnostics)) {
         if (count == UINT64_MAX) {
             return MYLITE_NOMEM;

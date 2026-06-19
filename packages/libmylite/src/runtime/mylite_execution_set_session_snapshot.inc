@@ -27,6 +27,7 @@ static int copy_set_session_snapshot(
     out_snapshot->sql_select_limit = session->sql_select_limit;
     out_snapshot->group_concat_max_len = session->group_concat_max_len;
     out_snapshot->information_schema_stats_expiry = session->information_schema_stats_expiry;
+    out_snapshot->max_error_count = session->max_error_count;
     out_snapshot->wait_timeout = session->wait_timeout;
     out_snapshot->interactive_timeout = session->interactive_timeout;
     out_snapshot->timestamp_override = session->timestamp_override;
@@ -205,6 +206,7 @@ static void restore_set_session_snapshot(
     session->sql_select_limit = snapshot->sql_select_limit;
     session->group_concat_max_len = snapshot->group_concat_max_len;
     session->information_schema_stats_expiry = snapshot->information_schema_stats_expiry;
+    session->max_error_count = snapshot->max_error_count;
     session->wait_timeout = snapshot->wait_timeout;
     session->interactive_timeout = snapshot->interactive_timeout;
     session->timestamp_override = snapshot->timestamp_override;

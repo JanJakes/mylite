@@ -675,6 +675,8 @@ static const uint64_t group_concat_max_len_minimum_value = 4ULL;
 static const uint64_t information_schema_stats_expiry_default_value =
     MYLITE_SESSION_INFORMATION_SCHEMA_STATS_EXPIRY_DEFAULT_VALUE;
 static const uint64_t information_schema_stats_expiry_max_value = 31536000ULL;
+static const uint64_t max_error_count_default_value = MYLITE_SESSION_MAX_ERROR_COUNT_DEFAULT_VALUE;
+static const uint64_t max_error_count_max_value = MYLITE_SESSION_MAX_ERROR_COUNT_MAX_VALUE;
 static const uint64_t protocol_version_system_variable_value = 10ULL;
 static const uint64_t port_system_variable_value = 3306ULL;
 static const char basedir_system_variable_value[] = "/usr/";

@@ -798,7 +798,7 @@ static int finish_successful_result(
 ) {
     mylite_result_set_warning_count(
         result,
-        mylite_diagnostics_warning_count(mylite_connection_diagnostics(database))
+        mylite_diagnostics_warning_total_count(mylite_connection_diagnostics(database))
     );
     *out_result = result;
 

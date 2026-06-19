@@ -30,6 +30,8 @@ enum {
     MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE = 28800,
     MYLITE_SESSION_GROUP_CONCAT_MAX_LEN_DEFAULT_VALUE = 1024,
     MYLITE_SESSION_INFORMATION_SCHEMA_STATS_EXPIRY_DEFAULT_VALUE = 86400,
+    MYLITE_SESSION_MAX_ERROR_COUNT_DEFAULT_VALUE = 1024,
+    MYLITE_SESSION_MAX_ERROR_COUNT_MAX_VALUE = 65535,
     MYLITE_SESSION_UUID_NODE_SIZE = 6,
 };
 
@@ -163,6 +165,7 @@ struct mylite_session_state {
     uint64_t group_concat_max_len;
     uint64_t group_concat_value_ordinal;
     uint64_t information_schema_stats_expiry;
+    uint64_t max_error_count;
     uint64_t wait_timeout;
     uint64_t interactive_timeout;
     uint64_t catalog_generation;
@@ -260,5 +263,6 @@ const struct mylite_sqlite_bootstrap_state *mylite_connection_sqlite_bootstrap_s
     const struct mylite_db *database
 );
 const struct mylite_catalog *mylite_connection_catalog_for_test(const struct mylite_db *database);
+bool mylite_connection_sql_notes_enabled(const struct mylite_db *database);
 
 #endif

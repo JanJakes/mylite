@@ -3103,6 +3103,7 @@ struct set_session_snapshot {
     uint64_t sql_select_limit;
     uint64_t group_concat_max_len;
     uint64_t information_schema_stats_expiry;
+    uint64_t max_error_count;
     uint64_t wait_timeout;
     uint64_t interactive_timeout;
     int64_t timestamp_override;

@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static int allocate_database_handle(struct mylite_db **out_database);
 static int open_memory_sqlite(struct mylite_db *database);
@@ -230,6 +231,25 @@ const struct mylite_catalog *mylite_connection_catalog_for_test(const struct myl
     }
 
     return &database->catalog;
+}
+
+bool mylite_connection_sql_notes_enabled(const struct mylite_db *database) {
+    const struct mylite_session_state *session = database == NULL ? NULL : &database->session;
+
+    if (session == NULL) {
+        return true;
+    }
+    for (size_t index = 0U; index < session->system_variable_override_count; ++index) {
+        const struct mylite_session_system_variable_override *override =
+            &session->system_variable_overrides[index];
+
+        if (override->kind != MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_NOTES) {
+            continue;
+        }
+        return override->value == NULL || strcmp(override->value, "0") != 0;
+    }
+
+    return true;
 }
 
 static int allocate_database_handle(struct mylite_db **out_database) {
@@ -507,6 +527,7 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->group_concat_value_ordinal = 0U;
     session->information_schema_stats_expiry =
         MYLITE_SESSION_INFORMATION_SCHEMA_STATS_EXPIRY_DEFAULT_VALUE;
+    session->max_error_count = MYLITE_SESSION_MAX_ERROR_COUNT_DEFAULT_VALUE;
     session->wait_timeout = MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE;
     session->interactive_timeout = MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE;
     session->catalog_generation = 0U;

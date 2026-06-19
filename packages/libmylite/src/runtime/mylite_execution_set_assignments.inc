@@ -273,6 +273,9 @@ static int apply_set_integer_system_variable_value(
     if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY) {
         return apply_set_information_schema_stats_expiry_value(database, target, value_node);
     }
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT) {
+        return apply_set_max_error_count_value(database, target, value_node);
+    }
     if (mylite_execution_system_variable_is_timeout(target->kind)) {
         return apply_set_timeout_system_variable_value(database, target, value_node);
     }

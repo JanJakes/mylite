@@ -3,6 +3,7 @@
 
 #include <mylite/mylite.h>
 
+#include <stdbool.h>
 #include <stddef.h>
 
 enum {
@@ -22,7 +23,11 @@ struct mylite_diagnostics {
     struct mylite_diagnostic_record condition;
     struct mylite_diagnostic_record *warnings;
     size_t warning_count;
+    size_t warning_total_count;
+    size_t error_warning_total_count;
     size_t warning_capacity;
+    size_t max_warning_count;
+    bool notes_enabled;
 };
 
 void mylite_diagnostics_init(struct mylite_diagnostics *diagnostics);
@@ -33,6 +38,11 @@ int mylite_diagnostics_replace(
     struct mylite_diagnostics *destination,
     const struct mylite_diagnostics *source
 );
+void mylite_diagnostics_set_max_warning_count(
+    struct mylite_diagnostics *diagnostics,
+    size_t max_warning_count
+);
+void mylite_diagnostics_set_notes_enabled(struct mylite_diagnostics *diagnostics, bool enabled);
 
 void mylite_diagnostics_set_error(
     struct mylite_diagnostics *diagnostics,
@@ -68,6 +78,8 @@ const char *mylite_diagnostics_sqlstate(const struct mylite_diagnostics *diagnos
 const char *mylite_diagnostics_errmsg(const struct mylite_diagnostics *diagnostics);
 
 size_t mylite_diagnostics_warning_count(const struct mylite_diagnostics *diagnostics);
+size_t mylite_diagnostics_warning_total_count(const struct mylite_diagnostics *diagnostics);
+size_t mylite_diagnostics_error_warning_total_count(const struct mylite_diagnostics *diagnostics);
 const struct mylite_diagnostic_record *mylite_diagnostics_warning_at(
     const struct mylite_diagnostics *diagnostics,
     size_t index

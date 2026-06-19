@@ -165,6 +165,12 @@ static int system_variable_value(
             ),
             out_cell
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT:
+        return format_session_scalar_uint64_value(
+            database,
+            global_scope ? max_error_count_default_value : database->session.max_error_count,
+            out_cell
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
         return format_session_scalar_uint64_value(
             database,
@@ -337,7 +343,7 @@ static int diagnostics_count_system_variable_value(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    warning_count = (uint64_t)mylite_diagnostics_warning_count(diagnostics);
+    warning_count = (uint64_t)mylite_diagnostics_warning_total_count(diagnostics);
     if (condition_count > UINT64_MAX - warning_count) {
         return MYLITE_NOMEM;
     }
@@ -867,6 +873,14 @@ static int show_system_variable_value(
         return format_show_system_variable_uint64_value(
             database,
             information_schema_stats_expiry_system_variable_value(database, global_scope),
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT:
+        return format_show_system_variable_uint64_value(
+            database,
+            global_scope ? max_error_count_default_value : database->session.max_error_count,
             integer_buffer,
             integer_buffer_size,
             out_value

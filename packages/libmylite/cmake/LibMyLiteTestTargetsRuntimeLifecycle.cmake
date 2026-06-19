@@ -791,6 +791,17 @@
   )
   mylite_configure_c_target(mylite_runtime_sql_notes_system_variable_test)
 
+  add_executable(mylite_runtime_max_error_count_system_variable_test
+    tests/runtime_max_error_count_system_variable_test.c
+  )
+  target_link_libraries(mylite_runtime_max_error_count_system_variable_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_max_error_count_system_variable_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_max_error_count_system_variable_test)
+
   add_executable(mylite_runtime_sql_warnings_system_variable_test
     tests/runtime_sql_warnings_system_variable_test.c
   )

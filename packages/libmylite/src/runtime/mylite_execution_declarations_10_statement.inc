@@ -679,6 +679,12 @@ static int apply_set_information_schema_stats_expiry_cell_value(
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind
 );
+static int apply_set_max_error_count_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
 static int apply_set_big_tables_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -842,6 +848,11 @@ static int apply_set_information_schema_stats_expiry_value(
     const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node
 );
+static int apply_set_max_error_count_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
 static int apply_set_timeout_system_variable_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -890,6 +901,12 @@ static int parse_set_information_schema_stats_expiry_value(
     const struct mylite_sql_ast_node *value_node,
     uint64_t *out_value
 );
+static int parse_set_max_error_count_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+);
 static int parse_information_schema_stats_expiry_integer(
     struct mylite_db *database,
     const char *variable_name,
@@ -913,6 +930,13 @@ static int parse_set_group_concat_max_len_cell_value(
     uint64_t *out_value
 );
 static int parse_set_information_schema_stats_expiry_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    uint64_t *out_value
+);
+static int parse_set_max_error_count_cell_value(
     struct mylite_db *database,
     const char *variable_name,
     const struct session_scalar_cell *value,

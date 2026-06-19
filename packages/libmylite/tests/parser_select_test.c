@@ -488,6 +488,47 @@ static int test_select_where_predicates(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE DATABASE() = 'app';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        "current database comparison-left predicate"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_DATABASE_FUNCTION,
+        "current database predicate left value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE SCHEMA() = 'app';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_SCHEMA_FUNCTION,
+        "current schema predicate left value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "SELECT id FROM simple_lifecycle WHERE id BETWEEN -2 AND 1;",
         MYLITE_SQL_PARSE_OK,
         &result

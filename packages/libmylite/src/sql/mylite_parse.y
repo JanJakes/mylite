@@ -7670,6 +7670,14 @@ predicate_row_scalar_expression(A) ::= LEAST(T) LPAREN function_argument_list(B)
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_LEAST_FUNCTION, B, R);
 }
+predicate_row_scalar_expression(A) ::= DATABASE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_DATABASE_FUNCTION, R);
+}
+predicate_row_scalar_expression(A) ::= SCHEMA(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_SCHEMA_FUNCTION, R);
+}
 predicate_row_scalar_expression(A) ::= row_scalar_string_predicate_expression(B). {
     A = B;
 }

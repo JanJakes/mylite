@@ -144,6 +144,19 @@ expect_output \
     "${DATABASE}" \
     "USE ${DATABASE}; SELECT DATABASE() FROM DUAL;"
 
+expected_table_headers=$(cat <<EOF
+DATABASE()	SCHEMA()	id
+${DATABASE}	${DATABASE}	1
+${DATABASE}	${DATABASE}	2
+EOF
+)
+expect_output_with_headers \
+    "table-backed current database projection predicate and order" \
+    "$expected_table_headers" \
+    "USE ${DATABASE}; CREATE TABLE t (id INT); INSERT INTO t VALUES (2), (1); \
+     SELECT DATABASE(), SCHEMA(), id FROM t WHERE DATABASE() = '${DATABASE}' \
+     ORDER BY SCHEMA(), id;"
+
 expect_output \
     "drop selected database clears current database" \
     "NULL	NULL	0" \

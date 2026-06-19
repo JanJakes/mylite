@@ -8,9 +8,13 @@ information functions on top of `mylite_execute()`, statement context, parser
 scaffolding, durable catalog schema descriptors, public schema lifecycle, and
 the existing selected-schema policy.
 
-The feature is intentionally not general scalar expression support. It admits
-only zero-argument `DATABASE()` and `SCHEMA()` in one-row `SELECT` statements
-without a table source, plus the same expressions with `FROM DUAL`.
+The original slice was intentionally not general scalar expression support. It
+admitted zero-argument `DATABASE()` and `SCHEMA()` in one-row `SELECT`
+statements without a table source, plus the same expressions with `FROM DUAL`.
+The row-scalar context expansion in
+`docs/specs/baseline-current-database-row-scalar-contexts/specs.md` adds
+source-backed projection, predicate, and ordering coverage inside the current
+row-scalar SELECT envelope.
 
 ## Sources
 
@@ -59,8 +63,9 @@ Observed against `SELECT VERSION()` returning `8.4.9`:
   `SELECT SCHEMA` fail with syntax error `1064`, SQLSTATE `42000`.
 - `DATABASE(1)` and `SCHEMA(1)` fail with syntax error `1064`, SQLSTATE
   `42000`.
-- MySQL accepts wider expression forms such as aliases and `LIMIT`; those are
-  deliberately outside this MyLite slice.
+- MySQL accepts wider expression forms such as aliases, `LIMIT`, and
+  source-backed projection. Later MyLite slices have expanded several of those
+  forms beyond this original no-source/`DUAL` feature.
 
 ## Scope
 
@@ -83,14 +88,12 @@ The implementation must add:
 
 ## Non-Goals
 
-This feature must not implement:
+This original feature did not implement:
 
 - general function calls or a function registry;
-- aliases, `AS`, expression labels beyond default source-expression text, or
-  protocol-grade metadata;
-- table-backed evaluation such as `SELECT DATABASE() FROM table`;
-- `WHERE`, `ORDER BY`, `LIMIT`, grouping, joins, subqueries, CTEs, or locking
-  clauses on scalar current-database selects;
+- protocol-grade metadata;
+- grouping, joins, subqueries, CTEs, or locking clauses on scalar
+  current-database selects beyond later row-scalar SELECT expansions;
 - `CURRENT_USER()`, `USER()`, `VERSION()`, `ROW_COUNT()`, `FOUND_ROWS()`, or
   other system functions;
 - stored routine semantics where MySQL's `DATABASE()` may refer to a routine's

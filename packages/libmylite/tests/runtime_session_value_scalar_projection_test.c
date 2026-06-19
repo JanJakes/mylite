@@ -320,6 +320,15 @@ static int test_session_value_scalar_projection_warning_order(void) {
 
 static int test_session_value_scalar_projection_unsupported_forms(void) {
     static const char *const version_literal_columns[] = {"VERSION()", "1"};
+    static const char *const current_database_table_columns[] = {"DATABASE()", "SCHEMA()", "id"};
+    static const char *const current_database_table_values[] = {
+        "app",
+        "app",
+        "1",
+        "app",
+        "app",
+        "2",
+    };
     const char *version_literal_values[] = {MYLITE_MYSQL_SERVER_VERSION_STRING, "1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -385,6 +394,20 @@ static int test_session_value_scalar_projection_unsupported_forms(void) {
             .row_count = 1U,
             .warning_count = 0U,
             .context = "table-backed session scalar and literal projection",
+        }
+    );
+    failures += execute_ok(database, "INSERT INTO t VALUES (2)", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT DATABASE(), SCHEMA(), id FROM t WHERE DATABASE() = 'app' "
+                   "ORDER BY SCHEMA(), id",
+            .columns = current_database_table_columns,
+            .column_count = 3U,
+            .values = current_database_table_values,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .context = "source-backed current database predicate and order",
         }
     );
 

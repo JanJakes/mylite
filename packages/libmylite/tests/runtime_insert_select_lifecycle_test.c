@@ -684,14 +684,10 @@ static int test_insert_select_dual_source_values_and_diagnostics(void) {
         "INSERT INTO dst(id, label) SELECT 23, 'x' FROM DUAL WHERE 2 BETWEEN 1 AND 3",
         1
     );
-    failures += execute_error(
+    failures += expect_dml_ok(
         database,
         "INSERT INTO dst(id, label) SELECT 24, 'x' FROM DUAL WHERE DATABASE() = 'app'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
-        }
+        1
     );
     failures += expect_dml_ok_with_warnings(
         database,

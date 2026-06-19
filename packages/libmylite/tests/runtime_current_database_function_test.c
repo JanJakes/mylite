@@ -291,6 +291,9 @@ static int test_current_database_unsupported_forms(void) {
     failures += execute_ok(database, "CREATE TABLE t (id INT)", &result);
     mylite_result_free(result);
     result = NULL;
+    failures += execute_ok(database, "INSERT INTO t VALUES (1)", &result);
+    mylite_result_free(result);
+    result = NULL;
 
     failures += execute_error(
         database,
@@ -340,16 +343,18 @@ static int test_current_database_unsupported_forms(void) {
     );
     mylite_result_free(result);
     result = NULL;
-    failures += execute_error(
-        database,
-        "SELECT DATABASE() FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+    failures += execute_ok(database, "SELECT DATABASE(), SCHEMA() FROM t", &result);
+    failures += expect_current_result(
+        result,
+        (struct expected_current_result){
+            .columns = (const char *const[]){"DATABASE()", "SCHEMA()"},
+            .values = (const char *const[]){"app", "app"},
+            .count = 2U,
+            .context = "selected schema with table source",
         }
     );
-
+    mylite_result_free(result);
+    result = NULL;
     mylite_close(database);
     remove_related_files(path);
 

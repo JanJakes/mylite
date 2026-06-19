@@ -1503,6 +1503,7 @@ static bool row_scalar_expression_contains_context_expression_attempt(
     const struct mylite_sql_ast_node *expression
 ) {
     return row_scalar_expression_contains_row_function(expression) ||
+           row_scalar_expression_contains_current_database_function(expression) ||
            row_scalar_expression_contains_numeric_function(expression) ||
            row_scalar_expression_contains_base_conversion_function(expression) ||
            row_scalar_expression_contains_numeric_extra_function(expression) ||
@@ -1515,6 +1516,43 @@ static bool row_scalar_expression_contains_context_expression_attempt(
            row_scalar_expression_contains_bitwise_attempt(expression) ||
            row_scalar_expression_contains_integer_arithmetic_attempt(expression) ||
            row_scalar_expression_is_concat_operator(expression);
+}
+
+static bool row_scalar_expression_contains_current_database_function(
+    const struct mylite_sql_ast_node *expression
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    bool found = false;
+
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        return false;
+    }
+    while (stack.count != 0U && !found) {
+        const struct mylite_sql_ast_node *current =
+            unwrap_parenthesized_expression(stack.items[--stack.count]);
+        size_t child_count = 0U;
+
+        if (current == NULL) {
+            continue;
+        }
+        if (current->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION) {
+            found = true;
+            break;
+        }
+        if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
+            continue;
+        }
+        child_count = mylite_sql_ast_node_child_count(current);
+        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
+                scalar_arithmetic_node_stack_deinit(&stack);
+                return false;
+            }
+        }
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return found;
 }
 
 static bool row_scalar_expression_is_dml_assignment_context_attempt(
@@ -1554,6 +1592,8 @@ static bool row_scalar_expression_is_predicate_value_context_attempt(
         row_scalar_numeric_function_kind_is_supported(node->kind) ||
         row_scalar_base_conversion_kind_is_supported(node->kind) ||
         row_scalar_numeric_extra_kind_is_supported(node->kind) ||
+        node->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION ||
         row_scalar_expression_is_concat_operator(node) ||
         row_scalar_expression_is_bitwise_attempt(node) ||
         row_scalar_conversion_kind_from_expression(node) != PLANNED_ROW_SCALAR_CONVERSION_NONE ||

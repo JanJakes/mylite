@@ -108,9 +108,10 @@ source_free_expression =
 
 ## Compatibility Limits
 
-- No broad system/session scalar predicate classification such as
-  `WHERE DATABASE() = 'schema'` until those functions are admitted as predicate
-  expressions.
+- No broad system/session scalar predicate classification beyond functions
+  admitted by later focused slices. `DATABASE()` and `SCHEMA()` predicate
+  expressions are covered by
+  `docs/specs/baseline-current-database-row-scalar-contexts/specs.md`.
 - No arithmetic-left or arbitrary expression-left predicate atoms such as
   `WHERE 1 + 2 BETWEEN 3 AND 4`; those remain part of the broader expression
   predicate work.

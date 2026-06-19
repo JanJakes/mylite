@@ -417,7 +417,7 @@ static int test_information_schema_predicates(void) {
                    "WHERE TABLE_SCHEMA IN (DATABASE())",
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+            .message_part = "INFORMATION_SCHEMA WHERE IN and BETWEEN support only literal values",
         }
     );
     failures += expect_error(

@@ -146,8 +146,6 @@ static int test_query_scalar_expression_placeholders(void) {
         {.sql = "SELECT 1 <> SOME (SELECT 2)", .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT
         },
         {.sql = "SELECT 2 > ALL (SELECT 1)", .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "SELECT id FROM t WHERE id IN (DATABASE())",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT * FROM t1 JOIN LATERAL (SELECT 1) AS dt ON TRUE",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
     };
@@ -157,6 +155,7 @@ static int test_query_scalar_expression_placeholders(void) {
     for (size_t index = 0U; index < sizeof(statements) / sizeof(statements[0]); ++index) {
         failures += expect_statement_kind(statements[index]);
     }
+    failures += parse_ok("SELECT id FROM t WHERE id IN (DATABASE())");
     failures += parse_ok("SELECT id FROM t WHERE id IN (nn)");
     return failures;
 }

@@ -129,6 +129,20 @@ expect_value \
 0" \
     "$(printf '%s\n' "$zero_status" | tail -n 2)"
 
+dual_current_database_status=$(
+    run_mysql \
+        "USE ${DATABASE};
+         INSERT INTO dst(id, n, b, iu)
+             SELECT 24, NULL, NULL, NULL FROM DUAL WHERE DATABASE() = '${DATABASE}';
+         SELECT ROW_COUNT(), @@warning_count, @@error_count;
+         SELECT COUNT(*) FROM dst WHERE id = 24;"
+)
+expect_value \
+    "from dual current database filter" \
+    "1	0	0
+1" \
+    "$(printf '%s\n' "$dual_current_database_status" | tail -n 2)"
+
 defaults_status=$(
     run_mysql \
         "USE ${DATABASE};

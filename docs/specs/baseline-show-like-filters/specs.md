@@ -88,6 +88,10 @@ Observed against the local `mysql:8.4.9` runtime using TCP:
 - Column `SHOW COLUMNS ... LIKE` matching is case-insensitive in the observed
   runtime for ASCII identifiers: `LIKE 'mixedcase'` matches column
   `MixedCase`.
+- `SHOW TABLES WHERE` resolves displayed output column names
+  case-insensitively, but table-name and `Table_type` value comparisons,
+  `LIKE`, `IN`, `REGEXP`, and `RLIKE` filters are case-sensitive in the
+  verified runtime.
 - Unsupported non-string pattern forms such as `LIKE 1`, `LIKE NULL`, and
   `LIKE N'a%'` are syntax errors.
 - MySQL 8.4.9 accepts NUL-producing string escapes such as `LIKE 'a\0%'`.
@@ -216,7 +220,9 @@ Backslash escapes the following `%`, `_`, or backslash as a literal. A trailing
 backslash in a pattern matches a literal backslash.
 
 Database and table filters are case-sensitive under the current catalog and
-observed MySQL runtime policy. Column filters are ASCII case-insensitive to
+observed MySQL runtime policy. `SHOW TABLES WHERE` predicate column resolution
+is ASCII case-insensitive, but predicate value matching for table names and
+`Table_type` is case-sensitive. Column filters are ASCII case-insensitive to
 match observed MySQL behavior for current identifiers. This slice does not add
 full collation descriptors or locale-aware case folding.
 
@@ -301,8 +307,9 @@ Add tests covering:
   trailing explicit-schema targets;
 - `%`, `_`, escaped `%`, escaped `_`, escaped backslash, empty pattern, exact
   matches, and no-match result sets;
-- case-sensitive database/table matching and ASCII case-insensitive column
-  matching for the observed MySQL 8.4.9 runtime;
+- case-sensitive database/table matching, case-sensitive `SHOW TABLES WHERE`
+  value matching, and ASCII case-insensitive output-column resolution for the
+  observed MySQL 8.4.9 runtime;
 - column names for filtered `SHOW DATABASES` and `SHOW TABLES`, unchanged
   columns for filtered `SHOW COLUMNS`, warning count, affected rows, and
   following `ROW_COUNT() = -1`;

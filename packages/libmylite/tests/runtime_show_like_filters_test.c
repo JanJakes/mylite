@@ -316,11 +316,31 @@ static int test_show_like_values_persistence_rename_and_drop(void) {
     failures += expect_single_column_result(
         database,
         (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE Tables_in_app LIKE 'A%'",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = NULL,
+            .expected_row_count = 0U,
+            .context = "show tables where like case-sensitive no match",
+        }
+    );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
             .sql = "SHOW TABLES WHERE Tables_in_app IN ('alpha', 'beta')",
             .expected_column_name = "Tables_in_app",
             .expected_rows = tables_alpha_beta,
             .expected_row_count = sizeof(tables_alpha_beta) / sizeof(tables_alpha_beta[0]),
             .context = "show tables where in",
+        }
+    );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE Tables_in_app IN ('ALPHA', 'BETA')",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = NULL,
+            .expected_row_count = 0U,
+            .context = "show tables where in case-sensitive no match",
         }
     );
     failures += expect_single_column_result(
@@ -428,6 +448,16 @@ static int test_show_like_values_persistence_rename_and_drop(void) {
     failures += expect_single_column_result(
         database,
         (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE Tables_in_app REGEXP '^A'",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = NULL,
+            .expected_row_count = 0U,
+            .context = "show tables where regexp case-sensitive no match",
+        }
+    );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
             .sql = "SHOW TABLES WHERE Tables_in_app RLIKE '^b'",
             .expected_column_name = "Tables_in_app",
             .expected_rows = table_beta,
@@ -439,6 +469,16 @@ static int test_show_like_values_persistence_rename_and_drop(void) {
         database,
         (struct single_column_result_expectation){
             .sql = "SHOW TABLES WHERE tables_in_app = 'ALPHA'",
+            .expected_column_name = "Tables_in_app",
+            .expected_rows = NULL,
+            .expected_row_count = 0U,
+            .context = "show tables where case-insensitive output column and uppercase value",
+        }
+    );
+    failures += expect_single_column_result(
+        database,
+        (struct single_column_result_expectation){
+            .sql = "SHOW TABLES WHERE tables_in_app = 'alpha'",
             .expected_column_name = "Tables_in_app",
             .expected_rows = table_alpha,
             .expected_row_count = sizeof(table_alpha) / sizeof(table_alpha[0]),

@@ -368,7 +368,7 @@ static int evaluate_show_tables_where_comparison_predicate(
             left,
             right_node,
             &regexp_messages,
-            false,
+            true,
             out_truth
         );
     }
@@ -382,7 +382,7 @@ static int evaluate_show_tables_where_comparison_predicate(
         rc = decode_show_tables_where_string_literal(database, right_node, &pattern);
         if (rc == MYLITE_OK) {
             bool matches =
-                show_like_pattern_matches(pattern, strlen(pattern), left, strlen(left), false);
+                show_like_pattern_matches(pattern, strlen(pattern), left, strlen(left), true);
 
             if (matches) {
                 *out_truth = SHOW_VARIABLES_WHERE_TRUE;
@@ -455,8 +455,7 @@ static int evaluate_show_tables_where_in_predicate(
             return MYLITE_ERROR;
         }
         rc = decode_show_tables_where_string_literal(database, value_node, &right);
-        if (rc == MYLITE_OK && left != NULL &&
-            compare_ascii_case_insensitive_text(left, right) == 0) {
+        if (rc == MYLITE_OK && left != NULL && strcmp(left, right) == 0) {
             matched = true;
         }
         free(right);
@@ -618,7 +617,7 @@ static int compare_show_tables_where_literal(
         return rc;
     }
 
-    comparison = compare_ascii_case_insensitive_text(left, right_text);
+    comparison = strcmp(left, right_text);
     rc = show_tables_where_truth_from_comparison(
         database,
         operator_kind,

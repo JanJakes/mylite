@@ -52,8 +52,9 @@ Observed behavior that shapes this slice:
 - The displayed table-name column is resolved case-insensitively in predicates:
   `tables_in_db = 'alpha'` is accepted.
 - Table-name comparisons use the current MySQL table-name comparison behavior
-  for the observed runtime. For the baseline descriptor slice, MyLite keeps its
-  existing ASCII case-insensitive SHOW predicate comparisons.
+  for the observed runtime. With `@@lower_case_table_names = 0` in the verified
+  Linux runtime, table-name and `Table_type` values are compared
+  case-sensitively for comparisons, `LIKE`, `REGEXP`/`RLIKE`, and `IN`.
 - `SHOW TABLES WHERE Table_type = 'BASE TABLE'` without `FULL` fails with
   `1054 / 42S22` unknown column because `Table_type` is not an output column.
 - `SHOW TABLES LIKE 'a%' WHERE ...` is a syntax error. This slice keeps `LIKE`
@@ -161,11 +162,10 @@ patterns use MyLite's baseline ASCII regular-expression engine. `IN` lists are
 limited to string and `NULL` literals. `IS NULL` and `IS NOT NULL` follow the
 current three-valued metadata predicate model.
 
-MyLite intentionally keeps table-name predicate comparison ASCII
-case-insensitive for this slice, matching the existing SHOW metadata predicate
-surface and the observed MySQL 8.4.9 runtime on the local development platform.
-This does not claim complete cross-platform MySQL lower-case-table-name
-semantics.
+MyLite keeps predicate output-column resolution ASCII case-insensitive, but
+table-name and `Table_type` predicate values are compared case-sensitively for
+this slice, matching the observed MySQL 8.4.9 Linux runtime. This does not
+claim complete cross-platform MySQL lower-case-table-name semantics.
 
 ## Ownership Boundaries
 

@@ -277,12 +277,18 @@ check_single_column_output \
 a\\b
 a_b
 alpha"
+check_empty_output \
+    "show tables where like case-sensitive no match" \
+    "USE ${DATABASE}; SHOW TABLES WHERE Tables_in_${DATABASE} LIKE 'A%';"
 check_single_column_output \
     "show tables where in" \
     "USE ${DATABASE}; SHOW TABLES WHERE Tables_in_${DATABASE} IN ('alpha', 'beta');" \
     "Tables_in_${DATABASE}" \
     "alpha
 beta"
+check_empty_output \
+    "show tables where in case-sensitive no match" \
+    "USE ${DATABASE}; SHOW TABLES WHERE Tables_in_${DATABASE} IN ('ALPHA', 'BETA');"
 check_single_column_output \
     "show tables where or" \
     "USE ${DATABASE}; SHOW TABLES WHERE Tables_in_${DATABASE} = 'alpha' "\
@@ -353,14 +359,20 @@ check_single_column_output \
 a\\b
 a_b
 alpha"
+check_empty_output \
+    "show tables where regexp case-sensitive no match" \
+    "USE ${DATABASE}; SHOW TABLES WHERE Tables_in_${DATABASE} REGEXP '^A';"
 check_single_column_output \
     "show tables where rlike" \
     "USE ${DATABASE}; SHOW TABLES WHERE Tables_in_${DATABASE} RLIKE '^b';" \
     "Tables_in_${DATABASE}" \
     "beta"
+check_empty_output \
+    "show tables where case-insensitive column and uppercase value" \
+    "USE ${DATABASE}; SHOW TABLES WHERE tables_in_${DATABASE} = 'ALPHA';"
 check_single_column_output \
-    "show tables where case-insensitive column and value" \
-    "USE ${DATABASE}; SHOW TABLES WHERE tables_in_${DATABASE} = 'ALPHA';" \
+    "show tables where case-insensitive column" \
+    "USE ${DATABASE}; SHOW TABLES WHERE tables_in_${DATABASE} = 'alpha';" \
     "Tables_in_${DATABASE}" \
     "alpha"
 check_empty_output \

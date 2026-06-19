@@ -213,13 +213,19 @@ ordering=$(run_mysql \
     "USE ${DATABASE};
      SELECT a AS x, b AS y, COUNT(*) AS c, SUM(n) AS s
        FROM t GROUP BY a, b ORDER BY s DESC LIMIT 2;
+     SELECT a, b, AVG(n) AS av
+       FROM t GROUP BY a, b ORDER BY av DESC LIMIT 2;
      SELECT q.a AS x, q.b AS y, COUNT(*) AS c
        FROM ${DATABASE}.t AS q WHERE q.b = 1 GROUP BY q.a, q.b ORDER BY x DESC;"
 )
 expect_value "aggregate order first" "2	2	2	110" "$(printf '%s\n' "$ordering" | sed -n '1p')"
 expect_value "aggregate order second" "2	1	2	40" "$(printf '%s\n' "$ordering" | sed -n '2p')"
-expect_value "qualified alias order first" "2	1	2" "$(printf '%s\n' "$ordering" | sed -n '3p')"
-expect_value "qualified alias order second" "1	1	2" "$(printf '%s\n' "$ordering" | sed -n '4p')"
+expect_value "avg aggregate order first" "2	2	55.0000" \
+    "$(printf '%s\n' "$ordering" | sed -n '3p')"
+expect_value "avg aggregate order second" "2	1	40.0000" \
+    "$(printf '%s\n' "$ordering" | sed -n '4p')"
+expect_value "qualified alias order first" "2	1	2" "$(printf '%s\n' "$ordering" | sed -n '5p')"
+expect_value "qualified alias order second" "1	1	2" "$(printf '%s\n' "$ordering" | sed -n '6p')"
 
 multi_order=$(run_mysql \
     "USE ${DATABASE};

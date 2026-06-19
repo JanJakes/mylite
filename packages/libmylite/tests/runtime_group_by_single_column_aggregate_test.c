@@ -190,6 +190,19 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
         NULL,
         NULL,
     };
+    static const char *const avg_alias_order_columns[] = {"g", "a"};
+    static const char *const avg_alias_order_values[] = {
+        "-1",
+        "-9007199254740993.0000",
+        "1",
+        "9007199254740992.0000",
+        "2",
+        "9007199254740993.0000",
+    };
+    static const char *const avg_alias_order_desc_limit_values[] = {
+        "2",
+        "9007199254740993.0000",
+    };
     static const char *const bit_and_alias_order_columns[] = {"g", "ba"};
     static const char *const bit_or_alias_order_columns[] = {"g", "bo"};
     static const char *const bit_xor_alias_order_columns[] = {"g", "bx"};
@@ -379,6 +392,15 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
         "2",
         "2",
     };
+    static const char *const a_b_avg_columns[] = {"a", "b", "av"};
+    static const char *const a_b_avg_order_values[] = {
+        "2",
+        "2",
+        "45.0000",
+        "2",
+        "1",
+        "30.0000",
+    };
     static const char *const qualified_multi_columns[] = {"k", "value", "c"};
     static const char *const qualified_multi_values[] = {"2", "30", "1", "2", "20", "1"};
     static const char *const name_label_columns[] = {"name", "label", "COUNT(*)", "SUM(n)"};
@@ -518,6 +540,17 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
         "(NULL, 7, 7, 7), "
         "(1, 7, 15, 7), (1, 8, 13, 8), "
         "(2, 10, 15, 10), (2, 1, 11, 1)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "CREATE TABLE grouped_avg_order(g INT, n BIGINT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO grouped_avg_order VALUES "
+        "(-1, -9007199254740993), (2, 9007199254740993), (1, 9007199254740992)",
         &result
     );
     mylite_result_free(result);
@@ -992,6 +1025,29 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = max_alias_order_values,
             .row_count = 3U,
             .context = "multi aggregate order by max alias",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, AVG(n) AS a FROM grouped_avg_order GROUP BY g ORDER BY a ASC",
+            .columns = avg_alias_order_columns,
+            .column_count = 2U,
+            .values = avg_alias_order_values,
+            .row_count = 3U,
+            .context = "grouped avg aggregate alias exact numeric order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, AVG(n) AS a FROM grouped_avg_order GROUP BY g ORDER BY a DESC "
+                   "LIMIT 1",
+            .columns = avg_alias_order_columns,
+            .column_count = 2U,
+            .values = avg_alias_order_desc_limit_values,
+            .row_count = 1U,
+            .context = "grouped avg aggregate alias descending exact limit",
         }
     );
     failures += expect_grouped_query(
@@ -1544,6 +1600,18 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .context = "multiple grouped keys count distinct aggregate alias order",
         }
     );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT a, b, AVG(n) AS av FROM grouped_distinct_pairs "
+                   "GROUP BY a, b ORDER BY av DESC LIMIT 2",
+            .columns = a_b_avg_columns,
+            .column_count = 3U,
+            .values = a_b_avg_order_values,
+            .row_count = 2U,
+            .context = "multiple grouped keys avg aggregate alias order",
+        }
+    );
     failures += expect_row_count(database, "-1", "row count after grouped select");
 
     catalog = mylite_connection_catalog_for_test(database);
@@ -2056,15 +2124,6 @@ static int test_grouped_diagnostics(void) {
             .sqlstate = "42000",
             .message_part =
                 "GROUP_CONCAT(column) does not yet support multiple grouped aggregate results",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT g, AVG(n) AS a FROM grouped_numbers GROUP BY g ORDER BY a",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "GROUP BY does not support ORDER BY on AVG aggregate aliases",
         }
     );
     failures += execute_error(

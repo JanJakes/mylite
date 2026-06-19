@@ -94,6 +94,7 @@ run_mysql \
        (7, 2, NULL, 11, NULL, NULL, NULL);
      CREATE TABLE avg_order(g INT NOT NULL, n BIGINT NOT NULL) ENGINE=InnoDB;
      INSERT INTO avg_order VALUES
+       (-1, -9007199254740993),
        (1, 9007199254740992),
        (2, 9007199254740993);
      CREATE TABLE bitwise_order(
@@ -158,6 +159,7 @@ aggregate_order=$(run_mysql \
      SELECT g, MIN(n) AS mn, MAX(n) AS mx FROM t GROUP BY g ORDER BY mn ASC;
      SELECT g, MIN(n) AS mn, MAX(n) AS mx FROM t GROUP BY g ORDER BY mx DESC;
      SELECT g, AVG(n) AS a FROM avg_order GROUP BY g ORDER BY a;
+     SELECT g, AVG(n) AS a FROM avg_order GROUP BY g ORDER BY a DESC LIMIT 1;
      SELECT g, BIT_AND(band) AS ba FROM bitwise_order GROUP BY g ORDER BY ba ASC;
      SELECT g, BIT_OR(bor) AS bo FROM bitwise_order GROUP BY g ORDER BY bo ASC;
      SELECT g, BIT_XOR(bxor) AS bx FROM bitwise_order GROUP BY g ORDER BY bx ASC;"
@@ -174,28 +176,32 @@ expect_value "max alias order middle" "NULL	5	5" \
     "$(printf '%s\n' "$aggregate_order" | sed -n '5p')"
 expect_value "max alias order null last" "2	NULL	NULL" \
     "$(printf '%s\n' "$aggregate_order" | sed -n '6p')"
-expect_value "mysql exact avg alias order lower" "1	9007199254740992.0000" \
+expect_value "mysql exact avg alias order negative" "-1	-9007199254740993.0000" \
     "$(printf '%s\n' "$aggregate_order" | sed -n '7p')"
-expect_value "mysql exact avg alias order higher" "2	9007199254740993.0000" \
+expect_value "mysql exact avg alias order lower" "1	9007199254740992.0000" \
     "$(printf '%s\n' "$aggregate_order" | sed -n '8p')"
-expect_value "mysql bit and alias order low" "NULL	7" \
+expect_value "mysql exact avg alias order higher" "2	9007199254740993.0000" \
     "$(printf '%s\n' "$aggregate_order" | sed -n '9p')"
-expect_value "mysql bit and alias order middle" "2	11" \
+expect_value "mysql exact avg alias order desc limit" "2	9007199254740993.0000" \
     "$(printf '%s\n' "$aggregate_order" | sed -n '10p')"
-expect_value "mysql bit and alias order high" "1	13" \
+expect_value "mysql bit and alias order low" "NULL	7" \
     "$(printf '%s\n' "$aggregate_order" | sed -n '11p')"
-expect_value "mysql bit or alias order low" "NULL	7" \
+expect_value "mysql bit and alias order middle" "2	11" \
     "$(printf '%s\n' "$aggregate_order" | sed -n '12p')"
-expect_value "mysql bit or alias order middle" "2	11" \
+expect_value "mysql bit and alias order high" "1	13" \
     "$(printf '%s\n' "$aggregate_order" | sed -n '13p')"
-expect_value "mysql bit or alias order high" "1	15" \
+expect_value "mysql bit or alias order low" "NULL	7" \
     "$(printf '%s\n' "$aggregate_order" | sed -n '14p')"
-expect_value "mysql bit xor alias order low" "NULL	7" \
+expect_value "mysql bit or alias order middle" "2	11" \
     "$(printf '%s\n' "$aggregate_order" | sed -n '15p')"
-expect_value "mysql bit xor alias order middle" "2	11" \
+expect_value "mysql bit or alias order high" "1	15" \
     "$(printf '%s\n' "$aggregate_order" | sed -n '16p')"
-expect_value "mysql bit xor alias order high" "1	15" \
+expect_value "mysql bit xor alias order low" "NULL	7" \
     "$(printf '%s\n' "$aggregate_order" | sed -n '17p')"
+expect_value "mysql bit xor alias order middle" "2	11" \
+    "$(printf '%s\n' "$aggregate_order" | sed -n '18p')"
+expect_value "mysql bit xor alias order high" "1	15" \
+    "$(printf '%s\n' "$aggregate_order" | sed -n '19p')"
 
 headers=$(run_mysql_with_headers \
     "USE ${DATABASE};

@@ -97,7 +97,7 @@ This slice does not add:
 - grouped `HAVING` predicates on bitwise aggregate results;
 - binary-string bitwise aggregate evaluation;
 - `DISTINCT` bitwise aggregate arguments;
-- `GROUP_CONCAT()` or exact `AVG()` aggregate-alias ordering;
+- `GROUP_CONCAT()` aggregate-alias ordering;
 - aggregate windows;
 - new source forms outside the current grouped aggregate envelopes.
 

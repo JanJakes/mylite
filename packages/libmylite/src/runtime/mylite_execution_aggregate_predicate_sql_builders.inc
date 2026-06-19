@@ -1272,6 +1272,9 @@ static int append_grouped_order_aggregate_sql(
         return MYLITE_ERROR;
     }
     item = &plan->aggregates[aggregate_index];
+    if (item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
+        return append_grouped_avg_order_key_sql(string, plan, item, next_parameter);
+    }
     if (!grouped_aggregate_function_is_bitwise(item->function)) {
         return append_grouped_aggregate_expression_sql(string, plan, item, next_parameter);
     }
@@ -1284,6 +1287,62 @@ static int append_grouped_order_aggregate_sql(
         rc = mylite_dynamic_string_append_char(string, ')');
     }
     return rc;
+}
+
+static int append_grouped_avg_order_key_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    const struct planned_grouped_aggregate_item *item,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    rc = mylite_dynamic_string_append(string, "_mylite_avg_order_key(SUM(");
+    if (rc == MYLITE_OK) {
+        rc = append_aggregate_distinct_sql(string, item->aggregate_is_distinct);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_grouped_avg_order_argument_sql(string, plan, item, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, "), COUNT(");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_aggregate_distinct_sql(string, item->aggregate_is_distinct);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_grouped_avg_order_argument_sql(string, plan, item, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, "))");
+    }
+    return rc;
+}
+
+static int append_grouped_avg_order_argument_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    const struct planned_grouped_aggregate_item *item,
+    size_t *next_parameter
+) {
+    bool qualify = plan->source_count > 0U;
+
+    if (item->aggregate_uses_row_scalar_expression) {
+        if (next_parameter == NULL) {
+            return MYLITE_ERROR;
+        }
+        return append_row_scalar_expression_sql(
+            string,
+            &item->aggregate_row_scalar_expression,
+            next_parameter
+        );
+    }
+    return append_descriptor_column_name_sql_for_source(
+        string,
+        &item->aggregate_column,
+        item->aggregate_column_source_index,
+        qualify
+    );
 }
 
 static int append_select_predicate_sql(

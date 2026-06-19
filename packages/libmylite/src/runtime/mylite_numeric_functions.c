@@ -11,6 +11,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <float.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <math.h>
 #include <stdbool.h>
@@ -47,6 +48,13 @@ enum mylite_numeric_function_operation {
 
 enum {
     numeric_double_parse_stack_capacity = 128,
+    avg_order_prefix_digits = 1,
+    avg_order_integer_digits = 19,
+    avg_order_separator_digits = 1,
+    avg_order_fraction_digits = 39,
+    avg_order_fraction_offset =
+        avg_order_prefix_digits + avg_order_integer_digits + avg_order_separator_digits,
+    avg_order_key_capacity = avg_order_fraction_offset + avg_order_fraction_digits + 1,
 };
 
 struct numeric_round_request {
@@ -59,6 +67,16 @@ struct numeric_integer_parse {
     int64_t signed_value;
     uint64_t unsigned_value;
     bool truncated;
+};
+
+struct avg_order_accumulator {
+    int64_t sum;
+    int64_t count;
+};
+
+struct avg_order_uint128_parts {
+    uint64_t high;
+    uint64_t low;
 };
 
 static const enum mylite_numeric_function_operation numeric_operations[] = {
@@ -93,6 +111,7 @@ static void numeric_function_sqlite_callback(
     int argc,
     sqlite3_value **argv
 );
+static void avg_order_key_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static bool numeric_function_operation_from_context(
     sqlite3_context *context,
     enum mylite_numeric_function_operation *out_operation
@@ -167,10 +186,28 @@ static bool numeric_round_value_uses_approximate_ties(sqlite3_value *value);
 static double round_to_places(struct numeric_round_request request);
 static double round_to_integral(double value, bool use_approximate_ties);
 static int bit_count_u64(uint64_t value);
+static bool format_avg_order_key(
+    struct avg_order_accumulator accumulator,
+    char *buffer,
+    size_t buffer_size
+);
+static uint64_t avg_order_absolute_int64_magnitude(int64_t value);
+static int avg_order_next_decimal_digit(uint64_t *remainder, uint64_t denominator);
+static struct avg_order_uint128_parts avg_order_multiply_u64_by_decimal_radix(uint64_t value);
+static bool avg_order_uint128_ge_u64(const struct avg_order_uint128_parts *left, uint64_t right);
+static void avg_order_uint128_subtract_u64(struct avg_order_uint128_parts *left, uint64_t right);
 
 int mylite_sqlite_register_numeric_functions(sqlite3 *sqlite) {
     enum { flags = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS };
     static const struct mylite_sqlite_function_registration registrations[] = {
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_avg_order_key",
+            .argument_count = 2,
+            .text_representation = flags,
+            .application_data = NULL,
+            .scalar_callback = avg_order_key_sqlite_callback,
+        },
         {
             .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
             .name = "_mylite_numeric_abs",
@@ -477,6 +514,53 @@ static void numeric_function_sqlite_callback(
     }
 
     sqlite3_result_error(context, "unsupported MyLite numeric function", -1);
+}
+
+static void avg_order_key_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+) {
+    char key[avg_order_key_capacity];
+    int64_t sum = 0;
+    int64_t count = 0;
+
+    if (argc != 2 || argv == NULL || argv[0] == NULL || argv[1] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite AVG order-key callback", -1);
+        return;
+    }
+    if (sqlite3_value_type(argv[1]) != SQLITE_INTEGER) {
+        sqlite3_result_error(context, "invalid MyLite AVG order-key count", -1);
+        return;
+    }
+    count = (int64_t)sqlite3_value_int64(argv[1]);
+    if (count < 0) {
+        sqlite3_result_error(context, "invalid MyLite AVG order-key count", -1);
+        return;
+    }
+    if (count == 0) {
+        sqlite3_result_null(context);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) != SQLITE_INTEGER) {
+        sqlite3_result_error(context, "invalid MyLite AVG order-key sum", -1);
+        return;
+    }
+    sum = (int64_t)sqlite3_value_int64(argv[0]);
+
+    if (!format_avg_order_key(
+            (struct avg_order_accumulator){
+                .sum = sum,
+                .count = count,
+            },
+            key,
+            sizeof(key)
+        )) {
+        sqlite3_result_error(context, "failed to format MyLite AVG order key", -1);
+        return;
+    }
+
+    sqlite3_result_text(context, key, -1, SQLITE_TRANSIENT);
 }
 
 static bool numeric_function_operation_from_context(
@@ -1393,4 +1477,120 @@ static int bit_count_u64(uint64_t value) {
         value >>= 1U;
     }
     return count;
+}
+
+static bool format_avg_order_key(
+    struct avg_order_accumulator accumulator,
+    char *buffer,
+    size_t buffer_size
+) {
+    uint64_t denominator = 0U;
+    uint64_t magnitude = 0U;
+    uint64_t integer_part = 0U;
+    uint64_t remainder = 0U;
+    uint64_t order_integer = 0U;
+    bool is_negative = accumulator.sum < 0;
+    int written = 0;
+
+    if (buffer == NULL || buffer_size < avg_order_key_capacity || accumulator.count <= 0) {
+        return false;
+    }
+    denominator = (uint64_t)accumulator.count;
+    magnitude = avg_order_absolute_int64_magnitude(accumulator.sum);
+    integer_part = magnitude / denominator;
+    remainder = magnitude % denominator;
+    order_integer = integer_part;
+    if (is_negative) {
+        if (integer_part > int64_min_magnitude) {
+            return false;
+        }
+        order_integer = int64_min_magnitude - integer_part;
+    }
+
+    written = snprintf(
+        buffer,
+        buffer_size,
+        "%c%0*" PRIu64 ".",
+        is_negative ? '0' : '1',
+        avg_order_integer_digits,
+        order_integer
+    );
+    if (written != avg_order_fraction_offset) {
+        return false;
+    }
+
+    for (size_t digit_index = 0U; digit_index < avg_order_fraction_digits; ++digit_index) {
+        int digit = avg_order_next_decimal_digit(&remainder, denominator);
+
+        if (digit < 0) {
+            return false;
+        }
+        if (is_negative) {
+            digit = (int)(integer_parse_base - 1U) - digit;
+        }
+        buffer[avg_order_fraction_offset + digit_index] = (char)('0' + digit);
+    }
+    buffer[avg_order_fraction_offset + avg_order_fraction_digits] = '\0';
+    return true;
+}
+
+static uint64_t avg_order_absolute_int64_magnitude(int64_t value) {
+    if (value >= 0) {
+        return (uint64_t)value;
+    }
+    if (value == INT64_MIN) {
+        return int64_min_magnitude;
+    }
+
+    return (uint64_t)-value;
+}
+
+static int avg_order_next_decimal_digit(uint64_t *remainder, uint64_t denominator) {
+    struct avg_order_uint128_parts product = {0};
+    int digit = 0;
+
+    if (remainder == NULL || denominator == 0U || *remainder >= denominator) {
+        return -1;
+    }
+
+    product = avg_order_multiply_u64_by_decimal_radix(*remainder);
+    while (avg_order_uint128_ge_u64(&product, denominator)) {
+        avg_order_uint128_subtract_u64(&product, denominator);
+        ++digit;
+    }
+
+    *remainder = product.low;
+    return digit;
+}
+
+static struct avg_order_uint128_parts avg_order_multiply_u64_by_decimal_radix(uint64_t value) {
+    struct avg_order_uint128_parts product = {0};
+
+    for (uint64_t index = 0U; index < integer_parse_base; ++index) {
+        uint64_t previous_low = product.low;
+
+        product.low += value;
+        if (product.low < previous_low) {
+            ++product.high;
+        }
+    }
+
+    return product;
+}
+
+static bool avg_order_uint128_ge_u64(const struct avg_order_uint128_parts *left, uint64_t right) {
+    if (left->high != 0U) {
+        return true;
+    }
+
+    return left->low >= right;
+}
+
+static void avg_order_uint128_subtract_u64(struct avg_order_uint128_parts *left, uint64_t right) {
+    uint64_t previous_low = left->low;
+
+    left->low -= right;
+    if (previous_low < right) {
+        --left->high;
+    }
 }

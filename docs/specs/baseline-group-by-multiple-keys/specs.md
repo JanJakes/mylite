@@ -118,8 +118,8 @@ MyLite supports:
   subset;
 - optional `ORDER BY` on a small ordered list of selected grouped descriptor
   columns, unique selected grouped descriptor-column aliases, and unique
-  selected `COUNT`, `COUNT(DISTINCT column)`, `MIN`, `MAX`, `SUM`, or bitwise
-  aggregate aliases; when
+  selected `COUNT`, `COUNT(DISTINCT column)`, `MIN`, `MAX`, `SUM`, `AVG`, or
+  bitwise aggregate aliases; when
   `ONLY_FULL_GROUP_BY` is disabled, descriptor column order keys outside those
   strict forms and `CAST(descriptor_column AS CHAR)` order keys are also
   admitted for WordPress-style grouped comment metadata queries;
@@ -144,8 +144,7 @@ This phase does not add:
   temporal archive subset, or parenthesized expression keys;
 - general expression `ORDER BY` for grouped results beyond
   `CAST(descriptor_column AS CHAR)`;
-- aggregate expression `ORDER BY`, selected `AVG`, or `GROUP_CONCAT()` alias
-  ordering;
+- aggregate expression `ORDER BY` or selected `GROUP_CONCAT()` alias ordering;
 - grouped `COUNT(DISTINCT ...)` forms outside the integer descriptor-column
   slice;
 - mixed grouped `GROUP_CONCAT()` projections;
@@ -242,8 +241,8 @@ behavior. Aggregate aliases keep the existing unique-alias requirement.
 For grouped `ORDER BY`, a grouped descriptor-column alias must be unique among
 selected group aliases. Aggregate alias ordering keeps the existing unique
 selected aggregate alias requirement and remains limited to `COUNT`,
-`COUNT(DISTINCT column)`, `MIN`, `MAX`, `SUM`, and bitwise aggregates. Multiple
-order keys are applied left to right with each key's own direction. When
+`COUNT(DISTINCT column)`, `MIN`, `MAX`, `SUM`, `AVG`, and bitwise aggregates.
+Multiple order keys are applied left to right with each key's own direction. When
 `ONLY_FULL_GROUP_BY` is disabled, MyLite accepts descriptor order keys and
 `CAST(descriptor_column AS CHAR)` order expressions outside those strict forms
 to match MySQL's relaxed mode for application query shapes such as WordPress
@@ -308,8 +307,8 @@ Required diagnostics include:
   unselected aggregate predicate, bitwise aggregate predicate, or
   `GROUP_CONCAT()` predicate: existing grouped `HAVING` diagnostics;
 - unsupported grouped `ORDER BY` multiple keys, nonselected group column,
-  duplicate group alias, duplicate aggregate alias, selected `AVG` or
-  `GROUP_CONCAT()` alias order key: deterministic grouped
+  duplicate group alias, duplicate aggregate alias, selected `GROUP_CONCAT()`
+  alias order key: deterministic grouped
   `ORDER BY` diagnostics;
 - physical SQLite failures: existing physical row-operation diagnostic;
 - allocation failure: existing `MYLITE_NOMEM` diagnostic behavior.
@@ -329,7 +328,7 @@ Add MySQL-runtime expectation coverage and fast C tests for:
 - `WHERE` before grouping;
 - `HAVING` on selected grouped keys and selected aggregate aliases;
 - grouped `ORDER BY` on grouped keys and selected aggregate aliases, including
-  `COUNT(DISTINCT column)` and bitwise aliases, `ASC`, `DESC`, `NULL`
+  `COUNT(DISTINCT column)`, `AVG`, and bitwise aliases, `ASC`, `DESC`, `NULL`
   placement, and `LIMIT`;
 - source-qualified and aliased table references;
 - result labels, warning count, row count, no catalog generation changes, no

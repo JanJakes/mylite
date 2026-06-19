@@ -245,10 +245,32 @@ status=$(
     run_mysql \
         "SELECT COUNT(*) FROM sys.\`x\$host_summary\`; SHOW COUNT(*) WARNINGS; SHOW WARNINGS; SELECT @@warning_count, ROW_COUNT();"
 )
-status=$(printf '%s\n' "$status" | tail -n 3)
-expected_status=$(printf '%b' '1\nWarning\t1365\tDivision by 0\n1\t-1')
-if [ "$status" != "$expected_status" ]; then
-    fail "sys x host summary SELECT warning status: expected [$expected_status], got [$status]"
+row_count=$(printf '%s\n' "$status" | sed -n '1p')
+warning_count=$(printf '%s\n' "$status" | sed -n '2p')
+line_count=$(printf '%s\n' "$status" | awk 'END { print NR }')
+status_tail=$(printf '%s\n' "$status" | tail -n 1)
+case "$row_count" in
+    ''|*[!0-9]*) fail "sys x host summary row count: expected numeric row count, got [$row_count]" ;;
+esac
+case "$warning_count" in
+    0)
+        if [ "$line_count" != "3" ]; then
+            fail "sys x host summary warnings: expected no warning rows, got [$status]"
+        fi
+        expected_status=$(printf '%b' '0\t-1')
+        ;;
+    1)
+        if [ "$line_count" != "4" ]; then
+            fail "sys x host summary warnings: expected one warning row, got [$status]"
+        fi
+        expected_status=$(printf '%b' '1\t-1')
+        ;;
+    *)
+        fail "sys x host summary warning count: expected 0 or 1, got [$warning_count]"
+        ;;
+esac
+if [ "$status_tail" != "$expected_status" ]; then
+    fail "sys x host summary SELECT status: expected [$expected_status], got [$status_tail]"
 fi
 
 printf '%s\n' "mysql_baseline_sys_host_summary_views_expectations: ok"

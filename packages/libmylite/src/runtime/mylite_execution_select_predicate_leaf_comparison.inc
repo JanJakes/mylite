@@ -169,8 +169,8 @@ static int plan_select_predicate_leaf_node(
         } else if (predicate_node_is_scalar_literal_expression(child_at(predicate_node, 0U)) ||
                    row_scalar_conversion_kind_from_expression(child_at(predicate_node, 0U)) !=
                        PLANNED_ROW_SCALAR_CONVERSION_NONE ||
-                   predicate_node_is_supported_row_scalar_expression(
-                       child_at(predicate_node, 0U))) {
+                   predicate_node_is_supported_row_scalar_expression(child_at(predicate_node, 0U)
+                   )) {
             rc = plan_row_scalar_expression_between_predicate(
                 database,
                 predicate_node,
@@ -393,8 +393,8 @@ static int plan_select_predicate_leaf_node_without_exists(
         } else if (predicate_node_is_scalar_literal_expression(child_at(predicate_node, 0U)) ||
                    row_scalar_conversion_kind_from_expression(child_at(predicate_node, 0U)) !=
                        PLANNED_ROW_SCALAR_CONVERSION_NONE ||
-                   predicate_node_is_supported_row_scalar_expression(
-                       child_at(predicate_node, 0U))) {
+                   predicate_node_is_supported_row_scalar_expression(child_at(predicate_node, 0U)
+                   )) {
             rc = plan_row_scalar_expression_between_predicate(
                 database,
                 predicate_node,
@@ -1965,13 +1965,12 @@ static int plan_row_scalar_expression_comparison_predicate(
                 child_at(predicate_node, 1U),
                 &node.value
             );
-        } else if (
-            predicate_node_is_supported_row_scalar_predicate_value_expression(
-                child_at(predicate_node, 1U)
-            ) ||
-            (child_at(predicate_node, 1U) != NULL &&
-             node.row_scalar_expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLLATE &&
-             child_at(predicate_node, 1U)->kind == MYLITE_SQL_AST_LITERAL)) {
+        } else if (predicate_node_is_supported_row_scalar_predicate_value_expression(
+                       child_at(predicate_node, 1U)
+                   ) ||
+                   (child_at(predicate_node, 1U) != NULL &&
+                    node.row_scalar_expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLLATE &&
+                    child_at(predicate_node, 1U)->kind == MYLITE_SQL_AST_LITERAL)) {
             rc = plan_predicate_row_scalar_value_expression(
                 database,
                 child_at(predicate_node, 1U),
@@ -2049,11 +2048,9 @@ static int plan_row_scalar_expression_between_predicate(
             child_at(predicate_node, 1U),
             &node.value
         );
-    } else if (
-        rc == MYLITE_OK &&
-        predicate_node_is_supported_row_scalar_predicate_value_expression(
-            child_at(predicate_node, 1U)
-        )) {
+    } else if (rc == MYLITE_OK && predicate_node_is_supported_row_scalar_predicate_value_expression(
+                                      child_at(predicate_node, 1U)
+                                  )) {
         rc = plan_predicate_row_scalar_value_expression(
             database,
             child_at(predicate_node, 1U),
@@ -2076,11 +2073,9 @@ static int plan_row_scalar_expression_between_predicate(
             child_at(predicate_node, 2U),
             &node.upper_value
         );
-    } else if (
-        rc == MYLITE_OK &&
-        predicate_node_is_supported_row_scalar_predicate_value_expression(
-            child_at(predicate_node, 2U)
-        )) {
+    } else if (rc == MYLITE_OK && predicate_node_is_supported_row_scalar_predicate_value_expression(
+                                      child_at(predicate_node, 2U)
+                                  )) {
         rc = plan_predicate_row_scalar_upper_value_expression(
             database,
             child_at(predicate_node, 2U),
@@ -2345,8 +2340,8 @@ static int plan_where_row_scalar_predicate_literal_value(
     size_t text_length = 0U;
     int rc = MYLITE_OK;
 
-    if (row_scalar_predicate_literal_prefers_blob(row_scalar_expression) &&
-        literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+    if (row_scalar_predicate_literal_prefers_blob(row_scalar_expression) && literal != NULL &&
+        literal->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_NULL) {
         rc = decode_binary_string_literal(database, literal, &text, &text_length);
         if (rc != MYLITE_OK) {
@@ -2355,8 +2350,8 @@ static int plan_where_row_scalar_predicate_literal_value(
         return assign_blob_value(database, text, text_length, out_value);
     }
 
-    if (row_scalar_predicate_literal_prefers_text(row_scalar_expression) &&
-        literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL &&
+    if (row_scalar_predicate_literal_prefers_text(row_scalar_expression) && literal != NULL &&
+        literal->kind == MYLITE_SQL_AST_LITERAL &&
         mylite_sql_ast_node_literal_kind(literal) == MYLITE_SQL_AST_LITERAL_STRING) {
         rc = decode_sql_string_literal(
             database,
@@ -2430,6 +2425,9 @@ static bool row_scalar_predicate_literal_prefers_text(
     case PLANNED_ROW_SCALAR_EXPRESSION_INET_NTOA:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_ICU_VERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
         return true;
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
         return expression->numeric_extra_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT;
@@ -2450,6 +2448,7 @@ static bool row_scalar_predicate_literal_prefers_text(
     case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_LOCK:
     case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_ALL_LOCKS:
     case PLANNED_ROW_SCALAR_EXPRESSION_BENCHMARK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SLEEP:
         return false;
     case PLANNED_ROW_SCALAR_EXPRESSION_NONE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:

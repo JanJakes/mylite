@@ -41,6 +41,7 @@
 #include "mylite_string_substring_index.h"
 #include "mylite_string_trim.h"
 #include "mylite_string_unhex.h"
+#include "mylite_system_functions.h"
 #include "mylite_temporal_constructor.h"
 #include "mylite_temporal_extract.h"
 #include "mylite_timediff.h"
@@ -326,6 +327,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_named_lock_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_system_functions(sqlite);
     }
     if (rc != MYLITE_OK) {
         return rc;

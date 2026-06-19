@@ -134,6 +134,61 @@ static int plan_row_scalar_non_control_flow_expression(
             out_expression
         );
     }
+    if (generic_function_name_equals(expression, "SLEEP")) {
+        return plan_row_scalar_sleep_function(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (generic_function_name_equals(expression, "NAME_CONST")) {
+        return plan_row_scalar_name_const_function(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (generic_function_name_equals(expression, "LOAD_FILE")) {
+        return plan_row_scalar_load_file_function(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (generic_function_name_equals(expression, "EXTRACTVALUE")) {
+        return plan_row_scalar_extract_value_function(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (generic_function_name_equals(expression, "UPDATEXML")) {
+        return plan_row_scalar_update_xml_function(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         return plan_row_scalar_integer_value(database, expression, out_expression);
     }
@@ -896,6 +951,183 @@ static int plan_row_scalar_benchmark_function(
     );
 }
 
+static int plan_row_scalar_sleep_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    return plan_row_scalar_named_lock_function(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        (struct row_scalar_named_lock_function){
+            .function_name = "SLEEP",
+            .argument_count = 1U,
+            .expression_kind = PLANNED_ROW_SCALAR_EXPRESSION_SLEEP,
+        },
+        out_expression
+    );
+}
+
+static int plan_row_scalar_name_const_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *arguments =
+        expression == NULL ? NULL : expression->first_child;
+    char *name = NULL;
+    int rc = MYLITE_OK;
+
+    while (arguments != NULL && arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        arguments = arguments->next_sibling;
+    }
+    if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 2U) {
+        set_native_function_parameter_count_error(database, "NAME_CONST");
+        return MYLITE_ERROR;
+    }
+    rc = generic_name_const_column_name(database, child_at(arguments, 0U), &name);
+    free(name);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!name_const_value_is_supported_literal(child_at(arguments, 1U))) {
+        set_name_const_incorrect_arguments_error(database);
+        return MYLITE_ERROR;
+    }
+    return plan_row_scalar_non_concat_expression(
+        database,
+        child_at(arguments, 1U),
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        false,
+        out_expression
+    );
+}
+
+static int plan_row_scalar_load_file_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    return plan_row_scalar_named_lock_function(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        (struct row_scalar_named_lock_function){
+            .function_name = "LOAD_FILE",
+            .argument_count = 1U,
+            .expression_kind = PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE,
+        },
+        out_expression
+    );
+}
+
+static int plan_row_scalar_extract_value_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    int rc = reject_row_scalar_xml_nonconstant_xpath(database, expression, "ExtractValue", 2U);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return plan_row_scalar_named_lock_function(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        (struct row_scalar_named_lock_function){
+            .function_name = "ExtractValue",
+            .argument_count = 2U,
+            .expression_kind = PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE,
+        },
+        out_expression
+    );
+}
+
+static int plan_row_scalar_update_xml_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    int rc = reject_row_scalar_xml_nonconstant_xpath(database, expression, "UpdateXML", 3U);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return plan_row_scalar_named_lock_function(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        (struct row_scalar_named_lock_function){
+            .function_name = "UpdateXML",
+            .argument_count = 3U,
+            .expression_kind = PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML,
+        },
+        out_expression
+    );
+}
+
+static int reject_row_scalar_xml_nonconstant_xpath(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *function_name,
+    size_t argument_count
+) {
+    const struct mylite_sql_ast_node *arguments = generic_system_function_arguments(expression);
+
+    if ((arguments == NULL && argument_count != 0U) ||
+        (arguments != NULL && mylite_sql_ast_node_child_count(arguments) != argument_count)) {
+        set_native_function_parameter_count_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+    if (row_scalar_expression_references_descriptor_column(child_at(arguments, 1U))) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            mysql_error_unknown,
+            "HY000",
+            "Only constant XPATH queries are supported"
+        );
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
 static int plan_row_scalar_named_lock_function(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -926,10 +1158,8 @@ static int plan_row_scalar_named_lock_function(
     if (lock_function.argument_count == 0U) {
         return MYLITE_OK;
     }
-    out_expression->arguments = (struct planned_row_scalar_expression *)calloc(
-        lock_function.argument_count,
-        sizeof(*out_expression->arguments)
-    );
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(lock_function.argument_count, sizeof(*out_expression->arguments));
     if (out_expression->arguments == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -1007,8 +1237,8 @@ static int plan_row_scalar_conversion_expression(
     }
 
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION;
-    while (row_scalar_conversion_kind_from_expression(current) !=
-           PLANNED_ROW_SCALAR_CONVERSION_NONE) {
+    while (row_scalar_conversion_kind_from_expression(current) != PLANNED_ROW_SCALAR_CONVERSION_NONE
+    ) {
         rc = append_row_scalar_conversion_step(database, current, out_expression);
         if (rc != MYLITE_OK) {
             return rc;
@@ -1540,8 +1770,7 @@ static int plan_row_scalar_session_value(
     return copy_text_value(database, cell.value, &out_expression->value);
 }
 
-static bool row_scalar_session_value_prefers_integer(
-    enum mylite_sql_ast_node_kind expression_kind
+static bool row_scalar_session_value_prefers_integer(enum mylite_sql_ast_node_kind expression_kind
 ) {
     switch (expression_kind) {
     case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:

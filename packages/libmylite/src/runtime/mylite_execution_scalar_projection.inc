@@ -178,7 +178,12 @@ static bool is_named_lock_and_info_projection_expression(
             generic_function_name_equals(expression, "RELEASE_LOCK") ||
             generic_function_name_equals(expression, "RELEASE_ALL_LOCKS") ||
             generic_function_name_equals(expression, "ICU_VERSION") ||
-            generic_function_name_equals(expression, "BENCHMARK")) != 0;
+            generic_function_name_equals(expression, "BENCHMARK") ||
+            generic_function_name_equals(expression, "SLEEP") ||
+            generic_function_name_equals(expression, "NAME_CONST") ||
+            generic_function_name_equals(expression, "LOAD_FILE") ||
+            generic_function_name_equals(expression, "EXTRACTVALUE") ||
+            generic_function_name_equals(expression, "UPDATEXML")) != 0;
 }
 
 static bool is_numeric_scalar_function_projection_expression(
@@ -698,8 +703,7 @@ static bool is_base64_projection_expression(const struct mylite_sql_ast_node *ex
     return false;
 }
 
-static bool is_compression_random_projection_expression(
-    const struct mylite_sql_ast_node *expression
+static bool is_compression_random_projection_expression(const struct mylite_sql_ast_node *expression
 ) {
     const struct mylite_sql_ast_node *argument = NULL;
 
@@ -727,8 +731,7 @@ static bool is_compression_random_projection_expression(
         return false;
     }
     if (argument->kind == MYLITE_SQL_AST_LITERAL) {
-        enum mylite_sql_ast_literal_kind literal_kind =
-            mylite_sql_ast_node_literal_kind(argument);
+        enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(argument);
 
         return (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
                 literal_kind == MYLITE_SQL_AST_LITERAL_HEX ||

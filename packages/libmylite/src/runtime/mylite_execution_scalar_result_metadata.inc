@@ -151,6 +151,68 @@ static int populate_scalar_function_result_column_descriptor(
         return MYLITE_MISUSE;
     }
 
+    if (expression->kind == MYLITE_SQL_AST_GENERIC_FUNCTION) {
+        if (generic_system_function_name_equals(expression, "SLEEP") ||
+            generic_system_function_name_equals(expression, "GET_LOCK") ||
+            generic_system_function_name_equals(expression, "IS_FREE_LOCK") ||
+            generic_system_function_name_equals(expression, "IS_USED_LOCK") ||
+            generic_system_function_name_equals(expression, "RELEASE_LOCK") ||
+            generic_system_function_name_equals(expression, "RELEASE_ALL_LOCKS") ||
+            generic_system_function_name_equals(expression, "BENCHMARK")) {
+            populate_scalar_binary_numeric_result_column_descriptor(
+                descriptor,
+                (struct scalar_binary_numeric_result_column_shape){
+                    .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                    .display_length = mysql_scalar_bigint_display_length,
+                    .decimals = 0U,
+                    .extra_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED,
+                    .nullable = true,
+                }
+            );
+            return MYLITE_OK;
+        }
+        if (generic_system_function_name_equals(expression, "ICU_VERSION")) {
+            populate_scalar_connection_string_result_column_descriptor(
+                database,
+                descriptor,
+                (struct scalar_connection_string_result_column_shape){
+                    .display_length = 4U * scalar_connection_max_bytes_per_character(database),
+                    .extra_flags = 0U,
+                    .nullable = false,
+                }
+            );
+            return MYLITE_OK;
+        }
+        if (generic_system_function_name_equals(expression, "LOAD_FILE") ||
+            generic_system_function_name_equals(expression, "EXTRACTVALUE") ||
+            generic_system_function_name_equals(expression, "UPDATEXML")) {
+            populate_scalar_connection_string_result_column_descriptor(
+                database,
+                descriptor,
+                (struct scalar_connection_string_result_column_shape){
+                    .display_length = mysql_json_document_display_length,
+                    .extra_flags = 0U,
+                    .nullable = true,
+                }
+            );
+            return MYLITE_OK;
+        }
+        if (generic_system_function_name_equals(expression, "NAME_CONST")) {
+            const struct mylite_sql_ast_node *arguments =
+                generic_system_function_arguments(expression);
+
+            if (arguments != NULL && mylite_sql_ast_node_child_count(arguments) == 2U) {
+                return make_scalar_result_column_descriptor(
+                    database,
+                    child_at(arguments, 1U),
+                    descriptor->label,
+                    descriptor
+                );
+            }
+        }
+        return MYLITE_OK;
+    }
+
     switch (expression->kind) {
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
@@ -474,16 +536,14 @@ static void populate_scalar_compress_result_column_descriptor(
                 argument_display_length = (uint64_t)literal_length;
             }
             free(literal_text);
-        } else if (
-            argument != NULL &&
-            (argument->kind == MYLITE_SQL_AST_LITERAL ||
-             argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) &&
-            populate_scalar_literal_result_column_descriptor(
-                database,
-                argument,
-                &argument_descriptor
-            ) == MYLITE_OK
-        ) {
+        } else if (argument != NULL &&
+                   (argument->kind == MYLITE_SQL_AST_LITERAL ||
+                    argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) &&
+                   populate_scalar_literal_result_column_descriptor(
+                       database,
+                       argument,
+                       &argument_descriptor
+                   ) == MYLITE_OK) {
             argument_display_length = argument_descriptor.display_length;
         }
     }

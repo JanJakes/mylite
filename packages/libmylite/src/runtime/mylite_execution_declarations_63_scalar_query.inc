@@ -347,6 +347,31 @@ static int generic_benchmark_value(
     const struct mylite_sql_ast_node *arguments,
     struct session_scalar_cell *out_cell
 );
+static int generic_sleep_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+);
+static int generic_name_const_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+);
+static int generic_load_file_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+);
+static int generic_extract_value_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+);
+static int generic_update_xml_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+);
 static int generic_system_string_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *argument,
@@ -361,6 +386,20 @@ static int generic_system_int64_argument(
     int64_t *out_value,
     bool *out_is_null
 );
+static int generic_system_double_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    double *out_value,
+    bool *out_is_null,
+    bool *out_truncated_string
+);
+static int generic_name_const_column_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    char **out_name
+);
+static bool name_const_value_is_supported_literal(const struct mylite_sql_ast_node *argument);
+static void set_name_const_incorrect_arguments_error(struct mylite_db *database);
 static int generic_system_format_int64(
     struct mylite_db *database,
     int64_t value,

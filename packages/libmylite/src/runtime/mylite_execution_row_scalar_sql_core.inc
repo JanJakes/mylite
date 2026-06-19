@@ -315,6 +315,34 @@ static int append_row_scalar_expression_sql(
             expression,
             next_parameter
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_SLEEP:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_sleep",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_load_file",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_extract_value",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_update_xml",
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
         return append_row_scalar_numeric_function_expression_sql(
             string,
@@ -838,6 +866,10 @@ static int append_row_scalar_conversion_base_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_ALL_LOCKS:
     case PLANNED_ROW_SCALAR_EXPRESSION_ICU_VERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BENCHMARK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SLEEP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
         return append_row_scalar_expression_sql(string, expression, next_parameter);
@@ -1082,6 +1114,10 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_ALL_LOCKS:
     case PLANNED_ROW_SCALAR_EXPRESSION_ICU_VERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BENCHMARK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SLEEP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
@@ -1181,6 +1217,10 @@ static int append_row_scalar_non_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SLEEP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
         return append_row_scalar_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
@@ -1416,6 +1456,7 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SLEEP:
         return append_row_scalar_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
         return append_row_scalar_unix_timestamp_expression_sql(string, expression, next_parameter);
@@ -1440,6 +1481,9 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_ELT:
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:

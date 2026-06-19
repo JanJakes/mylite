@@ -54,6 +54,15 @@ static int copy_scalar_projection_column_name(
             }
         }
     }
+    if (unwrapped != NULL && generic_system_function_name_equals(unwrapped, "NAME_CONST")) {
+        const struct mylite_sql_ast_node *arguments = generic_system_function_arguments(unwrapped);
+
+        if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 2U) {
+            set_native_function_parameter_count_error(database, "NAME_CONST");
+            return MYLITE_ERROR;
+        }
+        return generic_name_const_column_name(database, child_at(arguments, 0U), out_text);
+    }
     if (unwrapped != NULL && unwrapped->kind == MYLITE_SQL_AST_LITERAL) {
         enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(unwrapped);
 

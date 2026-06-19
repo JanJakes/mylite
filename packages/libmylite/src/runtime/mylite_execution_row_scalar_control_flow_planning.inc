@@ -710,10 +710,8 @@ static int plan_row_scalar_like_predicate_expression(
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE;
     out_expression->argument_count = 2U;
     out_expression->arithmetic_operator = MYLITE_SQL_AST_OPERATOR_LIKE;
-    out_expression->like_uses_escape = (bool)!session_sql_mode_has(
-        &database->session,
-        MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES
-    );
+    out_expression->like_uses_escape = (bool
+    )!session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES);
 
     rc = plan_row_scalar_control_flow_value_argument(
         database,
@@ -822,10 +820,8 @@ static int plan_row_scalar_leaf_like_predicate_expression(
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_LIKE_PREDICATE;
     out_expression->argument_count = 2U;
     out_expression->arithmetic_operator = MYLITE_SQL_AST_OPERATOR_LIKE;
-    out_expression->like_uses_escape = (bool)!session_sql_mode_has(
-        &database->session,
-        MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES
-    );
+    out_expression->like_uses_escape = (bool
+    )!session_sql_mode_has(&database->session, MYLITE_SESSION_SQL_MODE_NO_BACKSLASH_ESCAPES);
 
     rc = plan_row_scalar_control_flow_leaf_value_argument(
         database,
@@ -2524,8 +2520,12 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_LOCK:
     case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_ALL_LOCKS:
     case PLANNED_ROW_SCALAR_EXPRESSION_BENCHMARK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SLEEP:
         return PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
     case PLANNED_ROW_SCALAR_EXPRESSION_ICU_VERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
         return PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING;
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
         if (expression->numeric_extra_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT) {

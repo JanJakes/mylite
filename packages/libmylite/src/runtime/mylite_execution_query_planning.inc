@@ -597,6 +597,9 @@ static int row_scalar_collate_base_charset(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_ICU_VERSION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:
     case PLANNED_ROW_SCALAR_EXPRESSION_IFNULL:
     case PLANNED_ROW_SCALAR_EXPRESSION_COALESCE:
@@ -621,6 +624,7 @@ static int row_scalar_collate_base_charset(
     case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_LOCK:
     case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_ALL_LOCKS:
     case PLANNED_ROW_SCALAR_EXPRESSION_BENCHMARK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SLEEP:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_DATE_FORMAT_NUMERIC_COMPARISON:
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_LENGTH:
@@ -1100,11 +1104,9 @@ static int plan_row_scalar_window_function_expression(
                 table_column_count,
                 out_expression
             );
-        } else if (
-            clause->kind == MYLITE_SQL_AST_WINDOW_FRAME_CLAUSE &&
-            (window_function_accepts_ignored_frame_clause(kind) ||
-             window_function_uses_frame_clause(kind))
-        ) {
+        } else if (clause->kind == MYLITE_SQL_AST_WINDOW_FRAME_CLAUSE &&
+                   (window_function_accepts_ignored_frame_clause(kind) ||
+                    window_function_uses_frame_clause(kind))) {
             rc = plan_row_scalar_window_frame_clause(
                 database,
                 function_name,

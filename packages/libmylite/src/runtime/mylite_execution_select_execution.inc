@@ -166,21 +166,9 @@ static bool select_statement_is_row_scalar_projection_attempt(
              (has_row_source && row_scalar_expression_is_context_expression_attempt(expression)) ||
              (has_row_source && row_scalar_expression_contains_bitwise_attempt(expression)) ||
              (expression != NULL && expression->kind == MYLITE_SQL_AST_EXISTS_PREDICATE) ||
-             (has_row_source && generic_function_name_equals(expression, "GET_LOCK")) ||
-             (has_row_source && generic_function_name_equals(expression, "IS_FREE_LOCK")) ||
-             (has_row_source && generic_function_name_equals(expression, "IS_USED_LOCK")) ||
-             (has_row_source && generic_function_name_equals(expression, "RELEASE_LOCK")) ||
-             (has_row_source && generic_function_name_equals(expression, "RELEASE_ALL_LOCKS")) ||
-             (has_row_source && generic_function_name_equals(expression, "ICU_VERSION")) ||
-             (has_row_source && generic_function_name_equals(expression, "BENCHMARK")) ||
-             (has_row_source && expression_contains_generic_function_named(expression, "GET_LOCK")) ||
-             (has_row_source && expression_contains_generic_function_named(expression, "IS_FREE_LOCK")) ||
-             (has_row_source && expression_contains_generic_function_named(expression, "IS_USED_LOCK")) ||
-             (has_row_source && expression_contains_generic_function_named(expression, "RELEASE_LOCK")) ||
+             (has_row_source && expression_is_supported_row_scalar_system_function(expression)) ||
              (has_row_source &&
-              expression_contains_generic_function_named(expression, "RELEASE_ALL_LOCKS")) ||
-             (has_row_source && expression_contains_generic_function_named(expression, "ICU_VERSION")) ||
-             (has_row_source && expression_contains_generic_function_named(expression, "BENCHMARK")) ||
+              expression_contains_supported_row_scalar_system_function(expression)) ||
              (has_row_source && expression != NULL && expression->kind == MYLITE_SQL_AST_LITERAL) ||
              (has_row_source && expression != NULL &&
               expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION))) {
@@ -190,6 +178,40 @@ static bool select_statement_is_row_scalar_projection_attempt(
     }
 
     return false;
+}
+
+static bool expression_is_supported_row_scalar_system_function(
+    const struct mylite_sql_ast_node *expression
+) {
+    return generic_function_name_equals(expression, "GET_LOCK") ||
+           generic_function_name_equals(expression, "IS_FREE_LOCK") ||
+           generic_function_name_equals(expression, "IS_USED_LOCK") ||
+           generic_function_name_equals(expression, "RELEASE_LOCK") ||
+           generic_function_name_equals(expression, "RELEASE_ALL_LOCKS") ||
+           generic_function_name_equals(expression, "ICU_VERSION") ||
+           generic_function_name_equals(expression, "BENCHMARK") ||
+           generic_function_name_equals(expression, "SLEEP") ||
+           generic_function_name_equals(expression, "NAME_CONST") ||
+           generic_function_name_equals(expression, "LOAD_FILE") ||
+           generic_function_name_equals(expression, "EXTRACTVALUE") ||
+           generic_function_name_equals(expression, "UPDATEXML");
+}
+
+static bool expression_contains_supported_row_scalar_system_function(
+    const struct mylite_sql_ast_node *expression
+) {
+    return expression_contains_generic_function_named(expression, "GET_LOCK") ||
+           expression_contains_generic_function_named(expression, "IS_FREE_LOCK") ||
+           expression_contains_generic_function_named(expression, "IS_USED_LOCK") ||
+           expression_contains_generic_function_named(expression, "RELEASE_LOCK") ||
+           expression_contains_generic_function_named(expression, "RELEASE_ALL_LOCKS") ||
+           expression_contains_generic_function_named(expression, "ICU_VERSION") ||
+           expression_contains_generic_function_named(expression, "BENCHMARK") ||
+           expression_contains_generic_function_named(expression, "SLEEP") ||
+           expression_contains_generic_function_named(expression, "NAME_CONST") ||
+           expression_contains_generic_function_named(expression, "LOAD_FILE") ||
+           expression_contains_generic_function_named(expression, "EXTRACTVALUE") ||
+           expression_contains_generic_function_named(expression, "UPDATEXML");
 }
 
 static bool select_statement_optional_clauses_contain_row_scalar_function(
@@ -370,7 +392,8 @@ static int row_scalar_select_step_error(
     if (message == NULL) {
         return mylite_sqlite_status_to_mylite(sqlite_rc);
     }
-    if (map_numeric_row_scalar_step_error(database, message) ||
+    if (map_system_function_row_scalar_step_error(database, message) ||
+        map_numeric_row_scalar_step_error(database, message) ||
         map_json_extract_row_scalar_step_error(database, message) ||
         map_json_mutation_row_scalar_step_error(database, message) ||
         map_json_search_row_scalar_step_error(database, message) ||
@@ -388,6 +411,31 @@ static int row_scalar_select_step_error(
     }
 
     return mylite_sqlite_status_to_mylite(sqlite_rc);
+}
+
+static bool map_system_function_row_scalar_step_error(
+    struct mylite_db *database,
+    const char *message
+) {
+    if (strncmp(message, "XPATH syntax error", strlen("XPATH syntax error")) == 0) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            mysql_error_unknown,
+            "HY000",
+            message
+        );
+        return true;
+    }
+    if (strcmp(message, "Incorrect arguments to sleep.") == 0) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            mysql_error_incorrect_arguments,
+            "HY000",
+            message
+        );
+        return true;
+    }
+    return false;
 }
 
 static bool map_numeric_row_scalar_step_error(struct mylite_db *database, const char *message) {
@@ -1522,8 +1570,7 @@ static int row_scalar_integer_width_enter_frame(
     return row_scalar_integer_width_push_result(stack, (struct row_scalar_integer_width_result){0});
 }
 
-static int row_scalar_integer_width_finish_unary_frame(
-    struct row_scalar_integer_width_stack *stack
+static int row_scalar_integer_width_finish_unary_frame(struct row_scalar_integer_width_stack *stack
 ) {
     struct row_scalar_integer_width_result operand = {0};
     int rc = row_scalar_integer_width_pop_result(stack, &operand);
@@ -1547,8 +1594,7 @@ static int row_scalar_integer_width_finish_unary_frame(
     );
 }
 
-static int row_scalar_integer_width_finish_binary_frame(
-    struct row_scalar_integer_width_stack *stack
+static int row_scalar_integer_width_finish_binary_frame(struct row_scalar_integer_width_stack *stack
 ) {
     struct row_scalar_integer_width_result left = {0};
     struct row_scalar_integer_width_result right = {0};
@@ -1885,6 +1931,7 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_LOCK:
     case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_ALL_LOCKS:
     case PLANNED_ROW_SCALAR_EXPRESSION_BENCHMARK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SLEEP:
         populate_scalar_binary_numeric_result_column_descriptor(
             descriptor,
             (struct scalar_binary_numeric_result_column_shape){
@@ -1892,6 +1939,19 @@ static int populate_row_scalar_expression_result_column_descriptor(
                 .display_length = mysql_scalar_bigint_display_length,
                 .decimals = 0U,
                 .extra_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
+        populate_scalar_connection_string_result_column_descriptor(
+            database,
+            descriptor,
+            (struct scalar_connection_string_result_column_shape){
+                .display_length = mysql_json_document_display_length,
+                .extra_flags = 0U,
                 .nullable = true,
             }
         );

@@ -155,6 +155,21 @@ static int generic_system_function_value(
     if (generic_system_function_name_equals(expression, "BENCHMARK")) {
         return generic_benchmark_value(database, arguments, out_cell);
     }
+    if (generic_system_function_name_equals(expression, "SLEEP")) {
+        return generic_sleep_value(database, arguments, out_cell);
+    }
+    if (generic_system_function_name_equals(expression, "NAME_CONST")) {
+        return generic_name_const_value(database, arguments, out_cell);
+    }
+    if (generic_system_function_name_equals(expression, "LOAD_FILE")) {
+        return generic_load_file_value(database, arguments, out_cell);
+    }
+    if (generic_system_function_name_equals(expression, "EXTRACTVALUE")) {
+        return generic_extract_value_value(database, arguments, out_cell);
+    }
+    if (generic_system_function_name_equals(expression, "UPDATEXML")) {
+        return generic_update_xml_value(database, arguments, out_cell);
+    }
     set_unsupported_error(database, "unsupported generic scalar function");
     return MYLITE_ERROR;
 }
@@ -442,6 +457,261 @@ static int generic_benchmark_value(
     return generic_system_format_int64(database, 0, out_cell);
 }
 
+static int generic_sleep_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+) {
+    double seconds = 0.0;
+    int64_t value = 0;
+    bool is_null = false;
+    bool truncated_string = false;
+    int rc = MYLITE_OK;
+
+    if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 1U) {
+        set_native_function_parameter_count_error(database, "SLEEP");
+        return MYLITE_ERROR;
+    }
+    rc = generic_system_double_argument(
+        database,
+        child_at(arguments, 0U),
+        &seconds,
+        &is_null,
+        &truncated_string
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (truncated_string) {
+        return generic_system_format_int64(database, 0, out_cell);
+    }
+    if (is_null || !isfinite(seconds) || seconds < 0.0) {
+        rc = mylite_system_sleep_invalid_argument(database, &value);
+    } else {
+        rc = mylite_system_sleep_seconds(database, seconds, &value);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return generic_system_format_int64(database, value, out_cell);
+}
+
+static int generic_name_const_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *value_argument = NULL;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    int rc = MYLITE_OK;
+
+    if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 2U) {
+        set_native_function_parameter_count_error(database, "NAME_CONST");
+        return MYLITE_ERROR;
+    }
+    if (!name_const_value_is_supported_literal(child_at(arguments, 1U))) {
+        set_name_const_incorrect_arguments_error(database);
+        return MYLITE_ERROR;
+    }
+    value_argument = unwrap_parenthesized_expression(child_at(arguments, 1U));
+    if (value_argument == NULL) {
+        set_name_const_incorrect_arguments_error(database);
+        return MYLITE_ERROR;
+    }
+    rc = generic_name_const_column_name(database, child_at(arguments, 0U), &out_cell->owned_text);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    free(out_cell->owned_text);
+    out_cell->owned_text = NULL;
+
+    if (value_argument->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        const struct mylite_sql_ast_node *literal =
+            unwrap_parenthesized_expression(child_at(value_argument, 0U));
+
+        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+            set_name_const_incorrect_arguments_error(database);
+            return MYLITE_ERROR;
+        }
+        literal_kind = mylite_sql_ast_node_literal_kind(literal);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT) {
+            rc = copy_source_span_text(database, &value_argument->span, &out_cell->owned_text);
+            if (rc == MYLITE_OK) {
+                out_cell->value = out_cell->owned_text;
+            }
+            return rc;
+        }
+    } else if (value_argument->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(value_argument);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT) {
+            rc = copy_source_span_text(database, &value_argument->span, &out_cell->owned_text);
+            if (rc == MYLITE_OK) {
+                out_cell->value = out_cell->owned_text;
+            }
+            return rc;
+        }
+    }
+    return literal_projection_value(database, value_argument, out_cell);
+}
+
+static int generic_load_file_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+) {
+    struct session_scalar_cell ignored = {0};
+    int rc = MYLITE_OK;
+
+    if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 1U) {
+        set_native_function_parameter_count_error(database, "LOAD_FILE");
+        return MYLITE_ERROR;
+    }
+    rc = session_scalar_value(database, child_at(arguments, 0U), &ignored);
+    mylite_execution_session_scalar_cell_deinit(&ignored);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    out_cell->value = NULL;
+    return MYLITE_OK;
+}
+
+static int generic_extract_value_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+) {
+    struct session_scalar_cell xml_cell = {0};
+    struct session_scalar_cell xpath_cell = {0};
+    const char *xml = NULL;
+    const char *xpath = NULL;
+    size_t xml_size = 0U;
+    size_t xpath_size = 0U;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 2U) {
+        set_native_function_parameter_count_error(database, "ExtractValue");
+        return MYLITE_ERROR;
+    }
+    rc = generic_system_string_argument(
+        database,
+        child_at(arguments, 0U),
+        &xml_cell,
+        &xml,
+        &xml_size
+    );
+    if (rc == MYLITE_OK) {
+        rc = generic_system_string_argument(
+            database,
+            child_at(arguments, 1U),
+            &xpath_cell,
+            &xpath,
+            &xpath_size
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_system_extract_value(
+            database,
+            xml,
+            xml_size,
+            xpath,
+            xpath_size,
+            &out_cell->owned_text,
+            &out_cell->value_size,
+            &is_null
+        );
+    }
+    mylite_execution_session_scalar_cell_deinit(&xpath_cell);
+    mylite_execution_session_scalar_cell_deinit(&xml_cell);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_null) {
+        out_cell->value = NULL;
+    } else {
+        out_cell->value = out_cell->owned_text == NULL ? "" : out_cell->owned_text;
+        out_cell->has_value_size = true;
+    }
+    return MYLITE_OK;
+}
+
+static int generic_update_xml_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+) {
+    struct session_scalar_cell xml_cell = {0};
+    struct session_scalar_cell xpath_cell = {0};
+    struct session_scalar_cell replacement_cell = {0};
+    const char *xml = NULL;
+    const char *xpath = NULL;
+    const char *replacement = NULL;
+    size_t xml_size = 0U;
+    size_t xpath_size = 0U;
+    size_t replacement_size = 0U;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 3U) {
+        set_native_function_parameter_count_error(database, "UpdateXML");
+        return MYLITE_ERROR;
+    }
+    rc = generic_system_string_argument(
+        database,
+        child_at(arguments, 0U),
+        &xml_cell,
+        &xml,
+        &xml_size
+    );
+    if (rc == MYLITE_OK) {
+        rc = generic_system_string_argument(
+            database,
+            child_at(arguments, 1U),
+            &xpath_cell,
+            &xpath,
+            &xpath_size
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = generic_system_string_argument(
+            database,
+            child_at(arguments, 2U),
+            &replacement_cell,
+            &replacement,
+            &replacement_size
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_system_update_xml(
+            database,
+            xml,
+            xml_size,
+            xpath,
+            xpath_size,
+            replacement,
+            replacement_size,
+            &out_cell->owned_text,
+            &out_cell->value_size,
+            &is_null
+        );
+    }
+    mylite_execution_session_scalar_cell_deinit(&replacement_cell);
+    mylite_execution_session_scalar_cell_deinit(&xpath_cell);
+    mylite_execution_session_scalar_cell_deinit(&xml_cell);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_null) {
+        out_cell->value = NULL;
+    } else {
+        out_cell->value = out_cell->owned_text == NULL ? "" : out_cell->owned_text;
+        out_cell->has_value_size = true;
+    }
+    return MYLITE_OK;
+}
+
 static int generic_system_string_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *argument,
@@ -480,6 +750,7 @@ static int generic_system_int64_argument(
     char *end = NULL;
     int64_t value = 0;
     int rc = MYLITE_OK;
+
     enum { integer_radix = 10 };
 
     if (out_value == NULL || out_is_null == NULL) {
@@ -504,6 +775,165 @@ static int generic_system_int64_argument(
     *out_value = value;
     mylite_execution_session_scalar_cell_deinit(&cell);
     return MYLITE_OK;
+}
+
+static int generic_system_double_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    double *out_value,
+    bool *out_is_null,
+    bool *out_truncated_string
+) {
+    const struct mylite_sql_ast_node *unwrapped = unwrap_parenthesized_expression(argument);
+    const struct mylite_sql_ast_node *literal = NULL;
+    enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    struct session_scalar_cell cell = {0};
+    char *end = NULL;
+    char *start = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_value == NULL || out_is_null == NULL || out_truncated_string == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = 0.0;
+    *out_is_null = false;
+    *out_truncated_string = false;
+
+    if (unwrapped != NULL && unwrapped->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        operator_kind = mylite_sql_ast_node_operator(unwrapped);
+        literal = unwrap_parenthesized_expression(child_at(unwrapped, 0U));
+    } else {
+        literal = unwrapped;
+    }
+    if (literal != NULL && literal->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(literal);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+            *out_is_null = true;
+            return MYLITE_OK;
+        }
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT) {
+            char *number_text = NULL;
+
+            rc = copy_source_span_text(database, &literal->span, &number_text);
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            errno = 0;
+            *out_value = strtod(number_text, &end);
+            if (errno == ERANGE || end == number_text || (end != NULL && *end != '\0')) {
+                *out_value = 0.0;
+            }
+            if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+                *out_value = -*out_value;
+            }
+            free(number_text);
+            return MYLITE_OK;
+        }
+    }
+
+    rc = session_scalar_value(database, argument, &cell);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (cell.value == NULL) {
+        *out_is_null = true;
+        mylite_execution_session_scalar_cell_deinit(&cell);
+        return MYLITE_OK;
+    }
+    start = (char *)cell.value;
+    while (*start != '\0' && isspace((unsigned char)*start)) {
+        ++start;
+    }
+    errno = 0;
+    *out_value = strtod(start, &end);
+    while (end != NULL && *end != '\0' && isspace((unsigned char)*end)) {
+        ++end;
+    }
+    if (errno == ERANGE || end == start || (end != NULL && *end != '\0')) {
+        size_t value_size = cell.has_value_size ? cell.value_size : strlen(cell.value);
+
+        rc = mylite_system_append_truncated_double_warning(database, cell.value, value_size);
+        *out_value = 0.0;
+        *out_truncated_string = true;
+    }
+    mylite_execution_session_scalar_cell_deinit(&cell);
+    return rc;
+}
+
+static int generic_name_const_column_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    char **out_name
+) {
+    const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(argument);
+    size_t name_size = 0U;
+
+    if (out_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_name = NULL;
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(literal) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_name_const_incorrect_arguments_error(database);
+        return MYLITE_ERROR;
+    }
+    return decode_sql_string_literal_with_policy(
+        database,
+        literal,
+        "NAME_CONST() supports only ordinary string literal names",
+        "NAME_CONST() does not support NUL bytes in names",
+        true,
+        out_name,
+        &name_size
+    );
+}
+
+static bool name_const_value_is_supported_literal(const struct mylite_sql_ast_node *argument) {
+    const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(argument);
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (literal == NULL) {
+        return false;
+    }
+    if (literal->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(literal);
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return false;
+        }
+        literal = unwrap_parenthesized_expression(child_at(literal, 0U));
+        if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+            return false;
+        }
+        literal_kind = mylite_sql_ast_node_literal_kind(literal);
+        return literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+               literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+               literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT;
+    }
+    if (literal->kind != MYLITE_SQL_AST_LITERAL) {
+        return false;
+    }
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    return literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+           literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+           literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT ||
+           literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+           literal_kind == MYLITE_SQL_AST_LITERAL_HEX ||
+           literal_kind == MYLITE_SQL_AST_LITERAL_BIT ||
+           literal_kind == MYLITE_SQL_AST_LITERAL_NULL;
+}
+
+static void set_name_const_incorrect_arguments_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        &database->diagnostics,
+        mysql_error_incorrect_arguments,
+        "HY000",
+        "Incorrect arguments to NAME_CONST"
+    );
 }
 
 static int generic_system_format_int64(

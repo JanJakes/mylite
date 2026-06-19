@@ -166,6 +166,7 @@ enum {
     mysql_error_values_default = 3943,
     mysql_error_load_data_local_disabled = 3948,
     mysql_error_incorrect_timestamp_value = 1525,
+    mysql_warning_incorrect_xml_value = 1525,
     mysql_error_duplicated_value_in_enum = 1291,
     mysql_error_duplicated_value_in_set = 1291,
     mysql_error_unknown_or_incorrect_time_zone = 1298,

@@ -173,7 +173,12 @@ static int validate_row_scalar_numeric_function_argument(
     case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_LOCK:
     case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_ALL_LOCKS:
     case PLANNED_ROW_SCALAR_EXPRESSION_BENCHMARK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SLEEP:
         return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
+        break;
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
         if (argument->numeric_extra_kind != PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT) {
             return MYLITE_OK;
@@ -357,8 +362,7 @@ static enum planned_row_scalar_numeric_function_kind row_scalar_numeric_function
     return PLANNED_ROW_SCALAR_NUMERIC_NONE;
 }
 
-static const char *row_scalar_numeric_function_display_name(
-    enum mylite_sql_ast_node_kind ast_kind
+static const char *row_scalar_numeric_function_display_name(enum mylite_sql_ast_node_kind ast_kind
 ) {
     switch (ast_kind) {
     case MYLITE_SQL_AST_ABS_FUNCTION:
@@ -723,10 +727,8 @@ static int plan_row_scalar_numeric_extra_expression(
                 &out_expression->arguments[0]
             );
         }
-    } else if (
-        function_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT ||
-        function_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_TRUNCATE
-    ) {
+    } else if (function_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT ||
+               function_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_TRUNCATE) {
         if (argument_count != 2U) {
             set_native_function_parameter_count_error(database, function_name);
             rc = MYLITE_ERROR;
@@ -897,10 +899,7 @@ static int plan_row_scalar_format_truncate_literal_argument(
         return plan_row_scalar_literal_value(database, literal, out_argument);
     }
 
-    set_unsupported_error(
-        database,
-        "FORMAT() and TRUNCATE() support only exact-decimal literals"
-    );
+    set_unsupported_error(database, "FORMAT() and TRUNCATE() support only exact-decimal literals");
     return MYLITE_ERROR;
 }
 
@@ -959,6 +958,7 @@ static int plan_row_scalar_format_truncate_places_argument(
     enum {
         message_capacity = 160,
     };
+
     char unsupported_message[message_capacity];
     int written = 0;
 
@@ -994,9 +994,8 @@ static void plan_row_scalar_numeric_extra_result_shape(
 ) {
     struct decimal_type_info info = {0};
 
-    if (function_kind != PLANNED_ROW_SCALAR_NUMERIC_EXTRA_TRUNCATE ||
-        out_expression == NULL || out_expression->argument_count != 2U ||
-        out_expression->arguments == NULL ||
+    if (function_kind != PLANNED_ROW_SCALAR_NUMERIC_EXTRA_TRUNCATE || out_expression == NULL ||
+        out_expression->argument_count != 2U || out_expression->arguments == NULL ||
         out_expression->arguments[0].kind != PLANNED_ROW_SCALAR_EXPRESSION_COLUMN ||
         out_expression->arguments[1].kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE ||
         !column_descriptor_is_decimal(&out_expression->arguments[0].column) ||
@@ -1091,9 +1090,7 @@ static enum planned_row_scalar_numeric_extra_kind row_scalar_numeric_extra_kind_
     return PLANNED_ROW_SCALAR_NUMERIC_EXTRA_NONE;
 }
 
-static const char *row_scalar_numeric_extra_display_name(
-    enum mylite_sql_ast_node_kind ast_kind
-) {
+static const char *row_scalar_numeric_extra_display_name(enum mylite_sql_ast_node_kind ast_kind) {
     switch (ast_kind) {
     case MYLITE_SQL_AST_CRC32_FUNCTION:
     case MYLITE_SQL_AST_CRC32_ARGUMENT_COUNT_ERROR:

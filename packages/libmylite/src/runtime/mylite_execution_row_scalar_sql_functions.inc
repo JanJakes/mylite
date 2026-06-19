@@ -264,8 +264,7 @@ static int append_row_scalar_base_conversion_expression_sql(
 ) {
     const char *function_name = NULL;
 
-    if (expression == NULL ||
-        expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION) {
+    if (expression == NULL || expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION) {
         return MYLITE_ERROR;
     }
     function_name = row_scalar_base_conversion_sql_name(expression->base_conversion_kind);
@@ -313,8 +312,7 @@ static int append_row_scalar_numeric_extra_expression_sql(
             return MYLITE_ERROR;
         }
         rc = mylite_dynamic_string_append(string, "_mylite_truncate_scaled(");
-        for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 2U;
-             ++argument_index) {
+        for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < 2U; ++argument_index) {
             if (argument_index != 0U) {
                 rc = mylite_dynamic_string_append(string, ", ");
             }
@@ -350,8 +348,7 @@ static int append_row_scalar_numeric_extra_expression_sql(
     );
 }
 
-static const char *row_scalar_numeric_extra_sql_name(
-    enum planned_row_scalar_numeric_extra_kind kind
+static const char *row_scalar_numeric_extra_sql_name(enum planned_row_scalar_numeric_extra_kind kind
 ) {
     switch (kind) {
     case PLANNED_ROW_SCALAR_NUMERIC_EXTRA_CRC32:
@@ -443,6 +440,10 @@ static int append_row_scalar_uuid_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_ALL_LOCKS:
     case PLANNED_ROW_SCALAR_EXPRESSION_ICU_VERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BENCHMARK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SLEEP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
@@ -611,6 +612,10 @@ static int append_row_scalar_uuid_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_ALL_LOCKS:
     case PLANNED_ROW_SCALAR_EXPRESSION_ICU_VERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BENCHMARK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SLEEP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
@@ -739,6 +744,10 @@ static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_exp
     case PLANNED_ROW_SCALAR_EXPRESSION_RELEASE_ALL_LOCKS:
     case PLANNED_ROW_SCALAR_EXPRESSION_ICU_VERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_BENCHMARK:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SLEEP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
     case PLANNED_ROW_SCALAR_EXPRESSION_ELT:
@@ -850,14 +859,14 @@ static int append_row_scalar_char_expression_sql(
         if (argument_index != 0U) {
             rc = mylite_dynamic_string_append(string, ", ");
         }
-        if (rc == MYLITE_OK && expression->arguments[argument_index].kind ==
-                                   PLANNED_ROW_SCALAR_EXPRESSION_VALUE) {
+        if (rc == MYLITE_OK &&
+            expression->arguments[argument_index].kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE) {
             rc = append_numbered_parameter(string, *next_parameter);
             if (rc == MYLITE_OK) {
                 ++(*next_parameter);
             }
         } else if (rc == MYLITE_OK && expression->arguments[argument_index].kind ==
-                                      PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
+                                          PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
             rc = append_row_scalar_column_sql(string, &expression->arguments[argument_index]);
         } else if (rc == MYLITE_OK) {
             rc = MYLITE_ERROR;
@@ -1555,10 +1564,8 @@ static int append_row_scalar_string_padding_expression_sql(
         if (expression->argument_count != 2U) {
             return MYLITE_ERROR;
         }
-    } else if (
-        expression->string_padding_kind == PLANNED_STRING_PADDING_FUNCTION_LPAD ||
-        expression->string_padding_kind == PLANNED_STRING_PADDING_FUNCTION_RPAD
-    ) {
+    } else if (expression->string_padding_kind == PLANNED_STRING_PADDING_FUNCTION_LPAD ||
+               expression->string_padding_kind == PLANNED_STRING_PADDING_FUNCTION_RPAD) {
         if (expression->argument_count != 3U) {
             return MYLITE_ERROR;
         }

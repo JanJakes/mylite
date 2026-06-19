@@ -36,6 +36,10 @@
     COMMAND mylite_runtime_named_lock_and_info_functions_test
   )
   add_test(
+    NAME libmylite.runtime.system_function_residuals
+    COMMAND mylite_runtime_system_function_residuals_test
+  )
+  add_test(
     NAME libmylite.runtime.if_function
     COMMAND mylite_runtime_if_function_test
   )

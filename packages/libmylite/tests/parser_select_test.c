@@ -587,6 +587,93 @@ static int test_select_where_predicates(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE USER() = CURRENT_USER;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_USER_FUNCTION,
+        "user predicate left value"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            1U
+        ),
+        MYLITE_SQL_AST_CURRENT_USER_FUNCTION,
+        "current user predicate right value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE SESSION_USER() = SYSTEM_USER();",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_SESSION_USER_FUNCTION,
+        "session user predicate left value"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            1U
+        ),
+        MYLITE_SQL_AST_SYSTEM_USER_FUNCTION,
+        "system user predicate right value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE CURRENT_ROLE() = CURRENT_ROLE();",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION,
+        "current role predicate left value"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            1U
+        ),
+        MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION,
+        "current role predicate right value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "SELECT id FROM simple_lifecycle WHERE id BETWEEN -2 AND 1;",
         MYLITE_SQL_PARSE_OK,
         &result

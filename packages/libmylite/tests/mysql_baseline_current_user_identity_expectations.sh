@@ -140,6 +140,20 @@ expect_output \
     "${client_identity}	${current_identity}	${DATABASE}" \
     "CREATE DATABASE ${DATABASE}; USE ${DATABASE}; SELECT USER(), CURRENT_USER, DATABASE();"
 
+run_mysql "USE ${DATABASE}; CREATE TABLE identity_source (id INT); INSERT INTO identity_source VALUES (2), (1);" >/dev/null
+expected_source_identity=$(cat <<EOF
+USER()	CURRENT_USER()	CURRENT_USER	id
+${client_identity}	${current_identity}	${current_identity}	1
+${client_identity}	${current_identity}	${current_identity}	2
+ROW_COUNT()	@@warning_count
+-1	0
+EOF
+)
+expect_output_with_headers \
+    "source-backed identity functions repeat per row" \
+    "$expected_source_identity" \
+    "USE ${DATABASE}; SELECT USER(), CURRENT_USER(), CURRENT_USER, id FROM identity_source WHERE USER() = USER() AND CURRENT_USER = CURRENT_USER() ORDER BY USER(), CURRENT_USER, id; SELECT ROW_COUNT(), @@warning_count;"
+
 expect_error \
     "user function rejects arguments" \
     1064 \

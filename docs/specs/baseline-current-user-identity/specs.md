@@ -63,7 +63,8 @@ the local MySQL expectation-test container:
   `42000`.
 - `USE` does not change user identity function values.
 - MySQL accepts wider scalar forms such as `LIMIT` and table-backed
-  evaluation; those are deliberately outside this MyLite slice.
+  evaluation; source-backed row-scalar projection, `WHERE`, and `ORDER BY`
+  are covered by `docs/specs/baseline-identity-row-scalar-contexts/specs.md`.
 
 MySQL documents `SESSION_USER()` and `SYSTEM_USER()` as synonyms for
 `USER()`, but MySQL function-name parsing treats those names differently when
@@ -109,7 +110,8 @@ This feature must not implement:
 - general function calls or a function registry;
 - aliases, `AS`, expression labels beyond default source-expression text, or
   protocol-grade metadata;
-- table-backed evaluation such as `SELECT USER() FROM table`;
+- source-backed row-scalar projection, `WHERE`, and `ORDER BY`, which are
+  covered by `docs/specs/baseline-identity-row-scalar-contexts/specs.md`;
 - `WHERE`, `ORDER BY`, `LIMIT`, grouping, joins, subqueries, CTEs, or locking
   clauses on scalar identity selects;
 - arbitrary SQLite pass-through, SQLite function registration, or SQLite fork
@@ -215,9 +217,10 @@ diagnostic until general scalar name resolution exists.
 
 Unsupported scalar-select shapes may fail either at parse time or with the
 existing unsupported-statement diagnostic class, depending on whether the
-current MyLite grammar admits the wider form for another feature. Examples
-include table-backed identity evaluation, aliases, clauses, and mixed
-unsupported expressions.
+current MyLite grammar admits the wider form for another feature.
+Source-backed row-scalar projection, `WHERE`, and `ORDER BY` are specified by
+`docs/specs/baseline-identity-row-scalar-contexts/specs.md`; broader clauses
+and mixed unsupported expressions remain outside this original scalar slice.
 
 Allocation failures return `MYLITE_NOMEM` and set the existing out-of-memory
 diagnostic. Public API misuse behavior is unchanged.

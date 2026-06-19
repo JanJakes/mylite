@@ -381,6 +381,9 @@ static int test_current_user_identity_unsupported_forms(void) {
     failures += execute_ok(database, "CREATE TABLE t (id INT)", &result);
     mylite_result_free(result);
     result = NULL;
+    failures += execute_ok(database, "INSERT INTO t VALUES (1)", &result);
+    mylite_result_free(result);
+    result = NULL;
 
     failures += execute_error(
         database,
@@ -517,24 +520,39 @@ static int test_current_user_identity_unsupported_forms(void) {
     );
     mylite_result_free(result);
     result = NULL;
-    failures += execute_error(
+    failures += execute_ok(
         database,
-        "SELECT SESSION_USER() FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
-        }
+        "SELECT USER(), CURRENT_USER, SESSION_USER(), SYSTEM_USER(), id FROM t",
+        &result
     );
-    failures += execute_error(
-        database,
-        "SELECT USER() FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
-        }
+    failures += expect_size(mylite_result_row_count(result), 1U, "table-backed identity row count");
+    failures += expect_text_or_null(
+        mylite_result_value_text(result, 0U, 0U),
+        "root@%",
+        "table-backed user value"
     );
+    failures += expect_text_or_null(
+        mylite_result_value_text(result, 0U, 1U),
+        "root@%",
+        "table-backed current user value"
+    );
+    failures += expect_text_or_null(
+        mylite_result_value_text(result, 0U, 2U),
+        "root@%",
+        "table-backed session user value"
+    );
+    failures += expect_text_or_null(
+        mylite_result_value_text(result, 0U, 3U),
+        "root@%",
+        "table-backed system user value"
+    );
+    failures += expect_text_or_null(
+        mylite_result_value_text(result, 0U, 4U),
+        "1",
+        "table-backed identity source column"
+    );
+    mylite_result_free(result);
+    result = NULL;
 
     mylite_close(database);
     remove_related_files(path);
@@ -961,15 +979,22 @@ static int test_current_role_function_unsupported_forms(void) {
             .message_part = "signed 64-bit +, binary -, and * arithmetic",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT CURRENT_ROLE() FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
-        }
+    failures += execute_statement_ok(database, "INSERT INTO t VALUES (1)");
+    failures += execute_ok(database, "SELECT CURRENT_ROLE(), id FROM t", &result);
+    failures +=
+        expect_size(mylite_result_row_count(result), 1U, "table-backed current role row count");
+    failures += expect_text_or_null(
+        mylite_result_value_text(result, 0U, 0U),
+        "NONE",
+        "table-backed current role value"
     );
+    failures += expect_text_or_null(
+        mylite_result_value_text(result, 0U, 1U),
+        "1",
+        "table-backed current role source column"
+    );
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_ok(database, "SELECT CURRENT_ROLE() AS role_name", &result);
     failures += expect_scalar_result(
         result,

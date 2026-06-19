@@ -56,8 +56,10 @@ which has no active roles:
 - `SELECT CURRENT_ROLE(), @@warning_count, ROW_COUNT()` after a nondiagnostic
   statement returns `NONE`, warning count `0`, and row count `-1`, then clears
   diagnostics for following diagnostic count reads.
-- MySQL accepts wider scalar forms such as `CURRENT_ROLE() LIMIT 1` and
-  `CURRENT_ROLE() + 1`; those forms remain outside this MyLite slice.
+- MySQL accepts wider scalar forms such as `CURRENT_ROLE() LIMIT 1`,
+  source-backed row-scalar evaluation, and `CURRENT_ROLE() + 1`;
+  source-backed projection, `WHERE`, and `ORDER BY` are covered by
+  `docs/specs/baseline-identity-row-scalar-contexts/specs.md`.
 
 The official information-function documentation describes `CURRENT_ROLE()` as
 returning a comma-separated `utf8mb3` string of active roles, or `NONE` when
@@ -99,7 +101,8 @@ This feature must not implement:
 - account storage, authentication, privileges, definer semantics, or role graph
   metadata;
 - bare `CURRENT_ROLE`;
-- table-backed evaluation such as `SELECT CURRENT_ROLE() FROM table`;
+- source-backed row-scalar projection, `WHERE`, and `ORDER BY`, which are
+  covered by `docs/specs/baseline-identity-row-scalar-contexts/specs.md`;
 - aliases, `WHERE`, `ORDER BY`, `LIMIT`, grouping, joins, subqueries, CTEs, or
   locking clauses on scalar role selects;
 - general expression evaluation involving `CURRENT_ROLE()`, string comparison,
@@ -208,9 +211,10 @@ error, MySQL error `1064`, SQLSTATE `42000`.
 
 Unsupported scalar-select shapes may fail either at parse time or with the
 existing unsupported-statement diagnostic class, depending on whether the
-current MyLite grammar admits the wider form for another feature. Examples
-include table-backed role evaluation, aliases, clauses, and mixed unsupported
-expressions.
+current MyLite grammar admits the wider form for another feature.
+Source-backed row-scalar projection, `WHERE`, and `ORDER BY` are specified by
+`docs/specs/baseline-identity-row-scalar-contexts/specs.md`; broader clauses
+and mixed unsupported expressions remain outside this original scalar slice.
 
 Allocation failures return `MYLITE_NOMEM` and set the existing out-of-memory
 diagnostic. Public API misuse behavior is unchanged.

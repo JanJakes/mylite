@@ -139,6 +139,20 @@ expect_output \
     "${client_identity}	${client_identity}	${DATABASE}" \
     "CREATE DATABASE ${DATABASE}; USE ${DATABASE}; SELECT SESSION_USER(), SYSTEM_USER(), DATABASE();"
 
+run_mysql "USE ${DATABASE}; CREATE TABLE identity_alias_source (id INT); INSERT INTO identity_alias_source VALUES (2), (1);" >/dev/null
+expected_source_aliases=$(cat <<EOF
+SESSION_USER()	SYSTEM_USER()	id
+${client_identity}	${client_identity}	1
+${client_identity}	${client_identity}	2
+ROW_COUNT()	@@warning_count
+-1	0
+EOF
+)
+expect_output_with_headers \
+    "source-backed identity aliases repeat per row" \
+    "$expected_source_aliases" \
+    "USE ${DATABASE}; SELECT SESSION_USER(), SYSTEM_USER(), id FROM identity_alias_source WHERE SESSION_USER() = SYSTEM_USER() ORDER BY SESSION_USER(), SYSTEM_USER(), id; SELECT ROW_COUNT(), @@warning_count;"
+
 expect_error \
     "session user function rejects arguments" \
     1064 \

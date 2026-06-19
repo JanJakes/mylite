@@ -7580,6 +7580,29 @@ predicate_comparison_value(A) ::= SCHEMA(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_SCHEMA_FUNCTION, R);
 }
+predicate_comparison_value(A) ::= USER(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_USER_FUNCTION, R);
+}
+predicate_comparison_value(A) ::= SESSION_USER(T) LPAREN(L) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_zero_argument_function(
+        state, T, L, MYLITE_SQL_AST_SESSION_USER_FUNCTION, R);
+}
+predicate_comparison_value(A) ::= SYSTEM_USER(T) LPAREN(L) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_zero_argument_function(
+        state, T, L, MYLITE_SQL_AST_SYSTEM_USER_FUNCTION, R);
+}
+predicate_comparison_value(A) ::= CURRENT_USER(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_CURRENT_USER_FUNCTION, R);
+}
+predicate_comparison_value(A) ::= CURRENT_USER(T). {
+    A = mylite_sql_parser_make_current_user_keyword(state, T);
+}
+predicate_comparison_value(A) ::= CURRENT_ROLE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION, R);
+}
 predicate_comparison_value(A) ::= LPAREN(L) select_statement(S) RPAREN(R). {
     A = mylite_sql_parser_make_scalar_subquery_expression(state, L, S, R);
 }
@@ -7702,6 +7725,29 @@ predicate_row_scalar_expression(A) ::= DATABASE(T) LPAREN RPAREN(R). {
 predicate_row_scalar_expression(A) ::= SCHEMA(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_SCHEMA_FUNCTION, R);
+}
+predicate_row_scalar_expression(A) ::= USER(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_USER_FUNCTION, R);
+}
+predicate_row_scalar_expression(A) ::= SESSION_USER(T) LPAREN(L) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_zero_argument_function(
+        state, T, L, MYLITE_SQL_AST_SESSION_USER_FUNCTION, R);
+}
+predicate_row_scalar_expression(A) ::= SYSTEM_USER(T) LPAREN(L) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_zero_argument_function(
+        state, T, L, MYLITE_SQL_AST_SYSTEM_USER_FUNCTION, R);
+}
+predicate_row_scalar_expression(A) ::= CURRENT_USER(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_CURRENT_USER_FUNCTION, R);
+}
+predicate_row_scalar_expression(A) ::= CURRENT_USER(T). {
+    A = mylite_sql_parser_make_current_user_keyword(state, T);
+}
+predicate_row_scalar_expression(A) ::= CURRENT_ROLE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION, R);
 }
 predicate_row_scalar_expression(A) ::= row_scalar_string_predicate_expression(B). {
     A = B;

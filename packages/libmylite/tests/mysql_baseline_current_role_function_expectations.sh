@@ -143,6 +143,20 @@ expect_output \
     "NONE	${DATABASE}" \
     "CREATE DATABASE ${DATABASE}; USE ${DATABASE}; SELECT CURRENT_ROLE(), DATABASE();"
 
+run_mysql "USE ${DATABASE}; CREATE TABLE role_source (id INT); INSERT INTO role_source VALUES (2), (1);" >/dev/null
+expected_source_role=$(cat <<EOF
+CURRENT_ROLE()	id
+NONE	1
+NONE	2
+ROW_COUNT()	@@warning_count
+-1	0
+EOF
+)
+expect_output_with_headers \
+    "source-backed current role repeats per row" \
+    "$expected_source_role" \
+    "USE ${DATABASE}; SELECT CURRENT_ROLE(), id FROM role_source WHERE CURRENT_ROLE() = CURRENT_ROLE() ORDER BY CURRENT_ROLE(), id; SELECT ROW_COUNT(), @@warning_count;"
+
 expect_error \
     "current role rejects integer argument" \
     1582 \

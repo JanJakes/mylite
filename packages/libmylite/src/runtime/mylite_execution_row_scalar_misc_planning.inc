@@ -858,8 +858,7 @@ static int plan_row_scalar_greatest_least_decimal_value(
     }
 
     span = &literal->span;
-    if (span->text == NULL || span->length == 0U ||
-        span->length > SIZE_MAX - prefix_size - 1U) {
+    if (span->text == NULL || span->length == 0U || span->length > SIZE_MAX - prefix_size - 1U) {
         set_unsupported_error(
             database,
             "GREATEST() and LEAST() support only signed decimal literals"
@@ -1536,9 +1535,14 @@ static bool row_scalar_expression_contains_statement_context_function(
             continue;
         }
         if (current->kind == MYLITE_SQL_AST_CONNECTION_ID_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_CURRENT_USER_FUNCTION ||
             current->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_SESSION_USER_FUNCTION ||
             current->kind == MYLITE_SQL_AST_VERSION_FUNCTION ||
-            current->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION) {
+            current->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_SYSTEM_USER_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_USER_FUNCTION) {
             found = true;
             break;
         }
@@ -1589,15 +1593,19 @@ static bool row_scalar_expression_is_predicate_value_context_attempt(
     }
     if (is_row_scalar_control_flow_expression(node) ||
         row_scalar_expression_is_string_function(node->kind) ||
-        is_row_scalar_json_expression(node) ||
-        row_scalar_expression_is_rand_function(node) ||
+        is_row_scalar_json_expression(node) || row_scalar_expression_is_rand_function(node) ||
         row_scalar_numeric_function_kind_is_supported(node->kind) ||
         row_scalar_base_conversion_kind_is_supported(node->kind) ||
         row_scalar_numeric_extra_kind_is_supported(node->kind) ||
         node->kind == MYLITE_SQL_AST_CONNECTION_ID_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_CURRENT_USER_FUNCTION ||
         node->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
-        node->kind == MYLITE_SQL_AST_VERSION_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_SESSION_USER_FUNCTION ||
         node->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_SYSTEM_USER_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_USER_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_VERSION_FUNCTION ||
         row_scalar_expression_is_concat_operator(node) ||
         row_scalar_expression_is_bitwise_attempt(node) ||
         row_scalar_conversion_kind_from_expression(node) != PLANNED_ROW_SCALAR_CONVERSION_NONE ||

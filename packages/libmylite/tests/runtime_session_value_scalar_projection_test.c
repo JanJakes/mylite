@@ -320,6 +320,7 @@ static int test_session_value_scalar_projection_warning_order(void) {
 
 static int test_session_value_scalar_projection_unsupported_forms(void) {
     static const char *const version_literal_columns[] = {"VERSION()", "1"};
+    static const char *const version_table_columns[] = {"VERSION()", "id"};
     static const char *const current_database_table_columns[] = {"DATABASE()", "SCHEMA()", "id"};
     static const char *const current_database_table_values[] = {
         "app",
@@ -330,6 +331,12 @@ static int test_session_value_scalar_projection_unsupported_forms(void) {
         "2",
     };
     const char *version_literal_values[] = {MYLITE_MYSQL_SERVER_VERSION_STRING, "1"};
+    const char *version_table_values[] = {
+        MYLITE_MYSQL_SERVER_VERSION_STRING,
+        "1",
+        MYLITE_MYSQL_SERVER_VERSION_STRING,
+        "2",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -397,6 +404,19 @@ static int test_session_value_scalar_projection_unsupported_forms(void) {
         }
     );
     failures += execute_ok(database, "INSERT INTO t VALUES (2)", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT VERSION(), id FROM t WHERE VERSION() = VERSION() "
+                   "ORDER BY VERSION(), id",
+            .columns = version_table_columns,
+            .column_count = 2U,
+            .values = version_table_values,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .context = "source-backed version predicate and order",
+        }
+    );
     failures += expect_query(
         database,
         (struct expected_query){

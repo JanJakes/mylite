@@ -30,8 +30,11 @@ SQLite expression delegation is introduced.
 
 This is not a general expression engine. It does not admit arithmetic,
 comparison, logical operators, variables as scalar function operands, table
-columns, table-backed constant projection, no-source `WHERE`/`ORDER BY`/`LIMIT`,
-subqueries, CTEs, expression metadata, or arbitrary SQLite pass-through.
+columns, broad table-backed constant projection, no-source
+`WHERE`/`ORDER BY`/`LIMIT`, subqueries, CTEs, expression metadata, or arbitrary
+SQLite pass-through. Later focused row-scalar slices admit selected
+source-backed session constants such as `DATABASE()` and `VERSION()` in the
+documented row-scalar SELECT envelope.
 
 ## Sources And Evidence
 
@@ -68,8 +71,9 @@ Runtime probes against MySQL 8.4.9 confirm:
 - a mixed select containing both `@@sql_slave_skip_counter` and
   `@@global.sql_slave_skip_counter` reports two warnings; and
 - MySQL accepts broader forms such as arithmetic, no-source predicates,
-  no-source ordering/limiting, and table-backed constant/function projection;
-  those remain deferred in this MyLite slice.
+  no-source ordering/limiting, and table-backed constant/function projection.
+  Those are deferred by this original MyLite slice except where later focused
+  row-scalar slices explicitly admit them.
 
 ## Ownership Boundaries
 
@@ -220,7 +224,8 @@ Default result-column labels continue to use the existing source-span rules:
 Unsupported forms must fail deterministically without falling through to
 SQLite:
 
-- table-backed scalar projection, including `SELECT VERSION(), 1 FROM t`;
+- broad table-backed scalar projection outside later focused row-scalar
+  session-constant slices;
 - no-source or `DUAL` scalar projection with `WHERE`, `ORDER BY`, `GROUP BY`,
   `HAVING`, or `LIMIT`;
 - arithmetic, comparison, logical, bitwise, cast, string, decimal, float, hex,
@@ -258,10 +263,10 @@ Fast C tests should cover:
 - two warning-producing variables in one mixed projection;
 - selected-schema and no-selected-schema `DATABASE()` behavior in a mixed list;
 - independent handles and file-backed preamble/catalog-generation safety;
-- deterministic rejection of table-backed scalar projection, arithmetic,
-  clauses around no-source scalar projection, variables inside scalar value
-  functions, subqueries, column references, unsupported functions, and wrong
-  arities; and
+- deterministic rejection of broad table-backed scalar projection outside later
+  focused row-scalar session-constant slices, arithmetic, clauses around
+  no-source scalar projection, variables inside scalar value functions,
+  subqueries, column references, unsupported functions, and wrong arities; and
 - preservation of existing session-scalar-only, scalar-value-only, parser,
   result, statement-context, storage, and lifecycle tests.
 
@@ -276,8 +281,9 @@ Focused verification:
 ## Compatibility Notes
 
 This phase reduces another expression-lane split but intentionally does not
-claim general expression support. General expressions, table-backed expression
-projection, subqueries, type metadata, and optimizer-grade expression pushdown
-still require a larger planner/evaluator design and may need SQLite extension
-hooks or targeted fork hooks where public SQLite APIs cannot expose
+claim general expression support. General expressions, broad table-backed
+expression projection, subqueries, type metadata, and optimizer-grade
+expression pushdown still require a larger planner/evaluator design and may
+need SQLite extension hooks or targeted fork hooks where public SQLite APIs
+cannot expose
 MySQL-compatible semantics or avoidable overhead.

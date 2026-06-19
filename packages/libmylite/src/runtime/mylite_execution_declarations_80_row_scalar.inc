@@ -3289,7 +3289,7 @@ static bool row_scalar_expression_contains_row_function(
 static bool row_scalar_expression_contains_context_expression_attempt(
     const struct mylite_sql_ast_node *expression
 );
-static bool row_scalar_expression_contains_current_database_function(
+static bool row_scalar_expression_contains_statement_context_function(
     const struct mylite_sql_ast_node *expression
 );
 static bool row_scalar_expression_is_context_expression_attempt(

@@ -395,6 +395,9 @@ static int test_version_function_unsupported_forms(void) {
     failures += execute_ok(database, "CREATE TABLE t (id INT)", &result);
     mylite_result_free(result);
     result = NULL;
+    failures += execute_ok(database, "INSERT INTO t VALUES (1)", &result);
+    mylite_result_free(result);
+    result = NULL;
 
     failures += execute_error(
         database,
@@ -453,15 +456,18 @@ static int test_version_function_unsupported_forms(void) {
     );
     mylite_result_free(result);
     result = NULL;
-    failures += execute_error(
-        database,
-        "SELECT VERSION() FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+    failures += execute_ok(database, "SELECT VERSION() FROM t", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = (const char *const[]){"VERSION()"},
+            .values = version_limit_values,
+            .count = 1U,
+            .context = "source-backed version value",
         }
     );
+    mylite_result_free(result);
+    result = NULL;
 
     mylite_close(database);
     remove_related_files(path);

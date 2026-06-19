@@ -30,7 +30,6 @@ miscellaneous system helpers.
 | `SYSTEM_USER()` | 🟡 | Limited no-whitespace one-row scalar select and `DO` expression execution return MyLite's embedded client identity `root@%` as a `USER()` synonym; no `SYSTEM_USER` privilege semantics, authentication, host matching, privilege enforcement, or table-backed evaluation |
 | `UpdateXML()` | ❌ | Return replaced XML fragment |
 | `USER()` | 🟡 | Limited one-row scalar select and `DO` expression execution return MyLite's embedded client identity `root@%`; limited `INFORMATION_SCHEMA.USER_PRIVILEGES` readback exposes synthetic global privileges for that identity, but there is no authentication, host matching, privilege enforcement, or table-backed evaluation |
-| `VERSION()` SQL-visible scalar identity | ✅ | MySQL-runtime-verified one-row scalar `SELECT VERSION() [AS alias]` with optional `FROM DUAL` returns the fixed MySQL 8.4.9 compatibility version string while the public `mylite_version()` API remains MyLite's library version |
-| `VERSION()` broader identity coverage | 🟡 | Additional limited `DO` expression execution is supported, but table-backed evaluation, clauses, protocol handshake version reporting, and configurable server-version identity remain incomplete |
+| `VERSION()` | ✅ | MySQL-runtime-verified SQL-visible MySQL 8.4.9 version readback in no-source and `DUAL` scalar selects, limited `DO` expression execution, and source-backed row-scalar SELECT projection, `WHERE`, and `ORDER BY`; protocol handshake and configurable server-version identity are tracked outside this function row |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

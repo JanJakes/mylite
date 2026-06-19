@@ -64,7 +64,8 @@ scalar `SELECT` statements.
 
 ## Non-Goals
 
-- Do not implement protocol handshake version reporting, configurable
-  server-version identity, `@@version`, `SHOW VARIABLES`, aliases, table-backed
-  scalar evaluation, `LIMIT`, general scalar expressions, function
-  registration, arbitrary SQLite pass-through, or SQLite fork patches.
+- This original slice did not implement protocol handshake version reporting,
+  configurable server-version identity, `@@version`, `SHOW VARIABLES`, aliases,
+  `LIMIT`, general scalar expressions, function registration, arbitrary SQLite
+  pass-through, or SQLite fork patches. Later focused slices may extend
+  source-backed row-scalar contexts without changing those non-goals.

@@ -144,6 +144,17 @@ case "$connection_id" in
 esac
 expect_value "connection id stays stable within mixed projection connection" "${connection_id}	1" "$connection_mixed"
 
+expect_output_with_headers \
+    "source-backed version predicate and order" \
+    "VERSION()	id
+${version}	0
+${version}	1" \
+    "DO 0;
+     SELECT VERSION(), id FROM t
+      WHERE id IS NOT NULL AND VERSION() = VERSION()
+      ORDER BY VERSION(), id;" \
+    "$DATABASE"
+
 expect_output \
     "deprecated system variable warning sequencing" \
     "0	1	2	1	0	0

@@ -15,6 +15,10 @@ MyLite's library version. This still does not claim wire-level MySQL
 server-version negotiation, protocol handshake behavior, or server status
 variable completeness.
 
+The later `baseline-version-row-scalar-contexts` slice extends this original
+no-source and `DUAL` scalar surface into source-backed row-scalar projection,
+predicate, and ordering contexts.
+
 ## Sources
 
 - MyLite README architecture: `README.md`
@@ -58,8 +62,9 @@ Observed against `SELECT VERSION()` returning `8.4.9`:
   for native function `VERSION`.
 - Bare `VERSION` is not an information function; `SELECT VERSION` fails with
   error `1054`, SQLSTATE `42S22`.
-- MySQL accepts wider scalar forms such as `LIMIT`; those are deliberately
-  outside this MyLite slice.
+- MySQL accepts wider scalar forms such as `LIMIT` and source-backed
+  projection; later MyLite slices have expanded several of those forms beyond
+  this original no-source/`DUAL` feature.
 
 ## Scope
 
@@ -89,9 +94,8 @@ This feature must not implement:
   `SHOW VARIABLES`;
 - aliases, `AS`, expression labels beyond default source-expression text, or
   protocol-grade metadata;
-- table-backed evaluation such as `SELECT VERSION() FROM table`;
-- `WHERE`, `ORDER BY`, `LIMIT`, grouping, joins, subqueries, CTEs, or locking
-  clauses on scalar version selects;
+- grouping, joins, subqueries, CTEs, or locking clauses on scalar version
+  selects beyond later row-scalar SELECT expansions;
 - arbitrary SQLite pass-through, SQLite function registration, or SQLite fork
   patches.
 
@@ -198,8 +202,9 @@ diagnostic until general scalar name resolution exists.
 Unsupported scalar-select shapes may fail either at parse time or with the
 existing unsupported-statement diagnostic class, depending on whether the
 current MyLite grammar admits the wider form for another feature. Examples
-include table-backed version evaluation, aliases, clauses, and mixed
-unsupported expressions.
+include aliases, clauses, mixed unsupported expressions, and table-backed
+shapes where those forms are not covered by later focused slices such as
+`baseline-version-row-scalar-contexts`.
 
 Allocation failures return `MYLITE_NOMEM` and set the existing out-of-memory
 diagnostic. Public API misuse behavior is unchanged.

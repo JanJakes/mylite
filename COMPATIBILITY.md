@@ -650,7 +650,7 @@ and [parser corpus JSON/statistical aggregate window surfaces](docs/specs/parser
 | `SESSION_USER()` | 🟡 | Limited no-whitespace one-row scalar select returns MyLite's embedded client identity `root@%`; no `IGNORE_SPACE`, stored-function resolution, authentication, or host matching. | [system functions](docs/compatibility/functions-system.md) |
 | `SYSTEM_USER()` | 🟡 | Limited no-whitespace one-row scalar select returns MyLite's embedded client identity `root@%`; no `SYSTEM_USER` privilege semantics, authentication, or host matching. | [system functions](docs/compatibility/functions-system.md) |
 | `USER()` | 🟡 | Limited one-row scalar select returns MyLite's embedded client identity `root@%`; no authentication or host matching. | [system functions](docs/compatibility/functions-system.md) |
-| `VERSION()` | 🟡 | Limited one-row scalar select returns the fixed MySQL 8.4.9 compatibility version string; no protocol handshake version reporting or configurable server-version identity. | [system functions](docs/compatibility/functions-system.md), [baseline MySQL server version identity](docs/specs/baseline-mysql-server-version-identity/specs.md) |
+| `VERSION()` | ✅ | MySQL-runtime-verified SQL-visible MySQL 8.4.9 version readback in documented scalar and row-scalar SELECT contexts; protocol handshake and configurable server identity are tracked separately. | [system functions](docs/compatibility/functions-system.md), [baseline MySQL server version identity](docs/specs/baseline-mysql-server-version-identity/specs.md), [baseline VERSION row-scalar contexts](docs/specs/baseline-version-row-scalar-contexts/specs.md) |
 
 ### Temporal Functions
 

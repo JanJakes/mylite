@@ -1503,7 +1503,7 @@ static bool row_scalar_expression_contains_context_expression_attempt(
     const struct mylite_sql_ast_node *expression
 ) {
     return row_scalar_expression_contains_row_function(expression) ||
-           row_scalar_expression_contains_current_database_function(expression) ||
+           row_scalar_expression_contains_statement_context_function(expression) ||
            row_scalar_expression_contains_numeric_function(expression) ||
            row_scalar_expression_contains_base_conversion_function(expression) ||
            row_scalar_expression_contains_numeric_extra_function(expression) ||
@@ -1518,7 +1518,7 @@ static bool row_scalar_expression_contains_context_expression_attempt(
            row_scalar_expression_is_concat_operator(expression);
 }
 
-static bool row_scalar_expression_contains_current_database_function(
+static bool row_scalar_expression_contains_statement_context_function(
     const struct mylite_sql_ast_node *expression
 ) {
     struct scalar_arithmetic_node_stack stack = {0};
@@ -1536,6 +1536,7 @@ static bool row_scalar_expression_contains_current_database_function(
             continue;
         }
         if (current->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_VERSION_FUNCTION ||
             current->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION) {
             found = true;
             break;
@@ -1593,6 +1594,7 @@ static bool row_scalar_expression_is_predicate_value_context_attempt(
         row_scalar_base_conversion_kind_is_supported(node->kind) ||
         row_scalar_numeric_extra_kind_is_supported(node->kind) ||
         node->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_VERSION_FUNCTION ||
         node->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION ||
         row_scalar_expression_is_concat_operator(node) ||
         row_scalar_expression_is_bitwise_attempt(node) ||

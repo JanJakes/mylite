@@ -9977,11 +9977,11 @@ expression(A) ::= CHAR(T) LPAREN function_argument_list(B) RPAREN(R). {
         state, T, MYLITE_SQL_AST_CHAR_FUNCTION, B, R);
 }
 expression(A) ::= CHAR(T) LPAREN function_argument_list(B) USING option_name(C) RPAREN(R). {
-    A = mylite_sql_parser_make_generic_function(
-        state,
-        T,
-        mylite_sql_parser_append_function_argument(state, B, C),
-        R);
+    A = mylite_sql_parser_make_char_using_charset_function(state, T, B, C, R);
+}
+expression(A) ::= CHAR(T) LPAREN function_argument_list(B) USING BINARY(C) RPAREN(R). {
+    A = mylite_sql_parser_make_char_using_charset_function(
+        state, T, B, mylite_sql_parser_make_identifier(state, C), R);
 }
 expression(A) ::= REPLACE(T) LPAREN expression(B) COMMA expression(C)
                   COMMA expression(D) RPAREN(R). {

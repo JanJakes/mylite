@@ -103,6 +103,8 @@ static int append_session_scalar_expression_warnings(
             rc = append_found_rows_deprecation_warning(database);
         } else if (current->kind == MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION) {
             rc = append_convert_using_charset_warning(database, current);
+        } else if (current->kind == MYLITE_SQL_AST_CHAR_FUNCTION) {
+            rc = append_char_using_charset_warning(database, current);
         } else if (current->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
             enum mylite_execution_system_variable_kind variable =
                 MYLITE_EXECUTION_SYSTEM_VARIABLE_NONE;
@@ -179,7 +181,30 @@ static int append_convert_using_charset_warning(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    switch (info.warning) {
+    return append_scalar_charset_info_warning(database, &info);
+}
+
+static int append_char_using_charset_warning(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    struct scalar_convert_charset_info info = {0};
+    int rc = mylite_execution_scalar_char_charset_info_for_expression(database, expression, &info);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return append_scalar_charset_info_warning(database, &info);
+}
+
+static int append_scalar_charset_info_warning(
+    struct mylite_db *database,
+    const struct scalar_convert_charset_info *info
+) {
+    if (info == NULL) {
+        return MYLITE_MISUSE;
+    }
+    switch (info->warning) {
     case SCALAR_CONVERT_CHARSET_WARNING_UTF8_ALIAS:
         return append_utf8_alias_warning(database);
     case SCALAR_CONVERT_CHARSET_WARNING_UTF8MB3_DEPRECATED:

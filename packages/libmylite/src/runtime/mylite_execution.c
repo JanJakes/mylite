@@ -718,6 +718,14 @@ int mylite_execution_scalar_convert_charset_info_for_expression(
     return scalar_convert_charset_info_for_expression(database, expression, out_info);
 }
 
+int mylite_execution_scalar_convert_charset_info_by_name(
+    struct mylite_db *database,
+    const char *charset_name,
+    struct scalar_convert_charset_info *out_info
+) {
+    return scalar_convert_charset_info_by_name(database, charset_name, out_info);
+}
+
 int mylite_execution_rand_seed_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

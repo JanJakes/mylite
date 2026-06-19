@@ -201,6 +201,7 @@ enum {
     mysql_warning_year_display_width_deprecated = 1287,
     mysql_warning_decimal_unsigned_deprecated = 1681,
     mysql_warning_approximate_display_width_deprecated = 1681,
+    mysql_warning_invalid_character_string = 1300,
     mysql_warning_national_character_set_deprecated = 3720,
     mysql_warning_utf8_alias = 3719,
     mysql_warning_utf8mb3_deprecated = 1287,

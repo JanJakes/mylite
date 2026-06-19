@@ -1248,6 +1248,32 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_list_argument_function(
     return function;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_char_using_charset_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_ast_node *arguments,
+    struct mylite_sql_ast_node *charset,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_ast_node *function = NULL;
+
+    function = mylite_sql_parser_make_node(
+        state,
+        MYLITE_SQL_AST_CHAR_FUNCTION,
+        mylite_sql_parser_span_join(
+            mylite_sql_parser_span_from_token(&function_token),
+            mylite_sql_parser_span_from_token(&right_paren)
+        )
+    );
+    if (function == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(function, arguments);
+    mylite_sql_ast_node_append_child(function, charset);
+    return function;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_generic_function(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token function_token,

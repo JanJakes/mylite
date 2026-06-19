@@ -642,6 +642,16 @@ int mylite_execution_scalar_convert_charset_info_for_expression(
     const struct mylite_sql_ast_node *expression,
     struct scalar_convert_charset_info *out_info
 );
+int mylite_execution_scalar_convert_charset_info_by_name(
+    struct mylite_db *database,
+    const char *charset_name,
+    struct scalar_convert_charset_info *out_info
+);
+int mylite_execution_scalar_char_charset_info_for_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct scalar_convert_charset_info *out_info
+);
 int mylite_execution_rand_seed_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

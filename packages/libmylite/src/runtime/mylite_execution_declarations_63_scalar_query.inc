@@ -243,6 +243,14 @@ static int append_convert_using_charset_warning(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression
 );
+static int append_char_using_charset_warning(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
+static int append_scalar_charset_info_warning(
+    struct mylite_db *database,
+    const struct scalar_convert_charset_info *info
+);
 static int append_utf8_alias_warning(struct mylite_db *database);
 static int append_utf8mb3_deprecation_warning(struct mylite_db *database);
 static int append_session_scalar_cell_warnings(

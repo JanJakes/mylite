@@ -323,6 +323,21 @@ static int charset_collation_scalar_result(
             expression,
             out_result
         );
+    case MYLITE_SQL_AST_CHAR_FUNCTION: {
+        struct scalar_convert_charset_info info = {0};
+        int rc =
+            mylite_execution_scalar_char_charset_info_for_expression(database, expression, &info);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        return charset_collation_select_result(
+            function_kind,
+            info.charset,
+            info.collation,
+            out_result
+        );
+    }
     case MYLITE_SQL_AST_COLLATE_EXPRESSION:
         return charset_collation_collate_expression_result(
             database,
@@ -434,6 +449,17 @@ static int coercibility_non_concat_scalar_result(
             return rc;
         }
         *out_result = "2";
+        return MYLITE_OK;
+    }
+    case MYLITE_SQL_AST_CHAR_FUNCTION: {
+        struct scalar_convert_charset_info info = {0};
+        int rc =
+            mylite_execution_scalar_char_charset_info_for_expression(database, expression, &info);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        *out_result = "4";
         return MYLITE_OK;
     }
     case MYLITE_SQL_AST_COLLATE_EXPRESSION: {
@@ -680,6 +706,11 @@ static int coercibility_validate_binary_wrapper_argument(
         mylite_execution_session_scalar_cell_deinit(&cell);
         return rc;
     }
+    if (argument->kind == MYLITE_SQL_AST_CHAR_FUNCTION) {
+        struct scalar_convert_charset_info info = {0};
+
+        return mylite_execution_scalar_char_charset_info_for_expression(database, argument, &info);
+    }
 
     mylite_execution_set_unsupported_error(
         database,
@@ -911,6 +942,18 @@ static int validate_charset_collation_concat_argument(
 
         mylite_execution_session_scalar_cell_deinit(&cell);
         return rc;
+    }
+    case MYLITE_SQL_AST_CHAR_FUNCTION: {
+        struct scalar_convert_charset_info info = {0};
+        int rc =
+            mylite_execution_scalar_char_charset_info_for_expression(database, expression, &info);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        *out_is_binary_string_argument =
+            mylite_execution_text_equals_ascii_case_insensitive(info.charset, "binary");
+        return MYLITE_OK;
     }
     case MYLITE_SQL_AST_COLLATE_EXPRESSION: {
         const struct mylite_execution_catalog_scalar_collation *collation_info = NULL;
@@ -1239,6 +1282,18 @@ static int scalar_expression_base_charset_collation_metadata(
             expression,
             &info
         );
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        *out_charset = info.charset;
+        *out_collation = info.collation;
+        return MYLITE_OK;
+    }
+    case MYLITE_SQL_AST_CHAR_FUNCTION: {
+        struct scalar_convert_charset_info info = {0};
+        int rc =
+            mylite_execution_scalar_char_charset_info_for_expression(database, expression, &info);
 
         if (rc != MYLITE_OK) {
             return rc;

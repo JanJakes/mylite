@@ -4028,9 +4028,36 @@ static int test_char_function(void) {
         parser_test_parse_sql("SELECT CHAR(65 USING utf8mb4);", MYLITE_SQL_PARSE_OK, &result);
     select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
     expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
-    failures += parser_test_expect_node(expression, MYLITE_SQL_AST_GENERIC_FUNCTION, "char using");
+    failures += parser_test_expect_node(expression, MYLITE_SQL_AST_CHAR_FUNCTION, "char using");
     failures +=
         parser_test_expect_span_text(expression, "CHAR(65 USING utf8mb4)", "char using span");
+    failures += parser_test_expect_child_count(expression, 2U, "char using children");
+    arguments = parser_test_child_at(expression, 0U);
+    failures += parser_test_expect_node(
+        arguments,
+        MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST,
+        "char using args"
+    );
+    failures += parser_test_expect_child_count(arguments, 1U, "char using argument count");
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression, 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "char using charset"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parser_test_parse_sql("SELECT CHAR(65 USING binary);", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures +=
+        parser_test_expect_node(expression, MYLITE_SQL_AST_CHAR_FUNCTION, "char using binary");
+    failures += parser_test_expect_child_count(expression, 2U, "char using binary children");
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression, 1U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "char using binary charset"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

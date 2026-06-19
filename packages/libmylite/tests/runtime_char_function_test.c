@@ -18,6 +18,7 @@ enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
     mysql_error_unknown_column = 1054,
+    mysql_error_unknown_character_set = 1115,
     mysql_error_parse = 1064,
 };
 
@@ -94,6 +95,7 @@ static int test_no_source_dual_and_do_char(void) {
     static const unsigned char three_byte_bytes[] = {0x01, 0x00, 0x00};
     static const unsigned char u32_bytes[] = {0xff, 0xff, 0xff, 0xff};
     static const unsigned char neg256_bytes[] = {0xff, 0xff, 0xff, 0x00};
+    static const unsigned char invalid_prefix_bytes[] = {0x41};
     static const char *const columns_scalar[] = {
         "c",
         "word",
@@ -122,6 +124,36 @@ static int test_no_source_dual_and_do_char(void) {
         {neg256_bytes, sizeof(neg256_bytes), false},
         {(const unsigned char *)"0", 1U, false},
     };
+    static const unsigned char e_acute_bytes[] = {0xc3, 0xa9};
+    static const char *const columns_using[] = {
+        "using_binary",
+        "using_utf8mb4",
+        "using_latin1",
+        "using_charset",
+        "using_collation",
+        "using_coercibility",
+    };
+    static const struct expected_cell values_using[] = {
+        {a_bytes, sizeof(a_bytes), false},
+        {e_acute_bytes, sizeof(e_acute_bytes), false},
+        {a_bytes, sizeof(a_bytes), false},
+        {(const unsigned char *)"utf8mb4", 7U, false},
+        {(const unsigned char *)"utf8mb4_0900_ai_ci", 18U, false},
+        {(const unsigned char *)"4", 1U, false},
+    };
+    static const char *const columns_warning[] = {"u", "u3"};
+    static const struct expected_cell values_warning[] = {
+        {a_bytes, sizeof(a_bytes), false},
+        {(const unsigned char *)"B", 1U, false},
+    };
+    static const char *const columns_invalid[] = {"prefix"};
+    static const struct expected_cell values_invalid[] = {
+        {invalid_prefix_bytes, sizeof(invalid_prefix_bytes), false},
+    };
+    static const char *const columns_strict_invalid[] = {"invalid_value"};
+    static const struct expected_cell values_strict_invalid[] = {
+        {NULL, 0U, true},
+    };
     static const char *const columns_dual[] = {"u"};
     static const struct expected_cell values_dual[] = {{a_bytes, sizeof(a_bytes), false}};
     char path[test_path_capacity];
@@ -148,6 +180,65 @@ static int test_no_source_dual_and_do_char(void) {
             .context = "no-source char values",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CHAR(65 USING binary) AS using_binary, "
+                   "CHAR(195,169 USING utf8mb4) AS using_utf8mb4, "
+                   "CHAR(65 USING latin1) AS using_latin1, "
+                   "CHARSET(CHAR(65 USING utf8mb4)) AS using_charset, "
+                   "COLLATION(CHAR(65 USING utf8mb4)) AS using_collation, "
+                   "COERCIBILITY(CHAR(65 USING utf8mb4)) AS using_coercibility",
+            .columns = columns_using,
+            .column_count = sizeof(columns_using) / sizeof(columns_using[0]),
+            .values = values_using,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .context = "no-source char using charset values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CHAR(65 USING utf8) AS u, CHAR(66 USING utf8mb3) AS u3",
+            .columns = columns_warning,
+            .column_count = sizeof(columns_warning) / sizeof(columns_warning[0]),
+            .values = values_warning,
+            .row_count = 1U,
+            .warning_count = 2U,
+            .context = "char using charset warnings",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CHAR(65,255,66 USING utf8mb4) AS prefix",
+            .columns = columns_invalid,
+            .column_count = sizeof(columns_invalid) / sizeof(columns_invalid[0]),
+            .values = values_invalid,
+            .row_count = 1U,
+            .warning_count = 1U,
+            .context = "char using invalid utf8 prefix",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "SET SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION'",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CHAR(65,255,66 USING utf8mb4) AS invalid_value",
+            .columns = columns_strict_invalid,
+            .column_count = sizeof(columns_strict_invalid) / sizeof(columns_strict_invalid[0]),
+            .values = values_strict_invalid,
+            .row_count = 1U,
+            .warning_count = 1U,
+            .context = "char using strict invalid utf8",
+        }
+    );
+    failures += execute_ok(database, "SET SESSION sql_mode = 'NO_ENGINE_SUBSTITUTION'", NULL);
     failures += expect_query(
         database,
         (struct expected_query){
@@ -352,11 +443,21 @@ static int test_char_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT CHAR(65 USING utf8mb4)",
+        "SELECT CHAR(n USING utf8mb4) FROM t",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor-backed table reads",
+            .message_part = "CHAR() supports one or more integer, boolean, NULL, and descriptor "
+                            "integer column arguments",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT CHAR(65 USING nosuch)",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_character_set,
+            .sqlstate = "42000",
+            .message_part = "Unknown character set: 'nosuch'",
         }
     );
 

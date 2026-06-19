@@ -7,6 +7,7 @@
 
 enum {
     mysql_error_parse = 1064,
+    mysql_error_unknown_character_set = 1115,
     mysql_error_operand_should_contain_one_column = 1241,
     mysql_error_regexp_character_set_mismatch = 3995,
     row_not_comparison_column_count = 2,
@@ -191,9 +192,9 @@ static int test_expression_query_surfaces(void) {
         database,
         "SELECT CHAR(0x41 USING ucs2)",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_unknown_character_set,
             .sqlstate = "42000",
-            .message_part = "support",
+            .message_part = "Unknown character set: 'ucs2'",
         }
     );
     failures += execute_error(

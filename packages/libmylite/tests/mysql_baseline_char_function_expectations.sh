@@ -117,6 +117,36 @@ expect_output \
 "SELECT ROW_COUNT(), @@warning_count;" \
     "$DATABASE"
 
+charset_expected=$(cat <<EXPECTED
+41	41	41	utf8mb4	utf8mb4_0900_ai_ci	4	0
+C3A9	2	1	0
+41	42
+2
+41	0
+1
+NULL	1
+2
+EXPECTED
+)
+expect_output \
+    "scalar CHAR USING charset" \
+    "$charset_expected" \
+    "SET SESSION sql_mode = 'NO_ENGINE_SUBSTITUTION'; "\
+"SELECT HEX(CHAR(65 USING binary)), HEX(CHAR(65 USING utf8mb4)), "\
+"HEX(CHAR(65 USING latin1)), CHARSET(CHAR(65 USING utf8mb4)), "\
+"COLLATION(CHAR(65 USING utf8mb4)), COERCIBILITY(CHAR(65 USING utf8mb4)), "\
+"@@warning_count; "\
+"SELECT HEX(CHAR(195,169 USING utf8mb4)), LENGTH(CHAR(195,169 USING utf8mb4)), "\
+"CHAR_LENGTH(CHAR(195,169 USING utf8mb4)), @@warning_count; "\
+"SELECT HEX(CHAR(65 USING utf8)), HEX(CHAR(66 USING utf8mb3)); "\
+"SELECT @@warning_count; "\
+"SELECT HEX(CHAR(65,255,66 USING utf8mb4)), CHAR(65,255,66 USING utf8mb4) IS NULL; "\
+"SELECT @@warning_count; "\
+"SET SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION'; "\
+"SELECT HEX(CHAR(65,255,66 USING utf8mb4)), CHAR(65,255,66 USING utf8mb4) IS NULL; "\
+"SELECT @@warning_count;" \
+    "$DATABASE"
+
 run_mysql \
     "CREATE TABLE t(id INT, n INT, b BIGINT, nullable INT); "\
 "INSERT INTO t VALUES "\
@@ -160,8 +190,8 @@ expect_upstream_accepts \
     "$DATABASE"
 
 expect_upstream_accepts \
-    "CHAR charset USING is accepted by MySQL but deferred by MyLite" \
-    "SELECT HEX(CHAR(65 USING utf8mb4)), CHARSET(CHAR(65 USING utf8mb4));" \
+    "CHAR table-backed charset USING is accepted by MySQL but deferred by MyLite" \
+    "SELECT HEX(CHAR(n USING utf8mb4)) FROM t;" \
     "$DATABASE"
 
 printf '%s\n' "mysql_baseline_char_function_expectations: ok"

@@ -32,16 +32,31 @@ expect_output() {
 expect_show_table_status_row() {
     output=$(run_mysql "SHOW TABLE STATUS FROM mysql LIKE 'servers';")
     field_count=$(printf '%s\n' "$output" | awk -F '\t' '{print NF}')
-    prefix=$(printf '%s\n' "$output" | cut -f 1-11)
+    prefix=$(printf '%s\n' "$output" | cut -f 1-4)
+    storage_metrics=$(printf '%s\n' "$output" | cut -f 5-10)
+    auto_increment=$(printf '%s\n' "$output" | cut -f 11)
     create_time=$(printf '%s\n' "$output" | cut -f 12)
     stable_tail=$(printf '%s\n' "$output" | cut -f 13-18)
 
     if [ "$field_count" != "18" ]; then
         fail "SHOW TABLE STATUS servers: expected 18 fields, got [$field_count]"
     fi
-    expected_prefix=$(printf '%b' 'servers\tInnoDB\t10\tDynamic\t0\t0\t16384\t0\t0\t4194304\tNULL')
+    expected_prefix=$(printf '%b' 'servers\tInnoDB\t10\tDynamic')
     if [ "$prefix" != "$expected_prefix" ]; then
         fail "SHOW TABLE STATUS servers: expected prefix [$expected_prefix], got [$prefix]"
+    fi
+    if ! printf '%s\n' "$storage_metrics" | awk -F '\t' 'NF == 6 {
+        for (i = 1; i <= NF; i++) {
+            if ($i !~ /^[0-9]+$/) {
+                exit 1;
+            }
+        }
+        exit 0;
+    } { exit 1; }'; then
+        fail "SHOW TABLE STATUS servers: expected numeric storage metrics, got [$storage_metrics]"
+    fi
+    if [ "$auto_increment" != "NULL" ]; then
+        fail "SHOW TABLE STATUS servers: expected NULL Auto_increment, got [$auto_increment]"
     fi
     case "$create_time" in
         ????-??-??\ ??:??:??) ;;
@@ -59,18 +74,23 @@ case "$version" in
     *) fail "expected MySQL 8.4.9 runtime, got [$version]" ;;
 esac
 
-expect_output "mysql.servers baseline row count" "0" "SELECT COUNT(*) FROM mysql.servers;"
 expect_output \
-    "mysql.servers direct read is empty" \
+    "mysql.servers unmatched row count" \
+    "0" \
+    "SELECT COUNT(*) FROM mysql.servers WHERE Server_name = '__mylite_missing_server__';"
+expect_output \
+    "mysql.servers unmatched direct read is empty" \
     "" \
     "SELECT Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner
        FROM mysql.servers
+      WHERE Server_name = '__mylite_missing_server__'
       ORDER BY Server_name;"
 expect_output \
     "mysql.servers read ROW_COUNT" \
     "-1" \
     "SELECT Server_name, Host, Db, Username, Password, Port, Socket, Wrapper, Owner
        FROM mysql.servers
+      WHERE Server_name = '__mylite_missing_server__'
       ORDER BY Server_name;
      SELECT ROW_COUNT();"
 
@@ -110,12 +130,12 @@ expect_output \
 
 show_index_expected=$(
     printf '%b' \
-        'servers\t0\tPRIMARY\t1\tServer_name\tA\t0\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL'
+        'servers\t0\tPRIMARY\t1\tServer_name\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL'
 )
-expect_output \
-    "mysql.servers SHOW INDEX row" \
-    "$show_index_expected" \
-    "SHOW INDEX FROM mysql.servers;"
+show_index_actual=$(run_mysql "SHOW INDEX FROM mysql.servers;" | cut -f 1-6,8-15)
+if [ "$show_index_actual" != "$show_index_expected" ]; then
+    fail "mysql.servers SHOW INDEX row: expected [$show_index_expected], got [$show_index_actual]"
+fi
 
 information_schema_columns_expected=$(
     printf '%b' \
@@ -166,21 +186,19 @@ expect_output \
 
 expect_output \
     "mysql.servers INFORMATION_SCHEMA.STATISTICS row" \
-    "$(printf '%b' 'PRIMARY\t1\tServer_name\tA\t0\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL')" \
-    "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, COLLATION, CARDINALITY, SUB_PART,
-            PACKED, NULLABLE, INDEX_TYPE, COMMENT, INDEX_COMMENT, IS_VISIBLE,
-            EXPRESSION
+    "$(printf '%b' 'PRIMARY\t1\tServer_name\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL')" \
+    "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, COLLATION, SUB_PART, PACKED,
+            NULLABLE, INDEX_TYPE, COMMENT, INDEX_COMMENT, IS_VISIBLE, EXPRESSION
        FROM information_schema.statistics
       WHERE TABLE_SCHEMA = 'mysql' AND TABLE_NAME = 'servers';"
 
 expect_output \
     "mysql.servers INFORMATION_SCHEMA.TABLES row" \
-    "$(printf '%b' 'servers\tBASE TABLE\tInnoDB\t10\tDynamic\t0\t0\t16384\t0\t0\t4194304\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tMySQL Foreign Servers table')" \
-    "SELECT TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT, TABLE_ROWS,
-            AVG_ROW_LENGTH, DATA_LENGTH, MAX_DATA_LENGTH, INDEX_LENGTH, DATA_FREE,
+    "$(printf '%b' 'servers\tBASE TABLE\tInnoDB\t10\tDynamic\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tMySQL Foreign Servers table')" \
+    "SELECT TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT,
             AUTO_INCREMENT, CREATE_TIME IS NOT NULL, UPDATE_TIME IS NULL,
-            CHECK_TIME IS NULL, TABLE_COLLATION, CHECKSUM IS NULL, CREATE_OPTIONS,
-            TABLE_COMMENT
+            CHECK_TIME IS NULL, TABLE_COLLATION, CHECKSUM IS NULL,
+            CREATE_OPTIONS, TABLE_COMMENT
        FROM information_schema.tables
       WHERE TABLE_SCHEMA = 'mysql' AND TABLE_NAME = 'servers';"
 

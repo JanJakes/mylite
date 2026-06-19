@@ -79,11 +79,11 @@ expect_output \
     "$show_full_expected" \
     "SHOW FULL TABLES FROM mysql LIKE 'innodb_index_stats';"
 
-table_row_expected="innodb_index_stats	BASE TABLE	InnoDB	10	Dynamic	16384	utf8mb3_bin	row_format=DYNAMIC stats_persistent=0"
+table_row_expected="innodb_index_stats	BASE TABLE	InnoDB	10	Dynamic	utf8mb3_bin	row_format=DYNAMIC stats_persistent=0"
 expect_output \
     "information schema tables row" \
     "$table_row_expected" \
-    "SELECT TABLE_NAME,TABLE_TYPE,ENGINE,VERSION,ROW_FORMAT,DATA_LENGTH,
+    "SELECT TABLE_NAME,TABLE_TYPE,ENGINE,VERSION,ROW_FORMAT,
             TABLE_COLLATION,CREATE_OPTIONS
        FROM INFORMATION_SCHEMA.TABLES
       WHERE TABLE_SCHEMA = 'mysql'

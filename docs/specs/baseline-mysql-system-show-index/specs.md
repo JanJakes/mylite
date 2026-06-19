@@ -93,6 +93,12 @@ same supported operators and literal restrictions as descriptor-backed
 
 ## Row Metadata
 
+`Cardinality` values in MySQL `SHOW INDEX` output are sampled statistics and
+can change as the reused comparison runtime accumulates rows. The MySQL
+expectation artifact verifies the stable row shape and filters while omitting
+that field; MyLite runtime coverage verifies the deterministic placeholder
+cardinality values configured by each system-table definition.
+
 `SHOW INDEX FROM mysql.innodb_table_stats` returns two rows:
 
 | Table | Non_unique | Key_name | Seq_in_index | Column_name | Collation | Cardinality | Sub_part | Packed | Null | Index_type | Comment | Index_comment | Visible | Expression |

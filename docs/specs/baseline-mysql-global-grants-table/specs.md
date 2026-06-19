@@ -66,7 +66,7 @@ placeholder because persisted accounts, dynamic privilege assignments,
 `GRANT`, `REVOKE`, roles, grant table reload, and privilege enforcement are
 outside this slice.
 
-Observed stable table-status fields:
+Observed table-status fields:
 
 | Field | Value |
 | --- | --- |
@@ -83,6 +83,12 @@ Observed stable table-status fields:
 | `TABLE_COLLATION` / `Collation` | `utf8mb3_bin` |
 | `CREATE_OPTIONS` / `Create_options` | `row_format=DYNAMIC stats_persistent=0` |
 | `TABLE_COMMENT` / `Comment` | `Extended global grants` |
+
+The row-estimate, average-length, storage-length, free-space, and index
+cardinality values are live InnoDB statistics. They can change on reused MySQL
+comparison runtimes, so the MySQL expectation artifact checks their type/shape
+but not fixed numeric values. MyLite's runtime tests verify the fixed empty
+placeholder values exposed by MyLite.
 
 The `PRIMARY` index has three key parts:
 

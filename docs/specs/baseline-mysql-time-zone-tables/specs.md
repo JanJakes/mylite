@@ -186,8 +186,10 @@ The target MySQL 8.4.9 runtime reported these cardinality placeholders:
 | `time_zone_transition_type` | `Time_zone_id` | `1954` |
 | `time_zone_transition_type` | `Transition_type_id` | `10529` |
 
-These are deterministic MyLite metadata constants for this slice, not live
-storage-engine estimates.
+These fresh-runtime observations are deterministic MyLite metadata constants
+for this slice. On MySQL, the `CARDINALITY` values are sampled storage-engine
+statistics and can change on reused runtimes, so the MySQL expectation artifact
+verifies index shape without requiring fixed sampled values.
 
 `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` exposes one enforced primary-key row per
 table. `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` exposes ordered primary-key
@@ -216,9 +218,13 @@ All five rows report `ENGINE = 'InnoDB'`, `VERSION = 10`,
 non-`NULL` in MySQL. MyLite renders the current statement timestamp for the
 synthetic built-in row.
 
-The table-status row estimates intentionally remain MySQL-observed metadata
-constants even though direct reads return zero rows in this slice. A future
-zoneinfo-loading feature can replace both with real loaded data.
+The table-status row and storage-size estimates intentionally remain
+MySQL-observed metadata constants in MyLite even though direct reads return
+zero rows in this slice. On MySQL, those estimates are live sampled statistics,
+so the MySQL expectation artifact verifies their numeric shape and exact
+stable metadata such as engine, row format, collation, create options,
+comments, and `AUTO_INCREMENT`. A future zoneinfo-loading feature can replace
+both with real loaded data.
 
 ## Diagnostics And Limits
 

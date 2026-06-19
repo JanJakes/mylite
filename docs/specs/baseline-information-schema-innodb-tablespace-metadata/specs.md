@@ -58,6 +58,10 @@ Observed behavior shaping this slice:
   `innodb_undo_001 / ./undo_001 / 0 / Single`,
   `innodb_undo_002 / ./undo_002 / 0 / Single`, and
   `sys/sys_config / ./sys/sys_config.ibd / 16417 / Single`.
+- Reused MySQL comparison runtimes can also contain user-table datafile and
+  tablespace rows from other probes. The MySQL expectation artifact filters by
+  the default names above so it verifies the target default metadata without
+  requiring a fresh server instance.
 - Supported reads leave `@@warning_count = 0`, and `ROW_COUNT()` reports `-1`
   after the `SELECT`.
 
@@ -164,8 +168,8 @@ Add a focused C runtime test and a MySQL expectation script. Coverage must
 include:
 
 - wildcard column labels for both views;
-- exact ordered default row contents for both views;
-- row counts and representative predicates;
+- exact ordered default row contents for the documented views;
+- default-row counts and representative predicates;
 - case-insensitive table-name lookup;
 - alias projection for representative rows;
 - `warning_count == 0` and `ROW_COUNT() == -1` after successful reads;

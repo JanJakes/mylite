@@ -36,7 +36,9 @@ expect_show_status_row() {
 
     output=$(run_mysql "SHOW TABLE STATUS FROM mysql LIKE '$like_pattern';")
     field_count=$(printf '%s\n' "$output" | awk -F '\t' '{print NF}')
-    prefix=$(printf '%s\n' "$output" | cut -f 1-11)
+    prefix=$(printf '%s\n' "$output" | cut -f 1-4)
+    storage_metrics=$(printf '%s\n' "$output" | cut -f 5-10)
+    auto_increment=$(printf '%s\n' "$output" | cut -f 11)
     create_time=$(printf '%s\n' "$output" | cut -f 12)
     update_time=$(printf '%s\n' "$output" | cut -f 13)
     stable_tail=$(printf '%s\n' "$output" | cut -f 14-17)
@@ -47,6 +49,19 @@ expect_show_status_row() {
     fi
     if [ "$prefix" != "$expected_prefix" ]; then
         fail "$label: expected stable prefix [$expected_prefix], got [$prefix]"
+    fi
+    if ! printf '%s\n' "$storage_metrics" | awk -F '\t' 'NF == 6 {
+        for (i = 1; i <= NF; i++) {
+            if ($i !~ /^[0-9]+$/) {
+                exit 1;
+            }
+        }
+        exit 0;
+    } { exit 1; }'; then
+        fail "$label: expected numeric storage metrics, got [$storage_metrics]"
+    fi
+    if [ "$auto_increment" != "NULL" ]; then
+        fail "$label: expected NULL Auto_increment, got [$auto_increment]"
     fi
     case "$create_time" in
         ????-??-??\ ??:??:??) ;;
@@ -73,17 +88,16 @@ esac
 
 tables_expected=$(
     printf '%b' \
-        'innodb_index_stats\tBASE TABLE\tInnoDB\t10\tDynamic\t6\t2730\t16384\t0\t0\t4194304\t1\t1\t0\t1\tutf8mb3_bin\t1\trow_format=DYNAMIC stats_persistent=0\t\n' \
-        'innodb_table_stats\tBASE TABLE\tInnoDB\t10\tDynamic\t2\t8192\t16384\t0\t0\t4194304\t1\t1\t0\t1\tutf8mb3_bin\t1\trow_format=DYNAMIC stats_persistent=0\t'
+        'innodb_index_stats\tBASE TABLE\tInnoDB\t10\tDynamic\t1\t1\t0\t1\tutf8mb3_bin\t1\trow_format=DYNAMIC stats_persistent=0\t\n' \
+        'innodb_table_stats\tBASE TABLE\tInnoDB\t10\tDynamic\t1\t1\t0\t1\tutf8mb3_bin\t1\trow_format=DYNAMIC stats_persistent=0\t'
 )
 expect_output \
     "mysql system stats INFORMATION_SCHEMA.TABLES rows" \
     "$tables_expected" \
-    "SELECT TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT, TABLE_ROWS,
-            AVG_ROW_LENGTH, DATA_LENGTH, MAX_DATA_LENGTH, INDEX_LENGTH, DATA_FREE,
-            AUTO_INCREMENT IS NULL, CREATE_TIME IS NOT NULL, UPDATE_TIME IS NULL,
-            CHECK_TIME IS NULL, TABLE_COLLATION, CHECKSUM IS NULL, CREATE_OPTIONS,
-            TABLE_COMMENT
+    "SELECT TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT,
+            AUTO_INCREMENT IS NULL, CREATE_TIME IS NOT NULL,
+            UPDATE_TIME IS NULL, CHECK_TIME IS NULL, TABLE_COLLATION,
+            CHECKSUM IS NULL, CREATE_OPTIONS, TABLE_COMMENT
        FROM information_schema.tables
       WHERE TABLE_SCHEMA = 'mysql'
         AND TABLE_NAME IN ('innodb_table_stats', 'innodb_index_stats')
@@ -92,12 +106,12 @@ expect_output \
 expect_show_status_row \
     "mysql system innodb_index_stats SHOW TABLE STATUS row" \
     "innodb\\_index\\_stats" \
-    "$(printf '%b' 'innodb_index_stats\tInnoDB\t10\tDynamic\t6\t2730\t16384\t0\t0\t4194304\tNULL')"
+    "$(printf '%b' 'innodb_index_stats\tInnoDB\t10\tDynamic')"
 
 expect_show_status_row \
     "mysql system innodb_table_stats SHOW TABLE STATUS row" \
     "innodb\\_table\\_stats" \
-    "$(printf '%b' 'innodb_table_stats\tInnoDB\t10\tDynamic\t2\t8192\t16384\t0\t0\t4194304\tNULL')"
+    "$(printf '%b' 'innodb_table_stats\tInnoDB\t10\tDynamic')"
 
 expect_output \
     "mysql system stats non-NULL update-time count" \
@@ -106,7 +120,6 @@ expect_output \
        FROM information_schema.tables
       WHERE TABLE_SCHEMA = 'mysql'
         AND TABLE_NAME IN ('innodb_table_stats', 'innodb_index_stats')
-        AND UPDATE_TIME IS NOT NULL
-        AND DATA_FREE = 4194304;"
+        AND UPDATE_TIME IS NOT NULL;"
 
 printf '%s\n' "mysql_baseline_mysql_system_stats_table_status_expectations: ok"

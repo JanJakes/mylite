@@ -60,6 +60,9 @@ Observed against the local `mysql:8.4.9` Docker runtime named
   generated clustered row described as `DB_ROW_ID`.
 - `SET timestamp` does not control `last_update`; MySQL uses current runtime
   time when updating persistent statistics rows.
+- `INFORMATION_SCHEMA.TABLES.DATA_LENGTH` for the `mysql.innodb_index_stats`
+  table is a live storage estimate and can differ on reused runtimes; the
+  expectation artifact verifies stable table metadata instead.
 - Successful supported reads emit no warnings, and the following `ROW_COUNT()`
   returns `-1`.
 

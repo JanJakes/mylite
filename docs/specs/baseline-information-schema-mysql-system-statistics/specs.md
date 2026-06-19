@@ -74,7 +74,11 @@ No parser changes are required.
 `CARDINALITY` values are deterministic MyLite-owned placeholders matching the
 fresh MySQL 8.4.9 runtime evidence for these built-in statistics rows. They are
 not live storage-engine estimates and do not change when MyLite adds
-descriptor-owned statistics rows for user tables.
+descriptor-owned statistics rows for user tables. On reused MySQL comparison
+runtimes, these cardinality estimates can change as other probes create and
+drop objects, so the MySQL expectation artifact verifies the stable key-part
+metadata and leaves fixed placeholder cardinality coverage to the MyLite
+runtime test.
 
 ## Diagnostics And Limits
 
@@ -127,13 +131,13 @@ The recorded MySQL 8.4.9 probe is:
 ```sql
 SELECT VERSION();
 SELECT TABLE_SCHEMA, TABLE_NAME, NON_UNIQUE, INDEX_SCHEMA, INDEX_NAME,
-       SEQ_IN_INDEX, COLUMN_NAME, COLLATION, CARDINALITY, SUB_PART, PACKED,
-       NULLABLE, INDEX_TYPE, COMMENT, INDEX_COMMENT, IS_VISIBLE, EXPRESSION
+       SEQ_IN_INDEX, COLUMN_NAME, COLLATION, SUB_PART, PACKED, NULLABLE,
+       INDEX_TYPE, COMMENT, INDEX_COMMENT, IS_VISIBLE, EXPRESSION
   FROM information_schema.statistics
  WHERE TABLE_SCHEMA = 'mysql'
    AND TABLE_NAME IN ('innodb_table_stats', 'innodb_index_stats')
  ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX;
-SELECT TABLE_NAME, COLUMN_NAME, CARDINALITY
+SELECT TABLE_NAME, COLUMN_NAME
   FROM information_schema.statistics
  WHERE TABLE_SCHEMA = 'mysql'
    AND TABLE_NAME = 'innodb_index_stats'
@@ -145,14 +149,14 @@ Observed output:
 
 ```text
 8.4.9
-mysql	innodb_index_stats	0	mysql	PRIMARY	1	database_name	A	2	NULL	NULL		BTREE			YES	NULL
-mysql	innodb_index_stats	0	mysql	PRIMARY	2	table_name	A	2	NULL	NULL		BTREE			YES	NULL
-mysql	innodb_index_stats	0	mysql	PRIMARY	3	index_name	A	2	NULL	NULL		BTREE			YES	NULL
-mysql	innodb_index_stats	0	mysql	PRIMARY	4	stat_name	A	6	NULL	NULL		BTREE			YES	NULL
-mysql	innodb_table_stats	0	mysql	PRIMARY	1	database_name	A	2	NULL	NULL		BTREE			YES	NULL
-mysql	innodb_table_stats	0	mysql	PRIMARY	2	table_name	A	2	NULL	NULL		BTREE			YES	NULL
-innodb_index_stats	index_name	2
-innodb_index_stats	stat_name	6
+mysql	innodb_index_stats	0	mysql	PRIMARY	1	database_name	A	NULL	NULL		BTREE			YES	NULL
+mysql	innodb_index_stats	0	mysql	PRIMARY	2	table_name	A	NULL	NULL		BTREE			YES	NULL
+mysql	innodb_index_stats	0	mysql	PRIMARY	3	index_name	A	NULL	NULL		BTREE			YES	NULL
+mysql	innodb_index_stats	0	mysql	PRIMARY	4	stat_name	A	NULL	NULL		BTREE			YES	NULL
+mysql	innodb_table_stats	0	mysql	PRIMARY	1	database_name	A	NULL	NULL		BTREE			YES	NULL
+mysql	innodb_table_stats	0	mysql	PRIMARY	2	table_name	A	NULL	NULL		BTREE			YES	NULL
+innodb_index_stats	index_name
+innodb_index_stats	stat_name
 ```
 
 ## Verification

@@ -40,6 +40,9 @@ Runtime probes establish:
   `MAX_DATA_LENGTH`, `INDEX_LENGTH`, `DATA_FREE`, `CREATE_TIME`,
   `UPDATE_TIME`, `CHECK_TIME`, `CHECKSUM`, `PARTITION_COMMENT`, `NODEGROUP`,
   and `TABLESPACE_NAME`.
+- `TABLE_CATALOG`, `TABLE_SCHEMA`, and `TABLE_NAME` are non-null
+  `varchar(64)` columns using `utf8mb3_bin` collation in the verified MySQL
+  8.4.9 runtime.
 - A nonpartitioned user table still appears as one row. Partition and
   subpartition name, method, ordinal, expression, and description columns are
   `NULL`.

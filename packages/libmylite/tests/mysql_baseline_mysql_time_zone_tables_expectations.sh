@@ -31,20 +31,36 @@ expect_output() {
 
 expect_show_table_status_row() {
     table_name=$1
-    expected_prefix=$2
+    expected_auto_increment=$2
     expected_tail=$3
 
     output=$(run_mysql "SHOW TABLE STATUS FROM mysql LIKE '${table_name}';")
     field_count=$(printf '%s\n' "$output" | awk -F '\t' '{print NF}')
-    prefix=$(printf '%s\n' "$output" | cut -f 1-11)
+    prefix=$(printf '%s\n' "$output" | cut -f 1-4)
+    storage_metrics=$(printf '%s\n' "$output" | cut -f 5-10)
+    auto_increment=$(printf '%s\n' "$output" | cut -f 11)
     create_time=$(printf '%s\n' "$output" | cut -f 12)
     stable_tail=$(printf '%s\n' "$output" | cut -f 13-18)
 
     if [ "$field_count" != "18" ]; then
         fail "SHOW TABLE STATUS ${table_name}: expected 18 fields, got [$field_count]"
     fi
+    expected_prefix=$(printf '%b' "${table_name}\tInnoDB\t10\tDynamic")
     if [ "$prefix" != "$expected_prefix" ]; then
         fail "SHOW TABLE STATUS ${table_name}: expected prefix [$expected_prefix], got [$prefix]"
+    fi
+    if ! printf '%s\n' "$storage_metrics" | awk -F '\t' 'NF == 6 {
+        for (i = 1; i <= NF; i++) {
+            if ($i !~ /^[0-9]+$/) {
+                exit 1;
+            }
+        }
+        exit 0;
+    } { exit 1; }'; then
+        fail "SHOW TABLE STATUS ${table_name}: expected numeric storage metrics, got [$storage_metrics]"
+    fi
+    if [ "$auto_increment" != "$expected_auto_increment" ]; then
+        fail "SHOW TABLE STATUS ${table_name}: expected Auto_increment [$expected_auto_increment], got [$auto_increment]"
     fi
     case "$create_time" in
         ????-??-??\ ??:??:??) ;;
@@ -105,20 +121,20 @@ expect_output \
 
 statistics_expected=$(
     printf '%b' \
-        'time_zone\tPRIMARY\t1\tTime_zone_id\tA\t1457\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
-        'time_zone_leap_second\tPRIMARY\t1\tTransition_time\tA\t0\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
-        'time_zone_name\tPRIMARY\t1\tName\tA\t1712\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
-        'time_zone_transition\tPRIMARY\t1\tTime_zone_id\tA\t1252\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
-        'time_zone_transition\tPRIMARY\t2\tTransition_time\tA\t119074\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
-        'time_zone_transition_type\tPRIMARY\t1\tTime_zone_id\tA\t1954\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
-        'time_zone_transition_type\tPRIMARY\t2\tTransition_type_id\tA\t10529\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL'
+        'time_zone\tPRIMARY\t1\tTime_zone_id\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
+        'time_zone_leap_second\tPRIMARY\t1\tTransition_time\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
+        'time_zone_name\tPRIMARY\t1\tName\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
+        'time_zone_transition\tPRIMARY\t1\tTime_zone_id\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
+        'time_zone_transition\tPRIMARY\t2\tTransition_time\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
+        'time_zone_transition_type\tPRIMARY\t1\tTime_zone_id\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
+        'time_zone_transition_type\tPRIMARY\t2\tTransition_type_id\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL'
 )
 expect_output \
     "mysql time zone INFORMATION_SCHEMA.STATISTICS rows" \
     "$statistics_expected" \
     "SELECT TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, COLLATION,
-            CARDINALITY, SUB_PART, PACKED, NULLABLE, INDEX_TYPE, COMMENT,
-            INDEX_COMMENT, IS_VISIBLE, EXPRESSION
+            SUB_PART, PACKED, NULLABLE, INDEX_TYPE, COMMENT, INDEX_COMMENT,
+            IS_VISIBLE, EXPRESSION
        FROM information_schema.statistics
       WHERE TABLE_SCHEMA = 'mysql' AND TABLE_NAME LIKE 'time_zone%'
       ORDER BY TABLE_NAME, SEQ_IN_INDEX;"
@@ -165,14 +181,13 @@ expect_output \
 
 expect_output \
     "mysql time zone INFORMATION_SCHEMA.TABLES rows" \
-    "$(printf '%b' 'time_zone\tBASE TABLE\tInnoDB\t10\tDynamic\t1457\t56\t81920\t0\t0\t4194304\t1796\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tTime zones\n' \
-        'time_zone_leap_second\tBASE TABLE\tInnoDB\t10\tDynamic\t0\t0\t16384\t0\t0\t4194304\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tLeap seconds information for time zones\n' \
-        'time_zone_name\tBASE TABLE\tInnoDB\t10\tDynamic\t1712\t153\t262144\t0\t0\t4194304\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tTime zone names\n' \
-        'time_zone_transition\tBASE TABLE\tInnoDB\t10\tDynamic\t119074\t39\t4734976\t0\t0\t4194304\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tTime zone transitions\n' \
-        'time_zone_transition_type\tBASE TABLE\tInnoDB\t10\tDynamic\t10529\t45\t475136\t0\t0\t4194304\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tTime zone transition types')" \
-    "SELECT TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT, TABLE_ROWS,
-            AVG_ROW_LENGTH, DATA_LENGTH, MAX_DATA_LENGTH, INDEX_LENGTH,
-            DATA_FREE, AUTO_INCREMENT, CREATE_TIME IS NOT NULL, UPDATE_TIME IS NULL,
+    "$(printf '%b' 'time_zone\tBASE TABLE\tInnoDB\t10\tDynamic\t1796\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tTime zones\n' \
+        'time_zone_leap_second\tBASE TABLE\tInnoDB\t10\tDynamic\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tLeap seconds information for time zones\n' \
+        'time_zone_name\tBASE TABLE\tInnoDB\t10\tDynamic\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tTime zone names\n' \
+        'time_zone_transition\tBASE TABLE\tInnoDB\t10\tDynamic\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tTime zone transitions\n' \
+        'time_zone_transition_type\tBASE TABLE\tInnoDB\t10\tDynamic\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tTime zone transition types')" \
+    "SELECT TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT,
+            AUTO_INCREMENT, CREATE_TIME IS NOT NULL, UPDATE_TIME IS NULL,
             CHECK_TIME IS NULL, TABLE_COLLATION, CHECKSUM IS NULL,
             CREATE_OPTIONS, TABLE_COMMENT
        FROM information_schema.tables
@@ -181,23 +196,23 @@ expect_output \
 
 expect_show_table_status_row \
     "time_zone" \
-    "$(printf '%b' 'time_zone\tInnoDB\t10\tDynamic\t1457\t56\t81920\t0\t0\t4194304\t1796')" \
+    "1796" \
     "$(printf '%b' 'NULL\tNULL\tutf8mb3_general_ci\tNULL\trow_format=DYNAMIC stats_persistent=0\tTime zones')"
 expect_show_table_status_row \
     "time_zone_leap_second" \
-    "$(printf '%b' 'time_zone_leap_second\tInnoDB\t10\tDynamic\t0\t0\t16384\t0\t0\t4194304\tNULL')" \
+    "NULL" \
     "$(printf '%b' 'NULL\tNULL\tutf8mb3_general_ci\tNULL\trow_format=DYNAMIC stats_persistent=0\tLeap seconds information for time zones')"
 expect_show_table_status_row \
     "time_zone_name" \
-    "$(printf '%b' 'time_zone_name\tInnoDB\t10\tDynamic\t1712\t153\t262144\t0\t0\t4194304\tNULL')" \
+    "NULL" \
     "$(printf '%b' 'NULL\tNULL\tutf8mb3_general_ci\tNULL\trow_format=DYNAMIC stats_persistent=0\tTime zone names')"
 expect_show_table_status_row \
     "time_zone_transition" \
-    "$(printf '%b' 'time_zone_transition\tInnoDB\t10\tDynamic\t119074\t39\t4734976\t0\t0\t4194304\tNULL')" \
+    "NULL" \
     "$(printf '%b' 'NULL\tNULL\tutf8mb3_general_ci\tNULL\trow_format=DYNAMIC stats_persistent=0\tTime zone transitions')"
 expect_show_table_status_row \
     "time_zone_transition_type" \
-    "$(printf '%b' 'time_zone_transition_type\tInnoDB\t10\tDynamic\t10529\t45\t475136\t0\t0\t4194304\tNULL')" \
+    "NULL" \
     "$(printf '%b' 'NULL\tNULL\tutf8mb3_general_ci\tNULL\trow_format=DYNAMIC stats_persistent=0\tTime zone transition types')"
 
 expect_output \

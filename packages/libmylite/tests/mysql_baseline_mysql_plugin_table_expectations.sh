@@ -51,7 +51,9 @@ ensure_plugin_active() {
 expect_show_table_status_row() {
     output=$(run_mysql "SHOW TABLE STATUS FROM mysql LIKE 'plugin';")
     field_count=$(printf '%s\n' "$output" | awk -F '\t' '{print NF}')
-    prefix=$(printf '%s\n' "$output" | cut -f 1-11)
+    prefix=$(printf '%s\n' "$output" | cut -f 1-4)
+    storage_metrics=$(printf '%s\n' "$output" | cut -f 5-10)
+    auto_increment=$(printf '%s\n' "$output" | cut -f 11)
     create_time=$(printf '%s\n' "$output" | cut -f 12)
     update_time=$(printf '%s\n' "$output" | cut -f 13)
     stable_tail=$(printf '%s\n' "$output" | cut -f 14-18)
@@ -59,17 +61,30 @@ expect_show_table_status_row() {
     if [ "$field_count" != "18" ]; then
         fail "SHOW TABLE STATUS plugin: expected 18 fields, got [$field_count]"
     fi
-    expected_prefix=$(printf '%b' "plugin\tInnoDB\t10\tDynamic\t2\t8192\t16384\t0\t0\t4194304\tNULL")
+    expected_prefix=$(printf '%b' "plugin\tInnoDB\t10\tDynamic")
     if [ "$prefix" != "$expected_prefix" ]; then
         fail "SHOW TABLE STATUS plugin: expected prefix [$expected_prefix], got [$prefix]"
+    fi
+    if ! printf '%s\n' "$storage_metrics" | awk -F '\t' 'NF == 6 {
+        for (i = 1; i <= NF; i++) {
+            if ($i !~ /^[0-9]+$/) {
+                exit 1;
+            }
+        }
+        exit 0;
+    } { exit 1; }'; then
+        fail "SHOW TABLE STATUS plugin: expected numeric storage metrics, got [$storage_metrics]"
+    fi
+    if [ "$auto_increment" != "NULL" ]; then
+        fail "SHOW TABLE STATUS plugin: expected NULL Auto_increment, got [$auto_increment]"
     fi
     case "$create_time" in
         ????-??-??\ ??:??:??) ;;
         *) fail "SHOW TABLE STATUS plugin: expected Create_time datetime, got [$create_time]" ;;
     esac
     case "$update_time" in
-        ????-??-??\ ??:??:??) ;;
-        *) fail "SHOW TABLE STATUS plugin: expected Update_time datetime, got [$update_time]" ;;
+        NULL | ????-??-??\ ??:??:??) ;;
+        *) fail "SHOW TABLE STATUS plugin: expected NULL or Update_time datetime, got [$update_time]" ;;
     esac
     expected_tail=$(printf '%b' \
         "NULL\tutf8mb3_general_ci\tNULL\trow_format=DYNAMIC stats_persistent=0\tMySQL plugins")
@@ -129,17 +144,17 @@ expect_value \
 
 show_index_expected=$(
     printf '%b' \
-        'plugin\t0\tPRIMARY\t1\tname\tA\t1\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL'
+        'plugin\t0\tPRIMARY\t1\tname\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL'
 )
 expect_value \
     "mysql.plugin SHOW INDEX row" \
     "$show_index_expected" \
-    "$(run_mysql "SHOW INDEX FROM mysql.plugin;")"
+    "$(run_mysql "SHOW INDEX FROM mysql.plugin;" | cut -f 1-6,8-15)"
 
 expect_value \
     "mysql.plugin unqualified SHOW KEYS row" \
     "$show_index_expected" \
-    "$(run_mysql "USE mysql; SHOW KEYS FROM plugin WHERE Key_name = 'PRIMARY';")"
+    "$(run_mysql "USE mysql; SHOW KEYS FROM plugin WHERE Key_name = 'PRIMARY';" | cut -f 1-6,8-15)"
 
 columns_metadata_expected=$(
     printf '%b' \
@@ -184,8 +199,8 @@ expect_value \
 
 expect_value \
     "mysql.plugin INFORMATION_SCHEMA.STATISTICS row" \
-    "PRIMARY	1	name	A	1	NULL	NULL		BTREE			YES	NULL" \
-    "$(run_mysql "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, COLLATION, CARDINALITY,
+    "PRIMARY	1	name	A	NULL	NULL		BTREE			YES	NULL" \
+    "$(run_mysql "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, COLLATION,
             SUB_PART, PACKED, NULLABLE, INDEX_TYPE, COMMENT, INDEX_COMMENT,
             IS_VISIBLE, EXPRESSION
        FROM information_schema.statistics
@@ -193,15 +208,14 @@ expect_value \
 
 tables_expected=$(
     printf '%b' \
-        'plugin\tBASE TABLE\tInnoDB\t10\tDynamic\t2\t8192\t16384\t0\t0\t4194304\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tMySQL plugins'
+        'plugin\tBASE TABLE\tInnoDB\t10\tDynamic\tNULL\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tMySQL plugins'
 )
 expect_value \
     "mysql.plugin INFORMATION_SCHEMA.TABLES row" \
     "$tables_expected" \
-    "$(run_mysql "SELECT TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT, TABLE_ROWS,
-            AVG_ROW_LENGTH, DATA_LENGTH, MAX_DATA_LENGTH, INDEX_LENGTH, DATA_FREE,
-            AUTO_INCREMENT, CREATE_TIME IS NOT NULL, UPDATE_TIME IS NOT NULL,
-            CHECK_TIME IS NULL, TABLE_COLLATION, CHECKSUM IS NULL, CREATE_OPTIONS,
+    "$(run_mysql "SELECT TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT,
+            AUTO_INCREMENT, CREATE_TIME IS NOT NULL, CHECK_TIME IS NULL,
+            TABLE_COLLATION, CHECKSUM IS NULL, CREATE_OPTIONS,
             TABLE_COMMENT
        FROM information_schema.tables
       WHERE TABLE_SCHEMA = 'mysql' AND TABLE_NAME = 'plugin';")"

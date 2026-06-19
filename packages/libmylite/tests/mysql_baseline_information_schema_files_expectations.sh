@@ -92,7 +92,9 @@ FILES	STATUS	37	NULL	YES	varchar	256	768	NULL	NULL	NULL	utf8mb3	utf8mb3_general_
 FILES	EXTRA	38	NULL	YES	varchar	256	768	NULL	NULL	NULL	utf8mb3	utf8mb3_general_ci	varchar(256)	select"
 expect_value "files columns metadata" "$expected_columns_metadata" "$columns_metadata"
 
-files_count=$(run_mysql "SELECT COUNT(*) FROM INFORMATION_SCHEMA.FILES;")
+default_file_filter="FILE_NAME IN ('./ibdata1','./ibtmp1','./mysql.ibd','./sys/sys_config.ibd','./undo_001','./undo_002')"
+
+files_count=$(run_mysql "SELECT COUNT(*) FROM INFORMATION_SCHEMA.FILES WHERE ${default_file_filter};")
 expect_value "files row count" "6" "$files_count"
 
 expected_files_rows="0	./ibdata1	TABLESPACE	innodb_system	InnoDB	2	12	1048576	12582912	67108864	6291456	NORMAL
@@ -104,11 +106,12 @@ expected_files_rows="0	./ibdata1	TABLESPACE	innodb_system	InnoDB	2	12	1048576	12
 files_rows=$(run_mysql \
     "SELECT FILE_ID,FILE_NAME,FILE_TYPE,TABLESPACE_NAME,ENGINE,FREE_EXTENTS, "\
 "TOTAL_EXTENTS,EXTENT_SIZE,INITIAL_SIZE,AUTOEXTEND_SIZE,DATA_FREE,STATUS "\
-"FROM INFORMATION_SCHEMA.FILES ORDER BY FILE_NAME;")
+"FROM INFORMATION_SCHEMA.FILES WHERE ${default_file_filter} ORDER BY FILE_NAME;")
 expect_value "files exact rows" "$expected_files_rows" "$files_rows"
 
 use_count=$(run_mysql \
-    "USE information_schema; SELECT COUNT(*) FROM FILES WHERE ENGINE = 'InnoDB';")
+    "USE information_schema; SELECT COUNT(*) FROM FILES "\
+"WHERE ${default_file_filter} AND ENGINE = 'InnoDB';")
 expect_value "unqualified files count" "6" "$use_count"
 
 status=$(run_mysql \

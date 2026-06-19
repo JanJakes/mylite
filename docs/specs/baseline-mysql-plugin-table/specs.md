@@ -125,7 +125,9 @@ The only key is `PRIMARY(name)`.
 - `SEQ_IN_INDEX = 1`;
 - `COLUMN_NAME = 'name'`;
 - `COLLATION = 'A'`;
-- `CARDINALITY = 1`;
+- `CARDINALITY` is a live InnoDB statistic; the MySQL expectation artifact
+  verifies its presence but does not require a fixed sampled value on reused
+  runtimes;
 - `SUB_PART`, `PACKED`, and `EXPRESSION` are SQL `NULL`;
 - `NULLABLE`, `COMMENT`, and `INDEX_COMMENT` are empty strings;
 - `INDEX_TYPE = 'BTREE'`;
@@ -158,10 +160,14 @@ engine attributes.
 | `CREATE_OPTIONS` / `Create_options` | `row_format=DYNAMIC stats_persistent=0` |
 | `TABLE_COMMENT` / `Comment` | `MySQL plugins` |
 
-`CREATE_TIME` and `UPDATE_TIME` are non-`NULL` datetime strings. `CHECK_TIME`
-and `CHECKSUM` are SQL `NULL`. MyLite renders both visible timestamps from the
-current statement timestamp for the synthetic row, matching the non-`NULL`
-shape without introducing durable server-startup or plugin-install state.
+`CREATE_TIME` is a non-`NULL` datetime string. `UPDATE_TIME` is runtime state
+and can be either `NULL` or a datetime depending on whether the target runtime
+installed plugin rows during the probe. `CHECK_TIME` and `CHECKSUM` are SQL
+`NULL`. Row estimates, storage-size values, and index cardinality are live
+InnoDB statistics on MySQL and can change after plugin installation or on
+reused runtimes; MySQL expectation checks keep those fields to type/shape.
+MyLite renders visible synthetic timestamps from the current statement
+timestamp without introducing durable server-startup or plugin-install state.
 
 ## Diagnostics And Limits
 

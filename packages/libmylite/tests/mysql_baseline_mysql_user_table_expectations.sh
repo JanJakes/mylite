@@ -32,16 +32,31 @@ expect_output() {
 expect_show_table_status_row() {
     output=$(run_mysql "SHOW TABLE STATUS FROM mysql LIKE 'user';")
     field_count=$(printf '%s\n' "$output" | awk -F '\t' '{print NF}')
-    prefix=$(printf '%s\n' "$output" | cut -f 1-11)
+    prefix=$(printf '%s\n' "$output" | cut -f 1-4)
+    storage_metrics=$(printf '%s\n' "$output" | cut -f 5-10)
+    auto_increment=$(printf '%s\n' "$output" | cut -f 11)
     create_time=$(printf '%s\n' "$output" | cut -f 12)
     stable_tail=$(printf '%s\n' "$output" | cut -f 13-18)
 
     if [ "$field_count" != "18" ]; then
         fail "SHOW TABLE STATUS user: expected 18 fields, got [$field_count]"
     fi
-    expected_prefix=$(printf '%b' 'user\tInnoDB\t10\tDynamic\t5\t3276\t16384\t0\t0\t4194304\tNULL')
+    expected_prefix=$(printf '%b' 'user\tInnoDB\t10\tDynamic')
     if [ "$prefix" != "$expected_prefix" ]; then
         fail "SHOW TABLE STATUS user: expected prefix [$expected_prefix], got [$prefix]"
+    fi
+    if ! printf '%s\n' "$storage_metrics" | awk -F '\t' 'NF == 6 {
+        for (i = 1; i <= NF; i++) {
+            if ($i !~ /^[0-9]+$/) {
+                exit 1;
+            }
+        }
+        exit 0;
+    } { exit 1; }'; then
+        fail "SHOW TABLE STATUS user: expected numeric storage metrics, got [$storage_metrics]"
+    fi
+    if [ "$auto_increment" != "NULL" ]; then
+        fail "SHOW TABLE STATUS user: expected NULL Auto_increment, got [$auto_increment]"
     fi
     case "$create_time" in
         ????-??-??\ ??:??:??) ;;
@@ -62,7 +77,16 @@ case "$version" in
     *) fail "expected MySQL 8.4.9 runtime, got [$version]" ;;
 esac
 
-expect_output "mysql.user target row count" "5" "SELECT COUNT(*) FROM mysql.user;"
+default_account_filter="(User = 'mysql.infoschema' AND Host = 'localhost')
+        OR (User = 'mysql.session' AND Host = 'localhost')
+        OR (User = 'mysql.sys' AND Host = 'localhost')
+        OR (User = 'root' AND Host = '%')
+        OR (User = 'root' AND Host = 'localhost')"
+
+expect_output \
+    "mysql.user default account row count" \
+    "5" \
+    "SELECT COUNT(*) FROM mysql.user WHERE ${default_account_filter};"
 
 column_order_expected=$(
     printf '%b' \
@@ -174,10 +198,13 @@ expect_output \
 
 show_index_expected=$(
     printf '%b' \
-        'user\t0\tPRIMARY\t1\tHost\tA\t2\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
-        'user\t0\tPRIMARY\t2\tUser\tA\t5\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL'
+        'user\t0\tPRIMARY\t1\tHost\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
+        'user\t0\tPRIMARY\t2\tUser\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL'
 )
-expect_output "mysql.user SHOW INDEX rows" "$show_index_expected" "SHOW INDEX FROM mysql.user;"
+show_index_actual=$(run_mysql "SHOW INDEX FROM mysql.user;" | cut -f 1-6,8-15)
+if [ "$show_index_actual" != "$show_index_expected" ]; then
+    fail "mysql.user SHOW INDEX rows: expected [$show_index_expected], got [$show_index_actual]"
+fi
 
 information_schema_columns_expected=$(
     printf '%b' \
@@ -211,10 +238,9 @@ expect_output \
 
 expect_output \
     "mysql.user INFORMATION_SCHEMA.STATISTICS rows" \
-    "$(printf '%b' 'PRIMARY\t1\tHost\tA\t2\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\nPRIMARY\t2\tUser\tA\t5\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL')" \
-    "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, COLLATION, CARDINALITY, SUB_PART,
-            PACKED, NULLABLE, INDEX_TYPE, COMMENT, INDEX_COMMENT, IS_VISIBLE,
-            EXPRESSION
+    "$(printf '%b' 'PRIMARY\t1\tHost\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\nPRIMARY\t2\tUser\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL')" \
+    "SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, COLLATION, SUB_PART, PACKED,
+            NULLABLE, INDEX_TYPE, COMMENT, INDEX_COMMENT, IS_VISIBLE, EXPRESSION
        FROM information_schema.statistics
       WHERE TABLE_SCHEMA = 'mysql' AND TABLE_NAME = 'user'
       ORDER BY INDEX_NAME, SEQ_IN_INDEX;"
@@ -245,12 +271,11 @@ expect_output \
 
 expect_output \
     "mysql.user INFORMATION_SCHEMA.TABLES row" \
-    "$(printf '%b' 'user\tBASE TABLE\tInnoDB\t10\tDynamic\t5\t3276\t16384\t0\t0\t4194304\tNULL\t1\t1\t1\tutf8mb3_bin\t1\trow_format=DYNAMIC stats_persistent=0\tUsers and global privileges')" \
-    "SELECT TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT, TABLE_ROWS,
-            AVG_ROW_LENGTH, DATA_LENGTH, MAX_DATA_LENGTH, INDEX_LENGTH, DATA_FREE,
+    "$(printf '%b' 'user\tBASE TABLE\tInnoDB\t10\tDynamic\tNULL\t1\t1\t1\tutf8mb3_bin\t1\trow_format=DYNAMIC stats_persistent=0\tUsers and global privileges')" \
+    "SELECT TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT,
             AUTO_INCREMENT, CREATE_TIME IS NOT NULL, UPDATE_TIME IS NULL,
-            CHECK_TIME IS NULL, TABLE_COLLATION, CHECKSUM IS NULL, CREATE_OPTIONS,
-            TABLE_COMMENT
+            CHECK_TIME IS NULL, TABLE_COLLATION, CHECKSUM IS NULL,
+            CREATE_OPTIONS, TABLE_COMMENT
        FROM information_schema.tables
       WHERE TABLE_SCHEMA = 'mysql' AND TABLE_NAME = 'user';"
 

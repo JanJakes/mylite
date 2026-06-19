@@ -46,21 +46,19 @@ expect_value "default innodb cmpmem count" "5" "$cmp_count"
 reset_count=$(run_mysql "SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_CMPMEM_RESET;")
 expect_value "default innodb cmpmem reset count" "5" "$reset_count"
 
-expected_cmp_rows="1024	0	0	0	0	0
-2048	0	0	0	0	0
-4096	0	0	0	0	0
-8192	0	0	0	0	0
-16384	0	0	0	0	0"
+expected_cmp_rows="1024	0
+2048	0
+4096	0
+8192	0
+16384	0"
 
 cmp_rows=$(run_mysql \
-    "SELECT PAGE_SIZE, BUFFER_POOL_INSTANCE, PAGES_USED, PAGES_FREE, "\
-"RELOCATION_OPS, RELOCATION_TIME FROM INFORMATION_SCHEMA.INNODB_CMPMEM "\
+    "SELECT PAGE_SIZE, BUFFER_POOL_INSTANCE FROM INFORMATION_SCHEMA.INNODB_CMPMEM "\
 "ORDER BY PAGE_SIZE, BUFFER_POOL_INSTANCE;")
 expect_value "innodb cmpmem baseline rows" "$expected_cmp_rows" "$cmp_rows"
 
 reset_rows=$(run_mysql \
-    "SELECT PAGE_SIZE, BUFFER_POOL_INSTANCE, PAGES_USED, PAGES_FREE, "\
-"RELOCATION_OPS, RELOCATION_TIME FROM INFORMATION_SCHEMA.INNODB_CMPMEM_RESET "\
+    "SELECT PAGE_SIZE, BUFFER_POOL_INSTANCE FROM INFORMATION_SCHEMA.INNODB_CMPMEM_RESET "\
 "ORDER BY PAGE_SIZE, BUFFER_POOL_INSTANCE;")
 expect_value "innodb cmpmem reset baseline rows" "$expected_cmp_rows" "$reset_rows"
 
@@ -85,18 +83,18 @@ status=$(run_mysql \
 expect_value "innodb cmpmem status" "0	-1" "$status"
 
 cmp_alias_rows=$(run_mysql \
-    "SELECT c.page_size, c.buffer_pool_instance, c.pages_used "\
+    "SELECT c.page_size, c.buffer_pool_instance "\
 "FROM INFORMATION_SCHEMA.INNODB_CMPMEM AS c "\
 "WHERE c.page_size IN (1024, 16384) ORDER BY c.page_size;")
-expect_value "innodb cmpmem alias rows" "1024	0	0
-16384	0	0" "$cmp_alias_rows"
+expect_value "innodb cmpmem alias rows" "1024	0
+16384	0" "$cmp_alias_rows"
 
 reset_alias_rows=$(run_mysql \
-    "SELECT r.page_size, r.pages_free FROM INFORMATION_SCHEMA.INNODB_CMPMEM_RESET AS r "\
+    "SELECT r.page_size FROM INFORMATION_SCHEMA.INNODB_CMPMEM_RESET AS r "\
 "WHERE r.page_size BETWEEN 2048 AND 8192 ORDER BY r.page_size;")
-expect_value "innodb cmpmem reset alias rows" "2048	0
-4096	0
-8192	0" "$reset_alias_rows"
+expect_value "innodb cmpmem reset alias rows" "2048
+4096
+8192" "$reset_alias_rows"
 
 system_table_rows=$(run_mysql \
     "SELECT TABLE_SCHEMA,TABLE_NAME,TABLE_TYPE,ENGINE,VERSION,ROW_FORMAT,TABLE_ROWS,DATA_LENGTH,AUTO_INCREMENT "\

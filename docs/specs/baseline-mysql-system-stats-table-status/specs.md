@@ -4,8 +4,8 @@ This slice refines the built-in `mysql` schema table directory for the two
 synthetic system tables that MyLite already supports as read-only data sources:
 `mysql.innodb_index_stats` and `mysql.innodb_table_stats`. The tables continue
 to be synthetic metadata rows, but their `INFORMATION_SCHEMA.TABLES` and
-`SHOW TABLE STATUS` status fields now match the stable MySQL 8.4.9 values
-observed for a fresh target runtime.
+`SHOW TABLE STATUS` status fields now match the MySQL 8.4.9 shape and the
+fresh-runtime values used by MyLite's deterministic placeholders.
 
 The later `baseline-mysql-cost-tables` slice applies the same table-status
 metadata path to `mysql.server_cost` and `mysql.engine_cost`, with their own
@@ -33,9 +33,10 @@ leaving loaded time-zone rows out of scope.
 
 The MySQL manual documents `INFORMATION_SCHEMA.TABLES` and
 `SHOW TABLE STATUS` as exposing table status and storage statistics. Runtime
-checks against MySQL 8.4.9 show stable table-status values for the two InnoDB
-persistent-statistics tables in a fresh target runtime, while creation and
-update timestamps are non-`NULL` but host-runtime-specific.
+checks against MySQL 8.4.9 show the table-status shape for the two InnoDB
+persistent-statistics tables. Row and storage estimates are live InnoDB
+statistics and change as reused comparison runtimes accumulate analyzed tables,
+while creation and update timestamps are non-`NULL` but host-runtime-specific.
 
 ## Supported Behavior
 
@@ -57,8 +58,8 @@ information-schema query engine. `SHOW TABLE STATUS` reuses the existing
 
 ## Row Metadata
 
-`INFORMATION_SCHEMA.TABLES` and `SHOW TABLE STATUS` expose these stable values
-for the supported rows:
+MyLite exposes these deterministic placeholder values for the supported rows,
+based on a fresh MySQL 8.4.9 runtime observation:
 
 | Table | Rows / TABLE_ROWS | Avg_row_length / AVG_ROW_LENGTH | Data_length / DATA_LENGTH | Max_data_length / MAX_DATA_LENGTH | Index_length / INDEX_LENGTH | Data_free / DATA_FREE |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -78,11 +79,13 @@ For both rows:
   `row_format=DYNAMIC stats_persistent=0`;
 - `TABLE_COMMENT` / `Comment` is the empty string.
 
-MySQL's exact `CREATE_TIME` and `UPDATE_TIME` values are installation and
-runtime dependent. MyLite renders both timestamp fields from the current
-statement timestamp for these synthetic rows, preserving the non-`NULL`
-datetime shape without inventing durable server startup or InnoDB update-time
-state.
+MySQL's exact row estimates, storage-size fields, `CREATE_TIME`, and
+`UPDATE_TIME` values are installation and runtime dependent. The MySQL
+expectation artifact verifies numeric shape for the sampled fields and exact
+stable metadata for engine, row format, collation, options, and comments.
+MyLite renders both timestamp fields from the current statement timestamp for
+these synthetic rows, preserving the non-`NULL` datetime shape without
+inventing durable server startup or InnoDB update-time state.
 
 ## Diagnostics And Limits
 
@@ -91,8 +94,9 @@ state.
   values unless a separate feature specifies them.
 - Built-in directory visibility still does not make unsupported system tables
   queryable.
-- The fixed row and length fields are MySQL 8.4.9 baseline metadata values,
-  not live InnoDB statistics. Direct reads from `mysql.innodb_table_stats` and
+- The fixed row and length fields are MyLite baseline placeholder values
+  derived from a fresh MySQL 8.4.9 observation, not live InnoDB statistics.
+  Direct reads from `mysql.innodb_table_stats` and
   `mysql.innodb_index_stats` may expose descriptor-backed synthetic data, but
   table-status metadata remains a bounded MySQL-shaped directory snapshot for
   this slice.

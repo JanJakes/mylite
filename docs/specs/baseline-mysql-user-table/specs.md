@@ -57,12 +57,15 @@ columns describe static global privileges, SSL requirements, resource limits,
 authentication data, password metadata, role-management privileges, password
 reuse policy, current-password requirements, and JSON account attributes.
 
-The target runtime contains five rows. MyLite intentionally returns an empty
-placeholder because persisted MySQL accounts, authentication plugins, password
-hashes, grant reload behavior, `CREATE USER`, `ALTER USER`, `DROP USER`,
-`GRANT`, `REVOKE`, roles, and privilege enforcement are outside this slice.
+The fresh target runtime contains five default account rows. Reused comparison
+runtimes may contain extra accounts from other probes, so the MySQL expectation
+artifact filters to the default account identities for row-count evidence.
+MyLite intentionally returns an empty placeholder because persisted MySQL
+accounts, authentication plugins, password hashes, grant reload behavior,
+`CREATE USER`, `ALTER USER`, `DROP USER`, `GRANT`, `REVOKE`, roles, and
+privilege enforcement are outside this slice.
 
-Observed stable table-status fields:
+Observed table-status fields used by MyLite's deterministic placeholder:
 
 | Field | Value |
 | --- | --- |
@@ -87,8 +90,11 @@ The `PRIMARY` index has two key parts:
 | 1 | `Host` | 2 |
 | 2 | `User` | 5 |
 
-`CREATE_TIME` is a non-`NULL` datetime string. `AUTO_INCREMENT`, `UPDATE_TIME`,
-`CHECK_TIME`, and `CHECKSUM` are SQL `NULL`.
+Row estimates, storage-size values, and index cardinality are live InnoDB
+statistics on MySQL and can change with account rows on reused runtimes; the
+MySQL expectation artifact verifies their shape rather than fixed sampled
+values. `CREATE_TIME` is a non-`NULL` datetime string. `AUTO_INCREMENT`,
+`UPDATE_TIME`, `CHECK_TIME`, and `CHECKSUM` are SQL `NULL`.
 
 ## Syntax
 
@@ -131,7 +137,7 @@ Account-management and privilege statements remain out of scope.
 
 ## Test Plan
 
-- Add a MySQL expectation script that verifies target row count, column
+- Add a MySQL expectation script that verifies default-account row count, column
   metadata, primary-key metadata, constraints, and table-status metadata.
 - Add focused C runtime coverage for empty direct reads, selected-schema reads,
   columns, indexes, constraint metadata, table metadata, and table status.

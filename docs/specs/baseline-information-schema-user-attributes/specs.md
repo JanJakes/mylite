@@ -50,6 +50,9 @@ Observed against the local `mysql:8.4.9` runtime using TCP:
 - The target root runtime exposes rows for `mysql.infoschema@localhost`,
   `mysql.session@localhost`, `mysql.sys@localhost`, `root@%`, and
   `root@localhost`; all have `ATTRIBUTE = NULL` in the default container.
+- Reused MySQL comparison runtimes can contain extra accounts created by other
+  probes. The MySQL expectation artifact filters to the default accounts above
+  when recording the target-runtime row list.
 - `SELECT USER, HOST, ATTRIBUTE ... WHERE USER = 'root' AND HOST = '%'`
   returns one `root`, `%`, `NULL` row.
 - `INFORMATION_SCHEMA.TABLES` reports `USER_ATTRIBUTES` as a system view with
@@ -164,7 +167,7 @@ MySQL 8.4.9 expectation coverage:
 
 - verify the target runtime version;
 - verify the default root `root@%` row is visible with `ATTRIBUTE = NULL`;
-- record the default target-runtime row list and count for context;
+- record the default target-runtime row list for context;
 - verify successful read diagnostics;
 - verify unsupported predicate-column diagnostics;
 - verify `INFORMATION_SCHEMA.TABLES` system-view metadata;

@@ -56,6 +56,9 @@ Observed behavior shaping this slice:
   names, `ENGINE = 'InnoDB'`, free and total extent counts, `EXTENT_SIZE =
   1048576`, initial sizes, autoextend sizes, data-free values, and
   `STATUS = 'NORMAL'`.
+- The MySQL expectation artifact filters by those default `FILE_NAME` values
+  so it remains valid on a reused MySQL comparison runtime that also has
+  user-table `.ibd` files from other probes.
 - Successful reads leave `@@warning_count = 0`, and `ROW_COUNT()` reports
   `-1`.
 
@@ -183,7 +186,7 @@ include:
 
 - wildcard column labels and the representative `./ibdata1` full row;
 - exact ordered default row contents for core file columns;
-- row counts and representative predicates;
+- default-row counts and representative predicates;
 - case-insensitive table-name lookup;
 - alias projection through the existing information-schema query path;
 - `warning_count == 0` and `ROW_COUNT() == -1` after successful reads;

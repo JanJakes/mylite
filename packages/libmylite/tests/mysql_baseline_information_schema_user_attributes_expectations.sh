@@ -65,6 +65,10 @@ expect_value "root user attribute row" "root	%	NULL" "$root_row"
 
 all_rows=$(run_mysql \
     "SELECT USER, HOST, ATTRIBUTE FROM INFORMATION_SCHEMA.USER_ATTRIBUTES "\
+"WHERE (USER = 'mysql.infoschema' AND HOST = 'localhost') "\
+"OR (USER = 'mysql.session' AND HOST = 'localhost') "\
+"OR (USER = 'mysql.sys' AND HOST = 'localhost') "\
+"OR (USER = 'root' AND HOST IN ('%', 'localhost')) "\
 "ORDER BY USER, HOST;")
 expected_all_rows="mysql.infoschema	localhost	NULL
 mysql.session	localhost	NULL

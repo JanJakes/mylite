@@ -214,9 +214,9 @@ static int test_information_schema_partitions_queries(void) {
         "COLLATION_NAME",
     };
     static const char *const first_columns_metadata_values[] = {
-        "TABLE_CATALOG", "1", "varchar", "varchar(64)", "YES", "utf8mb3", "utf8mb3_tolower_ci",
-        "TABLE_SCHEMA",  "2", "varchar", "varchar(64)", "YES", "utf8mb3", "utf8mb3_tolower_ci",
-        "TABLE_NAME",    "3", "varchar", "varchar(64)", "NO",  "utf8mb3", "utf8mb3_tolower_ci",
+        "TABLE_CATALOG", "1", "varchar", "varchar(64)", "NO", "utf8mb3", "utf8mb3_bin",
+        "TABLE_SCHEMA",  "2", "varchar", "varchar(64)", "NO", "utf8mb3", "utf8mb3_bin",
+        "TABLE_NAME",    "3", "varchar", "varchar(64)", "NO", "utf8mb3", "utf8mb3_bin",
     };
     static const char *const last_column_metadata_values[] = {
         "TABLESPACE_NAME",

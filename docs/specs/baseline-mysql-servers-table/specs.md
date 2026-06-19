@@ -32,9 +32,11 @@ columns, primary key, table status, and related information-schema surfaces.
 
 The MySQL manual describes `CREATE SERVER` / `DROP SERVER` as the SQL surface
 for FEDERATED server definitions, which are stored in `mysql.servers`.
-Runtime checks against the target MySQL 8.4.9 container show that the baseline
-runtime has no server-definition rows, while ordinary column, primary-key, and
-table-status introspection is visible.
+Runtime checks against the target MySQL 8.4.9 container provide the column,
+primary-key, and table-status metadata. Server-definition rows are mutable
+global state and may exist on reused comparison runtimes, so the MySQL
+expectation artifact verifies empty-read shape with a deliberately unmatched
+predicate rather than assuming the table itself is empty.
 
 ## Supported Behavior
 
@@ -126,7 +128,8 @@ The only key is `PRIMARY(Server_name)`.
 - `SEQ_IN_INDEX = 1`;
 - `COLUMN_NAME = 'Server_name'`;
 - `COLLATION = 'A'`;
-- `CARDINALITY = 0`;
+- `CARDINALITY` is a live InnoDB statistic; the MySQL expectation artifact
+  verifies the index shape without requiring a fixed sampled value;
 - `SUB_PART`, `PACKED`, and `EXPRESSION` are SQL `NULL`;
 - `NULLABLE`, `COMMENT`, and `INDEX_COMMENT` are empty strings;
 - `INDEX_TYPE = 'BTREE'`;
@@ -160,13 +163,16 @@ engine attributes.
 | `TABLE_COMMENT` / `Comment` | `MySQL Foreign Servers table` |
 
 `CREATE_TIME` is a non-`NULL` datetime string. `UPDATE_TIME`, `CHECK_TIME`, and
-`CHECKSUM` are SQL `NULL`. MyLite renders `CREATE_TIME` from the current
-statement timestamp for the synthetic row, matching the non-`NULL` shape
-without introducing durable server-startup state.
+`CHECKSUM` are SQL `NULL`. Row estimates, storage-size values, and index
+cardinality are live InnoDB statistics on MySQL and can change when the table
+contains server definitions; MySQL expectation checks keep those fields to
+type/shape. MyLite renders `CREATE_TIME` from the current statement timestamp
+for the synthetic row, matching the non-`NULL` shape without introducing
+durable server-startup state.
 
 ## Diagnostics And Limits
 
-- The baseline table is empty. MyLite does not implement persisted
+- MyLite's baseline placeholder is empty. MyLite does not implement persisted
   `CREATE SERVER`, `ALTER SERVER`, or `DROP SERVER` effects, FEDERATED
   storage-engine connections, server definition persistence, or
   server-definition privilege checks. A later parser-corpus slice accepts

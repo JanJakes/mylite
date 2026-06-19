@@ -36,7 +36,9 @@ expect_show_table_status_row() {
 
     output=$(run_mysql "SHOW TABLE STATUS FROM mysql LIKE '${table_name}';")
     field_count=$(printf '%s\n' "$output" | awk -F '\t' '{print NF}')
-    prefix=$(printf '%s\n' "$output" | cut -f 1-11)
+    prefix=$(printf '%s\n' "$output" | cut -f 1-4)
+    storage_metrics=$(printf '%s\n' "$output" | cut -f 5-10)
+    auto_increment=$(printf '%s\n' "$output" | cut -f 11)
     create_time=$(printf '%s\n' "$output" | cut -f 12)
     stable_tail=$(printf '%s\n' "$output" | cut -f 13-18)
 
@@ -45,6 +47,19 @@ expect_show_table_status_row() {
     fi
     if [ "$prefix" != "$expected_prefix" ]; then
         fail "SHOW TABLE STATUS ${table_name}: expected prefix [$expected_prefix], got [$prefix]"
+    fi
+    if ! printf '%s\n' "$storage_metrics" | awk -F '\t' 'NF == 6 {
+        for (i = 1; i <= NF; i++) {
+            if ($i !~ /^[0-9]+$/) {
+                exit 1;
+            }
+        }
+        exit 0;
+    } { exit 1; }'; then
+        fail "SHOW TABLE STATUS ${table_name}: expected numeric storage metrics, got [$storage_metrics]"
+    fi
+    if [ "$auto_increment" != "NULL" ]; then
+        fail "SHOW TABLE STATUS ${table_name}: expected NULL Auto_increment, got [$auto_increment]"
     fi
     case "$create_time" in
         ????-??-??\ ??:??:??) ;;
@@ -104,21 +119,21 @@ expect_output \
 
 statistics_expected=$(
     printf '%b' \
-        'help_category\tname\t1\tname\tA\t53\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
-        'help_category\tPRIMARY\t1\thelp_category_id\tA\t53\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
-        'help_keyword\tname\t1\tname\tA\t551\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
-        'help_keyword\tPRIMARY\t1\thelp_keyword_id\tA\t551\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
-        'help_relation\tPRIMARY\t1\thelp_keyword_id\tA\t1393\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
-        'help_relation\tPRIMARY\t2\thelp_topic_id\tA\t2258\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
-        'help_topic\tname\t1\tname\tA\t596\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
-        'help_topic\tPRIMARY\t1\thelp_topic_id\tA\t596\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL'
+        'help_category\tname\t1\tname\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
+        'help_category\tPRIMARY\t1\thelp_category_id\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
+        'help_keyword\tname\t1\tname\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
+        'help_keyword\tPRIMARY\t1\thelp_keyword_id\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
+        'help_relation\tPRIMARY\t1\thelp_keyword_id\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
+        'help_relation\tPRIMARY\t2\thelp_topic_id\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
+        'help_topic\tname\t1\tname\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
+        'help_topic\tPRIMARY\t1\thelp_topic_id\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL'
 )
 expect_output \
     "mysql help INFORMATION_SCHEMA.STATISTICS rows" \
     "$statistics_expected" \
     "SELECT TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, COLLATION,
-            CARDINALITY, SUB_PART, PACKED, NULLABLE, INDEX_TYPE, COMMENT,
-            INDEX_COMMENT, IS_VISIBLE, EXPRESSION
+            SUB_PART, PACKED, NULLABLE, INDEX_TYPE, COMMENT, INDEX_COMMENT,
+            IS_VISIBLE, EXPRESSION
        FROM information_schema.statistics
       WHERE TABLE_SCHEMA = 'mysql'
         AND TABLE_NAME IN ('help_category', 'help_keyword', 'help_relation', 'help_topic')
@@ -174,13 +189,12 @@ expect_output \
 
 expect_output \
     "mysql help INFORMATION_SCHEMA.TABLES rows" \
-    "$(printf '%b' 'help_category\tBASE TABLE\tInnoDB\t10\tDynamic\t53\t309\t16384\t0\t16384\t4194304\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\thelp categories\n' \
-        'help_keyword\tBASE TABLE\tInnoDB\t10\tDynamic\t1142\t114\t131072\t0\t147456\t4194304\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\thelp keywords\n' \
-        'help_relation\tBASE TABLE\tInnoDB\t10\tDynamic\t1608\t50\t81920\t0\t0\t4194304\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tkeyword-topic relation\n' \
-        'help_topic\tBASE TABLE\tInnoDB\t10\tDynamic\t902\t1761\t1589248\t0\t98304\t4194304\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\thelp topics')" \
-    "SELECT TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT, TABLE_ROWS,
-            AVG_ROW_LENGTH, DATA_LENGTH, MAX_DATA_LENGTH, INDEX_LENGTH,
-            DATA_FREE, AUTO_INCREMENT, CREATE_TIME IS NOT NULL, UPDATE_TIME IS NULL,
+    "$(printf '%b' 'help_category\tBASE TABLE\tInnoDB\t10\tDynamic\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\thelp categories\n' \
+        'help_keyword\tBASE TABLE\tInnoDB\t10\tDynamic\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\thelp keywords\n' \
+        'help_relation\tBASE TABLE\tInnoDB\t10\tDynamic\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\tkeyword-topic relation\n' \
+        'help_topic\tBASE TABLE\tInnoDB\t10\tDynamic\tNULL\t1\t1\t1\tutf8mb3_general_ci\t1\trow_format=DYNAMIC stats_persistent=0\thelp topics')" \
+    "SELECT TABLE_NAME, TABLE_TYPE, ENGINE, VERSION, ROW_FORMAT,
+            AUTO_INCREMENT, CREATE_TIME IS NOT NULL, UPDATE_TIME IS NULL,
             CHECK_TIME IS NULL, TABLE_COLLATION, CHECKSUM IS NULL,
             CREATE_OPTIONS, TABLE_COMMENT
        FROM information_schema.tables
@@ -190,19 +204,19 @@ expect_output \
 
 expect_show_table_status_row \
     "help_category" \
-    "$(printf '%b' 'help_category\tInnoDB\t10\tDynamic\t53\t309\t16384\t0\t16384\t4194304\tNULL')" \
+    "$(printf '%b' 'help_category\tInnoDB\t10\tDynamic')" \
     "$(printf '%b' 'NULL\tNULL\tutf8mb3_general_ci\tNULL\trow_format=DYNAMIC stats_persistent=0\thelp categories')"
 expect_show_table_status_row \
     "help_keyword" \
-    "$(printf '%b' 'help_keyword\tInnoDB\t10\tDynamic\t1142\t114\t131072\t0\t147456\t4194304\tNULL')" \
+    "$(printf '%b' 'help_keyword\tInnoDB\t10\tDynamic')" \
     "$(printf '%b' 'NULL\tNULL\tutf8mb3_general_ci\tNULL\trow_format=DYNAMIC stats_persistent=0\thelp keywords')"
 expect_show_table_status_row \
     "help_relation" \
-    "$(printf '%b' 'help_relation\tInnoDB\t10\tDynamic\t1608\t50\t81920\t0\t0\t4194304\tNULL')" \
+    "$(printf '%b' 'help_relation\tInnoDB\t10\tDynamic')" \
     "$(printf '%b' 'NULL\tNULL\tutf8mb3_general_ci\tNULL\trow_format=DYNAMIC stats_persistent=0\tkeyword-topic relation')"
 expect_show_table_status_row \
     "help_topic" \
-    "$(printf '%b' 'help_topic\tInnoDB\t10\tDynamic\t902\t1761\t1589248\t0\t98304\t4194304\tNULL')" \
+    "$(printf '%b' 'help_topic\tInnoDB\t10\tDynamic')" \
     "$(printf '%b' 'NULL\tNULL\tutf8mb3_general_ci\tNULL\trow_format=DYNAMIC stats_persistent=0\thelp topics')"
 
 printf '%s\n' "mysql_baseline_mysql_help_tables_expectations: ok"

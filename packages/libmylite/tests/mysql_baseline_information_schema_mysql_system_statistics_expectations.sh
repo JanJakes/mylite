@@ -37,17 +37,17 @@ esac
 
 statistics_expected=$(
     printf '%b' \
-        'mysql\tinnodb_index_stats\t0\tmysql\tPRIMARY\t1\tdatabase_name\tA\t2\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
-        'mysql\tinnodb_index_stats\t0\tmysql\tPRIMARY\t2\ttable_name\tA\t2\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
-        'mysql\tinnodb_index_stats\t0\tmysql\tPRIMARY\t3\tindex_name\tA\t2\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
-        'mysql\tinnodb_index_stats\t0\tmysql\tPRIMARY\t4\tstat_name\tA\t6\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
-        'mysql\tinnodb_table_stats\t0\tmysql\tPRIMARY\t1\tdatabase_name\tA\t2\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
-        'mysql\tinnodb_table_stats\t0\tmysql\tPRIMARY\t2\ttable_name\tA\t2\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL'
+        'mysql\tinnodb_index_stats\t0\tmysql\tPRIMARY\t1\tdatabase_name\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
+        'mysql\tinnodb_index_stats\t0\tmysql\tPRIMARY\t2\ttable_name\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
+        'mysql\tinnodb_index_stats\t0\tmysql\tPRIMARY\t3\tindex_name\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
+        'mysql\tinnodb_index_stats\t0\tmysql\tPRIMARY\t4\tstat_name\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
+        'mysql\tinnodb_table_stats\t0\tmysql\tPRIMARY\t1\tdatabase_name\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\n' \
+        'mysql\tinnodb_table_stats\t0\tmysql\tPRIMARY\t2\ttable_name\tA\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL'
 )
 expect_output \
     "mysql system statistics rows" \
     "$statistics_expected" \
-    "SELECT TABLE_SCHEMA, TABLE_NAME, NON_UNIQUE, INDEX_SCHEMA, INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, COLLATION, CARDINALITY, SUB_PART, PACKED, NULLABLE, INDEX_TYPE, COMMENT, INDEX_COMMENT, IS_VISIBLE, EXPRESSION
+    "SELECT TABLE_SCHEMA, TABLE_NAME, NON_UNIQUE, INDEX_SCHEMA, INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, COLLATION, SUB_PART, PACKED, NULLABLE, INDEX_TYPE, COMMENT, INDEX_COMMENT, IS_VISIBLE, EXPRESSION
        FROM information_schema.statistics
       WHERE TABLE_SCHEMA = 'mysql'
         AND TABLE_NAME IN ('innodb_table_stats', 'innodb_index_stats')
@@ -55,13 +55,13 @@ expect_output \
 
 tail_expected=$(
     printf '%b' \
-        'innodb_index_stats\tindex_name\t2\n' \
-        'innodb_index_stats\tstat_name\t6'
+        'innodb_index_stats\tindex_name\n' \
+        'innodb_index_stats\tstat_name'
 )
 expect_output \
     "mysql system statistics filtered tail" \
     "$tail_expected" \
-    "SELECT TABLE_NAME, COLUMN_NAME, CARDINALITY
+    "SELECT TABLE_NAME, COLUMN_NAME
        FROM information_schema.statistics
       WHERE TABLE_SCHEMA = 'mysql'
         AND TABLE_NAME = 'innodb_index_stats'

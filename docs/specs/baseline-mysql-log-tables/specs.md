@@ -197,8 +197,10 @@ used for supported InnoDB-backed `mysql` system tables.
 `CREATE_TIME` is a non-`NULL` datetime string. `UPDATE_TIME`, `CHECK_TIME`, and
 `CHECKSUM` are SQL `NULL`. MyLite renders `CREATE_TIME` from the current
 statement timestamp for synthetic rows, matching the non-`NULL` shape without
-introducing durable server-startup state. The direct synthetic tables are empty
-even though MySQL reports a `Rows = 2` CSV status estimate.
+introducing durable server-startup state. The row and storage-size fields are
+runtime CSV table estimates on MySQL and can change with log state; the MySQL
+expectation artifact verifies their numeric shape rather than fixed values.
+The direct synthetic tables are empty.
 
 ## Diagnostics And Limits
 

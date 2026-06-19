@@ -105,13 +105,23 @@ INNODB_TABLESPACES_BRIEF	FLAG	4	NULL	YES	varbinary	256	256	NULL	NULL	NULL	NULL	N
 INNODB_TABLESPACES_BRIEF	SPACE_TYPE	5		NO	varchar	7	21	NULL	NULL	NULL	utf8mb3	utf8mb3_general_ci	varchar(7)	select"
 expect_value "innodb tablespace metadata columns" "$expected_columns_metadata" "$columns_metadata"
 
-datafiles_count=$(run_mysql "SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_DATAFILES;")
+default_datafile_filter="PATH IN ('./sys/sys_config.ibd','./undo_001','./undo_002','ibdata1')"
+default_brief_filter="NAME IN ('innodb_system','innodb_undo_001','innodb_undo_002','sys/sys_config')"
+default_tablespace_filter="NAME IN ('innodb_temporary','innodb_undo_001','innodb_undo_002','mysql','sys/sys_config')"
+
+datafiles_count=$(run_mysql \
+    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_DATAFILES "\
+"WHERE ${default_datafile_filter};")
 expect_value "innodb datafiles count" "4" "$datafiles_count"
 
-brief_count=$(run_mysql "SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_BRIEF;")
+brief_count=$(run_mysql \
+    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_BRIEF "\
+"WHERE ${default_brief_filter};")
 expect_value "innodb tablespaces brief count" "4" "$brief_count"
 
-tablespaces_count=$(run_mysql "SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_TABLESPACES;")
+tablespaces_count=$(run_mysql \
+    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_TABLESPACES "\
+"WHERE ${default_tablespace_filter};")
 expect_value "innodb tablespaces count" "5" "$tablespaces_count"
 
 expected_datafiles_rows="1	./sys/sys_config.ibd
@@ -119,7 +129,8 @@ expected_datafiles_rows="1	./sys/sys_config.ibd
 4294967278	./undo_002
 0	ibdata1"
 datafiles_rows=$(run_mysql \
-    "SELECT SPACE,PATH FROM INFORMATION_SCHEMA.INNODB_DATAFILES ORDER BY PATH;")
+    "SELECT SPACE,PATH FROM INFORMATION_SCHEMA.INNODB_DATAFILES "\
+"WHERE ${default_datafile_filter} ORDER BY PATH;")
 expect_value "innodb datafiles exact rows" "$expected_datafiles_rows" "$datafiles_rows"
 
 expected_brief_rows="0	innodb_system	ibdata1	18432	System
@@ -128,7 +139,8 @@ expected_brief_rows="0	innodb_system	ibdata1	18432	System
 1	sys/sys_config	./sys/sys_config.ibd	16417	Single"
 brief_rows=$(run_mysql \
     "SELECT SPACE,NAME,PATH,FLAG,SPACE_TYPE "\
-"FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_BRIEF ORDER BY NAME;")
+"FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_BRIEF "\
+"WHERE ${default_brief_filter} ORDER BY NAME;")
 expect_value "innodb tablespaces brief exact rows" "$expected_brief_rows" "$brief_rows"
 
 expected_tablespaces_rows="4294967293	innodb_temporary	4096	Compact or Redundant	16384	0	System	4096	12582912	12582912	0	8.4.9	1	N	normal
@@ -140,7 +152,7 @@ tablespaces_rows=$(run_mysql \
     "SELECT SPACE,NAME,FLAG,ROW_FORMAT,PAGE_SIZE,ZIP_PAGE_SIZE,SPACE_TYPE, "\
 "FS_BLOCK_SIZE,FILE_SIZE,ALLOCATED_SIZE,AUTOEXTEND_SIZE,SERVER_VERSION, "\
 "SPACE_VERSION,ENCRYPTION,STATE FROM INFORMATION_SCHEMA.INNODB_TABLESPACES "\
-"ORDER BY NAME;")
+"WHERE ${default_tablespace_filter} ORDER BY NAME;")
 expect_value "innodb tablespaces exact rows" "$expected_tablespaces_rows" "$tablespaces_rows"
 
 alias_row=$(run_mysql \

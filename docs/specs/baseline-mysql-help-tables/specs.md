@@ -105,7 +105,8 @@ licensed content source.
 
 ## Metadata Shape
 
-Observed table-status fields used by this slice:
+Initial observed table-status estimates used by MyLite's placeholder runtime
+tests:
 
 | Table | Rows | Avg row length | Data length | Index length | Data free | Comment |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
@@ -117,7 +118,13 @@ Observed table-status fields used by this slice:
 `CREATE_OPTIONS` is `row_format=DYNAMIC stats_persistent=0`.
 `TABLE_COLLATION` is `utf8mb3_general_ci`.
 
-Primary-key cardinalities:
+The MySQL expectation artifact treats these storage estimates and index
+cardinalities as live InnoDB statistics. It verifies their shape on the MySQL
+runtime and keeps exact checks to stable metadata such as engine, row format,
+collation, create options, comments, index names, key order, nullability,
+visibility, and index type.
+
+Initial observed primary-key cardinalities:
 
 | Table | Key columns | Cardinality |
 | --- | --- | --- |
@@ -126,7 +133,7 @@ Primary-key cardinalities:
 | `help_relation` | `help_keyword_id`, `help_topic_id` | 1393, 2258 |
 | `help_topic` | `help_topic_id` | 596 |
 
-Unique `name` index cardinalities:
+Initial observed unique `name` index cardinalities:
 
 | Table | Cardinality |
 | --- | ---: |

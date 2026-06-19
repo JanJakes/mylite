@@ -115,9 +115,9 @@ expect_output \
 "AND TABLE_NAME = 'PARTITIONS';"
 
 columns_expected=$(cat <<\EXPECTED
-TABLE_CATALOG	1	NULL	YES	varchar	64	192	NULL	NULL	NULL	utf8mb3	utf8mb3_tolower_ci	varchar(64)			select			NULL
-TABLE_SCHEMA	2	NULL	YES	varchar	64	192	NULL	NULL	NULL	utf8mb3	utf8mb3_tolower_ci	varchar(64)			select			NULL
-TABLE_NAME	3	NULL	NO	varchar	64	192	NULL	NULL	NULL	utf8mb3	utf8mb3_tolower_ci	varchar(64)			select			NULL
+TABLE_CATALOG	1	NULL	NO	varchar	64	192	NULL	NULL	NULL	utf8mb3	utf8mb3_bin	varchar(64)			select			NULL
+TABLE_SCHEMA	2	NULL	NO	varchar	64	192	NULL	NULL	NULL	utf8mb3	utf8mb3_bin	varchar(64)			select			NULL
+TABLE_NAME	3	NULL	NO	varchar	64	192	NULL	NULL	NULL	utf8mb3	utf8mb3_bin	varchar(64)			select			NULL
 PARTITION_NAME	4	NULL	YES	varchar	64	192	NULL	NULL	NULL	utf8mb3	utf8mb3_tolower_ci	varchar(64)			select			NULL
 SUBPARTITION_NAME	5	NULL	YES	varchar	64	192	NULL	NULL	NULL	utf8mb3	utf8mb3_tolower_ci	varchar(64)			select			NULL
 PARTITION_ORDINAL_POSITION	6	NULL	YES	int	NULL	NULL	10	0	NULL	NULL	NULL	int unsigned			select			NULL

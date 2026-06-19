@@ -55,6 +55,11 @@ Observed behavior shaping this slice:
   `1024`, `2048`, `4096`, `8192`, and `16384`, with
   `BUFFER_POOL_INSTANCE = 0`. All observed page-use and relocation counters
   are zero on the fresh runtime.
+- On reused MySQL comparison runtimes, page-use counters can be nonzero after
+  other probes create compressed-page activity. The MySQL expectation artifact
+  therefore verifies the stable page-size and buffer-pool-instance row shape,
+  while MyLite's runtime test verifies the documented zero-counter placeholder
+  contract.
 - Repeated reads from `_RESET` returned the same five zero-counter rows in the
   baseline runtime. MySQL documents that reading `_RESET` resets relocation
   statistics; MyLite has no relocation counters to mutate in this slice.
@@ -195,8 +200,8 @@ physical row storage, SQLite tables, or system files.
 Add a focused C runtime test and a MySQL expectation script. Coverage must
 include:
 
-- wildcard column labels and fixed five-row zero-counter row sets for both
-  views;
+- wildcard column labels, five-row page-size row shape, and MyLite's fixed
+  zero-counter row sets for both views;
 - row counts and representative predicates;
 - case-insensitive table-name lookup;
 - alias projection through the existing information-schema query path;

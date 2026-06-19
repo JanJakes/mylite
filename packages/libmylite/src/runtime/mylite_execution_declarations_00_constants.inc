@@ -470,6 +470,7 @@ enum {
     mysql_uncompress_display_length = 16777216,
     mysql_random_bytes_display_length = 1024,
     mysql_uncompressed_length_display_length = 10,
+    mysql_inet_ntoa_display_length = 31,
     mysql_json_value_display_character_length = 512,
     mysql_json_type_display_length = 68,
     mysql_temporal_string_function_display_length = 29,

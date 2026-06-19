@@ -1443,6 +1443,10 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_UNCOMPRESS_FUNCTION ||
             current->kind == MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION ||
             current->kind == MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_INET_ATON_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_INET_ATON_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_INET_NTOA_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_INET_NTOA_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_UNHEX_FUNCTION ||
             current->kind == MYLITE_SQL_AST_MD5_FUNCTION ||
             current->kind == MYLITE_SQL_AST_MD5_ARGUMENT_COUNT_ERROR ||
@@ -1657,6 +1661,8 @@ static bool row_scalar_expression_is_predicate_value_context_attempt(
     case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
     case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
     case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
+    case MYLITE_SQL_AST_INET_ATON_FUNCTION:
+    case MYLITE_SQL_AST_INET_NTOA_FUNCTION:
     case MYLITE_SQL_AST_UUID_FUNCTION:
     case MYLITE_SQL_AST_IS_UUID_FUNCTION:
     case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:

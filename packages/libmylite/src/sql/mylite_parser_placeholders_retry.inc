@@ -612,8 +612,9 @@ static bool placeholder_scan_token_is_retryable_row_scalar_context_function(
         "LEFT",    "RIGHT",          "LOWER",     "LCASE",      "UPPER",
         "UCASE",   "LTRIM",          "RTRIM",     "TRIM",       "LPAD",
         "RPAD",    "REPEAT",         "SPACE",     "QUOTE",      "REVERSE",
-        "SOUNDEX", "UNHEX",          "EXPORT_SET", "MAKE_SET",   "SUBSTRING_INDEX",
-        "STRCMP",  "ROW_COUNT",      "FOUND_ROWS", "LAST_INSERT_ID",
+        "SOUNDEX", "UNHEX",          "INET_ATON",  "INET_NTOA",  "EXPORT_SET",
+        "MAKE_SET", "SUBSTRING_INDEX", "STRCMP",   "ROW_COUNT",  "FOUND_ROWS",
+        "LAST_INSERT_ID",
     };
 
     for (size_t name_index = 0U; name_index < sizeof(function_names) / sizeof(function_names[0]);
@@ -2110,6 +2111,8 @@ static bool placeholder_scan_token_is_supported_row_scalar_value_function(
         "UNCOMPRESS",
         "UNCOMPRESSED_LENGTH",
         "RANDOM_BYTES",
+        "INET_ATON",
+        "INET_NTOA",
         "BIN",
         "OCT",
         "CONV",

@@ -543,6 +543,10 @@ static enum planned_row_scalar_expression_kind registered_one_argument_expressio
         return PLANNED_ROW_SCALAR_EXPRESSION_UNCOMPRESSED_LENGTH;
     case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
         return PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES;
+    case MYLITE_SQL_AST_INET_ATON_FUNCTION:
+        return PLANNED_ROW_SCALAR_EXPRESSION_INET_ATON;
+    case MYLITE_SQL_AST_INET_NTOA_FUNCTION:
+        return PLANNED_ROW_SCALAR_EXPRESSION_INET_NTOA;
     default:
         break;
     }
@@ -559,6 +563,10 @@ static const char *registered_one_argument_function_name(enum mylite_sql_ast_nod
         return "UNCOMPRESSED_LENGTH";
     case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
         return "RANDOM_BYTES";
+    case MYLITE_SQL_AST_INET_ATON_FUNCTION:
+        return "INET_ATON";
+    case MYLITE_SQL_AST_INET_NTOA_FUNCTION:
+        return "INET_NTOA";
     default:
         break;
     }
@@ -1444,6 +1452,8 @@ static int plan_row_scalar_binary_string_expression(
     case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
     case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
     case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
+    case MYLITE_SQL_AST_INET_ATON_FUNCTION:
+    case MYLITE_SQL_AST_INET_NTOA_FUNCTION:
         return plan_row_scalar_registered_one_argument_expression(
             database,
             expression,
@@ -1453,6 +1463,12 @@ static int plan_row_scalar_binary_string_expression(
             table_column_count,
             out_expression
         );
+    case MYLITE_SQL_AST_INET_ATON_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "INET_ATON");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_INET_NTOA_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "INET_NTOA");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_UNHEX_FUNCTION:
         return plan_row_scalar_unhex_expression(
             database,

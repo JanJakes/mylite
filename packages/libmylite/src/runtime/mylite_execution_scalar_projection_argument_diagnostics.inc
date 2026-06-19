@@ -302,6 +302,10 @@ static const char *argument_count_error_node_function_name(
         return "UNCOMPRESSED_LENGTH";
     case MYLITE_SQL_AST_RANDOM_BYTES_ARGUMENT_COUNT_ERROR:
         return "RANDOM_BYTES";
+    case MYLITE_SQL_AST_INET_ATON_ARGUMENT_COUNT_ERROR:
+        return "INET_ATON";
+    case MYLITE_SQL_AST_INET_NTOA_ARGUMENT_COUNT_ERROR:
+        return "INET_NTOA";
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
         return "UNHEX";
     case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:

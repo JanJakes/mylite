@@ -2,6 +2,12 @@
 #include "mylite_parser_helpers.h"
 #include "mylite_parser_internal.h"
 
+static bool generic_function_ip_address_kinds(
+    const struct mylite_sql_token *function_token,
+    enum mylite_sql_ast_node_kind *out_function_kind,
+    enum mylite_sql_ast_node_kind *out_error_kind
+);
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_identifier(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token token
@@ -1246,6 +1252,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_generic_function(
 ) {
     struct mylite_sql_ast_node *function = NULL;
     struct mylite_sql_ast_node *name = NULL;
+    enum mylite_sql_ast_node_kind specialized_function_kind = MYLITE_SQL_AST_SCRIPT;
+    enum mylite_sql_ast_node_kind specialized_error_kind = MYLITE_SQL_AST_SCRIPT;
+
+    if (generic_function_ip_address_kinds(
+            &function_token,
+            &specialized_function_kind,
+            &specialized_error_kind
+        )) {
+        if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 1U) {
+            return mylite_sql_parser_make_function_argument_count_error(
+                state,
+                function_token,
+                specialized_error_kind,
+                arguments,
+                right_paren
+            );
+        }
+        return mylite_sql_parser_make_one_argument_function(
+            state,
+            function_token,
+            specialized_function_kind,
+            arguments->first_child,
+            right_paren
+        );
+    }
 
     name = mylite_sql_parser_make_identifier(state, function_token);
     if (name == NULL) {
@@ -1267,6 +1298,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_generic_function(
     mylite_sql_ast_node_append_child(function, name);
     mylite_sql_ast_node_append_child(function, arguments);
     return function;
+}
+
+static bool generic_function_ip_address_kinds(
+    const struct mylite_sql_token *function_token,
+    enum mylite_sql_ast_node_kind *out_function_kind,
+    enum mylite_sql_ast_node_kind *out_error_kind
+) {
+    if (function_token == NULL || out_function_kind == NULL || out_error_kind == NULL) {
+        return false;
+    }
+    if (mylite_sql_parser_token_text_equals(function_token, "INET_ATON")) {
+        *out_function_kind = MYLITE_SQL_AST_INET_ATON_FUNCTION;
+        *out_error_kind = MYLITE_SQL_AST_INET_ATON_ARGUMENT_COUNT_ERROR;
+        return true;
+    }
+    if (mylite_sql_parser_token_text_equals(function_token, "INET_NTOA")) {
+        *out_function_kind = MYLITE_SQL_AST_INET_NTOA_FUNCTION;
+        *out_error_kind = MYLITE_SQL_AST_INET_NTOA_ARGUMENT_COUNT_ERROR;
+        return true;
+    }
+    return false;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_generic_function_with_window_clause(

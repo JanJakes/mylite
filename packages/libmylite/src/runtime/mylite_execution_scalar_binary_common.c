@@ -480,6 +480,10 @@ int mylite_execution_scalar_binary_argument_scalar_value(
     case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
         *out_handled = true;
         return mylite_execution_scalar_random_bytes_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_INET_ATON_FUNCTION:
+    case MYLITE_SQL_AST_INET_NTOA_FUNCTION:
+        *out_handled = true;
+        return mylite_execution_scalar_ip_address_function_value(database, expression, out_cell);
     default:
         break;
     }

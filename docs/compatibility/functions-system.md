@@ -14,8 +14,8 @@ miscellaneous system helpers.
 | `FOUND_ROWS()` | ✅ | MySQL-runtime-verified zero-argument readback in no-source and `DUAL` scalar selects, limited `DO`, `SET @user_variable`, source-free DML value positions, source-backed row-scalar projection, `WHERE`, and `ORDER BY`; records MySQL deprecation warning 1287 per supported invocation and works with the limited `SQL_CALC_FOUND_ROWS` subset; protocol metadata, `CLIENT_FOUND_ROWS`, replication semantics, and full diagnostics-area behavior are tracked separately |
 | `GET_LOCK()` | ❌ | Get a named lock |
 | `ICU_VERSION()` | ❌ | ICU library version |
-| `INET_ATON()` | ❌ | Return numeric value of an IP address |
-| `INET_NTOA()` | ❌ | Return IP address from a numeric value |
+| `INET_ATON()` | ✅ | MySQL-runtime-verified IPv4 dotted-address to unsigned-integer conversion in scalar and row-scalar expression contexts; IPv6 helpers remain separate gaps |
+| `INET_NTOA()` | ✅ | MySQL-runtime-verified unsigned-integer to IPv4 dotted-address conversion in scalar and row-scalar expression contexts; IPv6 helpers remain separate gaps |
 | `IS_FREE_LOCK()` | ❌ | Whether the named lock is free |
 | `IS_USED_LOCK()` | ❌ | Named-lock owner lookup |
 | `LAST_INSERT_ID()` | 🟡 | Limited zero-argument readback in no-source, `DUAL`, and source-backed row-scalar projection, `WHERE`, and `ORDER BY`; source-free `LAST_INSERT_ID(expr)` works for integer, boolean, and `NULL` literals and stores unsigned 64-bit session state; auto-increment statement results expose the current baseline insert id through MyLite result metadata and mysqli `insert_id`; source-backed mutating `LAST_INSERT_ID(expr)`, warning-producing string/decimal/float conversion, wire-protocol insert-id packets, mixed-mode allocation parity, and stored-program behavior remain gaps |

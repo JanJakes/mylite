@@ -555,6 +555,15 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_RANDOM_BYTES_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "RANDOM_BYTES");
         return MYLITE_ERROR;
+    case MYLITE_SQL_AST_INET_ATON_FUNCTION:
+    case MYLITE_SQL_AST_INET_NTOA_FUNCTION:
+        return mylite_execution_scalar_ip_address_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_INET_ATON_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "INET_ATON");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_INET_NTOA_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "INET_NTOA");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_UNHEX_FUNCTION:
         return mylite_execution_scalar_unhex_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:

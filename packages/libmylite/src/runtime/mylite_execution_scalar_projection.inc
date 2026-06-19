@@ -698,6 +698,8 @@ static bool is_compression_random_projection_expression(
     case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
     case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
     case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
+    case MYLITE_SQL_AST_INET_ATON_FUNCTION:
+    case MYLITE_SQL_AST_INET_NTOA_FUNCTION:
         break;
     default:
         return false;
@@ -750,6 +752,8 @@ static bool is_compression_random_projection_expression(
     case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
     case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
     case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
+    case MYLITE_SQL_AST_INET_ATON_FUNCTION:
+    case MYLITE_SQL_AST_INET_NTOA_FUNCTION:
         return is_compression_random_projection_expression(argument);
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
@@ -798,6 +802,8 @@ static bool scalar_projection_expression_contains_compression_random_function(
     case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
     case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
     case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
+    case MYLITE_SQL_AST_INET_ATON_FUNCTION:
+    case MYLITE_SQL_AST_INET_NTOA_FUNCTION:
         return true;
     default:
         break;
@@ -2607,6 +2613,8 @@ static bool is_scalar_projection_known_function_attempt(enum mylite_sql_ast_node
     case MYLITE_SQL_AST_UNCOMPRESS_FUNCTION:
     case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_FUNCTION:
     case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
+    case MYLITE_SQL_AST_INET_ATON_FUNCTION:
+    case MYLITE_SQL_AST_INET_NTOA_FUNCTION:
     case MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION:
     case MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION:
     case MYLITE_SQL_AST_UUID_FUNCTION:
@@ -2802,6 +2810,8 @@ static bool is_scalar_projection_known_function_attempt(enum mylite_sql_ast_node
     case MYLITE_SQL_AST_UNCOMPRESS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UNCOMPRESSED_LENGTH_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_RANDOM_BYTES_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_INET_ATON_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_INET_NTOA_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_IS_UUID_ARGUMENT_COUNT_ERROR:

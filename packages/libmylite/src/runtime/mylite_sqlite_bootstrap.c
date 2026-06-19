@@ -12,6 +12,7 @@
 #include "mylite_execution_scalar_temporal_format.h"
 #include "mylite_group_concat_aggregate.h"
 #include "mylite_integer_arithmetic.h"
+#include "mylite_ip_address.h"
 #include "mylite_json_functions.h"
 #include "mylite_like.h"
 #include "mylite_numeric_extras.h"
@@ -314,6 +315,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_random_bytes_function(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_ip_address_functions(sqlite);
     }
     if (rc != MYLITE_OK) {
         return rc;

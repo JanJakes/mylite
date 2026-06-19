@@ -1476,6 +1476,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "random_bytes_function";
     case MYLITE_SQL_AST_RANDOM_BYTES_ARGUMENT_COUNT_ERROR:
         return "random_bytes_argument_count_error";
+    case MYLITE_SQL_AST_INET_ATON_FUNCTION:
+        return "inet_aton_function";
+    case MYLITE_SQL_AST_INET_ATON_ARGUMENT_COUNT_ERROR:
+        return "inet_aton_argument_count_error";
+    case MYLITE_SQL_AST_INET_NTOA_FUNCTION:
+        return "inet_ntoa_function";
+    case MYLITE_SQL_AST_INET_NTOA_ARGUMENT_COUNT_ERROR:
+        return "inet_ntoa_argument_count_error";
     case MYLITE_SQL_AST_HEX_FUNCTION:
         return "hex_function";
     case MYLITE_SQL_AST_HEX_ARGUMENT_COUNT_ERROR:

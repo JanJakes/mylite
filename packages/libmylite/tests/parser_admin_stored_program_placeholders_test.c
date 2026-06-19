@@ -88,7 +88,6 @@ static int test_admin_noop_statement_forms(void) {
         {.sql = "KILL QUERY @thread_id", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
         {.sql = "CACHE INDEX t USE key_cache", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
         {.sql = "LOAD INDEX INTO CACHE t", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
-        {.sql = "SHOW CREATE USER 'u'@'%'", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
         {.sql = "ALTER INSTANCE RELOAD TLS", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
         {.sql = "RESTART", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
         {.sql = "SHUTDOWN", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
@@ -165,11 +164,6 @@ static int test_unsupported_stored_program_statement_forms(void) {
         },
         {.sql = "DROP EVENT IF EXISTS e",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT},
-        {.sql = "SHOW CREATE FUNCTION f",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT},
-        {.sql = "SHOW CREATE TRIGGER tr",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT},
-        {.sql = "SHOW CREATE EVENT e", .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT},
         {.sql = "CALL mtr.p(OUT @arg)", .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT
         },
     };

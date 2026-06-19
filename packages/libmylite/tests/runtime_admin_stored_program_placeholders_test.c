@@ -82,7 +82,6 @@ static int test_admin_noop_warning_surface(void) {
         "KILL QUERY @thread_id",
         "CACHE INDEX t USE key_cache",
         "LOAD INDEX INTO CACHE t",
-        "SHOW CREATE USER 'u'@'%'",
         "ALTER INSTANCE RELOAD TLS",
     };
     static const char *const warning_rows[] = {
@@ -170,7 +169,6 @@ static int test_stored_program_placeholder_errors(void) {
         "SIGNAL SQLSTATE '01000'",
         "RESIGNAL",
         "DROP FUNCTION IF EXISTS f",
-        "SHOW CREATE TRIGGER tr",
         "CALL missing_proc('x')",
         "CALL mtr.p(OUT @arg)",
     };

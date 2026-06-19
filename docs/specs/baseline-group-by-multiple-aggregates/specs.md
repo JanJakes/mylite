@@ -132,7 +132,6 @@ This slice intentionally does not add:
 - multiple `ORDER BY` keys;
 - ordering by aggregate expression, ordinal, string literal, unselected alias,
   unaliased aggregate output label, or arbitrary expression;
-- selected `GROUP_CONCAT()` alias ordering;
 - `HAVING` boolean composition, unselected aggregate predicates, bitwise
   aggregate predicates, `GROUP_CONCAT()` predicates, arbitrary expressions,
   parameters, subqueries, or general alias ambiguity handling;
@@ -266,9 +265,8 @@ Required diagnostics include:
 - unsupported `HAVING` predicate shape, unselected aggregate predicate, bitwise
   aggregate predicate, `GROUP_CONCAT()` predicate, or out-of-range literal:
   existing grouped `HAVING` diagnostics, extended to selected aggregate items;
-- unsupported `ORDER BY` key, duplicate aggregate alias order key, selected
-  `GROUP_CONCAT()` alias order key, aggregate expression order key, multiple
-  order keys, ordinal, string literal, or
+- unsupported `ORDER BY` key, duplicate aggregate alias order key, aggregate
+  expression order key, multiple order keys, ordinal, string literal, or
   expression: existing parser or planner unsupported diagnostics;
 - physical SQLite failures: existing internal SQLite row-operation diagnostic;
 - allocation failure: existing `MYLITE_NOMEM` diagnostic behavior;

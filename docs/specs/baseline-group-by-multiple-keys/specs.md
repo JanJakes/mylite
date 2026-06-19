@@ -144,7 +144,7 @@ This phase does not add:
   temporal archive subset, or parenthesized expression keys;
 - general expression `ORDER BY` for grouped results beyond
   `CAST(descriptor_column AS CHAR)`;
-- aggregate expression `ORDER BY` or selected `GROUP_CONCAT()` alias ordering;
+- aggregate expression `ORDER BY`;
 - grouped `COUNT(DISTINCT ...)` forms outside the integer descriptor-column
   slice;
 - mixed grouped `GROUP_CONCAT()` projections;
@@ -307,8 +307,7 @@ Required diagnostics include:
   unselected aggregate predicate, bitwise aggregate predicate, or
   `GROUP_CONCAT()` predicate: existing grouped `HAVING` diagnostics;
 - unsupported grouped `ORDER BY` multiple keys, nonselected group column,
-  duplicate group alias, duplicate aggregate alias, selected `GROUP_CONCAT()`
-  alias order key: deterministic grouped
+  duplicate group alias, or duplicate aggregate alias: deterministic grouped
   `ORDER BY` diagnostics;
 - physical SQLite failures: existing physical row-operation diagnostic;
 - allocation failure: existing `MYLITE_NOMEM` diagnostic behavior.

@@ -848,6 +848,10 @@ static int bind_grouped_order_parameters(
             if (aggregate_index >= plan->aggregate_count) {
                 return MYLITE_ERROR;
             }
+            if (plan->aggregates[aggregate_index].function ==
+                PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
+                continue;
+            }
             rc = bind_grouped_aggregate_row_scalar_expression_parameters(
                 statement,
                 &plan->aggregates[aggregate_index],

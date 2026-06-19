@@ -2137,6 +2137,11 @@ static int append_grouped_order_aggregate_sql(
     size_t aggregate_index,
     size_t *next_parameter
 );
+static int append_grouped_group_concat_order_column_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    size_t aggregate_index
+);
 static int append_grouped_avg_order_key_sql(
     struct mylite_dynamic_string *string,
     const struct planned_grouped_aggregate *plan,

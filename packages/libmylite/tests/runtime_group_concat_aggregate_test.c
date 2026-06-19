@@ -146,6 +146,36 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
     };
     static const char *const grouped_having_columns[] = {"g", "names"};
     static const char *const grouped_having_values[] = {"2", "delta:echo"};
+    static const char *const grouped_alias_order_values[] = {
+        "3",
+        NULL,
+        "1",
+        "alpha:beta",
+        "2",
+        "delta:echo",
+    };
+    static const char *const grouped_alias_desc_limit_values[] = {
+        "2",
+        "delta:echo",
+        "1",
+        "alpha:beta",
+    };
+    static const char *const grouped_ifnull_alias_order_values[] = {
+        "3",
+        "",
+        "1",
+        "alpha:beta:",
+        "2",
+        "delta:echo",
+    };
+    static const char *const grouped_alias_case_order_values[] = {
+        "3",
+        NULL,
+        "2",
+        "alpha",
+        "1",
+        "Bravo",
+    };
     static const char *const grouped_distinct_columns[] = {"g", "names"};
     static const char *const grouped_distinct_values[] = {
         "1",
@@ -183,6 +213,14 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
         execute_discard(database, "CREATE TABLE empty_names (id INT NOT NULL, name VARCHAR(20))");
     failures +=
         execute_discard(database, "INSERT INTO empty_names VALUES (1, ''), (2, ''), (3, NULL)");
+    failures += execute_discard(
+        database,
+        "CREATE TABLE case_names (g INT, id INT NOT NULL, name VARCHAR(20))"
+    );
+    failures += execute_discard(
+        database,
+        "INSERT INTO case_names VALUES (1, 1, 'Bravo'), (2, 1, 'alpha'), (3, 1, NULL)"
+    );
     failures += execute_discard(
         database,
         "CREATE TABLE duplicate_names (g INT, id INT NOT NULL, name VARCHAR(20), "
@@ -456,6 +494,54 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
             .values = grouped_having_values,
             .row_count = 1U,
             .context = "grouped group_concat with group-column having",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "
+                   "FROM items GROUP BY g ORDER BY names",
+            .columns = grouped_having_columns,
+            .column_count = 2U,
+            .values = grouped_alias_order_values,
+            .row_count = 3U,
+            .context = "grouped group_concat aggregate alias order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "
+                   "FROM items GROUP BY g ORDER BY names DESC LIMIT 2",
+            .columns = grouped_having_columns,
+            .column_count = 2U,
+            .values = grouped_alias_desc_limit_values,
+            .row_count = 2U,
+            .context = "grouped group_concat aggregate alias descending limit",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, GROUP_CONCAT(IFNULL(name, '') ORDER BY id SEPARATOR ':') AS names "
+                   "FROM items GROUP BY g ORDER BY names",
+            .columns = grouped_ifnull_columns,
+            .column_count = 2U,
+            .values = grouped_ifnull_alias_order_values,
+            .row_count = 3U,
+            .context = "grouped group_concat row-scalar aggregate alias order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, GROUP_CONCAT(name ORDER BY id) AS names "
+                   "FROM case_names GROUP BY g ORDER BY names",
+            .columns = grouped_having_columns,
+            .column_count = 2U,
+            .values = grouped_alias_case_order_values,
+            .row_count = 3U,
+            .context = "grouped group_concat aggregate alias collation order",
         }
     );
     failures += expect_query(

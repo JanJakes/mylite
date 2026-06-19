@@ -105,7 +105,7 @@ The implementation must add:
   optional source alias and optional baseline `WHERE`;
 - grouped form `SELECT group_column, GROUP_CONCAT(...) FROM table
   [WHERE ...] GROUP BY group_column [HAVING group_column_predicate]
-  [ORDER BY group_column] [LIMIT ...]`;
+  [ORDER BY group_column_or_selected_group_concat_alias] [LIMIT ...]`;
 - integer and nonbinary string-family descriptor columns, plus supported
   row-scalar expressions, as concatenated values;
 - aggregate-local order keys limited to `NOT NULL` columns in the current
@@ -200,7 +200,7 @@ SELECT group_column,
   FROM table_name [WHERE predicate]
   GROUP BY group_column
   [HAVING group_column_predicate]
-  [ORDER BY group_column [ASC | DESC]]
+  [ORDER BY group_column_or_selected_group_concat_alias [ASC | DESC]]
   [LIMIT limit_clause]
 ```
 
@@ -318,9 +318,13 @@ FROM "_mylite_user_table_<table_id>"
 [WHERE descriptor_predicate]
 GROUP BY "group_column"
 [HAVING grouped_column_predicate]
-[ORDER BY "group_column" ASC|DESC]
+[ORDER BY "group_column"|<selected_group_concat_output_ordinal> COLLATE "utf8mb4_0900_ai_ci" ASC|DESC]
 [LIMIT ?M [OFFSET ?K]]
 ```
+
+The generated output ordinal is an internal lowering detail for selected
+`GROUP_CONCAT()` alias ordering. It refers to the already-selected aggregate
+result column without repeating the aggregate expression.
 
 Every generated SQLite identifier is quoted. The physical table name is the
 stable descriptor-owned name, such as `_mylite_user_table_<table_id>`. The
@@ -372,8 +376,9 @@ CTest name. Coverage must include:
   `NOT NULL` order keys without duplicate order-key ties;
 - grouped `GROUP_CONCAT` by one integer descriptor column, including an
   all-`NULL` group;
-- grouped-column `HAVING`, grouped-result `ORDER BY`, and grouped-result
-  `LIMIT` interactions that remain inside existing grouped aggregate limits;
+- grouped-column `HAVING`, grouped-column or selected aggregate-alias
+  `ORDER BY`, and grouped-result `LIMIT` interactions that remain inside
+  existing grouped aggregate limits;
 - source aliases and qualified argument/order references where admitted by
   existing source resolution;
 - result labels, explicit aliases, warning count, and `ROW_COUNT()` after

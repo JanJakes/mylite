@@ -1272,6 +1272,9 @@ static int append_grouped_order_aggregate_sql(
         return MYLITE_ERROR;
     }
     item = &plan->aggregates[aggregate_index];
+    if (item->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
+        return append_grouped_group_concat_order_column_sql(string, plan, aggregate_index);
+    }
     if (item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
         return append_grouped_avg_order_key_sql(string, plan, item, next_parameter);
     }
@@ -1285,6 +1288,34 @@ static int append_grouped_order_aggregate_sql(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_grouped_group_concat_order_column_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    size_t aggregate_index
+) {
+    char ordinal_text[integer_text_capacity];
+    size_t ordinal = plan->projection_count + 1U;
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    if (aggregate_index >= plan->aggregate_count) {
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U; index < aggregate_index; ++index) {
+        ordinal += plan->aggregates[index].function == PLANNED_GROUPED_AGGREGATE_AVG ? 2U : 1U;
+    }
+
+    written = snprintf(ordinal_text, sizeof(ordinal_text), "%zu", ordinal);
+    if (written < 0 || (size_t)written >= sizeof(ordinal_text)) {
+        return MYLITE_ERROR;
+    }
+    rc = mylite_dynamic_string_append(string, ordinal_text);
+    if (rc == MYLITE_OK) {
+        rc = append_string_key_collation_sql(string);
     }
     return rc;
 }

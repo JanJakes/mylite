@@ -584,14 +584,6 @@ static int find_grouped_order_aggregate_alias(
     if (matched_index == SIZE_MAX) {
         return MYLITE_OK;
     }
-    if (plan->aggregates[matched_index].function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
-        set_unsupported_error(
-            database,
-            "GROUP BY does not support ORDER BY on GROUP_CONCAT aggregate aliases"
-        );
-        return MYLITE_ERROR;
-    }
-
     *out_matched = true;
     *out_aggregate_index = matched_index;
     return MYLITE_OK;

@@ -90,6 +90,17 @@ grouped	1	alpha:beta
 grouped	2	delta:echo
 grouped	3	<NULL>
 grouped_having	2	delta:echo
+grouped_alias_asc	3	NULL
+grouped_alias_asc	1	alpha:beta
+grouped_alias_asc	2	delta:echo
+grouped_alias_desc	2	delta:echo
+grouped_alias_desc	1	alpha:beta
+grouped_expr_alias	3	NULL
+grouped_expr_alias	1	alphaA|betaB
+grouped_expr_alias	2	deltaD|echoE
+grouped_alias_case	3	NULL
+grouped_alias_case	2	alpha
+grouped_alias_case	1	Bravo
 grouped_distinct	1	alpha:beta
 grouped_distinct	2	delta:echo
 status	-1	0
@@ -118,6 +129,8 @@ expect_output \
 "(2,5,'echo',4), "\
 "(2,6,'delta',3), "\
 "(2,7,NULL,5); "\
+"CREATE TABLE case_names(g INT, id INT NOT NULL, name VARCHAR(20)) ENGINE=InnoDB; "\
+"INSERT INTO case_names VALUES (1,1,'Bravo'), (2,1,'alpha'), (3,1,NULL); "\
 "SELECT 'ids_default', GROUP_CONCAT(id ORDER BY id) FROM t; "\
 "SELECT 'ids_asc', GROUP_CONCAT(id ORDER BY id ASC) FROM t; "\
 "SELECT 'ids_desc', GROUP_CONCAT(id ORDER BY id DESC) FROM t; "\
@@ -142,6 +155,14 @@ expect_output \
 "FROM t GROUP BY g ORDER BY g; "\
 "SELECT 'grouped_having', g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') "\
 "FROM t GROUP BY g HAVING g = 2; "\
+"SELECT 'grouped_alias_asc', g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "\
+"FROM t GROUP BY g ORDER BY names; "\
+"SELECT 'grouped_alias_desc', g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "\
+"FROM t GROUP BY g ORDER BY names DESC LIMIT 2; "\
+"SELECT 'grouped_expr_alias', g, GROUP_CONCAT(CONCAT(name, notes) ORDER BY id SEPARATOR '|') AS names "\
+"FROM t GROUP BY g ORDER BY names; "\
+"SELECT 'grouped_alias_case', g, GROUP_CONCAT(name ORDER BY id) AS names "\
+"FROM case_names GROUP BY g ORDER BY names; "\
 "SELECT 'grouped_distinct', g, GROUP_CONCAT(DISTINCT name ORDER BY sort_n SEPARATOR ':') "\
 "FROM duplicate_names GROUP BY g ORDER BY g; "\
 "SELECT 'status', ROW_COUNT(), @@warning_count; "\

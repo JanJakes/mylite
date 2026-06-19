@@ -2559,7 +2559,7 @@ static int append_update_scalar_aggregate_assignment_sql(
     const struct planned_update *plan,
     size_t *next_parameter
 ) {
-    int rc = append_column_aggregate_select_list_sql(
+    int rc = append_column_aggregate_select_item_sql(
         string,
         &plan->assignment_scalar_aggregate,
         next_parameter

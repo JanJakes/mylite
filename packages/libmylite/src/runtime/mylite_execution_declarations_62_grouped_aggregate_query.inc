@@ -90,7 +90,8 @@ static int count_grouped_source_columns_by_unqualified_name(
     size_t *out_match_count
 );
 static size_t grouped_aggregate_group_key_count(const struct mylite_sql_ast_node *group_clause);
-static bool grouped_aggregate_group_clause_has_rollup(const struct mylite_sql_ast_node *group_clause
+static bool grouped_aggregate_group_clause_has_rollup(
+    const struct mylite_sql_ast_node *group_clause
 );
 static int validate_grouped_aggregate_group_column(
     struct mylite_db *database,
@@ -712,10 +713,16 @@ static int execute_count_expression_aggregate_from_plan(
     mylite_result **out_result
 );
 static bool select_statement_has_column_aggregate(const struct mylite_sql_ast_node *statement);
-static int plan_column_aggregate(
+static bool select_statement_has_multi_count_aggregate(const struct mylite_sql_ast_node *statement);
+static int plan_column_aggregate_select(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
-    struct planned_column_aggregate *out_plan
+    struct planned_column_aggregate_select *out_plan
+);
+static int plan_column_aggregate_select_item(
+    struct mylite_db *database,
+    const struct column_aggregate_select_item_plan_input *input,
+    struct planned_column_aggregate *out_item
 );
 static int plan_column_aggregate_without_source(
     struct mylite_db *database,
@@ -724,7 +731,17 @@ static int plan_column_aggregate_without_source(
     const struct mylite_sql_ast_node *where_clause,
     struct planned_column_aggregate *out_plan
 );
+static void planned_column_aggregate_select_deinit(struct planned_column_aggregate_select *plan);
 static void planned_column_aggregate_deinit(struct planned_column_aggregate *plan);
+static enum planned_column_aggregate_function column_or_count_aggregate_function_from_expression(
+    const struct mylite_sql_ast_node *expression
+);
+static enum planned_column_aggregate_function column_or_count_aggregate_function_from_projection_expression(
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node **out_aggregate_expression,
+    enum mylite_sql_ast_operator *out_operator,
+    const struct mylite_sql_ast_node **out_rhs_expression
+);
 static enum planned_column_aggregate_function column_aggregate_function_from_expression(
     const struct mylite_sql_ast_node *expression
 );
@@ -734,21 +751,13 @@ static enum planned_column_aggregate_function column_aggregate_function_from_pro
     enum mylite_sql_ast_operator *out_operator,
     const struct mylite_sql_ast_node **out_rhs_expression
 );
-static enum planned_column_aggregate_function select_list_column_aggregate_function(
-    const struct mylite_sql_ast_node *select_list
-);
 static bool column_aggregate_argument_is_row_scalar_expression(
     const struct mylite_sql_ast_node *function
 );
+static bool column_aggregate_function_is_count(enum planned_column_aggregate_function function);
 static bool column_aggregate_function_is_bitwise(enum planned_column_aggregate_function function);
 static bool column_aggregate_function_is_min_max(enum planned_column_aggregate_function function);
 static bool column_aggregate_function_is_statistical(
-    enum planned_column_aggregate_function function
-);
-static const char *column_aggregate_single_item_error(
-    enum planned_column_aggregate_function function
-);
-static const char *column_aggregate_optional_clause_error(
     enum planned_column_aggregate_function function
 );
 static const char *column_aggregate_source_error(enum planned_column_aggregate_function function);
@@ -788,13 +797,13 @@ static int plan_column_group_concat_options(
 );
 static int execute_column_aggregate_from_plan(
     struct mylite_db *database,
-    const struct planned_column_aggregate *plan,
+    const struct planned_column_aggregate_select *plan,
     bool apply_sql_select_limit,
     mylite_result **out_result
 );
 static void apply_column_aggregate_limit_to_result(
     mylite_result *result,
-    const struct planned_column_aggregate *plan
+    const struct planned_column_aggregate_select *plan
 );
 static int append_count_result_column(
     struct mylite_db *database,
@@ -826,7 +835,7 @@ static int read_count_from_source(
 );
 static int read_column_aggregate_from_source(
     struct mylite_db *database,
-    const struct planned_column_aggregate *plan,
+    const struct planned_column_aggregate_select *plan,
     mylite_result *result
 );
 static int read_grouped_aggregate_from_source(
@@ -848,8 +857,36 @@ static int step_count_statement(sqlite3_stmt *statement, int64_t *out_count);
 static int step_column_aggregate_statement(
     struct mylite_db *database,
     sqlite3_stmt *statement,
-    const struct planned_column_aggregate *plan,
+    const struct planned_column_aggregate_select *plan,
     mylite_result *result
+);
+static int append_column_aggregate_sqlite_row(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_column_aggregate_select *plan,
+    mylite_result *result
+);
+static int append_column_aggregate_sqlite_cell(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_column_aggregate *item,
+    int *sqlite_column_index,
+    struct mylite_result_cell *out_cell,
+    char *buffer,
+    size_t buffer_size
+);
+static int append_avg_sqlite_cell(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int *sqlite_column_index,
+    struct mylite_result_cell *out_cell,
+    char *buffer,
+    size_t buffer_size
+);
+static int append_bitwise_aggregate_sqlite_cell(
+    sqlite3_stmt *statement,
+    int sqlite_column_index,
+    struct mylite_result_cell *out_cell
 );
 static int append_grouped_aggregate_sqlite_row(
     struct mylite_db *database,
@@ -887,16 +924,6 @@ static int sqlite_integer_result_text(
     size_t buffer_size,
     const char **out_value
 );
-static int append_avg_sqlite_row(
-    struct mylite_db *database,
-    sqlite3_stmt *statement,
-    mylite_result *result
-);
-static int append_bitwise_aggregate_sqlite_row(
-    struct mylite_db *database,
-    sqlite3_stmt *statement,
-    mylite_result *result
-);
 static int format_avg_value(
     struct mylite_db *database,
     struct avg_accumulator accumulator,
@@ -908,10 +935,10 @@ static int next_decimal_digit(uint64_t *remainder, uint64_t denominator);
 static struct uint128_parts multiply_u64_by_decimal_radix(uint64_t value);
 static bool uint128_ge_u64(const struct uint128_parts *left, uint64_t right);
 static void uint128_subtract_u64(struct uint128_parts *left, uint64_t right);
-static int column_aggregate_step_error(
+static int column_aggregate_select_step_error(
     struct mylite_db *database,
     sqlite3_stmt *statement,
-    const struct planned_column_aggregate *plan,
+    const struct planned_column_aggregate_select *plan,
     int sqlite_rc
 );
 static int grouped_aggregate_step_error(

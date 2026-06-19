@@ -2045,6 +2045,10 @@ enum planned_column_aggregate_function {
     PLANNED_COLUMN_AGGREGATE_STDDEV_SAMP = 10,
     PLANNED_COLUMN_AGGREGATE_VAR_POP = 11,
     PLANNED_COLUMN_AGGREGATE_VAR_SAMP = 12,
+    PLANNED_COLUMN_AGGREGATE_COUNT_STAR = 13,
+    PLANNED_COLUMN_AGGREGATE_COUNT_COLUMN = 14,
+    PLANNED_COLUMN_AGGREGATE_COUNT_LITERAL = 15,
+    PLANNED_COLUMN_AGGREGATE_COUNT_DISTINCT_COLUMN = 16,
 };
 
 struct planned_scalar_aggregate_subquery {
@@ -2070,8 +2074,29 @@ struct planned_column_aggregate {
     struct planned_select_order aggregate_order;
     bool has_separator;
     struct planned_value separator;
+    struct planned_value count_literal;
     struct planned_select_predicate predicate;
     struct planned_select_limit limit;
+};
+
+struct planned_column_aggregate_select {
+    bool has_source;
+    struct table_name_resolution source;
+    struct mylite_catalog_table_descriptor table;
+    struct planned_column_aggregate *items;
+    size_t item_count;
+    struct planned_select_predicate predicate;
+    struct planned_select_limit limit;
+};
+
+struct column_aggregate_select_item_plan_input {
+    const struct mylite_sql_ast_node *select_item;
+    const struct mylite_sql_ast_node *from_clause;
+    const struct mylite_sql_ast_node *where_clause;
+    const struct select_source_context *source_context;
+    const struct mylite_catalog_table_descriptor *table;
+    const struct mylite_catalog_column_descriptor *table_columns;
+    size_t table_column_count;
 };
 
 enum planned_grouped_aggregate_function {

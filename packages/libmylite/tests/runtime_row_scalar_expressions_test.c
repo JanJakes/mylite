@@ -1029,7 +1029,7 @@ static int test_table_backed_wildcard_aggregates_and_constants(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SUM(column) supports exactly one aggregate select item",
+            .message_part = "aggregate SELECT supports only aggregate select items",
         }
     );
     mylite_close(database);

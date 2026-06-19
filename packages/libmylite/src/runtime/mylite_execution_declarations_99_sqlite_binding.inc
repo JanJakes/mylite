@@ -966,7 +966,12 @@ static int bind_count_derived_compound_branch_parameters(
 );
 static int bind_column_aggregate_parameters(
     sqlite3_stmt *statement,
-    const struct planned_column_aggregate *plan
+    const struct planned_column_aggregate_select *plan
+);
+static int bind_column_aggregate_item_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_column_aggregate *item,
+    int *parameter_index
 );
 static int bind_grouped_aggregate_parameters(
     sqlite3_stmt *statement,

@@ -2490,49 +2490,26 @@ static int test_count_aggregate_diagnostics(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT COUNT(*), COUNT(*) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "COUNT(*) supports exactly one aggregate select item",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT COUNT(n), COUNT(id) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "COUNT(column) supports exactly one aggregate select item",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT COUNT(1), COUNT(0) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "COUNT(literal) supports exactly one aggregate select item",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT COUNT(DISTINCT n), COUNT(DISTINCT id) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "COUNT(DISTINCT column) supports exactly one aggregate select item",
-        }
-    );
+    failures += execute_ok(database, "SELECT COUNT(*), COUNT(*) FROM numbers", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "SELECT COUNT(n), COUNT(id) FROM numbers", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "SELECT COUNT(1), COUNT(0) FROM numbers", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures +=
+        execute_ok(database, "SELECT COUNT(DISTINCT n), COUNT(DISTINCT id) FROM numbers", &result);
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_error(
         database,
         "SELECT COUNT(*), id FROM numbers",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "COUNT(*) supports exactly one aggregate select item",
+            .message_part = "aggregate SELECT supports only aggregate select items",
         }
     );
     failures += execute_error(
@@ -2541,7 +2518,7 @@ static int test_count_aggregate_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "COUNT(column) supports exactly one aggregate select item",
+            .message_part = "aggregate SELECT supports only aggregate select items",
         }
     );
     failures += execute_error(
@@ -2550,7 +2527,7 @@ static int test_count_aggregate_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "COUNT(literal) supports exactly one aggregate select item",
+            .message_part = "aggregate SELECT supports only aggregate select items",
         }
     );
     failures += execute_error(
@@ -2559,7 +2536,7 @@ static int test_count_aggregate_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "COUNT(DISTINCT column) supports exactly one aggregate select item",
+            .message_part = "aggregate SELECT supports only aggregate select items",
         }
     );
     failures += expect_count_query(

@@ -652,22 +652,16 @@ static int test_sum_diagnostics(void) {
             .message_part = "SUM(column) supports only descriptor-backed table reads",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT SUM(i), SUM(n) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SUM(column) supports exactly one aggregate select item",
-        }
-    );
+    failures += execute_ok(database, "SELECT SUM(i), SUM(n) FROM numbers", &result);
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_error(
         database,
         "SELECT i, SUM(n) FROM numbers",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SUM(column) supports exactly one aggregate select item",
+            .message_part = "aggregate SELECT supports only aggregate select items",
         }
     );
     failures += execute_error(
@@ -676,7 +670,7 @@ static int test_sum_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "SUM(column) supports only WHERE",
+            .message_part = "aggregate SELECT supports only WHERE and LIMIT",
         }
     );
     failures += expect_sum_query(

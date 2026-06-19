@@ -651,40 +651,64 @@ static int bind_count_derived_compound_branch_parameters(
 
 static int bind_column_aggregate_parameters(
     sqlite3_stmt *statement,
-    const struct planned_column_aggregate *plan
+    const struct planned_column_aggregate_select *plan
 ) {
     int parameter_index = 1;
     int rc = MYLITE_OK;
 
-    if (plan->aggregate_uses_row_scalar_expression) {
-        rc = bind_row_scalar_expression_parameters(
+    for (size_t item_index = 0U; rc == MYLITE_OK && item_index < plan->item_count; ++item_index) {
+        rc = bind_column_aggregate_item_parameters(
             statement,
-            &plan->aggregate_row_scalar_expression,
-            &parameter_index
-        );
-        if (rc == MYLITE_OK && plan->function == PLANNED_COLUMN_AGGREGATE_AVG) {
-            rc = bind_row_scalar_expression_parameters(
-                statement,
-                &plan->aggregate_row_scalar_expression,
-                &parameter_index
-            );
-        }
-    }
-    if (rc == MYLITE_OK && plan->has_separator) {
-        rc = bind_planned_value_parameter(statement, parameter_index, &plan->separator);
-        if (rc == MYLITE_OK) {
-            ++parameter_index;
-        }
-    }
-    if (rc == MYLITE_OK && plan->aggregate_has_projection_rhs) {
-        rc = bind_row_scalar_expression_parameters(
-            statement,
-            &plan->aggregate_projection_rhs,
+            &plan->items[item_index],
             &parameter_index
         );
     }
     if (rc == MYLITE_OK) {
         rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
+    }
+
+    return rc;
+}
+
+static int bind_column_aggregate_item_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_column_aggregate *item,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (item->function == PLANNED_COLUMN_AGGREGATE_COUNT_LITERAL) {
+        rc = bind_planned_value_parameter(statement, *parameter_index, &item->count_literal);
+        if (rc == MYLITE_OK) {
+            ++(*parameter_index);
+        }
+    }
+    if (rc == MYLITE_OK && item->aggregate_uses_row_scalar_expression) {
+        rc = bind_row_scalar_expression_parameters(
+            statement,
+            &item->aggregate_row_scalar_expression,
+            parameter_index
+        );
+        if (rc == MYLITE_OK && item->function == PLANNED_COLUMN_AGGREGATE_AVG) {
+            rc = bind_row_scalar_expression_parameters(
+                statement,
+                &item->aggregate_row_scalar_expression,
+                parameter_index
+            );
+        }
+    }
+    if (rc == MYLITE_OK && item->has_separator) {
+        rc = bind_planned_value_parameter(statement, *parameter_index, &item->separator);
+        if (rc == MYLITE_OK) {
+            ++(*parameter_index);
+        }
+    }
+    if (rc == MYLITE_OK && item->aggregate_has_projection_rhs) {
+        rc = bind_row_scalar_expression_parameters(
+            statement,
+            &item->aggregate_projection_rhs,
+            parameter_index
+        );
     }
 
     return rc;
@@ -990,22 +1014,27 @@ static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_
     }
     if (rc == MYLITE_OK && planned_update_has_multiple_assignments(plan)) {
         rc = bind_update_multiple_changed_condition_parameters(statement, &parameter_index, plan);
-    } else if (rc == MYLITE_OK &&
-               plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL) {
+    } else if (
+        rc == MYLITE_OK && plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL
+    ) {
         rc = bind_update_date_interval_parameters(statement, &parameter_index, plan);
-    } else if (rc == MYLITE_OK &&
-               plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY) {
+    } else if (
+        rc == MYLITE_OK && plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY
+    ) {
         rc = MYLITE_OK;
-    } else if (rc == MYLITE_OK &&
-               plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+    } else if (
+        rc == MYLITE_OK && plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR
+    ) {
         rc = bind_update_row_scalar_changed_condition_parameters(
             statement,
             &parameter_index,
             &plan->assignment_row_scalar_expression
         );
-    } else if (rc == MYLITE_OK &&
-               (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC ||
-                !plan->assignment_value.is_null)) {
+    } else if (
+        rc == MYLITE_OK &&
+        (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC ||
+         !plan->assignment_value.is_null)
+    ) {
         rc = bind_update_changed_condition_parameter(statement, parameter_index, plan);
     }
 

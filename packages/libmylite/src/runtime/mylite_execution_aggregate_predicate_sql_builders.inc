@@ -254,7 +254,10 @@ static const char *union_modifier_sql(enum mylite_sql_ast_union_modifier modifie
     }
 }
 
-static int build_column_aggregate_sql(const struct planned_column_aggregate *plan, char **out_sql) {
+static int build_column_aggregate_sql(
+    const struct planned_column_aggregate_select *plan,
+    char **out_sql
+) {
     struct mylite_dynamic_string string;
     size_t next_parameter = 1U;
     int rc = MYLITE_OK;
@@ -289,37 +292,63 @@ static int build_column_aggregate_sql(const struct planned_column_aggregate *pla
 
 static int append_column_aggregate_select_list_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_column_aggregate *plan,
+    const struct planned_column_aggregate_select *plan,
     size_t *next_parameter
 ) {
     int rc = MYLITE_OK;
 
-    if (plan->function == PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT) {
-        if (plan->aggregate_uses_row_scalar_expression) {
+    for (size_t item_index = 0U; rc == MYLITE_OK && item_index < plan->item_count; ++item_index) {
+        if (item_index > 0U) {
+            rc = mylite_dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_column_aggregate_select_item_sql(
+                string,
+                &plan->items[item_index],
+                next_parameter
+            );
+        }
+    }
+
+    return rc;
+}
+
+static int append_column_aggregate_select_item_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_column_aggregate *item,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (column_aggregate_function_is_count(item->function)) {
+        return append_column_aggregate_count_sql(string, item, next_parameter);
+    }
+    if (item->function == PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT) {
+        if (item->aggregate_uses_row_scalar_expression) {
             return append_group_concat_expression_call_sql(
                 string,
-                &plan->aggregate_row_scalar_expression,
-                &plan->aggregate_order,
-                plan->has_separator,
+                &item->aggregate_row_scalar_expression,
+                &item->aggregate_order,
+                item->has_separator,
                 next_parameter
             );
         }
         return append_group_concat_call_sql(
             string,
-            &plan->aggregate_column,
+            &item->aggregate_column,
             0U,
-            &plan->aggregate_order,
+            &item->aggregate_order,
             false,
-            plan->has_separator,
+            item->has_separator,
             next_parameter
         );
     }
-    if (plan->aggregate_uses_row_scalar_expression) {
-        if (plan->function == PLANNED_COLUMN_AGGREGATE_AVG) {
+    if (item->aggregate_uses_row_scalar_expression) {
+        if (item->function == PLANNED_COLUMN_AGGREGATE_AVG) {
             rc = mylite_dynamic_string_append(string, "SUM(");
         } else {
             rc =
-                mylite_dynamic_string_append(string, column_aggregate_sql_function(plan->function));
+                mylite_dynamic_string_append(string, column_aggregate_sql_function(item->function));
             if (rc == MYLITE_OK) {
                 rc = mylite_dynamic_string_append_char(string, '(');
             }
@@ -327,40 +356,40 @@ static int append_column_aggregate_select_list_sql(
         if (rc == MYLITE_OK) {
             rc = append_row_scalar_expression_sql(
                 string,
-                &plan->aggregate_row_scalar_expression,
+                &item->aggregate_row_scalar_expression,
                 next_parameter
             );
         }
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append_char(string, ')');
         }
-        if (rc == MYLITE_OK && plan->function == PLANNED_COLUMN_AGGREGATE_AVG) {
+        if (rc == MYLITE_OK && item->function == PLANNED_COLUMN_AGGREGATE_AVG) {
             rc = mylite_dynamic_string_append(string, ", COUNT(");
         }
-        if (rc == MYLITE_OK && plan->function == PLANNED_COLUMN_AGGREGATE_AVG) {
+        if (rc == MYLITE_OK && item->function == PLANNED_COLUMN_AGGREGATE_AVG) {
             rc = append_row_scalar_expression_sql(
                 string,
-                &plan->aggregate_row_scalar_expression,
+                &item->aggregate_row_scalar_expression,
                 next_parameter
             );
         }
-        if (rc == MYLITE_OK && plan->function == PLANNED_COLUMN_AGGREGATE_AVG) {
+        if (rc == MYLITE_OK && item->function == PLANNED_COLUMN_AGGREGATE_AVG) {
             rc = mylite_dynamic_string_append_char(string, ')');
         }
         return rc;
     }
-    if (plan->function == PLANNED_COLUMN_AGGREGATE_AVG) {
+    if (item->function == PLANNED_COLUMN_AGGREGATE_AVG) {
         rc = mylite_dynamic_string_append(string, "SUM(");
         if (rc == MYLITE_OK) {
             rc =
-                mylite_dynamic_string_append_quoted_identifier(string, plan->aggregate_column.name);
+                mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column.name);
         }
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append(string, "), COUNT(");
         }
         if (rc == MYLITE_OK) {
             rc =
-                mylite_dynamic_string_append_quoted_identifier(string, plan->aggregate_column.name);
+                mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column.name);
         }
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append_char(string, ')');
@@ -368,31 +397,63 @@ static int append_column_aggregate_select_list_sql(
         return rc;
     }
 
-    rc = mylite_dynamic_string_append(string, column_aggregate_sql_function(plan->function));
+    rc = mylite_dynamic_string_append(string, column_aggregate_sql_function(item->function));
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, '(');
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_quoted_identifier(string, plan->aggregate_column.name);
+        rc = mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column.name);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, ')');
     }
-    if (rc == MYLITE_OK && plan->aggregate_has_projection_rhs) {
-        if (plan->aggregate_projection_operator == MYLITE_SQL_AST_OPERATOR_ADD) {
+    if (rc == MYLITE_OK && item->aggregate_has_projection_rhs) {
+        if (item->aggregate_projection_operator == MYLITE_SQL_AST_OPERATOR_ADD) {
             rc = mylite_dynamic_string_append(string, " + ");
         } else {
             rc = mylite_dynamic_string_append(string, " - ");
         }
     }
-    if (rc == MYLITE_OK && plan->aggregate_has_projection_rhs) {
+    if (rc == MYLITE_OK && item->aggregate_has_projection_rhs) {
         rc = append_row_scalar_expression_sql(
             string,
-            &plan->aggregate_projection_rhs,
+            &item->aggregate_projection_rhs,
             next_parameter
         );
     }
 
+    return rc;
+}
+
+static int append_column_aggregate_count_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_column_aggregate *item,
+    size_t *next_parameter
+) {
+    int rc = mylite_dynamic_string_append(string, "COUNT(");
+
+    if (rc == MYLITE_OK && item->function == PLANNED_COLUMN_AGGREGATE_COUNT_STAR) {
+        rc = mylite_dynamic_string_append_char(string, '*');
+    }
+    if (rc == MYLITE_OK && item->function == PLANNED_COLUMN_AGGREGATE_COUNT_COLUMN) {
+        rc = mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column.name);
+    }
+    if (rc == MYLITE_OK && item->function == PLANNED_COLUMN_AGGREGATE_COUNT_DISTINCT_COLUMN) {
+        rc = mylite_dynamic_string_append(string, "DISTINCT ");
+        if (rc == MYLITE_OK) {
+            rc =
+                mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column.name);
+        }
+    }
+    if (rc == MYLITE_OK && item->function == PLANNED_COLUMN_AGGREGATE_COUNT_LITERAL) {
+        rc = append_numbered_parameter(string, *next_parameter);
+        if (rc == MYLITE_OK) {
+            ++(*next_parameter);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
     return rc;
 }
 
@@ -523,6 +584,11 @@ static const char *column_aggregate_sql_function(enum planned_column_aggregate_f
         return "_mylite_var_pop";
     case PLANNED_COLUMN_AGGREGATE_VAR_SAMP:
         return "_mylite_var_samp";
+    case PLANNED_COLUMN_AGGREGATE_COUNT_STAR:
+    case PLANNED_COLUMN_AGGREGATE_COUNT_COLUMN:
+    case PLANNED_COLUMN_AGGREGATE_COUNT_LITERAL:
+    case PLANNED_COLUMN_AGGREGATE_COUNT_DISTINCT_COLUMN:
+        return "COUNT";
     }
 
     return "";
@@ -961,7 +1027,8 @@ static int append_grouped_aggregate_expression_sql(
     return rc;
 }
 
-static const char *grouped_aggregate_sql_function(enum planned_grouped_aggregate_function function
+static const char *grouped_aggregate_sql_function(
+    enum planned_grouped_aggregate_function function
 ) {
     switch (function) {
     case PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN:
@@ -2192,6 +2259,10 @@ static const char *scalar_aggregate_sql_function(enum planned_column_aggregate_f
     case PLANNED_COLUMN_AGGREGATE_STDDEV_SAMP:
     case PLANNED_COLUMN_AGGREGATE_VAR_POP:
     case PLANNED_COLUMN_AGGREGATE_VAR_SAMP:
+    case PLANNED_COLUMN_AGGREGATE_COUNT_STAR:
+    case PLANNED_COLUMN_AGGREGATE_COUNT_COLUMN:
+    case PLANNED_COLUMN_AGGREGATE_COUNT_LITERAL:
+    case PLANNED_COLUMN_AGGREGATE_COUNT_DISTINCT_COLUMN:
         break;
     }
 
@@ -3251,9 +3322,11 @@ static int append_select_order_item_sql(
 
         snprintf(ordinal_text, sizeof(ordinal_text), "%zu", item->ordinal);
         rc = mylite_dynamic_string_append(string, ordinal_text);
-    } else if (item->kind == PLANNED_SELECT_ORDER_ITEM_FIELD ||
-               item->kind == PLANNED_SELECT_ORDER_ITEM_RAND ||
-               item->kind == PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR) {
+    } else if (
+        item->kind == PLANNED_SELECT_ORDER_ITEM_FIELD ||
+        item->kind == PLANNED_SELECT_ORDER_ITEM_RAND ||
+        item->kind == PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR
+    ) {
         bool real_order_key = false;
 
         if (next_parameter == NULL || item->expression == NULL) {

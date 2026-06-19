@@ -588,6 +588,10 @@ static enum planned_grouped_aggregate_function grouped_aggregate_function_from_e
     case PLANNED_COLUMN_AGGREGATE_VAR_SAMP:
         return PLANNED_GROUPED_AGGREGATE_VAR_SAMP;
     case PLANNED_COLUMN_AGGREGATE_NONE:
+    case PLANNED_COLUMN_AGGREGATE_COUNT_STAR:
+    case PLANNED_COLUMN_AGGREGATE_COUNT_COLUMN:
+    case PLANNED_COLUMN_AGGREGATE_COUNT_LITERAL:
+    case PLANNED_COLUMN_AGGREGATE_COUNT_DISTINCT_COLUMN:
         break;
     }
     if (expression != NULL && expression->kind == MYLITE_SQL_AST_ANY_VALUE_FUNCTION) {

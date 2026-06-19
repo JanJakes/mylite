@@ -193,7 +193,8 @@ static int execute_select_statement(
             out_result
         );
     }
-    if (select_statement_has_column_aggregate(statement)) {
+    if (select_statement_has_column_aggregate(statement) ||
+        select_statement_has_multi_count_aggregate(statement)) {
         return execute_column_aggregate_select_statement(
             database,
             statement,
@@ -440,8 +441,8 @@ static int execute_column_aggregate_select_statement(
     bool apply_sql_select_limit,
     mylite_result **out_result
 ) {
-    struct planned_column_aggregate aggregate_plan = {0};
-    int rc = plan_column_aggregate(database, statement, &aggregate_plan);
+    struct planned_column_aggregate_select aggregate_plan = {0};
+    int rc = plan_column_aggregate_select(database, statement, &aggregate_plan);
 
     if (rc == MYLITE_OK) {
         rc = append_select_modifier_warnings(database, statement);
@@ -457,7 +458,7 @@ static int execute_column_aggregate_select_statement(
             out_result
         );
     }
-    planned_column_aggregate_deinit(&aggregate_plan);
+    planned_column_aggregate_select_deinit(&aggregate_plan);
     return rc;
 }
 

@@ -843,22 +843,16 @@ static int test_min_max_diagnostics(void) {
             .message_part = "MIN/MAX supports only descriptor-backed table reads",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT MIN(i), MAX(i) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "MIN/MAX supports exactly one aggregate select item",
-        }
-    );
+    failures += execute_ok(database, "SELECT MIN(i), MAX(i) FROM numbers", &result);
+    mylite_result_free(result);
+    result = NULL;
     failures += execute_error(
         database,
         "SELECT i, MAX(i) FROM numbers",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "MIN/MAX supports exactly one aggregate select item",
+            .message_part = "aggregate SELECT supports only aggregate select items",
         }
     );
     failures += execute_error(
@@ -867,7 +861,7 @@ static int test_min_max_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "MIN/MAX supports only WHERE",
+            .message_part = "aggregate SELECT supports only WHERE and LIMIT",
         }
     );
     failures += execute_error(

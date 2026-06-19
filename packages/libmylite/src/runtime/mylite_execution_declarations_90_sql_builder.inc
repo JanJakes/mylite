@@ -2011,10 +2011,23 @@ static int append_count_derived_compound_branch_sql(
     size_t *next_parameter
 );
 static const char *union_modifier_sql(enum mylite_sql_ast_union_modifier modifier);
-static int build_column_aggregate_sql(const struct planned_column_aggregate *plan, char **out_sql);
+static int build_column_aggregate_sql(
+    const struct planned_column_aggregate_select *plan,
+    char **out_sql
+);
 static int append_column_aggregate_select_list_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_column_aggregate *plan,
+    const struct planned_column_aggregate_select *plan,
+    size_t *next_parameter
+);
+static int append_column_aggregate_select_item_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_column_aggregate *item,
+    size_t *next_parameter
+);
+static int append_column_aggregate_count_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_column_aggregate *item,
     size_t *next_parameter
 );
 static int append_group_concat_call_sql(

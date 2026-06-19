@@ -2400,6 +2400,9 @@ static int plan_row_scalar_session_value(
     const struct mylite_sql_ast_node *expression,
     struct planned_row_scalar_expression *out_expression
 );
+static bool row_scalar_session_value_prefers_integer(
+    enum mylite_sql_ast_node_kind expression_kind
+);
 static int plan_row_scalar_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

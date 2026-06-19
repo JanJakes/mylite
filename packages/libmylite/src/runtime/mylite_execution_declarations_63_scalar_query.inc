@@ -224,6 +224,10 @@ static int append_session_scalar_select_warnings(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list
 );
+static int append_session_scalar_row_scalar_select_warnings(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+);
 static int append_session_scalar_expression_warnings(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression

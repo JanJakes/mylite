@@ -1538,6 +1538,9 @@ static bool row_scalar_expression_contains_statement_context_function(
             current->kind == MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION ||
             current->kind == MYLITE_SQL_AST_CURRENT_USER_FUNCTION ||
             current->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_FOUND_ROWS_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_ROW_COUNT_FUNCTION ||
             current->kind == MYLITE_SQL_AST_SESSION_USER_FUNCTION ||
             current->kind == MYLITE_SQL_AST_VERSION_FUNCTION ||
             current->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION ||
@@ -1601,6 +1604,9 @@ static bool row_scalar_expression_is_predicate_value_context_attempt(
         node->kind == MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION ||
         node->kind == MYLITE_SQL_AST_CURRENT_USER_FUNCTION ||
         node->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_FOUND_ROWS_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_ROW_COUNT_FUNCTION ||
         node->kind == MYLITE_SQL_AST_SESSION_USER_FUNCTION ||
         node->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION ||
         node->kind == MYLITE_SQL_AST_SYSTEM_USER_FUNCTION ||

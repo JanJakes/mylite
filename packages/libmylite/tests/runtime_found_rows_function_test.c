@@ -854,8 +854,11 @@ static int test_found_rows_file_state_and_independent_handles(void) {
 }
 
 static int test_found_rows_unsupported_forms(void) {
+    static const char *const source_backed_found_rows[] = {"4", "4"};
+    static const char *const source_backed_where_rows[] = {"1"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
+    mylite_result *result = NULL;
     int failures = 0;
 
     if (make_test_path(path, sizeof(path), "unsupported") != 0) {
@@ -893,13 +896,51 @@ static int test_found_rows_unsupported_forms(void) {
             .message_part = "SELECT",
         }
     );
-    failures += execute_error(
+
+    failures +=
+        execute_ok(database, "SELECT SQL_CALC_FOUND_ROWS id FROM t ORDER BY id LIMIT 2", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "SELECT FOUND_ROWS() FROM t ORDER BY id LIMIT 2", &result);
+    failures += expect_single_column_rows(
+        result,
+        source_backed_found_rows,
+        2U,
+        1U,
+        "source-backed found rows projection"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_found_rows_state(
         database,
-        "SELECT FOUND_ROWS() FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only",
+        (struct expected_found_rows_state){
+            .found_rows = "2",
+            .warning_count = "1",
+            .row_count = "-1",
+            .context = "source-backed found rows projection state",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "SELECT id FROM t WHERE FOUND_ROWS() = 1 ORDER BY id LIMIT 1",
+        &result
+    );
+    failures += expect_single_column_rows(
+        result,
+        source_backed_where_rows,
+        1U,
+        1U,
+        "source-backed found rows predicate warning"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_found_rows_state(
+        database,
+        (struct expected_found_rows_state){
+            .found_rows = "1",
+            .warning_count = "1",
+            .row_count = "-1",
+            .context = "source-backed found rows predicate state",
         }
     );
     failures += execute_error(

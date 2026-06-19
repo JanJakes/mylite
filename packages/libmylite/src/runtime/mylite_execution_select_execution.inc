@@ -255,7 +255,7 @@ static int execute_row_scalar_select_statement(
         rc = append_select_modifier_warnings(database, statement);
     }
     if (rc == MYLITE_OK) {
-        rc = append_session_scalar_select_warnings(database, child_at(statement, 0U));
+        rc = append_session_scalar_row_scalar_select_warnings(database, statement);
     }
     if (rc == MYLITE_OK) {
         rc = execute_row_scalar_select_from_plan(database, &plan, out_result);

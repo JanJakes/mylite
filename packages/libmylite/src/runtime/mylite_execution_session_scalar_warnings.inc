@@ -57,6 +57,29 @@ static int append_session_scalar_select_warnings(
     return rc;
 }
 
+static int append_session_scalar_row_scalar_select_warnings(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *optional_clause = NULL;
+    int rc = MYLITE_OK;
+
+    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = append_session_scalar_select_warnings(database, child_at(statement, 0U));
+    optional_clause = select_statement_optional_clause_start(statement);
+    while (rc == MYLITE_OK && optional_clause != NULL) {
+        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE ||
+            optional_clause->kind == MYLITE_SQL_AST_ORDER_BY_CLAUSE) {
+            rc = append_session_scalar_expression_warnings(database, optional_clause);
+        }
+        optional_clause = optional_clause->next_sibling;
+    }
+    return rc;
+}
+
 static int append_session_scalar_expression_warnings(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression

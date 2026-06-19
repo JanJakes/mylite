@@ -168,7 +168,7 @@ expect_output \
 "DROP DATABASE ${DATABASE};"
 
 expect_output \
-    "mysql accepts table-backed row count outside mylite slice" \
+    "mysql accepts table-backed row count" \
     "2
 2
 -1	0" \

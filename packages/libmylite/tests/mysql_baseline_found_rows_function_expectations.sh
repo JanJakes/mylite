@@ -130,6 +130,37 @@ expect_contains \
     "FOUND_ROWS() is deprecated and will be removed in a future release. Consider using COUNT(*) instead."
 expect_value "found rows select updates state" "1	1	-1" "$(printf '%s\n' "$calc_limit" | sed -n '6p')"
 
+source_backed=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT SQL_CALC_FOUND_ROWS id FROM t ORDER BY id LIMIT 2;
+     SELECT FOUND_ROWS() FROM t ORDER BY id LIMIT 2;
+     SHOW WARNINGS;
+     SELECT FOUND_ROWS(), @@warning_count, ROW_COUNT();
+     SELECT id FROM t WHERE FOUND_ROWS() = 1 ORDER BY id LIMIT 1;
+     SHOW WARNINGS;
+     SELECT @@warning_count, ROW_COUNT();"
+)
+expect_value "source-backed seed row 1" "1" "$(printf '%s\n' "$source_backed" | sed -n '1p')"
+expect_value "source-backed seed row 2" "2" "$(printf '%s\n' "$source_backed" | sed -n '2p')"
+expect_value "source-backed found rows projection row 1" "4" \
+    "$(printf '%s\n' "$source_backed" | sed -n '3p')"
+expect_value "source-backed found rows projection row 2" "4" \
+    "$(printf '%s\n' "$source_backed" | sed -n '4p')"
+expect_contains \
+    "source-backed found rows projection warning" \
+    "$(printf '%s\n' "$source_backed" | sed -n '5p')" \
+    "FOUND_ROWS() is deprecated and will be removed in a future release. Consider using COUNT(*) instead."
+expect_value "source-backed found rows state" "2	1	-1" \
+    "$(printf '%s\n' "$source_backed" | sed -n '6p')"
+expect_value "source-backed found rows predicate row" "1" \
+    "$(printf '%s\n' "$source_backed" | sed -n '7p')"
+expect_contains \
+    "source-backed found rows predicate warning" \
+    "$(printf '%s\n' "$source_backed" | sed -n '8p')" \
+    "FOUND_ROWS() is deprecated and will be removed in a future release. Consider using COUNT(*) instead."
+expect_value "source-backed found rows predicate diagnostics" "1	-1" \
+    "$(printf '%s\n' "$source_backed" | sed -n '9p')"
+
 calc_count=$(run_mysql \
     "USE ${DATABASE};
      SELECT SQL_CALC_FOUND_ROWS COUNT(*) FROM t;

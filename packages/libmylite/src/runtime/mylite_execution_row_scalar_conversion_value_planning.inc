@@ -1241,7 +1241,8 @@ static int plan_row_scalar_session_value(
         out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
         return MYLITE_OK;
     }
-    if (is_scalar_arithmetic_projection_expression(expression) &&
+    if ((is_scalar_arithmetic_projection_expression(expression) ||
+         row_scalar_session_value_prefers_integer(expression->kind)) &&
         mylite_execution_parse_signed_integer_text(
             cell.value,
             strlen(cell.value),
@@ -1263,6 +1264,20 @@ static int plan_row_scalar_session_value(
     }
 
     return copy_text_value(database, cell.value, &out_expression->value);
+}
+
+static bool row_scalar_session_value_prefers_integer(
+    enum mylite_sql_ast_node_kind expression_kind
+) {
+    switch (expression_kind) {
+    case MYLITE_SQL_AST_CONNECTION_ID_FUNCTION:
+    case MYLITE_SQL_AST_ROW_COUNT_FUNCTION:
+    case MYLITE_SQL_AST_FOUND_ROWS_FUNCTION:
+    case MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION:
+        return true;
+    default:
+        return false;
+    }
 }
 
 static int plan_row_scalar_column(

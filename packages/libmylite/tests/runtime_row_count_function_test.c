@@ -329,6 +329,7 @@ static int test_row_count_function_reopen_and_independent_handles(void) {
 static int test_row_count_function_unsupported_forms(void) {
     static const char *const row_count_alias_columns[] = {"rc"};
     static const char *const row_count_alias_values[] = {"-1"};
+    static const char *const table_backed_row_count_values[] = {"2", "2"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -426,16 +427,20 @@ static int test_row_count_function_unsupported_forms(void) {
     mylite_result_free(result);
     result = NULL;
 
-    failures += execute_error(
+    failures += execute_ok(
         database,
-        "SELECT ROW_COUNT() FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only",
-        }
+        "SELECT ROW_COUNT() FROM t WHERE ROW_COUNT() = 2 ORDER BY ROW_COUNT(), id",
+        &result
     );
-    failures += expect_row_count(database, -1, "row count after table-backed error");
+    failures += expect_single_column_rows(
+        result,
+        table_backed_row_count_values,
+        2U,
+        "table-backed row count projection"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_row_count(database, -1, "row count after table-backed projection");
 
     mylite_close(database);
     remove_related_files(path);

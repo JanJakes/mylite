@@ -674,6 +674,64 @@ static int test_select_where_predicates(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE ROW_COUNT() = ROW_COUNT();",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_ROW_COUNT_FUNCTION,
+        "row count predicate left value"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            1U
+        ),
+        MYLITE_SQL_AST_ROW_COUNT_FUNCTION,
+        "row count predicate right value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM simple_lifecycle WHERE FOUND_ROWS() = LAST_INSERT_ID();",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_FOUND_ROWS_FUNCTION,
+        "found rows predicate left value"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            1U
+        ),
+        MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION,
+        "last insert id predicate right value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "SELECT id FROM simple_lifecycle WHERE id BETWEEN -2 AND 1;",
         MYLITE_SQL_PARSE_OK,
         &result

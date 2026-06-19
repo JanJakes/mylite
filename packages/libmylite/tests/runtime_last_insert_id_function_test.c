@@ -695,6 +695,7 @@ static int test_last_insert_id_reopen_and_independent_handles(void) {
 static int test_last_insert_id_unsupported_forms(void) {
     static const char *const last_insert_id_alias_columns[] = {"id"};
     static const char *const last_insert_id_alias_values[] = {"33"};
+    static const char *const table_backed_last_insert_id_values[] = {"33", "33"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -896,20 +897,25 @@ static int test_last_insert_id_unsupported_forms(void) {
     failures += execute_statement_ok(database, "USE app");
     failures += execute_statement_ok(database, "CREATE TABLE t (id INT)");
     failures += execute_statement_ok(database, "INSERT INTO t VALUES (1), (2)");
-    failures += execute_error(
+    failures += execute_ok(
         database,
-        "SELECT LAST_INSERT_ID() FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
-        }
+        "SELECT LAST_INSERT_ID() FROM t WHERE LAST_INSERT_ID() = 33 "
+        "ORDER BY LAST_INSERT_ID(), id",
+        &result
     );
+    failures += expect_single_column_rows(
+        result,
+        table_backed_last_insert_id_values,
+        2U,
+        "zero-arg table-backed last insert id"
+    );
+    mylite_result_free(result);
+    result = NULL;
     failures += expect_last_insert_id_value(
         database,
         (struct expected_last_insert_id){
             .value = "33",
-            .context = "zero-arg table-backed error leaves last insert id",
+            .context = "zero-arg table-backed read leaves last insert id",
         }
     );
     failures += execute_error(

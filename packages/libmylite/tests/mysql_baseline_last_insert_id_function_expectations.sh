@@ -170,7 +170,23 @@ expect_output \
     "DO LAST_INSERT_ID(42); SELECT ROW_COUNT(), LAST_INSERT_ID(), @@warning_count;"
 
 expect_output \
-    "mysql table backed expression is deferred in mylite" \
+    "mysql zero-arg table backed last insert id" \
+    "33
+33
+33
+33" \
+    "CREATE DATABASE ${DATABASE}; "\
+"USE ${DATABASE}; "\
+"SELECT LAST_INSERT_ID(33); "\
+"CREATE TABLE table_backed_zero_arg (id INT); "\
+"INSERT INTO table_backed_zero_arg VALUES (1),(2); "\
+"SELECT LAST_INSERT_ID() FROM table_backed_zero_arg "\
+"WHERE LAST_INSERT_ID() = 33 ORDER BY LAST_INSERT_ID(), id; "\
+"SELECT LAST_INSERT_ID(); "\
+"DROP DATABASE ${DATABASE};"
+
+expect_output \
+    "mysql table backed last insert id expression side effects" \
     "1	1
 2	2
 2" \

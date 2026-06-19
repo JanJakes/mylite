@@ -8,7 +8,7 @@ descriptor to tables with multiple enforced primary or unique key descriptors.
 It keeps the current duplicate-assignment envelope: persistent and shadowing
 session temporary base tables, `INSERT ... VALUES` and one-row `INSERT ... SET`,
 distinct unqualified non-key assignment targets, supported descriptor value
-conversion, and same-target `VALUES(column_name)`.
+conversion, and direct copy-compatible `VALUES(column_name)`.
 
 The goal is to remove a common application-facing limitation without widening
 the expression engine, key reassignment semantics, `IGNORE`, or `INSERT ...
@@ -97,7 +97,7 @@ The implementation supports:
   column;
 - the existing duplicate assignment value subset for each target: compatible
   row-value literals, `NULL`, `TRUE`, `FALSE`, `DEFAULT`, admitted temporal
-  current-value forms, and same-target `VALUES(column_name)`;
+  current-value forms, and direct copy-compatible `VALUES(column_name)`;
 - MySQL-compatible affected rows for inserted, changed duplicate, and unchanged
   duplicate rows;
 - existing warning behavior for `DELAYED` and `VALUES(column_name)`;
@@ -113,7 +113,7 @@ This phase does not add:
   source forms for ODKU;
 - duplicate assignment targets;
 - table-qualified assignment targets or table-qualified `VALUES()` arguments;
-- cross-column `VALUES(column_name)` references;
+- descriptor-incompatible `VALUES(column_name)` references;
 - assignments to primary-key, unique-key, or auto-increment columns;
 - expression assignments, column-to-column assignments, arithmetic assignments,
   broad `DEFAULT(column_name)`, functions beyond already admitted value forms,
@@ -195,7 +195,7 @@ duplicate_update_value ::= VALUES LPAREN qualified_identifier RPAREN.
 
 Qualified identifiers remain parsed so runtime can return deterministic
 unsupported diagnostics. This phase supports only unqualified duplicate
-assignment targets and unqualified same-target `VALUES()` references.
+assignment targets and unqualified direct `VALUES()` references.
 
 ## Resolution And Semantics
 
@@ -219,14 +219,15 @@ Duplicate assignment resolution remains descriptor-driven:
 - the auto-increment target column is rejected;
 - unknown assignment columns fail before mutation.
 
-`VALUES(column_name)` resolution remains the current narrow model:
+`VALUES(column_name)` resolution remains the current copy-compatible model:
 
 - it resolves through the target table descriptor;
 - it uses the fully planned proposed value for the current insert row after
   column-list mapping, default filling, generated auto-increment values, and
   insert conversion;
-- it is supported only when the referenced column is the same descriptor column
-  as the assignment target;
+- it is supported only when the referenced column has the same logical and
+  physical storage descriptor as the assignment target; character-string
+  descriptors must also have the same character set and collation;
 - it may explicitly name invisible descriptor columns when unqualified;
 - it records warning `1287` once per supported `VALUES()` assignment value;
 - unknown or qualified `VALUES()` references fail before mutation.
@@ -303,7 +304,8 @@ Existing ODKU diagnostics are preserved where possible:
   diagnostic;
 - duplicate assignment targets: MyLite-specific unsupported diagnostic until
   left-to-right expression semantics are implemented;
-- cross-column `VALUES()` references: existing unsupported diagnostic;
+- descriptor-incompatible `VALUES()` references: existing unsupported
+  diagnostic;
 - enforced key descriptors without loaded descriptor key parts: unsupported
   diagnostic;
 - key-column or auto-increment assignment targets: unsupported diagnostic;

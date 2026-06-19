@@ -105,6 +105,10 @@ static int plan_insert_duplicate_values_reference(
     struct planned_insert *plan,
     struct planned_insert_duplicate_update_assignment *duplicate_assignment
 );
+static bool insert_duplicate_values_reference_columns_are_copy_compatible(
+    const struct mylite_catalog_column_descriptor *source_column,
+    const struct mylite_catalog_column_descriptor *target_column
+);
 static int plan_insert_duplicate_same_column_arithmetic(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,

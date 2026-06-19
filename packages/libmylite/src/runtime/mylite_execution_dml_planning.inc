@@ -630,15 +630,7 @@ static int plan_insert_duplicate_values_reference(
             return MYLITE_ERROR;
         }
     }
-    if (rc == MYLITE_OK && duplicate_assignment->values_column_index !=
-                               duplicate_assignment->assignment_column_index) {
-        set_unsupported_error(
-            database,
-            "VALUES() in ON DUPLICATE KEY UPDATE supports only the assignment column"
-        );
-        return MYLITE_ERROR;
-    }
-    if (rc == MYLITE_OK && !insert_select_source_target_types_are_compatible(
+    if (rc == MYLITE_OK && !insert_duplicate_values_reference_columns_are_copy_compatible(
                                &plan->columns[duplicate_assignment->values_column_index],
                                &plan->columns[duplicate_assignment->assignment_column_index]
                            )) {
@@ -652,6 +644,24 @@ static int plan_insert_duplicate_values_reference(
     duplicate_assignment->assignment_value_node = value_node;
     duplicate_assignment->value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_VALUES_REFERENCE;
     return rc;
+}
+
+static bool insert_duplicate_values_reference_columns_are_copy_compatible(
+    const struct mylite_catalog_column_descriptor *source_column,
+    const struct mylite_catalog_column_descriptor *target_column
+) {
+    if (source_column == NULL || target_column == NULL) {
+        return false;
+    }
+    if (strcmp(source_column->logical_type, target_column->logical_type) != 0 ||
+        strcmp(source_column->physical_type, target_column->physical_type) != 0) {
+        return false;
+    }
+    if (column_descriptor_is_string_family(target_column)) {
+        return strcmp(source_column->character_set_name, target_column->character_set_name) == 0 &&
+               strcmp(source_column->collation_name, target_column->collation_name) == 0;
+    }
+    return true;
 }
 
 static int plan_insert_duplicate_same_column_arithmetic(

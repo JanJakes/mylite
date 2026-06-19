@@ -225,7 +225,7 @@ materializes omitted values through existing descriptor-owned default logic:
 If that row conflicts with the current supported primary or unique-key subset,
 the existing duplicate assignment planner runs. `VALUES(column)` observes the
 planned default/generated value for the row, subject to the current duplicate
-feature's same-target limitation.
+feature's direct copy-compatible `VALUES(column)` scope.
 
 No-key `REPLACE ... VALUES` uses the same all-default row planner and remains
 insert-equivalent. Key-bearing `REPLACE` targets stay unsupported until

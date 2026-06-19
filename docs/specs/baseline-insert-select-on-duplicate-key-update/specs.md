@@ -99,8 +99,9 @@ The implementation supports:
 - one or more distinct unqualified duplicate-update assignment targets;
 - current duplicate-update value forms: supported insert literals,
   `NULL`, `TRUE`, `FALSE`, `DEFAULT`, `DEFAULT(column_name)` where already
-  accepted by the current duplicate-update path, and same-target
-  `VALUES(column_name)`;
+  accepted by the current duplicate-update path, and direct copy-compatible
+  `VALUES(column_name)` as expanded by
+  [baseline ODKU VALUES cross-column references](../baseline-odku-values-cross-column/specs.md);
 - duplicate conflict handling for the current primary-key and unique-index
   descriptor subset, including multiple enforced keys, composite keys, and
   prefix keys already owned by the existing ODKU path;
@@ -126,7 +127,7 @@ This phase does not add:
   grouped source forms, global compound ordering/limiting, or branch-local
   compound ordering/limiting;
 - table-qualified duplicate assignment targets, duplicate assignment targets,
-  qualified or cross-column `VALUES()` references;
+  and qualified `VALUES()` references;
 - source-column references in the duplicate branch, expression assignments,
   column-to-column assignments, arithmetic assignments, functions beyond
   already admitted duplicate-update value forms, variables, parameters, casts,
@@ -246,8 +247,8 @@ For each selected row:
 
 `VALUES(column_name)` uses the fully planned proposed value for the current
 selected row after target column mapping, omitted defaults, and target
-conversion. This phase keeps the current same-target restriction, so
-`v = VALUES(v)` is supported and `v = VALUES(other)` is rejected.
+conversion. Direct cross-column references are covered by
+[baseline ODKU VALUES cross-column references](../baseline-odku-values-cross-column/specs.md).
 
 ## Diagnostics
 

@@ -7,7 +7,7 @@ This phase extends the existing descriptor-driven
 one enforced composite primary or unique key. It keeps the existing duplicate
 assignment surface: persistent base tables, `INSERT ... VALUES` and one-row
 `INSERT ... SET`, distinct unqualified non-key assignment targets, compatible
-literal/default values, and same-target `VALUES(column_name)`.
+literal/default values, and direct copy-compatible `VALUES(column_name)`.
 
 The goal is the smallest useful expansion for application upserts over
 composite primary or unique keys. This phase does not implement MySQL's full
@@ -80,7 +80,7 @@ The implementation supports:
   the enforced key and are not the auto-increment column;
 - the existing duplicate assignment value subset for each target: compatible
   row-value literals, `NULL`, `TRUE`, `FALSE`, `DEFAULT`, admitted
-  current-timestamp value forms, and same-target `VALUES(column_name)`;
+  current-timestamp value forms, and direct copy-compatible `VALUES(column_name)`;
 - MySQL-compatible affected rows for inserted, changed duplicate, and
   unchanged duplicate rows;
 - one warning `1287` per admitted `VALUES(column_name)` duplicate assignment
@@ -98,7 +98,7 @@ This feature does not add:
   forms;
 - duplicate assignment targets;
 - table-qualified assignment targets or table-qualified `VALUES()` arguments;
-- cross-column `VALUES(column_name)` references;
+- descriptor-incompatible `VALUES(column_name)` references;
 - duplicate assignment to primary-key, unique-key, or auto-increment columns;
 - duplicate updates on tables with more than one enforced key descriptor;
 - MySQL's multiple-unique-key conflict-selection behavior;
@@ -180,7 +180,7 @@ duplicate_update_value ::= VALUES LPAREN qualified_identifier RPAREN.
 
 The parser admits qualified identifiers so runtime can produce deterministic
 unsupported diagnostics. This phase supports only unqualified duplicate
-assignment targets and unqualified same-target `VALUES()` references.
+assignment targets and unqualified direct `VALUES()` references.
 
 ## Resolution And Semantics
 
@@ -203,14 +203,15 @@ Duplicate assignment resolution remains descriptor-driven:
   rejected for this phase;
 - unknown assignment columns fail before mutation.
 
-`VALUES(column_name)` resolution remains the current narrow model:
+`VALUES(column_name)` resolution remains the current copy-compatible model:
 
 - resolves through the target table descriptor;
 - uses the fully planned proposed value for the current insert row, after
   column-list mapping, default filling, generated auto-increment values, and
   insert conversion;
-- is supported only when the referenced column is the same descriptor column as
-  the assignment target;
+- is supported only when the referenced column has the same logical and
+  physical storage descriptor as the assignment target; character-string
+  descriptors must also have the same character set and collation;
 - may explicitly name invisible descriptor columns when unqualified;
 - records warning `1287` once per supported `VALUES()` assignment value;
 - unknown or qualified `VALUES()` references fail before mutation.
@@ -286,7 +287,8 @@ Existing ODKU diagnostics are preserved where possible:
   diagnostic;
 - duplicate assignment targets: MyLite-specific unsupported diagnostic until
   left-to-right expression semantics are implemented;
-- cross-column `VALUES()` references: existing unsupported diagnostic;
+- descriptor-incompatible `VALUES()` references: existing unsupported
+  diagnostic;
 - more than one enforced key descriptor: existing unsupported diagnostic;
 - key-column or auto-increment assignment targets: unsupported diagnostic;
 - `NULL` into `NOT NULL`, missing explicit default, range errors, overlength
@@ -318,7 +320,7 @@ The C runtime tests must cover:
 - composite primary-key and composite unique-key duplicate updates;
 - single-column ODKU regression coverage;
 - multi-row row-by-row behavior and affected-row totals;
-- same-target `VALUES()` references and warning `1287`;
+- direct `VALUES()` references and warning `1287`;
 - literal, `DEFAULT`, `NULL`, string, temporal, and current-timestamp values
   where existing ODKU conversion already supports them;
 - composite unique keys with `NULL` parts inserting normally;
@@ -335,4 +337,3 @@ Existing parser, insert, insert-set, ODKU, duplicate-multiple-assignment,
 primary-key, composite-primary-key, unique-index, composite-unique-index,
 prefix-key, replace-key, update, row-values, auto-increment, diagnostics,
 file-backed storage, VFS, and full workflow tests must continue to pass.
-

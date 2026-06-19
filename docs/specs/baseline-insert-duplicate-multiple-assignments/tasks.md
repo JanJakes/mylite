@@ -8,7 +8,7 @@
       user-visible behavior.
 - [x] Extend duplicate-update planning to resolve and validate multiple
       distinct unqualified non-key assignment targets.
-- [x] Reuse existing duplicate-update literal and same-target `VALUES()`
+- [x] Reuse existing duplicate-update literal and direct `VALUES()`
       conversion for each assignment.
 - [x] Generate one descriptor-driven SQLite duplicate-row `UPDATE` with
       multiple assignment parameters and an `OR` changed-row filter.

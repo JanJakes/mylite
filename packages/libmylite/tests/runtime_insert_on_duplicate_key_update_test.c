@@ -119,6 +119,7 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
     static const char *const multi_no_key_rows[] = {"1", "10", "20"};
     static const char *const unique_rows[] = {"1", "10", "200"};
     static const char *const unique_multi_rows[] = {"1", "10", "200", "300"};
+    static const char *const values_cross_rows[] = {"1", "30", "1"};
     static const char *const primary_unique_rows[] = {"1", "10", "500", "2", "20", "400"};
     static const char *const two_unique_rows[] = {"1", "10", "500", "2", "20", "400"};
     static const char *const altered_unique_rows[] = {"1", "10", "500", "2", "20", "200"};
@@ -350,6 +351,28 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
             .column_count = 3U,
             .row_count = 1U,
             .context = "multiple duplicate assignment row",
+        }
+    );
+
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE values_cross_t(id INT PRIMARY KEY, v INT, n INT)"
+    );
+    failures += expect_statement_ok(database, "INSERT INTO values_cross_t VALUES (1, 10, 20)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO values_cross_t VALUES (1, 40, 30) "
+        "ON DUPLICATE KEY UPDATE n = VALUES(id), v = VALUES(n)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 2U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, n FROM values_cross_t",
+            .values = values_cross_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "cross-column VALUES duplicate assignment row",
         }
     );
 
@@ -1595,13 +1618,20 @@ static int test_duplicate_update_diagnostics(void) {
             .message_part = "Unknown column 'v2'",
         }
     );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE values_mismatch_t(id INT PRIMARY KEY, v VARCHAR(3), n VARCHAR(5))"
+    );
+    failures +=
+        expect_statement_ok(database, "INSERT INTO values_mismatch_t VALUES (1, 'a', 'abc')");
     failures += execute_error(
         database,
-        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = VALUES(id)",
+        "INSERT INTO values_mismatch_t VALUES (1, 'b', 'abcd') "
+        "ON DUPLICATE KEY UPDATE v = VALUES(n)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "supports only the assignment column",
+            .message_part = "does not support implicit VALUES() conversion",
         }
     );
     failures += execute_error(

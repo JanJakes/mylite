@@ -18,7 +18,7 @@ ON DUPLICATE KEY UPDATE key_col = 3;
 The phase keeps the existing ODKU source and expression envelope: persistent or
 shadowing session temporary base tables, `INSERT ... VALUES` and one-row
 `INSERT ... SET`, distinct unqualified duplicate assignment targets, supported
-descriptor value conversion, and same-target `VALUES(column_name)` references.
+descriptor value conversion, and direct copy-compatible `VALUES(column_name)` references.
 MyLite owns duplicate-row selection, second-order unique-conflict detection,
 value conversion, affected-row reporting, and diagnostics. SQLite remains the
 physical row store and uniqueness enforcer.
@@ -94,7 +94,7 @@ Supported:
   primary-key and unique-key columns that are not `AUTO_INCREMENT`;
 - the existing duplicate assignment value subset for each target:
   descriptor-compatible insert literals, `NULL`, `TRUE`, `FALSE`, `DEFAULT`,
-  already-admitted current temporal values, and same-target
+  already-admitted current temporal values, and direct descriptor-compatible
   `VALUES(column_name)`;
 - second-order unique-conflict detection after applying all duplicate
   assignments to the duplicate row;
@@ -115,7 +115,7 @@ Deferred:
   source forms for ODKU;
 - duplicate assignment targets;
 - qualified assignment targets or qualified `VALUES()` arguments;
-- cross-column `VALUES(column_name)` references;
+- descriptor-incompatible `VALUES(column_name)` references;
 - expression assignments beyond the existing ODKU literal/default/current-value
   subset;
 - column-to-column assignments, arithmetic assignments, functions beyond
@@ -196,7 +196,7 @@ duplicate_update_value ::= VALUES LPAREN qualified_identifier RPAREN.
 
 Qualified identifiers remain parsed so runtime can return deterministic
 unsupported diagnostics. This phase supports only unqualified duplicate
-assignment targets and unqualified same-target `VALUES()` references.
+assignment targets and unqualified direct `VALUES()` references.
 
 ## Resolution And Semantics
 
@@ -228,8 +228,9 @@ Duplicate assignment resolution remains descriptor-driven:
 - it uses the fully planned proposed value for the current insert row after
   column-list mapping, default filling, generated auto-increment values, and
   insert conversion;
-- it is supported only when the referenced column is the same descriptor column
-  as the assignment target;
+- it is supported only when the referenced column has the same logical and
+  physical storage descriptor as the assignment target; character-string
+  descriptors must also have the same character set and collation;
 - it may explicitly name invisible descriptor columns when unqualified;
 - it records warning `1287` once per supported `VALUES()` assignment value;
 - unknown or qualified `VALUES()` references fail before mutation.
@@ -273,9 +274,9 @@ Existing diagnostics are preserved for syntax errors, unsupported source forms,
 reserved names, missing default schema, unknown schema, unknown table,
 unsupported object kind, unknown assignment columns, duplicate assignment
 targets, qualified assignment targets, unsupported assignment values, unknown
-or qualified `VALUES()` references, cross-column `VALUES()` references,
-conversion failures, `NULL` into `NOT NULL`, allocation failures, public API
-misuse, physical SQLite failures, and check-constraint failures.
+or qualified `VALUES()` references, descriptor-incompatible `VALUES()`
+references, conversion failures, `NULL` into `NOT NULL`, allocation failures,
+public API misuse, physical SQLite failures, and check-constraint failures.
 
 This phase changes:
 

@@ -14,7 +14,7 @@ counts, and MySQL 8.4.9 verified warnings.
    - Record official MySQL 8.4 documentation sources and MySQL 8.4.9 runtime
      observations.
    - Specify grammar, table resolution, assignment resolution,
-     same-target `VALUES(column)` resolution, duplicate-key detection,
+     direct `VALUES(column)` resolution, duplicate-key detection,
      conversion, generated SQLite handling, diagnostics, warnings, and
      unsupported forms.
    - Update `COMPATIBILITY.md` and `docs/compatibility/sql-table-dml.md` only
@@ -23,7 +23,7 @@ counts, and MySQL 8.4.9 verified warnings.
 2. MySQL expectations
    - Add a reproducible MySQL 8.4.9 expectation script.
    - Verify changed duplicate, no-op duplicate, normal insert, multi-row,
-     no-key table, same-target `VALUES(column)` warning, generated
+     no-key table, direct `VALUES(column)` warning, generated
      auto-increment duplicate attempts, `DELAYED`, `DEFAULT`, `NULL`, unknown
      columns, and unsupported shape behavior.
    - Treat a missing MySQL 8.4.9 runtime as a blocker.
@@ -39,7 +39,7 @@ counts, and MySQL 8.4.9 verified warnings.
 4. Analyzer/planner/runtime
    - Reuse the existing insert planner for inserted row conversion and default
      filling.
-   - Resolve duplicate assignment targets and same-target `VALUES(column)`
+   - Resolve duplicate assignment targets and direct `VALUES(column)`
      references from descriptors.
    - Reject unsupported duplicate shapes before mutation.
    - Detect conflicts through the current supported single-column primary-key
@@ -78,7 +78,7 @@ counts, and MySQL 8.4.9 verified warnings.
 
 Full `ON DUPLICATE KEY UPDATE`, `INSERT IGNORE`, `INSERT ... SELECT`, `TABLE`,
 row constructors, aliases, partitions, multiple duplicate assignments,
-assignment expressions, table-qualified names, cross-column `VALUES()`
-references, key-column duplicate
-assignments, multiple-key conflict selection, triggers, cascades, privilege
-semantics, protocol info strings, and SQLite fork patches.
+assignment expressions outside the documented literal/default/current-value and
+direct `VALUES(column_name)` subsets, table-qualified names, key-column
+duplicate assignments, multiple-key conflict selection, triggers, cascades,
+privilege semantics, protocol info strings, and SQLite fork patches.

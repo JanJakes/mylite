@@ -115,8 +115,8 @@ This feature must not implement:
 - multiple duplicate assignments;
 - table-qualified assignment targets or table-qualified `VALUES()` arguments;
 - duplicate assignment expressions other than one supported literal, `DEFAULT`,
-  `NULL`, or same-target `VALUES(column_name)`;
-- cross-column `VALUES(column_name)` references;
+  `NULL`, or direct copy-compatible `VALUES(column_name)` as expanded by
+  [baseline ODKU VALUES cross-column references](../baseline-odku-values-cross-column/specs.md);
 - column-to-column assignments, arithmetic assignments, functions other than
   the duplicate-clause `VALUES(column_name)` form, variables, parameters,
   casts, collations, or generated expressions;
@@ -209,12 +209,10 @@ assignment targets fail with MySQL-compatible unknown-column diagnostics.
 `VALUES(column_name)` resolves against the target table descriptor and refers
 to the fully planned value for that inserted row after column-list mapping,
 omitted-column default filling, generated auto-increment values, and value
-conversion. For this phase, the referenced column must be the same descriptor
-column as the duplicate assignment target, so `v = VALUES(v)` is supported and
-`v = VALUES(other)` is rejected even when `other` exists. This avoids admitting
-cross-column conversion before that conversion matrix is specified. The
-referenced column may be visible or invisible when explicitly named. Unknown
-`VALUES()` columns fail with unknown-column diagnostics.
+conversion. The referenced column may be visible or invisible when explicitly
+named. Unknown `VALUES()` columns fail with unknown-column diagnostics. Direct
+cross-column references are covered by
+[baseline ODKU VALUES cross-column references](../baseline-odku-values-cross-column/specs.md).
 
 The duplicate assignment target must not be part of the enforced key descriptor
 used by this feature. Key-column assignment is rejected before mutation until
@@ -270,10 +268,9 @@ for the assignment target descriptor:
   `NOT NULL` diagnostic for non-nullable targets.
 
 `VALUES(column_name)` does not perform string interpolation or expression
-evaluation. It copies the planned bound value object for the same assignment
-column, so the value has already passed the descriptor conversion for the
-target column. Cross-column `VALUES()` references are rejected until a separate
-slice specifies and tests their conversion behavior.
+evaluation. It copies the planned bound value object for the referenced
+inserted column, which is then converted through the assignment target
+descriptor when the source and target descriptors are compatible.
 
 ## Generated SQLite Handling
 
@@ -312,7 +309,6 @@ The implementation must produce deterministic diagnostics for:
 - table-qualified `VALUES()` arguments;
 - unknown duplicate assignment columns;
 - unknown `VALUES()` columns;
-- cross-column `VALUES()` references;
 - duplicate assignment to an enforced key column;
 - unsupported duplicate assignment expressions;
 - unsupported literal or conversion for the assignment target;
@@ -352,7 +348,8 @@ Coverage must include:
 
 - duplicate literal assignment changed row and no-op row;
 - duplicate `VALUES(column_name)` assignment and warning count;
-- unsupported cross-column `VALUES(column_name)` references;
+- direct cross-column `VALUES(column_name)` references covered by
+  [baseline ODKU VALUES cross-column references](../baseline-odku-values-cross-column/specs.md);
 - multi-row insert with one new row and one duplicate row;
 - duplicate against a primary key and against a single unique index when
   supported;

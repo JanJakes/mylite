@@ -109,6 +109,18 @@ expect_output \
 run_mysql "DROP TABLE t;" "$DATABASE" >/dev/null
 
 expect_output \
+    "cross-column values function duplicate update" \
+    "2	2	0
+1	30	1" \
+    "CREATE TABLE t(id INT PRIMARY KEY, v INT, n INT); "\
+"INSERT INTO t VALUES (1,10,20); "\
+"INSERT INTO t VALUES (1,40,30) ON DUPLICATE KEY UPDATE n=VALUES(id), v=VALUES(n); "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT id,v,n FROM t;" \
+    "$DATABASE"
+run_mysql "DROP TABLE t;" "$DATABASE" >/dev/null
+
+expect_output \
     "row-scalar string duplicate update assignment" \
     "2	0	0
 0	0	0

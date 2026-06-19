@@ -59,7 +59,7 @@ MySQL 8.4.9 establishes these expectations for this expansion:
   `0`.
 - If one assignment is a no-op and another changes the row, affected rows are
   `2`.
-- Multiple same-target `VALUES(column)` references each record warning `1287`.
+- Multiple direct `VALUES(column)` references each record warning `1287`.
   Two `VALUES()` references in one duplicate-update tail produce two warnings.
 - `VALUES()` warnings are recorded even when the table has no enforced key and
   the statement inserts normally.
@@ -86,8 +86,9 @@ The implementation supports:
 - the existing single-assignment duplicate-update value subset for each
   assignment: descriptor-compatible insert literals, `NULL`, `TRUE`, `FALSE`,
   `DEFAULT`, zero-fractional `CURRENT_TIMESTAMP` / `NOW()` value forms where
-  already supported by target conversion, and same-target
-  `VALUES(column_name)`;
+  already supported by target conversion, and direct descriptor-compatible
+  `VALUES(column_name)` as expanded by
+  [baseline ODKU VALUES cross-column references](../baseline-odku-values-cross-column/specs.md);
 - the current one enforced single-column primary-key or single unique-index
   conflict subset;
 - tables without enforced keys, where rows insert normally but duplicate-tail
@@ -110,7 +111,6 @@ This feature does not add:
   forms;
 - duplicate assignment targets;
 - table-qualified assignment targets or table-qualified `VALUES()` arguments;
-- cross-column `VALUES(column_name)` references;
 - duplicate assignment to primary-key, unique-key, or auto-increment columns;
 - duplicate updates on multiple enforced keys or composite keys;
 - expression assignments, column-to-column assignments, arithmetic
@@ -194,7 +194,7 @@ duplicate_update_value ::= VALUES LPAREN qualified_identifier RPAREN.
 
 The parser admits qualified identifiers in order to produce deterministic
 runtime diagnostics. This phase supports only unqualified assignment targets and
-unqualified same-target `VALUES()` references.
+unqualified direct `VALUES()` references.
 
 ## Resolution And Semantics
 
@@ -223,8 +223,9 @@ Duplicate assignment resolution is descriptor-driven:
 - uses the fully planned proposed value for the current insert row, after
   column-list mapping, default filling, generated auto-increment values, and
   insert conversion;
-- is supported only when the referenced column is the same descriptor column as
-  the assignment target;
+- is supported only when the referenced column has the same logical and
+  physical storage descriptor as the assignment target; character-string
+  descriptors must also have the same character set and collation;
 - may explicitly name invisible descriptor columns when unqualified;
 - records warning `1287` once per supported `VALUES()` assignment value;
 - unknown or qualified `VALUES()` references fail before mutation.
@@ -297,7 +298,6 @@ Existing single-assignment diagnostics are preserved where possible:
   diagnostic;
 - duplicate assignment targets: MyLite-specific unsupported diagnostic until
   left-to-right expression semantics are implemented;
-- cross-column `VALUES()` references: existing unsupported diagnostic;
 - multiple/composite enforced keys: existing unsupported diagnostics;
 - key-column or auto-increment assignment targets: unsupported diagnostic;
 - `NULL` into `NOT NULL`, missing explicit default, range errors, overlength
@@ -330,7 +330,7 @@ The C runtime tests must cover:
 
 - primary-key and unique-key duplicate updates with multiple assignments;
 - multi-row row-by-row behavior and affected-row totals;
-- same-target `VALUES()` references with repeated warning `1287`;
+- direct `VALUES()` references with repeated warning `1287`;
 - literal, `DEFAULT`, `NULL`, string, temporal, and current-timestamp values
   where the existing single-assignment ODKU conversion already supports them;
 - no-key table behavior;
@@ -345,4 +345,3 @@ The C runtime tests must cover:
 Existing parser, insert, insert-set, ODKU, key, update, row-values,
 auto-increment, diagnostics, file-backed storage, VFS, and full workflow tests
 must continue to pass.
-

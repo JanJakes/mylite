@@ -8,10 +8,9 @@ literal scalar use. It builds on MyLite's parser scaffold, scalar `SELECT` and
 `DO` execution path, connection-local session state, and existing
 auto-increment insert state.
 
-This slice does not implement table-backed row-by-row expression side effects
-or the sequence-emulation idiom `UPDATE sequence SET id = LAST_INSERT_ID(id+1)`.
-Those require general expression evaluation inside table DML and should be
-specified separately.
+Table-backed row-by-row expression side effects and the sequence-emulation
+idiom `UPDATE sequence SET id = LAST_INSERT_ID(id+1)` are covered by the later
+`baseline-last-insert-id-row-expression` slice.
 
 ## Sources
 
@@ -59,10 +58,10 @@ Observed against a local MySQL 8.4.9 server:
   admitted by this slice.
 
 The official information-function documentation states that the no-argument
-form returns the connection-local auto-increment value, and that the
-argument form returns the argument value and remembers it for the next
-no-argument call. It also documents sequence emulation through `UPDATE`, which
-is intentionally deferred here.
+form returns the connection-local auto-increment value, and that the argument
+form returns the argument value and remembers it for the next no-argument call.
+It also documents sequence emulation through `UPDATE`, which is covered by a
+later row-expression slice.
 
 ## Scope
 
@@ -90,9 +89,10 @@ The implementation adds:
 
 This feature must not implement:
 
-- table-backed `SELECT LAST_INSERT_ID(column)` or row-by-row side effects;
-- use inside `UPDATE`, `INSERT`, `REPLACE`, defaults, generated columns,
-  checks, triggers, or stored routines;
+- table-backed `SELECT LAST_INSERT_ID(column)` or row-by-row side effects,
+  which are covered by `baseline-last-insert-id-row-expression`;
+- use inside `INSERT`, `REPLACE`, defaults, generated columns, checks,
+  triggers, or stored routines;
 - arithmetic, column, parameter, subquery, string, decimal, float, hex, bit,
   temporal, JSON, function, cast, or general expression arguments;
 - MySQL warning-producing conversion for unsupported string or too-large

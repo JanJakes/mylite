@@ -66,6 +66,17 @@ static int plan_row_scalar_non_control_flow_expression(
     if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         return plan_row_scalar_integer_value(database, expression, out_expression);
     }
+    if (has_source && expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION &&
+        integer_arithmetic_operator_is_attempt(mylite_sql_ast_node_operator(expression))) {
+        return plan_row_scalar_integer_arithmetic_expression(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (expression->kind == MYLITE_SQL_AST_GREATEST_ARGUMENT_COUNT_ERROR) {
         set_native_function_parameter_count_error(database, "GREATEST");
         return MYLITE_ERROR;
@@ -110,6 +121,17 @@ static int plan_row_scalar_non_control_flow_expression(
     }
     if (has_source && row_scalar_numeric_extra_kind_is_supported(expression->kind)) {
         return plan_row_scalar_numeric_extra_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION) {
+        return plan_row_scalar_registered_one_argument_expression(
             database,
             expression,
             has_source,
@@ -251,6 +273,12 @@ static int plan_row_scalar_non_control_flow_expression(
     if (expression->kind == MYLITE_SQL_AST_UNIX_TIMESTAMP_ARGUMENT_COUNT_ERROR) {
         set_native_function_parameter_count_error(database, "UNIX_TIMESTAMP");
         return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION) {
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_GET;
+        out_expression->argument_count = 0U;
+        out_expression->arguments = NULL;
+        return MYLITE_OK;
     }
     if (expression->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION ||

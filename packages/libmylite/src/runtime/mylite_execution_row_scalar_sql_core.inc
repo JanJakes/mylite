@@ -252,6 +252,20 @@ static int append_row_scalar_expression_sql(
             expression,
             next_parameter
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_SET:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_last_insert_id_set",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_GET:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_last_insert_id_get",
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
         return append_row_scalar_numeric_function_expression_sql(
             string,
@@ -766,6 +780,8 @@ static int append_row_scalar_conversion_base_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
     case PLANNED_ROW_SCALAR_EXPRESSION_INET_ATON:
     case PLANNED_ROW_SCALAR_EXPRESSION_INET_NTOA:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_GET:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
         return append_row_scalar_expression_sql(string, expression, next_parameter);
@@ -1001,6 +1017,8 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
     case PLANNED_ROW_SCALAR_EXPRESSION_INET_ATON:
     case PLANNED_ROW_SCALAR_EXPRESSION_INET_NTOA:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_GET:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
@@ -1187,6 +1205,20 @@ static int append_row_scalar_non_control_flow_expression_sql(
         return append_row_scalar_registered_function_expression_sql(
             string,
             "_mylite_inet_ntoa",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_SET:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_last_insert_id_set",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_GET:
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            "_mylite_last_insert_id_get",
             expression,
             next_parameter
         );
@@ -1405,6 +1437,8 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
     case PLANNED_ROW_SCALAR_EXPRESSION_INET_ATON:
     case PLANNED_ROW_SCALAR_EXPRESSION_INET_NTOA:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_GET:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:

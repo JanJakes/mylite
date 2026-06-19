@@ -1865,6 +1865,19 @@ static int populate_row_scalar_expression_result_column_descriptor(
             }
         );
         return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_SET:
+    case PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_GET:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                .display_length = mysql_scalar_bigint_display_length,
+                .decimals = 0U,
+                .extra_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_RAND:
         populate_scalar_binary_numeric_result_column_descriptor(
             descriptor,

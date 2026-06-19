@@ -1544,6 +1544,7 @@ static bool row_scalar_expression_contains_statement_context_function(
             current->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
             current->kind == MYLITE_SQL_AST_FOUND_ROWS_FUNCTION ||
             current->kind == MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION ||
             current->kind == MYLITE_SQL_AST_ROW_COUNT_FUNCTION ||
             current->kind == MYLITE_SQL_AST_SESSION_USER_FUNCTION ||
             current->kind == MYLITE_SQL_AST_VERSION_FUNCTION ||
@@ -1610,6 +1611,7 @@ static bool row_scalar_expression_is_predicate_value_context_attempt(
         node->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
         node->kind == MYLITE_SQL_AST_FOUND_ROWS_FUNCTION ||
         node->kind == MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION ||
+        node->kind == MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION ||
         node->kind == MYLITE_SQL_AST_ROW_COUNT_FUNCTION ||
         node->kind == MYLITE_SQL_AST_SESSION_USER_FUNCTION ||
         node->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION ||
@@ -1663,6 +1665,7 @@ static bool row_scalar_expression_is_predicate_value_context_attempt(
     case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
     case MYLITE_SQL_AST_INET_ATON_FUNCTION:
     case MYLITE_SQL_AST_INET_NTOA_FUNCTION:
+    case MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION:
     case MYLITE_SQL_AST_UUID_FUNCTION:
     case MYLITE_SQL_AST_IS_UUID_FUNCTION:
     case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
@@ -1805,6 +1808,7 @@ static bool row_scalar_expression_root_is_context_expression_attempt(
         expression->kind == MYLITE_SQL_AST_CONVERT_TZ_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION ||
         mylite_execution_is_charset_collation_function_kind(expression->kind) ||
         mylite_execution_is_date_interval_second_function_kind(expression->kind) ||
         mylite_execution_is_temporal_extract_function_kind(expression->kind) ||

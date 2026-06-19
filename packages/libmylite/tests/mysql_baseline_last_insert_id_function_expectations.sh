@@ -199,6 +199,40 @@ expect_output \
 "DROP DATABASE ${DATABASE};"
 
 expect_output \
+    "mysql table backed last insert id predicate and ordering side effects" \
+    "0
+2
+3
+3
+0
+3
+2
+1
+3" \
+    "CREATE DATABASE ${DATABASE}; "\
+"USE ${DATABASE}; "\
+"CREATE TABLE table_backed (id INT); "\
+"INSERT INTO table_backed VALUES (1),(2),(3); "\
+"SELECT LAST_INSERT_ID(0); "\
+"SELECT id FROM table_backed WHERE LAST_INSERT_ID(id) >= 2 ORDER BY id; "\
+"SELECT LAST_INSERT_ID(); "\
+"SELECT LAST_INSERT_ID(0); "\
+"SELECT id FROM table_backed ORDER BY LAST_INSERT_ID(id) DESC; "\
+"SELECT LAST_INSERT_ID(); "\
+"DROP DATABASE ${DATABASE};"
+
+expect_output \
+    "mysql last insert id sequence update" \
+    "1	1	1	0" \
+    "CREATE DATABASE ${DATABASE}; "\
+"USE ${DATABASE}; "\
+"CREATE TABLE sequence_table (id INT NOT NULL); "\
+"INSERT INTO sequence_table VALUES (0); "\
+"UPDATE sequence_table SET id = LAST_INSERT_ID(id + 1); "\
+"SELECT id, LAST_INSERT_ID(), ROW_COUNT(), @@warning_count FROM sequence_table; "\
+"DROP DATABASE ${DATABASE};"
+
+expect_output \
     "mysql warning conversions are deferred in mylite" \
     "0	0
 1

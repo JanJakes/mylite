@@ -138,6 +138,7 @@ add_library(mylite STATIC
   src/runtime/mylite_group_concat_aggregate.c
   src/runtime/mylite_integer_arithmetic.c
   src/runtime/mylite_ip_address.c
+  src/runtime/mylite_last_insert_id.c
   src/runtime/mylite_json.c
   src/runtime/mylite_json_contains.c
   src/runtime/mylite_json_dom.c

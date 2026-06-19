@@ -56,6 +56,7 @@ struct expected_non_query_result {
 
 static int test_last_insert_id_values_and_statement_interactions(void);
 static int test_last_insert_id_expression_values(void);
+static int test_last_insert_id_row_expression_contexts(void);
 static int test_last_insert_id_memory_handle(void);
 static int test_last_insert_id_reopen_and_independent_handles(void);
 static int test_last_insert_id_unsupported_forms(void);
@@ -86,6 +87,12 @@ static int expect_single_column_rows(
     size_t row_count,
     const char *context
 );
+static int expect_two_column_rows(
+    const mylite_result *result,
+    const char *const *values,
+    size_t row_count,
+    const char *context
+);
 static int make_test_path(char *path, size_t path_size, const char *name);
 static int current_process_id(void);
 static void remove_related_files(const char *path);
@@ -110,6 +117,7 @@ int main(void) {
 
     failures += test_last_insert_id_values_and_statement_interactions();
     failures += test_last_insert_id_expression_values();
+    failures += test_last_insert_id_row_expression_contexts();
     failures += test_last_insert_id_memory_handle();
     failures += test_last_insert_id_reopen_and_independent_handles();
     failures += test_last_insert_id_unsupported_forms();
@@ -621,6 +629,101 @@ static int test_last_insert_id_expression_values(void) {
     return failures;
 }
 
+static int test_last_insert_id_row_expression_contexts(void) {
+    static const char *const projection_rows[] = {"1", "1", "2", "2", "3", "3"};
+    static const char *const predicate_rows[] = {"2", "3"};
+    static const char *const order_rows[] = {"3", "2", "1"};
+    static const char *const sequence_rows[] = {"1"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "row-expression") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open row expression database");
+    failures += execute_statement_ok(database, "CREATE DATABASE app");
+    failures += execute_statement_ok(database, "USE app");
+    failures += execute_statement_ok(database, "CREATE TABLE t (id INT, v INT)");
+    failures += execute_statement_ok(database, "INSERT INTO t VALUES (1, 10), (2, 20), (3, 30)");
+
+    failures += execute_ok(
+        database,
+        "SELECT LAST_INSERT_ID(id), LAST_INSERT_ID() FROM t ORDER BY id",
+        &result
+    );
+    failures +=
+        expect_two_column_rows(result, projection_rows, 3U, "row-backed last insert id projection");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_last_insert_id_value(
+        database,
+        (struct expected_last_insert_id){
+            .value = "3",
+            .context = "row-backed projection stores final last insert id",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SELECT LAST_INSERT_ID(0)");
+    failures +=
+        execute_ok(database, "SELECT id FROM t WHERE LAST_INSERT_ID(id) >= 2 ORDER BY id", &result);
+    failures += expect_single_column_rows(
+        result,
+        predicate_rows,
+        2U,
+        "row-backed last insert id predicate"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_last_insert_id_value(
+        database,
+        (struct expected_last_insert_id){
+            .value = "3",
+            .context = "row-backed predicate stores final last insert id",
+        }
+    );
+
+    failures += execute_statement_ok(database, "SELECT LAST_INSERT_ID(0)");
+    failures += execute_ok(database, "SELECT id FROM t ORDER BY LAST_INSERT_ID(id) DESC", &result);
+    failures +=
+        expect_single_column_rows(result, order_rows, 3U, "row-backed last insert id ordering");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_last_insert_id_value(
+        database,
+        (struct expected_last_insert_id){
+            .value = "3",
+            .context = "row-backed ordering stores final last insert id",
+        }
+    );
+
+    failures += execute_statement_ok(database, "CREATE TABLE seq (id INT NOT NULL)");
+    failures += execute_statement_ok(database, "INSERT INTO seq VALUES (0)");
+    failures += execute_ok(database, "UPDATE seq SET id = LAST_INSERT_ID(id + 1)", &result);
+    failures += expect_non_query_result(result, 1, "last insert id sequence update");
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "SELECT id FROM seq", &result);
+    failures += expect_single_column_rows(result, sequence_rows, 1U, "last insert id sequence row");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_last_insert_id_value(
+        database,
+        (struct expected_last_insert_id){
+            .value = "1",
+            .context = "sequence update stores last insert id",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
 static int test_last_insert_id_memory_handle(void) {
     mylite_db *database = NULL;
     const struct mylite_session_state *session = NULL;
@@ -696,6 +799,7 @@ static int test_last_insert_id_unsupported_forms(void) {
     static const char *const last_insert_id_alias_columns[] = {"id"};
     static const char *const last_insert_id_alias_values[] = {"33"};
     static const char *const table_backed_last_insert_id_values[] = {"33", "33"};
+    static const char *const table_backed_set_last_insert_id_values[] = {"1", "2"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -918,20 +1022,20 @@ static int test_last_insert_id_unsupported_forms(void) {
             .context = "zero-arg table-backed read leaves last insert id",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT LAST_INSERT_ID(id) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
-        }
+    failures += execute_ok(database, "SELECT LAST_INSERT_ID(id) FROM t ORDER BY id", &result);
+    failures += expect_single_column_rows(
+        result,
+        table_backed_set_last_insert_id_values,
+        2U,
+        "one-arg table-backed last insert id"
     );
+    mylite_result_free(result);
+    result = NULL;
     failures += expect_last_insert_id_value(
         database,
         (struct expected_last_insert_id){
-            .value = "33",
-            .context = "one-arg table-backed error leaves last insert id",
+            .value = "2",
+            .context = "one-arg table-backed read stores last insert id",
         }
     );
 
@@ -1094,6 +1198,29 @@ static int expect_single_column_rows(
     for (size_t row = 0U; row < row_count; ++row) {
         failures +=
             expect_text_or_null(mylite_result_value_text(result, row, 0U), values[row], context);
+    }
+
+    return failures;
+}
+
+static int expect_two_column_rows(
+    const mylite_result *result,
+    const char *const *values,
+    size_t row_count,
+    const char *context
+) {
+    int failures = 0;
+
+    failures += expect_size(mylite_result_column_count(result), 2U, context);
+    failures += expect_size(mylite_result_row_count(result), row_count, context);
+    for (size_t row = 0U; row < row_count; ++row) {
+        for (size_t column = 0U; column < 2U; ++column) {
+            failures += expect_text_or_null(
+                mylite_result_value_text(result, row, column),
+                values[(row * 2U) + column],
+                context
+            );
+        }
     }
 
     return failures;

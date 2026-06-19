@@ -42,13 +42,19 @@ warning 1287 once for each syntactic invocation in the supported row-scalar
 contexts.
 
 Zero-argument `LAST_INSERT_ID()` returns the connection-local current insert-id
-state without changing it. The value is stable for every row produced by a
-row-backed `SELECT`.
+state without changing it. For this read-only slice, the value is stable for
+every row produced by a row-backed `SELECT`. A later
+`baseline-last-insert-id-row-expression` slice defines the mutating
+`LAST_INSERT_ID(expr)` cases where a following zero-argument read can observe
+the updated session value.
 
 ## MyLite Behavior
 
-MyLite plans these three read functions as statement-start literal values in
-the row-scalar select plan. Values that fit signed 64-bit range are bound as
+MyLite plans `ROW_COUNT()` and `FOUND_ROWS()` as statement-start literal values
+in the row-scalar select plan. Read-only `LAST_INSERT_ID()` behavior in this
+slice uses the same visible value, while the later mutating row-expression
+slice uses a dynamic private getter so same-statement `LAST_INSERT_ID(expr)`
+side effects are observable. Values that fit signed 64-bit range are bound as
 integer parameters so numeric predicates behave naturally. Values outside that
 range, notably possible unsigned `LAST_INSERT_ID()` states, are bound as text
 for display fidelity.
@@ -57,11 +63,9 @@ for display fidelity.
 `WHERE`, and `ORDER BY` contexts. This preserves the existing per-expression
 warning behavior while extending it beyond the select list.
 
-`LAST_INSERT_ID(expr)` remains outside this slice for source-backed
-row-scalar evaluation because it mutates session state per evaluated row. MyLite
-continues to support the existing source-free literal-argument subset and to
-reject source-backed mutating forms predictably until row-evaluation side
-effects have a dedicated design.
+`LAST_INSERT_ID(expr)` remains outside this slice because it mutates session
+state per evaluated row. The later `baseline-last-insert-id-row-expression`
+slice defines the supported source-backed mutating forms.
 
 ## Grammar
 
@@ -83,7 +87,8 @@ and `ORDER BY` expression parsing.
 
 ## Exclusions
 
-- source-backed `LAST_INSERT_ID(expr)` side effects;
+- source-backed `LAST_INSERT_ID(expr)` side effects, which are covered by
+  `baseline-last-insert-id-row-expression`;
 - `FOUND_ROWS()` protocol-level metadata beyond current MyLite result metadata;
 - `CLIENT_FOUND_ROWS` affected-row mode;
 - stored-program, trigger, and replication semantics;

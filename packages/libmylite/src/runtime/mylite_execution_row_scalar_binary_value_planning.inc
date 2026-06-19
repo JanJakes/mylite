@@ -547,6 +547,8 @@ static enum planned_row_scalar_expression_kind registered_one_argument_expressio
         return PLANNED_ROW_SCALAR_EXPRESSION_INET_ATON;
     case MYLITE_SQL_AST_INET_NTOA_FUNCTION:
         return PLANNED_ROW_SCALAR_EXPRESSION_INET_NTOA;
+    case MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION:
+        return PLANNED_ROW_SCALAR_EXPRESSION_LAST_INSERT_ID_SET;
     default:
         break;
     }
@@ -567,6 +569,8 @@ static const char *registered_one_argument_function_name(enum mylite_sql_ast_nod
         return "INET_ATON";
     case MYLITE_SQL_AST_INET_NTOA_FUNCTION:
         return "INET_NTOA";
+    case MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION:
+        return "LAST_INSERT_ID";
     default:
         break;
     }
@@ -1454,6 +1458,7 @@ static int plan_row_scalar_binary_string_expression(
     case MYLITE_SQL_AST_RANDOM_BYTES_FUNCTION:
     case MYLITE_SQL_AST_INET_ATON_FUNCTION:
     case MYLITE_SQL_AST_INET_NTOA_FUNCTION:
+    case MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION:
         return plan_row_scalar_registered_one_argument_expression(
             database,
             expression,

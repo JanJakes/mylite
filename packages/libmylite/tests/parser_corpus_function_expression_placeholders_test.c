@@ -24,9 +24,6 @@ static int test_function_expression_placeholders(void) {
     static const struct expected_statement placeholders[] = {
         {.sql = "SELECT HEX(WEIGHT_STRING('a' AS CHAR(1)))",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "SELECT COUNT(DISTINCT a) FROM t1 GROUP BY b "
-                "HAVING COUNT(DISTINCT a) > 1",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT b FROM t1 GROUP BY CAST(b AS BINARY) LIKE ''",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT * FROM t1 WHERE word = CAST(0xDF AS CHAR)",
@@ -45,6 +42,8 @@ static int test_function_expression_placeholders(void) {
     failures += parse_ok("SELECT DATE_ADD('2024-01-01', INTERVAL 1 DAY)");
     failures +=
         parse_ok("SELECT GROUP_CONCAT(name ORDER BY name SEPARATOR ',') FROM t1 GROUP BY grp");
+    failures +=
+        parse_ok("SELECT COUNT(DISTINCT a) FROM t1 GROUP BY b HAVING COUNT(DISTINCT a) > 1");
     failures += expect_syntax_error("SELECT f(1,,2)");
     failures += expect_syntax_error("SELECT ABS(1) +");
     failures += expect_syntax_error("SELECT ABS(1) FROM");

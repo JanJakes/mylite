@@ -1084,6 +1084,7 @@ static const char *grouped_aggregate_sql_function(
 ) {
     switch (function) {
     case PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN:
+    case PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN:
         return "COUNT";
     case PLANNED_GROUPED_AGGREGATE_MIN:
         return "MIN";

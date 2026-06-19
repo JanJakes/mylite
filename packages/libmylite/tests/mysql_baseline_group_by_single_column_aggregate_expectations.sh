@@ -160,6 +160,24 @@ expect_value "distinct aggregate group one" "1	10	20	30	15.0000" \
 expect_value "distinct aggregate group two" "2	NULL	NULL	NULL	NULL" \
     "$(printf '%s\n' "$distinct_aggregates" | sed -n '3p')"
 
+count_distinct_group=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT g, COUNT(DISTINCT i) FROM t GROUP BY g ORDER BY g;
+     SELECT g, COUNT(DISTINCT i) AS c FROM t GROUP BY g HAVING c > 1 ORDER BY g;
+     SELECT g, COUNT(DISTINCT i)
+       FROM t GROUP BY g HAVING COUNT(DISTINCT i) > 1 ORDER BY g;"
+)
+expect_value "count distinct null group" "NULL	1" \
+    "$(printf '%s\n' "$count_distinct_group" | sed -n '1p')"
+expect_value "count distinct group one" "1	2" \
+    "$(printf '%s\n' "$count_distinct_group" | sed -n '2p')"
+expect_value "count distinct group two" "2	0" \
+    "$(printf '%s\n' "$count_distinct_group" | sed -n '3p')"
+expect_value "count distinct having alias" "1	2" \
+    "$(printf '%s\n' "$count_distinct_group" | sed -n '4p')"
+expect_value "count distinct having expression" "1	2" \
+    "$(printf '%s\n' "$count_distinct_group" | sed -n '5p')"
+
 distinct_group=$(run_mysql \
     "USE ${DATABASE};
      SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES';

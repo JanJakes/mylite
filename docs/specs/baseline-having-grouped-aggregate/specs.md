@@ -69,8 +69,8 @@ Supported `having_operand` forms:
 - The selected grouped descriptor column's unqualified select-item alias.
 - The selected aggregate result's unqualified select-item alias.
 - The selected aggregate function expression itself, for `COUNT(*)`,
-  `COUNT(column)`, `MIN(column)`, `MAX(column)`, `SUM(column)`, and
-  `AVG(column)`.
+  `COUNT(column)`, `COUNT(DISTINCT column)`, `MIN(column)`, `MAX(column)`,
+  `SUM(column)`, and `AVG(column)`.
 
 The aggregate function expression in `HAVING` must refer to the selected
 aggregate result. MyLite does not yet support aggregate expressions that are
@@ -95,7 +95,8 @@ This phase does not add:
 - `NULL` comparison literals such as `HAVING SUM(col) <=> NULL`;
 - string, decimal, float, hex, bit, parameter, subquery, or function literals;
 - arithmetic or arbitrary expressions in `HAVING`;
-- `COUNT(DISTINCT ...)` in grouped `HAVING`;
+- arbitrary `COUNT(DISTINCT ...)` expressions outside the selected
+  integer-descriptor grouped count-distinct slice;
 - aggregate expressions in `HAVING` that differ from the selected aggregate;
 - bitwise aggregate result predicates;
 - multiple grouping keys, grouping aliases in the `GROUP BY` clause, ordinals,
@@ -123,10 +124,10 @@ the admitted subset:
   unknown `HAVING` column in the probed grouped aggregate shapes.
 
 MySQL accepts broader forms, including aggregate expressions that appear only
-in `HAVING`, expression predicates such as `COUNT(*) + 1 > 2`,
-`COUNT(DISTINCT ...)`, bitwise aggregate predicates, and non-grouped aggregate
-`HAVING`. MyLite intentionally defers those forms until the expression and
-aggregate planner can own them explicitly.
+in `HAVING`, expression predicates such as `COUNT(*) + 1 > 2`, arbitrary
+`COUNT(DISTINCT ...)` expressions, bitwise aggregate predicates, and
+non-grouped aggregate `HAVING`. MyLite intentionally defers those forms until
+the expression and aggregate planner can own them explicitly.
 
 ## Name Resolution
 
@@ -259,6 +260,8 @@ having_operand(A) ::= selected_grouped_aggregate_expression(B).
 
 selected_grouped_aggregate_expression(A) ::= COUNT(T) LPAREN(L) STAR RPAREN(R).
 selected_grouped_aggregate_expression(A) ::= COUNT(T) LPAREN(L) qualified_identifier(B) RPAREN(R).
+selected_grouped_aggregate_expression(A) ::= COUNT(T) LPAREN(L) DISTINCT qualified_identifier(B) RPAREN(R).
+selected_grouped_aggregate_expression(A) ::= COUNT(T) LPAREN(L) DISTINCT LPAREN qualified_identifier(B) RPAREN RPAREN(R).
 selected_grouped_aggregate_expression(A) ::= MIN(T) LPAREN(L) qualified_identifier(B) RPAREN(R).
 selected_grouped_aggregate_expression(A) ::= MAX(T) LPAREN(L) qualified_identifier(B) RPAREN(R).
 selected_grouped_aggregate_expression(A) ::= SUM(T) LPAREN(L) qualified_identifier(B) RPAREN(R).

@@ -92,7 +92,9 @@ static int plan_grouped_aggregate_item(
         }
         return rc;
     }
-    out_item->aggregate_is_distinct = aggregate_function_is_distinct(aggregate_expression);
+    out_item->aggregate_is_distinct =
+        (out_item->function == PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN) ||
+        aggregate_function_is_distinct(aggregate_expression);
     if (!grouped_aggregate_function_has_column(out_item->function)) {
         return MYLITE_OK;
     }
@@ -120,7 +122,8 @@ static int plan_grouped_aggregate_item(
             out_item
         );
     }
-    if (out_item->function == PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN) {
+    if (out_item->function == PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN ||
+        out_item->function == PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN) {
         if (column_aggregate_argument_is_row_scalar_expression(aggregate_expression)) {
             return plan_grouped_aggregate_row_scalar_expression(
                 database,
@@ -131,7 +134,7 @@ static int plan_grouped_aggregate_item(
                 out_item
             );
         }
-        return plan_grouped_count_column(
+        rc = plan_grouped_count_column(
             database,
             aggregate_expression,
             source_context,
@@ -140,6 +143,18 @@ static int plan_grouped_aggregate_item(
             &out_item->aggregate_column,
             &out_item->aggregate_column_source_index
         );
+        if (rc == MYLITE_OK &&
+            out_item->function == PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN) {
+            struct integer_column_range range = {0};
+
+            rc = integer_range_for_column(
+                database,
+                &out_item->aggregate_column,
+                "COUNT(DISTINCT column) supports only integer descriptor columns",
+                &range
+            );
+        }
+        return rc;
     }
     if (out_item->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
         return plan_grouped_any_value_column(
@@ -568,11 +583,13 @@ static enum planned_grouped_aggregate_function grouped_aggregate_function_from_e
     if (count_function == PLANNED_COUNT_COLUMN) {
         return PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN;
     }
+    if (count_function == PLANNED_COUNT_DISTINCT_COLUMN) {
+        return PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN;
+    }
     if (expression != NULL && expression->kind == MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION) {
         return PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN;
     }
-    if (count_function == PLANNED_COUNT_LITERAL ||
-        count_function == PLANNED_COUNT_DISTINCT_COLUMN) {
+    if (count_function == PLANNED_COUNT_LITERAL) {
         return PLANNED_GROUPED_AGGREGATE_NONE;
     }
 
@@ -646,6 +663,7 @@ static enum planned_column_aggregate_function grouped_column_aggregate_function(
     case PLANNED_GROUPED_AGGREGATE_NONE:
     case PLANNED_GROUPED_AGGREGATE_COUNT_STAR:
     case PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN:
+    case PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN:
     case PLANNED_GROUPED_AGGREGATE_ANY_VALUE:
         return PLANNED_COLUMN_AGGREGATE_NONE;
     }

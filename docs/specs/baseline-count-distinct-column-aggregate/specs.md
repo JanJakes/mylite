@@ -15,9 +15,11 @@ The feature is intentionally not full `COUNT(DISTINCT expr)` support. It
 admits exactly one aggregate select item, one descriptor column, one persistent
 base-table source, and an optional baseline `WHERE` predicate. It supports the
 existing source-qualified descriptor-column surface and the parenthesized form
-used by WordPress. It does not add multiple distinct expressions, literal
-distinct arguments, general expression arguments, aliases, grouping, ordering,
-limiting, window forms, or general distinct query semantics.
+used by WordPress. Grouped count-distinct support is specified separately in
+`docs/specs/baseline-grouped-count-distinct-aggregate/specs.md`. This ungrouped
+slice does not add multiple distinct expressions, literal distinct arguments,
+general expression arguments, aliases, ordering, limiting, window forms, or
+general distinct query semantics.
 
 ## Sources
 
@@ -141,9 +143,10 @@ This feature must not implement:
 - no-source or `FROM DUAL` evaluation for `COUNT(DISTINCT column)`;
 - aliases, mixed projections, multiple aggregate select items, aggregate
   comparisons, aggregate arithmetic, or nested aggregates;
-- `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, window `OVER` clauses, joins,
-  CTEs, subqueries, unions, locking clauses, query modifiers, optimizer hints,
-  `INTO`, or arbitrary SQLite SQL pass-through;
+- `GROUP BY` and `HAVING` outside the separately specified grouped
+  count-distinct slice, `ORDER BY`, `LIMIT`, window `OVER` clauses, joins, CTEs,
+  subqueries, unions, locking clauses, query modifiers, optimizer hints, `INTO`,
+  or arbitrary SQLite SQL pass-through;
 - string, decimal, floating, temporal, JSON, enum, set, collation, or charset
   distinct semantics;
 - aggregate metadata parity, protocol column flags, exact optimizer behavior,

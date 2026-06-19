@@ -83,6 +83,8 @@ static int test_joined_aggregate_values_and_persistence(void) {
     static const char *const count_star_values[] = {"1", "2", "2", "1", "3", "1", "4", "1"};
     static const char *const count_column_columns[] = {"id", "COUNT(c.id)"};
     static const char *const count_column_values[] = {"1", "2", "2", "1", "3", "0", "4", "0"};
+    static const char *const count_distinct_columns[] = {"id", "COUNT(DISTINCT c.id)"};
+    static const char *const count_distinct_values[] = {"1", "2", "2", "1", "3", "0", "4", "0"};
     static const char *const min_columns[] = {"id", "MIN(c.score)"};
     static const char *const min_values[] = {"1", "5", "2", "7", "3", NULL, "4", NULL};
     static const char *const max_columns[] = {"id", "MAX(c.score)"};
@@ -219,6 +221,18 @@ static int test_joined_aggregate_values_and_persistence(void) {
             .row_count = 4U,
             .context =
                 "left join grouped count column skips null-extended rows and orders by label",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT p.id, COUNT(DISTINCT c.id) FROM posts AS p LEFT JOIN comments AS c "
+                   "ON p.id = c.post_id GROUP BY p.id ORDER BY p.id",
+            .columns = count_distinct_columns,
+            .column_count = 2U,
+            .values = count_distinct_values,
+            .row_count = 4U,
+            .context = "left join grouped count distinct skips null-extended rows",
         }
     );
     failures += expect_query(
@@ -656,18 +670,6 @@ static int test_joined_aggregate_diagnostics(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT p.id, COUNT(DISTINCT c.id) FROM posts p LEFT JOIN comments c "
-        "ON p.id = c.post_id GROUP BY p.id",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "GROUP BY supports selected descriptor group columns followed by aggregate results",
-        }
-    );
-
     mylite_close(database);
     remove_related_files(path);
 

@@ -569,7 +569,8 @@ static int plan_grouped_having_aggregate_operand(
         &column,
         &source_index
     );
-    if (rc == MYLITE_OK && function != PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN) {
+    if (rc == MYLITE_OK && function != PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN &&
+        function != PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN) {
         rc = integer_range_for_column(
             database,
             &column,

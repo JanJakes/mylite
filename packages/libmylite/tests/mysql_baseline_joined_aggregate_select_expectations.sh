@@ -179,6 +179,12 @@ expect_value "using accepted by mysql" "1	0" "$(printf '%s\n' "$accepted_but_def
 expect_value "group ordinal accepted by mysql" "1	2" "$(printf '%s\n' "$accepted_but_deferred" | sed -n '5p')"
 expect_value "grouped distinct accepted by mysql" "1	2" \
     "$(printf '%s\n' "$accepted_but_deferred" | sed -n '9p')"
+expect_value "grouped distinct second post" "2	1" \
+    "$(printf '%s\n' "$accepted_but_deferred" | sed -n '10p')"
+expect_value "grouped distinct no comment post" "3	0" \
+    "$(printf '%s\n' "$accepted_but_deferred" | sed -n '11p')"
+expect_value "grouped distinct null category post" "4	0" \
+    "$(printf '%s\n' "$accepted_but_deferred" | sed -n '12p')"
 
 expect_error \
     "ambiguous selected group column" \

@@ -17,8 +17,10 @@ GROUP BY group_column
 
 This remains a narrow grouped-query slice. MyLite still admits one descriptor
 group column and the current one-source or two-source joined source envelope.
-The new behavior is multiple selected count/numeric/bitwise aggregate results
-and one selected `COUNT`, `MIN`, `MAX`, or `SUM` aggregate-alias order key.
+The new behavior is multiple selected count/numeric/bitwise aggregate results,
+including the integer descriptor-column `COUNT(DISTINCT column)` slice for the
+base-table grouped path, and one selected `COUNT`, `MIN`, `MAX`, or `SUM`
+aggregate-alias order key.
 SQLite still performs source scanning, filtering, grouping, aggregate stepping,
 ordering, and limiting through a generated physical query; MyLite owns
 descriptor resolution, supported-surface validation, result metadata, and
@@ -81,6 +83,7 @@ MyLite supports this exact extension to the existing grouped aggregate path:
 - aggregate forms:
   - `COUNT(*)`;
   - `COUNT(column)`;
+  - `COUNT(DISTINCT column)` for integer descriptor columns;
   - `MIN(column)`;
   - `MAX(column)`;
   - `SUM(column)`;
@@ -122,7 +125,8 @@ This slice intentionally does not add:
 - grouping by alias, ordinal, string literal, expression, parenthesized
   expression, aggregate result, or function result;
 - aggregate-only grouped projection without projecting the grouped column;
-- grouped `COUNT(DISTINCT column)`;
+- full `COUNT(DISTINCT expr[, expr...])` support beyond the integer
+  descriptor-column grouped slice;
 - grouped `SUM(expr)` beyond the exact two-column integer addition shape;
 - grouped `GROUP_CONCAT()` mixed with other aggregate results;
 - `GROUP_CONCAT(DISTINCT ...)`, multiple `GROUP_CONCAT()` expressions, or wider
@@ -160,6 +164,8 @@ order_clause ::= ORDER BY qualified_identifier order_direction_opt.
 
 grouped_aggregate ::= COUNT LPAREN STAR RPAREN.
 grouped_aggregate ::= COUNT LPAREN qualified_identifier RPAREN.
+grouped_aggregate ::= COUNT LPAREN DISTINCT qualified_identifier RPAREN.
+grouped_aggregate ::= COUNT LPAREN DISTINCT LPAREN qualified_identifier RPAREN RPAREN.
 grouped_aggregate ::= MIN LPAREN qualified_identifier RPAREN.
 grouped_aggregate ::= MAX LPAREN qualified_identifier RPAREN.
 grouped_aggregate ::= SUM LPAREN sum_aggregate_argument RPAREN.
@@ -246,9 +252,9 @@ Required diagnostics include:
   descriptor column: existing `ONLY_FULL_GROUP_BY`-style `1055 / 42000`;
 - unknown grouped, aggregate, predicate, order, or having columns: existing
   MySQL-compatible column diagnostics for the matching clause;
-- unsupported aggregate form, including grouped `COUNT(DISTINCT column)` and
-  grouped `GROUP_CONCAT()` mixed with other aggregate results: deterministic
-  unsupported diagnostics;
+- unsupported aggregate forms beyond the documented grouped aggregate subset
+  and grouped `GROUP_CONCAT()` mixed with other aggregate results:
+  deterministic unsupported diagnostics;
 - unsupported grouped `SUM(column + column)` operand:
   `SUM(column + column) supports only integer descriptor columns`;
 - unsupported noninteger aggregate argument for current numeric aggregates:
@@ -288,9 +294,10 @@ expectation script covering:
   SQLite schema generation changes, file preamble preservation, reopen
   persistence, rename/drop behavior, independent file-backed handles, and
   zero-initialized cleanup;
-- deterministic rejections for nonaggregate extra select items,
-  `COUNT(DISTINCT)`, grouped `GROUP_CONCAT()` mixed with another aggregate,
-  unknown aggregate/order/having columns, unselected aggregate `HAVING`, bitwise
+- deterministic rejections for nonaggregate extra select items, arbitrary
+  `COUNT(DISTINCT ...)` forms outside the integer descriptor-column slice,
+  grouped `GROUP_CONCAT()` mixed with another aggregate, unknown
+  aggregate/order/having columns, unselected aggregate `HAVING`, bitwise
   aggregate `HAVING`, aggregate expression ordering, duplicate aggregate alias
   ordering, deferred `AVG`/bitwise aggregate alias ordering, multiple order
   keys, and unsupported expressions.

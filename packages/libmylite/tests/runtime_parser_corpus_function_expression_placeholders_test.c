@@ -38,6 +38,7 @@ int main(void) {
 
 static int test_function_expression_placeholder_diagnostics(void) {
     static const char *const abs_rows[] = {"1"};
+    static const char *const count_distinct_group_rows[] = {NULL};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -74,13 +75,14 @@ static int test_function_expression_placeholder_diagnostics(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT COUNT(DISTINCT a) FROM t1 GROUP BY b HAVING COUNT(DISTINCT a) > 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT COUNT(DISTINCT a) FROM t1 GROUP BY b HAVING COUNT(DISTINCT a) > 1",
+            .values = count_distinct_group_rows,
+            .column_count = 1U,
+            .row_count = 0U,
+            .context = "supported grouped count distinct no matched having groups",
         }
     );
     failures += execute_error(

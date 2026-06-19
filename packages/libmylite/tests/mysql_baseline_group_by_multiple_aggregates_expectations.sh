@@ -100,9 +100,9 @@ run_mysql \
 core=$(run_mysql \
     "USE ${DATABASE};
      DO 0;
-     SELECT g, COUNT(*) AS c, COUNT(n) AS cn, MIN(n) AS mn, MAX(n) AS mx,
-            SUM(n) AS s, AVG(n) AS a, BIT_AND(n) AS ba, BIT_OR(nn) AS bo,
-            BIT_XOR(nn) AS bx
+     SELECT g, COUNT(*) AS c, COUNT(n) AS cn, COUNT(DISTINCT n) AS cd,
+            MIN(n) AS mn, MAX(n) AS mx, SUM(n) AS s, AVG(n) AS a,
+            BIT_AND(n) AS ba, BIT_OR(nn) AS bo, BIT_XOR(nn) AS bx
        FROM t GROUP BY g ORDER BY g;
      SELECT @@warning_count, ROW_COUNT();
      SELECT g, SUM(iu) AS su, MIN(b) AS mb, MAX(bu) AS xb
@@ -110,11 +110,11 @@ core=$(run_mysql \
      SELECT g, COUNT(*) AS c, SUM(n) AS s FROM t WHERE id >= 3 GROUP BY g ORDER BY g;"
 )
 expect_value "null group multi row" \
-    "NULL	2	1	5	5	5	5.0000	5	7	3" "$(printf '%s\n' "$core" | sed -n '1p')"
+    "NULL	2	1	1	5	5	5	5.0000	5	7	3" "$(printf '%s\n' "$core" | sed -n '1p')"
 expect_value "group one multi row" \
-    "1	3	2	10	20	30	15.0000	0	15	6" "$(printf '%s\n' "$core" | sed -n '2p')"
+    "1	3	2	2	10	20	30	15.0000	0	15	6" "$(printf '%s\n' "$core" | sed -n '2p')"
 expect_value "group two multi row" \
-    "2	2	0	NULL	NULL	NULL	NULL	18446744073709551615	11	1" "$(printf '%s\n' "$core" | sed -n '3p')"
+    "2	2	0	0	NULL	NULL	NULL	NULL	18446744073709551615	11	1" "$(printf '%s\n' "$core" | sed -n '3p')"
 expect_value "multi status" "0	-1" "$(printf '%s\n' "$core" | sed -n '4p')"
 expect_value "integer family null group" "NULL	2	-1	2" "$(printf '%s\n' "$core" | sed -n '5p')"
 expect_value "integer family group one" \

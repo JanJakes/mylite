@@ -92,8 +92,9 @@ In scope:
 - one selected group column from either source, limited to the current integer
   descriptor group-column family;
 - one selected aggregate result from the existing grouped aggregate family:
-  `COUNT(*)`, `COUNT(column)`, `MIN(column)`, `MAX(column)`, `SUM(column)`,
-  `AVG(column)`, `BIT_AND(column)`, `BIT_OR(column)`, and `BIT_XOR(column)`;
+  `COUNT(*)`, `COUNT(column)`, `COUNT(DISTINCT column)` for integer descriptor
+  columns, `MIN(column)`, `MAX(column)`, `SUM(column)`, `AVG(column)`,
+  `BIT_AND(column)`, `BIT_OR(column)`, and `BIT_XOR(column)`;
 - aggregate column arguments from either source, limited to existing integer
   descriptor aggregate rules;
 - unqualified, table-qualified, alias-qualified, and
@@ -120,9 +121,10 @@ Out of scope:
 - multiple selected aggregates, aggregate-only grouped projection, multiple
   grouping keys, grouping by aliases, ordinals, literals, expressions,
   functions, or aggregate results;
-- grouped `COUNT(DISTINCT column)`, expression aggregate arguments, literal
-  aggregate arguments in joined grouped paths, `GROUP_CONCAT`, rollup,
-  grouping sets, windows, and aggregate ordering;
+- full `COUNT(DISTINCT expr[, expr...])` support beyond the integer
+  descriptor-column slice, expression aggregate arguments, literal aggregate
+  arguments in joined grouped paths, `GROUP_CONCAT`, rollup, grouping sets,
+  windows, and aggregate ordering;
 - mixed-type join predicates, arbitrary `ON` predicates, join expressions,
   expression projection, scalar subqueries, correlated subqueries, and
   subquery predicates;
@@ -180,6 +182,8 @@ select_item_group_aggregate ::= grouped_aggregate_expression select_item_alias_o
 
 grouped_aggregate_expression ::= COUNT LPAREN STAR RPAREN.
 grouped_aggregate_expression ::= COUNT LPAREN qualified_identifier RPAREN.
+grouped_aggregate_expression ::= COUNT LPAREN DISTINCT qualified_identifier RPAREN.
+grouped_aggregate_expression ::= COUNT LPAREN DISTINCT LPAREN qualified_identifier RPAREN RPAREN.
 grouped_aggregate_expression ::= MIN LPAREN qualified_identifier RPAREN.
 grouped_aggregate_expression ::= MAX LPAREN qualified_identifier RPAREN.
 grouped_aggregate_expression ::= SUM LPAREN qualified_identifier RPAREN.

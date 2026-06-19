@@ -19,7 +19,7 @@
 enum {
     test_path_capacity = 1024,
     sqlite_sql_capacity = 512,
-    grouped_multi_aggregate_column_count = 6,
+    grouped_multi_aggregate_column_count = 7,
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
@@ -103,6 +103,10 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const readable_post_status_values[] = {"private", "1", "publish", "5"};
     static const char *const g_count_n_columns[] = {"g", "COUNT(n)"};
     static const char *const g_count_n_values[] = {NULL, "0", "1", "1", "2", "2"};
+    static const char *const g_count_distinct_n_columns[] = {"g", "COUNT(DISTINCT n)"};
+    static const char *const g_count_distinct_n_values[] = {NULL, "0", "1", "1", "2", "2"};
+    static const char *const g_count_distinct_nn_columns[] = {"g", "COUNT(DISTINCT nn)"};
+    static const char *const g_count_distinct_nn_values[] = {NULL, "1", "1", "2", "2", "2"};
     static const char *const g_count_ifnull_columns[] = {"g", "COUNT(IFNULL(n, 0))"};
     static const char *const g_count_ifnull_values[] = {NULL, "1", "1", "2", "2", "2"};
     static const char *const g_count_nullif_columns[] = {"g", "COUNT(NULLIF(n, 20))"};
@@ -143,26 +147,10 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const g_bit_or_values[] = {NULL, "5", "1", "7", "2", "9"};
     static const char *const g_bit_xor_columns[] = {"g", "BIT_XOR(nn)"};
     static const char *const g_bit_xor_values[] = {NULL, "5", "1", "1", "2", "1"};
-    static const char *const multi_columns[] = {"g", "c", "cn", "s", "a", "bo"};
+    static const char *const multi_columns[] = {"g", "c", "cn", "cd", "s", "a", "bo"};
     static const char *const multi_values[] = {
-        NULL,
-        "1",
-        "0",
-        NULL,
-        NULL,
-        "5",
-        "1",
-        "2",
-        "1",
-        "10",
-        "10.0000",
-        "7",
-        "2",
-        "2",
-        "2",
-        "50",
-        "25.0000",
-        "9",
+        NULL, "1",       "0", "0", NULL, NULL, "5", "1",  "2",       "1", "1",
+        "10", "10.0000", "7", "2", "2",  "2",  "2", "50", "25.0000", "9",
     };
     static const char *const multi_having_columns[] = {"g", "c", "s"};
     static const char *const multi_having_values[] = {"2", "2", "50"};
@@ -208,6 +196,7 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const offset_values[] = {"1", "2"};
     static const char *const having_count_columns[] = {"g", "c"};
     static const char *const having_count_values[] = {"1", "2", "2", "2"};
+    static const char *const having_count_distinct_values[] = {"2", "2"};
     static const char *const having_count_n_columns[] = {"g", "c"};
     static const char *const having_count_n_zero_values[] = {NULL, "0"};
     static const char *const having_duplicate_alias_columns[] = {"x", "x"};
@@ -675,6 +664,28 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(DISTINCT n) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_count_distinct_n_columns,
+            .column_count = 2U,
+            .values = g_count_distinct_n_values,
+            .row_count = 3U,
+            .context = "count distinct nullable column grouped by nullable key",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(DISTINCT nn) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_count_distinct_nn_columns,
+            .column_count = 2U,
+            .values = g_count_distinct_nn_values,
+            .row_count = 3U,
+            .context = "count distinct not-null column grouped by nullable key",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
             .sql = "SELECT g, COUNT(IFNULL(n, 0)) FROM grouped_numbers GROUP BY g ORDER BY g",
             .columns = g_count_ifnull_columns,
             .column_count = 2U,
@@ -840,8 +851,9 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
-            .sql = "SELECT g, COUNT(*) AS c, COUNT(n) AS cn, SUM(n) AS s, AVG(n) AS a, "
-                   "BIT_OR(nn) AS bo FROM grouped_numbers GROUP BY g ORDER BY g",
+            .sql = "SELECT g, COUNT(*) AS c, COUNT(n) AS cn, COUNT(DISTINCT n) AS cd, "
+                   "SUM(n) AS s, AVG(n) AS a, BIT_OR(nn) AS bo FROM grouped_numbers "
+                   "GROUP BY g ORDER BY g",
             .columns = multi_columns,
             .column_count = grouped_multi_aggregate_column_count,
             .values = multi_values,
@@ -991,6 +1003,30 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = having_count_n_zero_values,
             .row_count = 1U,
             .context = "having count nullable zero comparison",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(DISTINCT n) AS c FROM grouped_numbers "
+                   "GROUP BY g HAVING c > 1 ORDER BY g",
+            .columns = having_count_columns,
+            .column_count = 2U,
+            .values = having_count_distinct_values,
+            .row_count = 1U,
+            .context = "having count distinct alias comparison",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(DISTINCT n) FROM grouped_numbers "
+                   "GROUP BY g HAVING COUNT(DISTINCT n) > 1 ORDER BY g",
+            .columns = g_count_distinct_n_columns,
+            .column_count = 2U,
+            .values = having_count_distinct_values,
+            .row_count = 1U,
+            .context = "having selected count distinct expression comparison",
         }
     );
     failures += expect_grouped_query(
@@ -1848,12 +1884,11 @@ static int test_grouped_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT g, COUNT(DISTINCT n) FROM grouped_numbers GROUP BY g",
+        "SELECT name, COUNT(DISTINCT label) FROM string_grouped GROUP BY name",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part =
-                "GROUP BY supports selected descriptor group columns followed by aggregate results",
+            .message_part = "COUNT(DISTINCT column) supports only integer descriptor columns",
         }
     );
     failures += execute_error(

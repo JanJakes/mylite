@@ -19,7 +19,6 @@ Representative accepted MySQL forms from the corpus surface:
 
 ```sql
 SELECT HEX(WEIGHT_STRING('a' AS CHAR(1)));
-SELECT COUNT(DISTINCT a) FROM t GROUP BY b HAVING COUNT(DISTINCT a) > 1;
 SELECT GROUP_CONCAT(name ORDER BY name SEPARATOR ',') FROM t GROUP BY grp;
 SELECT latin1_f FROM t ORDER BY latin1_f, HEX(latin1_f);
 SELECT * FROM t WHERE word = CAST(0xDF AS CHAR);

@@ -1632,7 +1632,8 @@ static int make_derived_grouped_aggregate_source_column(
         .column_id = (int64_t)output_index + 1,
         .ordinal_position = (int64_t)output_index + 1,
         .is_nullable = item->function != PLANNED_GROUPED_AGGREGATE_COUNT_STAR &&
-                       item->function != PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN,
+                       item->function != PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN &&
+                       item->function != PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN,
         .is_visible = true,
     };
     if (item->function == PLANNED_GROUPED_AGGREGATE_MIN ||

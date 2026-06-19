@@ -105,6 +105,7 @@ The implementation must add:
 - aggregate forms:
   - `COUNT(*)`;
   - `COUNT(column)`;
+  - `COUNT(DISTINCT column)` for integer descriptor columns;
   - `MIN(column)`, `MAX(column)`, `SUM(column)`, `AVG(column)`;
   - `BIT_AND(column)`, `BIT_OR(column)`, `BIT_XOR(column)`;
 - optional source table aliases matching the existing single-table SELECT
@@ -139,7 +140,8 @@ Existing non-grouped SELECT and aggregate behavior must remain unchanged.
 
 This feature must not implement:
 
-- `COUNT(DISTINCT column)` in grouped queries;
+- full `COUNT(DISTINCT expr[, expr...])` support beyond the separately
+  specified integer descriptor-column grouped slice;
 - literal or expression aggregate arguments in grouped queries;
 - one-column grouped projection without an aggregate;
 - aggregate-only grouped projection with a hidden grouping key;
@@ -238,6 +240,7 @@ Supported aggregate forms:
 aggregate:
     COUNT(*)
   | COUNT(column_reference)
+  | COUNT(DISTINCT column_reference)
   | MIN(column_reference)
   | MAX(column_reference)
   | SUM(column_reference)
@@ -388,8 +391,7 @@ MyLite must provide deterministic diagnostics for:
 - unknown order column in order clause;
 - selected nonaggregate descriptor column that differs from the `GROUP BY`
   descriptor column;
-- unsupported aggregate form, including `COUNT(DISTINCT column)` for grouped
-  queries in this slice;
+- unsupported aggregate forms beyond the documented grouped aggregate subset;
 - unsupported grouping expression, alias grouping, ordinal grouping, multiple
   grouping keys, `HAVING`, rollup, joins, query modifiers, and subqueries;
 - unsupported order expression, aggregate alias ordering, table-qualified order

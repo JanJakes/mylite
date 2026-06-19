@@ -160,6 +160,7 @@ bool mylite_sql_parser_token_text_is_generic_aggregate_window_function_name(
     static const char *const names[] = {
         "JSON_ARRAYAGG",
         "JSON_OBJECTAGG",
+        "STD",
         "STDDEV",
         "STDDEV_POP",
         "STDDEV_SAMP",

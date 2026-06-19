@@ -2192,6 +2192,20 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "bit_xor_aggregate_function";
     case MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION:
         return "group_concat_aggregate_function";
+    case MYLITE_SQL_AST_STD_AGGREGATE_FUNCTION:
+        return "std_aggregate_function";
+    case MYLITE_SQL_AST_STDDEV_AGGREGATE_FUNCTION:
+        return "stddev_aggregate_function";
+    case MYLITE_SQL_AST_STDDEV_POP_AGGREGATE_FUNCTION:
+        return "stddev_pop_aggregate_function";
+    case MYLITE_SQL_AST_STDDEV_SAMP_AGGREGATE_FUNCTION:
+        return "stddev_samp_aggregate_function";
+    case MYLITE_SQL_AST_VAR_POP_AGGREGATE_FUNCTION:
+        return "var_pop_aggregate_function";
+    case MYLITE_SQL_AST_VAR_SAMP_AGGREGATE_FUNCTION:
+        return "var_samp_aggregate_function";
+    case MYLITE_SQL_AST_VARIANCE_AGGREGATE_FUNCTION:
+        return "variance_aggregate_function";
     case MYLITE_SQL_AST_ANY_VALUE_FUNCTION:
         return "any_value_function";
     case MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR:

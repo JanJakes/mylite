@@ -24,6 +24,7 @@
 #include "mylite_random_bytes.h"
 #include "mylite_regexp.h"
 #include "mylite_sqlite_registration.h"
+#include "mylite_statistical_aggregate.h"
 #include "mylite_string_base64.h"
 #include "mylite_string_bitmask.h"
 #include "mylite_string_case.h"
@@ -252,6 +253,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_group_concat_aggregate_function(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_statistical_aggregate_functions(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = initialize_temporal_core_function_registration_surface(sqlite);

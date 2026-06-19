@@ -1,5 +1,10 @@
 #include "parser_test_support.h"
 
+enum {
+    statistical_aggregate_var_samp_index = 5,
+    statistical_aggregate_variance_index = 6,
+};
+
 static int test_case_operator(void);
 static int test_do_statement(void);
 static int test_version_function(void);
@@ -15,6 +20,7 @@ static int test_sum_aggregate(void);
 static int test_avg_aggregate(void);
 static int test_bitwise_aggregate(void);
 static int test_group_concat_aggregate(void);
+static int test_statistical_aggregate(void);
 
 int main(void) {
     int failures = 0;
@@ -34,6 +40,7 @@ int main(void) {
     failures += test_avg_aggregate();
     failures += test_bitwise_aggregate();
     failures += test_group_concat_aggregate();
+    failures += test_statistical_aggregate();
 
     return failures == 0 ? 0 : 1;
 }
@@ -2851,6 +2858,112 @@ static int test_group_concat_aggregate(void) {
         "SELECT GROUP_CONCAT(id SEPARATOR 1) FROM t;",
         MYLITE_SQL_PARSE_OK,
         &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_statistical_aggregate(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *window_clause = NULL;
+    int failures = 0;
+
+    failures += parser_test_parse_sql(
+        "SELECT STD(n), STDDEV(n), STDDEV_POP(n), STDDEV_SAMP(n), VAR_POP(n), "
+        "VAR_SAMP(n), VARIANCE(n) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(select_list, 0U), 0U),
+        MYLITE_SQL_AST_STD_AGGREGATE_FUNCTION,
+        "std aggregate"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(select_list, 1U), 0U),
+        MYLITE_SQL_AST_STDDEV_AGGREGATE_FUNCTION,
+        "stddev aggregate"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(select_list, 2U), 0U),
+        MYLITE_SQL_AST_STDDEV_POP_AGGREGATE_FUNCTION,
+        "stddev_pop aggregate"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(select_list, 3U), 0U),
+        MYLITE_SQL_AST_STDDEV_SAMP_AGGREGATE_FUNCTION,
+        "stddev_samp aggregate"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(select_list, 4U), 0U),
+        MYLITE_SQL_AST_VAR_POP_AGGREGATE_FUNCTION,
+        "var_pop aggregate"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(select_list, statistical_aggregate_var_samp_index),
+            0U
+        ),
+        MYLITE_SQL_AST_VAR_SAMP_AGGREGATE_FUNCTION,
+        "var_samp aggregate"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(select_list, statistical_aggregate_variance_index),
+            0U
+        ),
+        MYLITE_SQL_AST_VARIANCE_AGGREGATE_FUNCTION,
+        "variance aggregate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT STDDEV_POP(n + 1) OVER () FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_STDDEV_POP_AGGREGATE_FUNCTION,
+        "stddev_pop window aggregate"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 0U),
+        MYLITE_SQL_AST_BINARY_EXPRESSION,
+        "statistical aggregate expression argument"
+    );
+    window_clause = parser_test_child_at(first_expression, 1U);
+    failures +=
+        parser_test_expect_node(window_clause, MYLITE_SQL_AST_WINDOW_SPEC, "window spec child");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("SELECT STDDEV_POP();", MYLITE_SQL_PARSE_OK, &result);
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_GENERIC_FUNCTION,
+        "zero-argument statistical generic fallback"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parser_test_parse_sql("CREATE TABLE std (variance INT);", MYLITE_SQL_PARSE_OK, &result);
+    select = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        select,
+        MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+        "statistical names remain identifiers"
     );
     mylite_sql_parse_result_deinit(&result);
 

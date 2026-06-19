@@ -508,10 +508,10 @@ of marking the broad family green.
 
 The parser admits common aggregate-window `OVER` syntax for the current
 `COUNT(*)`, `COUNT(column)`, `COUNT(DISTINCT column)`, supported row-scalar
-arguments for `SUM()` / `AVG()` / `MIN()` / `MAX()` / bitwise aggregates, and
-`GROUP_CONCAT(...)`, plus JSON and statistical aggregate-window placeholders
-such as `JSON_ARRAYAGG(...) OVER ...`, `JSON_OBJECTAGG(...) OVER ...`, and
-`STDDEV_SAMP(...) OVER ...`. Execution of aggregate-window forms is explicitly
+arguments for `SUM()` / `AVG()` / `MIN()` / `MAX()`, bitwise aggregates,
+statistical aggregates, and `GROUP_CONCAT(...)`, plus JSON aggregate-window
+placeholders such as `JSON_ARRAYAGG(...) OVER ...` and
+`JSON_OBJECTAGG(...) OVER ...`. Execution of aggregate-window forms is explicitly
 unsupported. See [parser aggregate window syntax](docs/specs/parser-aggregate-window-syntax/specs.md)
 and [parser corpus JSON/statistical aggregate window surfaces](docs/specs/parser-corpus-json-stat-aggregate-window-surfaces/specs.md).
 
@@ -527,7 +527,11 @@ and [parser corpus JSON/statistical aggregate window surfaces](docs/specs/parser
 | `GROUP_CONCAT()` | 🟡 | Descriptor-column and supported row-scalar value forms work in documented one-table and grouped contexts; `DISTINCT`, multiple value arguments, broader order keys, joins, binary metadata, and windows remain limited. | [aggregate functions](docs/compatibility/functions-aggregate.md), [SQL query expressions](docs/compatibility/sql-query-expressions.md), [parser corpus aggregate/window surfaces](docs/specs/parser-corpus-aggregate-window-surfaces/specs.md) |
 | `MAX()` | 🟡 | Literal and supported row-scalar arguments execute in current one-table and grouped aggregate forms; `DISTINCT`, binary-string comparison semantics, windows, aggregate ordering, and full grouping remain limited. | [aggregate functions](docs/compatibility/functions-aggregate.md), [SQL query expressions](docs/compatibility/sql-query-expressions.md), [Drupal entity kernel compatibility](docs/specs/drupal-entity-kernel-compatibility/specs.md), [parser corpus aggregate/window surfaces](docs/specs/parser-corpus-aggregate-window-surfaces/specs.md) |
 | `MIN()` | 🟡 | Literal and supported row-scalar arguments execute in current one-table and grouped aggregate forms; `DISTINCT`, binary-string comparison semantics, windows, aggregate ordering, and full grouping remain limited. | [aggregate functions](docs/compatibility/functions-aggregate.md), [SQL query expressions](docs/compatibility/sql-query-expressions.md), [Drupal entity kernel compatibility](docs/specs/drupal-entity-kernel-compatibility/specs.md), [parser corpus aggregate/window surfaces](docs/specs/parser-corpus-aggregate-window-surfaces/specs.md) |
+| `STD()` / `STDDEV()` / `STDDEV_POP()` | 🟡 | Population standard deviation executes in current one-item, tableless, row-scalar, and grouped aggregate forms; `DISTINCT`, windows, string coercion warnings, and full grouping remain limited. | [aggregate functions](docs/compatibility/functions-aggregate.md), [baseline statistical aggregates](docs/specs/baseline-statistical-aggregates/specs.md) |
+| `STDDEV_SAMP()` | 🟡 | Sample standard deviation executes in current one-item, tableless, row-scalar, and grouped aggregate forms; returns `NULL` with fewer than two non-`NULL` inputs. `DISTINCT`, windows, string coercion warnings, and full grouping remain limited. | [aggregate functions](docs/compatibility/functions-aggregate.md), [baseline statistical aggregates](docs/specs/baseline-statistical-aggregates/specs.md) |
 | `SUM()` | 🟡 | Literal and supported row-scalar arguments execute in current one-table and grouped aggregate forms; `DISTINCT`, windows, exact decimal widening beyond signed 64 bits, aggregate ordering, and full grouping remain limited. | [aggregate functions](docs/compatibility/functions-aggregate.md), [SQL query expressions](docs/compatibility/sql-query-expressions.md), [parser corpus aggregate/window surfaces](docs/specs/parser-corpus-aggregate-window-surfaces/specs.md) |
+| `VAR_POP()` / `VARIANCE()` | 🟡 | Population variance executes in current one-item, tableless, row-scalar, and grouped aggregate forms; `DISTINCT`, windows, string coercion warnings, and full grouping remain limited. | [aggregate functions](docs/compatibility/functions-aggregate.md), [baseline statistical aggregates](docs/specs/baseline-statistical-aggregates/specs.md) |
+| `VAR_SAMP()` | 🟡 | Sample variance executes in current one-item, tableless, row-scalar, and grouped aggregate forms; returns `NULL` with fewer than two non-`NULL` inputs. `DISTINCT`, windows, string coercion warnings, and full grouping remain limited. | [aggregate functions](docs/compatibility/functions-aggregate.md), [baseline statistical aggregates](docs/specs/baseline-statistical-aggregates/specs.md) |
 
 ### Cast, Control-Flow, Comparison, and Default-Value Functions
 

@@ -7,6 +7,10 @@ static bool generic_function_ip_address_kinds(
     enum mylite_sql_ast_node_kind *out_function_kind,
     enum mylite_sql_ast_node_kind *out_error_kind
 );
+static bool generic_function_statistical_aggregate_kind(
+    const struct mylite_sql_token *function_token,
+    enum mylite_sql_ast_node_kind *out_function_kind
+);
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_identifier(
     struct mylite_sql_parser_state *state,
@@ -1255,6 +1259,17 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_generic_function(
     enum mylite_sql_ast_node_kind specialized_function_kind = MYLITE_SQL_AST_SCRIPT;
     enum mylite_sql_ast_node_kind specialized_error_kind = MYLITE_SQL_AST_SCRIPT;
 
+    if (generic_function_statistical_aggregate_kind(&function_token, &specialized_function_kind) &&
+        arguments != NULL && mylite_sql_ast_node_child_count(arguments) == 1U) {
+        return mylite_sql_parser_make_one_argument_function(
+            state,
+            function_token,
+            specialized_function_kind,
+            arguments->first_child,
+            right_paren
+        );
+    }
+
     if (generic_function_ip_address_kinds(
             &function_token,
             &specialized_function_kind,
@@ -1298,6 +1313,44 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_generic_function(
     mylite_sql_ast_node_append_child(function, name);
     mylite_sql_ast_node_append_child(function, arguments);
     return function;
+}
+
+static bool generic_function_statistical_aggregate_kind(
+    const struct mylite_sql_token *function_token,
+    enum mylite_sql_ast_node_kind *out_function_kind
+) {
+    if (function_token == NULL || out_function_kind == NULL) {
+        return false;
+    }
+    if (mylite_sql_parser_token_text_equals(function_token, "STD")) {
+        *out_function_kind = MYLITE_SQL_AST_STD_AGGREGATE_FUNCTION;
+        return true;
+    }
+    if (mylite_sql_parser_token_text_equals(function_token, "STDDEV")) {
+        *out_function_kind = MYLITE_SQL_AST_STDDEV_AGGREGATE_FUNCTION;
+        return true;
+    }
+    if (mylite_sql_parser_token_text_equals(function_token, "STDDEV_POP")) {
+        *out_function_kind = MYLITE_SQL_AST_STDDEV_POP_AGGREGATE_FUNCTION;
+        return true;
+    }
+    if (mylite_sql_parser_token_text_equals(function_token, "STDDEV_SAMP")) {
+        *out_function_kind = MYLITE_SQL_AST_STDDEV_SAMP_AGGREGATE_FUNCTION;
+        return true;
+    }
+    if (mylite_sql_parser_token_text_equals(function_token, "VAR_POP")) {
+        *out_function_kind = MYLITE_SQL_AST_VAR_POP_AGGREGATE_FUNCTION;
+        return true;
+    }
+    if (mylite_sql_parser_token_text_equals(function_token, "VAR_SAMP")) {
+        *out_function_kind = MYLITE_SQL_AST_VAR_SAMP_AGGREGATE_FUNCTION;
+        return true;
+    }
+    if (mylite_sql_parser_token_text_equals(function_token, "VARIANCE")) {
+        *out_function_kind = MYLITE_SQL_AST_VARIANCE_AGGREGATE_FUNCTION;
+        return true;
+    }
+    return false;
 }
 
 static bool generic_function_ip_address_kinds(

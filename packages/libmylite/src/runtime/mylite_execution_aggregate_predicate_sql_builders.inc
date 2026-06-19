@@ -515,6 +515,14 @@ static const char *column_aggregate_sql_function(enum planned_column_aggregate_f
         return "_mylite_bit_xor";
     case PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT:
         return "group_concat";
+    case PLANNED_COLUMN_AGGREGATE_STDDEV_POP:
+        return "_mylite_stddev_pop";
+    case PLANNED_COLUMN_AGGREGATE_STDDEV_SAMP:
+        return "_mylite_stddev_samp";
+    case PLANNED_COLUMN_AGGREGATE_VAR_POP:
+        return "_mylite_var_pop";
+    case PLANNED_COLUMN_AGGREGATE_VAR_SAMP:
+        return "_mylite_var_samp";
     }
 
     return "";
@@ -972,6 +980,14 @@ static const char *grouped_aggregate_sql_function(enum planned_grouped_aggregate
         return "_mylite_bit_xor";
     case PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT:
         return "group_concat";
+    case PLANNED_GROUPED_AGGREGATE_STDDEV_POP:
+        return "_mylite_stddev_pop";
+    case PLANNED_GROUPED_AGGREGATE_STDDEV_SAMP:
+        return "_mylite_stddev_samp";
+    case PLANNED_GROUPED_AGGREGATE_VAR_POP:
+        return "_mylite_var_pop";
+    case PLANNED_GROUPED_AGGREGATE_VAR_SAMP:
+        return "_mylite_var_samp";
     case PLANNED_GROUPED_AGGREGATE_NONE:
     case PLANNED_GROUPED_AGGREGATE_COUNT_STAR:
     case PLANNED_GROUPED_AGGREGATE_AVG:
@@ -2172,6 +2188,10 @@ static const char *scalar_aggregate_sql_function(enum planned_column_aggregate_f
     case PLANNED_COLUMN_AGGREGATE_BIT_OR:
     case PLANNED_COLUMN_AGGREGATE_BIT_XOR:
     case PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT:
+    case PLANNED_COLUMN_AGGREGATE_STDDEV_POP:
+    case PLANNED_COLUMN_AGGREGATE_STDDEV_SAMP:
+    case PLANNED_COLUMN_AGGREGATE_VAR_POP:
+    case PLANNED_COLUMN_AGGREGATE_VAR_SAMP:
         break;
     }
 

@@ -373,6 +373,9 @@ static enum planned_column_aggregate_function grouped_column_aggregate_function(
 );
 static bool grouped_aggregate_function_has_column(enum planned_grouped_aggregate_function function);
 static bool grouped_aggregate_function_is_bitwise(enum planned_grouped_aggregate_function function);
+static bool grouped_aggregate_function_is_statistical(
+    enum planned_grouped_aggregate_function function
+);
 static bool planned_grouped_aggregate_columns_match(
     const struct mylite_catalog_column_descriptor *left_column,
     size_t left_source_index,
@@ -739,6 +742,9 @@ static bool column_aggregate_argument_is_row_scalar_expression(
 );
 static bool column_aggregate_function_is_bitwise(enum planned_column_aggregate_function function);
 static bool column_aggregate_function_is_min_max(enum planned_column_aggregate_function function);
+static bool column_aggregate_function_is_statistical(
+    enum planned_column_aggregate_function function
+);
 static const char *column_aggregate_single_item_error(
     enum planned_column_aggregate_function function
 );

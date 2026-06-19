@@ -513,6 +513,10 @@
     COMMAND mylite_runtime_avg_aggregate_test
   )
   add_test(
+    NAME libmylite.runtime.statistical_aggregates
+    COMMAND mylite_runtime_statistical_aggregates_test
+  )
+  add_test(
     NAME libmylite.runtime.bitwise_aggregates
     COMMAND mylite_runtime_bitwise_aggregates_test
   )

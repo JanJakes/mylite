@@ -1440,6 +1440,18 @@
   )
   mylite_configure_c_target(mylite_runtime_avg_aggregate_test)
 
+  add_executable(mylite_runtime_statistical_aggregates_test
+    tests/runtime_statistical_aggregates_test.c
+  )
+  target_link_libraries(mylite_runtime_statistical_aggregates_test PRIVATE
+    MyLite::mylite
+    MyLite::sqlite
+  )
+  target_include_directories(mylite_runtime_statistical_aggregates_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_statistical_aggregates_test)
+
   add_executable(mylite_runtime_bitwise_aggregates_test
     tests/runtime_bitwise_aggregates_test.c
   )

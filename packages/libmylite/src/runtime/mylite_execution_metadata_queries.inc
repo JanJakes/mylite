@@ -295,6 +295,7 @@ static bool ast_node_is_generic_aggregate_window_function(const struct mylite_sq
     static const char *const names[] = {
         "JSON_ARRAYAGG",
         "JSON_OBJECTAGG",
+        "STD",
         "STDDEV",
         "STDDEV_POP",
         "STDDEV_SAMP",
@@ -368,6 +369,13 @@ static bool ast_node_is_aggregate_function(const struct mylite_sql_ast_node *nod
     case MYLITE_SQL_AST_BIT_OR_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_BIT_XOR_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_STD_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_STDDEV_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_STDDEV_POP_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_STDDEV_SAMP_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_VAR_POP_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_VAR_SAMP_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_VARIANCE_AGGREGATE_FUNCTION:
         return true;
     default:
         return false;

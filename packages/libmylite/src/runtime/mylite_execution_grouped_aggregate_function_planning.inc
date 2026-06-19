@@ -579,6 +579,14 @@ static enum planned_grouped_aggregate_function grouped_aggregate_function_from_e
         return PLANNED_GROUPED_AGGREGATE_BIT_XOR;
     case PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT:
         return PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT;
+    case PLANNED_COLUMN_AGGREGATE_STDDEV_POP:
+        return PLANNED_GROUPED_AGGREGATE_STDDEV_POP;
+    case PLANNED_COLUMN_AGGREGATE_STDDEV_SAMP:
+        return PLANNED_GROUPED_AGGREGATE_STDDEV_SAMP;
+    case PLANNED_COLUMN_AGGREGATE_VAR_POP:
+        return PLANNED_GROUPED_AGGREGATE_VAR_POP;
+    case PLANNED_COLUMN_AGGREGATE_VAR_SAMP:
+        return PLANNED_GROUPED_AGGREGATE_VAR_SAMP;
     case PLANNED_COLUMN_AGGREGATE_NONE:
         break;
     }
@@ -609,6 +617,14 @@ static enum planned_column_aggregate_function grouped_column_aggregate_function(
         return PLANNED_COLUMN_AGGREGATE_BIT_XOR;
     case PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT:
         return PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT;
+    case PLANNED_GROUPED_AGGREGATE_STDDEV_POP:
+        return PLANNED_COLUMN_AGGREGATE_STDDEV_POP;
+    case PLANNED_GROUPED_AGGREGATE_STDDEV_SAMP:
+        return PLANNED_COLUMN_AGGREGATE_STDDEV_SAMP;
+    case PLANNED_GROUPED_AGGREGATE_VAR_POP:
+        return PLANNED_COLUMN_AGGREGATE_VAR_POP;
+    case PLANNED_GROUPED_AGGREGATE_VAR_SAMP:
+        return PLANNED_COLUMN_AGGREGATE_VAR_SAMP;
     case PLANNED_GROUPED_AGGREGATE_NONE:
     case PLANNED_GROUPED_AGGREGATE_COUNT_STAR:
     case PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN:
@@ -642,6 +658,25 @@ static bool grouped_aggregate_function_is_bitwise(
         return true;
     }
     if (function == PLANNED_GROUPED_AGGREGATE_BIT_XOR) {
+        return true;
+    }
+
+    return false;
+}
+
+static bool grouped_aggregate_function_is_statistical(
+    enum planned_grouped_aggregate_function function
+) {
+    if (function == PLANNED_GROUPED_AGGREGATE_STDDEV_POP) {
+        return true;
+    }
+    if (function == PLANNED_GROUPED_AGGREGATE_STDDEV_SAMP) {
+        return true;
+    }
+    if (function == PLANNED_GROUPED_AGGREGATE_VAR_POP) {
+        return true;
+    }
+    if (function == PLANNED_GROUPED_AGGREGATE_VAR_SAMP) {
         return true;
     }
 

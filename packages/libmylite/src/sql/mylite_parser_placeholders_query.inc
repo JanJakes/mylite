@@ -968,6 +968,7 @@ static bool placeholder_scan_token_is_aggregate_window_function_name(
         placeholder_scan_token_text_equals(scan, index, "JSON_OBJECTAGG") ||
         placeholder_scan_token_text_equals(scan, index, "MAX") ||
         placeholder_scan_token_text_equals(scan, index, "MIN") ||
+        placeholder_scan_token_text_equals(scan, index, "STD") ||
         placeholder_scan_token_text_equals(scan, index, "STDDEV") ||
         placeholder_scan_token_text_equals(scan, index, "STDDEV_POP") ||
         placeholder_scan_token_text_equals(scan, index, "STDDEV_SAMP") ||

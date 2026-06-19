@@ -1330,7 +1330,8 @@ static int plan_column_aggregate_without_source(
 
     if (where_clause != NULL ||
         argument == NULL ||
-        (function != PLANNED_COLUMN_AGGREGATE_MIN && function != PLANNED_COLUMN_AGGREGATE_MAX) ||
+        (function != PLANNED_COLUMN_AGGREGATE_MIN && function != PLANNED_COLUMN_AGGREGATE_MAX &&
+         !column_aggregate_function_is_statistical(function)) ||
         !column_aggregate_argument_is_row_scalar_expression(aggregate_expression)) {
         set_unsupported_error(database, column_aggregate_source_error(function));
         return MYLITE_ERROR;
@@ -1394,6 +1395,21 @@ static enum planned_column_aggregate_function column_aggregate_function_from_exp
     }
     if (expression->kind == MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION) {
         return PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT;
+    }
+    if (expression->kind == MYLITE_SQL_AST_STD_AGGREGATE_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_STDDEV_AGGREGATE_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_STDDEV_POP_AGGREGATE_FUNCTION) {
+        return PLANNED_COLUMN_AGGREGATE_STDDEV_POP;
+    }
+    if (expression->kind == MYLITE_SQL_AST_STDDEV_SAMP_AGGREGATE_FUNCTION) {
+        return PLANNED_COLUMN_AGGREGATE_STDDEV_SAMP;
+    }
+    if (expression->kind == MYLITE_SQL_AST_VAR_POP_AGGREGATE_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_VARIANCE_AGGREGATE_FUNCTION) {
+        return PLANNED_COLUMN_AGGREGATE_VAR_POP;
+    }
+    if (expression->kind == MYLITE_SQL_AST_VAR_SAMP_AGGREGATE_FUNCTION) {
+        return PLANNED_COLUMN_AGGREGATE_VAR_SAMP;
     }
 
     return PLANNED_COLUMN_AGGREGATE_NONE;
@@ -1492,6 +1508,15 @@ static bool column_aggregate_function_is_min_max(enum planned_column_aggregate_f
            0;
 }
 
+static bool column_aggregate_function_is_statistical(
+    enum planned_column_aggregate_function function
+) {
+    return (function == PLANNED_COLUMN_AGGREGATE_STDDEV_POP ||
+            function == PLANNED_COLUMN_AGGREGATE_STDDEV_SAMP ||
+            function == PLANNED_COLUMN_AGGREGATE_VAR_POP ||
+            function == PLANNED_COLUMN_AGGREGATE_VAR_SAMP) != 0;
+}
+
 static const char *column_aggregate_single_item_error(
     enum planned_column_aggregate_function function
 ) {
@@ -1506,6 +1531,9 @@ static const char *column_aggregate_single_item_error(
     }
     if (function == PLANNED_COLUMN_AGGREGATE_SUM) {
         return "SUM(column) supports exactly one aggregate select item";
+    }
+    if (column_aggregate_function_is_statistical(function)) {
+        return "statistical aggregate supports exactly one aggregate select item";
     }
 
     return "MIN/MAX supports exactly one aggregate select item";
@@ -1526,6 +1554,9 @@ static const char *column_aggregate_optional_clause_error(
     if (function == PLANNED_COLUMN_AGGREGATE_SUM) {
         return "SUM(column) supports only WHERE";
     }
+    if (column_aggregate_function_is_statistical(function)) {
+        return "statistical aggregate supports only WHERE";
+    }
 
     return "MIN/MAX supports only WHERE";
 }
@@ -1542,6 +1573,9 @@ static const char *column_aggregate_source_error(enum planned_column_aggregate_f
     }
     if (function == PLANNED_COLUMN_AGGREGATE_SUM) {
         return "SUM(column) supports only descriptor-backed table reads";
+    }
+    if (column_aggregate_function_is_statistical(function)) {
+        return "statistical aggregate supports only descriptor-backed table reads";
     }
 
     return "MIN/MAX supports only descriptor-backed table reads";
@@ -1560,6 +1594,9 @@ static const char *column_aggregate_column_error(enum planned_column_aggregate_f
     if (function == PLANNED_COLUMN_AGGREGATE_SUM) {
         return "SUM(column) supports only descriptor columns";
     }
+    if (column_aggregate_function_is_statistical(function)) {
+        return "statistical aggregate supports only descriptor columns";
+    }
 
     return "MIN/MAX supports only descriptor columns";
 }
@@ -1576,6 +1613,9 @@ static const char *column_aggregate_integer_error(enum planned_column_aggregate_
     }
     if (function == PLANNED_COLUMN_AGGREGATE_SUM) {
         return "SUM(column) supports only integer descriptor columns";
+    }
+    if (column_aggregate_function_is_statistical(function)) {
+        return "statistical aggregate supports only integer descriptor columns";
     }
 
     return "MIN/MAX supports only integer and nonbinary string descriptor columns";
@@ -2109,6 +2149,19 @@ static int append_grouped_aggregate_sqlite_cell(
         };
         ++(*sqlite_column_index);
         return MYLITE_OK;
+    }
+    if (grouped_aggregate_function_is_statistical(item->function)) {
+        rc = append_selected_sqlite_row_value_with_descriptor(
+            database,
+            statement,
+            (size_t)*sqlite_column_index,
+            NULL,
+            buffer,
+            buffer_size,
+            out_cell
+        );
+        ++(*sqlite_column_index);
+        return rc;
     }
 
     rc = sqlite_integer_result_text(statement, *sqlite_column_index, buffer, buffer_size, &value);

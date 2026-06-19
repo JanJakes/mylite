@@ -13,6 +13,10 @@ Schema thread. It does not add `SHOW PROCESSLIST`, `INFORMATION_SCHEMA`
 process-list rows, `performance_schema.threads`, `pseudo_thread_id`, or
 protocol connection metadata.
 
+The later `baseline-connection-id-row-scalar-contexts` slice extends this
+original no-source and `DUAL` scalar surface into source-backed row-scalar
+projection, predicate, and ordering contexts.
+
 ## Sources
 
 - MyLite README architecture: `README.md`
@@ -72,7 +76,8 @@ Observed against the local `mysql:8.4.9` runtime using TCP:
 - `USE`, DDL, DML, and failed statements do not change the value for the
   connection.
 - MySQL accepts wider scalar forms such as aliases, `LIMIT`, and table-backed
-  evaluation; those remain outside this MyLite slice.
+  evaluation; later MyLite slices have expanded several of those forms beyond
+  this original no-source/`DUAL` feature.
 - MySQL exposes `CONNECTION_ID()` with unsigned 64-bit integer-style metadata
   in result sets.
 
@@ -109,9 +114,8 @@ This feature must not implement:
 - `pseudo_thread_id` system-variable reads or writes;
 - aliases, `AS`, expression labels beyond default source-expression text, or
   protocol-grade metadata;
-- table-backed evaluation such as `SELECT CONNECTION_ID() FROM table`;
-- `WHERE`, `ORDER BY`, `LIMIT`, grouping, joins, subqueries, CTEs, or locking
-  clauses on scalar connection-id selects;
+- grouping, joins, subqueries, CTEs, or locking clauses on scalar
+  connection-id selects beyond later row-scalar SELECT expansions;
 - arbitrary SQLite pass-through, SQLite function registration, or SQLite fork
   patches.
 
@@ -234,8 +238,9 @@ diagnostic until general scalar name resolution exists.
 Unsupported scalar-select shapes may fail either at parse time or with the
 existing unsupported-statement diagnostic class, depending on whether the
 current MyLite grammar admits the wider form for another feature. Examples
-include table-backed connection-id evaluation, aliases, clauses, and mixed
-unsupported expressions.
+include aliases, clauses, mixed unsupported expressions, and table-backed
+shapes where those forms are not covered by later focused slices such as
+`baseline-connection-id-row-scalar-contexts`.
 
 Allocation failures return `MYLITE_NOMEM` and set the existing out-of-memory
 diagnostic. Public API misuse behavior is unchanged.

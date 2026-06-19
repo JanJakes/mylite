@@ -33,8 +33,8 @@ comparison, logical operators, variables as scalar function operands, table
 columns, broad table-backed constant projection, no-source
 `WHERE`/`ORDER BY`/`LIMIT`, subqueries, CTEs, expression metadata, or arbitrary
 SQLite pass-through. Later focused row-scalar slices admit selected
-source-backed session constants such as `DATABASE()` and `VERSION()` in the
-documented row-scalar SELECT envelope.
+source-backed session constants such as `DATABASE()`, `VERSION()`, and
+`CONNECTION_ID()` in the documented row-scalar SELECT envelope.
 
 ## Sources And Evidence
 

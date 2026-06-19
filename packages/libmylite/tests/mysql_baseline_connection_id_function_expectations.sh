@@ -117,15 +117,24 @@ if [ "$selected_schema" != "$DATABASE" ]; then
 fi
 
 table_backed=$(run_mysql \
-    "USE ${DATABASE}; CREATE TABLE t(id INT); INSERT INTO t VALUES (1),(2); DO 0; SELECT CONNECTION_ID() FROM t ORDER BY id; SELECT ROW_COUNT(), @@warning_count;"
+    "USE ${DATABASE}; CREATE TABLE t(id INT); INSERT INTO t VALUES (1),(2); DO 0;
+     SELECT CONNECTION_ID(), id FROM t
+      WHERE CONNECTION_ID() = CONNECTION_ID()
+      ORDER BY CONNECTION_ID(), id;
+     SELECT ROW_COUNT(), @@warning_count;"
 )
-table_first=$(printf '%s\n' "$table_backed" | sed -n '1p')
-table_second=$(printf '%s\n' "$table_backed" | sed -n '2p')
+table_first=$(printf '%s\n' "$table_backed" | sed -n '1p' | cut -f1)
+table_first_id=$(printf '%s\n' "$table_backed" | sed -n '1p' | cut -f2)
+table_second=$(printf '%s\n' "$table_backed" | sed -n '2p' | cut -f1)
+table_second_id=$(printf '%s\n' "$table_backed" | sed -n '2p' | cut -f2)
 row_count=$(printf '%s\n' "$table_backed" | sed -n '3p' | cut -f1)
 table_warning_count=$(printf '%s\n' "$table_backed" | sed -n '3p' | cut -f2)
 assert_positive_integer "table-backed first connection id" "$table_first"
 if [ "$table_first" != "$table_second" ]; then
     fail "table-backed connection ids differed: [$table_backed]"
+fi
+if [ "$table_first_id" != "1" ] || [ "$table_second_id" != "2" ]; then
+    fail "table-backed connection id rows were not ordered by id: [$table_backed]"
 fi
 if [ "$row_count" != "-1" ] || [ "$table_warning_count" != "0" ]; then
     fail "unexpected row count / warnings after table-backed select: [$table_backed]"

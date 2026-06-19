@@ -1535,7 +1535,8 @@ static bool row_scalar_expression_contains_statement_context_function(
         if (current == NULL) {
             continue;
         }
-        if (current->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
+        if (current->kind == MYLITE_SQL_AST_CONNECTION_ID_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
             current->kind == MYLITE_SQL_AST_VERSION_FUNCTION ||
             current->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION) {
             found = true;
@@ -1593,6 +1594,7 @@ static bool row_scalar_expression_is_predicate_value_context_attempt(
         row_scalar_numeric_function_kind_is_supported(node->kind) ||
         row_scalar_base_conversion_kind_is_supported(node->kind) ||
         row_scalar_numeric_extra_kind_is_supported(node->kind) ||
+        node->kind == MYLITE_SQL_AST_CONNECTION_ID_FUNCTION ||
         node->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
         node->kind == MYLITE_SQL_AST_VERSION_FUNCTION ||
         node->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION ||

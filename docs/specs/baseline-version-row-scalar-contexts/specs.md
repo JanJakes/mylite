@@ -68,13 +68,18 @@ expression node is additionally accepted in dedicated row-scalar comparison and
 ordering contexts:
 
 ```lemon
-version_row_scalar_function ::= VERSION LPAREN RPAREN.
-predicate_atom ::= version_row_scalar_function comparison_operator predicate_comparison_value.
-predicate_atom ::= version_row_scalar_function comparison_operator version_row_scalar_function.
-predicate_atom ::= predicate_scalar_literal comparison_operator version_row_scalar_function.
-predicate_atom ::= qualified_identifier comparison_operator version_row_scalar_function.
-predicate_atom ::= predicate_row_scalar_expression comparison_operator version_row_scalar_function.
-select_order_key ::= version_row_scalar_function.
+statement_context_row_scalar_function ::= VERSION LPAREN RPAREN.
+predicate_atom ::= statement_context_row_scalar_function comparison_operator
+                   predicate_comparison_value.
+predicate_atom ::= statement_context_row_scalar_function comparison_operator
+                   statement_context_row_scalar_function.
+predicate_atom ::= predicate_scalar_literal comparison_operator
+                   statement_context_row_scalar_function.
+predicate_atom ::= qualified_identifier comparison_operator
+                   statement_context_row_scalar_function.
+predicate_atom ::= predicate_row_scalar_expression comparison_operator
+                   statement_context_row_scalar_function.
+select_order_key ::= statement_context_row_scalar_function.
 ```
 
 The existing `VERSION(...)` argument-count-error grammar continues to produce

@@ -56,7 +56,7 @@
 
 %fallback IDENTIFIER SAVEPOINT BINLOG CHAIN ENFORCED NO ACTION ALGORITHM COMMENT CASCADED DEFINER
     INVOKER DISK INSERT_METHOD LAST MEMORY MERGE NULLS RESPECT SECURITY SRID TABLESPACE TEMPTABLE
-    UNDEFINED VERSION.
+    UNDEFINED CONNECTION_ID VERSION.
 
 %type integer_type_name { struct mylite_sql_integer_type_name_tokens }
 %type text_type_name { struct mylite_sql_text_type_tokens }
@@ -6748,28 +6748,28 @@ predicate_atom(A) ::= period_timezone_predicate_expression(C) NOT(N) IN(I) LPARE
     A = mylite_sql_parser_make_not_predicate(
         state, N, mylite_sql_parser_make_in_predicate(state, C, I, V, R));
 }
-predicate_atom(A) ::= version_row_scalar_function(C) predicate_comparison_operator(O)
+predicate_atom(A) ::= statement_context_row_scalar_function(C) predicate_comparison_operator(O)
         predicate_comparison_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O.token, O.operator_kind, V);
 }
-predicate_atom(A) ::= version_row_scalar_function(C) predicate_comparison_operator(O)
-        version_row_scalar_function(V). {
+predicate_atom(A) ::= statement_context_row_scalar_function(C) predicate_comparison_operator(O)
+        statement_context_row_scalar_function(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O.token, O.operator_kind, V);
 }
 predicate_atom(A) ::= predicate_scalar_literal(C) predicate_comparison_operator(O)
-        version_row_scalar_function(V). {
+        statement_context_row_scalar_function(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O.token, O.operator_kind, V);
 }
 predicate_atom(A) ::= qualified_identifier(C) predicate_comparison_operator(O)
-        version_row_scalar_function(V). {
+        statement_context_row_scalar_function(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O.token, O.operator_kind, V);
 }
 predicate_atom(A) ::= predicate_row_scalar_expression(C) predicate_comparison_operator(O)
-        version_row_scalar_function(V). {
+        statement_context_row_scalar_function(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O.token, O.operator_kind, V);
 }
@@ -7719,7 +7719,11 @@ predicate_row_scalar_expression(A) ::= row_scalar_arithmetic_predicate_expressio
     A = B;
 }
 
-version_row_scalar_function(A) ::= VERSION(T) LPAREN RPAREN(R). {
+statement_context_row_scalar_function(A) ::= CONNECTION_ID(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_zero_argument_function(
+        state, T, MYLITE_SQL_AST_CONNECTION_ID_FUNCTION, R);
+}
+statement_context_row_scalar_function(A) ::= VERSION(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_VERSION_FUNCTION, R);
 }
@@ -8456,7 +8460,7 @@ select_order_key(A) ::= window_function_expression(K). {
 select_order_key(A) ::= predicate_row_scalar_expression(K). {
     A = K;
 }
-select_order_key(A) ::= version_row_scalar_function(K). {
+select_order_key(A) ::= statement_context_row_scalar_function(K). {
     A = K;
 }
 select_order_key(A) ::= string_length_expression(K). {
@@ -11958,6 +11962,9 @@ expression(A) ::= CONNECTION_ID(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_CONNECTION_ID_ARGUMENT_COUNT_ERROR, B, R);
 }
+expression(A) ::= CONNECTION_ID(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 expression(A) ::= COUNT(T) LPAREN(L) STAR RPAREN(R) aggregate_window_opt(W). {
     A = mylite_sql_parser_attach_function_window_clause(
         mylite_sql_parser_make_no_space_zero_argument_function(
@@ -12829,9 +12836,6 @@ identifier(A) ::= BOOLEAN(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= UNKNOWN(T). {
-    A = mylite_sql_parser_make_identifier(state, T);
-}
-identifier(A) ::= CONNECTION_ID(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= WEIGHT_STRING(T). {

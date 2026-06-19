@@ -319,6 +319,7 @@ static int test_session_value_scalar_projection_warning_order(void) {
 }
 
 static int test_session_value_scalar_projection_unsupported_forms(void) {
+    static const char *const connection_id_table_columns[] = {"CONNECTION_ID()", "id"};
     static const char *const version_literal_columns[] = {"VERSION()", "1"};
     static const char *const version_table_columns[] = {"VERSION()", "id"};
     static const char *const current_database_table_columns[] = {"DATABASE()", "SCHEMA()", "id"};
@@ -337,6 +338,14 @@ static int test_session_value_scalar_projection_unsupported_forms(void) {
         MYLITE_MYSQL_SERVER_VERSION_STRING,
         "2",
     };
+    const struct mylite_session_state *session = NULL;
+    char connection_id_text[connection_id_text_capacity];
+    const char *connection_id_table_values[] = {
+        connection_id_text,
+        "1",
+        connection_id_text,
+        "2",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -351,6 +360,15 @@ static int test_session_value_scalar_projection_unsupported_forms(void) {
     failures += execute_ok(database, "USE app", NULL);
     failures += execute_ok(database, "CREATE TABLE t(id INT)", NULL);
     failures += execute_ok(database, "INSERT INTO t VALUES (1)", NULL);
+    session = mylite_connection_session_state(database);
+    if (snprintf(
+            connection_id_text,
+            sizeof(connection_id_text),
+            "%llu",
+            (unsigned long long)session->connection_id
+        ) < 0) {
+        failures += expect_int(1, 0, "format connection id");
+    }
 
     failures += execute_error(
         database,
@@ -404,6 +422,20 @@ static int test_session_value_scalar_projection_unsupported_forms(void) {
         }
     );
     failures += execute_ok(database, "INSERT INTO t VALUES (2)", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT CONNECTION_ID(), id FROM t "
+                   "WHERE CONNECTION_ID() = CONNECTION_ID() "
+                   "ORDER BY CONNECTION_ID(), id",
+            .columns = connection_id_table_columns,
+            .column_count = 2U,
+            .values = connection_id_table_values,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .context = "source-backed connection id predicate and order",
+        }
+    );
     failures += expect_query(
         database,
         (struct expected_query){

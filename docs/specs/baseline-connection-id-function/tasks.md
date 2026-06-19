@@ -66,8 +66,9 @@ scalar `SELECT` statements.
 
 ## Non-Goals
 
-- Do not add public API, protocol connection ids, server threads,
-  `pseudo_thread_id`, process-list metadata, Performance Schema thread
-  metadata, aliases, table-backed scalar evaluation, clauses, general scalar
-  expressions, function registration, arbitrary SQLite pass-through, or SQLite
-  fork patches.
+- This original slice did not add public API, protocol connection ids, server
+  threads, `pseudo_thread_id`, process-list metadata, Performance Schema thread
+  metadata, aliases, clauses, general scalar expressions, function
+  registration, arbitrary SQLite pass-through, or SQLite fork patches. Later
+  focused slices may extend source-backed row-scalar contexts without changing
+  those non-goals.

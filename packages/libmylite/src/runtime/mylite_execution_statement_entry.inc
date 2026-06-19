@@ -454,6 +454,14 @@ static int execute_non_prepared_statement(
         return execute_show_create_view_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_CREATE_PROCEDURE_STATEMENT:
         return execute_show_create_procedure_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_CREATE_FUNCTION_STATEMENT:
+        return execute_show_create_function_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_CREATE_TRIGGER_STATEMENT:
+        return execute_show_create_trigger_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_CREATE_EVENT_STATEMENT:
+        return execute_show_create_event_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_CREATE_USER_STATEMENT:
+        return execute_show_create_user_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_CREATE_DATABASE_STATEMENT:
         return execute_show_create_database_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:

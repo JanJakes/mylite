@@ -106,6 +106,96 @@ static int execute_show_create_view_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_create_function_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct table_name_resolution target = {0};
+    bool missing_schema = false;
+    int rc = resolve_table_name_allow_missing_schema(
+        database,
+        child_at(statement, 0U),
+        &target,
+        &missing_schema
+    );
+
+    (void)missing_schema;
+    if (rc == MYLITE_OK) {
+        rc = set_show_create_function_missing_error(database, &target);
+    }
+
+    (void)out_result;
+    return rc;
+}
+
+static int execute_show_create_trigger_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct table_name_resolution target = {0};
+    int rc = resolve_table_name(database, child_at(statement, 0U), &target);
+
+    if (rc == MYLITE_OK) {
+        rc = set_show_create_trigger_missing_error(database);
+    }
+
+    (void)out_result;
+    return rc;
+}
+
+static int execute_show_create_event_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct table_name_resolution target = {0};
+    bool missing_schema = false;
+    int rc = resolve_table_name_allow_missing_schema(
+        database,
+        child_at(statement, 0U),
+        &target,
+        &missing_schema
+    );
+
+    (void)missing_schema;
+    if (rc == MYLITE_OK) {
+        rc = set_show_create_event_missing_error(database, &target);
+    }
+
+    (void)out_result;
+    return rc;
+}
+
+static int execute_show_create_user_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    mylite_result *result = NULL;
+    const struct mylite_sql_ast_node *target = child_at(statement, 0U);
+    int rc = MYLITE_OK;
+
+    if (!show_grants_target_is_embedded_root(target)) {
+        return set_show_create_user_failed_error(database, target);
+    }
+
+    rc = mylite_result_create(&result);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_show_create_user_embedded_root_result(database, result);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
 static int execute_show_create_builtin_sys_view_statement(
     struct mylite_db *database,
     const struct mylite_execution_catalog_builtin_sys_view *view,
@@ -127,6 +217,143 @@ static int execute_show_create_builtin_sys_view_statement(
     }
 
     return finish_successful_result(database, result, out_result);
+}
+
+static int set_show_create_function_missing_error(
+    struct mylite_db *database,
+    const struct table_name_resolution *target
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "FUNCTION %s does not exist",
+        target == NULL ? "" : target->table_name
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_routine_does_not_exist,
+        "42000",
+        message
+    );
+    return MYLITE_ERROR;
+}
+
+static int set_show_create_event_missing_error(
+    struct mylite_db *database,
+    const struct table_name_resolution *target
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Unknown event '%s'",
+        target == NULL ? "" : target->table_name
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_unknown_event,
+        "HY000",
+        message
+    );
+    return MYLITE_ERROR;
+}
+
+static int set_show_create_trigger_missing_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_trigger_does_not_exist,
+        "HY000",
+        "Trigger does not exist"
+    );
+    return MYLITE_ERROR;
+}
+
+static int append_show_create_user_embedded_root_result(
+    struct mylite_db *database,
+    mylite_result *result
+) {
+    static const char *const result_columns[show_create_user_result_column_count] = {
+        "CREATE USER for root@%",
+    };
+    static const char *const values[show_create_user_result_column_count] = {
+        "CREATE USER `root`@`%` IDENTIFIED WITH 'caching_sha2_password' REQUIRE NONE PASSWORD "
+        "EXPIRE DEFAULT ACCOUNT UNLOCK PASSWORD HISTORY DEFAULT PASSWORD REUSE INTERVAL DEFAULT "
+        "PASSWORD REQUIRE CURRENT DEFAULT",
+    };
+    int rc = MYLITE_OK;
+
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_create_user_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    return rc;
+}
+
+static int set_show_create_user_failed_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *target
+) {
+    char user[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char host[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    const struct mylite_sql_ast_node *user_node = child_at(target, 0U);
+    const struct mylite_sql_ast_node *host_node = child_at(target, 1U);
+    int written = 0;
+
+    if (copy_show_grants_account_part(
+            user_node == NULL ? NULL : &user_node->span,
+            false,
+            "",
+            user,
+            sizeof(user)
+        ) != MYLITE_OK ||
+        copy_show_grants_account_part(
+            host_node == NULL ? NULL : &host_node->span,
+            true,
+            "%",
+            host,
+            sizeof(host)
+        ) != MYLITE_OK) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    written = snprintf(
+        message,
+        sizeof(message),
+        "Operation SHOW CREATE USER failed for '%s'@'%s'",
+        user,
+        host
+    );
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_operation_failed,
+        "HY000",
+        message
+    );
+    return MYLITE_ERROR;
 }
 
 static int execute_show_create_database_statement(

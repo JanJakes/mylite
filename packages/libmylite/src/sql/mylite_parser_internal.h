@@ -1066,6 +1066,26 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_procedure_stateme
     struct mylite_sql_token show_token,
     struct mylite_sql_ast_node *procedure_name
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_function_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_ast_node *function_name
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_trigger_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_ast_node *trigger_name
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_event_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_ast_node *event_name
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_user_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_ast_node *user_target
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_database_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,

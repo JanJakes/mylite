@@ -582,7 +582,9 @@ static bool map_keyword_token(
         {"POINT", MYLITE_SQL_PARSE_POINT},
         {"POLYGON", MYLITE_SQL_PARSE_POLYGON},
         {"FULL", MYLITE_SQL_PARSE_FULL},
+        {"TRIGGER", MYLITE_SQL_PARSE_TRIGGER},
         {"TRIGGERS", MYLITE_SQL_PARSE_TRIGGERS},
+        {"EVENT", MYLITE_SQL_PARSE_EVENT},
         {"EVENTS", MYLITE_SQL_PARSE_EVENTS},
         {"OPEN", MYLITE_SQL_PARSE_OPEN},
         {"PROCESSLIST", MYLITE_SQL_PARSE_PROCESSLIST},
@@ -1129,6 +1131,7 @@ static bool map_keyword_index(unsigned int keyword_index, int *out_parser_token)
         [209U] = MYLITE_SQL_PARSE_ENUM,                /* ENUM */
         [211U] = MYLITE_SQL_PARSE_ERRORS,              /* ERRORS */
         [212U] = MYLITE_SQL_PARSE_ESCAPE,              /* ESCAPE */
+        [214U] = MYLITE_SQL_PARSE_EVENT,               /* EVENT */
         [215U] = MYLITE_SQL_PARSE_EVENTS,              /* EVENTS */
         [217U] = MYLITE_SQL_PARSE_EXCEPT,              /* EXCEPT */
         [220U] = MYLITE_SQL_PARSE_EXECUTE,             /* EXECUTE */
@@ -1471,6 +1474,7 @@ static bool map_keyword_index(unsigned int keyword_index, int *out_parser_token)
         [809U] = MYLITE_SQL_PARSE_TO_SECONDS,          /* TO_SECONDS */
         [810U] = MYLITE_SQL_PARSE_TRAILING,            /* TRAILING */
         [811U] = MYLITE_SQL_PARSE_TRANSACTION,         /* TRANSACTION */
+        [812U] = MYLITE_SQL_PARSE_TRIGGER,             /* TRIGGER */
         [813U] = MYLITE_SQL_PARSE_TRIGGERS,            /* TRIGGERS */
         [814U] = MYLITE_SQL_PARSE_TRIM,                /* TRIM */
         [815U] = MYLITE_SQL_PARSE_TRUE,                /* TRUE */

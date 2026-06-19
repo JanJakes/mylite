@@ -129,6 +129,7 @@ enum {
     show_index_null_column = 9,
     show_create_table_result_column_count = 2,
     show_create_view_result_column_count = 4,
+    show_create_user_result_column_count = 1,
     show_create_database_result_column_count = 2,
     show_table_status_name_column = 0,
     show_table_status_engine_column = 1,

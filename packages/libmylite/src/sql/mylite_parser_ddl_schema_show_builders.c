@@ -928,6 +928,62 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_procedure_stateme
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_function_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_ast_node *function_name
+) {
+    struct mylite_sql_ast_node *statement =
+        mylite_sql_parser_make_show_create_table_statement(state, show_token, function_name);
+
+    if (statement != NULL) {
+        statement->kind = MYLITE_SQL_AST_SHOW_CREATE_FUNCTION_STATEMENT;
+    }
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_trigger_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_ast_node *trigger_name
+) {
+    struct mylite_sql_ast_node *statement =
+        mylite_sql_parser_make_show_create_table_statement(state, show_token, trigger_name);
+
+    if (statement != NULL) {
+        statement->kind = MYLITE_SQL_AST_SHOW_CREATE_TRIGGER_STATEMENT;
+    }
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_event_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_ast_node *event_name
+) {
+    struct mylite_sql_ast_node *statement =
+        mylite_sql_parser_make_show_create_table_statement(state, show_token, event_name);
+
+    if (statement != NULL) {
+        statement->kind = MYLITE_SQL_AST_SHOW_CREATE_EVENT_STATEMENT;
+    }
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_user_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_ast_node *user_target
+) {
+    struct mylite_sql_ast_node *statement =
+        mylite_sql_parser_make_show_create_table_statement(state, show_token, user_target);
+
+    if (statement != NULL) {
+        statement->kind = MYLITE_SQL_AST_SHOW_CREATE_USER_STATEMENT;
+    }
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_create_database_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,

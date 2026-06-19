@@ -275,6 +275,18 @@ statement(A) ::= show_create_view_statement(B). {
 statement(A) ::= show_create_procedure_statement(B). {
     A = B;
 }
+statement(A) ::= show_create_function_statement(B). {
+    A = B;
+}
+statement(A) ::= show_create_trigger_statement(B). {
+    A = B;
+}
+statement(A) ::= show_create_event_statement(B). {
+    A = B;
+}
+statement(A) ::= show_create_user_statement(B). {
+    A = B;
+}
 statement(A) ::= show_create_database_statement(B). {
     A = B;
 }
@@ -2220,6 +2232,28 @@ show_create_view_statement(A) ::= SHOW(S) CREATE VIEW table_name(T). {
 
 show_create_procedure_statement(A) ::= SHOW(S) CREATE PROCEDURE table_name(T). {
     A = mylite_sql_parser_make_show_create_procedure_statement(state, S, T);
+}
+show_create_function_statement(A) ::= SHOW(S) CREATE FUNCTION table_name(T). {
+    A = mylite_sql_parser_make_show_create_function_statement(state, S, T);
+}
+show_create_trigger_statement(A) ::= SHOW(S) CREATE TRIGGER table_name(T). {
+    A = mylite_sql_parser_make_show_create_trigger_statement(state, S, T);
+}
+show_create_event_statement(A) ::= SHOW(S) CREATE EVENT table_name(T). {
+    A = mylite_sql_parser_make_show_create_event_statement(state, S, T);
+}
+show_create_user_statement(A) ::= SHOW(S) CREATE USER show_create_user_target(T). {
+    A = mylite_sql_parser_make_show_create_user_statement(state, S, T);
+}
+
+show_create_user_target(A) ::= CURRENT_USER(T). {
+    A = mylite_sql_parser_make_current_user_keyword(state, T);
+}
+show_create_user_target(A) ::= CURRENT_USER(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_current_user_show_grants_target(state, T, R);
+}
+show_create_user_target(A) ::= show_grants_account_name(N). {
+    A = N;
 }
 
 show_create_database_statement(A) ::= SHOW(S) CREATE DATABASE identifier(D). {
@@ -13326,6 +13360,9 @@ identifier(A) ::= FULL(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= TRIGGERS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= EVENT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= EVENTS(T). {

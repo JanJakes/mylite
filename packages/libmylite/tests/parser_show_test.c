@@ -6,6 +6,7 @@ static int test_show_events_empty_introspection_statements(void);
 static int test_show_open_tables_empty_introspection_statements(void);
 static int test_show_routine_status_empty_introspection_statements(void);
 static int test_limited_stored_procedure_statements(void);
+static int test_show_create_residual_statements(void);
 static int test_show_processlist_introspection_statements(void);
 static int test_show_plugins_metadata_statement(void);
 static int test_show_engine_status_statement(void);
@@ -28,6 +29,7 @@ int main(void) {
     failures += test_show_open_tables_empty_introspection_statements();
     failures += test_show_routine_status_empty_introspection_statements();
     failures += test_limited_stored_procedure_statements();
+    failures += test_show_create_residual_statements();
     failures += test_show_processlist_introspection_statements();
     failures += test_show_plugins_metadata_statement();
     failures += test_show_engine_status_statement();
@@ -1106,6 +1108,92 @@ static int test_limited_stored_procedure_statements(void) {
     statement = parser_test_child_at(result.root, 0U);
     failures += parser_test_expect_node(statement, MYLITE_SQL_AST_CALL_STATEMENT, "call parens");
     failures += parser_test_expect_child_count(statement, 1U, "call parens child count");
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_show_create_residual_statements(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures +=
+        parser_test_parse_sql("SHOW CREATE FUNCTION app.sync_func;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_CREATE_FUNCTION_STATEMENT,
+        "show create function"
+    );
+    failures += parser_test_expect_child_count(statement, 1U, "show create function child count");
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(statement, 0U),
+        "app.sync_func",
+        "show create function name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parser_test_parse_sql("SHOW CREATE TRIGGER app.sync_trig;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_CREATE_TRIGGER_STATEMENT,
+        "show create trigger"
+    );
+    failures += parser_test_expect_child_count(statement, 1U, "show create trigger child count");
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(statement, 0U),
+        "app.sync_trig",
+        "show create trigger name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parser_test_parse_sql("SHOW CREATE EVENT app.sync_event;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_CREATE_EVENT_STATEMENT,
+        "show create event"
+    );
+    failures += parser_test_expect_child_count(statement, 1U, "show create event child count");
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(statement, 0U),
+        "app.sync_event",
+        "show create event name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parser_test_parse_sql("SHOW CREATE USER CURRENT_USER();", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_CREATE_USER_STATEMENT,
+        "show create user current user"
+    );
+    failures += parser_test_expect_child_count(statement, 1U, "show create user child count");
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 0U),
+        MYLITE_SQL_AST_CURRENT_USER_FUNCTION,
+        "show create user current user target"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("SHOW CREATE USER root@'%';", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_CREATE_USER_STATEMENT,
+        "show create user account"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 0U),
+        MYLITE_SQL_AST_SHOW_GRANTS_ACCOUNT,
+        "show create user account target"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

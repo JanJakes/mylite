@@ -2244,6 +2244,14 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "show_create_view_statement";
     case MYLITE_SQL_AST_SHOW_CREATE_PROCEDURE_STATEMENT:
         return "show_create_procedure_statement";
+    case MYLITE_SQL_AST_SHOW_CREATE_FUNCTION_STATEMENT:
+        return "show_create_function_statement";
+    case MYLITE_SQL_AST_SHOW_CREATE_TRIGGER_STATEMENT:
+        return "show_create_trigger_statement";
+    case MYLITE_SQL_AST_SHOW_CREATE_EVENT_STATEMENT:
+        return "show_create_event_statement";
+    case MYLITE_SQL_AST_SHOW_CREATE_USER_STATEMENT:
+        return "show_create_user_statement";
     case MYLITE_SQL_AST_TABLE_ENGINE_OPTION:
         return "table_engine_option";
     case MYLITE_SQL_AST_SHOW_ENGINES_STATEMENT:

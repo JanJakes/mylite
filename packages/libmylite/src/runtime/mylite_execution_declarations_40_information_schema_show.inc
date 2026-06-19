@@ -2124,10 +2124,47 @@ static int execute_show_create_procedure_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_show_create_function_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_show_create_trigger_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_show_create_event_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_show_create_user_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
 static int execute_show_create_database_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
+);
+static int set_show_create_function_missing_error(
+    struct mylite_db *database,
+    const struct table_name_resolution *target
+);
+static int set_show_create_event_missing_error(
+    struct mylite_db *database,
+    const struct table_name_resolution *target
+);
+static int set_show_create_trigger_missing_error(struct mylite_db *database);
+static int append_show_create_user_embedded_root_result(
+    struct mylite_db *database,
+    mylite_result *result
+);
+static int set_show_create_user_failed_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *target
 );
 static int execute_show_engines_statement(struct mylite_db *database, mylite_result **out_result);
 static int execute_show_engine_status_statement(

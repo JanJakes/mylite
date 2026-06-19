@@ -207,6 +207,10 @@
     COMMAND mylite_runtime_show_grants_test
   )
   add_test(
+    NAME libmylite.runtime.show_create_residuals
+    COMMAND mylite_runtime_show_create_residuals_test
+  )
+  add_test(
     NAME libmylite.runtime.show_privileges
     COMMAND mylite_runtime_show_privileges_test
   )

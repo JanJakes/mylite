@@ -1186,16 +1186,6 @@ static enum placeholder_statement_kind classify_show_placeholder_statement(
           placeholder_scan_token_text_equals(scan, 2U, "TABLES")))) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
-    if (placeholder_scan_token_text_equals(scan, 1U, "CREATE")) {
-        if (placeholder_scan_token_text_equals(scan, 2U, "FUNCTION") ||
-            placeholder_scan_token_text_equals(scan, 2U, "TRIGGER") ||
-            placeholder_scan_token_text_equals(scan, 2U, "EVENT")) {
-            return PLACEHOLDER_STATEMENT_UNSUPPORTED_STORED_PROGRAM;
-        }
-        if (placeholder_scan_token_text_equals(scan, 2U, "USER")) {
-            return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
-        }
-    }
     if ((placeholder_scan_token_text_equals(scan, 1U, "PROCEDURE") ||
          placeholder_scan_token_text_equals(scan, 1U, "FUNCTION")) &&
         placeholder_scan_token_text_equals(scan, 2U, "CODE")) {

@@ -1230,15 +1230,10 @@ static int append_grouped_order_sql(
             rc = mylite_dynamic_string_append(string, ", ");
         }
         if (rc == MYLITE_OK && plan->order_item_uses_aggregate[item_index]) {
-            size_t aggregate_index = plan->order_item_aggregate_indexes[item_index];
-
-            if (aggregate_index >= plan->aggregate_count) {
-                return MYLITE_ERROR;
-            }
-            rc = append_grouped_aggregate_expression_sql(
+            rc = append_grouped_order_aggregate_sql(
                 string,
                 plan,
-                &plan->aggregates[aggregate_index],
+                plan->order_item_aggregate_indexes[item_index],
                 next_parameter
             );
         } else if (rc == MYLITE_OK && item->kind == PLANNED_SELECT_ORDER_ITEM_ROW_SCALAR) {
@@ -1261,6 +1256,33 @@ static int append_grouped_order_sql(
         }
     }
 
+    return rc;
+}
+
+static int append_grouped_order_aggregate_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    size_t aggregate_index,
+    size_t *next_parameter
+) {
+    const struct planned_grouped_aggregate_item *item = NULL;
+    int rc = MYLITE_OK;
+
+    if (aggregate_index >= plan->aggregate_count) {
+        return MYLITE_ERROR;
+    }
+    item = &plan->aggregates[aggregate_index];
+    if (!grouped_aggregate_function_is_bitwise(item->function)) {
+        return append_grouped_aggregate_expression_sql(string, plan, item, next_parameter);
+    }
+
+    rc = mylite_dynamic_string_append(string, "_mylite_uint64_decimal_order_key(");
+    if (rc == MYLITE_OK) {
+        rc = append_grouped_aggregate_expression_sql(string, plan, item, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
     return rc;
 }
 

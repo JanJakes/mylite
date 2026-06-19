@@ -25,6 +25,7 @@ struct mylite_bitwise_aggregate_state {
 
 static void bitwise_aggregate_step(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void bitwise_aggregate_final(sqlite3_context *context);
+static void uint64_decimal_order_key(sqlite3_context *context, int argc, sqlite3_value **argv);
 static const struct mylite_bitwise_aggregate_config *bitwise_aggregate_config(
     sqlite3_context *context
 );
@@ -34,6 +35,11 @@ static void apply_bitwise_aggregate_operation(
     uint64_t value
 );
 static void set_bitwise_aggregate_result(sqlite3_context *context, uint64_t value);
+static bool parse_uint64_decimal_text(
+    const unsigned char *text,
+    int byte_count,
+    uint64_t *out_value
+);
 
 int mylite_sqlite_register_bitwise_aggregate_functions(sqlite3 *sqlite) {
     static struct mylite_bitwise_aggregate_config and_config = {
@@ -84,6 +90,19 @@ int mylite_sqlite_register_bitwise_aggregate_functions(sqlite3 *sqlite) {
             .scalar_callback = NULL,
             .step_callback = bitwise_aggregate_step,
             .final_callback = bitwise_aggregate_final,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_uint64_decimal_order_key",
+            .argument_count = 1,
+            .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
+            .application_data = NULL,
+            .scalar_callback = uint64_decimal_order_key,
+            .step_callback = NULL,
+            .final_callback = NULL,
             .value_callback = NULL,
             .inverse_callback = NULL,
             .destroy_callback = NULL,
@@ -146,6 +165,39 @@ static void bitwise_aggregate_final(sqlite3_context *context) {
     );
 }
 
+static void uint64_decimal_order_key(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    enum { uint64_order_key_capacity = 21 };
+
+    char key[uint64_order_key_capacity];
+    uint64_t value = 0U;
+    int written = 0;
+
+    if (argc != 1 || argv == NULL || argv[0] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite uint64 order-key callback", -1);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) != SQLITE_TEXT || !parse_uint64_decimal_text(
+                                                          sqlite3_value_text(argv[0]),
+                                                          sqlite3_value_bytes(argv[0]),
+                                                          &value
+                                                      )) {
+        sqlite3_result_error(context, "invalid MyLite uint64 order-key input", -1);
+        return;
+    }
+
+    written = snprintf(key, sizeof(key), "%020" PRIu64, value);
+    if (written < 0 || (size_t)written >= sizeof(key)) {
+        sqlite3_result_error(context, "failed to format MyLite uint64 order key", -1);
+        return;
+    }
+
+    sqlite3_result_text(context, key, -1, SQLITE_TRANSIENT);
+}
+
 static const struct mylite_bitwise_aggregate_config *bitwise_aggregate_config(
     sqlite3_context *context
 ) {
@@ -186,4 +238,38 @@ static void set_bitwise_aggregate_result(sqlite3_context *context, uint64_t valu
     }
 
     sqlite3_result_text(context, text, -1, SQLITE_TRANSIENT);
+}
+
+static bool parse_uint64_decimal_text(
+    const unsigned char *text,
+    int byte_count,
+    uint64_t *out_value
+) {
+    enum {
+        max_uint64_decimal_digits = 20,
+        decimal_radix = 10,
+    };
+
+    uint64_t value = 0U;
+
+    if (text == NULL || byte_count <= 0 || byte_count > max_uint64_decimal_digits ||
+        out_value == NULL) {
+        return false;
+    }
+    for (int index = 0; index < byte_count; ++index) {
+        unsigned char character = text[index];
+        uint64_t digit = 0U;
+
+        if (character < '0' || character > '9') {
+            return false;
+        }
+        digit = (uint64_t)(character - '0');
+        if (value > (UINT64_MAX - digit) / decimal_radix) {
+            return false;
+        }
+        value = (value * decimal_radix) + digit;
+    }
+
+    *out_value = value;
+    return true;
 }

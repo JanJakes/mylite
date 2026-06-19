@@ -190,6 +190,19 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
         NULL,
         NULL,
     };
+    static const char *const bit_and_alias_order_columns[] = {"g", "ba"};
+    static const char *const bit_or_alias_order_columns[] = {"g", "bo"};
+    static const char *const bit_xor_alias_order_columns[] = {"g", "bx"};
+    static const char *const bit_and_alias_order_values[] = {NULL, "7", "2", "11", "1", "13"};
+    static const char *const bit_or_xor_alias_order_values[] = {
+        NULL,
+        "7",
+        "2",
+        "11",
+        "1",
+        "15",
+    };
+    static const char *const bitwise_alias_order_desc_limit_values[] = {"1", "15"};
     static const char *const where_columns[] = {"g", "COUNT(*)"};
     static const char *const where_values[] = {"1", "1", "2", "2"};
     static const char *const alias_columns[] = {"k", "s"};
@@ -488,6 +501,23 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
         "(1, 2, NULL), (1, 2, NULL), "
         "(2, 1, 30), (2, 1, 30), (2, 1, NULL), "
         "(2, 2, 40), (2, 2, 50)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "CREATE TABLE grouped_bitwise_order(g INT, bor INT, band INT, bxor INT)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO grouped_bitwise_order VALUES "
+        "(NULL, 7, 7, 7), "
+        "(1, 7, 15, 7), (1, 8, 13, 8), "
+        "(2, 10, 15, 10), (2, 1, 11, 1)",
         &result
     );
     mylite_result_free(result);
@@ -962,6 +992,54 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = max_alias_order_values,
             .row_count = 3U,
             .context = "multi aggregate order by max alias",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, BIT_AND(band) AS ba FROM grouped_bitwise_order GROUP BY g "
+                   "ORDER BY ba ASC",
+            .columns = bit_and_alias_order_columns,
+            .column_count = 2U,
+            .values = bit_and_alias_order_values,
+            .row_count = 3U,
+            .context = "grouped bit and aggregate alias numeric order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, BIT_OR(bor) AS bo FROM grouped_bitwise_order GROUP BY g "
+                   "ORDER BY bo ASC",
+            .columns = bit_or_alias_order_columns,
+            .column_count = 2U,
+            .values = bit_or_xor_alias_order_values,
+            .row_count = 3U,
+            .context = "grouped bit or aggregate alias numeric order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, BIT_XOR(bxor) AS bx FROM grouped_bitwise_order GROUP BY g "
+                   "ORDER BY bx ASC",
+            .columns = bit_xor_alias_order_columns,
+            .column_count = 2U,
+            .values = bit_or_xor_alias_order_values,
+            .row_count = 3U,
+            .context = "grouped bit xor aggregate alias numeric order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, BIT_OR(bor) AS bo FROM grouped_bitwise_order GROUP BY g "
+                   "ORDER BY bo DESC LIMIT 1",
+            .columns = bit_or_alias_order_columns,
+            .column_count = 2U,
+            .values = bitwise_alias_order_desc_limit_values,
+            .row_count = 1U,
+            .context = "grouped bitwise aggregate alias descending order limit",
         }
     );
     failures += expect_grouped_query(
@@ -1987,15 +2065,6 @@ static int test_grouped_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "GROUP BY does not support ORDER BY on AVG aggregate aliases",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT g, BIT_OR(nn) AS bo FROM grouped_numbers GROUP BY g ORDER BY bo",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "GROUP BY does not support ORDER BY on bitwise aggregate aliases",
         }
     );
     failures += execute_error(

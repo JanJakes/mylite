@@ -394,9 +394,10 @@ MyLite must provide deterministic diagnostics for:
 - unsupported aggregate forms beyond the documented grouped aggregate subset;
 - unsupported grouping expression, alias grouping, ordinal grouping, multiple
   grouping keys, `HAVING`, rollup, joins, query modifiers, and subqueries;
-- unsupported order expression, aggregate alias ordering, table-qualified order
-  forms outside the existing descriptor reference subset, ordinal ordering, and
-  multiple sort keys;
+- unsupported order expression, aggregate alias ordering outside the supported
+  selected aggregate-alias slices, table-qualified order forms outside the
+  existing descriptor reference subset, ordinal ordering, and multiple sort
+  keys;
 - unsupported limit expression or out-of-range limit literal;
 - SQLite physical execution failures;
 - allocation failures;
@@ -431,9 +432,9 @@ CTest name. Tests must cover:
   unknown field/group/order columns, and selected non-grouped descriptor
   columns;
 - deterministic rejections for aliases in `GROUP BY`, ordinals, expressions,
-  multiple group keys, `HAVING`, rollup, aggregate alias ordering, multiple
-  sort keys, expression assignments, functions, joins, CTEs, subqueries, and
-  unsupported aggregate forms;
+  multiple group keys, unsupported `HAVING`, rollup, unsupported aggregate
+  alias ordering, multiple sort keys, expression assignments, functions, joins,
+  CTEs, subqueries, and unsupported aggregate forms;
 - reopen persistence, grouped selects after rename/drop where applicable,
   `.mylite` preamble preservation, independent file-backed handles, zero-init
   cleanup, and existing parser/runtime regression entries.

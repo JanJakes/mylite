@@ -93,6 +93,34 @@ static int test_statistical_values_and_grouping(void) {
         "25",
         "50",
     };
+    static const char *const grouped_alias_columns[] = {"g", "s"};
+    static const char *const grouped_var_alias_columns[] = {"g", "v"};
+    static const char *const grouped_stddev_pop_alias_order_values[] = {
+        NULL,
+        NULL,
+        "1",
+        "0",
+        "2",
+        "5",
+    };
+    static const char *const grouped_var_pop_alias_desc_limit_values[] = {
+        "2",
+        "25",
+        "1",
+        "0",
+    };
+    static const char *const grouped_stddev_samp_alias_desc_limit_values[] = {
+        "2",
+        "7.0710678118654755",
+    };
+    static const char *const grouped_var_samp_alias_desc_limit_values[] = {
+        "2",
+        "50",
+    };
+    static const char *const grouped_std_alias_desc_limit_values[] = {
+        "2",
+        "5",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
@@ -264,6 +292,86 @@ static int test_statistical_values_and_grouping(void) {
             .values = grouped_values,
             .row_count = 3U,
             .context = "grouped statistical values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, STDDEV_POP(n) AS s FROM numbers GROUP BY g ORDER BY s",
+            .columns = grouped_alias_columns,
+            .column_count = sizeof(grouped_alias_columns) / sizeof(grouped_alias_columns[0]),
+            .values = grouped_stddev_pop_alias_order_values,
+            .row_count = 3U,
+            .context = "grouped statistical stddev_pop aggregate alias order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, VAR_POP(n) AS v FROM numbers GROUP BY g ORDER BY v DESC LIMIT 2",
+            .columns = grouped_var_alias_columns,
+            .column_count =
+                sizeof(grouped_var_alias_columns) / sizeof(grouped_var_alias_columns[0]),
+            .values = grouped_var_pop_alias_desc_limit_values,
+            .row_count = 2U,
+            .context = "grouped statistical var_pop aggregate alias descending limit",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, STDDEV_SAMP(n) AS s FROM numbers GROUP BY g ORDER BY s DESC LIMIT 1",
+            .columns = grouped_alias_columns,
+            .column_count = sizeof(grouped_alias_columns) / sizeof(grouped_alias_columns[0]),
+            .values = grouped_stddev_samp_alias_desc_limit_values,
+            .row_count = 1U,
+            .context = "grouped statistical stddev_samp aggregate alias descending limit",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, VAR_SAMP(n) AS v FROM numbers GROUP BY g ORDER BY v DESC LIMIT 1",
+            .columns = grouped_var_alias_columns,
+            .column_count =
+                sizeof(grouped_var_alias_columns) / sizeof(grouped_var_alias_columns[0]),
+            .values = grouped_var_samp_alias_desc_limit_values,
+            .row_count = 1U,
+            .context = "grouped statistical var_samp aggregate alias descending limit",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, STD(n) AS s FROM numbers GROUP BY g ORDER BY s DESC LIMIT 1",
+            .columns = grouped_alias_columns,
+            .column_count = sizeof(grouped_alias_columns) / sizeof(grouped_alias_columns[0]),
+            .values = grouped_std_alias_desc_limit_values,
+            .row_count = 1U,
+            .context = "grouped statistical std aggregate alias descending limit",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, VARIANCE(n) AS v FROM numbers GROUP BY g ORDER BY v DESC LIMIT 1",
+            .columns = grouped_var_alias_columns,
+            .column_count =
+                sizeof(grouped_var_alias_columns) / sizeof(grouped_var_alias_columns[0]),
+            .values = grouped_var_pop_alias_desc_limit_values,
+            .row_count = 1U,
+            .context = "grouped statistical variance aggregate alias descending limit",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, STDDEV_POP(n + 1) AS s FROM numbers GROUP BY g ORDER BY s",
+            .columns = grouped_alias_columns,
+            .column_count = sizeof(grouped_alias_columns) / sizeof(grouped_alias_columns[0]),
+            .values = grouped_stddev_pop_alias_order_values,
+            .row_count = 3U,
+            .context = "grouped statistical row-scalar aggregate alias order",
         }
     );
     failures += expect_query(

@@ -118,7 +118,8 @@ MyLite supports:
   subset;
 - optional `ORDER BY` on a small ordered list of selected grouped descriptor
   columns, unique selected grouped descriptor-column aliases, and unique
-  selected `COUNT`, `MIN`, `MAX`, or `SUM` aggregate aliases; when
+  selected `COUNT`, `COUNT(DISTINCT column)`, `MIN`, `MAX`, or `SUM` aggregate
+  aliases; when
   `ONLY_FULL_GROUP_BY` is disabled, descriptor column order keys outside those
   strict forms and `CAST(descriptor_column AS CHAR)` order keys are also
   admitted for WordPress-style grouped comment metadata queries;
@@ -145,7 +146,8 @@ This phase does not add:
   `CAST(descriptor_column AS CHAR)`;
 - aggregate expression `ORDER BY`, selected `AVG`, bitwise aggregate, or
   `GROUP_CONCAT()` alias ordering;
-- grouped `COUNT(DISTINCT)`;
+- grouped `COUNT(DISTINCT ...)` forms outside the integer descriptor-column
+  slice;
 - mixed grouped `GROUP_CONCAT()` projections;
 - full Unicode collation parity, explicit `COLLATE`, collation coercibility, or
   non-ASCII grouping guarantees;
@@ -239,24 +241,25 @@ behavior. Aggregate aliases keep the existing unique-alias requirement.
 
 For grouped `ORDER BY`, a grouped descriptor-column alias must be unique among
 selected group aliases. Aggregate alias ordering keeps the existing unique
-selected aggregate alias requirement and remains limited to `COUNT`, `MIN`,
-`MAX`, and `SUM`. Multiple order keys are applied left to right with each key's
-own direction. When `ONLY_FULL_GROUP_BY` is disabled, MyLite accepts descriptor
-order keys and `CAST(descriptor_column AS CHAR)` order expressions outside
-those strict forms to match MySQL's relaxed mode for application query shapes
-such as WordPress archives and comment metadata ordering.
+selected aggregate alias requirement and remains limited to `COUNT`,
+`COUNT(DISTINCT column)`, `MIN`, `MAX`, and `SUM`. Multiple order keys are
+applied left to right with each key's own direction. When `ONLY_FULL_GROUP_BY`
+is disabled, MyLite accepts descriptor order keys and
+`CAST(descriptor_column AS CHAR)` order expressions outside those strict forms
+to match MySQL's relaxed mode for application query shapes such as WordPress
+archives and comment metadata ordering.
 
 ## SQLite Handling
 
 MyLite builds physical SQL shaped like:
 
 ```sql
-SELECT "group_column_1", "group_column_2", COUNT(*), SUM("n")
+SELECT "group_column_1", "group_column_2", COUNT(*), COUNT(DISTINCT "n"), SUM("n")
 FROM "_mylite_user_table_<table_id>"
 [WHERE ...]
 GROUP BY "group_column_1", "group_column_2"
 [HAVING ...]
-[ORDER BY "group_column_1" ASC [, SUM("n") DESC ...]]
+[ORDER BY "group_column_1" ASC [, COUNT(DISTINCT "n") DESC ...]]
 [LIMIT ? [OFFSET ?]]
 ```
 
@@ -318,14 +321,16 @@ No public API misuse behavior changes.
 Add MySQL-runtime expectation coverage and fast C tests for:
 
 - `GROUP BY a, b` integer keys with `COUNT(*)`, `COUNT(column)`, `SUM`,
-  `MIN`, `MAX`, and `AVG` where already supported;
+  `MIN`, `MAX`, `AVG`, and integer descriptor-column `COUNT(DISTINCT column)`
+  where already supported;
 - nullable grouped keys and nullable aggregate arguments;
 - ASCII nonbinary string plus `CHAR` grouped keys, including case-insensitive
   and trailing-space grouping;
 - `WHERE` before grouping;
 - `HAVING` on selected grouped keys and selected aggregate aliases;
 - grouped `ORDER BY` on grouped keys and selected aggregate aliases, including
-  `ASC`, `DESC`, `NULL` placement, and `LIMIT`;
+  `COUNT(DISTINCT column)` aliases, `ASC`, `DESC`, `NULL` placement, and
+  `LIMIT`;
 - source-qualified and aliased table references;
 - result labels, warning count, row count, no catalog generation changes, no
   SQLite schema generation changes, file preamble preservation, reopen

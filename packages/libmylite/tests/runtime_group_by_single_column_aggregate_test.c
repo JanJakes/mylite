@@ -20,6 +20,7 @@ enum {
     test_path_capacity = 1024,
     sqlite_sql_capacity = 512,
     grouped_multi_aggregate_column_count = 7,
+    grouped_count_distinct_pair_row_count = 5,
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_database = 1049,
@@ -339,6 +340,32 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
         "1",
     };
     static const char *const g_n_null_values[] = {NULL, NULL, "1", "1", NULL, "1"};
+    static const char *const a_b_count_distinct_columns[] = {"a", "b", "cd"};
+    static const char *const a_b_count_distinct_values[] = {
+        NULL,
+        NULL,
+        "1",
+        "1",
+        "1",
+        "2",
+        "1",
+        "2",
+        "0",
+        "2",
+        "1",
+        "1",
+        "2",
+        "2",
+        "2",
+    };
+    static const char *const a_b_count_distinct_having_values[] = {
+        "1",
+        "1",
+        "2",
+        "2",
+        "2",
+        "2",
+    };
     static const char *const qualified_multi_columns[] = {"k", "value", "c"};
     static const char *const qualified_multi_values[] = {"2", "30", "1", "2", "20", "1"};
     static const char *const name_label_columns[] = {"name", "label", "COUNT(*)", "SUM(n)"};
@@ -449,6 +476,22 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += create_empty_grouped_table(database, "empty_grouped_numbers");
     failures += create_grouped_table(database, "grouped_numbers");
     failures += create_string_grouped_table(database, "string_grouped");
+    failures +=
+        execute_ok(database, "CREATE TABLE grouped_distinct_pairs(a INT, b INT, n INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO grouped_distinct_pairs VALUES "
+        "(NULL, NULL, 5), (NULL, NULL, 5), (NULL, NULL, NULL), "
+        "(1, 1, 10), (1, 1, 20), (1, 1, 10), "
+        "(1, 2, NULL), (1, 2, NULL), "
+        "(2, 1, 30), (2, 1, 30), (2, 1, NULL), "
+        "(2, 2, 40), (2, 2, 50)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
     failures +=
         execute_ok(database, "CREATE TABLE no_group_having_names(name VARCHAR(20))", &result);
     mylite_result_free(result);
@@ -1385,6 +1428,42 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = name_label_values,
             .row_count = 4U,
             .context = "string grouped by two descriptor keys",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT a, b, COUNT(DISTINCT n) AS cd FROM grouped_distinct_pairs "
+                   "GROUP BY a, b ORDER BY a, b",
+            .columns = a_b_count_distinct_columns,
+            .column_count = 3U,
+            .values = a_b_count_distinct_values,
+            .row_count = grouped_count_distinct_pair_row_count,
+            .context = "multiple grouped keys with count distinct",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT a, b, COUNT(DISTINCT n) AS cd FROM grouped_distinct_pairs "
+                   "GROUP BY a, b HAVING cd > 1 ORDER BY a, b",
+            .columns = a_b_count_distinct_columns,
+            .column_count = 3U,
+            .values = a_b_count_distinct_having_values,
+            .row_count = 2U,
+            .context = "multiple grouped keys count distinct having alias",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT a, b, COUNT(DISTINCT n) AS cd FROM grouped_distinct_pairs "
+                   "GROUP BY a, b ORDER BY cd DESC, a, b LIMIT 2",
+            .columns = a_b_count_distinct_columns,
+            .column_count = 3U,
+            .values = a_b_count_distinct_having_values,
+            .row_count = 2U,
+            .context = "multiple grouped keys count distinct aggregate alias order",
         }
     );
     failures += expect_row_count(database, "-1", "row count after grouped select");

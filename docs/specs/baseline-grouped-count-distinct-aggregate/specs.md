@@ -6,12 +6,13 @@ This slice extends the existing descriptor-backed grouped aggregate path with
 `COUNT(DISTINCT column)` over integer descriptor columns. It builds on the
 baseline `GROUP BY`, `HAVING`, and ungrouped `COUNT(DISTINCT column)` features.
 
-The feature is intentionally narrow. It supports the current base-table and
-two-source joined grouped aggregate paths with one distinct descriptor-column
-argument. It does not implement MySQL's full
+The feature is intentionally narrow. It supports the current base-table grouped
+aggregate path, including the current multiple-key grouped base-table path,
+and the current two-source joined grouped aggregate path with one distinct
+descriptor-column argument. It does not implement MySQL's full
 `COUNT(DISTINCT expr[, expr...])` surface, string distinct comparison
-semantics, aggregate windows, multiple grouped keys, or arbitrary grouped
-expressions.
+semantics, aggregate windows, joined multiple-key grouped sources, or arbitrary
+grouped expressions.
 
 ## Sources
 
@@ -47,10 +48,15 @@ records the runtime probes for this feature. Observed behavior:
   non-`NULL` argument values per group.
 - Duplicate values inside a group are counted once.
 - Groups where every argument value is `NULL` return `0`.
+- Multiple-key base-table grouping applies the same distinct-count semantics
+  per grouped key tuple.
 - The aggregate may be selected with an alias and filtered by that alias in
   `HAVING`.
 - A matching selected aggregate expression such as
   `HAVING COUNT(DISTINCT i) > 1` filters groups after aggregation.
+- In the multiple-key base-table grouped path, selected `COUNT(DISTINCT column)`
+  aliases may be used as grouped `ORDER BY` keys, following the existing
+  count-like aggregate alias ordering path.
 - Successful grouped selects set `ROW_COUNT()` to `-1` and leave warning count
   `0`, matching the existing grouped aggregate contract.
 
@@ -69,12 +75,14 @@ GROUP BY group_column
 ```
 
 `source` is either one descriptor-backed persistent base table or the current
-two-source joined grouped source envelope. `group_column`, `WHERE`, `ORDER BY`,
-and `LIMIT` inherit the current grouped aggregate envelope. `aggregate_column`
-must resolve to one integer or `NULL`-able integer descriptor column from the
-grouped source. Source-qualified and parenthesized descriptor-column forms
-admitted by the existing parser are supported when they resolve to that
-descriptor column.
+two-source joined grouped source envelope. A base-table source may use the
+current one-to-four descriptor-key grouping subset. The joined source envelope
+keeps the current joined grouped-key limits. `group_column`, `WHERE`,
+`ORDER BY`, and `LIMIT` inherit the current grouped aggregate envelope.
+`aggregate_column` must resolve to one integer or `NULL`-able integer descriptor
+column from the grouped source. Source-qualified and parenthesized
+descriptor-column forms admitted by the existing parser are supported when they
+resolve to that descriptor column.
 
 Supported `HAVING` operands:
 
@@ -118,13 +126,14 @@ This slice does not add:
 - literal or arbitrary expression distinct arguments;
 - string, binary, decimal, floating, temporal, enum, set, JSON, or collation
   distinct-count semantics;
-- wider grouped source forms than the base-table and two-source joined grouped
-  aggregate envelopes;
-- multiple grouped keys;
+- wider grouped source forms than the current base-table, multiple-key
+  base-table, and two-source joined grouped aggregate envelopes;
+- joined multiple-key grouped count-distinct combinations beyond the current
+  joined grouped source envelope;
 - aggregate expressions that appear only in `HAVING`;
 - boolean-composed `HAVING` predicates;
-- selected aggregate alias ordering beyond the currently supported grouped
-  aggregate alias order surface;
+- selected aggregate alias ordering beyond the currently supported count-like
+  grouped aggregate alias order surface;
 - executable aggregate windows.
 
 Unsupported forms must continue to return deterministic MyLite diagnostics

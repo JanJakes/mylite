@@ -230,6 +230,31 @@ expect_value "multi order first" "2	2	2" "$(printf '%s\n' "$multi_order" | sed -
 expect_value "multi order second" "2	1	2" "$(printf '%s\n' "$multi_order" | sed -n '2p')"
 expect_value "multi order third" "1	1	2" "$(printf '%s\n' "$multi_order" | sed -n '3p')"
 
+count_distinct=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT a, b, COUNT(DISTINCT n) AS cd FROM t GROUP BY a, b ORDER BY a, b;
+     SELECT a, b, COUNT(DISTINCT n) AS cd FROM t GROUP BY a, b HAVING cd > 1 ORDER BY a, b;
+     SELECT a, b, COUNT(DISTINCT n) AS cd FROM t GROUP BY a, b ORDER BY cd DESC, a, b LIMIT 2;"
+)
+expect_value "count distinct null tuple" "NULL	NULL	1" \
+    "$(printf '%s\n' "$count_distinct" | sed -n '1p')"
+expect_value "count distinct one one tuple" "1	1	2" \
+    "$(printf '%s\n' "$count_distinct" | sed -n '2p')"
+expect_value "count distinct one two tuple" "1	2	1" \
+    "$(printf '%s\n' "$count_distinct" | sed -n '3p')"
+expect_value "count distinct two one tuple" "2	1	1" \
+    "$(printf '%s\n' "$count_distinct" | sed -n '4p')"
+expect_value "count distinct two two tuple" "2	2	2" \
+    "$(printf '%s\n' "$count_distinct" | sed -n '5p')"
+expect_value "count distinct having first" "1	1	2" \
+    "$(printf '%s\n' "$count_distinct" | sed -n '6p')"
+expect_value "count distinct having second" "2	2	2" \
+    "$(printf '%s\n' "$count_distinct" | sed -n '7p')"
+expect_value "count distinct alias order first" "1	1	2" \
+    "$(printf '%s\n' "$count_distinct" | sed -n '8p')"
+expect_value "count distinct alias order second" "2	2	2" \
+    "$(printf '%s\n' "$count_distinct" | sed -n '9p')"
+
 run_mysql \
     "USE ${DATABASE};
      CREATE TABLE comments(

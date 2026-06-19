@@ -48,7 +48,7 @@ Observed MySQL 8.4.9 directory counts for this target runtime:
 
 | Schema | Table rows | Notes |
 | --- | ---: | --- |
-| `information_schema` | 78 | all `SYSTEM VIEW` |
+| `information_schema` | 79 | all `SYSTEM VIEW` |
 | `mysql` | 38 | all `BASE TABLE` in this target runtime |
 | `performance_schema` | 114 | all `BASE TABLE` with `ENGINE = PERFORMANCE_SCHEMA` |
 | `sys` | 101 | one `BASE TABLE` (`sys_config`) and 100 `VIEW` rows |
@@ -57,13 +57,13 @@ Observed SHA-256 hashes over `TABLE_NAME|TABLE_TYPE`, ordered by table name:
 
 | Schema | Hash |
 | --- | --- |
-| `information_schema` | `1feb3d9b1aaf492c7b5a41e273627bef02b30f309e4b1a89185e45edf46d346b` |
+| `information_schema` | `3b9c6a6d41ad41ddeaaaf053e7d0bdba87aee624e70bf5a30be89f87960e17ab` |
 | `mysql` | `2822370c2fb092cf5f80de8bbfba03a94cb5c1bb577931810e582dd0b03eff22` |
 | `performance_schema` | `a9d6480e48494356bb86c550487dfd0f56a445fb7d14c02a6b57ec1c4fe361ca` |
 | `sys` | `148115307826b6c6a0c7140932785cada503b7e0fc892e886670fd93da6fcba1` |
 
 The combined ordered hash over `TABLE_SCHEMA|TABLE_NAME|TABLE_TYPE` is
-`adc4825f20567d48cffc1d402fa967b42104818a993c9265118b83c37f30c75d`.
+`d3b4166b505cba9b9e31132675e2e45839435c65ff58f341a14455f5f2a7e060`.
 
 ## Syntax
 

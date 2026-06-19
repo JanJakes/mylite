@@ -59,7 +59,7 @@ case "$version" in
 esac
 
 counts_expected=$(cat <<\EXPECTED
-information_schema	78	1feb3d9b1aaf492c7b5a41e273627bef02b30f309e4b1a89185e45edf46d346b
+information_schema	79	3b9c6a6d41ad41ddeaaaf053e7d0bdba87aee624e70bf5a30be89f87960e17ab
 mysql	38	2822370c2fb092cf5f80de8bbfba03a94cb5c1bb577931810e582dd0b03eff22
 performance_schema	114	a9d6480e48494356bb86c550487dfd0f56a445fb7d14c02a6b57ec1c4fe361ca
 sys	101	148115307826b6c6a0c7140932785cada503b7e0fc892e886670fd93da6fcba1
@@ -79,7 +79,7 @@ expect_output \
 
 expect_output \
     "combined built-in table hash" \
-    "adc4825f20567d48cffc1d402fa967b42104818a993c9265118b83c37f30c75d" \
+    "d3b4166b505cba9b9e31132675e2e45839435c65ff58f341a14455f5f2a7e060" \
     "SET SESSION group_concat_max_len = 1000000;
      SELECT SHA2(GROUP_CONCAT(CONCAT_WS('|', TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE)
                               ORDER BY TABLE_SCHEMA, TABLE_NAME SEPARATOR '\n'), 256)
@@ -88,7 +88,7 @@ expect_output \
 
 expect_output \
     "built-in table create time count" \
-    "331" \
+    "332" \
     "SELECT COUNT(*)
        FROM INFORMATION_SCHEMA.TABLES
       WHERE TABLE_SCHEMA IN ('information_schema','mysql','performance_schema','sys')

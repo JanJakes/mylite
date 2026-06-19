@@ -11,10 +11,11 @@ subset, and the existing `COUNT`, `MIN`, `MAX`, and `SUM` aggregate paths.
 This is not full numeric expression or decimal aggregate support. It admits
 exactly one aggregate select item, `AVG(column_name)`, over one persistent
 base table with an optional baseline `WHERE` predicate. It does not add
-literal/expression arguments, `DISTINCT`, grouping, having, ordering,
-limiting, window functions, joins, CTEs, subqueries, or MySQL's full exact
-decimal widening behavior beyond the current MyLite signed-64 aggregate-sum
-envelope.
+literal/expression arguments, grouping, having, ordering, limiting, window
+functions, joins, CTEs, subqueries, or MySQL's full exact decimal widening
+behavior beyond the current MyLite signed-64 aggregate-sum envelope.
+Executable `DISTINCT` support for the current aggregate envelope is specified
+by `docs/specs/baseline-distinct-numeric-aggregates/specs.md`.
 
 ## Sources
 
@@ -71,9 +72,10 @@ records the runtime probes for this feature. Observed behavior:
   unknown-column error `1054`, SQLSTATE `42S22`, when the column name is not
   otherwise resolvable.
 - `AVG(1)`, `AVG(NULL)`, `AVG(DISTINCT column)`, and `AVG(table.column)` are
-  valid MySQL aggregate expressions. This MyLite slice supports descriptor
-  column arguments, including supported source-qualified descriptor columns,
-  but defers literal, `NULL`, `DISTINCT`, and general expression arguments.
+  valid MySQL aggregate expressions. This original MyLite slice supports
+  descriptor column arguments, including supported source-qualified descriptor
+  columns. The current implementation also supports `AVG(DISTINCT expr)` where
+  `expr` is in the documented aggregate argument envelope.
 - MySQL returns exact decimal results even when the intermediate exact sum
   exceeds signed 64 bits; for example, averaging `9223372036854775807` and
   `1` as `BIGINT` returns `4611686018427387904.0000`. MyLite currently
@@ -133,7 +135,7 @@ Existing `COUNT`, `MIN`, `MAX`, and `SUM` behavior must remain unchanged.
 This feature must not implement:
 
 - `AVG(expr)` for literals, `NULL`, arithmetic, functions, parenthesized
-  expression arguments, `DISTINCT`, or general expression arguments;
+  expression arguments, or general expression arguments;
 - no-source or `FROM DUAL` aggregate evaluation;
 - multiple aggregate select items, mixed projections, aggregate comparisons,
   aggregate arithmetic, or nested aggregates;
@@ -230,7 +232,6 @@ Unsupported examples for this slice:
 ```sql
 SELECT AVG(1) FROM t;
 SELECT AVG(NULL) FROM t;
-SELECT AVG(DISTINCT n) FROM t;
 SELECT AVG(n + 1) FROM t;
 SELECT AVG(n), COUNT(*) FROM t;
 SELECT AVG(n) FROM t ORDER BY id;
@@ -361,7 +362,7 @@ The implementation tests must cover:
   and `IS NOT NULL`;
 - missing default schema, unknown schema, unknown table, reserved target names,
   unknown aggregate columns, and unknown predicate columns;
-- unsupported literal, `NULL`, `DISTINCT`, expression, star, multi-argument,
+- unsupported literal, `NULL`, expression, star, multi-argument,
   multiple-select-item, `ORDER BY`, `LIMIT`, grouped, window, join, CTE, and
   subquery forms;
 - deterministic unsupported diagnostics for signed-64 aggregate-sum overflow;
@@ -377,6 +378,6 @@ The implementation tests must cover:
 
 Update `COMPATIBILITY.md`, `docs/compatibility/functions-aggregate.md`, and
 `docs/compatibility/sql-query-expressions.md` for the exact limited
-`AVG(column)` subset. Do not claim full `AVG`, `DISTINCT`, general expression
+`AVG(column)` subset. Do not claim full `AVG`, general expression
 arguments, exact decimal widening beyond this envelope, grouping, ordering,
 limiting, windows, joins, or protocol metadata parity.

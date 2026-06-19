@@ -252,16 +252,22 @@ expect_value \
     "$quoted_headers"
 expect_value "quoted avg column values" "2.0000	1.5000" "$quoted_values"
 
+distinct_output=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT AVG(DISTINCT n), AVG(DISTINCT n + 1) FROM t;"
+)
+expect_value "distinct avg forms" "25.0000	26.0000" "$distinct_output"
+
 accepted_but_deferred=$(run_mysql \
     "USE ${DATABASE};
-     SELECT AVG(1), AVG(NULL), AVG(DISTINCT n) FROM t;
+     SELECT AVG(1), AVG(NULL) FROM t;
      SELECT AVG(b), AVG(bu) FROM overflow_t;
      SELECT AVG(n) FROM t ORDER BY id;
      SELECT AVG(n) FROM t LIMIT 1;"
 )
 expect_value \
-    "deferred literal distinct forms" \
-    "1.0000	NULL	25.0000" \
+    "deferred literal forms" \
+    "1.0000	NULL" \
     "$(printf '%s\n' "$accepted_but_deferred" | sed -n '1p')"
 expect_value \
     "deferred exact decimal overflow forms" \

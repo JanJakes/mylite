@@ -65,8 +65,10 @@ Observed against the local `mysql:8.4.9` runtime using TCP:
 - `MIN()` and `MAX()` with no argument, more than one argument, or `*` fail
   with syntax error `1064`, SQLSTATE `42000`.
 - `MIN(1)`, `MAX(1)`, `MIN(NULL)`, `MAX(NULL)`, and `MIN(DISTINCT column)` are
-  valid MySQL aggregate expressions, but remain outside this MyLite slice
-  because they require expression argument support or distinct aggregation.
+  valid MySQL aggregate expressions. This original slice defers literal and
+  broad expression arguments; executable `DISTINCT` support for the current
+  aggregate envelope is specified by
+  `docs/specs/baseline-distinct-numeric-aggregates/specs.md`.
 - `SELECT MIN(column) FROM DUAL` fails as an unknown column when the name is
   not otherwise resolvable.
 - Function names are case-insensitive. Default result labels preserve the
@@ -120,7 +122,7 @@ The implementation must add:
 This feature must not implement:
 
 - `MIN(expr)` or `MAX(expr)` for literal, arithmetic, function, parenthesized
-  expression, table-qualified, qualified wildcard, `DISTINCT`, or general
+  expression, table-qualified, qualified wildcard, or general
   expression arguments;
 - no-source or `FROM DUAL` aggregate evaluation;
 - aliases, mixed projections, multiple aggregate select items, nested
@@ -292,8 +294,8 @@ implemented full MySQL expression or metadata behavior:
   `MIN/**/(column)` may fail with MyLite's existing syntax/unsupported
   diagnostic rather than MySQL's stored-function error `1630`;
 - unsupported aggregate arguments such as `MIN(1)`, `MAX(NULL)`,
-  `MIN(DISTINCT column)`, `MIN()`, `MIN(column, column)`, `MIN(*)`, and
-  `MIN(table.column)` fail deterministically, either through parse error
+  `MIN()`, `MIN(column, column)`, `MIN(*)`, and `MIN(table.column)` fail
+  deterministically, either through parse error
   `1064` or the existing unsupported-statement diagnostic class;
 - unsupported aggregate select shapes such as no source, `FROM DUAL`, aliases,
   mixed projections, multiple aggregate items, `ORDER BY`, `LIMIT`, `GROUP BY`,
@@ -315,7 +317,7 @@ Fast C tests under `packages/libmylite/tests/` must cover:
   whitespace/comments inside the argument list, parenthesized aggregates, and
   preserved source spans;
 - parser or runtime rejection for whitespace/comment before `(`, no arguments,
-  more than one argument, `*`, literals, `NULL`, `DISTINCT`, qualified
+  more than one argument, `*`, literals, `NULL`, qualified
   arguments, aliases, mixed projections, multiple aggregate items, no-source,
   `FROM DUAL`, `ORDER BY`, `LIMIT`, `GROUP BY`, `HAVING`, CTEs, joins,
   subqueries, and windows where currently representable;

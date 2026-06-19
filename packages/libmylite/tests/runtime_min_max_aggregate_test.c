@@ -456,10 +456,28 @@ static int test_min_max_values_persistence_rename_and_drop(void) {
     failures += expect_aggregate_query(
         database,
         (struct expected_aggregate_query){
+            .sql = "SELECT MIN(DISTINCT color) FROM strings",
+            .column = "MIN(DISTINCT color)",
+            .value = "Blue",
+            .context = "distinct string minimum",
+        }
+    );
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
             .sql = "SELECT MAX(color) FROM strings",
             .column = "MAX(color)",
             .value = "red",
             .context = "string maximum",
+        }
+    );
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
+            .sql = "SELECT MAX(DISTINCT color) FROM strings",
+            .column = "MAX(DISTINCT color)",
+            .value = "red",
+            .context = "distinct string maximum",
         }
     );
     failures += expect_aggregate_query(
@@ -474,10 +492,28 @@ static int test_min_max_values_persistence_rename_and_drop(void) {
     failures += expect_aggregate_query(
         database,
         (struct expected_aggregate_query){
+            .sql = "SELECT MIN(DISTINCT LOWER(color)) FROM strings",
+            .column = "MIN(DISTINCT LOWER(color))",
+            .value = "blue",
+            .context = "distinct row-scalar string minimum",
+        }
+    );
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
             .sql = "SELECT MAX(CONCAT(color, '-x')) FROM strings",
             .column = "MAX(CONCAT(color, '-x'))",
             .value = "red-x",
             .context = "row-scalar string maximum",
+        }
+    );
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
+            .sql = "SELECT MAX(DISTINCT CONCAT(color, '-x')) FROM strings",
+            .column = "MAX(DISTINCT CONCAT(color, '-x'))",
+            .value = "red-x",
+            .context = "distinct row-scalar string maximum",
         }
     );
     failures += expect_aggregate_query(
@@ -918,13 +954,22 @@ static int test_min_max_diagnostics(void) {
             .message_part = "Unknown column 'wrong.i' in 'field list'",
         }
     );
-    failures += execute_error(
+    failures += expect_aggregate_query(
         database,
-        "SELECT MAX(DISTINCT i) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_aggregate_query){
+            .sql = "SELECT MIN(DISTINCT n) FROM numbers",
+            .column = "MIN(DISTINCT n)",
+            .value = "20",
+            .context = "distinct nullable int minimum",
+        }
+    );
+    failures += expect_aggregate_query(
+        database,
+        (struct expected_aggregate_query){
+            .sql = "SELECT MAX(DISTINCT n) FROM numbers",
+            .column = "MAX(DISTINCT n)",
+            .value = "30",
+            .context = "distinct nullable int maximum",
         }
     );
     failures += expect_aggregate_query(

@@ -91,13 +91,19 @@ run_mysql \
      );
      CREATE TABLE empty_t(id INT NOT NULL, n INT NULL, nn INT NOT NULL);
      CREATE TABLE null_t(n INT NULL, b BIGINT NULL);
+     CREATE TABLE strings(owner_id INT NOT NULL, color VARCHAR(16) NULL, format VARCHAR(16) NULL);
      INSERT INTO t VALUES
        (1, NULL, 10, 1, -1, 1, -128, 0, -32768, -8388608, FALSE, TRUE),
        (2, 20, 20, 2, 0, 2, -1, 1, 0, 0, TRUE, FALSE),
        (3, 20, 30, 4294967295, 9223372036854775807, 9223372036854775807,
         127, NULL, 32767, 8388607, NULL, NULL),
        (4, 30, 40, NULL, NULL, NULL, NULL, 1, NULL, NULL, FALSE, TRUE);
-     INSERT INTO null_t VALUES (NULL, NULL), (NULL, NULL);" >/dev/null
+     INSERT INTO null_t VALUES (NULL, NULL), (NULL, NULL);
+     INSERT INTO strings VALUES
+       (1, 'red', 'plain'),
+       (1, 'Blue', 'rich'),
+       (2, NULL, NULL),
+       (2, 'green', 'basic');" >/dev/null
 
 core=$(run_mysql \
     "USE ${DATABASE};
@@ -205,21 +211,32 @@ expect_value \
     "$headers"
 expect_value "min max label values" "1	4	20	30	1	4" "$values"
 
+distinct_output=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT MIN(DISTINCT n), MAX(DISTINCT n) FROM t;"
+)
+expect_value "distinct min max forms" "20	30" "$distinct_output"
+
+distinct_string_output=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT MIN(DISTINCT color), MAX(DISTINCT color),
+            MIN(DISTINCT LOWER(color)), MAX(DISTINCT CONCAT(color, '-x'))
+       FROM strings;"
+)
+expect_value "distinct string min max forms" "Blue	red	blue	red-x" "$distinct_string_output"
+
 accepted_but_deferred=$(run_mysql \
     "USE ${DATABASE};
      SELECT MIN(1), MAX(1), MIN(NULL), MAX(NULL);
-     SELECT MIN(DISTINCT n), MAX(DISTINCT n) FROM t;
      SELECT MIN(n) FROM t ORDER BY id;
      SELECT MIN(n) FROM t LIMIT 1;"
 )
 expect_value "deferred literal aggregate arguments" "1	1	NULL	NULL" \
     "$(printf '%s\n' "$accepted_but_deferred" | sed -n '1p')"
-expect_value "deferred distinct aggregate arguments" "20	30" \
-    "$(printf '%s\n' "$accepted_but_deferred" | sed -n '2p')"
 expect_value "deferred order by aggregate" "20" \
-    "$(printf '%s\n' "$accepted_but_deferred" | sed -n '3p')"
+    "$(printf '%s\n' "$accepted_but_deferred" | sed -n '2p')"
 expect_value "deferred limit one aggregate" "20" \
-    "$(printf '%s\n' "$accepted_but_deferred" | sed -n '4p')"
+    "$(printf '%s\n' "$accepted_but_deferred" | sed -n '3p')"
 
 limit_zero=$(run_mysql "USE ${DATABASE}; SELECT 'before'; SELECT MIN(n) FROM t LIMIT 0; SELECT 'after';")
 expect_value "deferred limit zero before marker" "before" "$(printf '%s\n' "$limit_zero" | sed -n '1p')"

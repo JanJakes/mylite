@@ -176,6 +176,7 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_SHOW_GRANTS_ROLE_LIST:
     case MYLITE_SQL_AST_ROW_CONSTRUCTOR:
     case MYLITE_SQL_AST_GROUP_CONCAT_DISTINCT_MODIFIER:
+    case MYLITE_SQL_AST_AGGREGATE_DISTINCT_MODIFIER:
         break;
     default:
         return execute_non_prepared_statement(database, context, statement, out_result);
@@ -272,6 +273,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_LOAD_DATA_LOCAL_MODIFIER:
     case MYLITE_SQL_AST_SELECT_INTO_LIST:
     case MYLITE_SQL_AST_GROUP_CONCAT_DISTINCT_MODIFIER:
+    case MYLITE_SQL_AST_AGGREGATE_DISTINCT_MODIFIER:
         break;
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
         return execute_drop_index_statement(database, statement, out_result);

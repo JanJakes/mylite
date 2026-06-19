@@ -2056,6 +2056,18 @@ static int test_min_max_aggregate(void) {
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parser_test_parse_sql("SELECT MIN(DISTINCT id) FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION,
+        "min distinct aggregate"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 1U),
+        MYLITE_SQL_AST_AGGREGATE_DISTINCT_MODIFIER,
+        "min distinct marker"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;
@@ -2321,8 +2333,13 @@ static int test_sum_aggregate(void) {
     first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
     failures += parser_test_expect_node(
         first_expression,
-        MYLITE_SQL_AST_GENERIC_FUNCTION,
-        "sum distinct placeholder"
+        MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION,
+        "sum distinct aggregate"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 1U),
+        MYLITE_SQL_AST_AGGREGATE_DISTINCT_MODIFIER,
+        "sum distinct marker"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -2502,8 +2519,13 @@ static int test_avg_aggregate(void) {
     first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
     failures += parser_test_expect_node(
         first_expression,
-        MYLITE_SQL_AST_GENERIC_FUNCTION,
-        "avg distinct placeholder"
+        MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION,
+        "avg distinct aggregate"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 1U),
+        MYLITE_SQL_AST_AGGREGATE_DISTINCT_MODIFIER,
+        "avg distinct marker"
     );
     mylite_sql_parse_result_deinit(&result);
 

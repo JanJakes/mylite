@@ -92,6 +92,7 @@ static int plan_grouped_aggregate_item(
         }
         return rc;
     }
+    out_item->aggregate_is_distinct = aggregate_function_is_distinct(aggregate_expression);
     if (!grouped_aggregate_function_has_column(out_item->function)) {
         return MYLITE_OK;
     }

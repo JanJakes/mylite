@@ -50,6 +50,7 @@ static int test_expression_query_surfaces(void) {
     static const char *const row_not_comparison_values[] = {"1", NULL};
     static const char *const row_string_comparison_values[] = {"1", "1", "1", "0", "1"};
     static const char *const logical_not_values[] = {"5", "1", "0"};
+    static const char *const sum_distinct_values[] = {"30"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -215,13 +216,14 @@ static int test_expression_query_surfaces(void) {
             .message_part = "GROUP BY",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT SUM(DISTINCT n) FROM t",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "support",
+        (struct expected_query){
+            .sql = "SELECT SUM(DISTINCT n) FROM t",
+            .values = sum_distinct_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "distinct sum aggregate",
         }
     );
     failures += execute_error(

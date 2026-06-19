@@ -2040,6 +2040,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_group_concat_distinct_functio
     struct mylite_sql_ast_node *separator,
     struct mylite_sql_token right_paren
 );
+struct mylite_sql_ast_node *mylite_sql_parser_attach_aggregate_distinct_modifier(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *function,
+    const struct mylite_sql_token *distinct_token
+);
 struct mylite_sql_ast_node *mylite_sql_parser_attach_function_window_clause(
     struct mylite_sql_ast_node *function,
     struct mylite_sql_ast_node *window_clause

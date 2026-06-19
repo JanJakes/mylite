@@ -1353,6 +1353,7 @@ static int plan_column_aggregate_select_item(
         set_unsupported_error(database, "aggregate SELECT supports only aggregate select items");
         return MYLITE_ERROR;
     }
+    out_item->aggregate_is_distinct = aggregate_function_is_distinct(aggregate_expression);
 
     if (out_item->function == PLANNED_COLUMN_AGGREGATE_COUNT_LITERAL) {
         rc = plan_count_literal(database, aggregate_expression, &out_item->count_literal);
@@ -1738,6 +1739,18 @@ static bool column_aggregate_argument_is_row_scalar_expression(
     const struct mylite_sql_ast_node *function
 ) {
     return row_scalar_expression_is_aggregate_argument_context_attempt(function);
+}
+
+static bool aggregate_function_is_distinct(const struct mylite_sql_ast_node *function) {
+    const struct mylite_sql_ast_node *child = child_at(function, 1U);
+
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_AGGREGATE_DISTINCT_MODIFIER) {
+            return true;
+        }
+        child = child->next_sibling;
+    }
+    return false;
 }
 
 static bool column_aggregate_function_is_count(enum planned_column_aggregate_function function) {

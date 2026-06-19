@@ -109,14 +109,18 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const g_count_nullif_values[] = {NULL, "0", "1", "1", "2", "1"};
     static const char *const g_min_columns[] = {"g", "MIN(n)"};
     static const char *const g_min_values[] = {NULL, NULL, "1", "10", "2", "20"};
+    static const char *const g_min_distinct_columns[] = {"g", "MIN(DISTINCT n)"};
     static const char *const g_max_columns[] = {"g", "MAX(n)"};
     static const char *const g_max_values[] = {NULL, NULL, "1", "10", "2", "30"};
+    static const char *const g_max_distinct_columns[] = {"g", "MAX(DISTINCT n)"};
     static const char *const g_sum_columns[] = {"g", "SUM(n)"};
     static const char *const g_sum_values[] = {NULL, NULL, "1", "10", "2", "50"};
+    static const char *const g_sum_distinct_columns[] = {"g", "SUM(DISTINCT n)"};
     static const char *const g_sum_expression_columns[] = {"g", "SUM(n + 1)"};
     static const char *const g_sum_expression_values[] = {NULL, NULL, "1", "11", "2", "52"};
     static const char *const g_avg_columns[] = {"g", "AVG(n)"};
     static const char *const g_avg_values[] = {NULL, NULL, "1", "10.0000", "2", "25.0000"};
+    static const char *const g_avg_distinct_columns[] = {"g", "AVG(DISTINCT n)"};
     static const char *const g_avg_expression_columns[] = {"g", "AVG(n + 1)"};
     static const char *const g_avg_expression_values[] = {
         NULL,
@@ -704,6 +708,17 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
+            .sql = "SELECT g, MIN(DISTINCT n) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_min_distinct_columns,
+            .column_count = 2U,
+            .values = g_min_values,
+            .row_count = 3U,
+            .context = "distinct min grouped nullable values",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
             .sql = "SELECT g, MAX(n) FROM grouped_numbers GROUP BY g ORDER BY g",
             .columns = g_max_columns,
             .column_count = 2U,
@@ -715,12 +730,34 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
+            .sql = "SELECT g, MAX(DISTINCT n) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_max_distinct_columns,
+            .column_count = 2U,
+            .values = g_max_values,
+            .row_count = 3U,
+            .context = "distinct max grouped nullable values",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
             .sql = "SELECT g, SUM(n) FROM grouped_numbers GROUP BY g ORDER BY g",
             .columns = g_sum_columns,
             .column_count = 2U,
             .values = g_sum_values,
             .row_count = 3U,
             .context = "sum grouped nullable values",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, SUM(DISTINCT n) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_sum_distinct_columns,
+            .column_count = 2U,
+            .values = g_sum_values,
+            .row_count = 3U,
+            .context = "distinct sum grouped nullable values",
         }
     );
     failures += expect_grouped_query(
@@ -743,6 +780,17 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = g_avg_values,
             .row_count = 3U,
             .context = "avg grouped nullable values",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, AVG(DISTINCT n) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_avg_distinct_columns,
+            .column_count = 2U,
+            .values = g_avg_values,
+            .row_count = 3U,
+            .context = "distinct avg grouped nullable values",
         }
     );
     failures += expect_grouped_query(

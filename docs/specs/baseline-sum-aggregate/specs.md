@@ -13,10 +13,11 @@ This is not full numeric expression or decimal aggregate support. It admits
 exactly one aggregate select item, `SUM(column_name)` or
 `SUM(LENGTH(column_name))` and equivalent string-length aliases, over one
 persistent base table with an optional baseline `WHERE` predicate. It does not
-add literal/`NULL` arguments, `DISTINCT`, general expression arguments,
-grouping, having, ordering, limiting, window functions, joins, CTEs,
-subqueries, or MySQL's exact decimal result widening beyond MyLite's current
-signed-64 result envelope.
+add literal/`NULL` arguments, general expression arguments, grouping, having,
+ordering, limiting, window functions, joins, CTEs, subqueries, or MySQL's exact
+decimal result widening beyond MyLite's current signed-64 result envelope.
+Executable `DISTINCT` support for the current aggregate envelope is specified
+by `docs/specs/baseline-distinct-numeric-aggregates/specs.md`.
 
 ## Sources
 
@@ -72,10 +73,11 @@ records the runtime probes for this feature. Observed behavior:
   unknown-column error `1054`, SQLSTATE `42S22`, when the column name is not
   otherwise resolvable.
 - `SUM(1)`, `SUM(NULL)`, `SUM(DISTINCT column)`, `SUM(table.column)`, and
-  `SUM(LENGTH(column))` are valid MySQL aggregate expressions. This MyLite
-  slice supports descriptor column arguments, supported source-qualified
-  descriptor columns, and the limited string-length expression form, but
-  defers literal, `NULL`, `DISTINCT`, and other general expression arguments.
+  `SUM(LENGTH(column))` are valid MySQL aggregate expressions. This original
+  MyLite slice supports descriptor column arguments, supported source-qualified
+  descriptor columns, and the limited string-length expression form. The
+  current implementation also supports `SUM(DISTINCT expr)` where `expr` is in
+  the documented aggregate argument envelope.
 - MySQL returns exact decimal results for integer `SUM`; for example, summing
   two signed-64-range `BIGINT` values can return `9223372036854775808`, and
   summing two supported-range `BIGINT UNSIGNED` values can return
@@ -138,7 +140,7 @@ Existing `COUNT`, `MIN`, and `MAX` behavior must remain unchanged.
 This feature must not implement:
 
 - standalone `SUM(expr)` for literals, `NULL`, arithmetic, functions outside
-  the string-length family, parenthesized expression arguments, `DISTINCT`, or
+  the string-length family, parenthesized expression arguments, or
   general expression arguments; the narrow grouped `SUM(column + column)`
   metadata bridge is specified by the grouped aggregate slice;
 - no-source or `FROM DUAL` aggregate evaluation;
@@ -347,9 +349,8 @@ The implementation tests must cover:
   string-length arguments, parenthesized aggregates, and `SUM` as an ordinary
   identifier;
 - parser rejection for `SUM (column)`, `SUM/**/(column)`, `SUM()`,
-  `SUM(*)`, `SUM(1)`, `SUM(NULL)`, `SUM(DISTINCT column)`, multi-argument
-  `SUM`, literal/function/non-column arithmetic arguments, and malformed
-  shapes;
+  `SUM(*)`, `SUM(1)`, `SUM(NULL)`, multi-argument `SUM`,
+  literal/function/non-column arithmetic arguments, and malformed shapes;
 - successful `SUM(column)` over `TINYINT`, `SMALLINT`, `MEDIUMINT`, `INT`,
   `INTEGER`, `BIGINT`, unsigned integer forms that remain within signed 64
   bits, and `BOOL`/`BOOLEAN` aliases;
@@ -365,7 +366,7 @@ The implementation tests must cover:
 - missing default schema, unknown schema, unknown table, reserved names,
   unknown aggregate argument column, and unknown predicate column;
 - unsupported wider aggregate/select forms: no-source, `FROM DUAL`, literals,
-  `NULL`, `DISTINCT`, multiple select items, mixed projections, `ORDER BY`,
+  `NULL`, multiple select items, mixed projections, `ORDER BY`,
   `LIMIT`, `GROUP BY`, and `HAVING`;
 - result column labels, warning count, affected rows, following
   `ROW_COUNT() == -1`, reopen persistence, rename/drop behavior, independent
@@ -389,6 +390,6 @@ Before marking done:
 Update `COMPATIBILITY.md`, `docs/compatibility/functions-aggregate.md`, and
 `docs/compatibility/sql-query-expressions.md` to mark only the exact limited
 `SUM(column)` and narrow `SUM(string_length(column))` aggregate subsets as
-supported. Do not claim full `SUM(expr)`, `DISTINCT`, decimal result widening,
+supported. Do not claim full `SUM(expr)`, decimal result widening,
 grouping, having, ordering, limiting, windows, joins, other expression
 arguments, literals, collations, or protocol-grade metadata.

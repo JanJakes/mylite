@@ -356,6 +356,9 @@ static int append_column_aggregate_select_item_sql(
             }
         }
         if (rc == MYLITE_OK) {
+            rc = append_aggregate_distinct_sql(string, item->aggregate_is_distinct);
+        }
+        if (rc == MYLITE_OK) {
             rc = append_row_scalar_expression_sql(
                 string,
                 &item->aggregate_row_scalar_expression,
@@ -367,6 +370,9 @@ static int append_column_aggregate_select_item_sql(
         }
         if (rc == MYLITE_OK && item->function == PLANNED_COLUMN_AGGREGATE_AVG) {
             rc = mylite_dynamic_string_append(string, ", COUNT(");
+        }
+        if (rc == MYLITE_OK && item->function == PLANNED_COLUMN_AGGREGATE_AVG) {
+            rc = append_aggregate_distinct_sql(string, item->aggregate_is_distinct);
         }
         if (rc == MYLITE_OK && item->function == PLANNED_COLUMN_AGGREGATE_AVG) {
             rc = append_row_scalar_expression_sql(
@@ -383,11 +389,17 @@ static int append_column_aggregate_select_item_sql(
     if (item->function == PLANNED_COLUMN_AGGREGATE_AVG) {
         rc = mylite_dynamic_string_append(string, "SUM(");
         if (rc == MYLITE_OK) {
+            rc = append_aggregate_distinct_sql(string, item->aggregate_is_distinct);
+        }
+        if (rc == MYLITE_OK) {
             rc =
                 mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column.name);
         }
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append(string, "), COUNT(");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_aggregate_distinct_sql(string, item->aggregate_is_distinct);
         }
         if (rc == MYLITE_OK) {
             rc =
@@ -402,6 +414,9 @@ static int append_column_aggregate_select_item_sql(
     rc = mylite_dynamic_string_append(string, column_aggregate_sql_function(item->function));
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, '(');
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_aggregate_distinct_sql(string, item->aggregate_is_distinct);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column.name);
@@ -457,6 +472,16 @@ static int append_column_aggregate_count_sql(
         rc = mylite_dynamic_string_append_char(string, ')');
     }
     return rc;
+}
+
+static int append_aggregate_distinct_sql(
+    struct mylite_dynamic_string *string,
+    bool is_distinct
+) {
+    if (!is_distinct) {
+        return MYLITE_OK;
+    }
+    return mylite_dynamic_string_append(string, "DISTINCT ");
 }
 
 static int append_group_concat_call_sql(
@@ -892,6 +917,9 @@ static int append_grouped_aggregate_select_item_sql(
     if (item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
         rc = mylite_dynamic_string_append(string, "SUM(");
         if (rc == MYLITE_OK) {
+            rc = append_aggregate_distinct_sql(string, item->aggregate_is_distinct);
+        }
+        if (rc == MYLITE_OK) {
             rc = append_descriptor_column_name_sql_for_source(
                 string,
                 &item->aggregate_column,
@@ -901,6 +929,9 @@ static int append_grouped_aggregate_select_item_sql(
         }
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append(string, "), COUNT(");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_aggregate_distinct_sql(string, item->aggregate_is_distinct);
         }
         if (rc == MYLITE_OK) {
             rc = append_descriptor_column_name_sql_for_source(
@@ -992,6 +1023,9 @@ static int append_grouped_aggregate_expression_sql(
             }
         }
         if (rc == MYLITE_OK) {
+            rc = append_aggregate_distinct_sql(string, item->aggregate_is_distinct);
+        }
+        if (rc == MYLITE_OK) {
             rc = append_row_scalar_expression_sql(
                 string,
                 &item->aggregate_row_scalar_expression,
@@ -1003,6 +1037,9 @@ static int append_grouped_aggregate_expression_sql(
         }
         if (rc == MYLITE_OK && item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
             rc = mylite_dynamic_string_append(string, ", COUNT(");
+        }
+        if (rc == MYLITE_OK && item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
+            rc = append_aggregate_distinct_sql(string, item->aggregate_is_distinct);
         }
         if (rc == MYLITE_OK && item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
             rc = append_row_scalar_expression_sql(
@@ -1023,6 +1060,9 @@ static int append_grouped_aggregate_expression_sql(
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append_char(string, '(');
         }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_aggregate_distinct_sql(string, item->aggregate_is_distinct);
     }
     if (rc == MYLITE_OK) {
         rc = append_descriptor_column_name_sql_for_source(

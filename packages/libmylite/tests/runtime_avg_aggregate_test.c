@@ -745,13 +745,13 @@ static int test_avg_diagnostics(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_avg_query(
         database,
-        "SELECT AVG(DISTINCT i) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+        (struct expected_avg_query){
+            .sql = "SELECT AVG(DISTINCT n) FROM numbers",
+            .column = "AVG(DISTINCT n)",
+            .value = "25.0000",
+            .context = "distinct nullable int avg",
         }
     );
     failures += expect_avg_query(
@@ -761,6 +761,15 @@ static int test_avg_diagnostics(void) {
             .column = "AVG(i + 1)",
             .value = "536870912.5000",
             .context = "arithmetic expression avg",
+        }
+    );
+    failures += expect_avg_query(
+        database,
+        (struct expected_avg_query){
+            .sql = "SELECT AVG(DISTINCT n + 1) FROM numbers",
+            .column = "AVG(DISTINCT n + 1)",
+            .value = "26.0000",
+            .context = "distinct arithmetic expression avg",
         }
     );
     failures += execute_error(

@@ -6269,17 +6269,49 @@ selected_grouped_aggregate_expression(A) ::= MIN(T) LPAREN(L) sum_aggregate_argu
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION, B, R);
 }
+selected_grouped_aggregate_expression(A) ::= MIN(T) LPAREN(L) DISTINCT(D)
+        sum_aggregate_argument(B) RPAREN(R). {
+    A = mylite_sql_parser_attach_aggregate_distinct_modifier(
+        state,
+        mylite_sql_parser_make_no_space_one_argument_function(
+            state, T, L, MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION, B, R),
+        &D);
+}
 selected_grouped_aggregate_expression(A) ::= MAX(T) LPAREN(L) sum_aggregate_argument(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION, B, R);
+}
+selected_grouped_aggregate_expression(A) ::= MAX(T) LPAREN(L) DISTINCT(D)
+        sum_aggregate_argument(B) RPAREN(R). {
+    A = mylite_sql_parser_attach_aggregate_distinct_modifier(
+        state,
+        mylite_sql_parser_make_no_space_one_argument_function(
+            state, T, L, MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION, B, R),
+        &D);
 }
 selected_grouped_aggregate_expression(A) ::= SUM(T) LPAREN(L) sum_aggregate_argument(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION, B, R);
 }
+selected_grouped_aggregate_expression(A) ::= SUM(T) LPAREN(L) DISTINCT(D)
+        sum_aggregate_argument(B) RPAREN(R). {
+    A = mylite_sql_parser_attach_aggregate_distinct_modifier(
+        state,
+        mylite_sql_parser_make_no_space_one_argument_function(
+            state, T, L, MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION, B, R),
+        &D);
+}
 selected_grouped_aggregate_expression(A) ::= AVG(T) LPAREN avg_aggregate_argument(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION, B, R);
+}
+selected_grouped_aggregate_expression(A) ::= AVG(T) LPAREN DISTINCT(D)
+        avg_aggregate_argument(B) RPAREN(R). {
+    A = mylite_sql_parser_attach_aggregate_distinct_modifier(
+        state,
+        mylite_sql_parser_make_one_argument_function(
+            state, T, MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION, B, R),
+        &D);
 }
 
 sum_aggregate_argument(A) ::= qualified_identifier(B). {
@@ -12172,10 +12204,30 @@ expression(A) ::= MIN(T) LPAREN(L) sum_aggregate_argument(B) RPAREN(R) aggregate
             state, T, L, MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION, B, R),
         W);
 }
+expression(A) ::= MIN(T) LPAREN(L) DISTINCT(D) expression(B) RPAREN(R)
+                  aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_attach_aggregate_distinct_modifier(
+            state,
+            mylite_sql_parser_make_no_space_one_argument_function(
+                state, T, L, MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION, B, R),
+            &D),
+        W);
+}
 expression(A) ::= MAX(T) LPAREN(L) sum_aggregate_argument(B) RPAREN(R) aggregate_window_opt(W). {
     A = mylite_sql_parser_attach_function_window_clause(
         mylite_sql_parser_make_no_space_one_argument_function(
             state, T, L, MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION, B, R),
+        W);
+}
+expression(A) ::= MAX(T) LPAREN(L) DISTINCT(D) expression(B) RPAREN(R)
+                  aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_attach_aggregate_distinct_modifier(
+            state,
+            mylite_sql_parser_make_no_space_one_argument_function(
+                state, T, L, MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION, B, R),
+            &D),
         W);
 }
 expression(A) ::= SUM(T) LPAREN(L) sum_aggregate_argument(B) RPAREN(R)
@@ -12185,10 +12237,14 @@ expression(A) ::= SUM(T) LPAREN(L) sum_aggregate_argument(B) RPAREN(R)
             state, T, L, MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION, B, R),
         W);
 }
-expression(A) ::= SUM(T) LPAREN DISTINCT expression(B) RPAREN(R) aggregate_window_opt(W). {
+expression(A) ::= SUM(T) LPAREN(L) DISTINCT(D) expression(B) RPAREN(R)
+                  aggregate_window_opt(W). {
     A = mylite_sql_parser_attach_function_window_clause(
-        mylite_sql_parser_make_generic_function(
-            state, T, mylite_sql_parser_make_function_argument_list(state, B), R),
+        mylite_sql_parser_attach_aggregate_distinct_modifier(
+            state,
+            mylite_sql_parser_make_no_space_one_argument_function(
+                state, T, L, MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION, B, R),
+            &D),
         W);
 }
 expression(A) ::= AVG(T) LPAREN avg_aggregate_argument(B) RPAREN(R) aggregate_window_opt(W). {
@@ -12197,10 +12253,14 @@ expression(A) ::= AVG(T) LPAREN avg_aggregate_argument(B) RPAREN(R) aggregate_wi
             state, T, MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION, B, R),
         W);
 }
-expression(A) ::= AVG(T) LPAREN DISTINCT expression(B) RPAREN(R) aggregate_window_opt(W). {
+expression(A) ::= AVG(T) LPAREN DISTINCT(D) expression(B) RPAREN(R)
+                  aggregate_window_opt(W). {
     A = mylite_sql_parser_attach_function_window_clause(
-        mylite_sql_parser_make_generic_function(
-            state, T, mylite_sql_parser_make_function_argument_list(state, B), R),
+        mylite_sql_parser_attach_aggregate_distinct_modifier(
+            state,
+            mylite_sql_parser_make_one_argument_function(
+                state, T, MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION, B, R),
+            &D),
         W);
 }
 expression(A) ::= BIT_AND(T) LPAREN(L) sum_aggregate_argument(B) RPAREN(R)

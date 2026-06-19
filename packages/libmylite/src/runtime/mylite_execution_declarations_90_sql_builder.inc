@@ -2030,6 +2030,10 @@ static int append_column_aggregate_count_sql(
     const struct planned_column_aggregate *item,
     size_t *next_parameter
 );
+static int append_aggregate_distinct_sql(
+    struct mylite_dynamic_string *string,
+    bool is_distinct
+);
 static int append_group_concat_call_sql(
     struct mylite_dynamic_string *string,
     const struct mylite_catalog_column_descriptor *value_column,

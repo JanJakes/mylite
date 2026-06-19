@@ -205,16 +205,22 @@ expect_value \
     "$quoted_headers"
 expect_value "quoted sum column values" "4	3" "$quoted_values"
 
+distinct_output=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT SUM(DISTINCT n), SUM(DISTINCT n + 1) FROM t;"
+)
+expect_value "distinct sum forms" "50	52" "$distinct_output"
+
 accepted_but_deferred=$(run_mysql \
     "USE ${DATABASE};
-     SELECT SUM(1), SUM(NULL), SUM(DISTINCT n) FROM t;
+     SELECT SUM(1), SUM(NULL) FROM t;
      SELECT SUM(b), SUM(bu) FROM overflow_t;
      SELECT SUM(n) FROM t ORDER BY id;
      SELECT SUM(n) FROM t LIMIT 1;"
 )
 expect_value \
-    "deferred literal distinct forms" \
-    "4	NULL	50" \
+    "deferred literal forms" \
+    "4	NULL" \
     "$(printf '%s\n' "$accepted_but_deferred" | sed -n '1p')"
 expect_value \
     "deferred exact decimal overflow forms" \

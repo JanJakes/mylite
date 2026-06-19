@@ -728,13 +728,13 @@ static int test_sum_diagnostics(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_sum_query(
         database,
-        "SELECT SUM(DISTINCT i) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
+        (struct expected_sum_query){
+            .sql = "SELECT SUM(DISTINCT n) FROM numbers",
+            .column = "SUM(DISTINCT n)",
+            .value = "50",
+            .context = "distinct nullable int sum",
         }
     );
     failures += expect_sum_query(
@@ -744,6 +744,15 @@ static int test_sum_diagnostics(void) {
             .column = "SUM(i + 1)",
             .value = "2147483650",
             .context = "arithmetic expression sum",
+        }
+    );
+    failures += expect_sum_query(
+        database,
+        (struct expected_sum_query){
+            .sql = "SELECT SUM(DISTINCT n + 1) FROM numbers",
+            .column = "SUM(DISTINCT n + 1)",
+            .value = "52",
+            .context = "distinct arithmetic expression sum",
         }
     );
     failures += execute_error(

@@ -148,6 +148,18 @@ expect_value \
 expect_value "where group one row" "1	3	30" "$(printf '%s\n' "$core" | sed -n '8p')"
 expect_value "where group two row" "2	2	NULL" "$(printf '%s\n' "$core" | sed -n '9p')"
 
+distinct_aggregates=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT g, MIN(DISTINCT i), MAX(DISTINCT i), SUM(DISTINCT i), AVG(DISTINCT i)
+       FROM t GROUP BY g ORDER BY g;"
+)
+expect_value "distinct aggregate null group" "NULL	5	5	5	5.0000" \
+    "$(printf '%s\n' "$distinct_aggregates" | sed -n '1p')"
+expect_value "distinct aggregate group one" "1	10	20	30	15.0000" \
+    "$(printf '%s\n' "$distinct_aggregates" | sed -n '2p')"
+expect_value "distinct aggregate group two" "2	NULL	NULL	NULL	NULL" \
+    "$(printf '%s\n' "$distinct_aggregates" | sed -n '3p')"
+
 distinct_group=$(run_mysql \
     "USE ${DATABASE};
      SET SESSION sql_mode = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES';

@@ -755,6 +755,7 @@ static enum planned_column_aggregate_function column_aggregate_function_from_pro
 static bool column_aggregate_argument_is_row_scalar_expression(
     const struct mylite_sql_ast_node *function
 );
+static bool aggregate_function_is_distinct(const struct mylite_sql_ast_node *function);
 static bool column_aggregate_function_is_count(enum planned_column_aggregate_function function);
 static bool column_aggregate_function_is_bitwise(enum planned_column_aggregate_function function);
 static bool column_aggregate_function_is_min_max(enum planned_column_aggregate_function function);

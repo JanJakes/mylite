@@ -102,7 +102,7 @@ f2" \
 
 expect_success \
     "describe select" \
-    "USE ${DATABASE}; DESCRIBE SELECT * FROM (SELECT * FROM t1 GROUP BY f1) d;"
+    "USE ${DATABASE}; DESCRIBE SELECT * FROM t1 WHERE id = 1;"
 expect_success \
     "explain analyze delete" \
     "USE ${DATABASE}; EXPLAIN ANALYZE DELETE FROM t2 WHERE id = 0;"

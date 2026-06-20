@@ -160,6 +160,8 @@ parse_status: lexer_error=21 syntax_error=576 stack_overflow=1
 
 This slice moves `ROW(...)` and parenthesized tuple constructor comparisons
 from parser failures or generic placeholder behavior to limited supported
-scalar behavior. Tuple `IN`, table-backed tuple predicates, and row subqueries
-remain documented incompatibilities until predicate planning grows tuple
-support.
+scalar behavior. A later baseline slice adds explicit `ROW(...)`
+descriptor-backed `WHERE` equality, null-safe equality, and inequality
+predicates for literal/column element pairs. Tuple `IN`, parenthesized
+table-backed tuple predicates, row subqueries, and broader tuple planning
+remain documented incompatibilities.

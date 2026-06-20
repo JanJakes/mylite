@@ -203,6 +203,38 @@ expect_output \
     "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE ROW(1,2,'x')=ROW(a,b,c);"
 
 expect_output \
+    "row constructor null-safe comparison" \
+    "1" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE ROW(1,2,'x')<=>ROW(a,b,c);"
+
+expect_output \
+    "row constructor inequality comparison" \
+    "2" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE ROW(1,2,'z')<>ROW(a,b,c);"
+
+expect_output \
+    "row constructor bang inequality comparison" \
+    "2" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE ROW(1,2,'z')!=ROW(a,b,c);"
+
+expect_output \
+    "row constructor NULL inequality comparison" \
+    "1" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE ROW(1,2,NULL)<>ROW(a,b,c);"
+
+expect_output \
+    "row constructor null-safe NULL comparison" \
+    "0" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE ROW(1,2,NULL)<=>ROW(a,b,c);"
+
+expect_error \
+    "row constructor arity mismatch predicate" \
+    1241 \
+    21000 \
+    "Operand should contain 2 column(s)" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE ROW(1,2)=ROW(a,b,c);"
+
+expect_output \
     "parenthesized fulltext match" \
     "abc one" \
     "USE ${DATABASE}; "\

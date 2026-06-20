@@ -341,6 +341,211 @@ static bool scan_can_retry_parenthesized_row_constructors(
     return false;
 }
 
+enum mylite_sql_parse_status mylite_sql_parser_try_parse_row_constructor_predicate_statement(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    bool *out_handled
+) {
+    struct mylite_sql_token *tokens = NULL;
+    struct placeholder_statement_scan scan = {0};
+    struct placeholder_row_arithmetic_subject_retries retries = {0};
+    struct mylite_sql_parse_result retry_result;
+    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+    bool can_retry = false;
+
+    if (out_handled == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    *out_handled = false;
+
+    status = scan_placeholder_statement_tokens(
+        config,
+        &tokens,
+        &scan.token_count,
+        &scan.has_non_trailing_semicolon
+    );
+    if (status != MYLITE_SQL_PARSE_OK) {
+        free(tokens);
+        return status;
+    }
+    scan.tokens = tokens;
+    status = scan_row_constructor_predicate_retries(&scan, &retries, &can_retry);
+    if (status != MYLITE_SQL_PARSE_OK) {
+        placeholder_row_arithmetic_subject_retries_deinit(&retries);
+        free(tokens);
+        return status;
+    }
+    if (!can_retry) {
+        placeholder_row_arithmetic_subject_retries_deinit(&retries);
+        free(tokens);
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    memset(&retry_result, 0, sizeof(retry_result));
+    status =
+        parse_parenthesized_row_arithmetic_predicate_tokens(config, &scan, &retries, &retry_result);
+    if (status == MYLITE_SQL_PARSE_OK) {
+        mylite_sql_ast_deinit(&result->ast);
+        *result = retry_result;
+        *out_handled = true;
+        placeholder_row_arithmetic_subject_retries_deinit(&retries);
+        free(tokens);
+        return status;
+    }
+
+    mylite_sql_parse_result_deinit(&retry_result);
+    placeholder_row_arithmetic_subject_retries_deinit(&retries);
+    free(tokens);
+    if (status != MYLITE_SQL_PARSE_SYNTAX_ERROR) {
+        result->status = status;
+        *out_handled = true;
+        return status;
+    }
+    return MYLITE_SQL_PARSE_OK;
+}
+
+static enum mylite_sql_parse_status scan_row_constructor_predicate_retries(
+    const struct placeholder_statement_scan *scan,
+    struct placeholder_row_arithmetic_subject_retries *out_retries,
+    bool *out_can_retry
+) {
+    static const char placeholder_text[] = "__mylite_row_constructor_predicate";
+
+    if (out_can_retry != NULL) {
+        *out_can_retry = false;
+    }
+    if (out_retries != NULL) {
+        *out_retries = (struct placeholder_row_arithmetic_subject_retries){0};
+    }
+    if (scan == NULL || scan->tokens == NULL || out_retries == NULL || out_can_retry == NULL) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+    if (scan->has_non_trailing_semicolon || scan->token_count == 0U ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U)) {
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    for (size_t index = 0U; index < scan->token_count; ++index) {
+        struct row_constructor_predicate_scan predicate_scan = {0};
+
+        if (!placeholder_scan_row_constructor_predicate_is_in_where_context(scan, index)) {
+            continue;
+        }
+        if (!placeholder_scan_row_constructor_comparison_starts_at(
+                scan,
+                index,
+                &predicate_scan
+            )) {
+            continue;
+        }
+
+        for (size_t row_index_index = 0U; row_index_index < 2U; ++row_index_index) {
+            size_t start_index =
+                row_index_index == 0U ? index : predicate_scan.right_row_index;
+            size_t end_index = row_index_index == 0U
+                                   ? predicate_scan.left_right_paren_index
+                                   : predicate_scan.right_right_paren_index;
+            struct placeholder_row_arithmetic_subject_retry retry = {
+                .start_index = start_index,
+                .end_index = end_index,
+                .placeholder_token = {
+                    .kind = MYLITE_SQL_TOKEN_IDENTIFIER,
+                    .text = placeholder_text,
+                    .length = sizeof(placeholder_text) - 1U,
+                    .offset = scan->tokens[start_index].offset,
+                },
+            };
+
+            if (!placeholder_row_arithmetic_subject_retries_push(out_retries, retry)) {
+                placeholder_row_arithmetic_subject_retries_deinit(out_retries);
+                return MYLITE_SQL_PARSE_NOMEM;
+            }
+        }
+
+        *out_can_retry = true;
+        index = predicate_scan.right_right_paren_index;
+    }
+    return MYLITE_SQL_PARSE_OK;
+}
+
+static bool placeholder_scan_row_constructor_predicate_is_in_where_context(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    size_t cursor = index;
+
+    if (scan == NULL || scan->tokens == NULL || index == 0U || index >= scan->token_count) {
+        return false;
+    }
+    --cursor;
+    while (cursor > 0U && mylite_sql_parser_token_is_left_paren(&scan->tokens[cursor])) {
+        --cursor;
+    }
+    if (placeholder_scan_token_text_equals(scan, cursor, "WHERE")) {
+        return true;
+    }
+    if (!placeholder_scan_token_continues_row_arithmetic_predicate_subject(scan, cursor)) {
+        return false;
+    }
+    while (cursor > 0U) {
+        --cursor;
+        if (placeholder_scan_token_text_equals(scan, cursor, "WHERE")) {
+            return true;
+        }
+        if (placeholder_scan_token_text_equals(scan, cursor, "ON") ||
+            placeholder_scan_token_text_equals(scan, cursor, "HAVING") ||
+            placeholder_scan_token_stops_predicate_clause_search(scan, cursor)) {
+            return false;
+        }
+    }
+    return false;
+}
+
+static bool placeholder_scan_row_constructor_comparison_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    struct row_constructor_predicate_scan *out_predicate_scan
+) {
+    size_t left_right_paren_index = 0U;
+    size_t operator_index = 0U;
+    size_t right_row_index = 0U;
+    size_t right_right_paren_index = 0U;
+
+    if (!placeholder_scan_row_constructor_starts_at(scan, index, &left_right_paren_index)) {
+        return false;
+    }
+    operator_index = left_right_paren_index + 1U;
+    right_row_index = operator_index + 1U;
+    if (right_row_index >= scan->token_count ||
+        !placeholder_scan_token_is_row_constructor_comparison_operator(scan, operator_index) ||
+        !placeholder_scan_row_constructor_starts_at(
+            scan,
+            right_row_index,
+            &right_right_paren_index
+        )) {
+        return false;
+    }
+
+    if (out_predicate_scan != NULL) {
+        *out_predicate_scan = (struct row_constructor_predicate_scan){
+            .left_right_paren_index = left_right_paren_index,
+            .right_row_index = right_row_index,
+            .right_right_paren_index = right_right_paren_index,
+        };
+    }
+    return true;
+}
+
+static bool placeholder_scan_token_is_row_constructor_comparison_operator(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    return placeholder_scan_token_text_equals(scan, index, "=") ||
+           placeholder_scan_token_text_equals(scan, index, "<=>") ||
+           placeholder_scan_token_text_equals(scan, index, "<>") ||
+           placeholder_scan_token_text_equals(scan, index, "!=");
+}
+
 enum mylite_sql_parse_status mylite_sql_parser_try_parse_parenthesized_row_arithmetic_predicate_statement(
     struct mylite_sql_parse_config config,
     struct mylite_sql_parse_result *result,

@@ -42,6 +42,12 @@ struct mylite_sql_parse_error {
     struct mylite_sql_token token;
 };
 
+typedef enum mylite_sql_parse_status (*mylite_sql_parse_retry_callback)(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    bool *out_handled
+);
+
 enum {
     mylite_mysql_version_comment_gate = 80409,
     version_comment_min_token_length = 5,
@@ -81,6 +87,24 @@ static struct mylite_sql_token make_synthetic_row_constructor_token(
 );
 static bool parse_result_is_unsupported_utility_script(const struct mylite_sql_parse_result *result
 );
+static enum mylite_sql_parse_status retry_unsupported_utility_parse(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    enum mylite_sql_parse_status status,
+    mylite_sql_parse_retry_callback callback
+);
+static enum mylite_sql_parse_status retry_syntax_error_parse(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    enum mylite_sql_parse_status status,
+    mylite_sql_parse_retry_callback callback
+);
+static enum mylite_sql_parse_status retry_parse_with_callback(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    enum mylite_sql_parse_status status,
+    mylite_sql_parse_retry_callback callback
+);
 static void record_parse_error(
     struct mylite_sql_parse_result *result,
     struct mylite_sql_parse_error error
@@ -92,130 +116,108 @@ enum mylite_sql_parse_status mylite_sql_parse(
 ) {
     enum mylite_sql_parse_status status = mylite_sql_parser_parse_with_lemon(config, out_result);
 
-    if (status == MYLITE_SQL_PARSE_OK && parse_result_is_unsupported_utility_script(out_result)) {
-        bool handled = false;
-
-        enum mylite_sql_parse_status row_arithmetic_status =
-            mylite_sql_parser_try_parse_parenthesized_row_arithmetic_predicate_statement(
-                config,
-                out_result,
-                &handled
-            );
-
-        if (handled) {
-            status = row_arithmetic_status;
-            out_result->status = row_arithmetic_status;
-        }
-    }
-
-    if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
-        bool handled = false;
-
-        enum mylite_sql_parse_status modifier_status =
-            mylite_sql_parser_try_parse_select_result_option_before_duplicate_statement(
-                config,
-                out_result,
-                &handled
-            );
-
-        if (handled) {
-            status = modifier_status;
-            out_result->status = modifier_status;
-        }
-    }
-
-    if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
-        bool handled = false;
-
-        enum mylite_sql_parse_status row_constructor_status =
-            mylite_sql_parser_try_parse_parenthesized_row_constructor_statement(
-                config,
-                out_result,
-                &handled
-            );
-
-        if (handled) {
-            status = row_constructor_status;
-            out_result->status = row_constructor_status;
-        }
-    }
-
-    if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
-        bool handled = false;
-
-        enum mylite_sql_parse_status row_arithmetic_status =
-            mylite_sql_parser_try_parse_parenthesized_row_arithmetic_predicate_statement(
-                config,
-                out_result,
-                &handled
-            );
-
-        if (handled) {
-            status = row_arithmetic_status;
-            out_result->status = row_arithmetic_status;
-        }
-    }
-
-    if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
-        bool handled = false;
-
-        enum mylite_sql_parse_status tableless_limit_status =
-            mylite_sql_parser_try_parse_tableless_select_limit_statement(
-                config,
-                out_result,
-                &handled
-            );
-
-        if (handled) {
-            status = tableless_limit_status;
-            out_result->status = tableless_limit_status;
-        }
-    }
-
-    if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
-        bool handled = false;
-
-        enum mylite_sql_parse_status locking_status =
-            mylite_sql_parser_try_parse_repeated_select_locking_statement(
-                config,
-                out_result,
-                &handled
-            );
-
-        if (handled) {
-            status = locking_status;
-            out_result->status = locking_status;
-        }
-    }
-
-    if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
-        bool handled = false;
-
-        enum mylite_sql_parse_status legacy_index_status =
-            mylite_sql_parser_try_parse_legacy_create_index_type_statement(
-                config,
-                out_result,
-                &handled
-            );
-
-        if (handled) {
-            status = legacy_index_status;
-            out_result->status = legacy_index_status;
-        }
-    }
-
-    if (status == MYLITE_SQL_PARSE_SYNTAX_ERROR) {
-        bool handled = false;
-        enum mylite_sql_parse_status placeholder_status =
-            mylite_sql_parser_try_parse_placeholder_statement(config, out_result, &handled);
-
-        if (handled) {
-            status = placeholder_status;
-            out_result->status = placeholder_status;
-        }
-    }
+    status = retry_unsupported_utility_parse(
+        config,
+        out_result,
+        status,
+        mylite_sql_parser_try_parse_parenthesized_row_arithmetic_predicate_statement
+    );
+    status = retry_unsupported_utility_parse(
+        config,
+        out_result,
+        status,
+        mylite_sql_parser_try_parse_row_constructor_predicate_statement
+    );
+    status = retry_syntax_error_parse(
+        config,
+        out_result,
+        status,
+        mylite_sql_parser_try_parse_row_constructor_predicate_statement
+    );
+    status = retry_syntax_error_parse(
+        config,
+        out_result,
+        status,
+        mylite_sql_parser_try_parse_select_result_option_before_duplicate_statement
+    );
+    status = retry_syntax_error_parse(
+        config,
+        out_result,
+        status,
+        mylite_sql_parser_try_parse_parenthesized_row_constructor_statement
+    );
+    status = retry_syntax_error_parse(
+        config,
+        out_result,
+        status,
+        mylite_sql_parser_try_parse_parenthesized_row_arithmetic_predicate_statement
+    );
+    status = retry_syntax_error_parse(
+        config,
+        out_result,
+        status,
+        mylite_sql_parser_try_parse_tableless_select_limit_statement
+    );
+    status = retry_syntax_error_parse(
+        config,
+        out_result,
+        status,
+        mylite_sql_parser_try_parse_repeated_select_locking_statement
+    );
+    status = retry_syntax_error_parse(
+        config,
+        out_result,
+        status,
+        mylite_sql_parser_try_parse_legacy_create_index_type_statement
+    );
+    status = retry_syntax_error_parse(
+        config,
+        out_result,
+        status,
+        mylite_sql_parser_try_parse_placeholder_statement
+    );
 
     return status;
+}
+
+static enum mylite_sql_parse_status retry_unsupported_utility_parse(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    enum mylite_sql_parse_status status,
+    mylite_sql_parse_retry_callback callback
+) {
+    if (status != MYLITE_SQL_PARSE_OK || !parse_result_is_unsupported_utility_script(result)) {
+        return status;
+    }
+    return retry_parse_with_callback(config, result, status, callback);
+}
+
+static enum mylite_sql_parse_status retry_syntax_error_parse(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    enum mylite_sql_parse_status status,
+    mylite_sql_parse_retry_callback callback
+) {
+    if (status != MYLITE_SQL_PARSE_SYNTAX_ERROR) {
+        return status;
+    }
+    return retry_parse_with_callback(config, result, status, callback);
+}
+
+static enum mylite_sql_parse_status retry_parse_with_callback(
+    struct mylite_sql_parse_config config,
+    struct mylite_sql_parse_result *result,
+    enum mylite_sql_parse_status status,
+    mylite_sql_parse_retry_callback callback
+) {
+    bool handled = false;
+    enum mylite_sql_parse_status retry_status = callback(config, result, &handled);
+
+    if (!handled) {
+        return status;
+    }
+    result->status = retry_status;
+    return retry_status;
 }
 
 enum mylite_sql_parse_status mylite_sql_parser_parse_with_lemon(

@@ -568,6 +568,22 @@ static int plan_comparison_predicate(
         return scalar_count_subquery_rc;
     }
 
+    bool row_constructor_handled = false;
+    int row_constructor_rc = plan_row_constructor_comparison_predicate(
+        database,
+        predicate_node,
+        source_context,
+        table_columns,
+        table_column_count,
+        predicate,
+        out_node_index,
+        &row_constructor_handled
+    );
+
+    if (row_constructor_handled || row_constructor_rc != MYLITE_OK) {
+        return row_constructor_rc;
+    }
+
     bool literal_left_handled = false;
     int literal_left_rc = plan_scalar_literal_or_literal_column_comparison_predicate(
         database,
@@ -1301,6 +1317,268 @@ static bool scalar_count_subquery_select_expression_is_supported(
     expression = mylite_execution_unwrap_parenthesized_expression(expression);
     return expression != NULL && (expression->kind == MYLITE_SQL_AST_COUNT_STAR_FUNCTION ||
                                   expression->kind == MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION);
+}
+
+static int plan_row_constructor_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index,
+    bool *out_handled
+) {
+    const struct mylite_sql_ast_node *left_node =
+        unwrap_parenthesized_predicate(child_at(predicate_node, 0U));
+    const struct mylite_sql_ast_node *right_node =
+        unwrap_parenthesized_predicate(child_at(predicate_node, 1U));
+    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate_node);
+    enum mylite_sql_ast_operator element_operator = operator_kind;
+    size_t left_count = 0U;
+    size_t right_count = 0U;
+    size_t root_index = SIZE_MAX;
+    int rc = MYLITE_OK;
+
+    *out_handled = predicate_node_is_row_constructor(left_node) ||
+                   predicate_node_is_row_constructor(right_node);
+    if (!*out_handled) {
+        return MYLITE_OK;
+    }
+    if (!predicate_node_is_row_constructor(left_node) ||
+        !predicate_node_is_row_constructor(right_node)) {
+        set_unsupported_error(
+            database,
+            "WHERE row constructor predicates require row constructors on both sides"
+        );
+        return MYLITE_ERROR;
+    }
+    if (!row_constructor_predicate_operator_is_supported(operator_kind)) {
+        set_unsupported_error(
+            database,
+            "WHERE row constructor predicates support only =, <=>, <>, and !="
+        );
+        return MYLITE_ERROR;
+    }
+
+    left_count = mylite_sql_ast_node_child_count(left_node);
+    right_count = mylite_sql_ast_node_child_count(right_node);
+    if (left_count != right_count) {
+        set_row_constructor_operand_count_error(database, left_count);
+        return MYLITE_ERROR;
+    }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_EQUAL) {
+        element_operator = MYLITE_SQL_AST_OPERATOR_EQUAL;
+    }
+
+    for (size_t index = 0U; index < left_count && rc == MYLITE_OK; ++index) {
+        size_t element_index = SIZE_MAX;
+
+        rc = plan_row_constructor_element_comparison_predicate(
+            database,
+            child_at(left_node, index),
+            child_at(right_node, index),
+            element_operator,
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            &element_index
+        );
+        if (rc == MYLITE_OK && root_index == SIZE_MAX) {
+            root_index = element_index;
+        } else if (rc == MYLITE_OK) {
+            rc = append_row_constructor_and_node(
+                database,
+                predicate,
+                root_index,
+                element_index,
+                &root_index
+            );
+        }
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_EQUAL) {
+        rc = append_row_constructor_not_node(database, predicate, root_index, &root_index);
+    }
+    if (rc == MYLITE_OK) {
+        predicate->qualify_column_references =
+            predicate->qualify_column_references || select_source_context_is_joined(source_context);
+        *out_node_index = root_index;
+    }
+
+    return rc;
+}
+
+static int plan_row_constructor_element_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *left_node,
+    const struct mylite_sql_ast_node *right_node,
+    enum mylite_sql_ast_operator operator_kind,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    left_node = unwrap_parenthesized_predicate(left_node);
+    right_node = unwrap_parenthesized_predicate(right_node);
+
+    if (predicate_node_is_column_reference(left_node) &&
+        predicate_node_is_literal_left_predicate_value(right_node)) {
+        return plan_row_constructor_column_value_element_predicate(
+            database,
+            (struct row_constructor_element_nodes){
+                .column_node = left_node,
+                .value_node = right_node,
+            },
+            operator_kind,
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            out_node_index
+        );
+    }
+    if (predicate_node_is_literal_left_predicate_value(left_node) &&
+        predicate_node_is_column_reference(right_node)) {
+        return plan_row_constructor_column_value_element_predicate(
+            database,
+            (struct row_constructor_element_nodes){
+                .column_node = right_node,
+                .value_node = left_node,
+            },
+            comparison_operator_flipped(operator_kind),
+            source_context,
+            table_columns,
+            table_column_count,
+            predicate,
+            out_node_index
+        );
+    }
+
+    set_unsupported_error(
+        database,
+        "WHERE row constructor predicates support only literal/descriptor-column element pairs"
+    );
+    return MYLITE_ERROR;
+}
+
+static int plan_row_constructor_column_value_element_predicate(
+    struct mylite_db *database,
+    struct row_constructor_element_nodes nodes,
+    enum mylite_sql_ast_operator operator_kind,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_COMPARISON,
+        .operator_kind = operator_kind,
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    int rc = resolve_predicate_column_with_source_index(
+        database,
+        nodes.column_node,
+        source_context,
+        table_columns,
+        table_column_count,
+        &node.column,
+        &node.column_source_index
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = validate_comparison_predicate_column(database, &node);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_row_constructor_element_value(database, nodes.value_node, &node);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_select_predicate_node_deinit_runtime_values(&node);
+    }
+    return rc;
+}
+
+static int plan_row_constructor_element_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_select_predicate_node *node
+) {
+    if (predicate_comparison_value_is_null(value_node)) {
+        node->value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+        return MYLITE_OK;
+    }
+    if (column_descriptor_is_string_family(&node->column) &&
+        predicate_value_is_integer_literal(value_node)) {
+        node->compare_string_as_integer = true;
+        return convert_predicate_string_numeric_literal(
+            database,
+            value_node,
+            &node->column,
+            &node->value
+        );
+    }
+    return convert_predicate_value_with_date_comparison_mode(
+        database,
+        value_node,
+        &node->column,
+        &node->value,
+        &node->compare_date_as_datetime
+    );
+}
+
+static int append_row_constructor_and_node(
+    struct mylite_db *database,
+    struct planned_select_predicate *predicate,
+    size_t left_index,
+    size_t right_index,
+    size_t *out_node_index
+) {
+    const struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_AND,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_LOGICAL_AND,
+        .left_index = left_index,
+        .right_index = right_index,
+    };
+
+    return append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+}
+
+static int append_row_constructor_not_node(
+    struct mylite_db *database,
+    struct planned_select_predicate *predicate,
+    size_t child_index,
+    size_t *out_node_index
+) {
+    const struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_NOT,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT,
+        .left_index = child_index,
+        .right_index = SIZE_MAX,
+    };
+
+    return append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+}
+
+static bool predicate_node_is_row_constructor(const struct mylite_sql_ast_node *node) {
+    node = unwrap_parenthesized_predicate(node);
+    return node != NULL && node->kind == MYLITE_SQL_AST_ROW_CONSTRUCTOR;
+}
+
+static bool row_constructor_predicate_operator_is_supported(
+    enum mylite_sql_ast_operator operator_kind
+) {
+    return operator_kind == MYLITE_SQL_AST_OPERATOR_EQUAL ||
+           operator_kind == MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL ||
+           operator_kind == MYLITE_SQL_AST_OPERATOR_NOT_EQUAL;
 }
 
 static int plan_scalar_literal_or_literal_column_comparison_predicate(

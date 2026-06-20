@@ -7,6 +7,7 @@
 
 enum {
     mysql_error_parse = 1064,
+    mysql_error_operand_should_contain_one_column = 1241,
 };
 
 struct expected_sql_error {
@@ -66,6 +67,11 @@ static int test_query_expression_clause_surfaces(void) {
     };
     static const char *const literal_left_in_count_rows[] = {"4"};
     static const char *const literal_left_not_in_count_rows[] = {"0"};
+    static const char *const row_constructor_equal_count_rows[] = {"1"};
+    static const char *const row_constructor_null_safe_count_rows[] = {"1"};
+    static const char *const row_constructor_not_equal_count_rows[] = {"2"};
+    static const char *const row_constructor_null_not_equal_count_rows[] = {"1"};
+    static const char *const row_constructor_null_safe_null_count_rows[] = {"0"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -214,6 +220,15 @@ static int test_query_expression_clause_surfaces(void) {
     failures += execute_error(
         database,
         "SELECT a FROM t1 WHERE (a,b) = (1,2)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "utility statement is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT * FROM t1 JOIN t2 ON ROW(1,2)=ROW(t1.a,t2.b)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -375,13 +390,73 @@ static int test_query_expression_clause_surfaces(void) {
             .message_part = "utility statement is not supported",
         }
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t1 WHERE ROW(1,2,'x')=ROW(a,b,c)",
+            .values = row_constructor_equal_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row constructor equality predicate support",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t1 WHERE ROW(1,2,'x')<=>ROW(a,b,c)",
+            .values = row_constructor_null_safe_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row constructor null-safe equality predicate support",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t1 WHERE ROW(1,2,'z')<>ROW(a,b,c)",
+            .values = row_constructor_not_equal_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row constructor inequality predicate support",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t1 WHERE ROW(1,2,'z')!=ROW(a,b,c)",
+            .values = row_constructor_not_equal_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row constructor bang inequality predicate support",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t1 WHERE ROW(1,2,NULL)<>ROW(a,b,c)",
+            .values = row_constructor_null_not_equal_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row constructor NULL inequality predicate support",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t1 WHERE ROW(1,2,NULL)<=>ROW(a,b,c)",
+            .values = row_constructor_null_safe_null_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row constructor null-safe NULL predicate support",
+        }
+    );
     failures += execute_error(
         database,
-        "select * from t1 where ROW(1,2,3)=ROW(a,b,c)",
+        "SELECT COUNT(*) FROM t1 WHERE ROW(1,2)=ROW(a,b,c)",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+            .code = mysql_error_operand_should_contain_one_column,
+            .sqlstate = "21000",
+            .message_part = "Operand should contain 2 column(s)",
         }
     );
     failures += execute_error(

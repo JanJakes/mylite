@@ -695,6 +695,63 @@ static int plan_regexp_like_predicate_integer_value(
 static bool comparison_predicate_rhs_is_column_reference(
     const struct mylite_sql_ast_node *predicate_node
 );
+struct row_constructor_element_nodes {
+    const struct mylite_sql_ast_node *column_node;
+    const struct mylite_sql_ast_node *value_node;
+};
+static int plan_row_constructor_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index,
+    bool *out_handled
+);
+static int plan_row_constructor_element_comparison_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *left_node,
+    const struct mylite_sql_ast_node *right_node,
+    enum mylite_sql_ast_operator operator_kind,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
+static int plan_row_constructor_column_value_element_predicate(
+    struct mylite_db *database,
+    struct row_constructor_element_nodes nodes,
+    enum mylite_sql_ast_operator operator_kind,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
+static int plan_row_constructor_element_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_select_predicate_node *node
+);
+static int append_row_constructor_and_node(
+    struct mylite_db *database,
+    struct planned_select_predicate *predicate,
+    size_t left_index,
+    size_t right_index,
+    size_t *out_node_index
+);
+static int append_row_constructor_not_node(
+    struct mylite_db *database,
+    struct planned_select_predicate *predicate,
+    size_t child_index,
+    size_t *out_node_index
+);
+static bool predicate_node_is_row_constructor(const struct mylite_sql_ast_node *node);
+static bool row_constructor_predicate_operator_is_supported(
+    enum mylite_sql_ast_operator operator_kind
+);
 static int plan_scalar_literal_or_literal_column_comparison_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,

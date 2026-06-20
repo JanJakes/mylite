@@ -63,6 +63,18 @@ static int plan_grouped_having_node(
         return rc;
     }
 
+    if (current->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE &&
+        operand == PLANNED_GROUPED_HAVING_OPERAND_AGGREGATE &&
+        out_plan->having.aggregate_index < out_plan->aggregate_count &&
+        out_plan->aggregates[out_plan->having.aggregate_index].function ==
+            PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
+        set_unsupported_error(
+            database,
+            "HAVING does not support GROUP_CONCAT aggregate predicates"
+        );
+        return MYLITE_ERROR;
+    }
+
     out_plan->having.operand = operand;
     out_plan->having.operator_kind = mylite_sql_ast_node_operator(current);
     if (current->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE) {
@@ -679,14 +691,6 @@ static int find_grouped_having_aggregate_alias_operand(
     }
     if (matched_index == SIZE_MAX) {
         return MYLITE_OK;
-    }
-
-    if (out_plan->aggregates[matched_index].function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
-        set_unsupported_error(
-            database,
-            "HAVING does not support GROUP_CONCAT aggregate predicates"
-        );
-        return MYLITE_ERROR;
     }
 
     out_plan->having.aggregate_index = matched_index;

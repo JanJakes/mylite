@@ -146,6 +146,19 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
     };
     static const char *const grouped_having_columns[] = {"g", "names"};
     static const char *const grouped_having_values[] = {"2", "delta:echo"};
+    static const char *const grouped_alias_having_not_null_values[] = {
+        "1",
+        "alpha:beta",
+        "2",
+        "delta:echo",
+    };
+    static const char *const grouped_alias_having_null_values[] = {"3", NULL};
+    static const char *const grouped_expr_alias_having_not_null_values[] = {
+        "1",
+        "alphaA|betaB",
+        "2",
+        "deltaD|echoE",
+    };
     static const char *const grouped_alias_order_values[] = {
         "3",
         NULL,
@@ -508,6 +521,42 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
         database,
         (struct expected_query){
             .sql = "SELECT g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "
+                   "FROM items GROUP BY g HAVING names IS NOT NULL ORDER BY g",
+            .columns = grouped_having_columns,
+            .column_count = 2U,
+            .values = grouped_alias_having_not_null_values,
+            .row_count = 2U,
+            .context = "grouped group_concat aggregate alias having is not null",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "
+                   "FROM items GROUP BY g HAVING names IS NULL ORDER BY g",
+            .columns = grouped_having_columns,
+            .column_count = 2U,
+            .values = grouped_alias_having_null_values,
+            .row_count = 1U,
+            .context = "grouped group_concat aggregate alias having is null",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, GROUP_CONCAT(CONCAT(name, note) ORDER BY id SEPARATOR '|') AS names "
+                   "FROM items GROUP BY g HAVING names IS NOT NULL ORDER BY g",
+            .columns = grouped_having_columns,
+            .column_count = 2U,
+            .values = grouped_expr_alias_having_not_null_values,
+            .row_count = 2U,
+            .context = "grouped group_concat row-scalar aggregate alias having is not null",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "
                    "FROM items GROUP BY g ORDER BY names",
             .columns = grouped_having_columns,
             .column_count = 2U,
@@ -840,7 +889,7 @@ static int test_group_concat_diagnostics(void) {
     failures += execute_error(
         database,
         "SELECT g, GROUP_CONCAT(name ORDER BY id) AS names FROM diag "
-        "GROUP BY g HAVING names IS NOT NULL",
+        "GROUP BY g HAVING GROUP_CONCAT(name ORDER BY id) IS NOT NULL",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

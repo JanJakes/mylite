@@ -90,6 +90,11 @@ grouped	1	alpha:beta
 grouped	2	delta:echo
 grouped	3	<NULL>
 grouped_having	2	delta:echo
+grouped_alias_having_not_null	1	alpha:beta
+grouped_alias_having_not_null	2	delta:echo
+grouped_alias_having_null	3	NULL
+grouped_expr_alias_having_not_null	1	alphaA|betaB
+grouped_expr_alias_having_not_null	2	deltaD|echoE
 grouped_alias_asc	3	NULL
 grouped_alias_asc	1	alpha:beta
 grouped_alias_asc	2	delta:echo
@@ -166,6 +171,13 @@ expect_output \
 "FROM t GROUP BY g ORDER BY g; "\
 "SELECT 'grouped_having', g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') "\
 "FROM t GROUP BY g HAVING g = 2; "\
+"SELECT 'grouped_alias_having_not_null', g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "\
+"FROM t GROUP BY g HAVING names IS NOT NULL ORDER BY g; "\
+"SELECT 'grouped_alias_having_null', g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "\
+"FROM t GROUP BY g HAVING names IS NULL ORDER BY g; "\
+"SELECT 'grouped_expr_alias_having_not_null', g, "\
+"GROUP_CONCAT(CONCAT(name, notes) ORDER BY id SEPARATOR '|') AS names "\
+"FROM t GROUP BY g HAVING names IS NOT NULL ORDER BY g; "\
 "SELECT 'grouped_alias_asc', g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "\
 "FROM t GROUP BY g ORDER BY names; "\
 "SELECT 'grouped_expr_asc', g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "\

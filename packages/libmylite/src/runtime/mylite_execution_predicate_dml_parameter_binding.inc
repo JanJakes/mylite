@@ -901,7 +901,26 @@ static int bind_grouped_having_aggregate_parameters(
     const struct planned_grouped_aggregate_item *item,
     int *parameter_index
 ) {
-    if (item == NULL || !item->aggregate_uses_row_scalar_expression) {
+    int rc = MYLITE_OK;
+
+    if (item == NULL) {
+        return MYLITE_OK;
+    }
+    if (item->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
+        rc = bind_grouped_aggregate_row_scalar_expression_parameters(
+            statement,
+            item,
+            parameter_index
+        );
+        if (rc == MYLITE_OK && item->has_separator) {
+            rc = bind_planned_value_parameter(statement, *parameter_index, &item->separator);
+            if (rc == MYLITE_OK) {
+                ++(*parameter_index);
+            }
+        }
+        return rc;
+    }
+    if (!item->aggregate_uses_row_scalar_expression) {
         return MYLITE_OK;
     }
     if (item->function == PLANNED_GROUPED_AGGREGATE_AVG) {

@@ -1257,6 +1257,15 @@ static int append_grouped_having_aggregate_sql(
     if (grouped_aggregate_function_is_bitwise(item->function)) {
         return append_grouped_bitwise_having_operand_sql(string, plan, item, next_parameter);
     }
+    if (item->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
+        return append_grouped_aggregate_select_item_sql(
+            string,
+            plan,
+            item,
+            next_parameter,
+            false
+        );
+    }
     if (item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
         return append_grouped_avg_having_operand_sql(string, plan, item, next_parameter);
     }

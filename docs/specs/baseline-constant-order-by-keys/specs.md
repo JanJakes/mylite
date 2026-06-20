@@ -78,8 +78,8 @@ This slice does not add:
 
 - general expression order keys;
 - numeric constants beyond existing ordinal behavior;
-- boolean, binary, introduced, hex, bit, decimal, float, temporal, user
-  variable, parameter, or function constant order keys;
+- boolean, binary, introduced, hex, bit, decimal, float, temporal, parameter,
+  system-variable, or function constant order keys;
 - MySQL optimizer behavior tied to `ORDER BY NULL`;
 - deterministic ordering when all order keys are constants; or
 - new catalog, file-format, public ABI, VFS, or SQLite fork changes.

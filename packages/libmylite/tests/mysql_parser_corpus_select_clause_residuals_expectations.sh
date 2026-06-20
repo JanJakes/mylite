@@ -85,6 +85,18 @@ expect_output \
     "USE ${DATABASE}; SELECT id FROM t1 ORDER BY 'a' DESC;"
 
 expect_output \
+    "user variable order key" \
+    "1
+2" \
+    "USE ${DATABASE}; SELECT id FROM t1 ORDER BY @rank;"
+
+expect_output \
+    "assigned user variable order key" \
+    "1
+2" \
+    "USE ${DATABASE}; SET @rank = 7; SELECT id FROM t1 ORDER BY @rank DESC;"
+
+expect_output \
     "having string rhs" \
     "10	hello" \
     "USE ${DATABASE}; SELECT a,b FROM t1 GROUP BY a,b HAVING b='hello';"

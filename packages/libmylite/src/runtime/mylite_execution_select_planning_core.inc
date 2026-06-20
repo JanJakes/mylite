@@ -2777,12 +2777,12 @@ static int plan_row_scalar_select_order_ordinals(
 
         while (item != NULL) {
             if (item->kind != MYLITE_SQL_AST_ORDER_BY_ITEM ||
-                (!select_order_key_is_constant_noop(child_at(item, 0U)) &&
+                (!select_order_key_is_row_constant_noop(child_at(item, 0U)) &&
                  !select_order_key_is_integer_ordinal(child_at(item, 0U)))) {
                 planned_select_order_deinit(out_order);
                 return MYLITE_OK;
             }
-            if (select_order_key_is_constant_noop(child_at(item, 0U))) {
+            if (select_order_key_is_row_constant_noop(child_at(item, 0U))) {
                 item = item->next_sibling;
                 continue;
             }
@@ -2802,7 +2802,7 @@ static int plan_row_scalar_select_order_ordinals(
             item = item->next_sibling;
         }
     } else {
-        if (select_order_key_is_constant_noop(child_at(order_clause, 0U))) {
+        if (select_order_key_is_row_constant_noop(child_at(order_clause, 0U))) {
             return MYLITE_OK;
         }
         if (!select_order_key_is_integer_ordinal(child_at(order_clause, 0U))) {
@@ -3094,7 +3094,7 @@ static int plan_row_scalar_select_tableless_order_item(
             &out_plan->order
         );
     }
-    if (select_order_key_is_constant_noop(item_nodes.order_key)) {
+    if (select_order_key_is_row_constant_noop(item_nodes.order_key)) {
         return MYLITE_OK;
     }
 

@@ -164,7 +164,7 @@ static int plan_select_order_ast_item_and_append(
     struct planned_select_order_item planned_item = {0};
     int rc = MYLITE_OK;
 
-    if (select_order_key_is_constant_noop(item_nodes.order_key)) {
+    if (select_order_key_is_row_constant_noop(item_nodes.order_key)) {
         return MYLITE_OK;
     }
     rc = plan_select_order_ast_item(
@@ -385,9 +385,15 @@ static bool order_item_list_contains_rand_order_key(const struct mylite_sql_ast_
     return false;
 }
 
-static bool select_order_key_is_constant_noop(const struct mylite_sql_ast_node *order_key) {
+static bool select_order_key_is_row_constant_noop(const struct mylite_sql_ast_node *order_key) {
     order_key = unwrap_parenthesized_expression(order_key);
-    if (order_key == NULL || order_key->kind != MYLITE_SQL_AST_LITERAL) {
+    if (order_key == NULL) {
+        return false;
+    }
+    if (order_key->kind == MYLITE_SQL_AST_USER_VARIABLE) {
+        return true;
+    }
+    if (order_key->kind != MYLITE_SQL_AST_LITERAL) {
         return false;
     }
 

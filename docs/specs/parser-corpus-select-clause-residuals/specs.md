@@ -27,6 +27,7 @@ SELECT 1 AS a LIMIT 1,10;
 SELECT 1 AS a LIMIT 1;
 SELECT id FROM t1 ORDER BY NULL;
 SELECT id FROM t1 ORDER BY 'a' DESC;
+SELECT id FROM t1 ORDER BY @rank;
 SELECT a,b FROM t1 GROUP BY a,b HAVING b='hello';
 SELECT t1.a AS t1c1, t2.a AS t2c1
   FROM t1 JOIN t2 ON t1.id=t2.id
@@ -43,13 +44,15 @@ SELECT t1.id,t2.id
 MySQL returns the result rows recorded in
 `mysql_parser_corpus_select_clause_residuals_expectations.sh`. In particular,
 tableless `LIMIT 0` and `LIMIT offset,row_count` can return an empty rowset,
-literal `ORDER BY` keys are accepted, `HAVING` can refer to grouped columns and
-selected aliases using richer predicates than MyLite historically executed, and
-a query block can carry multiple locking read clauses with scoped `OF` lists and
-wait modifiers. The constant `ORDER BY` probes are executable in the
-`baseline-constant-order-by-keys` slice, the grouped string-column comparison
-probe is executable in the `baseline-grouped-string-comparison-having` slice,
-and the grouped-column `HAVING IN` probe is executable in the
+literal and user-variable `ORDER BY` keys are accepted, `HAVING` can refer to
+grouped columns and selected aliases using richer predicates than MyLite
+historically executed, and a query block can carry multiple locking read
+clauses with scoped `OF` lists and wait modifiers. The constant `ORDER BY`
+probes are executable in the `baseline-constant-order-by-keys` slice, the
+user-variable `ORDER BY` probe is executable in the
+`baseline-user-variable-order-by-keys` slice, the grouped string-column
+comparison probe is executable in the `baseline-grouped-string-comparison-having`
+slice, and the grouped-column `HAVING IN` probe is executable in the
 `baseline-grouped-having-in-predicate` slice. Remaining richer `HAVING` probes
 in this corpus slice stay explicit placeholders.
 
@@ -64,6 +67,8 @@ In scope:
   been admitted through existing no-source or `FROM DUAL` paths;
 - executable `ORDER BY NULL` and ordinary string-literal order keys as no-op
   order terms in supported SELECT envelopes;
+- executable user-variable `ORDER BY` keys as row-constant no-op order terms in
+  supported SELECT envelopes;
 - parser admission for repeated trailing locking read clauses after supported
   SELECT query blocks;
 - preservation of existing MyLite locking-read behavior as a no-op
@@ -79,9 +84,8 @@ In scope:
 Out of scope:
 
 - broad expression execution in `ORDER BY` or `HAVING`;
-- executable user-variable, parameter, function, or broad constant order-key
-  semantics outside the documented `NULL` and ordinary string-literal no-op
-  subset;
+- executable parameter, function, system-variable, assignment-expression, or
+  broad constant order-key semantics outside the documented no-op subsets;
 - full `HAVING` expression planning, selected-alias ambiguity warnings, or
   MySQL's complete group-resolution rules;
 - validation of locking `OF` target names, duplicate target diagnostics, scoped
@@ -133,8 +137,9 @@ table source is present or the source is `DUAL`, MyLite parses the prefix,
 validates that the tail is one of the existing literal `LIMIT` shapes, appends a
 normal `LIMIT_CLAUSE` node, and then uses the existing row-scalar limit planner
 and SQL builder. Constant `ORDER BY NULL` and ordinary string-literal keys are
-recognized as no-op keys by the order planner. Repeated locking clauses are
-handled by parsing through the first locking clause, validating that the
+recognized as no-op keys by the order planner. User-variable `ORDER BY` keys
+are likewise recognized as row-constant no-op keys. Repeated locking clauses
+are handled by parsing through the first locking clause, validating that the
 remaining tail is a sequence of supported locking clauses, and executing the
 existing no-op lock marker. Later repeated clauses are accepted for syntax
 compatibility but do not add transaction lock behavior.
@@ -151,13 +156,15 @@ resolution semantics.
 Tests cover:
 
 - MySQL 8.4.9 expectations for tableless limits, constant order keys, the
-  grouped string comparison `HAVING` case, the grouped-column `HAVING IN` case,
-  residual `HAVING` predicates, and repeated locking clauses;
+- user-variable order key, grouped string comparison `HAVING` case, the
+  grouped-column `HAVING IN` case, residual `HAVING` predicates, and repeated
+  locking clauses;
 - parser AST admission for executable tableless limits, constant order keys,
-  and repeated locking clauses;
+  user-variable order keys, and repeated locking clauses;
 - parser fallback admission for residual `HAVING` surfaces;
 - runtime row counts for tableless `LIMIT` forms;
-- runtime execution of constant `ORDER BY` keys as no-op keys;
+- runtime execution of constant and user-variable `ORDER BY` keys as no-op
+  keys;
 - runtime execution of repeated locking clauses over a supported joined source;
 - runtime unsupported diagnostics for residual placeholder forms.
 

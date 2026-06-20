@@ -222,12 +222,12 @@ See [parser corpus expression residual surfaces](../specs/parser-corpus-expressi
 
 The parser-corpus SELECT clause residual slice adds targeted parser repairs for
 literal `LIMIT` tails on no-source and `DUAL` scalar SELECT forms, executable
-constant `ORDER BY NULL` / ordinary string-literal no-op keys, and repeated
-trailing locking clauses. It also keeps residual `HAVING` forms outside the
-executable grouped string comparison and grouped-column `IN` subsets as
-explicit unsupported placeholders after normal parse failure. These
-placeholders do not implement broad group-alias, aggregate, collation, or
-expression planning. See
+constant `ORDER BY NULL` / ordinary string-literal no-op keys, executable
+user-variable no-op order keys, and repeated trailing locking clauses. It also
+keeps residual `HAVING` forms outside the executable grouped string comparison
+and grouped-column `IN` subsets as explicit unsupported placeholders after
+normal parse failure. These placeholders do not implement broad group-alias,
+aggregate, collation, or expression planning. See
 [parser corpus SELECT clause residuals](../specs/parser-corpus-select-clause-residuals/specs.md).
 
 The parser-corpus order-expression residual slice maps symbolic `!` to the

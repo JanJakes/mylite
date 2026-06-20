@@ -122,6 +122,27 @@ static int test_select_clause_residuals(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
+            .sql = "SELECT id FROM t1 ORDER BY @rank",
+            .values = constant_order_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "user variable order key",
+        }
+    );
+    failures += execute_ok(database, "SET @rank = 7");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t1 ORDER BY @rank DESC",
+            .values = constant_order_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "assigned user variable order key",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
             .sql = "SELECT a,b FROM t1 GROUP BY a,b HAVING b='hello'",
             .values = having_string_rhs_rows,
             .column_count = 2U,

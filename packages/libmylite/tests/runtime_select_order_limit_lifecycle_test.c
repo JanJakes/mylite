@@ -220,6 +220,18 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
             .context = "constant string order before descriptor order",
         }
     );
+    failures += execute_ok(database, "SET @rank = 7", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY @rank, id DESC",
+            .values = ordinal_id_desc,
+            .value_count = sizeof(ordinal_id_desc) / sizeof(ordinal_id_desc[0]),
+            .context = "user variable order before descriptor order",
+        }
+    );
     failures += expect_query_values(
         database,
         (struct expected_query){

@@ -98,6 +98,11 @@ Statistical aggregate result predicates are covered by
 repeated selected aggregate expressions. Group-column `HAVING` predicates may
 also be used with selected statistical aggregates.
 
+`GROUP_CONCAT()` result null predicates are covered by
+`baseline-grouped-group-concat-aggregate-alias-having` and
+`baseline-grouped-selected-group-concat-aggregate-expression-having` for
+selected aliases and repeated selected aggregate expressions.
+
 ## Out Of Scope
 
 This phase does not add:
@@ -343,6 +348,8 @@ Runtime tests must cover:
   bitwise aggregate `HAVING` slice;
 - selected statistical aggregate result predicates in the companion grouped
   statistical aggregate `HAVING` slice;
+- selected `GROUP_CONCAT()` result null predicates in the companion grouped
+  `GROUP_CONCAT()` `HAVING` slices;
 - group-column predicates, including `IS NULL`, `<=>`, comparisons, and aliases;
 - `WHERE` before grouping combined with `HAVING`;
 - `ORDER BY` and `LIMIT` after `HAVING`, including `LIMIT 0`;

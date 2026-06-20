@@ -105,7 +105,8 @@ The implementation must add:
   optional source alias and optional baseline `WHERE`;
 - grouped form `SELECT group_column, GROUP_CONCAT(...) FROM table
   [WHERE ...] GROUP BY group_column
-  [HAVING group_column_predicate|selected_group_concat_alias IS [NOT] NULL]
+  [HAVING group_column_predicate|selected_group_concat_alias IS [NOT] NULL|
+   selected_group_concat_expression IS [NOT] NULL]
   [ORDER BY group_column_or_selected_group_concat_alias_or_matching_expression]
   [LIMIT ...]`;
 - integer and nonbinary string-family descriptor columns, plus supported
@@ -141,7 +142,7 @@ This feature must not implement:
   MySQL text conversion and result typing;
 - aggregate use with joins, scalar subqueries, CTEs, window functions,
   `WITH ROLLUP`, full grouping, or aggregate-only grouped projection;
-- direct `GROUP_CONCAT()` expression operands in `HAVING` predicates or
+- nonselected `GROUP_CONCAT()` expression operands in `HAVING` predicates or
   comparisons of selected concatenated strings in `HAVING`;
 - `group_concat_max_len`, truncation warnings, binary/nonbinary result metadata
   fidelity, protocol-grade type metadata, or result-length caps beyond ordinary
@@ -200,7 +201,8 @@ SELECT group_column,
        GROUP_CONCAT(value_expr [group_concat_order] [group_concat_separator]) [AS alias]
   FROM table_name [WHERE predicate]
   GROUP BY group_column
-  [HAVING group_column_predicate|selected_group_concat_alias_null_predicate]
+  [HAVING group_column_predicate|selected_group_concat_alias_null_predicate|
+          selected_group_concat_expression_null_predicate]
   [ORDER BY group_column_or_selected_group_concat_alias_or_matching_expression [ASC | DESC]]
   [LIMIT limit_clause]
 ```
@@ -219,10 +221,11 @@ group_concat_separator:
 ```
 
 `table_name`, source aliases, `WHERE`, grouped-column `HAVING`, selected
-`GROUP_CONCAT()` alias null-predicate `HAVING`, grouped-result `ORDER BY`, and
-grouped-result `LIMIT` use the already specified baseline subsets. The
-aggregate argument and aggregate-local order key may parse as qualified
-identifiers so the analyzer can apply existing descriptor source resolution.
+`GROUP_CONCAT()` alias or expression null-predicate `HAVING`, grouped-result
+`ORDER BY`, and grouped-result `LIMIT` use the already specified baseline
+subsets. The aggregate argument and aggregate-local order key may parse as
+qualified identifiers so the analyzer can apply existing descriptor source
+resolution.
 
 ### MyLite Lemon-Syntax Snippet
 
@@ -318,7 +321,7 @@ SELECT "group_column",
 FROM "_mylite_user_table_<table_id>"
 [WHERE descriptor_predicate]
 GROUP BY "group_column"
-[HAVING grouped_column_predicate|selected_group_concat_alias_null_predicate]
+[HAVING grouped_column_predicate|selected_group_concat_alias_or_expression_null_predicate]
 [ORDER BY "group_column"|<selected_group_concat_output_ordinal> COLLATE "utf8mb4_0900_ai_ci" ASC|DESC]
 [LIMIT ?M [OFFSET ?K]]
 ```
@@ -326,8 +329,9 @@ GROUP BY "group_column"
 The generated output ordinal is an internal lowering detail for selected
 `GROUP_CONCAT()` alias ordering. It refers to the already-selected aggregate
 result column without repeating the aggregate expression.
-Selected aggregate-alias `HAVING` null predicates are lowered by repeating the
-same descriptor-derived `GROUP_CONCAT()` aggregate call without the public alias.
+Selected aggregate-alias and repeated selected aggregate-expression `HAVING`
+null predicates are lowered by repeating the same descriptor-derived
+`GROUP_CONCAT()` aggregate call without the public alias.
 
 Every generated SQLite identifier is quoted. The physical table name is the
 stable descriptor-owned name, such as `_mylite_user_table_<table_id>`. The
@@ -379,9 +383,10 @@ CTest name. Coverage must include:
   `NOT NULL` order keys without duplicate order-key ties;
 - grouped `GROUP_CONCAT` by one integer descriptor column, including an
   all-`NULL` group;
-- grouped-column `HAVING`, selected aggregate-alias `HAVING` null predicates,
-  grouped-column or selected aggregate-alias `ORDER BY`, and grouped-result
-  `LIMIT` interactions that remain inside existing grouped aggregate limits;
+- grouped-column `HAVING`, selected aggregate-alias or repeated selected
+  aggregate-expression `HAVING` null predicates, grouped-column or selected
+  aggregate-alias `ORDER BY`, and grouped-result `LIMIT` interactions that
+  remain inside existing grouped aggregate limits;
 - source aliases and qualified argument/order references where admitted by
   existing source resolution;
 - result labels, explicit aliases, warning count, and `ROW_COUNT()` after
@@ -396,8 +401,9 @@ CTest name. Coverage must include:
   aggregate-local
   ordinal/expression/multiple
   order keys, nullable order keys, string order keys, `SEPARATOR NULL`,
-  numeric separators, parameters, window forms, subqueries, joins, and direct
-  aggregate expression predicates in `HAVING`.
+  numeric separators, parameters, window forms, subqueries, joins, nonselected
+  aggregate expression predicates in `HAVING`, and aggregate-value comparisons
+  in `HAVING`.
 
 The MySQL expectation script must run against MySQL 8.4.9. If that runtime is
 unavailable, changing user-visible expectations is blocked.

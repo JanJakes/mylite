@@ -14,8 +14,9 @@ GROUP BY group_column
 HAVING names IS [NOT] NULL
 ```
 
-The aggregate must be selected and uniquely identified by the alias. This does
-not add direct `HAVING GROUP_CONCAT(...)` predicates, aggregate-value
+The aggregate must be selected and uniquely identified by the alias. Repeated
+selected `HAVING GROUP_CONCAT(...)` predicates are covered by the companion
+selected-expression HAVING slice. This slice does not add aggregate-value
 comparisons, broader argument support, or new source forms.
 
 ## Sources
@@ -99,7 +100,9 @@ change, or SQLite fork hook is required.
 
 This slice does not add:
 
-- direct `HAVING GROUP_CONCAT(...)` expression operands;
+- repeated selected `HAVING GROUP_CONCAT(...)` expression operands, which are
+  covered by
+  `docs/specs/baseline-grouped-selected-group-concat-aggregate-expression-having/specs.md`;
 - aggregate-value comparisons such as `HAVING names = 'alpha:beta'`;
 - nonselected aggregate aliases or ambiguous aliases;
 - multiple grouped `GROUP_CONCAT()` results or grouped `GROUP_CONCAT()` mixed

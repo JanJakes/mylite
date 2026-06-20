@@ -121,7 +121,8 @@ This slice does not add:
   with other aggregate results;
 - broader `GROUP_CONCAT()` value, distinct, separator, or aggregate-local order
   forms;
-- grouped `GROUP_CONCAT()` predicates;
+- grouped `GROUP_CONCAT()` predicates, which are covered by dedicated HAVING
+  slices;
 - aggregate windows;
 - source forms outside the current grouped `GROUP_CONCAT()` envelope.
 

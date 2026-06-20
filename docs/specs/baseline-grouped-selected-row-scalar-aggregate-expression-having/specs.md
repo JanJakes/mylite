@@ -107,7 +107,8 @@ This slice does not add:
   subset;
 - bitwise aggregate result predicates outside
   `docs/specs/baseline-grouped-bitwise-aggregate-having/specs.md`;
-- `GROUP_CONCAT()` result predicates;
+- `GROUP_CONCAT()` result predicates, which are covered by dedicated
+  `GROUP_CONCAT()` HAVING slices;
 - boolean composition such as `AND`, `OR`, `XOR`, or `NOT`;
 - bare truth tests such as `HAVING SUM(expr)`;
 - non-integer comparison literals;

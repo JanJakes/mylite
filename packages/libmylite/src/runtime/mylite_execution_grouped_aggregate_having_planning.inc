@@ -53,6 +53,7 @@ static int plan_grouped_having_node(
     rc = plan_grouped_having_operand(
         database,
         child_at(current, 0U),
+        current->kind,
         source_context,
         table_columns,
         table_column_count,
@@ -100,6 +101,7 @@ static int plan_grouped_having_node(
 static int plan_grouped_having_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *operand_node,
+    enum mylite_sql_ast_node_kind predicate_kind,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
@@ -141,6 +143,7 @@ static int plan_grouped_having_operand(
     rc = plan_grouped_having_aggregate_operand(
         database,
         operand,
+        predicate_kind,
         source_context,
         table_columns,
         table_column_count,
@@ -529,6 +532,7 @@ static int find_grouped_having_group_alias_operand(
 static int plan_grouped_having_aggregate_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *operand_node,
+    enum mylite_sql_ast_node_kind predicate_kind,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
@@ -548,11 +552,52 @@ static int plan_grouped_having_aggregate_operand(
         return MYLITE_ERROR;
     }
     if (function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
-        set_unsupported_error(
+        if (predicate_kind != MYLITE_SQL_AST_IS_NULL_PREDICATE) {
+            set_unsupported_error(
+                database,
+                "HAVING does not support GROUP_CONCAT aggregate predicates"
+            );
+            return MYLITE_ERROR;
+        }
+        rc = plan_grouped_aggregate_expression(
             database,
-            "HAVING does not support GROUP_CONCAT aggregate predicates"
+            operand_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_plan,
+            NULL,
+            &having_item
         );
-        return MYLITE_ERROR;
+        if (rc != MYLITE_OK) {
+            goto cleanup;
+        }
+        for (size_t aggregate_index = 0U; aggregate_index < out_plan->aggregate_count;
+             ++aggregate_index) {
+            if (!grouped_order_aggregate_items_match(
+                    &having_item,
+                    &out_plan->aggregates[aggregate_index]
+                )) {
+                continue;
+            }
+            if (selected_index != SIZE_MAX) {
+                set_unsupported_error(
+                    database,
+                    "HAVING supports only unique selected aggregate expressions"
+                );
+                rc = MYLITE_ERROR;
+                goto cleanup;
+            }
+            selected_index = aggregate_index;
+        }
+        if (selected_index == SIZE_MAX) {
+            set_unsupported_error(database, "HAVING supports only the selected aggregate result");
+            rc = MYLITE_ERROR;
+            goto cleanup;
+        }
+
+        out_plan->having.aggregate_index = selected_index;
+        goto cleanup;
     }
     if (!grouped_aggregate_function_has_column(function)) {
         for (size_t aggregate_index = 0U; aggregate_index < out_plan->aggregate_count;

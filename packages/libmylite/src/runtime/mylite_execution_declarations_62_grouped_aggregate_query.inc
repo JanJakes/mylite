@@ -434,6 +434,7 @@ static int plan_grouped_having_node(
 static int plan_grouped_having_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *operand_node,
+    enum mylite_sql_ast_node_kind predicate_kind,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
@@ -490,6 +491,7 @@ static int find_grouped_having_group_alias_operand(
 static int plan_grouped_having_aggregate_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *operand_node,
+    enum mylite_sql_ast_node_kind predicate_kind,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,

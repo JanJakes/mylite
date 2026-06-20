@@ -557,6 +557,46 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
         database,
         (struct expected_query){
             .sql = "SELECT g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "
+                   "FROM items GROUP BY g "
+                   "HAVING GROUP_CONCAT(name ORDER BY id SEPARATOR ':') IS NOT NULL ORDER BY g",
+            .columns = grouped_having_columns,
+            .column_count = 2U,
+            .values = grouped_alias_having_not_null_values,
+            .row_count = 2U,
+            .context = "grouped group_concat aggregate expression having is not null",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "
+                   "FROM items GROUP BY g "
+                   "HAVING GROUP_CONCAT(name ORDER BY id SEPARATOR ':') IS NULL ORDER BY g",
+            .columns = grouped_having_columns,
+            .column_count = 2U,
+            .values = grouped_alias_having_null_values,
+            .row_count = 1U,
+            .context = "grouped group_concat aggregate expression having is null",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, GROUP_CONCAT(CONCAT(name, note) ORDER BY id SEPARATOR '|') AS names "
+                   "FROM items GROUP BY g "
+                   "HAVING GROUP_CONCAT(CONCAT(name, note) ORDER BY id SEPARATOR '|') "
+                   "IS NOT NULL ORDER BY g",
+            .columns = grouped_having_columns,
+            .column_count = 2U,
+            .values = grouped_expr_alias_having_not_null_values,
+            .row_count = 2U,
+            .context = "grouped group_concat row-scalar aggregate expression having is not null",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "
                    "FROM items GROUP BY g ORDER BY names",
             .columns = grouped_having_columns,
             .column_count = 2U,
@@ -889,11 +929,21 @@ static int test_group_concat_diagnostics(void) {
     failures += execute_error(
         database,
         "SELECT g, GROUP_CONCAT(name ORDER BY id) AS names FROM diag "
-        "GROUP BY g HAVING GROUP_CONCAT(name ORDER BY id) IS NOT NULL",
+        "GROUP BY g HAVING GROUP_CONCAT(name ORDER BY id) = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "HAVING does not support GROUP_CONCAT",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, GROUP_CONCAT(name ORDER BY id) AS names FROM diag "
+        "GROUP BY g HAVING GROUP_CONCAT(name ORDER BY id SEPARATOR '|') IS NOT NULL",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "HAVING supports only the selected aggregate result",
         }
     );
     failures += execute_error(

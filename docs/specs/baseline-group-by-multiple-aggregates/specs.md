@@ -157,9 +157,9 @@ This slice intentionally does not add:
   unaliased aggregate output label, or arbitrary non-aggregate expression
   order keys;
 - `HAVING` boolean composition, unselected aggregate predicates, negative
-  bitwise aggregate comparison literals, `GROUP_CONCAT()` predicates,
-  arbitrary expressions, parameters, subqueries, or general alias ambiguity
-  handling;
+  bitwise aggregate comparison literals, `GROUP_CONCAT()` predicates outside
+  the dedicated single-aggregate HAVING slices, arbitrary expressions,
+  parameters, subqueries, or general alias ambiguity handling;
 - string, binary, decimal, approximate numeric, enum, set, JSON, or temporal
   grouping or aggregate argument semantics beyond already-supported descriptors;
 - `WITH ROLLUP`, window functions, derived tables, CTEs, subqueries, privilege

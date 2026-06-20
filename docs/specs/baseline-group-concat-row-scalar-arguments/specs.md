@@ -111,7 +111,8 @@ This slice does not add:
 - aggregate-local expression, ordinal, alias, nullable, string, or multiple
   `ORDER BY` keys;
 - multi-value `DISTINCT` tuple semantics;
-- `GROUP_CONCAT()` predicates in grouped `HAVING`;
+- grouped `GROUP_CONCAT()` predicates outside the dedicated alias and selected
+  expression HAVING slices;
 - hidden grouped `ORDER BY GROUP_CONCAT(...)` keys;
 - binary result metadata, full grouping, joins, or aggregate windows.
 

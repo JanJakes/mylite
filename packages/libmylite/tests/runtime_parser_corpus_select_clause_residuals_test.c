@@ -5,16 +5,6 @@
 #include <stdio.h>
 #include <string.h>
 
-enum {
-    mysql_error_parse = 1064,
-};
-
-struct expected_sql_error {
-    int code;
-    const char *sqlstate;
-    const char *message_part;
-};
-
 struct expected_query {
     const char *sql;
     const char *const *values;
@@ -25,12 +15,10 @@ struct expected_query {
 
 static int test_select_clause_residuals(void);
 static int execute_ok(mylite_db *database, const char *sql);
-static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_query_values(mylite_db *database, struct expected_query query);
 static int expect_int(int actual, int expected, const char *context);
 static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_text(const char *actual, const char *expected, const char *context);
-static int expect_contains(const char *actual, const char *needle, const char *context);
 
 int main(void) {
     return test_select_clause_residuals() == 0 ? 0 : 1;
@@ -39,6 +27,7 @@ int main(void) {
 static int test_select_clause_residuals(void) {
     static const char *const tableless_one[] = {"1"};
     static const char *const tableless_expr[] = {"9"};
+    static const char *const constant_order_rows[] = {"1", "2"};
     static const char *const locking_rows[] = {"1", "1", "2", "2"};
     static const char *const having_string_rhs_rows[] = {"10", "hello"};
     static const char *const having_in_rows[] = {"10", "20"};
@@ -110,22 +99,24 @@ static int test_select_clause_residuals(void) {
         }
     );
 
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT id FROM t1 ORDER BY NULL",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT id FROM t1 ORDER BY NULL",
+            .values = constant_order_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "constant order null",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT id FROM t1 ORDER BY 'a' DESC",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT id FROM t1 ORDER BY 'a' DESC",
+            .values = constant_order_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "constant order string",
         }
     );
     failures += expect_query_values(
@@ -164,23 +155,6 @@ static int execute_ok(mylite_db *database, const char *sql) {
     }
     mylite_result_free(result);
     return 0;
-}
-
-static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected) {
-    mylite_result *result = NULL;
-    int rc = mylite_execute(database, sql, strlen(sql), &result);
-    int failures = 0;
-
-    failures += expect_int(rc, MYLITE_ERROR, sql);
-    failures += expect_int(mylite_errcode(database), expected.code, "error code");
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, "error sqlstate");
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, "error message");
-    if (result != NULL) {
-        failures += expect_size(mylite_result_column_count(result), 0U, "failed result columns");
-        failures += expect_size(mylite_result_row_count(result), 0U, "failed result rows");
-    }
-    mylite_result_free(result);
-    return failures;
 }
 
 static int expect_query_values(mylite_db *database, struct expected_query query) {
@@ -236,20 +210,6 @@ static int expect_text(const char *actual, const char *expected, const char *con
             context,
             expected == NULL ? "(null)" : expected,
             actual == NULL ? "(null)" : actual
-        );
-        return 1;
-    }
-    return 0;
-}
-
-static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
-        fprintf(
-            stderr,
-            "%s: expected [%s] to contain [%s]\n",
-            context,
-            actual == NULL ? "(null)" : actual,
-            needle == NULL ? "(null)" : needle
         );
         return 1;
     }

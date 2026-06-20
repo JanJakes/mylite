@@ -46,9 +46,10 @@ tableless `LIMIT 0` and `LIMIT offset,row_count` can return an empty rowset,
 literal `ORDER BY` keys are accepted, `HAVING` can refer to grouped columns and
 selected aliases using richer predicates than MyLite historically executed, and
 a query block can carry multiple locking read clauses with scoped `OF` lists and
-wait modifiers. The grouped string-column comparison probe is now executable in
-the `baseline-grouped-string-comparison-having` slice, and the grouped-column
-`HAVING IN` probe is executable in the
+wait modifiers. The constant `ORDER BY` probes are executable in the
+`baseline-constant-order-by-keys` slice, the grouped string-column comparison
+probe is executable in the `baseline-grouped-string-comparison-having` slice,
+and the grouped-column `HAVING IN` probe is executable in the
 `baseline-grouped-having-in-predicate` slice. Remaining richer `HAVING` probes
 in this corpus slice stay explicit placeholders.
 
@@ -61,14 +62,15 @@ In scope:
   `SELECT ... LIMIT row_count OFFSET offset`;
 - the same tableless limit planning when a supported scalar filter has already
   been admitted through existing no-source or `FROM DUAL` paths;
+- executable `ORDER BY NULL` and ordinary string-literal order keys as no-op
+  order terms in supported SELECT envelopes;
 - parser admission for repeated trailing locking read clauses after supported
   SELECT query blocks;
 - preservation of existing MyLite locking-read behavior as a no-op
   compatibility marker;
-- parser fallback classification for recognized constant `ORDER BY` keys and
-  richer `HAVING` residuals outside the supported grouped string comparison
-  and grouped-column `IN` subsets that normal parsing cannot yet execute
-  correctly;
+- parser fallback classification for richer `HAVING` residuals outside the
+  supported grouped string comparison and grouped-column `IN` subsets that
+  normal parsing cannot yet execute correctly;
 - deterministic unsupported diagnostics for those recognized residual
   expression clauses instead of generic syntax errors;
 - parser corpus movement measurement over
@@ -77,7 +79,9 @@ In scope:
 Out of scope:
 
 - broad expression execution in `ORDER BY` or `HAVING`;
-- executable string-literal, `NULL`, or user-variable order-key semantics;
+- executable user-variable, parameter, function, or broad constant order-key
+  semantics outside the documented `NULL` and ordinary string-literal no-op
+  subset;
 - full `HAVING` expression planning, selected-alias ambiguity warnings, or
   MySQL's complete group-resolution rules;
 - validation of locking `OF` target names, duplicate target diagnostics, scoped
@@ -128,19 +132,19 @@ For `SELECT ... LIMIT` forms that the normal parser does not accept because no
 table source is present or the source is `DUAL`, MyLite parses the prefix,
 validates that the tail is one of the existing literal `LIMIT` shapes, appends a
 normal `LIMIT_CLAUSE` node, and then uses the existing row-scalar limit planner
-and SQL builder. `ORDER BY` remains rejected for tableless row-scalar planning
-until constant order keys are explicitly modeled. Repeated locking clauses are
+and SQL builder. Constant `ORDER BY NULL` and ordinary string-literal keys are
+recognized as no-op keys by the order planner. Repeated locking clauses are
 handled by parsing through the first locking clause, validating that the
 remaining tail is a sequence of supported locking clauses, and executing the
 existing no-op lock marker. Later repeated clauses are accepted for syntax
 compatibility but do not add transaction lock behavior.
 
-Recognized constant `ORDER BY` and residual `HAVING` forms outside the
-supported grouped string comparison and grouped-column `IN` subsets that fail
-the normal parser become unsupported-utility placeholders. They return the
-existing deterministic unsupported diagnostic and do not route through SQLite,
-avoiding silent differences in MySQL type conversion, collation, aggregate, and
-alias resolution semantics.
+Recognized residual `HAVING` forms outside the supported grouped string
+comparison and grouped-column `IN` subsets that fail the normal parser become
+unsupported-utility placeholders. They return the existing deterministic
+unsupported diagnostic and do not route through SQLite, avoiding silent
+differences in MySQL type conversion, collation, aggregate, and alias
+resolution semantics.
 
 ## Tests
 
@@ -149,10 +153,11 @@ Tests cover:
 - MySQL 8.4.9 expectations for tableless limits, constant order keys, the
   grouped string comparison `HAVING` case, the grouped-column `HAVING IN` case,
   residual `HAVING` predicates, and repeated locking clauses;
-- parser AST admission for executable tableless limits and repeated locking
-  clauses;
-- parser fallback admission for constant order and residual `HAVING` surfaces;
+- parser AST admission for executable tableless limits, constant order keys,
+  and repeated locking clauses;
+- parser fallback admission for residual `HAVING` surfaces;
 - runtime row counts for tableless `LIMIT` forms;
+- runtime execution of constant `ORDER BY` keys as no-op keys;
 - runtime execution of repeated locking clauses over a supported joined source;
 - runtime unsupported diagnostics for residual placeholder forms.
 

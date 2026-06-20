@@ -520,6 +520,8 @@ static int test_select_alias_length_boundaries(void) {
 }
 
 static int test_select_alias_diagnostics(void) {
+    static const char *const column_x[] = {"x"};
+    static const char *const string_order_values[] = {"10", NULL, "20"};
     mylite_db *database = NULL;
     mylite_result *result = NULL;
     int failures = 0;
@@ -560,13 +562,15 @@ static int test_select_alias_diagnostics(void) {
             .message_part = "Unknown column 'numbers.x' in 'order clause'",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT n AS 'x' FROM numbers ORDER BY 'x'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT n AS 'x' FROM numbers ORDER BY 'x'",
+            .columns = column_x,
+            .column_count = 1U,
+            .values = string_order_values,
+            .row_count = 3U,
+            .context = "string order key is constant not alias",
         }
     );
     failures += execute_error(

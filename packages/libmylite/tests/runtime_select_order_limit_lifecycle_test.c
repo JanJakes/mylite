@@ -205,6 +205,24 @@ static int test_order_limit_success_persistence_rename_and_drop(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY NULL, id DESC",
+            .values = ordinal_id_desc,
+            .value_count = sizeof(ordinal_id_desc) / sizeof(ordinal_id_desc[0]),
+            .context = "constant null order before descriptor order",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM ordered_numbers ORDER BY 'a' DESC, id",
+            .values = all_ids,
+            .value_count = sizeof(all_ids) / sizeof(all_ids[0]),
+            .context = "constant string order before descriptor order",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
             .sql = "SELECT n FROM ordered_numbers ORDER BY n",
             .values = ordered_n,
             .value_count = sizeof(ordered_n) / sizeof(ordered_n[0]),

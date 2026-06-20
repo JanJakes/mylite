@@ -162,7 +162,12 @@ static int plan_select_order_ast_item_and_append(
     struct planned_select_order *out_order
 ) {
     struct planned_select_order_item planned_item = {0};
-    int rc = plan_select_order_ast_item(
+    int rc = MYLITE_OK;
+
+    if (select_order_key_is_constant_noop(item_nodes.order_key)) {
+        return MYLITE_OK;
+    }
+    rc = plan_select_order_ast_item(
         database,
         item_nodes,
         source_context,
@@ -378,6 +383,17 @@ static bool order_item_list_contains_rand_order_key(const struct mylite_sql_ast_
         item = item->next_sibling;
     }
     return false;
+}
+
+static bool select_order_key_is_constant_noop(const struct mylite_sql_ast_node *order_key) {
+    order_key = unwrap_parenthesized_expression(order_key);
+    if (order_key == NULL || order_key->kind != MYLITE_SQL_AST_LITERAL) {
+        return false;
+    }
+
+    enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(order_key);
+    return literal_kind == MYLITE_SQL_AST_LITERAL_NULL ||
+           literal_kind == MYLITE_SQL_AST_LITERAL_STRING;
 }
 
 static bool select_order_key_is_integer_ordinal(const struct mylite_sql_ast_node *order_key) {

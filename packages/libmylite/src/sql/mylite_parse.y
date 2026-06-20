@@ -8701,6 +8701,12 @@ select_order_key(A) ::= qualified_identifier(K). {
 select_order_key(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
 }
+select_order_key(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
+}
+select_order_key(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
 select_order_key(A) ::= selected_grouped_aggregate_expression(K). {
     A = K;
 }

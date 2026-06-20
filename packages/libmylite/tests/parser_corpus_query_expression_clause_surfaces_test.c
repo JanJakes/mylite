@@ -37,10 +37,6 @@ static int test_query_expression_clause_placeholders(void) {
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT a FROM t1 WHERE(a,b) = (1,2)",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "SELECT * FROM t WHERE u=256 IS NOT NULL",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "SELECT * FROM t WHERE u=256 IS UNKNOWN",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT * FROM t1 WHERE f1->\"$.id\"= 5",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT * FROM t1 WHERE f1->>\"$.name\" = \"James\"",
@@ -120,6 +116,12 @@ static int test_query_expression_clause_placeholders(void) {
                          "ORDER BY a");
     failures += parse_ok("SELECT t1.a, t2.a FROM t1 JOIN t2 ON t1.a = t2.a");
     failures += parse_ok("SELECT * FROM (SELECT 1) AS dt");
+    failures += parse_ok("SELECT * FROM t WHERE u=256 IS NULL");
+    failures += parse_ok("SELECT * FROM t WHERE u=256 IS NOT NULL");
+    failures += parse_ok("SELECT * FROM t WHERE u=256 IS UNKNOWN");
+    failures += parse_ok("SELECT * FROM t WHERE u=256 IS NOT UNKNOWN");
+    failures += parse_ok("SELECT * FROM t WHERE u > 256 IS UNKNOWN");
+    failures += parse_ok("SELECT * FROM t WHERE u <=> NULL IS NOT UNKNOWN");
     failures += parse_ok("SELECT a FROM t1 ORDER BY ABS(b - 5)");
     failures += parse_ok("VALUES ROW(1),ROW(2) ORDER BY NULL DESC");
     failures += parse_ok("VALUES ROW(1),ROW(2) ORDER BY '1' DESC");

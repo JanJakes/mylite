@@ -23,8 +23,9 @@ against MySQL 8.4.9:
 - operator-bearing function and arithmetic expressions are valid `ORDER BY`,
   `GROUP BY`, and `HAVING` operands;
 - row tuple comparisons such as `(a,b) = (1,2)` are valid predicates;
-- postfix `IS [NOT] NULL` / `IS UNKNOWN`, JSON `->` / `->>` column-path
-  predicates, ODBC expression escapes, qualified column-to-column `BETWEEN`,
+- comparison-result postfix `IS [NOT] NULL` / `IS [NOT] UNKNOWN` predicates,
+  JSON `->` / `->>` column-path predicates, ODBC expression escapes, qualified
+  column-to-column `BETWEEN`,
   qualified descriptor `IN` lists, `ROW(...)` comparisons, parenthesized
   `MATCH(...) AGAINST(...)`, and string-literal `ORDER BY` keys in `VALUES`
   statements are valid syntax and execute through the baseline `VALUES`
@@ -38,8 +39,10 @@ Observed probe:
 ```sql
 CREATE TABLE t1 (a INT, b INT, c VARCHAR(20));
 CREATE TABLE t2 (a INT, b INT);
+CREATE TABLE t (u INT NULL);
 INSERT INTO t1 VALUES (1,2,'x'),(3,4,'y');
 INSERT INTO t2 VALUES (1,20),(3,40);
+INSERT INTO t VALUES (256),(257),(NULL);
 SELECT COUNT(*) FROM t1 WHERE a + 1 > 1;
 SELECT a FROM t1 ORDER BY ABS(b - 5);
 SELECT a, COUNT(*) FROM t1
@@ -47,7 +50,8 @@ SELECT a, COUNT(*) FROM t1
   HAVING COUNT(*) >= 1 AND a > 0
   ORDER BY a + 0;
 SELECT a FROM t1 WHERE (a,b) = (1,2);
-SELECT COUNT(*) FROM t1 WHERE a=1 IS NOT NULL;
+SELECT COUNT(*) FROM t WHERE u=256 IS NOT NULL;
+SELECT COUNT(*) FROM t WHERE u=256 IS UNKNOWN;
 SELECT COUNT(*) FROM t1 WHERE j->"$.id" = 5;
 SELECT COUNT(*) FROM t1 WHERE j->>"$.name" = "James";
 SELECT {fn CONCAT('a','b')};
@@ -81,7 +85,9 @@ In scope:
   except the separately executable baseline row arithmetic predicate subset;
 - expression operators inside function arguments and aggregate arguments;
 - row tuple comparison and tuple `IN` surfaces;
-- postfix `IS` predicates over broader expression operands;
+- postfix `IS` predicates over broader expression operands, with
+  comparison-result `IS NULL`, `IS NOT NULL`, `IS UNKNOWN`, and
+  `IS NOT UNKNOWN` now executable through the baseline comparison-result slice;
 - JSON column extraction operators `->` and `->>` when broad query-clause
   expression planning is not yet available;
 - ODBC `{fn ...}`, `{d ...}`, `{t ...}`, and `{ts ...}` expression escapes;

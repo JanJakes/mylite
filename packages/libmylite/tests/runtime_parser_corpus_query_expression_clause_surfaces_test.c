@@ -43,6 +43,11 @@ static int test_query_expression_clause_surfaces(void) {
     static const char *const function_order_key_rows[] = {"3", "1"};
     static const char *const values_order_key_rows[] = {"1", "2"};
     static const char *const subquery_arithmetic_predicate_rows[] = {"1", "3"};
+    static const char *const comparison_result_known_rows[] = {"2"};
+    static const char *const comparison_result_unknown_rows[] = {"1"};
+    static const char *const comparison_result_never_unknown_rows[] = {"3"};
+    static const char *const comparison_result_dml_rows[] = {"1"};
+    static const char *const comparison_result_delete_rows[] = {"3"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -56,8 +61,10 @@ static int test_query_expression_clause_surfaces(void) {
     failures += execute_ok(database, "USE app");
     failures += execute_ok(database, "CREATE TABLE t1 (a INT, b INT, c VARCHAR(20))");
     failures += execute_ok(database, "CREATE TABLE t2 (a INT, b INT)");
+    failures += execute_ok(database, "CREATE TABLE t (u INT)");
     failures += execute_ok(database, "INSERT INTO t1 VALUES (1, 2, 'x'), (3, 4, 'y')");
     failures += execute_ok(database, "INSERT INTO t2 VALUES (1, 20), (3, 40)");
+    failures += execute_ok(database, "INSERT INTO t VALUES (256), (257), (NULL)");
 
     failures += expect_query_values(
         database,
@@ -180,22 +187,87 @@ static int test_query_expression_clause_surfaces(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT * FROM t WHERE u=256 IS NOT NULL",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t WHERE u=256 IS NOT NULL",
+            .values = comparison_result_known_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "comparison-result IS NOT NULL predicate",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT * FROM t WHERE u=256 IS UNKNOWN",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t WHERE u=256 IS UNKNOWN",
+            .values = comparison_result_unknown_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "comparison-result IS UNKNOWN predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t WHERE u=256 IS NULL",
+            .values = comparison_result_unknown_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "comparison-result IS NULL predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t WHERE u=256 IS NOT UNKNOWN",
+            .values = comparison_result_known_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "comparison-result IS NOT UNKNOWN predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t WHERE u > 256 IS UNKNOWN",
+            .values = comparison_result_unknown_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "range comparison-result IS UNKNOWN predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t WHERE u <=> NULL IS NOT UNKNOWN",
+            .values = comparison_result_never_unknown_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "null-safe comparison-result IS NOT UNKNOWN predicate",
+        }
+    );
+    failures += execute_ok(database, "UPDATE t SET u = 300 WHERE u=256 IS UNKNOWN");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t WHERE u = 300",
+            .values = comparison_result_dml_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "comparison-result IS UNKNOWN update predicate",
+        }
+    );
+    failures += execute_ok(database, "INSERT INTO t VALUES (NULL)");
+    failures += execute_ok(database, "DELETE FROM t WHERE u=256 IS UNKNOWN");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t",
+            .values = comparison_result_delete_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "comparison-result IS UNKNOWN delete predicate",
         }
     );
     failures += execute_error(

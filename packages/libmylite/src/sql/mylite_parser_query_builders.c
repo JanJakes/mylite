@@ -565,6 +565,38 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_is_boolean_predicate(
     return predicate;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_apply_comparison_result_is_suffix(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *comparison,
+    struct mylite_sql_comparison_operator_tokens suffix
+) {
+    if (suffix.operator_kind == MYLITE_SQL_AST_OPERATOR_NONE) {
+        return comparison;
+    }
+    if (suffix.operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NULL ||
+        suffix.operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL) {
+        return mylite_sql_parser_make_is_null_predicate(
+            state,
+            comparison,
+            suffix.token,
+            suffix.operator_kind,
+            suffix.token
+        );
+    }
+    if (suffix.operator_kind == MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN ||
+        suffix.operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN) {
+        return mylite_sql_parser_make_is_boolean_predicate(
+            state,
+            comparison,
+            suffix.token,
+            suffix.operator_kind,
+            suffix.token
+        );
+    }
+
+    return comparison;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_between_predicate(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *left,

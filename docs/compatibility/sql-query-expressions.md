@@ -123,6 +123,11 @@ the same documented direct value operands, plus documented bare descriptor-colum
 value operands. Joined `ON`, grouped `HAVING`, arbitrary expression composition,
 and metadata for generated predicate value expressions remain deferred.
 
+Comparison-result postfix `IS NULL`, `IS NOT NULL`, `IS UNKNOWN`, and
+`IS NOT UNKNOWN` predicates are executable for the documented descriptor-backed
+comparison predicate subset. `UNKNOWN` maps to the comparison result being
+`NULL`, matching MySQL's three-valued predicate behavior.
+
 The limited user-variable surface exposes handle-local `@name` values in
 no-source/`DUAL` scalar `SELECT` lists, `DO` expressions, SQL-level prepared
 statement source/`USING` positions, source-free `INSERT` / `REPLACE` value

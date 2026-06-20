@@ -932,6 +932,7 @@ static int plan_is_null_predicate(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    const struct select_predicate_plan_options *options,
     struct planned_select_predicate *predicate,
     size_t *out_node_index
 );
@@ -941,6 +942,17 @@ static int plan_is_boolean_predicate(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
+static int plan_comparison_result_is_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
     struct planned_select_predicate *predicate,
     size_t *out_node_index
 );

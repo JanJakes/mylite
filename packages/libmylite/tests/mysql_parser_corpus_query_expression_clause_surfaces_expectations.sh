@@ -78,6 +78,7 @@ run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE}; "\
 "CREATE TABLE t1 (a INT, b INT, c VARCHAR(20), j JSON, col_varchar_10 VARCHAR(10)); "\
 "CREATE TABLE t2 (a INT, b INT, c2 DATE, c3 TIME, c4 TIMESTAMP NULL, "\
 "pk INT, col_int_key INT, col_varchar_10_key VARCHAR(10)); "\
+"CREATE TABLE t (u INT); "\
 "CREATE TABLE t_dates (f1 DATE, f2 DATETIME, f3 DATE, a DATETIME, "\
 "value DECIMAL(30,0)); "\
 "CREATE TABLE ft (x TEXT, FULLTEXT KEY ft_x (x)) ENGINE=InnoDB; "\
@@ -87,6 +88,7 @@ run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE}; "\
 "INSERT INTO t2 VALUES (1,20,'2014-01-03','01:01:03','2014-01-03 01:01:01',"\
 "1,10,'k1'),"\
 "(3,40,'2014-02-01','02:00:00','2014-02-01 01:01:01',0,20,'k2'); "\
+"INSERT INTO t VALUES (256),(257),(NULL); "\
 "INSERT INTO t_dates VALUES "\
 "('2001-01-01','2001-04-10 12:34:56','2001-05-01',"\
 "'2010-02-01 09:31:02',100000000000000000000002),"\
@@ -126,7 +128,44 @@ expect_output \
 expect_output \
     "postfix IS predicate" \
     "2" \
-    "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE a=1 IS NOT NULL;"
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t WHERE u=256 IS NOT NULL;"
+
+expect_output \
+    "postfix IS UNKNOWN predicate" \
+    "1" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t WHERE u=256 IS UNKNOWN;"
+
+expect_output \
+    "postfix IS NULL predicate" \
+    "1" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t WHERE u=256 IS NULL;"
+
+expect_output \
+    "postfix IS NOT UNKNOWN predicate" \
+    "2" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t WHERE u=256 IS NOT UNKNOWN;"
+
+expect_output \
+    "postfix range IS UNKNOWN predicate" \
+    "1" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t WHERE u > 256 IS UNKNOWN;"
+
+expect_output \
+    "postfix null-safe IS NOT UNKNOWN predicate" \
+    "3" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t WHERE u <=> NULL IS NOT UNKNOWN;"
+
+expect_output \
+    "postfix IS UPDATE predicate" \
+    "1" \
+    "USE ${DATABASE}; UPDATE t SET u = 300 WHERE u=256 IS UNKNOWN; "\
+"SELECT COUNT(*) FROM t WHERE u = 300;"
+
+expect_output \
+    "postfix IS DELETE predicate" \
+    "3" \
+    "USE ${DATABASE}; INSERT INTO t VALUES (NULL); "\
+"DELETE FROM t WHERE u=256 IS UNKNOWN; SELECT COUNT(*) FROM t;"
 
 expect_output \
     "JSON arrow predicate" \

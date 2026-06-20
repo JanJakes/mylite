@@ -1097,6 +1097,7 @@ struct planned_select_predicate_node {
     enum mylite_sql_ast_operator operator_kind;
     struct mylite_catalog_column_descriptor column;
     size_t column_source_index;
+    enum mylite_sql_ast_operator comparison_result_is_operator_kind;
     struct planned_value value;
     bool value_is_column_reference;
     struct mylite_catalog_column_descriptor value_column;

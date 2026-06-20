@@ -1762,6 +1762,11 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_is_boolean_predicate(
     enum mylite_sql_ast_operator operator_kind,
     struct mylite_sql_token truth_token
 );
+struct mylite_sql_ast_node *mylite_sql_parser_apply_comparison_result_is_suffix(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *comparison,
+    struct mylite_sql_comparison_operator_tokens suffix
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_between_predicate(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_ast_node *left,

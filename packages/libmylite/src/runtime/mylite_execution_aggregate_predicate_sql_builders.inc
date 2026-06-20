@@ -1959,12 +1959,20 @@ static int append_select_predicate_column_term_sql(
         return append_select_like_binary_predicate_sql(string, predicate, node, next_parameter);
     }
 
-    int rc = append_select_predicate_subject_sql(
-        string,
-        node,
-        predicate->qualify_column_references,
-        planned_select_predicate_rhs_has_explicit_collate(node)
-    );
+    bool comparison_has_postfix = planned_select_predicate_comparison_has_postfix_is(node);
+    int rc = MYLITE_OK;
+
+    if (comparison_has_postfix) {
+        rc = mylite_dynamic_string_append_char(string, '(');
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_subject_sql(
+            string,
+            node,
+            predicate->qualify_column_references,
+            planned_select_predicate_rhs_has_explicit_collate(node)
+        );
+    }
 
     if (rc == MYLITE_OK) {
         if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
@@ -1990,6 +1998,12 @@ static int append_select_predicate_column_term_sql(
             rc = MYLITE_ERROR;
         }
     }
+    if (rc == MYLITE_OK && comparison_has_postfix) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    if (rc == MYLITE_OK && comparison_has_postfix) {
+        rc = append_select_comparison_result_is_sql(string, node);
+    }
 
     return rc;
 }
@@ -2007,12 +2021,20 @@ static int append_select_predicate_column_term_sql_without_subqueries(
         return append_select_like_binary_predicate_sql(string, predicate, node, next_parameter);
     }
 
-    int rc = append_select_predicate_subject_sql(
-        string,
-        node,
-        predicate->qualify_column_references,
-        planned_select_predicate_rhs_has_explicit_collate(node)
-    );
+    bool comparison_has_postfix = planned_select_predicate_comparison_has_postfix_is(node);
+    int rc = MYLITE_OK;
+
+    if (comparison_has_postfix) {
+        rc = mylite_dynamic_string_append_char(string, '(');
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_subject_sql(
+            string,
+            node,
+            predicate->qualify_column_references,
+            planned_select_predicate_rhs_has_explicit_collate(node)
+        );
+    }
 
     if (rc == MYLITE_OK) {
         if (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON) {
@@ -2038,8 +2060,78 @@ static int append_select_predicate_column_term_sql_without_subqueries(
             rc = MYLITE_ERROR;
         }
     }
+    if (rc == MYLITE_OK && comparison_has_postfix) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    if (rc == MYLITE_OK && comparison_has_postfix) {
+        rc = append_select_comparison_result_is_sql(string, node);
+    }
 
     return rc;
+}
+
+static bool planned_select_predicate_comparison_has_postfix_is(
+    const struct planned_select_predicate_node *node
+) {
+    return node != NULL && node->kind == PLANNED_SELECT_PREDICATE_COMPARISON &&
+           node->comparison_result_is_operator_kind != MYLITE_SQL_AST_OPERATOR_NONE;
+}
+
+static int append_select_comparison_result_is_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node
+) {
+    switch (node->comparison_result_is_operator_kind) {
+    case MYLITE_SQL_AST_OPERATOR_IS_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN:
+        return mylite_dynamic_string_append(string, " IS NULL");
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN:
+        return mylite_dynamic_string_append(string, " IS NOT NULL");
+    case MYLITE_SQL_AST_OPERATOR_NONE:
+    case MYLITE_SQL_AST_OPERATOR_POSITIVE:
+    case MYLITE_SQL_AST_OPERATOR_NEGATIVE:
+    case MYLITE_SQL_AST_OPERATOR_ADD:
+    case MYLITE_SQL_AST_OPERATOR_SUBTRACT:
+    case MYLITE_SQL_AST_OPERATOR_MULTIPLY:
+    case MYLITE_SQL_AST_OPERATOR_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_NOT_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_LESS:
+    case MYLITE_SQL_AST_OPERATOR_LESS_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_GREATER:
+    case MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL:
+    case MYLITE_SQL_AST_OPERATOR_MODULO:
+    case MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_NOT:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_XOR:
+    case MYLITE_SQL_AST_OPERATOR_LEFT_SHIFT:
+    case MYLITE_SQL_AST_OPERATOR_RIGHT_SHIFT:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_AND:
+    case MYLITE_SQL_AST_OPERATOR_BITWISE_OR:
+    case MYLITE_SQL_AST_OPERATOR_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_LIKE_BINARY:
+    case MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE:
+    case MYLITE_SQL_AST_OPERATOR_REGEXP:
+    case MYLITE_SQL_AST_OPERATOR_RLIKE:
+    case MYLITE_SQL_AST_OPERATOR_JSON_EXTRACT:
+    case MYLITE_SQL_AST_OPERATOR_JSON_UNQUOTE_EXTRACT:
+    case MYLITE_SQL_AST_OPERATOR_CONCAT:
+    case MYLITE_SQL_AST_OPERATOR_IS_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_TRUE:
+    case MYLITE_SQL_AST_OPERATOR_IS_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_IS_NOT_FALSE:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_OR:
+    case MYLITE_SQL_AST_OPERATOR_LOGICAL_XOR:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_AND:
+    case MYLITE_SQL_AST_OPERATOR_DEPRECATED_LOGICAL_OR:
+        break;
+    }
+
+    return MYLITE_ERROR;
 }
 
 static int append_select_row_scalar_predicate_sql(

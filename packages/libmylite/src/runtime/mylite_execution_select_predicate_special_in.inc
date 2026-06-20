@@ -96,6 +96,7 @@ static int plan_is_null_predicate(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    const struct select_predicate_plan_options *options,
     struct planned_select_predicate *predicate,
     size_t *out_node_index
 ) {
@@ -106,6 +107,19 @@ static int plan_is_null_predicate(
         .right_index = SIZE_MAX,
     };
 
+    if (child_at(predicate_node, 0U) != NULL &&
+        child_at(predicate_node, 0U)->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
+        return plan_comparison_result_is_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            options,
+            predicate,
+            out_node_index
+        );
+    }
     if (predicate_node_is_find_in_set_expression(child_at(predicate_node, 0U))) {
         return plan_find_in_set_is_null_predicate(
             database,
@@ -238,6 +252,7 @@ static int plan_is_boolean_predicate(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    const struct select_predicate_plan_options *options,
     struct planned_select_predicate *predicate,
     size_t *out_node_index
 ) {
@@ -247,6 +262,19 @@ static int plan_is_boolean_predicate(
         .left_index = SIZE_MAX,
         .right_index = SIZE_MAX,
     };
+    if (child_at(predicate_node, 0U) != NULL &&
+        child_at(predicate_node, 0U)->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
+        return plan_comparison_result_is_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            options,
+            predicate,
+            out_node_index
+        );
+    }
     if (predicate_node_is_scalar_literal_expression(child_at(predicate_node, 0U))) {
         return plan_scalar_literal_is_predicate(
             database,
@@ -295,6 +323,50 @@ static int plan_is_boolean_predicate(
     }
 
     return append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+}
+
+static int plan_comparison_result_is_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate_node);
+    size_t node_index = SIZE_MAX;
+    int rc = MYLITE_OK;
+
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_IS_NULL &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN) {
+        set_unsupported_error(database, "comparison result IS predicate is not supported");
+        return MYLITE_ERROR;
+    }
+
+    rc = plan_comparison_predicate(
+        database,
+        child_at(predicate_node, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        options,
+        predicate,
+        &node_index
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (node_index >= predicate->node_count) {
+        return MYLITE_ERROR;
+    }
+
+    predicate->nodes[node_index].comparison_result_is_operator_kind = operator_kind;
+    *out_node_index = node_index;
+    return MYLITE_OK;
 }
 
 static int plan_row_scalar_expression_is_boolean_predicate(

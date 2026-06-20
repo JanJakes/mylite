@@ -2270,6 +2270,13 @@ static int append_select_predicate_column_term_sql_without_subqueries(
     const struct planned_select_predicate_node *node,
     size_t *next_parameter
 );
+static bool planned_select_predicate_comparison_has_postfix_is(
+    const struct planned_select_predicate_node *node
+);
+static int append_select_comparison_result_is_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_select_predicate_node *node
+);
 static int append_select_row_scalar_predicate_sql(
     struct mylite_dynamic_string *string,
     const struct planned_select_predicate_node *node,

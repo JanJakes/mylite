@@ -100,6 +100,7 @@
 %type alter_algorithm_value { struct mylite_sql_alter_algorithm_value }
 %type alter_lock_value { struct mylite_sql_alter_lock_value }
 %type predicate_comparison_operator { struct mylite_sql_comparison_operator_tokens }
+%type predicate_comparison_result_is_opt { struct mylite_sql_comparison_operator_tokens }
 %type dml_function_token { struct mylite_sql_token }
 %type keyword_function_token { struct mylite_sql_token }
 %type merge_insert_method { struct mylite_sql_ast_node * }
@@ -7300,33 +7301,61 @@ predicate_atom(A) ::= regexp_like_expression(C) IS(I) NOT NULL(N). {
     A = mylite_sql_parser_make_is_null_predicate(
         state, C, I, MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL, N);
 }
-predicate_atom(A) ::= qualified_identifier(C) EQUAL(O) predicate_comparison_value(V). {
-    A = mylite_sql_parser_make_comparison_predicate(
-        state, C, O, MYLITE_SQL_AST_OPERATOR_EQUAL, V);
+predicate_atom(A) ::= qualified_identifier(C) EQUAL(O) predicate_comparison_value(V)
+        predicate_comparison_result_is_opt(S). {
+    A = mylite_sql_parser_apply_comparison_result_is_suffix(
+        state,
+        mylite_sql_parser_make_comparison_predicate(
+            state, C, O, MYLITE_SQL_AST_OPERATOR_EQUAL, V),
+        S);
 }
-predicate_atom(A) ::= qualified_identifier(C) NULL_SAFE_EQUAL(O) predicate_comparison_value(V). {
-    A = mylite_sql_parser_make_comparison_predicate(
-        state, C, O, MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL, V);
+predicate_atom(A) ::= qualified_identifier(C) NULL_SAFE_EQUAL(O) predicate_comparison_value(V)
+        predicate_comparison_result_is_opt(S). {
+    A = mylite_sql_parser_apply_comparison_result_is_suffix(
+        state,
+        mylite_sql_parser_make_comparison_predicate(
+            state, C, O, MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL, V),
+        S);
 }
-predicate_atom(A) ::= qualified_identifier(C) NOT_EQUAL(O) predicate_comparison_value(V). {
-    A = mylite_sql_parser_make_comparison_predicate(
-        state, C, O, MYLITE_SQL_AST_OPERATOR_NOT_EQUAL, V);
+predicate_atom(A) ::= qualified_identifier(C) NOT_EQUAL(O) predicate_comparison_value(V)
+        predicate_comparison_result_is_opt(S). {
+    A = mylite_sql_parser_apply_comparison_result_is_suffix(
+        state,
+        mylite_sql_parser_make_comparison_predicate(
+            state, C, O, MYLITE_SQL_AST_OPERATOR_NOT_EQUAL, V),
+        S);
 }
-predicate_atom(A) ::= qualified_identifier(C) LESS(O) predicate_comparison_value(V). {
-    A = mylite_sql_parser_make_comparison_predicate(
-        state, C, O, MYLITE_SQL_AST_OPERATOR_LESS, V);
+predicate_atom(A) ::= qualified_identifier(C) LESS(O) predicate_comparison_value(V)
+        predicate_comparison_result_is_opt(S). {
+    A = mylite_sql_parser_apply_comparison_result_is_suffix(
+        state,
+        mylite_sql_parser_make_comparison_predicate(
+            state, C, O, MYLITE_SQL_AST_OPERATOR_LESS, V),
+        S);
 }
-predicate_atom(A) ::= qualified_identifier(C) LESS_EQUAL(O) predicate_comparison_value(V). {
-    A = mylite_sql_parser_make_comparison_predicate(
-        state, C, O, MYLITE_SQL_AST_OPERATOR_LESS_EQUAL, V);
+predicate_atom(A) ::= qualified_identifier(C) LESS_EQUAL(O) predicate_comparison_value(V)
+        predicate_comparison_result_is_opt(S). {
+    A = mylite_sql_parser_apply_comparison_result_is_suffix(
+        state,
+        mylite_sql_parser_make_comparison_predicate(
+            state, C, O, MYLITE_SQL_AST_OPERATOR_LESS_EQUAL, V),
+        S);
 }
-predicate_atom(A) ::= qualified_identifier(C) GREATER(O) predicate_comparison_value(V). {
-    A = mylite_sql_parser_make_comparison_predicate(
-        state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER, V);
+predicate_atom(A) ::= qualified_identifier(C) GREATER(O) predicate_comparison_value(V)
+        predicate_comparison_result_is_opt(S). {
+    A = mylite_sql_parser_apply_comparison_result_is_suffix(
+        state,
+        mylite_sql_parser_make_comparison_predicate(
+            state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER, V),
+        S);
 }
-predicate_atom(A) ::= qualified_identifier(C) GREATER_EQUAL(O) predicate_comparison_value(V). {
-    A = mylite_sql_parser_make_comparison_predicate(
-        state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL, V);
+predicate_atom(A) ::= qualified_identifier(C) GREATER_EQUAL(O) predicate_comparison_value(V)
+        predicate_comparison_result_is_opt(S). {
+    A = mylite_sql_parser_apply_comparison_result_is_suffix(
+        state,
+        mylite_sql_parser_make_comparison_predicate(
+            state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL, V),
+        S);
 }
 predicate_atom(A) ::= qualified_identifier(C) predicate_comparison_operator(O)
         introduced_predicate_literal(V). {
@@ -8646,6 +8675,36 @@ predicate_comparison_operator(A) ::= GREATER_EQUAL(T). {
     A = (struct mylite_sql_comparison_operator_tokens){
         .token = T,
         .operator_kind = MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL,
+    };
+}
+
+predicate_comparison_result_is_opt(A) ::= . {
+    A = (struct mylite_sql_comparison_operator_tokens){
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_NONE,
+    };
+}
+predicate_comparison_result_is_opt(A) ::= IS NULL(T). {
+    A = (struct mylite_sql_comparison_operator_tokens){
+        .token = T,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_IS_NULL,
+    };
+}
+predicate_comparison_result_is_opt(A) ::= IS NOT NULL(T). {
+    A = (struct mylite_sql_comparison_operator_tokens){
+        .token = T,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL,
+    };
+}
+predicate_comparison_result_is_opt(A) ::= IS UNKNOWN(T). {
+    A = (struct mylite_sql_comparison_operator_tokens){
+        .token = T,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_IS_UNKNOWN,
+    };
+}
+predicate_comparison_result_is_opt(A) ::= IS NOT UNKNOWN(T). {
+    A = (struct mylite_sql_comparison_operator_tokens){
+        .token = T,
+        .operator_kind = MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN,
     };
 }
 

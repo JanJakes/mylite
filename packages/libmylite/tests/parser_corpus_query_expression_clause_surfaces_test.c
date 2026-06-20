@@ -62,14 +62,6 @@ static int test_query_expression_clause_placeholders(void) {
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "select * from t1,t2 where '01-01-01' in (f1, '01-02-03')",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "SELECT * FROM t1 WHERE '100000000000000000000002' = value",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "SELECT * FROM t1 WHERE '2010-02-01 09:31:02.0' <= a",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "SELECT * FROM t1 WHERE '2010-02-01 09:31:02.0' >= a",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "select * from v1 where '2005.02.02'=f1",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT 1 FROM t1 GROUP BY @b := @a, @b",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "select `foo` ()", .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
@@ -122,6 +114,14 @@ static int test_query_expression_clause_placeholders(void) {
     failures += parse_ok("SELECT * FROM t WHERE u=256 IS NOT UNKNOWN");
     failures += parse_ok("SELECT * FROM t WHERE u > 256 IS UNKNOWN");
     failures += parse_ok("SELECT * FROM t WHERE u <=> NULL IS NOT UNKNOWN");
+    failures += parse_ok("SELECT * FROM t1 WHERE '100000000000000000000002' = value");
+    failures += parse_ok("SELECT * FROM t1 WHERE '2010-02-01 09:31:02.0' <= a");
+    failures += parse_ok("SELECT * FROM t1 WHERE '2010-02-01 09:31:02.0' < a");
+    failures += parse_ok("SELECT * FROM t1 WHERE '2010-02-01 09:31:02.0' >= a");
+    failures += parse_ok("SELECT * FROM t1 WHERE '2010-02-02 00:00:00.0' > a");
+    failures += parse_ok("SELECT * FROM t1 WHERE '5' <> value");
+    failures += parse_ok("select * from v1 where '2005.02.02'=f1");
+    failures += parse_ok("select * from v1 where '2005.02.02'<=>f1");
     failures += parse_ok("SELECT a FROM t1 ORDER BY ABS(b - 5)");
     failures += parse_ok("VALUES ROW(1),ROW(2) ORDER BY NULL DESC");
     failures += parse_ok("VALUES ROW(1),ROW(2) ORDER BY '1' DESC");

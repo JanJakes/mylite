@@ -82,7 +82,7 @@ run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE}; "\
 "CREATE TABLE t_dates (f1 DATE, f2 DATETIME, f3 DATE, a DATETIME, "\
 "value DECIMAL(30,0)); "\
 "CREATE TABLE ft (x TEXT, FULLTEXT KEY ft_x (x)) ENGINE=InnoDB; "\
-"CREATE VIEW v_dates AS SELECT DATE '2005-02-02' AS f1; "\
+"CREATE TABLE v1 (f1 DATE); "\
 "INSERT INTO t1 VALUES (1,2,'x','{\"id\":5,\"name\":\"James\"}','k1'),"\
 "(3,4,'y','{\"id\":7,\"name\":\"james\"}','k2'); "\
 "INSERT INTO t2 VALUES (1,20,'2014-01-03','01:01:03','2014-01-03 01:01:01',"\
@@ -94,6 +94,7 @@ run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE}; "\
 "'2010-02-01 09:31:02',100000000000000000000002),"\
 "('2001-01-01','2001-03-01 00:00:00','2001-03-20',"\
 "'2010-02-02 00:00:00',5); "\
+"INSERT INTO v1 VALUES ('2005-02-02'); "\
 "INSERT INTO ft VALUES ('abc one'),('def two');" >/dev/null
 
 expect_output \
@@ -282,15 +283,38 @@ expect_output \
 "SELECT COUNT(*) FROM t_dates WHERE '2010-02-01 09:31:02.0' <= a;"
 
 expect_output \
+    "string literal left less-than predicate" \
+    "1" \
+    "USE ${DATABASE}; "\
+"SELECT COUNT(*) FROM t_dates WHERE '2010-02-01 09:31:02.0' < a;"
+
+expect_output \
     "string literal left greater-or-equal predicate" \
     "1" \
     "USE ${DATABASE}; "\
 "SELECT COUNT(*) FROM t_dates WHERE '2010-02-01 09:31:02.0' >= a;"
 
 expect_output \
-    "dotted date string equality against view column" \
+    "string literal left greater-than predicate" \
     "1" \
-    "USE ${DATABASE}; SELECT COUNT(*) FROM v_dates WHERE '2005.02.02'=f1;"
+    "USE ${DATABASE}; "\
+"SELECT COUNT(*) FROM t_dates WHERE '2010-02-02 00:00:00.0' > a;"
+
+expect_output \
+    "string literal left not-equal predicate" \
+    "1" \
+    "USE ${DATABASE}; "\
+"SELECT COUNT(*) FROM t_dates WHERE '5' <> value;"
+
+expect_output \
+    "dotted date string equality against date column" \
+    "1" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM v1 WHERE '2005.02.02'=f1;"
+
+expect_output \
+    "dotted date string null-safe equality against date column" \
+    "1" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM v1 WHERE '2005.02.02'<=>f1;"
 
 expect_output \
     "group by user-variable assignment" \

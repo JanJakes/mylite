@@ -317,6 +317,9 @@ static bool predicate_row_scalar_cast_expression_is_binary(
 static bool predicate_node_is_scalar_literal_expression(
     const struct mylite_sql_ast_node *predicate_node
 );
+static bool predicate_node_is_literal_left_comparison_value(
+    const struct mylite_sql_ast_node *predicate_node
+);
 static bool predicate_node_is_supported_row_scalar_expression(
     const struct mylite_sql_ast_node *predicate_node
 );

@@ -4957,13 +4957,16 @@ static int test_where_scalar_literal_predicates(void) {
         }
     );
 
-    failures += execute_error(
+    failures += expect_result(
         database,
-        "SELECT id FROM numbers WHERE '1' = i",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_result){
+            .sql = "SELECT id FROM numbers WHERE '1' = i",
+            .values = id_two_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "string literal-left equality predicate",
         }
     );
     failures += execute_error(

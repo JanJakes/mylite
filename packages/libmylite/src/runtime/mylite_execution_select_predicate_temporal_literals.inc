@@ -3,6 +3,11 @@ static bool normalize_relaxed_datetime_predicate_text(
     size_t text_length,
     char *out_text
 );
+static bool normalize_relaxed_date_predicate_text(
+    const char *text,
+    size_t text_length,
+    char *out_text
+);
 static bool parse_relaxed_date_prefix(
     const char *text,
     size_t text_length,
@@ -18,6 +23,12 @@ static bool parse_temporal_digits(
     size_t minimum_digits,
     size_t maximum_digits,
     uint32_t *out_value
+);
+static bool parse_relaxed_date_separator(
+    const char *text,
+    size_t text_length,
+    size_t *inout_offset,
+    char *out_separator
 );
 static bool parse_temporal_char(
     const char *text,
@@ -36,6 +47,7 @@ static int convert_predicate_date_literal(
 ) {
     char *text = NULL;
     size_t text_length = 0U;
+    char normalized_date[date_text_length + 1U];
     char normalized[datetime_text_length + 1U];
     bool append_warning = false;
     int rc = MYLITE_OK;
@@ -67,6 +79,20 @@ static int convert_predicate_date_literal(
             return rc;
         }
         return assign_text_value(database, text, text_length, out_value);
+    }
+    if (normalize_relaxed_date_predicate_text(text, text_length, normalized_date)) {
+        if (!predicate_date_text_admitted(database, normalized_date, date_text_length)) {
+            set_incorrect_date_literal_error(database, text);
+            free(text);
+            return MYLITE_ERROR;
+        }
+        if (force_datetime_comparison) {
+            rc = copy_date_midnight_predicate_value(database, normalized_date, out_value);
+            free(text);
+            return rc;
+        }
+        free(text);
+        return copy_text_value(database, normalized_date, out_value);
     }
 
     if (normalize_date_datetime_predicate_text(text, text_length, normalized, &append_warning)) {
@@ -299,8 +325,28 @@ static bool normalize_relaxed_datetime_predicate_text(
             !parse_temporal_char(text, text_length, &offset, ':') ||
             !parse_temporal_digits(text, text_length, &offset, 2U, 2U, &minute) ||
             !parse_temporal_char(text, text_length, &offset, ':') ||
-            !parse_temporal_digits(text, text_length, &offset, 2U, 2U, &second) ||
-            offset != text_length) {
+            !parse_temporal_digits(text, text_length, &offset, 2U, 2U, &second)) {
+            return false;
+        }
+        if (offset < text_length && text[offset] == '.') {
+            enum { temporal_fractional_second_max_digits = 6U };
+            size_t fractional_digit_count = 0U;
+
+            ++offset;
+            while (offset < text_length &&
+                   fractional_digit_count < temporal_fractional_second_max_digits &&
+                   text[offset] >= '0' && text[offset] <= '9') {
+                if (text[offset] != '0') {
+                    return false;
+                }
+                ++offset;
+                ++fractional_digit_count;
+            }
+            if (fractional_digit_count == 0U) {
+                return false;
+            }
+        }
+        if (offset != text_length) {
             return false;
         }
     }
@@ -319,6 +365,36 @@ static bool normalize_relaxed_datetime_predicate_text(
     return written == datetime_text_length;
 }
 
+static bool normalize_relaxed_date_predicate_text(
+    const char *text,
+    size_t text_length,
+    char *out_text
+) {
+    size_t offset = 0U;
+    uint32_t year = 0U;
+    uint32_t month = 0U;
+    uint32_t day = 0U;
+    int written = 0;
+
+    if (text == NULL || out_text == NULL) {
+        return false;
+    }
+    if (!parse_relaxed_date_prefix(text, text_length, &offset, &year, &month, &day) ||
+        offset != text_length) {
+        return false;
+    }
+
+    written = snprintf(
+        out_text,
+        date_text_length + 1U,
+        "%04" PRIu32 "-%02" PRIu32 "-%02" PRIu32,
+        year,
+        month,
+        day
+    );
+    return written == date_text_length;
+}
+
 static bool parse_relaxed_date_prefix(
     const char *text,
     size_t text_length,
@@ -327,10 +403,12 @@ static bool parse_relaxed_date_prefix(
     uint32_t *out_month,
     uint32_t *out_day
 ) {
+    char separator = '\0';
+
     return (parse_temporal_digits(text, text_length, inout_offset, 4U, 4U, out_year) &&
-            parse_temporal_char(text, text_length, inout_offset, '-') &&
+            parse_relaxed_date_separator(text, text_length, inout_offset, &separator) &&
             parse_temporal_digits(text, text_length, inout_offset, 1U, 2U, out_month) &&
-            parse_temporal_char(text, text_length, inout_offset, '-') &&
+            parse_temporal_char(text, text_length, inout_offset, separator) &&
             parse_temporal_digits(text, text_length, inout_offset, 1U, 2U, out_day)) != 0;
 }
 
@@ -366,6 +444,28 @@ static bool parse_temporal_digits(
 
     *inout_offset = offset + digit_count;
     *out_value = value;
+    return true;
+}
+
+static bool parse_relaxed_date_separator(
+    const char *text,
+    size_t text_length,
+    size_t *inout_offset,
+    char *out_separator
+) {
+    char separator = '\0';
+
+    if (text == NULL || inout_offset == NULL || out_separator == NULL ||
+        *inout_offset >= text_length) {
+        return false;
+    }
+
+    separator = text[*inout_offset];
+    if (separator != '-' && separator != '.') {
+        return false;
+    }
+    *out_separator = separator;
+    ++(*inout_offset);
     return true;
 }
 

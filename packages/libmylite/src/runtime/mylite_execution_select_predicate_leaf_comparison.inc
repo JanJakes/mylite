@@ -1312,7 +1312,7 @@ static int plan_scalar_literal_or_literal_column_comparison_predicate(
     bool *out_handled
 ) {
     *out_handled = false;
-    if (!predicate_node_is_scalar_literal_expression(child_at(predicate_node, 0U))) {
+    if (!predicate_node_is_literal_left_comparison_value(child_at(predicate_node, 0U))) {
         return MYLITE_OK;
     }
 
@@ -2882,6 +2882,18 @@ static bool predicate_node_is_scalar_literal_expression(
     default:
         return false;
     }
+}
+
+static bool predicate_node_is_literal_left_comparison_value(
+    const struct mylite_sql_ast_node *predicate_node
+) {
+    const struct mylite_sql_ast_node *node = unwrap_parenthesized_predicate(predicate_node);
+
+    if (predicate_node_is_scalar_literal_expression(node)) {
+        return true;
+    }
+    return node != NULL && node->kind == MYLITE_SQL_AST_LITERAL &&
+           mylite_sql_ast_node_literal_kind(node) == MYLITE_SQL_AST_LITERAL_STRING;
 }
 
 static bool predicate_node_is_supported_row_scalar_expression(

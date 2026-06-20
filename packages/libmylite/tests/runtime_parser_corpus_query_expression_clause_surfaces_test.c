@@ -48,6 +48,13 @@ static int test_query_expression_clause_surfaces(void) {
     static const char *const comparison_result_never_unknown_rows[] = {"3"};
     static const char *const comparison_result_dml_rows[] = {"1"};
     static const char *const comparison_result_delete_rows[] = {"3"};
+    static const char *const literal_left_decimal_count_rows[] = {"1"};
+    static const char *const literal_left_datetime_le_count_rows[] = {"2"};
+    static const char *const literal_left_datetime_lt_count_rows[] = {"1"};
+    static const char *const literal_left_datetime_ge_count_rows[] = {"1"};
+    static const char *const literal_left_datetime_gt_count_rows[] = {"1"};
+    static const char *const literal_left_decimal_ne_count_rows[] = {"1"};
+    static const char *const literal_left_dotted_date_count_rows[] = {"1"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -62,9 +69,24 @@ static int test_query_expression_clause_surfaces(void) {
     failures += execute_ok(database, "CREATE TABLE t1 (a INT, b INT, c VARCHAR(20))");
     failures += execute_ok(database, "CREATE TABLE t2 (a INT, b INT)");
     failures += execute_ok(database, "CREATE TABLE t (u INT)");
+    failures += execute_ok(
+        database,
+        "CREATE TABLE t_dates (f1 DATE, f2 DATETIME, f3 DATE, a DATETIME, "
+        "value DECIMAL(30,0))"
+    );
+    failures += execute_ok(database, "CREATE TABLE v1 (f1 DATE)");
     failures += execute_ok(database, "INSERT INTO t1 VALUES (1, 2, 'x'), (3, 4, 'y')");
     failures += execute_ok(database, "INSERT INTO t2 VALUES (1, 20), (3, 40)");
     failures += execute_ok(database, "INSERT INTO t VALUES (256), (257), (NULL)");
+    failures += execute_ok(
+        database,
+        "INSERT INTO t_dates VALUES "
+        "('2001-01-01','2001-04-10 12:34:56','2001-05-01',"
+        "'2010-02-01 09:31:02',100000000000000000000002),"
+        "('2001-01-01','2001-03-01 00:00:00','2001-03-20',"
+        "'2010-02-02 00:00:00',5)"
+    );
+    failures += execute_ok(database, "INSERT INTO v1 VALUES ('2005-02-02')");
 
     failures += expect_query_values(
         database,
@@ -429,40 +451,84 @@ static int test_query_expression_clause_surfaces(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT * FROM t1 WHERE '100000000000000000000002' = value",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t_dates WHERE '100000000000000000000002' = value",
+            .values = literal_left_decimal_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "literal-left string decimal equality predicate",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT * FROM t1 WHERE '2010-02-01 09:31:02.0' <= a",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t_dates WHERE '2010-02-01 09:31:02.0' <= a",
+            .values = literal_left_datetime_le_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "literal-left string datetime less-or-equal predicate",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT * FROM t1 WHERE '2010-02-01 09:31:02.0' >= a",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t_dates WHERE '2010-02-01 09:31:02.0' < a",
+            .values = literal_left_datetime_lt_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "literal-left string datetime less-than predicate",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "select * from v1 where '2005.02.02'=f1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t_dates WHERE '2010-02-01 09:31:02.0' >= a",
+            .values = literal_left_datetime_ge_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "literal-left string datetime greater-or-equal predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t_dates WHERE '2010-02-02 00:00:00.0' > a",
+            .values = literal_left_datetime_gt_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "literal-left string datetime greater-than predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t_dates WHERE '5' <> value",
+            .values = literal_left_decimal_ne_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "literal-left string decimal not-equal predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM v1 WHERE '2005.02.02'=f1",
+            .values = literal_left_dotted_date_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "literal-left dotted date equality predicate",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM v1 WHERE '2005.02.02'<=>f1",
+            .values = literal_left_dotted_date_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "literal-left dotted date null-safe equality predicate",
         }
     );
     failures += execute_error(

@@ -6775,6 +6775,11 @@ predicate_atom(A) ::= predicate_scalar_literal(L) predicate_comparison_operator(
     A = mylite_sql_parser_make_comparison_predicate(
         state, L, O.token, O.operator_kind, C);
 }
+predicate_atom(A) ::= literal_left_comparison_value(L) predicate_comparison_operator(O)
+        qualified_identifier(C). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, L, O.token, O.operator_kind, C);
+}
 predicate_atom(A) ::= predicate_scalar_literal(C) BETWEEN(B)
         predicate_range_value(L) AND predicate_range_value(U). {
     A = mylite_sql_parser_make_between_predicate(state, C, B, L, U);
@@ -8633,6 +8638,10 @@ predicate_scalar_literal(A) ::= SYSTEM_VARIABLE(T). {
 }
 predicate_scalar_literal(A) ::= user_variable(T). {
     A = T;
+}
+
+literal_left_comparison_value(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
 }
 
 predicate_comparison_operator(A) ::= EQUAL(T). {

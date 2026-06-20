@@ -1826,8 +1826,18 @@ static int test_count_star_aggregate(void) {
     first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
     failures += parser_test_expect_node(
         first_expression,
-        MYLITE_SQL_AST_GENERIC_FUNCTION,
-        "count distinct expression placeholder"
+        MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION,
+        "count distinct row-scalar expression function"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 0U),
+        MYLITE_SQL_AST_CONCAT_FUNCTION,
+        "count distinct concat argument"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 1U),
+        MYLITE_SQL_AST_AGGREGATE_DISTINCT_MODIFIER,
+        "count distinct concat modifier"
     );
     mylite_sql_parse_result_deinit(&result);
     failures +=
@@ -1836,8 +1846,18 @@ static int test_count_star_aggregate(void) {
     first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
     failures += parser_test_expect_node(
         first_expression,
-        MYLITE_SQL_AST_GENERIC_FUNCTION,
-        "count distinct literal placeholder"
+        MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION,
+        "count distinct literal function"
+    );
+    failures += parser_test_expect_literal(
+        parser_test_child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "count distinct literal argument"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 1U),
+        MYLITE_SQL_AST_AGGREGATE_DISTINCT_MODIFIER,
+        "count distinct literal modifier"
     );
     mylite_sql_parse_result_deinit(&result);
     failures +=
@@ -1846,14 +1866,41 @@ static int test_count_star_aggregate(void) {
     first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
     failures += parser_test_expect_node(
         first_expression,
-        MYLITE_SQL_AST_GENERIC_FUNCTION,
-        "count distinct boolean placeholder"
+        MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION,
+        "count distinct boolean function"
+    );
+    failures += parser_test_expect_literal(
+        parser_test_child_at(first_expression, 0U),
+        MYLITE_SQL_AST_LITERAL_TRUE,
+        "count distinct boolean argument"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 1U),
+        MYLITE_SQL_AST_AGGREGATE_DISTINCT_MODIFIER,
+        "count distinct boolean modifier"
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
         "SELECT COUNT(DISTINCT id + 1) FROM t;",
         MYLITE_SQL_PARSE_OK,
         &result
+    );
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION,
+        "count distinct arithmetic expression function"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 0U),
+        MYLITE_SQL_AST_BINARY_EXPRESSION,
+        "count distinct arithmetic argument"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 1U),
+        MYLITE_SQL_AST_AGGREGATE_DISTINCT_MODIFIER,
+        "count distinct arithmetic modifier"
     );
     mylite_sql_parse_result_deinit(&result);
 

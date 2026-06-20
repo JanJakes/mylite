@@ -10,7 +10,8 @@ joined descriptor-source envelope, and the baseline `WHERE` predicate subset.
 
 The feature is intentionally not full aggregate support. It admits supported
 `COUNT(*)`, `COUNT(literal)`, `COUNT(column)`, limited row-scalar `COUNT(expr)`,
-and `COUNT(DISTINCT column)` select items in the documented source envelopes.
+`COUNT(DISTINCT column)`, and single-expression distinct literal or supported
+row-scalar count items in the documented source envelopes.
 Bare `COUNT(*)` also uses the current joined descriptor-source envelope.
 Grouped count forms are covered by grouped-aggregate specs. This slice does
 not add broad aggregate expressions, window functions, or other aggregate
@@ -77,6 +78,10 @@ Observed against the local `mysql:8.4.9` runtime using TCP:
 - `COUNT(IFNULL(column, literal))` counts non-`NULL` row-scalar results.
   `COUNT(NULLIF(column, literal))` skips row-scalar results that evaluate to
   `NULL`.
+- `COUNT(DISTINCT literal_or_expr)` counts unique non-`NULL` values in the
+  supported literal and row-scalar expression subset. Non-`NULL` literal
+  arguments return `1` for nonempty matched sets, `NULL` literal arguments and
+  empty matched sets return `0`.
 - `SELECT COUNT(*) FROM table WHERE ...` follows normal MySQL predicate
   semantics. This slice reuses only the already specified descriptor-driven
   integer/`NULL` predicate subset.
@@ -101,6 +106,9 @@ The implementation must add:
   [ORDER BY descriptor_order_key] [LIMIT row_count [OFFSET offset]]`;
 - limited descriptor-driven row-scalar `COUNT(expr)` over the existing
   aggregate row-scalar expression subset, including grouped `COUNT(expr)`;
+- limited single-expression `COUNT(DISTINCT expr)` over the existing aggregate
+  row-scalar expression subset, plus `COUNT(DISTINCT literal)`, in current
+  count-expression aggregate paths;
 - descriptor-driven `SELECT COUNT(*) FROM joined_descriptor_sources
   [WHERE predicate]` within the current inner/cartesian/comma/no-op
   `STRAIGHT_JOIN` and supported outer-join source envelope;
@@ -128,9 +136,10 @@ This feature must not implement:
 
 - unsupported `COUNT(expr)` shapes outside the aggregate row-scalar subset,
   joined `COUNT(literal)`, joined `COUNT(column)`, joined `COUNT(DISTINCT
-  column)`, `COUNT()` with no argument, `COUNT(table.*)`, aggregate
-  arithmetic, aggregate comparisons, table-backed mixed projections, or
-  general expression projection;
+  column)`, grouped `COUNT(DISTINCT row_scalar_expr)`, multi-expression
+  `COUNT(DISTINCT expr, expr...)`, `COUNT()` with no argument, `COUNT(table.*)`,
+  aggregate arithmetic, aggregate comparisons, table-backed mixed projections,
+  or general expression projection;
 - `GROUP BY`, `HAVING`, unsupported `ORDER BY` expressions, window `OVER`
   clauses, CTEs, subqueries, unions, locking clauses, query modifiers,
   optimizer hints, `INTO`, or arbitrary SQLite SQL pass-through;
@@ -175,6 +184,7 @@ SELECT COUNT(*)
 SELECT COUNT(*) FROM DUAL
 SELECT COUNT(...) FROM table_name [WHERE predicate] [ORDER BY order_key] [LIMIT limit]
 SELECT COUNT(row_scalar_expr) FROM table_name [WHERE predicate] [LIMIT limit]
+SELECT COUNT(DISTINCT row_scalar_expr) FROM table_name [WHERE predicate] [LIMIT limit]
 SELECT COUNT(*) FROM joined_descriptor_sources [WHERE predicate]
 ```
 
@@ -205,9 +215,12 @@ MyLite Lemon-syntax grammar snippets:
 ```lemon
 expression ::= count_star_function.
 expression ::= count_row_scalar_function.
+expression ::= count_literal_function.
 
 count_star_function ::= COUNT LPAREN STAR RPAREN.
 count_row_scalar_function ::= COUNT LPAREN count_row_scalar_argument RPAREN.
+count_row_scalar_function ::= COUNT LPAREN DISTINCT count_row_scalar_argument RPAREN.
+count_literal_function ::= COUNT LPAREN DISTINCT count_literal RPAREN.
 ```
 
 The parser may admit `COUNT(*)` anywhere the expression grammar is currently

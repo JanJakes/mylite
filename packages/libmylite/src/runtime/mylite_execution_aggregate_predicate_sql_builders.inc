@@ -114,6 +114,12 @@ static int append_count_function_sql(
         }
     }
     if (rc == MYLITE_OK && plan->function == PLANNED_COUNT_LITERAL) {
+        if (plan->count_is_distinct) {
+            rc = mylite_dynamic_string_append(string, "DISTINCT ");
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
         rc = append_numbered_parameter(string, 1U);
     }
     return rc;
@@ -474,6 +480,12 @@ static int append_column_aggregate_count_sql(
         }
     }
     if (rc == MYLITE_OK && item->function == PLANNED_COLUMN_AGGREGATE_COUNT_LITERAL) {
+        if (item->aggregate_is_distinct) {
+            rc = mylite_dynamic_string_append(string, "DISTINCT ");
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
         rc = append_numbered_parameter(string, *next_parameter);
         if (rc == MYLITE_OK) {
             ++(*next_parameter);

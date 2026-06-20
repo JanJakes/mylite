@@ -186,6 +186,7 @@ static int plan_count(
     out_plan->alias = child_at(select_item, 1U);
     count_expression = unwrap_parenthesized_expression(expression);
     out_plan->function = count_function_from_expression(count_expression);
+    out_plan->count_is_distinct = aggregate_function_is_distinct(count_expression);
     if (mylite_sql_ast_node_child_count(select_list) != 1U) {
         set_unsupported_error(database, count_exactly_one_message(out_plan->function));
         return MYLITE_ERROR;

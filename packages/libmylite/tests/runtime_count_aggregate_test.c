@@ -873,6 +873,105 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
     failures += expect_count_query(
         database,
         (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT 1) FROM numbers",
+            .column = "COUNT(DISTINCT 1)",
+            .value = "1",
+            .context = "distinct literal count expression",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT NULL) FROM numbers",
+            .column = "COUNT(DISTINCT NULL)",
+            .value = "0",
+            .context = "distinct null literal count expression",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT 1) FROM numbers WHERE id > 99",
+            .column = "COUNT(DISTINCT 1)",
+            .value = "0",
+            .context = "empty distinct literal count expression",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT n + 1) FROM numbers",
+            .column = "COUNT(DISTINCT n + 1)",
+            .value = "2",
+            .context = "row-scalar arithmetic distinct count expression",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT n + nn) FROM numbers",
+            .column = "COUNT(DISTINCT n + nn)",
+            .value = "3",
+            .context = "two-column row-scalar arithmetic distinct count expression",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT IFNULL(n, 0)) FROM numbers",
+            .column = "COUNT(DISTINCT IFNULL(n, 0))",
+            .value = "3",
+            .context = "row-scalar ifnull distinct count expression",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT NULLIF(n, 20)) FROM numbers",
+            .column = "COUNT(DISTINCT NULLIF(n, 20))",
+            .value = "1",
+            .context = "row-scalar nullif distinct count expression",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT LENGTH(name)) FROM numbers",
+            .column = "COUNT(DISTINCT LENGTH(name))",
+            .value = "2",
+            .context = "row-scalar length distinct count expression",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT CONCAT(name, '!')) FROM numbers",
+            .column = "COUNT(DISTINCT CONCAT(name, '!'))",
+            .value = "2",
+            .context = "row-scalar concat distinct count expression",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT IFNULL(name, '')) FROM numbers",
+            .column = "COUNT(DISTINCT IFNULL(name, ''))",
+            .value = "3",
+            .context = "row-scalar string ifnull distinct count expression",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT CAST(n AS CHAR)) FROM numbers",
+            .column = "COUNT(DISTINCT CAST(n AS CHAR))",
+            .value = "2",
+            .context = "row-scalar cast distinct count expression",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
             .sql = "SELECT ALL COUNT(n) FROM numbers",
             .column = "COUNT(n)",
             .value = "3",
@@ -2524,33 +2623,6 @@ static int test_count_aggregate_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "SELECT supports only descriptor table columns",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT COUNT(DISTINCT 1) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT COUNT(DISTINCT TRUE) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SELECT supports only descriptor table columns",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT COUNT(DISTINCT n + 1) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
         }
     );
     failures += execute_error(

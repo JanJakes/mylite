@@ -1989,6 +1989,7 @@ struct planned_count {
     const struct mylite_sql_ast_node *expression;
     const struct mylite_sql_ast_node *alias;
     enum planned_count_function function;
+    bool count_is_distinct;
     struct table_name_resolution source;
     struct mylite_catalog_table_descriptor table;
     struct mylite_catalog_column_descriptor count_column;
@@ -2011,6 +2012,7 @@ struct planned_count_expression_aggregate_item {
     enum planned_count_expression_aggregate_item_kind kind;
     const struct mylite_sql_ast_node *expression;
     const struct mylite_sql_ast_node *alias;
+    bool is_distinct;
     struct planned_select_predicate predicate;
     struct planned_row_scalar_expression row_scalar_expression;
 };

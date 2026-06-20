@@ -52,6 +52,9 @@ static bool count_expression_aggregate_select_item_is_supported(
     bool *inout_has_expression_count,
     bool *inout_has_count_star
 );
+static const struct mylite_sql_ast_node *count_expression_aggregate_argument(
+    const struct mylite_sql_ast_node *expression
+);
 static int append_count_expression_aggregate_result_columns(
     struct mylite_db *database,
     mylite_result *result,
@@ -439,6 +442,7 @@ static int append_count_expression_aggregate_item(
 
     item.expression = child_at(select_item, 0U);
     item.alias = child_at(select_item, 1U);
+    item.is_distinct = aggregate_function_is_distinct(expression);
     if (expression->kind == MYLITE_SQL_AST_COUNT_STAR_FUNCTION) {
         item.kind = PLANNED_COUNT_EXPRESSION_AGGREGATE_STAR;
     } else {
@@ -460,13 +464,12 @@ static int append_count_expression_aggregate_item(
                 planned_select_predicate_deinit(&item.predicate);
                 return rc;
             }
-        } else if (
-            expression->kind == MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION &&
-            mylite_sql_ast_node_child_count(expression) == 1U
-        ) {
+        } else if (expression->kind == MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION &&
+                   count_expression_aggregate_argument(expression) != NULL) {
             const struct mylite_catalog_table_descriptor *table =
                 select_source_context_is_joined(source_context) ? NULL : &out_plan->source.table;
-            const struct mylite_sql_ast_node *argument = child_at(expression, 0U);
+            const struct mylite_sql_ast_node *argument =
+                count_expression_aggregate_argument(expression);
 
             if (row_scalar_expression_contains_fractional_division_attempt(argument)) {
                 set_unsupported_error(
@@ -530,10 +533,10 @@ static const struct mylite_sql_ast_node *count_expression_aggregate_predicate_no
 
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL || expression->kind != MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION ||
-        mylite_sql_ast_node_child_count(expression) != 1U) {
+        count_expression_aggregate_argument(expression) == NULL) {
         return NULL;
     }
-    nullif_expression = child_at(expression, 0U);
+    nullif_expression = count_expression_aggregate_argument(expression);
     if (nullif_expression == NULL || nullif_expression->kind != MYLITE_SQL_AST_NULLIF_FUNCTION ||
         mylite_sql_ast_node_child_count(nullif_expression) != 2U) {
         return NULL;
@@ -567,12 +570,36 @@ static bool count_expression_aggregate_select_item_is_supported(
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION &&
-        mylite_sql_ast_node_child_count(expression) == 1U) {
+        count_expression_aggregate_argument(expression) != NULL) {
         *inout_has_expression_count = true;
         return true;
     }
 
     return false;
+}
+
+static const struct mylite_sql_ast_node *count_expression_aggregate_argument(
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_ast_node *argument = NULL;
+    const struct mylite_sql_ast_node *child = NULL;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION) {
+        return NULL;
+    }
+    child = child_at(expression, 0U);
+    while (child != NULL) {
+        if (child->kind != MYLITE_SQL_AST_AGGREGATE_DISTINCT_MODIFIER) {
+            if (argument != NULL) {
+                return NULL;
+            }
+            argument = child;
+        }
+        child = child->next_sibling;
+    }
+
+    return argument;
 }
 
 static void planned_count_expression_aggregate_deinit(
@@ -727,6 +754,12 @@ static int append_count_expression_aggregate_select_item_sql(
     } else if (
         rc == MYLITE_OK && item->kind == PLANNED_COUNT_EXPRESSION_AGGREGATE_NULLIF_PREDICATE
     ) {
+        if (item->is_distinct) {
+            rc = mylite_dynamic_string_append(string, "DISTINCT ");
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
         rc = mylite_dynamic_string_append(string, "NULLIF((");
         if (rc == MYLITE_OK) {
             rc = append_select_predicate_expression_sql_without_exists(
@@ -739,7 +772,17 @@ static int append_count_expression_aggregate_select_item_sql(
             rc = mylite_dynamic_string_append(string, "), 0)");
         }
     } else if (rc == MYLITE_OK && item->kind == PLANNED_COUNT_EXPRESSION_AGGREGATE_ROW_SCALAR) {
+        if (item->is_distinct) {
+            rc = mylite_dynamic_string_append(string, "DISTINCT ");
+        }
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
         rc = append_row_scalar_expression_sql(string, &item->row_scalar_expression, next_parameter);
+        if (rc == MYLITE_OK &&
+            row_scalar_expression_uses_string_collation(&item->row_scalar_expression)) {
+            rc = append_string_key_collation_sql(string);
+        }
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, ')');

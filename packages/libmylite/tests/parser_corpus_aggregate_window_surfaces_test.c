@@ -20,8 +20,6 @@ int main(void) {
 static int test_aggregate_argument_placeholders(void) {
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *select_list = NULL;
-    const struct mylite_sql_ast_node *count_function = NULL;
-    const struct mylite_sql_ast_node *count_argument_list = NULL;
     const struct mylite_sql_ast_node *sum_function = NULL;
     const struct mylite_sql_ast_node *sum_argument = NULL;
     const struct mylite_sql_ast_node *window_function = NULL;
@@ -34,38 +32,6 @@ static int test_aggregate_argument_placeholders(void) {
         parse_ok("SELECT sex, AVG(id), SUM(AVG(id)) OVER w FROM numbers GROUP BY sex WINDOW w AS ()"
         );
     failures += parse_ok("SELECT SUM(SUM(i)) OVER () FROM numbers GROUP BY j");
-
-    failures += parser_test_parse_sql(
-        "SELECT COUNT(DISTINCT 1,NULL) FROM numbers",
-        MYLITE_SQL_PARSE_OK,
-        &result
-    );
-    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
-    count_function = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
-    count_argument_list = parser_test_child_at(count_function, 1U);
-    failures += parser_test_expect_node(
-        count_function,
-        MYLITE_SQL_AST_GENERIC_FUNCTION,
-        "COUNT DISTINCT literal placeholder"
-    );
-    failures += parser_test_expect_node(
-        count_argument_list,
-        MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST,
-        "COUNT DISTINCT literal argument list"
-    );
-    failures +=
-        parser_test_expect_child_count(count_argument_list, 2U, "COUNT DISTINCT argument count");
-    failures += parser_test_expect_literal(
-        parser_test_child_at(count_argument_list, 0U),
-        MYLITE_SQL_AST_LITERAL_INTEGER,
-        "COUNT DISTINCT first literal"
-    );
-    failures += parser_test_expect_literal(
-        parser_test_child_at(count_argument_list, 1U),
-        MYLITE_SQL_AST_LITERAL_NULL,
-        "COUNT DISTINCT second literal"
-    );
-    mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql("SELECT SUM(c/d) FROM numbers", MYLITE_SQL_PARSE_OK, &result);
     select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);

@@ -96,6 +96,12 @@ static int test_joined_aggregate_values_and_persistence(void) {
         "4",
         "0",
     };
+    static const char *const distinct_count_expression_columns[] = {
+        "COUNT(*)",
+        "COUNT(DISTINCT c.score + 1)",
+        "COUNT(DISTINCT IFNULL(c.score, 0))",
+    };
+    static const char *const distinct_count_expression_values[] = {"5", "2", "3"};
     static const char *const min_columns[] = {"id", "MIN(c.score)"};
     static const char *const min_values[] = {"1", "5", "2", "7", "3", NULL, "4", NULL};
     static const char *const max_columns[] = {"id", "MAX(c.score)"};
@@ -256,6 +262,19 @@ static int test_joined_aggregate_values_and_persistence(void) {
             .values = binary_count_distinct_values,
             .row_count = 4U,
             .context = "left join grouped binary count distinct skips null-extended rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*), COUNT(DISTINCT c.score + 1), "
+                   "COUNT(DISTINCT IFNULL(c.score, 0)) "
+                   "FROM posts AS p LEFT JOIN comments AS c ON p.id = c.post_id",
+            .columns = distinct_count_expression_columns,
+            .column_count = 3U,
+            .values = distinct_count_expression_values,
+            .row_count = 1U,
+            .context = "left join distinct count row-scalar expressions",
         }
     );
     failures += expect_query(

@@ -12180,6 +12180,26 @@ expression(A) ::= COUNT(T) LPAREN DISTINCT qualified_identifier(B) COMMA functio
             state, T, mylite_sql_parser_prepend_function_argument(state, B, C), R),
         W);
 }
+expression(A) ::= COUNT(T) LPAREN(L) DISTINCT(D) count_row_scalar_aggregate_argument(B) RPAREN(R)
+                  aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_attach_aggregate_distinct_modifier(
+            state,
+            mylite_sql_parser_make_no_space_one_argument_function(
+                state, T, L, MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION, B, R),
+            &D),
+        W);
+}
+expression(A) ::= COUNT(T) LPAREN(L) DISTINCT(D) count_literal(B) RPAREN(R)
+                  aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_attach_aggregate_distinct_modifier(
+            state,
+            mylite_sql_parser_make_no_space_one_argument_function(
+                state, T, L, MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION, B, R),
+            &D),
+        W);
+}
 expression(A) ::= COUNT(T) LPAREN DISTINCT count_distinct_placeholder_argument(B) RPAREN(R)
                   aggregate_window_opt(W). {
     A = mylite_sql_parser_attach_function_window_clause(
@@ -12207,11 +12227,40 @@ expression(A) ::= COUNT(T) LPAREN(L) count_row_scalar_aggregate_argument(B) RPAR
             state, T, L, MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION, B, R),
         W);
 }
-count_distinct_placeholder_argument(A) ::= aggregate_literal(B). {
-    A = B;
+count_distinct_placeholder_argument(A) ::= DECIMAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL);
 }
-count_distinct_placeholder_argument(A) ::= CONCAT(T) LPAREN function_argument_list(B) RPAREN(R). {
-    A = mylite_sql_parser_make_list_argument_function(state, T, MYLITE_SQL_AST_CONCAT_FUNCTION, B, R);
+count_distinct_placeholder_argument(A) ::= FLOAT(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT);
+}
+count_distinct_placeholder_argument(A) ::= string_text_literal(V). {
+    A = V;
+}
+count_distinct_placeholder_argument(A) ::= HEX_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_HEX);
+}
+count_distinct_placeholder_argument(A) ::= BIT_LITERAL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_BIT);
+}
+count_distinct_placeholder_argument(A) ::= PLUS(P) DECIMAL(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL));
+}
+count_distinct_placeholder_argument(A) ::= PLUS(P) FLOAT(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, P, MYLITE_SQL_AST_OPERATOR_POSITIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT));
+}
+count_distinct_placeholder_argument(A) ::= MINUS(M) DECIMAL(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_DECIMAL));
+}
+count_distinct_placeholder_argument(A) ::= MINUS(M) FLOAT(T). {
+    A = mylite_sql_parser_make_unary_expression(
+        state, M, MYLITE_SQL_AST_OPERATOR_NEGATIVE,
+        mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FLOAT));
 }
 count_distinct_placeholder_argument(A) ::= BINARY(T) expression(B). [BINARY] {
     A = mylite_sql_parser_make_unary_binary_expression(state, T, B);

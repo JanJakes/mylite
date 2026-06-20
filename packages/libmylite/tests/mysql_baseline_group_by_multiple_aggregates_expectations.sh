@@ -143,7 +143,8 @@ having_order=$(run_mysql \
      SELECT g, COUNT(*) AS c, SUM(n) AS s FROM t GROUP BY g HAVING s IS NOT NULL ORDER BY c DESC;
      SELECT g, COUNT(*) AS c, SUM(n) AS s FROM t GROUP BY g HAVING SUM(n) >= 30 ORDER BY s DESC;
      SELECT g, COUNT(*) AS c, SUM(n) AS s FROM t GROUP BY g ORDER BY s ASC;
-     SELECT g, COUNT(*) AS c, SUM(n) AS s FROM t GROUP BY g ORDER BY s DESC LIMIT 2;"
+     SELECT g, COUNT(*) AS c, SUM(n) AS s FROM t GROUP BY g ORDER BY s DESC LIMIT 2;
+     SELECT g, COUNT(n) AS cn FROM t GROUP BY g ORDER BY cn DESC LIMIT 2;"
 )
 expect_value "having alias keeps group one" "1	3	30" "$(printf '%s\n' "$having_order" | sed -n '1p')"
 expect_value "having alias keeps null group" "NULL	2	5" "$(printf '%s\n' "$having_order" | sed -n '2p')"
@@ -153,6 +154,8 @@ expect_value "order aggregate low next" "NULL	2	5" "$(printf '%s\n' "$having_ord
 expect_value "order aggregate high last" "1	3	30" "$(printf '%s\n' "$having_order" | sed -n '6p')"
 expect_value "order aggregate desc first" "1	3	30" "$(printf '%s\n' "$having_order" | sed -n '7p')"
 expect_value "order aggregate desc second" "NULL	2	5" "$(printf '%s\n' "$having_order" | sed -n '8p')"
+expect_value "count column alias order first" "1	2" "$(printf '%s\n' "$having_order" | sed -n '9p')"
+expect_value "count column alias order second" "NULL	1" "$(printf '%s\n' "$having_order" | sed -n '10p')"
 
 aggregate_order=$(run_mysql \
     "USE ${DATABASE};

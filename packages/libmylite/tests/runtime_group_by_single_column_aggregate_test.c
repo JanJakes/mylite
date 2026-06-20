@@ -156,6 +156,8 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const multi_having_columns[] = {"g", "c", "s"};
     static const char *const multi_having_values[] = {"2", "2", "50"};
     static const char *const multi_order_values[] = {"2", "2", "50", "1", "2", "10"};
+    static const char *const count_column_alias_order_columns[] = {"g", "cn"};
+    static const char *const count_column_alias_order_values[] = {"2", "2", "1", "1"};
     static const char *const multi_order_tiebreak_values[] = {
         "2",
         "2",
@@ -1001,6 +1003,18 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = multi_order_tiebreak_values,
             .row_count = 3U,
             .context = "multi aggregate order by aggregate alias and grouped key",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(n) AS cn FROM grouped_numbers GROUP BY g "
+                   "ORDER BY cn DESC LIMIT 2",
+            .columns = count_column_alias_order_columns,
+            .column_count = 2U,
+            .values = count_column_alias_order_values,
+            .row_count = 2U,
+            .context = "grouped count column aggregate alias order",
         }
     );
     failures += expect_grouped_query(

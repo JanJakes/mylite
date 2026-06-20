@@ -810,7 +810,7 @@ static int bind_grouped_aggregate_parameters_at(
         if (plan->having.value_uses_uint64_order_key) {
             rc = bind_text_parameter(statement, *parameter_index, plan->having.uint64_order_key);
         } else {
-            rc = bind_int64_parameter(statement, *parameter_index, plan->having.value.integer);
+            rc = bind_planned_value_parameter(statement, *parameter_index, &plan->having.value);
         }
         if (rc == MYLITE_OK) {
             ++(*parameter_index);

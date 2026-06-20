@@ -514,6 +514,19 @@ static int convert_grouped_having_integer_literal(
     enum planned_grouped_having_operand operand,
     struct planned_value *out_value
 );
+static int convert_grouped_having_any_value_alias_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_grouped_aggregate *plan,
+    enum planned_grouped_having_operand operand,
+    struct planned_value *out_value,
+    bool *out_handled
+);
+static int convert_grouped_having_string_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_value *out_value
+);
 static bool grouped_having_operand_uses_uint64_order_key(
     const struct planned_grouped_aggregate *plan,
     enum planned_grouped_having_operand operand

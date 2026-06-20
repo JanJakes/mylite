@@ -1269,6 +1269,14 @@ static int append_grouped_having_aggregate_sql(
     if (item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
         return append_grouped_avg_having_operand_sql(string, plan, item, next_parameter);
     }
+    if (item->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
+        return append_descriptor_value_sql_for_source(
+            string,
+            &item->aggregate_column,
+            item->aggregate_column_source_index,
+            plan->source_count > 0U
+        );
+    }
     return append_grouped_aggregate_expression_sql(string, plan, item, next_parameter);
 }
 

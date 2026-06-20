@@ -2,7 +2,7 @@
 
 ## Status
 
-This slice documents and verifies grouped `HAVING` predicates on selected
+This slice documents and verifies grouped `HAVING` null predicates on selected
 `ANY_VALUE(column)` aliases:
 
 ```sql
@@ -13,8 +13,9 @@ HAVING value IS [NOT] NULL
 ```
 
 It covers the current descriptor-backed grouped `ANY_VALUE()` envelope and the
-existing grouped alias `HAVING` predicate subset. The `ANY_VALUE()` argument
-must be an unqualified or source-qualified descriptor column.
+existing grouped alias null-predicate `HAVING` subset. The `ANY_VALUE()`
+argument must be an unqualified or source-qualified descriptor column.
+Comparison predicates are covered by the companion alias-comparison slice.
 
 ## Sources
 
@@ -25,6 +26,8 @@ must be an unqualified or source-qualified descriptor column.
   `docs/specs/baseline-any-value-function/specs.md`
 - Baseline grouped aggregate `HAVING`:
   `docs/specs/baseline-having-grouped-aggregate/specs.md`
+- Baseline grouped `ANY_VALUE()` alias comparison `HAVING`:
+  `docs/specs/baseline-grouped-any-value-aggregate-alias-comparison-having/specs.md`
 - MySQL 8.4 Reference Manual, miscellaneous functions:
   https://dev.mysql.com/doc/refman/8.4/en/miscellaneous-functions.html#function_any-value
 - MySQL 8.4 Reference Manual, `SELECT` syntax:
@@ -85,7 +88,8 @@ This slice does not add:
 - repeated `HAVING ANY_VALUE(column)` expression operands, which MySQL rejects
   with unknown-column diagnostics in the verified envelope;
 - deterministic representative-row selection;
-- broader grouped `HAVING` predicates beyond the existing supported subset;
+- broader grouped `HAVING` predicates beyond the existing supported subset and
+  companion alias-comparison slice;
 - aggregate windows;
 - new source forms beyond the existing grouped `ANY_VALUE()` support.
 

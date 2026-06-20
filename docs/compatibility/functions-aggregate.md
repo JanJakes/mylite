@@ -13,6 +13,8 @@ selected statistical aggregate aliases and repeated selected statistical
 aggregate expressions,
 selected `GROUP_CONCAT()` aggregate aliases and repeated selected
 `GROUP_CONCAT()` expressions with `IS NULL` / `IS NOT NULL`,
+selected `ANY_VALUE()` aggregate aliases with supported null and comparison
+predicates,
 and selected `COUNT()`, `SUM()`, `AVG()`, `MIN()`, and `MAX()` row-scalar
 aggregate expressions in the documented envelopes; see
 [baseline HAVING grouped aggregate](../specs/baseline-having-grouped-aggregate/specs.md)
@@ -25,7 +27,9 @@ and
 and
 [baseline grouped GROUP_CONCAT aggregate alias HAVING](../specs/baseline-grouped-group-concat-aggregate-alias-having/specs.md)
 and
-[baseline grouped selected GROUP_CONCAT aggregate expression HAVING](../specs/baseline-grouped-selected-group-concat-aggregate-expression-having/specs.md).
+[baseline grouped selected GROUP_CONCAT aggregate expression HAVING](../specs/baseline-grouped-selected-group-concat-aggregate-expression-having/specs.md)
+and
+[baseline grouped ANY_VALUE aggregate alias comparison HAVING](../specs/baseline-grouped-any-value-aggregate-alias-comparison-having/specs.md).
 
 The parser also admits common MySQL aggregate-window `OVER` syntax for the
 current `COUNT(*)`, `COUNT(column)`, `COUNT(DISTINCT column)`, supported
@@ -41,7 +45,7 @@ and
 
 | Function | Status | Notes |
 | --- | --- | --- |
-| `ANY_VALUE()` | 🟡 | Limited scalar and row-scalar transparent wrapper, mixed ungrouped `ANY_VALUE(column)`, and grouped descriptor-column forms with alias `HAVING`, alias ordering, and selected/hidden expression ordering. Direct grouped `HAVING ANY_VALUE(column)` operands reject with MySQL-compatible unknown-column diagnostics. Representative values remain arbitrary when a group has different candidates. No mixed/grouped expression arguments, `DISTINCT`, `*`, windows, DML/default/check/generated-column contexts, or deterministic representative-row selection |
+| `ANY_VALUE()` | 🟡 | Limited scalar and row-scalar transparent wrapper, mixed ungrouped `ANY_VALUE(column)`, and grouped descriptor-column forms with alias `HAVING`, alias comparison `HAVING`, alias ordering, and selected/hidden expression ordering. Direct grouped `HAVING ANY_VALUE(column)` operands reject with MySQL-compatible unknown-column diagnostics. Representative values remain arbitrary when a group has different candidates. No mixed/grouped expression arguments, `DISTINCT`, `*`, windows, DML/default/check/generated-column contexts, or deterministic representative-row selection |
 | `AVG()` | 🟡 | Limited mixed ungrouped `AVG([DISTINCT] expr)` over one descriptor-backed persistent base table with optional source alias, source-qualified operands, baseline `WHERE`, aliases, `LIMIT`, literals, and supported row-scalar arguments, plus limited grouped `AVG([DISTINCT] expr)` over the current grouped source envelope and selected or hidden grouped aggregate-expression ordering; four-fractional-digit text results are produced while the intermediate signed-64 `SUM(expr)` stays in range, and selected grouped aliases/order expressions order by the exact signed rational `SUM()/COUNT()` value. No exact decimal widening beyond the signed-64 intermediate envelope, full grouping, or executable window forms. See [baseline grouped AVG aggregate alias order](../specs/baseline-grouped-avg-aggregate-alias-order/specs.md) |
 | `BIT_AND()` | 🟡 | Limited mixed ungrouped `BIT_AND(expr)` over one descriptor-backed persistent base table with optional source alias, source-qualified operands, baseline `WHERE`, aliases, `LIMIT`, literals, and supported row-scalar arguments, plus limited grouped form over the current grouped source envelope, selected or hidden grouped aggregate-expression ordering, and selected result `HAVING` predicates over supported nonnegative integer literals; numeric unsigned-64 semantics with neutral all-ones output for empty/all-`NULL` input and unsigned decimal text results. No `DISTINCT`, binary-string evaluation, negative bitwise `HAVING` literals, full grouping, or executable window forms |
 | `BIT_OR()` | 🟡 | Limited mixed ungrouped `BIT_OR(expr)` over one descriptor-backed persistent base table with optional source alias, source-qualified operands, baseline `WHERE`, aliases, `LIMIT`, literals, and supported row-scalar arguments, plus limited grouped form over the current grouped source envelope, selected or hidden grouped aggregate-expression ordering, and selected result `HAVING` predicates over supported nonnegative integer literals; numeric unsigned-64 semantics with neutral `0` output for empty/all-`NULL` input and unsigned decimal text results. No `DISTINCT`, binary-string evaluation, negative bitwise `HAVING` literals, full grouping, or executable window forms |

@@ -794,16 +794,30 @@ static int convert_grouped_having_integer_literal(
             ? group_column->name
             : "aggregate";
     bool is_negative = false;
+    bool handled = false;
     uint64_t magnitude = 0U;
-    int rc = parse_grouped_having_integer_literal(
+    int rc = MYLITE_OK;
+
+    *out_value = (struct planned_value){.is_null = false, .integer = 0};
+    rc = convert_grouped_having_any_value_alias_value(
+        database,
+        value_node,
+        plan,
+        operand,
+        out_value,
+        &handled
+    );
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
+
+    rc = parse_grouped_having_integer_literal(
         database,
         value_node,
         operand_name,
         &is_negative,
         &magnitude
     );
-
-    *out_value = (struct planned_value){.is_null = false, .integer = 0};
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -834,6 +848,88 @@ static int convert_grouped_having_integer_literal(
         operand_name,
         out_value
     );
+}
+
+static int convert_grouped_having_any_value_alias_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_grouped_aggregate *plan,
+    enum planned_grouped_having_operand operand,
+    struct planned_value *out_value,
+    bool *out_handled
+) {
+    const struct planned_grouped_aggregate_item *item = NULL;
+    bool is_negative = false;
+    uint64_t magnitude = 0U;
+    int rc = MYLITE_OK;
+
+    *out_handled = false;
+    if (plan == NULL || operand != PLANNED_GROUPED_HAVING_OPERAND_AGGREGATE ||
+        plan->having.aggregate_index >= plan->aggregate_count) {
+        return MYLITE_OK;
+    }
+
+    item = &plan->aggregates[plan->having.aggregate_index];
+    if (item->function != PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
+        return MYLITE_OK;
+    }
+
+    *out_handled = true;
+    if (column_descriptor_is_string_family(&item->aggregate_column)) {
+        return convert_grouped_having_string_value(database, value_node, out_value);
+    }
+
+    rc = parse_grouped_having_integer_literal(
+        database,
+        value_node,
+        item->aggregate_column.name,
+        &is_negative,
+        &magnitude
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return convert_grouped_having_group_value(
+        database,
+        magnitude,
+        is_negative,
+        &item->aggregate_column,
+        out_value
+    );
+}
+
+static int convert_grouped_having_string_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    struct planned_value *out_value
+) {
+    char *text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
+        mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(
+            database,
+            "HAVING string aggregate aliases support only string literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal_with_policy(
+        database,
+        value_node,
+        "HAVING string aggregate aliases support only string literals",
+        "HAVING string aggregate alias literals do not support NUL bytes",
+        true,
+        &text,
+        &text_length
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return assign_text_value(database, text, text_length, out_value);
 }
 
 static bool grouped_having_operand_uses_uint64_order_key(

@@ -203,6 +203,52 @@ expect_output \
     "USE ${DATABASE}; "\
 "SELECT g, ANY_VALUE(v) AS av, MAX(v) AS mx FROM t GROUP BY g HAVING av IS NULL ORDER BY g;"
 
+having_eq_expected=$(cat <<EXPECTED
+1	10	10
+EXPECTED
+)
+expect_output \
+    "grouped any_value selected alias having equality" \
+    "$having_eq_expected" \
+    "USE ${DATABASE}; "\
+"SELECT g, ANY_VALUE(v) AS av, MAX(v) AS mx FROM t GROUP BY g HAVING av = 10 ORDER BY g;"
+
+having_ne_expected=$(cat <<EXPECTED
+3	20	20
+EXPECTED
+)
+expect_output \
+    "grouped any_value selected alias having inequality" \
+    "$having_ne_expected" \
+    "USE ${DATABASE}; "\
+"SELECT g, ANY_VALUE(v) AS av, MAX(v) AS mx FROM t GROUP BY g HAVING av <> 10 ORDER BY g;"
+
+expect_output \
+    "grouped any_value selected alias having less than" \
+    "$having_eq_expected" \
+    "USE ${DATABASE}; "\
+"SELECT g, ANY_VALUE(v) AS av, MAX(v) AS mx FROM t GROUP BY g HAVING av < 20 ORDER BY g;"
+
+having_string_eq_expected=$(cat <<EXPECTED
+1	ten
+EXPECTED
+)
+expect_output \
+    "grouped any_value selected string alias having equality" \
+    "$having_string_eq_expected" \
+    "USE ${DATABASE}; "\
+"SELECT g, ANY_VALUE(s) AS asv FROM t GROUP BY g HAVING asv = 'TEN' ORDER BY g;"
+
+having_string_ne_expected=$(cat <<EXPECTED
+3	twenty
+EXPECTED
+)
+expect_output \
+    "grouped any_value selected string alias having inequality" \
+    "$having_string_ne_expected" \
+    "USE ${DATABASE}; "\
+"SELECT g, ANY_VALUE(s) AS asv FROM t GROUP BY g HAVING asv <> 'TEN' ORDER BY g;"
+
 expect_error \
     "grouped any_value selected expression having" \
     1054 \

@@ -6199,6 +6199,41 @@ having_predicate_atom(A) ::= having_operand(C) GREATER_EQUAL(O) having_integer_v
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL, V);
 }
+having_predicate_atom(A) ::= having_operand(C) EQUAL(O) STRING(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_EQUAL,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING));
+}
+having_predicate_atom(A) ::= having_operand(C) NULL_SAFE_EQUAL(O) STRING(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING));
+}
+having_predicate_atom(A) ::= having_operand(C) NOT_EQUAL(O) STRING(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_NOT_EQUAL,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING));
+}
+having_predicate_atom(A) ::= having_operand(C) LESS(O) STRING(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_LESS,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING));
+}
+having_predicate_atom(A) ::= having_operand(C) LESS_EQUAL(O) STRING(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_LESS_EQUAL,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING));
+}
+having_predicate_atom(A) ::= having_operand(C) GREATER(O) STRING(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING));
+}
+having_predicate_atom(A) ::= having_operand(C) GREATER_EQUAL(O) STRING(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL,
+        mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING));
+}
 having_predicate_atom(A) ::= having_operand(C). {
     A = C;
 }

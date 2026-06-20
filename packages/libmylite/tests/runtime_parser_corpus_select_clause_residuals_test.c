@@ -132,7 +132,7 @@ static int test_select_clause_residuals(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+            .message_part = "HAVING supports only integer or boolean literals",
         }
     );
     failures += execute_error(

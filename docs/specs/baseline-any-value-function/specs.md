@@ -45,6 +45,9 @@ expectations for this slice:
   guaranteed when a group contains different candidate values.
 - Repeating a selected grouped `ANY_VALUE(column)` expression in `ORDER BY` is
   accepted and sorts by the selected representative value.
+- A selected grouped `ANY_VALUE(column)` alias can be used in comparison
+  `HAVING` predicates over the documented integer and ASCII nonbinary string
+  literal subset.
 - Repeating a selected grouped `ANY_VALUE(column)` expression directly in
   `HAVING` returns MySQL's unknown-column diagnostic for the function argument;
   selected aliases remain the supported grouped `HAVING` form.
@@ -101,6 +104,8 @@ This slice intentionally does not support:
 - expression arguments in mixed ungrouped or grouped `ANY_VALUE()`;
 - hidden or repeated grouped `ANY_VALUE()` order keys outside the documented
   grouped aggregate order-key envelope;
+- grouped `ANY_VALUE()` alias comparison `HAVING` outside the documented
+  integer and ASCII nonbinary string literal subset;
 - direct grouped `HAVING ANY_VALUE(column)` expression operands, which MySQL
   rejects as unknown `HAVING` columns in the verified envelope;
 - `ANY_VALUE(*)`, `ANY_VALUE(DISTINCT ...)`, or multi-argument forms;
@@ -231,9 +236,10 @@ Required diagnostics:
   another selected item already requires the mixed aggregate planner.
   Repeated selected grouped `ANY_VALUE(column)` order expressions reuse the
   selected-result ordering path when descriptor resolution matches exactly one
-  selected result. Direct grouped `HAVING ANY_VALUE(column)` expression
-  operands are rejected before descriptor aggregate matching to mirror MySQL's
-  unknown-column behavior.
+  selected result. Selected alias comparison `HAVING` values are converted
+  against the selected `ANY_VALUE()` argument descriptor. Direct grouped
+  `HAVING ANY_VALUE(column)` expression operands are rejected before descriptor
+  aggregate matching to mirror MySQL's unknown-column behavior.
 - Catalog: untouched. The function does not read or mutate descriptor versions,
   descriptor caches, catalog generation, or `sqlite_schema_generation`.
 - Result builder: scalar and row-scalar result metadata stays on the existing
@@ -277,8 +283,8 @@ Add fast C coverage under `packages/libmylite/tests/`:
   `ORDER BY ANY_VALUE(column)`, and `LIMIT`;
 - diagnostics cover wrong arity, syntax rejections for `*`/`DISTINCT`, unknown
   argument columns, unsupported grouped expression arguments, and unsupported
-  mixed ungrouped aggregate expression arguments, plus direct grouped
-  `HAVING ANY_VALUE(column)` expression operands;
+  mixed ungrouped aggregate expression arguments, grouped alias comparison
+  `HAVING`, plus direct grouped `HAVING ANY_VALUE(column)` expression operands;
 - `ANY_VALUE` remains usable as a table name in tested DDL contexts;
 - no catalog, file-format, VFS, or public ABI changes are introduced.
 

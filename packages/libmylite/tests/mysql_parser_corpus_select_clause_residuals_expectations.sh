@@ -102,6 +102,13 @@ expect_output \
     "USE ${DATABASE}; SELECT a,b FROM t1 GROUP BY a,b HAVING b='hello';"
 
 expect_output \
+    "having alias equality" \
+    "10	10" \
+    "USE ${DATABASE}; "\
+"SELECT t1.a AS t1c1, t2.a AS t2c1 FROM t1 JOIN t2 ON t1.id=t2.id "\
+"HAVING t1c1 = t2c1;"
+
+expect_output \
     "having alias comparison" \
     "20	30" \
     "USE ${DATABASE}; "\

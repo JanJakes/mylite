@@ -31,6 +31,9 @@ SELECT id FROM t1 ORDER BY @rank;
 SELECT a,b FROM t1 GROUP BY a,b HAVING b='hello';
 SELECT t1.a AS t1c1, t2.a AS t2c1
   FROM t1 JOIN t2 ON t1.id=t2.id
+  HAVING t1c1 = t2c1;
+SELECT t1.a AS t1c1, t2.a AS t2c1
+  FROM t1 JOIN t2 ON t1.id=t2.id
   HAVING t1c1 != t2c1;
 SELECT a FROM t1 GROUP BY a HAVING a IN (10,20) ORDER BY a;
 SELECT t1.id,t2.id
@@ -53,8 +56,9 @@ user-variable `ORDER BY` probe is executable in the
 `baseline-user-variable-order-by-keys` slice, the grouped string-column
 comparison probe is executable in the `baseline-grouped-string-comparison-having`
 slice, and the grouped-column `HAVING IN` probe is executable in the
-`baseline-grouped-having-in-predicate` slice. Remaining richer `HAVING` probes
-in this corpus slice stay explicit placeholders.
+`baseline-grouped-having-in-predicate` slice. The joined selected-alias HAVING
+comparison probe is executable in the
+`baseline-joined-alias-having-comparison` slice.
 
 ## Scope
 
@@ -73,11 +77,8 @@ In scope:
   SELECT query blocks;
 - preservation of existing MyLite locking-read behavior as a no-op
   compatibility marker;
-- parser fallback classification for richer `HAVING` residuals outside the
-  supported grouped string comparison and grouped-column `IN` subsets that
-  normal parsing cannot yet execute correctly;
-- deterministic unsupported diagnostics for those recognized residual
-  expression clauses instead of generic syntax errors;
+- executable joined selected-alias equality and inequality `HAVING` comparisons
+  for direct descriptor-column aliases;
 - parser corpus movement measurement over
   `build/perf-data/mysql-server-tests-queries.csv`.
 
@@ -86,8 +87,7 @@ Out of scope:
 - broad expression execution in `ORDER BY` or `HAVING`;
 - executable parameter, function, system-variable, assignment-expression, or
   broad constant order-key semantics outside the documented no-op subsets;
-- full `HAVING` expression planning, selected-alias ambiguity warnings, or
-  MySQL's complete group-resolution rules;
+- full `HAVING` expression planning or MySQL's complete group-resolution rules;
 - validation of locking `OF` target names, duplicate target diagnostics, scoped
   lock behavior, privileges, transaction locking, or subquery lock propagation;
 - `SELECT ... INTO` no-row warning/error parity for tableless limit-offset
@@ -144,33 +144,34 @@ remaining tail is a sequence of supported locking clauses, and executing the
 existing no-op lock marker. Later repeated clauses are accepted for syntax
 compatibility but do not add transaction lock behavior.
 
-Recognized residual `HAVING` forms outside the supported grouped string
-comparison and grouped-column `IN` subsets that fail the normal parser become
-unsupported-utility placeholders. They return the existing deterministic
-unsupported diagnostic and do not route through SQLite, avoiding silent
-differences in MySQL type conversion, collation, aggregate, and alias
-resolution semantics.
+Joined selected-alias equality and inequality `HAVING` comparisons resolve each
+alias through the select list and map the selected descriptor column back to
+the joined source. The resulting same-scope column comparison is planned as a
+SQLite predicate, so rows are filtered by SQLite instead of being materialized
+and filtered in MyLite. Unsupported `HAVING` expressions still return
+deterministic MyLite diagnostics rather than silently relying on SQLite alias
+rules.
 
 ## Tests
 
 Tests cover:
 
 - MySQL 8.4.9 expectations for tableless limits, constant order keys, the
-- user-variable order key, grouped string comparison `HAVING` case, the
-  grouped-column `HAVING IN` case, residual `HAVING` predicates, and repeated
-  locking clauses;
+  user-variable order key, grouped string comparison `HAVING` case, joined
+  selected-alias `HAVING` comparisons, the grouped-column `HAVING IN` case,
+  and repeated locking clauses;
 - parser AST admission for executable tableless limits, constant order keys,
   user-variable order keys, and repeated locking clauses;
-- parser fallback admission for residual `HAVING` surfaces;
 - runtime row counts for tableless `LIMIT` forms;
 - runtime execution of constant and user-variable `ORDER BY` keys as no-op
   keys;
+- runtime execution of joined selected-alias `HAVING` comparisons;
 - runtime execution of repeated locking clauses over a supported joined source;
-- runtime unsupported diagnostics for residual placeholder forms.
+- deterministic unsupported diagnostics for unsupported expression clauses.
 
 ## Compatibility
 
 This is a partial SELECT compatibility improvement. It expands supported
 tableless `LIMIT`, parser-admits repeated locking clauses, and makes selected
-corpus residuals fail predictably as unsupported placeholders. It does not
-claim full MySQL SELECT expression-clause execution.
+corpus residuals execute in narrow MySQL-verified paths. It does not claim full
+MySQL SELECT expression-clause execution.

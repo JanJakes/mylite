@@ -93,10 +93,33 @@ static int reject_ambiguous_joined_order_reference(
     const struct mylite_sql_ast_node *order_key,
     const struct select_source_context *source_context
 );
-static int reject_unsupported_joined_select_having(
+static int plan_joined_select_having_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
-    const struct mylite_sql_ast_node *having_clause
+    const struct mylite_sql_ast_node *having_clause,
+    const struct select_source_context *source_context,
+    struct planned_select_predicate *out_predicate
+);
+static int plan_joined_select_having_alias_comparison(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    struct planned_select_predicate *out_predicate
+);
+static int resolve_joined_select_having_alias_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct mylite_sql_ast_node *alias_reference,
+    const struct mylite_sql_ast_node **out_expression
+);
+static int resolve_joined_select_having_alias_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct mylite_sql_ast_node *alias_reference,
+    const struct select_source_context *source_context,
+    struct mylite_catalog_column_descriptor *out_column,
+    size_t *out_source_index
 );
 static int reject_joined_select_having_reference_error(
     struct mylite_db *database,

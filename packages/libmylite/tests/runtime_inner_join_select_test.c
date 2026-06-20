@@ -184,6 +184,7 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
     static const char *const warning_row_count_rows[] = {"0", "-1"};
     static const char *const hint_rows[] = {"1", "7"};
     static const char *const not_equal_rows[] = {"2", "2"};
+    static const char *const alias_having_rows[] = {"20", "21"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -293,6 +294,18 @@ static int test_inner_join_success_persistence_and_table_lifecycle(void) {
             .column_count = 2U,
             .row_count = 3U,
             .context = "joined simple case projection compares revision ids",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT b.revision_id AS base_rev, r.revision_id AS revision_rev "
+                   "FROM case_base AS b JOIN case_revision AS r ON r.id = b.id "
+                   "HAVING base_rev != revision_rev",
+            .values = alias_having_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "joined having compares selected aliases",
         }
     );
     failures += expect_query_values(

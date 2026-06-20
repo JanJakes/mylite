@@ -30,6 +30,8 @@ static int test_select_clause_residuals(void) {
     static const char *const constant_order_rows[] = {"1", "2"};
     static const char *const locking_rows[] = {"1", "1", "2", "2"};
     static const char *const having_string_rhs_rows[] = {"10", "hello"};
+    static const char *const having_alias_equal_rows[] = {"10", "10"};
+    static const char *const having_alias_not_equal_rows[] = {"20", "30"};
     static const char *const having_in_rows[] = {"10", "20"};
     mylite_db *database = NULL;
     int failures = 0;
@@ -148,6 +150,28 @@ static int test_select_clause_residuals(void) {
             .column_count = 2U,
             .row_count = 1U,
             .context = "having string rhs",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT t1.a AS t1c1, t2.a AS t2c1 FROM t1 JOIN t2 ON t1.id=t2.id "
+                   "HAVING t1c1 = t2c1",
+            .values = having_alias_equal_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "joined having alias equality",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT t1.a AS t1c1, t2.a AS t2c1 FROM t1 JOIN t2 ON t1.id=t2.id "
+                   "HAVING t1c1 != t2c1",
+            .values = having_alias_not_equal_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "joined having alias inequality",
         }
     );
     failures += expect_query_values(

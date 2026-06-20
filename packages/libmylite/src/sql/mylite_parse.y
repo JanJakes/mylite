@@ -6183,6 +6183,14 @@ having_predicate_atom(A) ::= having_operand(C) NOT_EQUAL(O) having_integer_value
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_NOT_EQUAL, V);
 }
+having_predicate_atom(A) ::= having_operand(C) EQUAL(O) qualified_identifier(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_EQUAL, V);
+}
+having_predicate_atom(A) ::= having_operand(C) NOT_EQUAL(O) qualified_identifier(V). {
+    A = mylite_sql_parser_make_comparison_predicate(
+        state, C, O, MYLITE_SQL_AST_OPERATOR_NOT_EQUAL, V);
+}
 having_predicate_atom(A) ::= having_operand(C) LESS(O) having_integer_value(V). {
     A = mylite_sql_parser_make_comparison_predicate(
         state, C, O, MYLITE_SQL_AST_OPERATOR_LESS, V);

@@ -323,6 +323,7 @@ static int plan_joined_select(
     struct joined_select_temp_nodes temp_nodes = {0};
     struct select_optional_clauses clauses = {0};
     struct select_source_context source_context = {0};
+    struct planned_select_predicate having_predicate = {0};
     int rc = MYLITE_OK;
 
     if (joined_select == NULL || joined_select->statement == NULL ||
@@ -362,9 +363,6 @@ static int plan_joined_select(
         );
     }
     if (rc == MYLITE_OK) {
-        rc = reject_unsupported_joined_select_having(database, select_list, clauses.having_clause);
-    }
-    if (rc == MYLITE_OK) {
         rc = plan_joined_select_conditions(
             database,
             temp_nodes.join_condition_nodes,
@@ -390,6 +388,18 @@ static int plan_joined_select(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = plan_joined_select_having_predicate(
+            database,
+            select_list,
+            clauses.having_clause,
+            &source_context,
+            &having_predicate
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = merge_select_predicate_with_and(database, &out_plan->predicate, &having_predicate);
+    }
+    if (rc == MYLITE_OK) {
         rc = plan_select_order(
             database,
             clauses.order_clause,
@@ -409,6 +419,7 @@ static int plan_joined_select(
     if (rc != MYLITE_OK) {
         planned_select_deinit(out_plan);
     }
+    planned_select_predicate_deinit(&having_predicate);
     joined_select_temp_nodes_deinit(&temp_nodes);
     return rc;
 }
@@ -499,19 +510,41 @@ static int reject_ambiguous_joined_order_reference(
     return MYLITE_OK;
 }
 
-static int reject_unsupported_joined_select_having(
+static int plan_joined_select_having_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
-    const struct mylite_sql_ast_node *having_clause
+    const struct mylite_sql_ast_node *having_clause,
+    const struct select_source_context *source_context,
+    struct planned_select_predicate *out_predicate
 ) {
+    const struct mylite_sql_ast_node *predicate_node = NULL;
     int rc = MYLITE_OK;
 
+    *out_predicate = (struct planned_select_predicate){0};
+    out_predicate->qualify_column_references = true;
     if (having_clause == NULL) {
         return MYLITE_OK;
     }
     if (having_clause->kind != MYLITE_SQL_AST_HAVING_CLAUSE) {
-        set_unsupported_error(database, "joined SELECT does not yet support HAVING");
+        set_unsupported_error(database, "joined SELECT HAVING supports only selected aliases");
         return MYLITE_ERROR;
+    }
+
+    predicate_node = unwrap_parenthesized_expression(child_at(having_clause, 0U));
+    if (predicate_node != NULL && predicate_node->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE &&
+        (mylite_sql_ast_node_operator(predicate_node) == MYLITE_SQL_AST_OPERATOR_EQUAL ||
+         mylite_sql_ast_node_operator(predicate_node) == MYLITE_SQL_AST_OPERATOR_NOT_EQUAL)) {
+        rc = plan_joined_select_having_alias_comparison(
+            database,
+            select_list,
+            predicate_node,
+            source_context,
+            out_predicate
+        );
+        if (rc != MYLITE_OK) {
+            planned_select_predicate_deinit(out_predicate);
+        }
+        return rc;
     }
 
     rc = reject_joined_select_having_reference_error(
@@ -525,8 +558,163 @@ static int reject_unsupported_joined_select_having(
         return rc;
     }
 
-    set_unsupported_error(database, "joined SELECT does not yet support HAVING");
+    set_unsupported_error(
+        database,
+        "joined SELECT HAVING supports only selected alias = or <> comparisons"
+    );
     return MYLITE_ERROR;
+}
+
+static int plan_joined_select_having_alias_comparison(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    struct planned_select_predicate *out_predicate
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_COMPARISON,
+        .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+        .value_is_column_reference = true,
+    };
+    size_t node_index = 0U;
+    int rc = resolve_joined_select_having_alias_column(
+        database,
+        select_list,
+        child_at(predicate_node, 0U),
+        source_context,
+        &node.column,
+        &node.column_source_index
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = resolve_joined_select_having_alias_column(
+            database,
+            select_list,
+            child_at(predicate_node, 1U),
+            source_context,
+            &node.value_column,
+            &node.value_column_source_index
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!same_scope_column_comparison_is_supported(&node)) {
+        set_unsupported_error(
+            database,
+            "joined SELECT HAVING alias comparisons support only same-family numeric or "
+            "string descriptor columns"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = append_planned_select_predicate_node(database, out_predicate, &node, &node_index);
+    if (rc == MYLITE_OK) {
+        out_predicate->root_index = node_index;
+        out_predicate->has_root = true;
+        out_predicate->qualify_column_references = true;
+    }
+    return rc;
+}
+
+static int resolve_joined_select_having_alias_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct mylite_sql_ast_node *alias_reference,
+    const struct mylite_sql_ast_node **out_expression
+) {
+    char alias_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    const struct mylite_sql_ast_node *item = NULL;
+    size_t match_count = 0U;
+    int rc = MYLITE_OK;
+
+    *out_expression = NULL;
+    if (alias_reference == NULL || alias_reference->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_unsupported_error(
+            database,
+            "joined SELECT HAVING supports only selected unqualified aliases"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_identifier_text(alias_reference, alias_name, sizeof(alias_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (select_list == NULL || select_list->kind != MYLITE_SQL_AST_SELECT_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    item = child_at(select_list, 0U);
+    while (item != NULL) {
+        bool matches = false;
+
+        rc = select_item_output_name_matches(database, item, alias_name, &matches);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (matches) {
+            ++match_count;
+            *out_expression = unwrap_parenthesized_expression(child_at(item, 0U));
+        }
+        item = item->next_sibling;
+    }
+
+    if (match_count == 0U) {
+        set_unknown_having_column_error(database, alias_name);
+        return MYLITE_ERROR;
+    }
+    if (match_count > 1U) {
+        set_ambiguous_column_reference_error(database, COLUMN_REFERENCE_HAVING, alias_name);
+        return MYLITE_ERROR;
+    }
+    if (*out_expression == NULL ||
+        ((*out_expression)->kind != MYLITE_SQL_AST_IDENTIFIER &&
+         (*out_expression)->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        set_unsupported_error(
+            database,
+            "joined SELECT HAVING supports only selected descriptor-column aliases"
+        );
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static int resolve_joined_select_having_alias_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *select_list,
+    const struct mylite_sql_ast_node *alias_reference,
+    const struct select_source_context *source_context,
+    struct mylite_catalog_column_descriptor *out_column,
+    size_t *out_source_index
+) {
+    const struct mylite_sql_ast_node *expression = NULL;
+    int rc = resolve_joined_select_having_alias_expression(
+        database,
+        select_list,
+        unwrap_parenthesized_expression(alias_reference),
+        &expression
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return resolve_descriptor_column_reference_with_source_index(
+        database,
+        expression,
+        source_context,
+        COLUMN_REFERENCE_HAVING,
+        "joined SELECT HAVING supports only selected descriptor-column aliases",
+        NULL,
+        0U,
+        out_column,
+        out_source_index
+    );
 }
 
 static int reject_joined_select_having_reference_error(

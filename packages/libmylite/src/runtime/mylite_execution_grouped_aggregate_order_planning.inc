@@ -688,8 +688,10 @@ static bool grouped_order_aggregate_items_match(
     if (left->function == PLANNED_GROUPED_AGGREGATE_COUNT_STAR) {
         return true;
     }
-    if (left->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT ||
-        left->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
+    if (left->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
+        return grouped_order_group_concat_items_match(left, right);
+    }
+    if (left->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
         return false;
     }
     if (left->aggregate_uses_row_scalar_expression && right->aggregate_uses_row_scalar_expression) {
@@ -706,6 +708,54 @@ static bool grouped_order_aggregate_items_match(
         left->aggregate_column_source_index,
         &right->aggregate_column,
         right->aggregate_column_source_index
+    );
+}
+
+static bool grouped_order_group_concat_items_match(
+    const struct planned_grouped_aggregate_item *left,
+    const struct planned_grouped_aggregate_item *right
+) {
+    if (left->has_separator != right->has_separator ||
+        !grouped_order_select_orders_match(&left->aggregate_order, &right->aggregate_order)) {
+        return false;
+    }
+    if (left->has_separator &&
+        !grouped_order_planned_values_match(&left->separator, &right->separator)) {
+        return false;
+    }
+    if (left->aggregate_uses_row_scalar_expression && right->aggregate_uses_row_scalar_expression) {
+        return grouped_order_row_scalar_aggregate_expressions_match(
+            &left->aggregate_row_scalar_expression,
+            &right->aggregate_row_scalar_expression
+        );
+    }
+    if (left->aggregate_uses_row_scalar_expression != right->aggregate_uses_row_scalar_expression) {
+        return false;
+    }
+    return planned_grouped_aggregate_columns_match(
+        &left->aggregate_column,
+        left->aggregate_column_source_index,
+        &right->aggregate_column,
+        right->aggregate_column_source_index
+    );
+}
+
+static bool grouped_order_select_orders_match(
+    const struct planned_select_order *left,
+    const struct planned_select_order *right
+) {
+    if (left->has_order != right->has_order || left->direction != right->direction ||
+        left->item_count != right->item_count) {
+        return false;
+    }
+    if (!left->has_order) {
+        return true;
+    }
+    return planned_grouped_aggregate_columns_match(
+        &left->column,
+        left->column_source_index,
+        &right->column,
+        right->column_source_index
     );
 }
 

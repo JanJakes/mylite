@@ -93,16 +93,27 @@ grouped_having	2	delta:echo
 grouped_alias_asc	3	NULL
 grouped_alias_asc	1	alpha:beta
 grouped_alias_asc	2	delta:echo
+grouped_expr_asc	3	NULL
+grouped_expr_asc	1	alpha:beta
+grouped_expr_asc	2	delta:echo
+grouped_expr_desc	2	delta:echo
+grouped_expr_desc	1	alpha:beta
+grouped_expr_desc	3	NULL
 grouped_alias_desc	2	delta:echo
 grouped_alias_desc	1	alpha:beta
 grouped_expr_alias	3	NULL
 grouped_expr_alias	1	alphaA|betaB
 grouped_expr_alias	2	deltaD|echoE
+grouped_expr_expr	3	NULL
+grouped_expr_expr	1	alphaA|betaB
+grouped_expr_expr	2	deltaD|echoE
 grouped_alias_case	3	NULL
 grouped_alias_case	2	alpha
 grouped_alias_case	1	Bravo
 grouped_distinct	1	alpha:beta
 grouped_distinct	2	delta:echo
+grouped_distinct_expr	1	alpha:beta
+grouped_distinct_expr	2	delta:echo
 status	-1	0
 space_ignore	alpha,beta,delta,echo
 EXPECTED
@@ -157,14 +168,23 @@ expect_output \
 "FROM t GROUP BY g HAVING g = 2; "\
 "SELECT 'grouped_alias_asc', g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "\
 "FROM t GROUP BY g ORDER BY names; "\
+"SELECT 'grouped_expr_asc', g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "\
+"FROM t GROUP BY g ORDER BY GROUP_CONCAT(name ORDER BY id SEPARATOR ':'); "\
+"SELECT 'grouped_expr_desc', g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "\
+"FROM t GROUP BY g ORDER BY GROUP_CONCAT(name ORDER BY id SEPARATOR ':') DESC; "\
 "SELECT 'grouped_alias_desc', g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "\
 "FROM t GROUP BY g ORDER BY names DESC LIMIT 2; "\
 "SELECT 'grouped_expr_alias', g, GROUP_CONCAT(CONCAT(name, notes) ORDER BY id SEPARATOR '|') AS names "\
 "FROM t GROUP BY g ORDER BY names; "\
+"SELECT 'grouped_expr_expr', g, GROUP_CONCAT(CONCAT(name, notes) ORDER BY id SEPARATOR '|') AS names "\
+"FROM t GROUP BY g ORDER BY GROUP_CONCAT(CONCAT(name, notes) ORDER BY id SEPARATOR '|'); "\
 "SELECT 'grouped_alias_case', g, GROUP_CONCAT(name ORDER BY id) AS names "\
 "FROM case_names GROUP BY g ORDER BY names; "\
 "SELECT 'grouped_distinct', g, GROUP_CONCAT(DISTINCT name ORDER BY sort_n SEPARATOR ':') "\
 "FROM duplicate_names GROUP BY g ORDER BY g; "\
+"SELECT 'grouped_distinct_expr', g, GROUP_CONCAT(DISTINCT name ORDER BY sort_n SEPARATOR ':') "\
+"FROM duplicate_names GROUP BY g "\
+"ORDER BY GROUP_CONCAT(DISTINCT name ORDER BY sort_n SEPARATOR ':'); "\
 "SELECT 'status', ROW_COUNT(), @@warning_count; "\
 "SET SESSION sql_mode = 'IGNORE_SPACE'; "\
 "SELECT 'space_ignore', GROUP_CONCAT (name ORDER BY id) FROM t;" \

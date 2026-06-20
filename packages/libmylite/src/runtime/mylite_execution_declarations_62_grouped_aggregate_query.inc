@@ -631,6 +631,14 @@ static bool grouped_order_aggregate_items_match(
     const struct planned_grouped_aggregate_item *left,
     const struct planned_grouped_aggregate_item *right
 );
+static bool grouped_order_group_concat_items_match(
+    const struct planned_grouped_aggregate_item *left,
+    const struct planned_grouped_aggregate_item *right
+);
+static bool grouped_order_select_orders_match(
+    const struct planned_select_order *left,
+    const struct planned_select_order *right
+);
 static bool grouped_order_row_scalar_aggregate_expressions_match(
     const struct planned_row_scalar_expression *left,
     const struct planned_row_scalar_expression *right

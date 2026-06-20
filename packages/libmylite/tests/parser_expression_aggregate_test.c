@@ -2881,6 +2881,26 @@ static int test_group_concat_aggregate(void) {
     );
     mylite_sql_parse_result_deinit(&result);
     failures += parser_test_parse_sql(
+        "SELECT g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') "
+        "FROM t GROUP BY g ORDER BY GROUP_CONCAT(name ORDER BY id SEPARATOR ':');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    order_clause = parser_test_first_child_kind(select, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    first_expression = parser_test_child_at(order_clause, 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION,
+        "grouped order group_concat expression"
+    );
+    failures += parser_test_expect_span_text(
+        first_expression,
+        "GROUP_CONCAT(name ORDER BY id SEPARATOR ':')",
+        "grouped order group_concat span"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures += parser_test_parse_sql(
         "SELECT GROUP_CONCAT(id SEPARATOR NULL) FROM t;",
         MYLITE_SQL_PARSE_OK,
         &result

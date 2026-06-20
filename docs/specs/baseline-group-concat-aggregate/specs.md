@@ -105,7 +105,8 @@ The implementation must add:
   optional source alias and optional baseline `WHERE`;
 - grouped form `SELECT group_column, GROUP_CONCAT(...) FROM table
   [WHERE ...] GROUP BY group_column [HAVING group_column_predicate]
-  [ORDER BY group_column_or_selected_group_concat_alias] [LIMIT ...]`;
+  [ORDER BY group_column_or_selected_group_concat_alias_or_matching_expression]
+  [LIMIT ...]`;
 - integer and nonbinary string-family descriptor columns, plus supported
   row-scalar expressions, as concatenated values;
 - aggregate-local order keys limited to `NOT NULL` columns in the current
@@ -200,7 +201,7 @@ SELECT group_column,
   FROM table_name [WHERE predicate]
   GROUP BY group_column
   [HAVING group_column_predicate]
-  [ORDER BY group_column_or_selected_group_concat_alias [ASC | DESC]]
+  [ORDER BY group_column_or_selected_group_concat_alias_or_matching_expression [ASC | DESC]]
   [LIMIT limit_clause]
 ```
 

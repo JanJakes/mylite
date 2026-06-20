@@ -113,8 +113,10 @@ No SQLite fork hook is required.
 
 This slice does not add:
 
-- `ORDER BY GROUP_CONCAT(...)` or other nonselected aggregate expression order
-  keys;
+- repeated selected `ORDER BY GROUP_CONCAT(...)` expression keys, which are
+  covered by
+  `docs/specs/baseline-grouped-selected-group-concat-aggregate-expression-order/specs.md`;
+- nonselected aggregate expression order keys;
 - multiple grouped `GROUP_CONCAT()` results or grouped `GROUP_CONCAT()` mixed
   with other aggregate results;
 - broader `GROUP_CONCAT()` value, distinct, separator, or aggregate-local order

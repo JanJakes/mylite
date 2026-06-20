@@ -160,6 +160,14 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
         "1",
         "alpha:beta",
     };
+    static const char *const grouped_expression_desc_values[] = {
+        "2",
+        "delta:echo",
+        "1",
+        "alpha:beta",
+        "3",
+        NULL,
+    };
     static const char *const grouped_ifnull_alias_order_values[] = {
         "3",
         "",
@@ -512,6 +520,32 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
         database,
         (struct expected_query){
             .sql = "SELECT g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "
+                   "FROM items GROUP BY g "
+                   "ORDER BY GROUP_CONCAT(name ORDER BY id SEPARATOR ':')",
+            .columns = grouped_having_columns,
+            .column_count = 2U,
+            .values = grouped_alias_order_values,
+            .row_count = 3U,
+            .context = "grouped group_concat aggregate expression order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "
+                   "FROM items GROUP BY g "
+                   "ORDER BY GROUP_CONCAT(name ORDER BY id SEPARATOR ':') DESC",
+            .columns = grouped_having_columns,
+            .column_count = 2U,
+            .values = grouped_expression_desc_values,
+            .row_count = 3U,
+            .context = "grouped group_concat aggregate expression descending order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names "
                    "FROM items GROUP BY g ORDER BY names DESC LIMIT 2",
             .columns = grouped_having_columns,
             .column_count = 2U,
@@ -530,6 +564,19 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
             .values = grouped_ifnull_alias_order_values,
             .row_count = 3U,
             .context = "grouped group_concat row-scalar aggregate alias order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, GROUP_CONCAT(IFNULL(name, '') ORDER BY id SEPARATOR ':') AS names "
+                   "FROM items GROUP BY g "
+                   "ORDER BY GROUP_CONCAT(IFNULL(name, '') ORDER BY id SEPARATOR ':')",
+            .columns = grouped_ifnull_columns,
+            .column_count = 2U,
+            .values = grouped_ifnull_alias_order_values,
+            .row_count = 3U,
+            .context = "grouped group_concat row-scalar aggregate expression order",
         }
     );
     failures += expect_query(
@@ -554,6 +601,19 @@ static int test_group_concat_values_persistence_rename_and_drop(void) {
             .values = grouped_distinct_values,
             .row_count = 2U,
             .context = "grouped distinct group_concat",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, GROUP_CONCAT(DISTINCT name ORDER BY sort_n SEPARATOR ':') AS names "
+                   "FROM duplicate_names GROUP BY g "
+                   "ORDER BY GROUP_CONCAT(DISTINCT name ORDER BY sort_n SEPARATOR ':')",
+            .columns = grouped_distinct_columns,
+            .column_count = 2U,
+            .values = grouped_distinct_values,
+            .row_count = 2U,
+            .context = "grouped distinct group_concat aggregate expression order",
         }
     );
     failures += expect_query(
@@ -785,6 +845,26 @@ static int test_group_concat_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "HAVING does not support GROUP_CONCAT",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names FROM diag "
+        "GROUP BY g ORDER BY GROUP_CONCAT(name ORDER BY id SEPARATOR '|')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "only when they match selected aggregate results",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names FROM diag "
+        "GROUP BY g ORDER BY GROUP_CONCAT(name ORDER BY id DESC SEPARATOR ':')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "only when they match selected aggregate results",
         }
     );
     failures += execute_error(

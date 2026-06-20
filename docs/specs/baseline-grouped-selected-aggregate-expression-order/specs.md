@@ -109,9 +109,10 @@ This slice does not add:
 - row-scalar aggregate argument matching such as selected `SUM(n + 1)` ordered
   by `SUM(n + 1)`;
 - `GROUP_CONCAT()` aggregate-expression order keys;
-- bitwise or statistical aggregate-expression order keys, which are still
-  parser gaps for `ORDER BY` expressions and remain covered through selected
-  alias ordering;
+- bitwise aggregate-expression order keys, which are tracked by
+  `docs/specs/baseline-grouped-selected-bitwise-aggregate-expression-order/specs.md`;
+- statistical aggregate-expression order keys, which remain covered through
+  selected alias ordering;
 - duplicate selected aggregate expression ambiguity handling beyond a
   deterministic unsupported diagnostic;
 - broader aggregate argument domains, hidden aggregate projection, full

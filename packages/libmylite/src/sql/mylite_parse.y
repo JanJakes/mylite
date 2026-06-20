@@ -6323,6 +6323,21 @@ selected_grouped_aggregate_expression(A) ::= AVG(T) LPAREN DISTINCT(D)
             state, T, MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION, B, R),
         &D);
 }
+selected_grouped_aggregate_expression(A) ::= BIT_AND(T) LPAREN(L)
+        sum_aggregate_argument(B) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_one_argument_function(
+        state, T, L, MYLITE_SQL_AST_BIT_AND_AGGREGATE_FUNCTION, B, R);
+}
+selected_grouped_aggregate_expression(A) ::= BIT_OR(T) LPAREN(L)
+        sum_aggregate_argument(B) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_one_argument_function(
+        state, T, L, MYLITE_SQL_AST_BIT_OR_AGGREGATE_FUNCTION, B, R);
+}
+selected_grouped_aggregate_expression(A) ::= BIT_XOR(T) LPAREN(L)
+        sum_aggregate_argument(B) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_one_argument_function(
+        state, T, L, MYLITE_SQL_AST_BIT_XOR_AGGREGATE_FUNCTION, B, R);
+}
 
 sum_aggregate_argument(A) ::= qualified_identifier(B). {
     A = B;

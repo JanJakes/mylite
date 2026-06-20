@@ -1200,6 +1200,42 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
+            .sql = "SELECT g, BIT_AND(band) AS ba FROM grouped_bitwise_order GROUP BY g "
+                   "ORDER BY BIT_AND(band) ASC",
+            .columns = bit_and_alias_order_columns,
+            .column_count = 2U,
+            .values = bit_and_alias_order_values,
+            .row_count = 3U,
+            .context = "grouped bit and aggregate expression numeric order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, BIT_OR(bor) AS bo FROM grouped_bitwise_order GROUP BY g "
+                   "ORDER BY BIT_OR(bor) ASC",
+            .columns = bit_or_alias_order_columns,
+            .column_count = 2U,
+            .values = bit_or_xor_alias_order_values,
+            .row_count = 3U,
+            .context = "grouped bit or aggregate expression numeric order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, BIT_XOR(bxor) AS bx FROM grouped_bitwise_order GROUP BY g "
+                   "ORDER BY BIT_XOR(bxor) ASC",
+            .columns = bit_xor_alias_order_columns,
+            .column_count = 2U,
+            .values = bit_or_xor_alias_order_values,
+            .row_count = 3U,
+            .context = "grouped bit xor aggregate expression numeric order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
             .sql = "SELECT g, BIT_OR(bor) AS bo FROM grouped_bitwise_order GROUP BY g "
                    "ORDER BY bo DESC LIMIT 1",
             .columns = bit_or_alias_order_columns,
@@ -1207,6 +1243,18 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = bitwise_alias_order_desc_limit_values,
             .row_count = 1U,
             .context = "grouped bitwise aggregate alias descending order limit",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, BIT_OR(bor) AS bo FROM grouped_bitwise_order GROUP BY g "
+                   "ORDER BY BIT_OR(bor) DESC LIMIT 1",
+            .columns = bit_or_alias_order_columns,
+            .column_count = 2U,
+            .values = bitwise_alias_order_desc_limit_values,
+            .row_count = 1U,
+            .context = "grouped bitwise aggregate expression descending order limit",
         }
     );
     failures += expect_grouped_query(

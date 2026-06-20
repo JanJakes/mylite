@@ -212,7 +212,12 @@ aggregate_order=$(run_mysql \
      SELECT g, AVG(n) AS a FROM avg_order GROUP BY g ORDER BY a DESC LIMIT 1;
      SELECT g, BIT_AND(band) AS ba FROM bitwise_order GROUP BY g ORDER BY ba ASC;
      SELECT g, BIT_OR(bor) AS bo FROM bitwise_order GROUP BY g ORDER BY bo ASC;
-     SELECT g, BIT_XOR(bxor) AS bx FROM bitwise_order GROUP BY g ORDER BY bx ASC;"
+     SELECT g, BIT_XOR(bxor) AS bx FROM bitwise_order GROUP BY g ORDER BY bx ASC;
+     SELECT g, BIT_AND(band) AS ba FROM bitwise_order GROUP BY g ORDER BY BIT_AND(band) ASC;
+     SELECT g, BIT_OR(bor) AS bo FROM bitwise_order GROUP BY g ORDER BY BIT_OR(bor) ASC;
+     SELECT g, BIT_XOR(bxor) AS bx FROM bitwise_order GROUP BY g ORDER BY BIT_XOR(bxor) ASC;
+     SELECT g, BIT_OR(bor) AS bo FROM bitwise_order GROUP BY g ORDER BY BIT_OR(bor) DESC
+       LIMIT 1;"
 )
 expect_value "min alias order null first" "2	NULL	NULL" \
     "$(printf '%s\n' "$aggregate_order" | sed -n '1p')"
@@ -252,6 +257,26 @@ expect_value "mysql bit xor alias order middle" "2	11" \
     "$(printf '%s\n' "$aggregate_order" | sed -n '18p')"
 expect_value "mysql bit xor alias order high" "1	15" \
     "$(printf '%s\n' "$aggregate_order" | sed -n '19p')"
+expect_value "mysql bit and expression order low" "NULL	7" \
+    "$(printf '%s\n' "$aggregate_order" | sed -n '20p')"
+expect_value "mysql bit and expression order middle" "2	11" \
+    "$(printf '%s\n' "$aggregate_order" | sed -n '21p')"
+expect_value "mysql bit and expression order high" "1	13" \
+    "$(printf '%s\n' "$aggregate_order" | sed -n '22p')"
+expect_value "mysql bit or expression order low" "NULL	7" \
+    "$(printf '%s\n' "$aggregate_order" | sed -n '23p')"
+expect_value "mysql bit or expression order middle" "2	11" \
+    "$(printf '%s\n' "$aggregate_order" | sed -n '24p')"
+expect_value "mysql bit or expression order high" "1	15" \
+    "$(printf '%s\n' "$aggregate_order" | sed -n '25p')"
+expect_value "mysql bit xor expression order low" "NULL	7" \
+    "$(printf '%s\n' "$aggregate_order" | sed -n '26p')"
+expect_value "mysql bit xor expression order middle" "2	11" \
+    "$(printf '%s\n' "$aggregate_order" | sed -n '27p')"
+expect_value "mysql bit xor expression order high" "1	15" \
+    "$(printf '%s\n' "$aggregate_order" | sed -n '28p')"
+expect_value "mysql bit or expression order desc limit" "1	15" \
+    "$(printf '%s\n' "$aggregate_order" | sed -n '29p')"
 
 headers=$(run_mysql_with_headers \
     "USE ${DATABASE};

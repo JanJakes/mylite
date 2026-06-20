@@ -14,9 +14,9 @@ ORDER BY bits [ASC|DESC]
 
 It covers selected `BIT_AND()`, `BIT_OR()`, and `BIT_XOR()` aliases in the
 current descriptor-backed grouped aggregate envelopes. It does not add bitwise
-aggregate result predicates, bitwise aggregate expressions that are not
-selected, binary-string bitwise aggregate semantics, aggregate windows, or
-general grouped expression ordering.
+aggregate result predicates, repeated bitwise aggregate-expression order keys,
+binary-string bitwise aggregate semantics, aggregate windows, or general grouped
+expression ordering.
 
 ## Sources
 
@@ -68,9 +68,9 @@ ORDER BY alias [ASC|DESC] [, supported_grouped_order_key ...]
 a selected aggregate result and the alias must uniquely identify that selected
 aggregate according to the existing grouped aggregate alias rules.
 
-MyLite Lemon-syntax grammar snippets are unchanged for this slice; the existing
-selected grouped aggregate and grouped `ORDER BY` grammar already admits the
-shape.
+MyLite Lemon-syntax grammar snippets are unchanged for this alias-order slice;
+repeated selected bitwise aggregate-expression keys are tracked separately in
+`docs/specs/baseline-grouped-selected-bitwise-aggregate-expression-order/specs.md`.
 
 ## Runtime Semantics
 
@@ -92,8 +92,10 @@ No SQLite fork hook is required.
 
 This slice does not add:
 
-- `ORDER BY BIT_OR(column)` or other aggregate expressions that are not matched
-  through a selected alias;
+- `ORDER BY BIT_OR(column)` or other repeated aggregate expressions, which are
+  tracked by
+  `docs/specs/baseline-grouped-selected-bitwise-aggregate-expression-order/specs.md`
+  for selected descriptor-column bitwise aggregate expressions;
 - grouped `HAVING` predicates on bitwise aggregate results;
 - binary-string bitwise aggregate evaluation;
 - `DISTINCT` bitwise aggregate arguments;

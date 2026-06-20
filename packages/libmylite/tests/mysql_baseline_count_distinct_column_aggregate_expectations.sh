@@ -83,32 +83,39 @@ run_mysql \
        bu BIGINT UNSIGNED NULL,
        n INT NULL,
        nn INT NOT NULL,
-       bool_col BOOL NULL
+       bool_col BOOL NULL,
+       name VARCHAR(20) NULL,
+       label CHAR(5) NULL,
+       body TEXT NULL,
+       raw VARBINARY(4) NULL
      );
      CREATE TABLE empty_t(id INT NOT NULL, n INT NULL);
      CREATE TABLE all_null_t(id INT NOT NULL, n INT NULL);
      CREATE TABLE quoted_t(\`weird name\` INT NULL, \`double\"quote\` INT NULL);
      INSERT INTO t VALUES
-       (1, -2147483648, 0, -9223372036854775808, 0, NULL, 10, TRUE),
-       (2, 0, 2, -1, 2, 20, 20, FALSE),
-       (3, 2147483647, 4294967295, -1, 9223372036854775807, 20, 30, FALSE),
-       (4, 5, NULL, 9223372036854775807, NULL, 30, 40, NULL),
-       (5, NULL, 0, NULL, 0, NULL, 50, TRUE);
+       (1, -2147483648, 0, -9223372036854775808, 0, NULL, 10, TRUE, NULL, NULL, NULL, NULL),
+       (2, 0, 2, -1, 2, 20, 20, FALSE, 'alice', 'A', 'essay', X'41'),
+       (3, 2147483647, 4294967295, -1, 9223372036854775807, 20, 30, FALSE,
+        'Alice', 'A   ', 'Essay', X'41'),
+       (4, 5, NULL, 9223372036854775807, NULL, 30, 40, NULL, 'bob', 'B', 'note', X'42'),
+       (5, NULL, 0, NULL, 0, NULL, 50, TRUE, 'BOB', 'B    ', 'Note', X'42');
      INSERT INTO all_null_t VALUES (1, NULL), (2, NULL);
      INSERT INTO quoted_t VALUES (1, 1), (1, 2), (NULL, 2), (3, NULL);" >/dev/null
 
 core=$(run_mysql \
     "USE ${DATABASE};
      DO 0; SELECT COUNT(DISTINCT i), COUNT(DISTINCT iu), COUNT(DISTINCT b), COUNT(DISTINCT bu), COUNT(DISTINCT n), COUNT(DISTINCT nn), COUNT(DISTINCT bool_col) FROM t; SELECT @@warning_count, ROW_COUNT();
+     SELECT COUNT(DISTINCT name), COUNT(DISTINCT label), COUNT(DISTINCT body), COUNT(DISTINCT raw) FROM t;
      DO 0; SELECT COUNT(DISTINCT n) FROM empty_t; SELECT @@warning_count, ROW_COUNT();
      DO 0; SELECT COUNT(DISTINCT n) FROM all_null_t; SELECT @@warning_count, ROW_COUNT();"
 )
 expect_value "integer family distinct counts" "4	3	3	3	2	5	2" "$(printf '%s\n' "$core" | sed -n '1p')"
 expect_value "integer family distinct status" "0	-1" "$(printf '%s\n' "$core" | sed -n '2p')"
-expect_value "empty table distinct count" "0" "$(printf '%s\n' "$core" | sed -n '3p')"
-expect_value "empty table distinct status" "0	-1" "$(printf '%s\n' "$core" | sed -n '4p')"
-expect_value "all-null table distinct count" "0" "$(printf '%s\n' "$core" | sed -n '5p')"
-expect_value "all-null table distinct status" "0	-1" "$(printf '%s\n' "$core" | sed -n '6p')"
+expect_value "string and binary family distinct counts" "2	2	2	2" "$(printf '%s\n' "$core" | sed -n '3p')"
+expect_value "empty table distinct count" "0" "$(printf '%s\n' "$core" | sed -n '4p')"
+expect_value "empty table distinct status" "0	-1" "$(printf '%s\n' "$core" | sed -n '5p')"
+expect_value "all-null table distinct count" "0" "$(printf '%s\n' "$core" | sed -n '6p')"
+expect_value "all-null table distinct status" "0	-1" "$(printf '%s\n' "$core" | sed -n '7p')"
 
 quoted_output=$(run_mysql_with_headers \
     "USE ${DATABASE};
@@ -147,7 +154,8 @@ where_counts=$(run_mysql \
      SELECT COUNT(DISTINCT n) FROM t WHERE n <> 20;
      SELECT COUNT(DISTINCT n) FROM t WHERE iu = 4294967295;
      SELECT COUNT(DISTINCT n) FROM t WHERE b = -9223372036854775808;
-     SELECT COUNT(DISTINCT n) FROM t WHERE bu = 9223372036854775807;"
+     SELECT COUNT(DISTINCT n) FROM t WHERE bu = 9223372036854775807;
+     SELECT COUNT(DISTINCT name) FROM t WHERE id >= 3;"
 )
 expect_value "distinct where nullable is null" "0" "$(printf '%s\n' "$where_counts" | sed -n '1p')"
 expect_value "distinct where nullable is not null" "2" "$(printf '%s\n' "$where_counts" | sed -n '2p')"
@@ -158,6 +166,7 @@ expect_value "distinct where nullable not equal" "1" "$(printf '%s\n' "$where_co
 expect_value "distinct where unsigned int boundary" "1" "$(printf '%s\n' "$where_counts" | sed -n '7p')"
 expect_value "distinct where signed bigint minimum" "0" "$(printf '%s\n' "$where_counts" | sed -n '8p')"
 expect_value "distinct where unsigned bigint supported max" "1" "$(printf '%s\n' "$where_counts" | sed -n '9p')"
+expect_value "distinct string where integer predicate" "2" "$(printf '%s\n' "$where_counts" | sed -n '10p')"
 
 accepted_but_deferred=$(run_mysql \
     "USE ${DATABASE};

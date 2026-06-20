@@ -145,7 +145,7 @@ This phase does not add:
 - general expression `ORDER BY` for grouped results beyond
   `CAST(descriptor_column AS CHAR)`;
 - aggregate expression `ORDER BY`;
-- grouped `COUNT(DISTINCT ...)` forms outside the integer descriptor-column
+- grouped `COUNT(DISTINCT ...)` forms outside the descriptor-column
   slice;
 - mixed grouped `GROUP_CONCAT()` projections;
 - full Unicode collation parity, explicit `COLLATE`, collation coercibility, or
@@ -319,7 +319,7 @@ No public API misuse behavior changes.
 Add MySQL-runtime expectation coverage and fast C tests for:
 
 - `GROUP BY a, b` integer keys with `COUNT(*)`, `COUNT(column)`, `SUM`,
-  `MIN`, `MAX`, `AVG`, and integer descriptor-column `COUNT(DISTINCT column)`
+  `MIN`, `MAX`, `AVG`, and descriptor-column `COUNT(DISTINCT column)`
   where already supported;
 - nullable grouped keys and nullable aggregate arguments;
 - ASCII nonbinary string plus `CHAR` grouped keys, including case-insensitive

@@ -571,6 +571,7 @@ static int test_varchar_diagnostics(void) {
     static const char *const text_trailing_space_row[] = {"43", "ab ", "3"};
     static const char *const numeric_literal_row[] = {"2", "2", "x"};
     static const char *const numeric_default_row[] = {"1"};
+    static const char *const varchar_count_distinct_row[] = {"4"};
     static const unsigned char nul_varchar_value[] = {'a', '\0', 'b'};
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -716,13 +717,14 @@ static int test_varchar_diagnostics(void) {
             .context = "numeric varchar predicate no match",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT COUNT(DISTINCT v) FROM diag",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "COUNT(DISTINCT column) supports only integer descriptor columns",
+        (struct expected_query){
+            .sql = "SELECT COUNT(DISTINCT v) FROM diag",
+            .values = varchar_count_distinct_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "varchar count distinct",
         }
     );
     failures += execute_error(

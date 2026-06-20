@@ -73,6 +73,11 @@ Observed against the local `mysql:8.4.9` runtime using TCP:
 - `COUNT(DISTINCT n)` over values `NULL, 20, 20, 30, NULL` returns `2`.
 - `COUNT(DISTINCT bool_col)` over `TRUE, FALSE, FALSE, NULL, TRUE` returns
   `2`.
+- `COUNT(DISTINCT varchar_column)`, `COUNT(DISTINCT char_column)`, and
+  `COUNT(DISTINCT text_column)` count unique non-`NULL` values using the
+  column comparison collation. In the covered default-collation probes,
+  `alice` and `Alice`, `A` and `A   `, and `essay` and `Essay` each count as
+  one distinct value.
 - `COUNT(DISTINCT column)` and the function name are case-insensitive for the
   admitted identifier names. Default result labels preserve source spelling,
   and MySQL inserts a space after a block comment before the following token in
@@ -147,8 +152,8 @@ This feature must not implement:
   count-distinct slice, `ORDER BY`, `LIMIT`, window `OVER` clauses, joins, CTEs,
   subqueries, unions, locking clauses, query modifiers, optimizer hints, `INTO`,
   or arbitrary SQLite SQL pass-through;
-- string, decimal, floating, temporal, JSON, enum, set, collation, or charset
-  distinct semantics;
+- binary string, decimal, floating, temporal, JSON, enum, set, per-expression
+  collation, or charset distinct semantics;
 - aggregate metadata parity, protocol column flags, exact optimizer behavior,
   index-only distinct-count planning, transaction isolation beyond existing
   SQLite statement visibility, temporary tables, views, privileges, SQL modes
@@ -259,6 +264,13 @@ SELECT COUNT(DISTINCT "physical_column") FROM "physical_table" [WHERE ...]
 Generated table and column names come from MyLite descriptors and are quoted.
 Predicate SQL is reused from the existing descriptor-built baseline `WHERE`
 planner, and comparison values are bound through prepared statements.
+For nonbinary string descriptor arguments, the distinct expression adds
+MyLite's registered string-key collation:
+
+```sql
+SELECT COUNT(DISTINCT "physical_column" COLLATE "utf8mb4_0900_ai_ci")
+FROM "physical_table" [WHERE ...]
+```
 
 This feature uses MyLite wrapper/translation code and public SQLite prepared
 statement APIs only. It must not add SQLite fork patches or custom SQLite
@@ -318,6 +330,8 @@ Add or extend fast C tests covering:
   no-match, label, warning count, affected rows, following `ROW_COUNT()`,
   reopen persistence, physical failure, independent handle, and preamble
   behavior;
+- nonbinary string descriptor arguments for `VARCHAR`, `CHAR`, and baseline
+  `TEXT` family columns, plus binary string rejection;
 - descriptor resolution for visible and invisible columns;
 - unchanged behavior for existing `COUNT(*)`, `COUNT(column)`, and
   `COUNT(literal)` tests.

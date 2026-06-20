@@ -430,6 +430,7 @@ static int test_char_diagnostics(void) {
     static const char *const ignore_default_row[] = {"11", ""};
     static const char *const numeric_literal_row[] = {"2", "2", "x"};
     static const char *const numeric_default_row[] = {"1"};
+    static const char *const char_count_distinct_row[] = {"4"};
     static const unsigned char nul_char_value[] = {'a', '\0', 'b'};
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -590,13 +591,14 @@ static int test_char_diagnostics(void) {
             .context = "numeric char predicate no match",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT COUNT(DISTINCT v) FROM diag",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "COUNT(DISTINCT column) supports only integer descriptor columns",
+        (struct expected_query){
+            .sql = "SELECT COUNT(DISTINCT v) FROM diag",
+            .values = char_count_distinct_row,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "char count distinct",
         }
     );
     failures += execute_error(

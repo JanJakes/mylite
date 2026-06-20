@@ -107,7 +107,21 @@ run_mysql \
        (6,'private','article',10),
        (7,'private','article',10),
        (8,'private','article',11),
-       (10,'publish','page',10);" >/dev/null
+       (10,'publish','page',10);
+     CREATE TABLE string_grouped(
+       id INT NOT NULL,
+       name VARCHAR(20) NULL,
+       label CHAR(5) NULL,
+       body TEXT NULL,
+       n INT NULL
+     ) ENGINE=InnoDB;
+     INSERT INTO string_grouped VALUES
+       (1, NULL, NULL, NULL, 10),
+       (2, 'alice', 'A', 'essay', 20),
+       (3, 'Alice', 'A   ', 'Essay', 30),
+       (4, 'bob', 'B', 'note', NULL),
+       (5, 'BOB', 'B    ', 'Note', 5),
+       (6, 'carol', 'C', NULL, 7);" >/dev/null
 
 core=$(run_mysql \
     "USE ${DATABASE};
@@ -177,6 +191,36 @@ expect_value "count distinct having alias" "1	2" \
     "$(printf '%s\n' "$count_distinct_group" | sed -n '4p')"
 expect_value "count distinct having expression" "1	2" \
     "$(printf '%s\n' "$count_distinct_group" | sed -n '5p')"
+
+count_distinct_string_group=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT name, COUNT(DISTINCT label), COUNT(DISTINCT body)
+       FROM string_grouped GROUP BY name ORDER BY name;
+     SELECT name, COUNT(DISTINCT body) AS c
+       FROM string_grouped GROUP BY name HAVING c = 0 ORDER BY name;
+     SELECT name
+       FROM string_grouped GROUP BY name ORDER BY COUNT(DISTINCT body) DESC, name;"
+)
+expect_value "string count distinct null group" "NULL	0	0" \
+    "$(printf '%s\n' "$count_distinct_string_group" | sed -n '1p')"
+expect_value "string count distinct alice group" "alice	1	1" \
+    "$(printf '%s\n' "$count_distinct_string_group" | sed -n '2p')"
+expect_value "string count distinct bob group" "bob	1	1" \
+    "$(printf '%s\n' "$count_distinct_string_group" | sed -n '3p')"
+expect_value "string count distinct carol group" "carol	1	0" \
+    "$(printf '%s\n' "$count_distinct_string_group" | sed -n '4p')"
+expect_value "string count distinct having null group" "NULL	0" \
+    "$(printf '%s\n' "$count_distinct_string_group" | sed -n '5p')"
+expect_value "string count distinct having carol group" "carol	0" \
+    "$(printf '%s\n' "$count_distinct_string_group" | sed -n '6p')"
+expect_value "string hidden count distinct order alice" "alice" \
+    "$(printf '%s\n' "$count_distinct_string_group" | sed -n '7p')"
+expect_value "string hidden count distinct order bob" "bob" \
+    "$(printf '%s\n' "$count_distinct_string_group" | sed -n '8p')"
+expect_value "string hidden count distinct order null" "NULL" \
+    "$(printf '%s\n' "$count_distinct_string_group" | sed -n '9p')"
+expect_value "string hidden count distinct order carol" "carol" \
+    "$(printf '%s\n' "$count_distinct_string_group" | sed -n '10p')"
 
 distinct_group=$(run_mysql \
     "USE ${DATABASE};

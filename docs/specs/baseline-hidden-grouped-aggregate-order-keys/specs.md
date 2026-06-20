@@ -69,7 +69,7 @@ The hidden aggregate expression may use:
 
 - `COUNT(*)`;
 - `COUNT(column)`;
-- `COUNT(DISTINCT column)` for the current integer descriptor-column subset;
+- `COUNT(DISTINCT column)` for the current descriptor-column subset;
 - `MIN(column)`;
 - `MAX(column)`;
 - `SUM(column)`;

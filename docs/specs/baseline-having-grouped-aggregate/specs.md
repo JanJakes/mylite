@@ -96,7 +96,7 @@ This phase does not add:
 - string, decimal, float, hex, bit, parameter, subquery, or function literals;
 - arithmetic or arbitrary expressions in `HAVING`;
 - arbitrary `COUNT(DISTINCT ...)` expressions outside the selected
-  integer-descriptor grouped count-distinct slice;
+  descriptor-column grouped count-distinct slice;
 - aggregate expressions in `HAVING` that differ from the selected aggregate;
 - bitwise aggregate result predicates;
 - multiple grouping keys, grouping aliases in the `GROUP BY` clause, ordinals,

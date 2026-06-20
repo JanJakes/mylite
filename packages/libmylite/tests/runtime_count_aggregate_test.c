@@ -1152,6 +1152,42 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
     failures += expect_count_query(
         database,
         (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT name) FROM numbers",
+            .column = "COUNT(DISTINCT name)",
+            .value = "2",
+            .context = "varchar count distinct column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT label) FROM numbers",
+            .column = "COUNT(DISTINCT label)",
+            .value = "2",
+            .context = "char count distinct column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT body) FROM numbers",
+            .column = "COUNT(DISTINCT body)",
+            .value = "2",
+            .context = "text count distinct column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT(nums.name)) FROM numbers AS nums",
+            .column = "COUNT(DISTINCT(nums.name))",
+            .value = "2",
+            .context = "parenthesized alias-qualified varchar count distinct column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
             .sql = "SELECT count(distinct n) FROM numbers",
             .column = "count(distinct n)",
             .value = "2",
@@ -1773,6 +1809,15 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
             .column = "COUNT(DISTINCT n)",
             .value = "1",
             .context = "count distinct where unsigned bigint physical maximum",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT name) FROM numbers WHERE id >= 3",
+            .column = "COUNT(DISTINCT name)",
+            .value = "2",
+            .context = "string count distinct with integer where",
         }
     );
 
@@ -2474,6 +2519,17 @@ static int test_count_aggregate_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT COUNT(DISTINCT raw) FROM numbers",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part =
+                "COUNT(DISTINCT column) supports only integer and nonbinary string descriptor "
+                "columns",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT COUNT (*) FROM numbers",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -2913,7 +2969,11 @@ static int create_count_table(mylite_db *database) {
         "si SMALLINT, "
         "mi MEDIUMINT, "
         "bool_col BOOL, "
-        "boolean_col BOOLEAN)",
+        "boolean_col BOOLEAN, "
+        "name VARCHAR(20), "
+        "label CHAR(5), "
+        "body TEXT, "
+        "raw VARBINARY(4))",
         NULL
     );
 }
@@ -2923,11 +2983,14 @@ static int insert_count_rows(mylite_db *database) {
         database,
         "INSERT INTO numbers VALUES "
         "(1, -2147483648, 0, -9223372036854775808, 0, NULL, 10, "
-        "-128, -1, -32768, -8388608, 1, 0), "
-        "(2, 0, 2, -1, 2, 20, 20, 0, 0, 0, 0, NULL, 1), "
+        "-128, -1, -32768, -8388608, 1, 0, NULL, NULL, NULL, NULL), "
+        "(2, 0, 2, -1, 2, 20, 20, 0, 0, 0, 0, NULL, 1, "
+        "'alice', 'A', 'essay', X'41'), "
         "(3, 2147483647, 4294967295, 9223372036854775807, "
-        "9223372036854775807, 20, 30, 127, 1, 32767, 8388607, 0, NULL), "
-        "(4, 5, NULL, NULL, NULL, 30, 40, NULL, NULL, NULL, NULL, 1, 1)",
+        "9223372036854775807, 20, 30, 127, 1, 32767, 8388607, 0, NULL, "
+        "'Alice', 'A   ', 'Essay', X'41'), "
+        "(4, 5, NULL, NULL, NULL, 30, 40, NULL, NULL, NULL, NULL, 1, 1, "
+        "'bob', 'B', 'note', X'42')",
         NULL
     );
 }

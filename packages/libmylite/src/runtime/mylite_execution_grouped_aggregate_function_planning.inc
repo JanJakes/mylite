@@ -176,14 +176,7 @@ static int plan_grouped_aggregate_expression(
         );
         if (rc == MYLITE_OK &&
             out_item->function == PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN) {
-            struct integer_column_range range = {0};
-
-            rc = integer_range_for_column(
-                database,
-                &out_item->aggregate_column,
-                "COUNT(DISTINCT column) supports only integer descriptor columns",
-                &range
-            );
+            rc = validate_count_distinct_column_descriptor(database, &out_item->aggregate_column);
         }
         return rc;
     }

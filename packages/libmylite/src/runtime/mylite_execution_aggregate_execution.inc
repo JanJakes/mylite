@@ -549,14 +549,7 @@ static int plan_count_table_source(
         );
     }
     if (rc == MYLITE_OK && out_plan->function == PLANNED_COUNT_DISTINCT_COLUMN) {
-        struct integer_column_range range = {0};
-
-        rc = integer_range_for_column(
-            database,
-            &out_plan->count_column,
-            "COUNT(DISTINCT column) supports only integer descriptor columns",
-            &range
-        );
+        rc = validate_count_distinct_column_descriptor(database, &out_plan->count_column);
     }
     if (rc == MYLITE_OK) {
         rc = validate_count_order_clause(
@@ -1419,14 +1412,7 @@ static int plan_column_aggregate_select_item(
         }
         if (rc == MYLITE_OK &&
             out_item->function == PLANNED_COLUMN_AGGREGATE_COUNT_DISTINCT_COLUMN) {
-            struct integer_column_range range = {0};
-
-            rc = integer_range_for_column(
-                database,
-                &out_item->aggregate_column,
-                "COUNT(DISTINCT column) supports only integer descriptor columns",
-                &range
-            );
+            rc = validate_count_distinct_column_descriptor(database, &out_item->aggregate_column);
         }
         return rc;
     }
@@ -1871,6 +1857,23 @@ static int validate_column_aggregate_descriptor_column(
         database,
         column,
         column_aggregate_integer_error(aggregate_function),
+        &range
+    );
+}
+
+static int validate_count_distinct_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+) {
+    struct integer_column_range range = {0};
+
+    if (column_descriptor_uses_string_key_collation(column, true)) {
+        return MYLITE_OK;
+    }
+    return integer_range_for_column(
+        database,
+        column,
+        "COUNT(DISTINCT column) supports only integer and nonbinary string descriptor columns",
         &range
     );
 }

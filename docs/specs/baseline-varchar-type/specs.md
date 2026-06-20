@@ -121,8 +121,9 @@ The implementation must add:
 - descriptor-backed `WHERE column IS NULL` and `WHERE column IS NOT NULL` on
   `VARCHAR` columns;
 - deterministic rejection of collation-sensitive `VARCHAR` comparisons,
-  `BETWEEN`, `IN`, truth predicates, ordering, `DISTINCT`,
-  `COUNT(DISTINCT column)`, grouped columns, and numeric aggregates;
+  `BETWEEN`, `IN`, truth predicates, ordering, `DISTINCT`, grouped columns,
+  and numeric aggregates; `COUNT(DISTINCT column)` is covered by
+  `docs/specs/baseline-string-count-distinct-aggregates/specs.md`;
 - persistent storage, reopen behavior, table rename/drop behavior, `.mylite`
   preamble preservation, and independent file-backed handle behavior for
   admitted `VARCHAR` data;
@@ -327,9 +328,10 @@ existing descriptor-backed predicate lowering because those predicates do not
 depend on collation or string conversion. Other predicate families over
 `VARCHAR` columns are rejected deterministically.
 
-Ordering, grouping, `DISTINCT`, `COUNT(DISTINCT column)`, and `MIN`/`MAX` over
-`VARCHAR` columns are rejected because MyLite does not yet provide
-`utf8mb4_0900_ai_ci` comparison semantics. Plain `COUNT(varchar_col)` may use
+Ordering, grouping, `DISTINCT`, and `MIN`/`MAX` over `VARCHAR` columns were
+deferred in the original type slice. Later aggregate slices cover
+`COUNT(DISTINCT column)` and `MIN`/`MAX` over nonbinary string descriptors with
+MyLite's registered string-key collation. Plain `COUNT(varchar_col)` may use
 the existing descriptor `COUNT(column)` path because it only distinguishes
 `NULL` from non-`NULL` and does not compare string values.
 
@@ -377,10 +379,9 @@ New or newly reachable diagnostics:
 - no default for `VARCHAR NOT NULL`: MySQL error `1364`, SQLSTATE `HY000`;
 - `INSERT IGNORE` adjustment for `NULL` or no default: warnings `1048` or
   `1364` with existing MyLite warning-result behavior;
-- `ORDER BY`, `DISTINCT`, grouping, `COUNT(DISTINCT)`, and non-`IS NULL`
-  predicates over `VARCHAR`: deterministic unsupported diagnostics explaining
-  that the current operation supports only integer descriptor columns or only
-  `VARCHAR` null tests.
+- `ORDER BY`, `DISTINCT`, grouping, and non-`IS NULL` predicates over
+  `VARCHAR`: deterministic unsupported diagnostics explaining that the current
+  operation supports only documented string aggregate or null-test forms.
 
 ## Performance and SQLite Integration
 
@@ -446,8 +447,8 @@ Coverage must include:
   overlength, invalid UTF-8, embedded `NUL`, and explicit string default cases;
 - `WHERE varchar_col IS NULL` and `IS NOT NULL`;
 - rejection of string comparison predicates, `BETWEEN`, `IN`, truth tests,
-  `ORDER BY`, `DISTINCT`, `COUNT(DISTINCT)`, grouped string columns, and
-  numeric aggregates over `VARCHAR`;
+  `ORDER BY`, `DISTINCT`, grouped string columns, and numeric aggregates over
+  `VARCHAR` outside separately documented aggregate slices;
 - `CREATE TABLE LIKE`, `CREATE TABLE ... SELECT`, and `INSERT ... SELECT` for
   compatible `VARCHAR` source/target descriptors;
 - reopen persistence, update persistence, rename/drop interaction, preamble

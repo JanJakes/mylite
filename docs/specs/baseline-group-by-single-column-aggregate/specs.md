@@ -141,7 +141,7 @@ Existing non-grouped SELECT and aggregate behavior must remain unchanged.
 This feature must not implement:
 
 - full `COUNT(DISTINCT expr[, expr...])` support beyond the separately
-  specified integer descriptor-column grouped slice;
+  specified descriptor-column grouped slice;
 - literal or expression aggregate arguments in grouped queries;
 - one-column grouped projection without an aggregate;
 - aggregate-only grouped projection with a hidden grouping key;

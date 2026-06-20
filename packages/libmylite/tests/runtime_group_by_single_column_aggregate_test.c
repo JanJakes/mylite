@@ -311,6 +311,34 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
         "carol",
         "1",
     };
+    static const char *const name_count_distinct_columns[] = {
+        "name",
+        "COUNT(DISTINCT label)",
+        "COUNT(DISTINCT body)",
+    };
+    static const char *const name_count_distinct_values[] = {
+        NULL,
+        "0",
+        "0",
+        "alice",
+        "1",
+        "1",
+        "bob",
+        "1",
+        "1",
+        "carol",
+        "1",
+        "0",
+    };
+    static const char *const name_count_distinct_having_columns[] = {"name", "c"};
+    static const char *const name_count_distinct_having_values[] = {NULL, "0", "carol", "0"};
+    static const char *const name_hidden_count_distinct_order_columns[] = {"name"};
+    static const char *const name_hidden_count_distinct_order_values[] = {
+        "alice",
+        "bob",
+        NULL,
+        "carol",
+    };
     static const char *const label_group_columns[] = {"label", "COUNT(*)", "SUM(n)"};
     static const char *const label_group_values[] = {
         NULL,
@@ -1736,6 +1764,42 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
+            .sql = "SELECT name, COUNT(DISTINCT label), COUNT(DISTINCT body) "
+                   "FROM string_grouped GROUP BY name ORDER BY name",
+            .columns = name_count_distinct_columns,
+            .column_count = 3U,
+            .values = name_count_distinct_values,
+            .row_count = 4U,
+            .context = "string count distinct grouped aggregates",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT name, COUNT(DISTINCT body) AS c FROM string_grouped "
+                   "GROUP BY name HAVING c = 0 ORDER BY name",
+            .columns = name_count_distinct_having_columns,
+            .column_count = 2U,
+            .values = name_count_distinct_having_values,
+            .row_count = 2U,
+            .context = "string count distinct grouped having",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT name FROM string_grouped GROUP BY name "
+                   "ORDER BY COUNT(DISTINCT body) DESC, name",
+            .columns = name_hidden_count_distinct_order_columns,
+            .column_count = 1U,
+            .values = name_hidden_count_distinct_order_values,
+            .row_count = 4U,
+            .context = "hidden string count distinct grouped order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
             .sql = "SELECT name AS k, COUNT(*) AS c FROM string_grouped GROUP BY name "
                    "HAVING c > 1 ORDER BY k DESC LIMIT 1",
             .columns = string_having_columns,
@@ -2422,15 +2486,6 @@ static int test_grouped_diagnostics(void) {
             .sqlstate = "42000",
             .message_part =
                 "GROUP BY supports only integer and nonbinary string descriptor group columns",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT name, COUNT(DISTINCT label) FROM string_grouped GROUP BY name",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "COUNT(DISTINCT column) supports only integer descriptor columns",
         }
     );
     failures += execute_error(

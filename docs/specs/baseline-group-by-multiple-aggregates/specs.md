@@ -19,7 +19,7 @@ GROUP BY group_column
 This remains a narrow grouped-query slice. MyLite still admits one descriptor
 group column and the current one-source or two-source joined source envelope.
 The new behavior is multiple selected count/numeric/bitwise/statistical aggregate results,
-including the integer descriptor-column `COUNT(DISTINCT column)` slice for the
+including the descriptor-column `COUNT(DISTINCT column)` slice for the
 base-table grouped path, and one selected `COUNT`, `MIN`, `MAX`, `SUM`, `AVG`,
 bitwise, or statistical aggregate-alias order key, plus hidden non-`GROUP_CONCAT()`
 aggregate expression order keys in the current grouped aggregate envelope.
@@ -332,7 +332,7 @@ expectation script covering:
   persistence, rename/drop behavior, independent file-backed handles, and
   zero-initialized cleanup;
 - deterministic rejections for nonaggregate extra select items, arbitrary
-  `COUNT(DISTINCT ...)` forms outside the integer descriptor-column slice,
+  `COUNT(DISTINCT ...)` forms outside the descriptor-column slice,
   grouped `GROUP_CONCAT()` mixed with another aggregate, unknown
   aggregate/order/having columns, unselected aggregate `HAVING`, bitwise
   aggregate `HAVING`, hidden aggregate expression ordering, duplicate

@@ -134,8 +134,9 @@ The implementation must add:
 - descriptor-backed `WHERE column IS NULL` and `WHERE column IS NOT NULL` on
   `TEXT` family columns;
 - deterministic rejection of collation-sensitive `TEXT` comparisons,
-  `BETWEEN`, `IN`, truth predicates, ordering, `DISTINCT`,
-  `COUNT(DISTINCT column)`, grouped columns, and numeric aggregates;
+  `BETWEEN`, `IN`, truth predicates, ordering, `DISTINCT`, grouped columns,
+  and numeric aggregates; `COUNT(DISTINCT column)` is covered by
+  `docs/specs/baseline-string-count-distinct-aggregates/specs.md`;
 - persistent storage, reopen behavior, table rename/drop behavior, `.mylite`
   preamble preservation, and independent file-backed handle behavior for
   admitted `TEXT` family data;

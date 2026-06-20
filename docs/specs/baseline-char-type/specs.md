@@ -132,8 +132,9 @@ The implementation must add:
 - descriptor-backed `WHERE column IS NULL` and `WHERE column IS NOT NULL` on
   `CHAR` columns;
 - deterministic rejection of collation-sensitive `CHAR` comparisons,
-  `BETWEEN`, `IN`, truth predicates, ordering, `DISTINCT`,
-  `COUNT(DISTINCT column)`, grouped columns, and numeric aggregates;
+  `BETWEEN`, `IN`, truth predicates, ordering, `DISTINCT`, grouped columns,
+  and numeric aggregates; `COUNT(DISTINCT column)` is covered by
+  `docs/specs/baseline-string-count-distinct-aggregates/specs.md`;
 - persistent storage, reopen behavior, table rename/drop behavior, `.mylite`
   preamble preservation, and independent file-backed handle behavior for
   admitted `CHAR` data;
@@ -386,8 +387,8 @@ Coverage must include:
   rows after canonicalization;
 - `WHERE column IS NULL` and `WHERE column IS NOT NULL`;
 - deterministic rejection of unsupported string comparisons, ordering,
-  distinct, grouping, aggregate, string default, and expression assignment
-  forms;
+  distinct, grouping, string default, and expression assignment forms, plus
+  aggregate forms outside the string count-distinct slice;
 - persistence across close/reopen, table rename/drop behavior, `.mylite`
   preamble preservation, and independent file-backed handles;
 - zero-initialized cleanup for new parser/planner/runtime structures;

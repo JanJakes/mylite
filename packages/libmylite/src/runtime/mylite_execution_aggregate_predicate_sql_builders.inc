@@ -108,6 +108,10 @@ static int append_count_function_sql(
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append_quoted_identifier(string, plan->count_column.name);
         }
+        if (rc == MYLITE_OK &&
+            column_descriptor_uses_string_key_collation(&plan->count_column, true)) {
+            rc = append_string_key_collation_sql(string);
+        }
     }
     if (rc == MYLITE_OK && plan->function == PLANNED_COUNT_LITERAL) {
         rc = append_numbered_parameter(string, 1U);
@@ -463,6 +467,10 @@ static int append_column_aggregate_count_sql(
         if (rc == MYLITE_OK) {
             rc =
                 mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column.name);
+        }
+        if (rc == MYLITE_OK &&
+            column_descriptor_uses_string_key_collation(&item->aggregate_column, true)) {
+            rc = append_string_key_collation_sql(string);
         }
     }
     if (rc == MYLITE_OK && item->function == PLANNED_COLUMN_AGGREGATE_COUNT_LITERAL) {
@@ -1086,6 +1094,11 @@ static int append_grouped_aggregate_expression_sql(
             item->aggregate_column_source_index,
             qualify
         );
+    }
+    if (rc == MYLITE_OK &&
+        item->function == PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN &&
+        column_descriptor_uses_string_key_collation(&item->aggregate_column, true)) {
+        rc = append_string_key_collation_sql(string);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, ')');

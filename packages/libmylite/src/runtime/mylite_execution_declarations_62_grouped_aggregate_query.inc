@@ -822,6 +822,10 @@ static bool column_aggregate_function_is_statistical(enum planned_column_aggrega
 static const char *column_aggregate_source_error(enum planned_column_aggregate_function function);
 static const char *column_aggregate_column_error(enum planned_column_aggregate_function function);
 static const char *column_aggregate_integer_error(enum planned_column_aggregate_function function);
+static int validate_count_distinct_column_descriptor(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *column
+);
 static int validate_column_aggregate_descriptor_column(
     struct mylite_db *database,
     enum planned_column_aggregate_function aggregate_function,

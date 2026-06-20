@@ -259,6 +259,13 @@ expect_output \
 "WHERE '2001-04-10 12:34:56' BETWEEN f2 AND '01-05-01';"
 
 expect_output \
+    "string literal left NOT BETWEEN datetime and string" \
+    "0" \
+    "USE ${DATABASE}; "\
+"SELECT COUNT(*) FROM t_dates "\
+"WHERE '2001-04-10 12:34:56' NOT BETWEEN f2 AND '01-05-01';"
+
+expect_output \
     "string literal left BETWEEN descriptor bounds" \
     "2001-03-01 00:00:00	2001-03-20" \
     "USE ${DATABASE}; "\
@@ -269,6 +276,12 @@ expect_output \
     "4" \
     "USE ${DATABASE}; "\
 "SELECT COUNT(*) FROM t_dates,t2 WHERE '01-01-01' IN (f1, '01-02-03');"
+
+expect_output \
+    "string literal left NOT IN descriptor list" \
+    "0" \
+    "USE ${DATABASE}; "\
+"SELECT COUNT(*) FROM t_dates,t2 WHERE '01-01-01' NOT IN (f1, '01-02-03');"
 
 expect_output \
     "string literal left equality predicate" \

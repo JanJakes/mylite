@@ -8,7 +8,20 @@ static bool normalize_relaxed_date_predicate_text(
     size_t text_length,
     char *out_text
 );
+static bool normalize_two_digit_date_predicate_text(
+    const char *text,
+    size_t text_length,
+    char *out_text
+);
 static bool parse_relaxed_date_prefix(
+    const char *text,
+    size_t text_length,
+    size_t *inout_offset,
+    uint32_t *out_year,
+    uint32_t *out_month,
+    uint32_t *out_day
+);
+static bool parse_two_digit_date_prefix(
     const char *text,
     size_t text_length,
     size_t *inout_offset,
@@ -36,6 +49,7 @@ static bool parse_temporal_char(
     size_t *inout_offset,
     char expected
 );
+static uint32_t normalize_two_digit_temporal_year(uint32_t year);
 
 static int convert_predicate_date_literal(
     struct mylite_db *database,
@@ -81,6 +95,20 @@ static int convert_predicate_date_literal(
         return assign_text_value(database, text, text_length, out_value);
     }
     if (normalize_relaxed_date_predicate_text(text, text_length, normalized_date)) {
+        if (!predicate_date_text_admitted(database, normalized_date, date_text_length)) {
+            set_incorrect_date_literal_error(database, text);
+            free(text);
+            return MYLITE_ERROR;
+        }
+        if (force_datetime_comparison) {
+            rc = copy_date_midnight_predicate_value(database, normalized_date, out_value);
+            free(text);
+            return rc;
+        }
+        free(text);
+        return copy_text_value(database, normalized_date, out_value);
+    }
+    if (normalize_two_digit_date_predicate_text(text, text_length, normalized_date)) {
         if (!predicate_date_text_admitted(database, normalized_date, date_text_length)) {
             set_incorrect_date_literal_error(database, text);
             free(text);
@@ -230,6 +258,7 @@ static int convert_predicate_datetime_literal(
 ) {
     char *text = NULL;
     size_t text_length = 0U;
+    char normalized_date[date_text_length + 1U];
     char normalized[datetime_text_length + 1U];
     struct temporal_predicate_normalization_input normalization = {0};
     int rc = MYLITE_OK;
@@ -287,6 +316,16 @@ static int convert_predicate_datetime_literal(
         free(text);
         return copy_text_value(database, normalized, out_value);
     }
+    if (normalize_two_digit_date_predicate_text(text, text_length, normalized_date)) {
+        if (!predicate_date_text_admitted(database, normalized_date, date_text_length)) {
+            set_incorrect_datetime_literal_error(database, text);
+            free(text);
+            return MYLITE_ERROR;
+        }
+        rc = copy_date_midnight_predicate_value(database, normalized_date, out_value);
+        free(text);
+        return rc;
+    }
     if (!predicate_datetime_text_admitted(database, text, text_length)) {
         set_incorrect_datetime_literal_error(database, text);
         free(text);
@@ -330,6 +369,7 @@ static bool normalize_relaxed_datetime_predicate_text(
         }
         if (offset < text_length && text[offset] == '.') {
             enum { temporal_fractional_second_max_digits = 6U };
+
             size_t fractional_digit_count = 0U;
 
             ++offset;
@@ -395,6 +435,36 @@ static bool normalize_relaxed_date_predicate_text(
     return written == date_text_length;
 }
 
+static bool normalize_two_digit_date_predicate_text(
+    const char *text,
+    size_t text_length,
+    char *out_text
+) {
+    size_t offset = 0U;
+    uint32_t year = 0U;
+    uint32_t month = 0U;
+    uint32_t day = 0U;
+    int written = 0;
+
+    if (text == NULL || out_text == NULL) {
+        return false;
+    }
+    if (!parse_two_digit_date_prefix(text, text_length, &offset, &year, &month, &day) ||
+        offset != text_length) {
+        return false;
+    }
+
+    written = snprintf(
+        out_text,
+        date_text_length + 1U,
+        "%04" PRIu32 "-%02" PRIu32 "-%02" PRIu32,
+        normalize_two_digit_temporal_year(year),
+        month,
+        day
+    );
+    return written == date_text_length;
+}
+
 static bool parse_relaxed_date_prefix(
     const char *text,
     size_t text_length,
@@ -406,6 +476,23 @@ static bool parse_relaxed_date_prefix(
     char separator = '\0';
 
     return (parse_temporal_digits(text, text_length, inout_offset, 4U, 4U, out_year) &&
+            parse_relaxed_date_separator(text, text_length, inout_offset, &separator) &&
+            parse_temporal_digits(text, text_length, inout_offset, 1U, 2U, out_month) &&
+            parse_temporal_char(text, text_length, inout_offset, separator) &&
+            parse_temporal_digits(text, text_length, inout_offset, 1U, 2U, out_day)) != 0;
+}
+
+static bool parse_two_digit_date_prefix(
+    const char *text,
+    size_t text_length,
+    size_t *inout_offset,
+    uint32_t *out_year,
+    uint32_t *out_month,
+    uint32_t *out_day
+) {
+    char separator = '\0';
+
+    return (parse_temporal_digits(text, text_length, inout_offset, 2U, 2U, out_year) &&
             parse_relaxed_date_separator(text, text_length, inout_offset, &separator) &&
             parse_temporal_digits(text, text_length, inout_offset, 1U, 2U, out_month) &&
             parse_temporal_char(text, text_length, inout_offset, separator) &&
@@ -481,6 +568,19 @@ static bool parse_temporal_char(
     }
     ++(*inout_offset);
     return true;
+}
+
+static uint32_t normalize_two_digit_temporal_year(uint32_t year) {
+    enum {
+        two_digit_year_cutoff = 70U,
+        two_digit_year_low_base = 2000U,
+        two_digit_year_high_base = 1900U,
+    };
+
+    if (year < two_digit_year_cutoff) {
+        return two_digit_year_low_base + year;
+    }
+    return two_digit_year_high_base + year;
 }
 
 static int convert_predicate_timestamp_literal(

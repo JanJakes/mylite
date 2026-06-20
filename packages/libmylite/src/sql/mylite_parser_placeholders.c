@@ -199,12 +199,26 @@ static bool placeholder_scan_parenthesized_row_arithmetic_predicate_starts_at(
 static bool placeholder_scan_can_retry_row_arithmetic_predicate_values(
     const struct placeholder_statement_scan *scan
 );
+static enum mylite_sql_parse_status scan_row_arithmetic_predicate_retry_at(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry,
+    size_t *out_end_index
+);
 static enum mylite_sql_parse_status scan_row_scalar_non_predicate_context_retries(
     const struct placeholder_statement_scan *scan,
     struct placeholder_row_arithmetic_subject_retries *retries,
     bool *inout_can_retry
 );
 static enum mylite_sql_parse_status scan_row_scalar_predicate_subject_retry(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry,
+    size_t *out_end_index
+);
+static enum mylite_sql_parse_status scan_literal_left_string_predicate_subject_retry(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
     struct placeholder_row_arithmetic_subject_retries *retries,
@@ -320,6 +334,21 @@ static enum mylite_sql_parse_status scan_row_arithmetic_in_value_retries(
     struct placeholder_row_arithmetic_subject_retries *retries,
     bool *inout_can_retry,
     size_t *out_end_index
+);
+static bool placeholder_scan_literal_left_string_between_has_descriptor_context(
+    const struct placeholder_statement_scan *scan,
+    size_t between_index,
+    size_t *out_end_index
+);
+static bool placeholder_scan_literal_left_string_in_has_descriptor_context(
+    const struct placeholder_statement_scan *scan,
+    size_t in_index,
+    size_t *out_end_index
+);
+static bool placeholder_scan_predicate_value_range_has_descriptor_context(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index
 );
 static bool placeholder_scan_token_is_in_where_predicate_context(
     const struct placeholder_statement_scan *scan,

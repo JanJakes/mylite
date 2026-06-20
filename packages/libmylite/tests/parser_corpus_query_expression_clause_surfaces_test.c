@@ -7,7 +7,20 @@ struct expected_statement {
     enum mylite_sql_ast_node_kind kind;
 };
 
+struct expected_literal_left_between_ast {
+    const char *sql;
+    const char *lower;
+    const char *upper;
+};
+
+struct expected_literal_left_in_ast {
+    const char *sql;
+    const char *first_list_value;
+};
+
 static int test_query_expression_clause_placeholders(void);
+static int expect_literal_left_between_ast(struct expected_literal_left_between_ast expected);
+static int expect_literal_left_in_ast(struct expected_literal_left_in_ast expected);
 static int expect_statement_kind(struct expected_statement expected);
 static int parse_ok(const char *sql);
 static int parse_status(
@@ -55,12 +68,6 @@ static int test_query_expression_clause_placeholders(void) {
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT x FROM t GROUP BY x, MATCH(x) AGAINST ('abc') "
                 "HAVING MATCH(x) AGAINST ('abc')",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "select f2 from t1 where '2001-04-10 12:34:56' between f2 and '01-05-01'",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "select f2, f3 from t1 where '01-03-10' between f2 and f3",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "select * from t1,t2 where '01-01-01' in (f1, '01-02-03')",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT 1 FROM t1 GROUP BY @b := @a, @b",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
@@ -122,6 +129,26 @@ static int test_query_expression_clause_placeholders(void) {
     failures += parse_ok("SELECT * FROM t1 WHERE '5' <> value");
     failures += parse_ok("select * from v1 where '2005.02.02'=f1");
     failures += parse_ok("select * from v1 where '2005.02.02'<=>f1");
+    failures += parse_ok("select f2 from t1 where '2001-04-10 12:34:56' between f2 and '01-05-01'");
+    failures +=
+        parse_ok("select f2 from t1 where '2001-04-10 12:34:56' not between f2 and '01-05-01'");
+    failures += parse_ok("select f2, f3 from t1 where '01-03-10' between f2 and f3");
+    failures += parse_ok("select * from t1,t2 where '01-01-01' in (f1, '01-02-03')");
+    failures += parse_ok("select * from t1,t2 where '01-01-01' not in (f1, '01-02-03')");
+    failures += expect_literal_left_between_ast((struct expected_literal_left_between_ast){
+        .sql = "select f2 from t1 where '2001-04-10 12:34:56' between f2 and '01-05-01'",
+        .lower = "f2",
+        .upper = "'01-05-01'",
+    });
+    failures += expect_literal_left_between_ast((struct expected_literal_left_between_ast){
+        .sql = "select f2, f3 from t1 where '01-03-10' between f2 and f3",
+        .lower = "f2",
+        .upper = "f3",
+    });
+    failures += expect_literal_left_in_ast((struct expected_literal_left_in_ast){
+        .sql = "select * from t1,t2 where '01-01-01' in (f1, '01-02-03')",
+        .first_list_value = "f1",
+    });
     failures += parse_ok("SELECT a FROM t1 ORDER BY ABS(b - 5)");
     failures += parse_ok("VALUES ROW(1),ROW(2) ORDER BY NULL DESC");
     failures += parse_ok("VALUES ROW(1),ROW(2) ORDER BY '1' DESC");
@@ -148,6 +175,67 @@ static int test_query_expression_clause_placeholders(void) {
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         "incomplete quoted function call"
     );
+    return failures;
+}
+
+static int expect_literal_left_between_ast(struct expected_literal_left_between_ast expected) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *predicate = NULL;
+    int failures = parser_test_parse_sql(expected.sql, MYLITE_SQL_PARSE_OK, &result);
+
+    select = parser_test_child_at(result.root, 0U);
+    where_clause = parser_test_child_at(select, 2U);
+    predicate = parser_test_child_at(where_clause, 0U);
+    failures += parser_test_expect_node(
+        predicate,
+        MYLITE_SQL_AST_BETWEEN_PREDICATE,
+        "literal-left BETWEEN predicate"
+    );
+    failures += parser_test_expect_literal(
+        parser_test_child_at(predicate, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "literal-left BETWEEN subject"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(predicate, 1U),
+        expected.lower,
+        "BETWEEN lower"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(predicate, 2U),
+        expected.upper,
+        "BETWEEN upper"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    return failures;
+}
+
+static int expect_literal_left_in_ast(struct expected_literal_left_in_ast expected) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *predicate = NULL;
+    const struct mylite_sql_ast_node *value_list = NULL;
+    int failures = parser_test_parse_sql(expected.sql, MYLITE_SQL_PARSE_OK, &result);
+
+    select = parser_test_child_at(result.root, 0U);
+    where_clause = parser_test_child_at(select, 2U);
+    predicate = parser_test_child_at(where_clause, 0U);
+    value_list = parser_test_child_at(predicate, 1U);
+    failures += parser_test_expect_node(predicate, MYLITE_SQL_AST_IN_PREDICATE, "literal-left IN");
+    failures += parser_test_expect_literal(
+        parser_test_child_at(predicate, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "literal-left IN subject"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(value_list, 0U),
+        expected.first_list_value,
+        "literal-left IN first value"
+    );
+    mylite_sql_parse_result_deinit(&result);
     return failures;
 }
 

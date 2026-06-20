@@ -55,6 +55,17 @@ static int test_query_expression_clause_surfaces(void) {
     static const char *const literal_left_datetime_gt_count_rows[] = {"1"};
     static const char *const literal_left_decimal_ne_count_rows[] = {"1"};
     static const char *const literal_left_dotted_date_count_rows[] = {"1"};
+    static const char *const literal_left_between_datetime_rows[] = {
+        "2001-04-10 12:34:56",
+        "2001-03-01 00:00:00",
+    };
+    static const char *const literal_left_not_between_datetime_count_rows[] = {"0"};
+    static const char *const literal_left_between_descriptor_rows[] = {
+        "2001-03-01 00:00:00",
+        "2001-03-20",
+    };
+    static const char *const literal_left_in_count_rows[] = {"4"};
+    static const char *const literal_left_not_in_count_rows[] = {"0"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -424,31 +435,57 @@ static int test_query_expression_clause_surfaces(void) {
             .context = "subquery nested row arithmetic predicate support",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "select f2 from t1 where '2001-04-10 12:34:56' between f2 and '01-05-01'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT f2 FROM t_dates "
+                   "WHERE '2001-04-10 12:34:56' BETWEEN f2 AND '01-05-01'",
+            .values = literal_left_between_datetime_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "literal-left string BETWEEN datetime and string bound",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "select f2, f3 from t1 where '01-03-10' between f2 and f3",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t_dates "
+                   "WHERE '2001-04-10 12:34:56' NOT BETWEEN f2 AND '01-05-01'",
+            .values = literal_left_not_between_datetime_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "literal-left string NOT BETWEEN datetime and string bound",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "select * from t1,t2 where '01-01-01' in (f1, '01-02-03')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT f2, f3 FROM t_dates WHERE '01-03-10' BETWEEN f2 AND f3",
+            .values = literal_left_between_descriptor_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "literal-left string BETWEEN descriptor bounds",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t_dates,t2 WHERE '01-01-01' IN (f1, '01-02-03')",
+            .values = literal_left_in_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "literal-left string IN descriptor list",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t_dates,t2 "
+                   "WHERE '01-01-01' NOT IN (f1, '01-02-03')",
+            .values = literal_left_not_in_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "literal-left string NOT IN descriptor list",
         }
     );
     failures += expect_query_values(

@@ -317,8 +317,35 @@ static bool predicate_row_scalar_cast_expression_is_binary(
 static bool predicate_node_is_scalar_literal_expression(
     const struct mylite_sql_ast_node *predicate_node
 );
-static bool predicate_node_is_literal_left_comparison_value(
+static bool predicate_node_is_literal_left_predicate_value(
     const struct mylite_sql_ast_node *predicate_node
+);
+static bool predicate_node_is_string_literal_predicate_value(
+    const struct mylite_sql_ast_node *predicate_node
+);
+static int resolve_literal_left_predicate_context_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *candidate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct mylite_catalog_column_descriptor *out_column,
+    bool *out_found
+);
+static int plan_literal_left_predicate_row_scalar_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct mylite_catalog_column_descriptor *context_column,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int convert_literal_left_predicate_value_for_context(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *context_column,
+    struct planned_value *out_value
 );
 static bool predicate_node_is_supported_row_scalar_expression(
     const struct mylite_sql_ast_node *predicate_node
@@ -1096,6 +1123,7 @@ static int plan_in_subquery_inner_predicate(
 static int plan_row_scalar_in_value_list(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_list,
+    const struct mylite_catalog_column_descriptor *context_column,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
@@ -1104,6 +1132,7 @@ static int plan_row_scalar_in_value_list(
 static int plan_row_scalar_in_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *context_column,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,

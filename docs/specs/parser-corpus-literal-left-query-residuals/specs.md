@@ -3,8 +3,6 @@
 This slice reduces valid MySQL 8.4.9 parser-corpus residuals where the normal
 MyLite grammar still rejects complete query expression forms:
 
-- string-literal-left `BETWEEN` and `IN` predicates in table-backed predicate
-  clauses;
 - user-variable assignment expressions in `GROUP BY` keys;
 - quoted function names followed by a whitespace-separated argument list in
   expression context;
@@ -28,10 +26,6 @@ Runtime probes are captured in:
 Observed accepted forms include:
 
 ```sql
-SELECT f2 FROM t_dates
-  WHERE '2001-04-10 12:34:56' BETWEEN f2 AND '01-05-01';
-SELECT f2, f3 FROM t_dates WHERE '01-03-10' BETWEEN f2 AND f3;
-SELECT * FROM t_dates, t2 WHERE '01-01-01' IN (f1, '01-02-03');
 SELECT * FROM t_dates WHERE '100000000000000000000002' = value;
 SELECT * FROM t_dates WHERE '2010-02-01 09:31:02.0' <= a;
 SELECT * FROM t_dates WHERE '2010-02-01 09:31:02.0' >= a;
@@ -52,10 +46,6 @@ without requiring MyLite to implement stored-function resolution in this slice.
 
 In scope:
 
-- post-failure parser classification for complete string-literal-left
-  `BETWEEN` predicates with a present lower bound, `AND`, and upper bound;
-- post-failure parser classification for complete string-literal-left `IN`
-  lists that contain at least one identifier-like member;
 - post-failure parser classification for complete `GROUP BY @var := expr`
   keys;
 - post-failure parser classification for complete quoted function calls in
@@ -68,8 +58,6 @@ Out of scope:
 
 - executable general expression planning for table-backed predicates, grouping,
   ordering, or projection;
-- MySQL temporal and string coercion semantics for the residual `BETWEEN` and
-  `IN` predicates;
 - user-variable assignment side effects in grouped query execution;
 - stored-function, loadable-function, or function-creation support;
 - SQL-mode-sensitive double-quoted identifier admission outside the existing
@@ -97,16 +85,19 @@ This slice does not install those broad grammar rules directly. It extends the
 existing post-failure placeholder classifier so recognized complete residual
 surfaces return `MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT`. The separate
 [literal-left string comparison baseline](../baseline-literal-left-string-comparison-predicates/specs.md)
-now executes the simple comparison forms listed above.
+now executes the simple comparison forms listed above. The separate
+[literal-left string BETWEEN / IN baseline](../baseline-literal-left-string-between-in-predicates/specs.md)
+now executes the descriptor-backed `BETWEEN` and `IN` forms that were previously
+tracked here.
 
 ## Runtime Behavior
 
-Runtime behavior is intentionally unchanged for the residual `BETWEEN`, `IN`,
-grouping, function-call, and qualified bare-truth forms. Accepted residuals fail
-with the standard unsupported-utility diagnostic and do not reach SQLite
-execution. This prevents MyLite from accidentally applying SQLite comparison,
-collation, temporal, user-variable, or function-resolution semantics to
-MySQL-specific expression forms.
+Runtime behavior is intentionally unchanged for the remaining residual grouping,
+function-call, and qualified bare-truth forms. Accepted residuals fail with the
+standard unsupported-utility diagnostic and do not reach SQLite execution. This
+prevents MyLite from accidentally applying SQLite comparison, collation,
+temporal, user-variable, or function-resolution semantics to MySQL-specific
+expression forms.
 
 Malformed tails such as missing `BETWEEN` bounds, incomplete `IN` lists,
 unfinished user-variable assignments, or unmatched function parentheses remain
@@ -125,8 +116,9 @@ Tests cover:
 
 ## Compatibility Status
 
-This slice moves the targeted residuals from syntax errors to explicit
-placeholder diagnostics. Literal-left string comparison predicates are now
-handled by the executable baseline linked above. This residual slice does not
+This slice moves the remaining targeted residuals from syntax errors to explicit
+placeholder diagnostics. Literal-left string comparison and descriptor-backed
+literal-left `BETWEEN` / `IN` predicates are now handled by executable baselines
+linked above. This residual slice does not
 mark broad table-backed expression execution, user-variable assignment inside
 queries, or stored/loadable function resolution as supported.

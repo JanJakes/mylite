@@ -547,7 +547,7 @@ static int plan_in_predicate(
         set_unsupported_error(database, "WHERE supports only descriptor column IN predicates");
         return MYLITE_ERROR;
     }
-    if (predicate_node_is_scalar_literal_expression(child_at(predicate_node, 0U)) ||
+    if (predicate_node_is_literal_left_predicate_value(child_at(predicate_node, 0U)) ||
         predicate_node_is_supported_row_scalar_expression(child_at(predicate_node, 0U))) {
         return plan_row_scalar_expression_in_predicate(
             database,
@@ -653,6 +653,8 @@ static int plan_row_scalar_expression_in_predicate(
         .left_index = SIZE_MAX,
         .right_index = SIZE_MAX,
     };
+    struct mylite_catalog_column_descriptor context_column = {0};
+    bool has_context_column = false;
     int rc = MYLITE_OK;
 
     if (right == NULL || right->kind == MYLITE_SQL_AST_SELECT_STATEMENT) {
@@ -666,18 +668,39 @@ static int plan_row_scalar_expression_in_predicate(
         return MYLITE_NOMEM;
     }
 
-    rc = plan_row_scalar_predicate_left_expression(
-        database,
-        child_at(predicate_node, 0U),
-        source_context,
-        table_columns,
-        table_column_count,
-        node.row_scalar_expression
-    );
+    if (predicate_node_is_literal_left_predicate_value(child_at(predicate_node, 0U))) {
+        size_t value_count = mylite_sql_ast_node_child_count(right);
+
+        for (size_t value_index = 0U;
+             rc == MYLITE_OK && !has_context_column && value_index < value_count;
+             ++value_index) {
+            rc = resolve_literal_left_predicate_context_column(
+                database,
+                child_at(right, value_index),
+                source_context,
+                table_columns,
+                table_column_count,
+                &context_column,
+                &has_context_column
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_literal_left_predicate_row_scalar_expression(
+            database,
+            child_at(predicate_node, 0U),
+            has_context_column ? &context_column : NULL,
+            source_context,
+            table_columns,
+            table_column_count,
+            node.row_scalar_expression
+        );
+    }
     if (rc == MYLITE_OK) {
         rc = plan_row_scalar_in_value_list(
             database,
             right,
+            has_context_column ? &context_column : NULL,
             source_context,
             table_columns,
             table_column_count,
@@ -1406,6 +1429,7 @@ static int plan_in_subquery_inner_predicate(
 static int plan_row_scalar_in_value_list(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_list,
+    const struct mylite_catalog_column_descriptor *context_column,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
@@ -1447,6 +1471,7 @@ static int plan_row_scalar_in_value_list(
         rc = plan_row_scalar_in_value(
             database,
             child_at(value_list, value_index),
+            context_column,
             source_context,
             table_columns,
             table_column_count,
@@ -1460,13 +1485,14 @@ static int plan_row_scalar_in_value_list(
 static int plan_row_scalar_in_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
+    const struct mylite_catalog_column_descriptor *context_column,
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_select_predicate_node *node,
     size_t value_index
 ) {
-    if (predicate_node_is_supported_row_scalar_expression(value_node)) {
+    if (predicate_node_is_supported_row_scalar_predicate_value_expression(value_node)) {
         return plan_row_scalar_expression(
             database,
             value_node,
@@ -1476,6 +1502,15 @@ static int plan_row_scalar_in_value(
             table_columns,
             table_column_count,
             &node->row_scalar_value_expressions[value_index]
+        );
+    }
+
+    if (context_column != NULL && predicate_node_is_string_literal_predicate_value(value_node)) {
+        return convert_literal_left_predicate_value_for_context(
+            database,
+            value_node,
+            context_column,
+            &node->values[value_index]
         );
     }
 

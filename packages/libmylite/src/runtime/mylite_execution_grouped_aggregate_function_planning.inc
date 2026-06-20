@@ -610,11 +610,11 @@ static enum planned_grouped_aggregate_function grouped_aggregate_function_from_e
     if (count_function == PLANNED_COUNT_DISTINCT_COLUMN) {
         return PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN;
     }
-    if (expression != NULL && expression->kind == MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION) {
+    if (count_function == PLANNED_COUNT_LITERAL) {
         return PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN;
     }
-    if (count_function == PLANNED_COUNT_LITERAL) {
-        return PLANNED_GROUPED_AGGREGATE_NONE;
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION) {
+        return PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN;
     }
 
     switch (column_function) {

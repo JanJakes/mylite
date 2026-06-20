@@ -7,13 +7,17 @@ This slice extends the existing descriptor-backed grouped aggregate path with
 descriptor columns.
 It builds on the baseline `GROUP BY`, `HAVING`, and ungrouped
 `COUNT(DISTINCT column)` features.
+Grouped single-expression literal and row-scalar distinct-count arguments are
+covered by
+`docs/specs/baseline-grouped-count-distinct-row-scalar-arguments/specs.md`.
 
 The feature is intentionally narrow. It supports the current base-table grouped
 aggregate path, including the current multiple-key grouped base-table path,
 and the current two-source joined grouped aggregate path with one distinct
 descriptor-column argument. It does not implement MySQL's full
 `COUNT(DISTINCT expr[, expr...])` surface, aggregate windows, joined
-multiple-key grouped sources, or arbitrary grouped expressions.
+multiple-key grouped sources, or arbitrary grouped expressions beyond the
+companion grouped row-scalar slice.
 
 ## Sources
 
@@ -133,7 +137,8 @@ APIs. It does not require a SQLite fork hook.
 This slice does not add:
 
 - multiple distinct expressions;
-- literal or arbitrary expression distinct arguments;
+- arbitrary expression distinct arguments beyond the companion grouped
+  row-scalar slice;
 - decimal, floating, temporal, enum, set, JSON, or per-expression collation
   distinct-count semantics;
 - wider grouped source forms than the current base-table, multiple-key

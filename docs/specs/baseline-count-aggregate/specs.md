@@ -136,7 +136,7 @@ This feature must not implement:
 
 - unsupported `COUNT(expr)` shapes outside the aggregate row-scalar subset,
   joined `COUNT(literal)`, joined `COUNT(column)`, joined `COUNT(DISTINCT
-  column)`, grouped `COUNT(DISTINCT row_scalar_expr)`, multi-expression
+  column)`, multi-expression
   `COUNT(DISTINCT expr, expr...)`, `COUNT()` with no argument, `COUNT(table.*)`,
   aggregate arithmetic, aggregate comparisons, table-backed mixed projections,
   or general expression projection;

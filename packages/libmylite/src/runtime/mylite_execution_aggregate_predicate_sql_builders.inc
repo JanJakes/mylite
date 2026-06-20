@@ -1067,6 +1067,10 @@ static int append_grouped_aggregate_expression_sql(
                 next_parameter
             );
         }
+        if (rc == MYLITE_OK &&
+            row_scalar_expression_uses_string_collation(&item->aggregate_row_scalar_expression)) {
+            rc = append_string_key_collation_sql(string);
+        }
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append_char(string, ')');
         }
@@ -1082,6 +1086,10 @@ static int append_grouped_aggregate_expression_sql(
                 &item->aggregate_row_scalar_expression,
                 next_parameter
             );
+        }
+        if (rc == MYLITE_OK && item->function == PLANNED_GROUPED_AGGREGATE_AVG &&
+            row_scalar_expression_uses_string_collation(&item->aggregate_row_scalar_expression)) {
+            rc = append_string_key_collation_sql(string);
         }
         if (rc == MYLITE_OK && item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
             rc = mylite_dynamic_string_append_char(string, ')');

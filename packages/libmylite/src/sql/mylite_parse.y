@@ -6271,6 +6271,26 @@ selected_grouped_aggregate_expression(A) ::= COUNT(T) LPAREN(L)
         state, T, L, MYLITE_SQL_AST_COUNT_DISTINCT_COLUMN_FUNCTION, B, R);
 }
 selected_grouped_aggregate_expression(A) ::= COUNT(T) LPAREN(L)
+        DISTINCT(D) count_literal(B) RPAREN(R). {
+    A = mylite_sql_parser_attach_aggregate_distinct_modifier(
+        state,
+        mylite_sql_parser_make_no_space_one_argument_function(
+            state, T, L, MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION, B, R),
+        &D);
+}
+selected_grouped_aggregate_expression(A) ::= COUNT(T) LPAREN(L)
+        DISTINCT(D) count_row_scalar_aggregate_argument(B) RPAREN(R). {
+    A = mylite_sql_parser_attach_aggregate_distinct_modifier(
+        state,
+        mylite_sql_parser_make_no_space_one_argument_function(
+            state, T, L, MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION, B, R),
+        &D);
+}
+selected_grouped_aggregate_expression(A) ::= COUNT(T) LPAREN(L) count_literal(B) RPAREN(R). {
+    A = mylite_sql_parser_make_no_space_one_argument_function(
+        state, T, L, MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION, B, R);
+}
+selected_grouped_aggregate_expression(A) ::= COUNT(T) LPAREN(L)
         count_row_scalar_aggregate_argument(B) RPAREN(R). {
     A = mylite_sql_parser_make_no_space_one_argument_function(
         state, T, L, MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION, B, R);

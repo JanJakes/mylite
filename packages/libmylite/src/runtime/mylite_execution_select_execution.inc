@@ -130,7 +130,7 @@ static bool select_statement_is_row_scalar_projection_attempt(
     if (select_list_is_wildcard(select_list)) {
         return false;
     }
-    if (has_row_source &&
+    if (has_row_source && !select_statement_has_group_by_clause(statement) &&
         select_statement_optional_clauses_contain_row_scalar_function(statement)) {
         return true;
     }

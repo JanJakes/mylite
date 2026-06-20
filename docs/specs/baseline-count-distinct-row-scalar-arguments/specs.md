@@ -10,7 +10,8 @@ argument subset.
 The feature does not implement MySQL's multi-expression
 `COUNT(DISTINCT expr, expr...)` form. Descriptor-column
 `COUNT(DISTINCT column)` remains covered by the existing column-descriptor
-count-distinct specs.
+count-distinct specs, and grouped row-scalar distinct counts are covered by the
+follow-up grouped count-distinct row-scalar spec.
 
 ## Sources
 
@@ -105,7 +106,6 @@ This slice does not add:
 - multiple-expression `COUNT(DISTINCT expr, expr...)`;
 - new row-scalar expression families beyond the existing aggregate-argument
   envelope;
-- grouped `COUNT(DISTINCT row_scalar_expression)`;
 - executable distinct expression aggregate windows;
 - full Unicode collation parity beyond MyLite's current registered ASCII
   collation approximation.

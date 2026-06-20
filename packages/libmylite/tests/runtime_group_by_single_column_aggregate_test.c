@@ -20,6 +20,8 @@ enum {
     test_path_capacity = 1024,
     sqlite_sql_capacity = 512,
     grouped_multi_aggregate_column_count = 7,
+    grouped_count_distinct_row_scalar_column_count = 5,
+    grouped_name_count_distinct_row_scalar_column_count = 5,
     grouped_count_distinct_pair_row_count = 5,
     mysql_error_parse = 1064,
     mysql_error_no_database_selected = 1046,
@@ -108,6 +110,50 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const g_count_distinct_n_values[] = {NULL, "0", "1", "1", "2", "2"};
     static const char *const g_count_distinct_nn_columns[] = {"g", "COUNT(DISTINCT nn)"};
     static const char *const g_count_distinct_nn_values[] = {NULL, "1", "1", "2", "2", "2"};
+    static const char *const g_count_distinct_literal_columns[] = {
+        "g",
+        "COUNT(DISTINCT 1)",
+        "COUNT(DISTINCT TRUE)",
+        "COUNT(DISTINCT NULL)",
+    };
+    static const char *const g_count_distinct_literal_values[] = {
+        NULL,
+        "1",
+        "1",
+        "0",
+        "1",
+        "1",
+        "1",
+        "0",
+        "2",
+        "1",
+        "1",
+        "0",
+    };
+    static const char *const g_count_distinct_row_scalar_columns[] = {
+        "g",
+        "COUNT(DISTINCT n + 1)",
+        "COUNT(DISTINCT n + nn)",
+        "COUNT(DISTINCT IFNULL(n, 0))",
+        "COUNT(DISTINCT NULLIF(n, 20))",
+    };
+    static const char *const g_count_distinct_row_scalar_values[] = {
+        NULL,
+        "0",
+        "0",
+        "1",
+        "0",
+        "1",
+        "1",
+        "1",
+        "2",
+        "1",
+        "2",
+        "2",
+        "2",
+        "2",
+        "1",
+    };
     static const char *const g_count_ifnull_columns[] = {"g", "COUNT(IFNULL(n, 0))"};
     static const char *const g_count_ifnull_values[] = {NULL, "1", "1", "2", "2", "2"};
     static const char *const count_ifnull_expression_order_columns[] = {"g", "c"};
@@ -184,6 +230,9 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     };
     static const char *const count_distinct_expression_order_columns[] = {"g", "cd"};
     static const char *const count_distinct_expression_order_values[] = {"2", "2", "1", "1"};
+    static const char *const count_distinct_row_scalar_order_columns[] = {"g", "c"};
+    static const char *const count_distinct_row_scalar_order_values[] = {"2", "2", "1", "1"};
+    static const char *const count_distinct_row_scalar_having_values[] = {"2", "2"};
     static const char *const multi_order_tiebreak_values[] = {
         "2",
         "2",
@@ -337,6 +386,17 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     };
     static const char *const name_count_distinct_having_columns[] = {"name", "c"};
     static const char *const name_count_distinct_having_values[] = {NULL, "0", "carol", "0"};
+    static const char *const name_count_distinct_row_scalar_columns[] = {
+        "name",
+        "COUNT(DISTINCT CONCAT(body, '!'))",
+        "COUNT(DISTINCT IFNULL(body, ''))",
+        "COUNT(DISTINCT LOWER(name))",
+        "COUNT(DISTINCT CAST(n AS CHAR))",
+    };
+    static const char *const name_count_distinct_row_scalar_values[] = {
+        NULL,  "0", "1", "0", "1", "alice", "1", "1", "1", "2",
+        "bob", "1", "1", "1", "1", "carol", "0", "1", "1", "1",
+    };
     static const char *const name_hidden_count_distinct_order_columns[] = {"name"};
     static const char *const name_hidden_count_distinct_order_values[] = {
         "alice",
@@ -896,6 +956,31 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(DISTINCT 1), COUNT(DISTINCT TRUE), "
+                   "COUNT(DISTINCT NULL) FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_count_distinct_literal_columns,
+            .column_count = 4U,
+            .values = g_count_distinct_literal_values,
+            .row_count = 3U,
+            .context = "count distinct literals grouped by nullable key",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(DISTINCT n + 1), COUNT(DISTINCT n + nn), "
+                   "COUNT(DISTINCT IFNULL(n, 0)), COUNT(DISTINCT NULLIF(n, 20)) "
+                   "FROM grouped_numbers GROUP BY g ORDER BY g",
+            .columns = g_count_distinct_row_scalar_columns,
+            .column_count = grouped_count_distinct_row_scalar_column_count,
+            .values = g_count_distinct_row_scalar_values,
+            .row_count = 3U,
+            .context = "count distinct row-scalar expressions grouped by nullable key",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
             .sql = "SELECT g, COUNT(IFNULL(n, 0)) FROM grouped_numbers GROUP BY g ORDER BY g",
             .columns = g_count_ifnull_columns,
             .column_count = 2U,
@@ -1177,6 +1262,30 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = count_distinct_expression_order_values,
             .row_count = 2U,
             .context = "grouped count distinct aggregate expression order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(DISTINCT n + 1) AS c FROM grouped_numbers GROUP BY g "
+                   "ORDER BY COUNT(DISTINCT n + 1) DESC LIMIT 2",
+            .columns = count_distinct_row_scalar_order_columns,
+            .column_count = 2U,
+            .values = count_distinct_row_scalar_order_values,
+            .row_count = 2U,
+            .context = "grouped count distinct row-scalar aggregate expression order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(DISTINCT n + 1) AS c FROM grouped_numbers "
+                   "GROUP BY g HAVING c > 1 ORDER BY g",
+            .columns = count_distinct_row_scalar_order_columns,
+            .column_count = 2U,
+            .values = count_distinct_row_scalar_having_values,
+            .row_count = 1U,
+            .context = "grouped count distinct row-scalar having alias",
         }
     );
     failures += expect_grouped_query(
@@ -1595,6 +1704,18 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(DISTINCT n + 1) AS c FROM grouped_numbers "
+                   "GROUP BY g HAVING COUNT(DISTINCT n + 1) > 1 ORDER BY g",
+            .columns = count_distinct_row_scalar_order_columns,
+            .column_count = 2U,
+            .values = count_distinct_row_scalar_having_values,
+            .row_count = 1U,
+            .context = "having selected count distinct row-scalar expression comparison",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
             .sql = "SELECT g, SUM(n) AS s FROM grouped_numbers "
                    "GROUP BY g HAVING s IS NOT NULL ORDER BY g",
             .columns = having_sum_columns,
@@ -1814,6 +1935,20 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = name_count_distinct_having_values,
             .row_count = 2U,
             .context = "string count distinct grouped having",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT name, COUNT(DISTINCT CONCAT(body, '!')), "
+                   "COUNT(DISTINCT IFNULL(body, '')), COUNT(DISTINCT LOWER(name)), "
+                   "COUNT(DISTINCT CAST(n AS CHAR)) "
+                   "FROM string_grouped GROUP BY name ORDER BY name",
+            .columns = name_count_distinct_row_scalar_columns,
+            .column_count = grouped_name_count_distinct_row_scalar_column_count,
+            .values = name_count_distinct_row_scalar_values,
+            .row_count = 4U,
+            .context = "string count distinct row-scalar grouped aggregates",
         }
     );
     failures += expect_grouped_query(

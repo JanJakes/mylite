@@ -526,6 +526,7 @@ static int plan_grouped_having_aggregate_operand(
         grouped_aggregate_function_from_expression(operand_node);
     struct mylite_catalog_column_descriptor column = {0};
     struct integer_column_range range = {0};
+    struct planned_grouped_aggregate_item having_item = {0};
     size_t source_index = 0U;
     size_t selected_index = SIZE_MAX;
     int rc = MYLITE_OK;
@@ -556,6 +557,47 @@ static int plan_grouped_having_aggregate_operand(
 
         set_unsupported_error(database, "HAVING supports only the selected aggregate result");
         return MYLITE_ERROR;
+    }
+    if (column_aggregate_argument_is_row_scalar_expression(operand_node)) {
+        rc = plan_grouped_aggregate_expression(
+            database,
+            operand_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_plan,
+            NULL,
+            &having_item
+        );
+        if (rc != MYLITE_OK) {
+            goto cleanup;
+        }
+        for (size_t aggregate_index = 0U; aggregate_index < out_plan->aggregate_count;
+             ++aggregate_index) {
+            if (!grouped_order_aggregate_items_match(
+                    &having_item,
+                    &out_plan->aggregates[aggregate_index]
+                )) {
+                continue;
+            }
+            if (selected_index != SIZE_MAX) {
+                set_unsupported_error(
+                    database,
+                    "HAVING supports only unique selected aggregate expressions"
+                );
+                rc = MYLITE_ERROR;
+                goto cleanup;
+            }
+            selected_index = aggregate_index;
+        }
+        if (selected_index == SIZE_MAX) {
+            set_unsupported_error(database, "HAVING supports only the selected aggregate result");
+            rc = MYLITE_ERROR;
+            goto cleanup;
+        }
+
+        out_plan->having.aggregate_index = selected_index;
+        goto cleanup;
     }
 
     rc = resolve_descriptor_column_reference_with_source_index(
@@ -601,6 +643,10 @@ static int plan_grouped_having_aggregate_operand(
         out_plan->having.aggregate_index = selected_index;
     }
 
+cleanup:
+    planned_row_scalar_expression_deinit(&having_item.aggregate_row_scalar_expression);
+    planned_select_order_deinit(&having_item.aggregate_order);
+    planned_value_deinit(&having_item.separator);
     return rc;
 }
 

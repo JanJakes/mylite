@@ -16,8 +16,9 @@ descriptor-backed aggregate envelope:
 The slice covers one-table aggregate reads, tableless scalar aggregate reads,
 supported row-scalar aggregate arguments, optional baseline `WHERE`, aliases,
 grouped aggregate forms that already work for `SUM()` and `AVG()`, selected
-grouped statistical aggregate-alias ordering, and selected descriptor-column
-statistical aggregate-expression ordering.
+grouped statistical aggregate-alias ordering, selected statistical
+aggregate-expression ordering, and selected grouped statistical aggregate
+`HAVING`.
 
 The implementation does not cover executable aggregate windows, `DISTINCT`,
 string-to-double conversion warnings, decimal widening metadata, or full MySQL
@@ -51,6 +52,11 @@ Runtime probes were executed against `mysql:8.4.9` in the
   aggregate expressions sort by their aggregate double/`NULL` value. `NULL`
   aggregate results sort first for ascending order and last for descending
   order in the verified subset.
+- Selected grouped statistical aggregate aliases and repeated selected
+  aggregate expressions may be used as grouped `HAVING` operands. Population
+  aggregate predicates compare the aggregate double result; sample aggregate
+  predicates can be tested with `IS NULL` for groups with fewer than two
+  non-`NULL` inputs.
 
 ## MyLite Syntax
 
@@ -121,5 +127,6 @@ The C runtime test covers:
 - grouped forms;
 - selected grouped aggregate-alias ordering;
 - selected descriptor-column grouped aggregate-expression ordering;
+- selected grouped aggregate-alias and repeated aggregate-expression `HAVING`;
 - rename/truncate/drop behavior;
 - unsupported diagnostics.

@@ -78,6 +78,10 @@ Supported `having_operand` forms:
   selected aggregate function expression for supported nonnegative integer
   comparison literals in the companion
   `baseline-grouped-bitwise-aggregate-having` slice.
+- The selected `STD()`, `STDDEV()`, `STDDEV_POP()`, `STDDEV_SAMP()`,
+  `VAR_POP()`, `VAR_SAMP()`, or `VARIANCE()` alias or repeated selected
+  aggregate function expression in the companion
+  `baseline-grouped-statistical-aggregate-having` slice.
 
 The aggregate function expression in `HAVING` must refer to the selected
 aggregate result. MyLite does not yet support aggregate expressions that are
@@ -88,6 +92,11 @@ only present in `HAVING`.
 selected aggregate expressions with nonnegative integer comparison literals.
 Group-column `HAVING` predicates may also be used with a selected bitwise
 aggregate.
+
+Statistical aggregate result predicates are covered by
+`baseline-grouped-statistical-aggregate-having` for selected aliases and
+repeated selected aggregate expressions. Group-column `HAVING` predicates may
+also be used with selected statistical aggregates.
 
 ## Out Of Scope
 
@@ -108,6 +117,9 @@ This phase does not add:
 - negative bitwise aggregate comparison literals and broader unsigned numeric
   conversion behavior outside
   `baseline-grouped-bitwise-aggregate-having`;
+- noninteger statistical aggregate comparison literals and broader double
+  conversion behavior outside
+  `baseline-grouped-statistical-aggregate-having`;
 - multiple grouping keys, grouping aliases in the `GROUP BY` clause, ordinals,
   rollup, `GROUPING()`, functional-dependence inference, joins, windows, CTEs,
   derived tables, collations, or general MySQL expression evaluation.
@@ -197,6 +209,10 @@ Selected bitwise aggregate result predicates compare the unsigned decimal
 aggregate value through a fixed-width decimal order key in the companion
 `baseline-grouped-bitwise-aggregate-having` slice.
 
+Selected statistical aggregate result predicates compare the MyLite statistical
+aggregate UDF double or `NULL` result against the admitted integer literal in
+the companion `baseline-grouped-statistical-aggregate-having` slice.
+
 `NULL` is not admitted as a comparison literal in this phase. Use `IS NULL` or
 `IS NOT NULL` for supported null tests.
 
@@ -282,6 +298,11 @@ selected_grouped_aggregate_expression(A) ::= AVG(T) LPAREN(L) qualified_identifi
 selected_grouped_aggregate_expression(A) ::= BIT_AND(T) LPAREN(L) qualified_identifier(B) RPAREN(R).
 selected_grouped_aggregate_expression(A) ::= BIT_OR(T) LPAREN(L) qualified_identifier(B) RPAREN(R).
 selected_grouped_aggregate_expression(A) ::= BIT_XOR(T) LPAREN(L) qualified_identifier(B) RPAREN(R).
+selected_grouped_aggregate_expression(A) ::= IDENTIFIER(T) LPAREN(L) qualified_identifier(B) RPAREN(R).
+/* Builder specialization:
+   If IDENTIFIER is STD, STDDEV, STDDEV_POP, STDDEV_SAMP, VAR_POP, VAR_SAMP,
+   or VARIANCE, return the matching statistical aggregate node; otherwise
+   reject the production as a syntax error. */
 
 having_integer_value(A) ::= INTEGER(T).
 having_integer_value(A) ::= PLUS(P) INTEGER(T).
@@ -320,6 +341,8 @@ Runtime tests must cover:
   grouped row-scalar aggregate `HAVING` slice;
 - selected bitwise aggregate result predicates in the companion grouped
   bitwise aggregate `HAVING` slice;
+- selected statistical aggregate result predicates in the companion grouped
+  statistical aggregate `HAVING` slice;
 - group-column predicates, including `IS NULL`, `<=>`, comparisons, and aliases;
 - `WHERE` before grouping combined with `HAVING`;
 - `ORDER BY` and `LIMIT` after `HAVING`, including `LIMIT 0`;

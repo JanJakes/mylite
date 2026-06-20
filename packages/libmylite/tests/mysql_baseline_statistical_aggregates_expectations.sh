@@ -209,6 +209,43 @@ expect_value "group statistical row-scalar expression nonzero row" "2	5" \
 expect_value "group statistical variance row-scalar expression desc limit" "2	25" \
     "$(printf '%s\n' "$grouped_row_scalar_expression_order" | sed -n '4p')"
 
+grouped_having=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT g, STDDEV_POP(n) AS s FROM t GROUP BY g HAVING s > 0 ORDER BY g;
+     SELECT g, STDDEV_POP(n) AS s FROM t GROUP BY g HAVING STDDEV_POP(n) > 0
+       ORDER BY g;
+     SELECT g, STDDEV_SAMP(n) AS s FROM t GROUP BY g HAVING s IS NULL ORDER BY g;
+     SELECT g, VAR_POP(n) AS v FROM t GROUP BY g HAVING VAR_POP(n) >= 25 ORDER BY g;
+     SELECT g, VAR_SAMP(n) AS v FROM t GROUP BY g HAVING v > 40 ORDER BY g;
+     SELECT g, STD(n) AS s FROM t GROUP BY g HAVING STD(n) = 5 ORDER BY g;
+     SELECT g, STDDEV(n) AS s FROM t GROUP BY g HAVING s = 5 ORDER BY g;
+     SELECT g, VARIANCE(n) AS v FROM t GROUP BY g HAVING VARIANCE(n) = 25 ORDER BY g;
+     SELECT g, STDDEV_POP(n + 1) AS s
+       FROM t GROUP BY g HAVING STDDEV_POP(n + 1) > 0 ORDER BY g;"
+)
+expect_value "group statistical stddev_pop alias having" "2	5" \
+    "$(printf '%s\n' "$grouped_having" | sed -n '1p')"
+expect_value "group statistical stddev_pop expression having" "2	5" \
+    "$(printf '%s\n' "$grouped_having" | sed -n '2p')"
+expect_value "group statistical stddev_samp null having first" "NULL	NULL" \
+    "$(printf '%s\n' "$grouped_having" | sed -n '3p')"
+expect_value "group statistical stddev_samp null having second" "1	NULL" \
+    "$(printf '%s\n' "$grouped_having" | sed -n '4p')"
+expect_value "group statistical var_pop expression having" "2	25" \
+    "$(printf '%s\n' "$grouped_having" | sed -n '5p')"
+expect_value "group statistical var_samp alias having" "2	50" \
+    "$(printf '%s\n' "$grouped_having" | sed -n '6p')"
+expect_value "group statistical std expression having" "2	5" \
+    "$(printf '%s\n' "$grouped_having" | sed -n '7p')"
+expect_value "group statistical stddev alias having" "2	5" \
+    "$(printf '%s\n' "$grouped_having" | sed -n '8p')"
+expect_value "group statistical variance expression having" "2	25" \
+    "$(printf '%s\n' "$grouped_having" | sed -n '9p')"
+expect_value "group statistical row-scalar expression having" "2	5" \
+    "$(printf '%s\n' "$grouped_having" | sed -n '10p')"
+expect_value "group statistical having extra row" "" \
+    "$(printf '%s\n' "$grouped_having" | sed -n '11p')"
+
 expressions=$(run_mysql \
     "USE ${DATABASE};
      SELECT STDDEV_POP(n + 1), VAR_POP(n + 1) FROM t;

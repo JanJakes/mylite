@@ -1465,7 +1465,8 @@ static int plan_column_aggregate_select_item(
             input->table_column_count,
             out_item
         );
-    } else if (column_aggregate_argument_is_row_scalar_expression(aggregate_expression)) {
+    } else if (out_item->function != PLANNED_COLUMN_AGGREGATE_ANY_VALUE &&
+               column_aggregate_argument_is_row_scalar_expression(aggregate_expression)) {
         rc = plan_column_aggregate_row_scalar_expression(
             database,
             aggregate_expression,
@@ -1575,6 +1576,9 @@ static enum planned_column_aggregate_function column_or_count_aggregate_function
 
     if (column_function != PLANNED_COLUMN_AGGREGATE_NONE) {
         return column_function;
+    }
+    if (expression != NULL && expression->kind == MYLITE_SQL_AST_ANY_VALUE_FUNCTION) {
+        return PLANNED_COLUMN_AGGREGATE_ANY_VALUE;
     }
 
     count_function = count_function_from_expression(expression);
@@ -1787,6 +1791,9 @@ static const char *column_aggregate_source_error(enum planned_column_aggregate_f
     if (function == PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT) {
         return "GROUP_CONCAT(column) supports only descriptor-backed table reads";
     }
+    if (function == PLANNED_COLUMN_AGGREGATE_ANY_VALUE) {
+        return "ANY_VALUE(column) supports only descriptor-backed table reads";
+    }
     if (function == PLANNED_COLUMN_AGGREGATE_AVG) {
         return "AVG(column) supports only descriptor-backed table reads";
     }
@@ -1806,6 +1813,9 @@ static const char *column_aggregate_column_error(enum planned_column_aggregate_f
     }
     if (function == PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT) {
         return "GROUP_CONCAT(column) supports only descriptor columns";
+    }
+    if (function == PLANNED_COLUMN_AGGREGATE_ANY_VALUE) {
+        return "ANY_VALUE(column) supports only descriptor columns";
     }
     if (function == PLANNED_COLUMN_AGGREGATE_AVG) {
         return "AVG(column) supports only descriptor columns";
@@ -1847,6 +1857,9 @@ static int validate_column_aggregate_descriptor_column(
 ) {
     struct integer_column_range range = {0};
 
+    if (aggregate_function == PLANNED_COLUMN_AGGREGATE_ANY_VALUE) {
+        return MYLITE_OK;
+    }
     if (column_aggregate_function_is_min_max(aggregate_function) &&
         column_descriptor_is_string_family(column)) {
         return MYLITE_OK;
@@ -2240,6 +2253,21 @@ static int append_column_aggregate_sqlite_cell(
     }
     if (item->function == PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT) {
         rc = append_grouped_group_concat_sqlite_cell(statement, *sqlite_column_index, out_cell);
+        if (rc == MYLITE_OK) {
+            ++(*sqlite_column_index);
+        }
+        return rc;
+    }
+    if (item->function == PLANNED_COLUMN_AGGREGATE_ANY_VALUE) {
+        rc = append_selected_sqlite_row_value_with_descriptor(
+            database,
+            statement,
+            (size_t)*sqlite_column_index,
+            &item->aggregate_column,
+            buffer,
+            buffer_size,
+            out_cell
+        );
         if (rc == MYLITE_OK) {
             ++(*sqlite_column_index);
         }

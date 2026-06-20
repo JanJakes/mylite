@@ -45,6 +45,8 @@ expectations for this slice:
   guaranteed when a group contains different candidate values.
 - Repeating a selected grouped `ANY_VALUE(column)` expression in `ORDER BY` is
   accepted and sorts by the selected representative value.
+- `ANY_VALUE(column)` is accepted in mixed ungrouped aggregate select lists when
+  another selected item is a supported aggregate.
 - `ANY_VALUE()` and `ANY_VALUE(1,2)` return error 1582 / SQLSTATE `42000` with
   the native-function parameter-count diagnostic.
 - `ANY_VALUE(*)` and `ANY_VALUE(DISTINCT v)` are syntax errors in the observed
@@ -59,6 +61,9 @@ MyLite supports this exact subset:
   the argument is already supported by the existing scalar expression engine;
 - single-table row-scalar projection where the argument is already supported by
   the existing descriptor-driven row-scalar planner;
+- mixed ungrouped aggregate `SELECT` over the current one-table aggregate
+  envelope when `ANY_VALUE(column)` is selected alongside another supported
+  aggregate;
 - grouped `SELECT` over the current descriptor-backed `GROUP BY` envelope where
   selected descriptor group columns are followed by aggregate-like result
   expressions;
@@ -86,9 +91,8 @@ only properties that do not depend on the representative row.
 
 This slice intentionally does not support:
 
-- mixed ungrouped aggregate queries such as `SELECT ANY_VALUE(col), MAX(col)
-  FROM t`;
 - expression arguments in grouped `ANY_VALUE()`;
+- expression arguments in mixed ungrouped or grouped `ANY_VALUE()`;
 - hidden grouped `ANY_VALUE()` order keys and repeated grouped `ANY_VALUE()`
   order keys that do not match a selected result;
 - `ANY_VALUE(*)`, `ANY_VALUE(DISTINCT ...)`, or multi-argument forms;
@@ -146,6 +150,19 @@ Wrong-arity calls return the same native-function parameter-count diagnostic as
 MySQL. Unsupported child expressions return the existing scalar or row-scalar
 unsupported diagnostics for the unwrapped child.
 
+### Mixed Ungrouped Aggregate Use
+
+When another selected item routes a statement through the mixed ungrouped
+aggregate planner, `ANY_VALUE(column)` is planned as an aggregate-like result
+item. Its argument is resolved as a descriptor column from the same one-table
+aggregate source. Generated SQLite SQL selects the physical descriptor column as
+a bare column in the same aggregate query, and MyLite reads it back through the
+descriptor-aware result conversion path.
+
+This preserves MySQL's intentionally arbitrary representative-value contract for
+the supported subset. MyLite does not guarantee which input row supplies the
+value when different candidates exist.
+
 ### Grouped Use
 
 Grouped `ANY_VALUE(column)` is planned as an aggregate-like result item for the
@@ -179,6 +196,8 @@ Required diagnostics:
   clause;
 - grouped argument is not a descriptor column: `ANY_VALUE(column) supports only
   descriptor columns`;
+- mixed ungrouped aggregate argument is not a descriptor column:
+  `ANY_VALUE(column) supports only descriptor columns`;
 - grouped `HAVING` or `ORDER BY` unsupported form: existing grouped
   `HAVING`/`ORDER BY` unsupported diagnostics;
 - repeated grouped `ANY_VALUE()` order expression does not match a selected
@@ -198,6 +217,8 @@ Required diagnostics:
 - Analyzer/planner/runtime: scalar and row-scalar paths unwrap to existing
   planners; grouped planning treats `ANY_VALUE(column)` as a selected
   aggregate-like item while resolving the argument from MyLite descriptors.
+  Mixed ungrouped aggregate planning treats `ANY_VALUE(column)` similarly when
+  another selected item already requires the mixed aggregate planner.
   Repeated selected grouped `ANY_VALUE(column)` order expressions reuse the
   selected-result ordering path when descriptor resolution matches exactly one
   selected result.
@@ -235,12 +256,14 @@ Add fast C coverage under `packages/libmylite/tests/`:
   `ORDER BY`, empty filters, and aliases;
 - grouped runtime covers integer, nullable integer, and nonbinary string
   descriptor arguments with deterministic same-value and all-`NULL` groups;
+- mixed ungrouped runtime covers composition with `MAX()` and `COUNT(*)`, empty
+  aggregate input, and descriptor-column diagnostics;
 - grouped runtime covers composition with `MAX()` and `COUNT(*)`, selected
   alias `HAVING ... IS NOT NULL`, selected alias `ORDER BY ... DESC`, repeated
   selected expression `ORDER BY ANY_VALUE(column)`, and `LIMIT`;
 - diagnostics cover wrong arity, syntax rejections for `*`/`DISTINCT`, unknown
   argument columns, unsupported grouped expression arguments, and unsupported
-  mixed ungrouped aggregate use;
+  mixed ungrouped aggregate expression arguments;
 - `ANY_VALUE` remains usable as a table name in tested DDL contexts;
 - no catalog, file-format, VFS, or public ABI changes are introduced.
 

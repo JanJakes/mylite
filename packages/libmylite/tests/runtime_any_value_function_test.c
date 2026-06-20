@@ -20,6 +20,7 @@ enum {
     any_value_grouped_column_count = 5,
     any_value_grouped_having_column_count = 3,
     any_value_grouped_order_column_count = 2,
+    any_value_mixed_column_count = 3,
     mysql_error_parse = 1064,
     mysql_error_unknown_column = 1054,
     mysql_error_native_function_arity = 1582,
@@ -179,6 +180,10 @@ static int test_any_value_row_scalar_and_grouped_values(void) {
     static const char *const grouped_order_values[] = {"3", "20", "1", "10", "2", NULL};
     static const char *const grouped_limit_values[] = {"3", "20", "1", "10"};
     static const char *const grouped_qualified_values[] = {"1", "10", "2", NULL, "3", "20"};
+    static const char *const mixed_columns[] = {"ANY_VALUE(label)", "MAX(v)", "COUNT(*)"};
+    static const char *const mixed_alias_columns[] = {"av", "mx", "COUNT(*)"};
+    static const char *const mixed_values[] = {"same", "3", "2"};
+    static const char *const mixed_empty_values[] = {NULL, NULL, "0"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -309,6 +314,45 @@ static int test_any_value_row_scalar_and_grouped_values(void) {
             .context = "grouped qualified any_value argument",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ANY_VALUE(label), MAX(v), COUNT(*) FROM u",
+            .columns = mixed_columns,
+            .column_count = any_value_mixed_column_count,
+            .values = mixed_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "mixed aggregate any_value values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ANY_VALUE(label) AS av, MAX(v) AS mx, COUNT(*) FROM u",
+            .columns = mixed_alias_columns,
+            .column_count = any_value_mixed_column_count,
+            .values = mixed_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "mixed aggregate any_value alias labels",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ANY_VALUE(label), MAX(v), COUNT(*) FROM u WHERE v > 10",
+            .columns = mixed_columns,
+            .column_count = any_value_mixed_column_count,
+            .values = mixed_empty_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "mixed aggregate any_value empty values",
+        }
+    );
 
     mylite_close(database);
     remove_related_files(path);
@@ -393,11 +437,11 @@ static int test_any_value_errors_and_identifier_use(void) {
     );
     failures += execute_error(
         database,
-        "SELECT ANY_VALUE(v), MAX(v) FROM t",
+        "SELECT ANY_VALUE(v + 1), MAX(v) FROM t",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "aggregate SELECT supports only aggregate select items",
+            .message_part = "ANY_VALUE(column) supports only descriptor columns",
         }
     );
 
@@ -418,6 +462,8 @@ static int create_any_value_fixture(mylite_db *database) {
         "(3,20,'twenty')",
         NULL
     );
+    failures += execute_ok(database, "CREATE TABLE u(label VARCHAR(10), v INT)", NULL);
+    failures += execute_ok(database, "INSERT INTO u VALUES ('same',1),('same',3)", NULL);
     return failures;
 }
 

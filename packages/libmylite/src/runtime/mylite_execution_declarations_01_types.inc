@@ -2049,6 +2049,7 @@ enum planned_column_aggregate_function {
     PLANNED_COLUMN_AGGREGATE_COUNT_COLUMN = 14,
     PLANNED_COLUMN_AGGREGATE_COUNT_LITERAL = 15,
     PLANNED_COLUMN_AGGREGATE_COUNT_DISTINCT_COLUMN = 16,
+    PLANNED_COLUMN_AGGREGATE_ANY_VALUE = 17,
 };
 
 struct planned_scalar_aggregate_subquery {

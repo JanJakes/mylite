@@ -345,6 +345,9 @@ static int append_column_aggregate_select_item_sql(
             next_parameter
         );
     }
+    if (item->function == PLANNED_COLUMN_AGGREGATE_ANY_VALUE) {
+        return mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column.name);
+    }
     if (item->aggregate_uses_row_scalar_expression) {
         if (item->function == PLANNED_COLUMN_AGGREGATE_AVG) {
             rc = mylite_dynamic_string_append(string, "SUM(");
@@ -611,6 +614,8 @@ static const char *column_aggregate_sql_function(enum planned_column_aggregate_f
         return "_mylite_bit_xor";
     case PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT:
         return "group_concat";
+    case PLANNED_COLUMN_AGGREGATE_ANY_VALUE:
+        return "";
     case PLANNED_COLUMN_AGGREGATE_STDDEV_POP:
         return "_mylite_stddev_pop";
     case PLANNED_COLUMN_AGGREGATE_STDDEV_SAMP:
@@ -2428,6 +2433,7 @@ static const char *scalar_aggregate_sql_function(enum planned_column_aggregate_f
     case PLANNED_COLUMN_AGGREGATE_COUNT_COLUMN:
     case PLANNED_COLUMN_AGGREGATE_COUNT_LITERAL:
     case PLANNED_COLUMN_AGGREGATE_COUNT_DISTINCT_COLUMN:
+    case PLANNED_COLUMN_AGGREGATE_ANY_VALUE:
         break;
     }
 

@@ -146,7 +146,9 @@ expect_output_with_headers \
 run_mysql \
     "USE ${DATABASE}; "\
 "CREATE TABLE t(g INT, v INT, s VARCHAR(20)); "\
-"INSERT INTO t VALUES (1,10,'ten'),(1,10,'ten'),(2,NULL,NULL),(2,NULL,NULL),(3,20,'twenty');" \
+"INSERT INTO t VALUES (1,10,'ten'),(1,10,'ten'),(2,NULL,NULL),(2,NULL,NULL),(3,20,'twenty'); "\
+"CREATE TABLE u(label VARCHAR(10), v INT); "\
+"INSERT INTO u VALUES ('same',1),('same',3);" \
     >/dev/null
 
 row_scalar_expected=$(cat <<EXPECTED
@@ -206,6 +208,34 @@ expect_output \
     "grouped any_value selected expression order" \
     "$order_expected" \
     "USE ${DATABASE}; SELECT g, ANY_VALUE(v) AS av FROM t GROUP BY g ORDER BY ANY_VALUE(v) DESC;"
+
+mixed_expected=$(cat <<EXPECTED
+same	3	2
+EXPECTED
+)
+expect_output \
+    "mixed aggregate any_value descriptor column" \
+    "$mixed_expected" \
+    "USE ${DATABASE}; SELECT ANY_VALUE(label), MAX(v), COUNT(*) FROM u;"
+
+mixed_alias_expected=$(cat <<EXPECTED
+av	mx
+same	3
+EXPECTED
+)
+expect_output_with_headers \
+    "mixed aggregate any_value alias labels" \
+    "$mixed_alias_expected" \
+    "USE ${DATABASE}; SELECT ANY_VALUE(label) AS av, MAX(v) AS mx FROM u;"
+
+mixed_empty_expected=$(cat <<EXPECTED
+NULL	NULL	0
+EXPECTED
+)
+expect_output \
+    "mixed aggregate any_value empty input" \
+    "$mixed_empty_expected" \
+    "USE ${DATABASE}; SELECT ANY_VALUE(label), MAX(v), COUNT(*) FROM u WHERE v > 10;"
 
 expect_output \
     "any_value ordinary table identifier" \

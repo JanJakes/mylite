@@ -654,6 +654,7 @@ static enum planned_grouped_aggregate_function grouped_aggregate_function_from_e
     case PLANNED_COLUMN_AGGREGATE_COUNT_COLUMN:
     case PLANNED_COLUMN_AGGREGATE_COUNT_LITERAL:
     case PLANNED_COLUMN_AGGREGATE_COUNT_DISTINCT_COLUMN:
+    case PLANNED_COLUMN_AGGREGATE_ANY_VALUE:
         break;
     }
     if (expression != NULL && expression->kind == MYLITE_SQL_AST_ANY_VALUE_FUNCTION) {

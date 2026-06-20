@@ -997,6 +997,11 @@ static int bind_grouped_projection_parameters(
     const struct planned_grouped_aggregate *plan,
     int *parameter_index
 );
+static int bind_grouped_having_aggregate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate_item *item,
+    int *parameter_index
+);
 static int bind_grouped_aggregate_row_scalar_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_grouped_aggregate_item *item,

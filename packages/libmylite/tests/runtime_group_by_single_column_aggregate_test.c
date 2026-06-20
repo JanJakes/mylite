@@ -318,6 +318,7 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const offset_values[] = {"1", "2"};
     static const char *const having_count_columns[] = {"g", "c"};
     static const char *const having_count_values[] = {"1", "2", "2", "2"};
+    static const char *const having_count_expression_values[] = {"2", "2"};
     static const char *const having_count_distinct_values[] = {"2", "2"};
     static const char *const having_count_n_columns[] = {"g", "c"};
     static const char *const having_count_n_zero_values[] = {NULL, "0"};
@@ -325,6 +326,7 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const having_descriptor_precedence_columns[] = {"g", "g"};
     static const char *const having_sum_columns[] = {"g", "s"};
     static const char *const having_sum_values[] = {"1", "10", "2", "50"};
+    static const char *const having_sum_expression_values[] = {"2", "52"};
     static const char *const having_sum_null_values[] = {NULL, NULL};
     static const char *const having_max_columns[] = {"g", "m"};
     static const char *const having_max_values[] = {"2", "30"};
@@ -1711,6 +1713,78 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = count_distinct_row_scalar_having_values,
             .row_count = 1U,
             .context = "having selected count distinct row-scalar expression comparison",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(IFNULL(n, 0)) AS c FROM grouped_numbers "
+                   "GROUP BY g HAVING COUNT(IFNULL(n, 0)) > 1 ORDER BY g",
+            .columns = having_count_columns,
+            .column_count = 2U,
+            .values = having_count_values,
+            .row_count = 2U,
+            .context = "having selected count row-scalar expression comparison",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(n + 1) AS c FROM grouped_numbers "
+                   "GROUP BY g HAVING COUNT(n + 1) > 1 ORDER BY g",
+            .columns = having_count_columns,
+            .column_count = 2U,
+            .values = having_count_expression_values,
+            .row_count = 1U,
+            .context = "having selected count row-scalar expression null skip comparison",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, SUM(n + 1) AS s FROM grouped_numbers "
+                   "GROUP BY g HAVING SUM(n + 1) > 20 ORDER BY g",
+            .columns = having_sum_columns,
+            .column_count = 2U,
+            .values = having_sum_expression_values,
+            .row_count = 1U,
+            .context = "having selected sum row-scalar expression comparison",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, AVG(n + 1) AS a FROM grouped_numbers "
+                   "GROUP BY g HAVING AVG(n + 1) > 20 ORDER BY g",
+            .columns = avg_alias_order_columns,
+            .column_count = 2U,
+            .values = g_avg_expression_desc_limit_values,
+            .row_count = 1U,
+            .context = "having selected avg row-scalar expression comparison",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, MAX(IFNULL(n, 0)) AS m FROM grouped_numbers "
+                   "GROUP BY g HAVING MAX(IFNULL(n, 0)) > 20 ORDER BY g",
+            .columns = having_max_columns,
+            .column_count = 2U,
+            .values = having_max_values,
+            .row_count = 1U,
+            .context = "having selected max row-scalar expression comparison",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, MIN(IFNULL(n, 99)) AS m FROM grouped_numbers "
+                   "GROUP BY g HAVING MIN(IFNULL(n, 99)) < 20 ORDER BY g",
+            .columns = having_max_columns,
+            .column_count = 2U,
+            .values = having_min_values,
+            .row_count = 1U,
+            .context = "having selected min row-scalar expression comparison",
         }
     );
     failures += expect_grouped_query(

@@ -792,7 +792,7 @@ static int bind_grouped_aggregate_parameters_at(
         if (plan->having.aggregate_index >= plan->aggregate_count) {
             return MYLITE_ERROR;
         }
-        rc = bind_grouped_aggregate_row_scalar_expression_parameters(
+        rc = bind_grouped_having_aggregate_parameters(
             statement,
             &plan->aggregates[plan->having.aggregate_index],
             parameter_index
@@ -890,6 +890,24 @@ static int bind_grouped_projection_parameters(
         );
     }
     return rc;
+}
+
+static int bind_grouped_having_aggregate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate_item *item,
+    int *parameter_index
+) {
+    if (item == NULL || !item->aggregate_uses_row_scalar_expression) {
+        return MYLITE_OK;
+    }
+    if (item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
+        return bind_row_scalar_expression_parameters(
+            statement,
+            &item->aggregate_row_scalar_expression,
+            parameter_index
+        );
+    }
+    return bind_grouped_aggregate_row_scalar_expression_parameters(statement, item, parameter_index);
 }
 
 static int bind_grouped_aggregate_row_scalar_expression_parameters(

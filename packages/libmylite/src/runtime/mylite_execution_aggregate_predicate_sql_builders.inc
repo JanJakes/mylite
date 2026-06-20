@@ -1248,15 +1248,56 @@ static int append_grouped_having_aggregate_sql(
     const struct planned_grouped_aggregate *plan,
     size_t *next_parameter
 ) {
+    const struct planned_grouped_aggregate_item *item = NULL;
+
     if (plan->having.aggregate_index >= plan->aggregate_count) {
         return MYLITE_ERROR;
     }
-    return append_grouped_aggregate_expression_sql(
-        string,
-        plan,
-        &plan->aggregates[plan->having.aggregate_index],
-        next_parameter
-    );
+    item = &plan->aggregates[plan->having.aggregate_index];
+    if (item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
+        return append_grouped_avg_having_operand_sql(string, plan, item, next_parameter);
+    }
+    return append_grouped_aggregate_expression_sql(string, plan, item, next_parameter);
+}
+
+static int append_grouped_avg_having_operand_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    const struct planned_grouped_aggregate_item *item,
+    size_t *next_parameter
+) {
+    bool qualify = plan->source_count > 0U;
+    int rc = mylite_dynamic_string_append(string, "AVG(");
+
+    if (rc == MYLITE_OK) {
+        rc = append_aggregate_distinct_sql(string, item->aggregate_is_distinct);
+    }
+    if (rc == MYLITE_OK && item->aggregate_uses_row_scalar_expression) {
+        if (next_parameter == NULL) {
+            return MYLITE_ERROR;
+        }
+        rc = append_row_scalar_expression_sql(
+            string,
+            &item->aggregate_row_scalar_expression,
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK && item->aggregate_uses_row_scalar_expression &&
+        row_scalar_expression_uses_string_collation(&item->aggregate_row_scalar_expression)) {
+        rc = append_string_key_collation_sql(string);
+    }
+    if (rc == MYLITE_OK && !item->aggregate_uses_row_scalar_expression) {
+        rc = append_descriptor_column_name_sql_for_source(
+            string,
+            &item->aggregate_column,
+            item->aggregate_column_source_index,
+            qualify
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
 }
 
 static int append_grouped_order_sql(

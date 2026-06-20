@@ -71,6 +71,9 @@ Supported `having_operand` forms:
 - The selected aggregate function expression itself, for `COUNT(*)`,
   `COUNT(column)`, `COUNT(DISTINCT column)`, `MIN(column)`, `MAX(column)`,
   `SUM(column)`, and `AVG(column)`.
+- The selected aggregate function expression itself, for supported
+  row-scalar-expression arguments in the companion
+  `baseline-grouped-selected-row-scalar-aggregate-expression-having` slice.
 
 The aggregate function expression in `HAVING` must refer to the selected
 aggregate result. MyLite does not yet support aggregate expressions that are
@@ -96,7 +99,8 @@ This phase does not add:
 - string, decimal, float, hex, bit, parameter, subquery, or function literals;
 - arithmetic or arbitrary expressions in `HAVING`;
 - arbitrary `COUNT(DISTINCT ...)` expressions outside the selected
-  descriptor-column grouped count-distinct slice;
+  descriptor-column grouped count-distinct slice and documented
+  single-expression row-scalar companion slices;
 - aggregate expressions in `HAVING` that differ from the selected aggregate;
 - bitwise aggregate result predicates;
 - multiple grouping keys, grouping aliases in the `GROUP BY` clause, ordinals,
@@ -207,9 +211,9 @@ GROUP BY "group_column"
 ```
 
 `AVG()` selected results continue to use the existing internal `SUM()` plus
-`COUNT()` projection so MyLite can preserve its result formatting. A `HAVING
-AVG(column) ...` predicate emits a SQLite `AVG("column")` expression only for
-the filter predicate.
+`COUNT()` projection so MyLite can preserve its result formatting. A repeated
+selected `HAVING AVG(...)` predicate emits a single SQLite `AVG(...)`
+expression only for the filter predicate.
 
 Every generated SQLite identifier is quoted. Predicate, `HAVING`, `LIMIT`, and
 `OFFSET` values are bound parameters. MyLite never interpolates user literals
@@ -300,6 +304,8 @@ Runtime tests must cover:
 
 - successful aggregate-alias and aggregate-expression predicates for
   `COUNT(*)`, `COUNT(column)`, `MIN`, `MAX`, `SUM`, and `AVG`;
+- selected row-scalar aggregate-expression predicates in the companion
+  grouped row-scalar aggregate `HAVING` slice;
 - group-column predicates, including `IS NULL`, `<=>`, comparisons, and aliases;
 - `WHERE` before grouping combined with `HAVING`;
 - `ORDER BY` and `LIMIT` after `HAVING`, including `LIMIT 0`;

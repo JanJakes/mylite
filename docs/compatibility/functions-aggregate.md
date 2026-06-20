@@ -6,6 +6,13 @@ Current ungrouped aggregate `SELECT` lists can mix supported aggregate items in
 the documented one-table/no-source envelope with baseline `WHERE`, aliases, and
 `LIMIT`; see [baseline multi-aggregate SELECT](../specs/baseline-multi-aggregate-select/specs.md).
 
+Grouped `HAVING` support includes selected descriptor-column aggregate
+expressions and selected `COUNT()`, `SUM()`, `AVG()`, `MIN()`, and `MAX()`
+row-scalar aggregate expressions in the documented envelopes; see
+[baseline HAVING grouped aggregate](../specs/baseline-having-grouped-aggregate/specs.md)
+and
+[baseline grouped selected row-scalar aggregate expression HAVING](../specs/baseline-grouped-selected-row-scalar-aggregate-expression-having/specs.md).
+
 The parser also admits common MySQL aggregate-window `OVER` syntax for the
 current `COUNT(*)`, `COUNT(column)`, `COUNT(DISTINCT column)`, supported
 row-scalar arguments for `SUM()` / `AVG()` / `MIN()` / `MAX()` / bitwise and

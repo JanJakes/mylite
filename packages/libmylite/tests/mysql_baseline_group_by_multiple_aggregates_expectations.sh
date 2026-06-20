@@ -278,6 +278,39 @@ expect_value "mysql bit xor expression order high" "1	15" \
 expect_value "mysql bit or expression order desc limit" "1	15" \
     "$(printf '%s\n' "$aggregate_order" | sed -n '29p')"
 
+row_scalar_expression_order=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT g, COUNT(IFNULL(n, 0)) AS c FROM t GROUP BY g
+       ORDER BY COUNT(IFNULL(n, 0)) DESC, g DESC;
+     SELECT g, SUM(n + 1) AS s FROM t GROUP BY g ORDER BY SUM(n + 1) ASC;
+     SELECT g, AVG(n + 1) AS a FROM t GROUP BY g ORDER BY AVG(n + 1) DESC
+       LIMIT 2;
+     SELECT g, MAX(n + 1) AS m FROM t GROUP BY g ORDER BY MAX(n + 1) DESC
+       LIMIT 1;
+     SELECT g, BIT_OR(nn + 1) AS bo FROM t GROUP BY g ORDER BY BIT_OR(nn + 1) DESC
+       LIMIT 1;"
+)
+expect_value "count row-scalar expression order high" "1	3" \
+    "$(printf '%s\n' "$row_scalar_expression_order" | sed -n '1p')"
+expect_value "count row-scalar expression order middle" "2	2" \
+    "$(printf '%s\n' "$row_scalar_expression_order" | sed -n '2p')"
+expect_value "count row-scalar expression order null tie" "NULL	2" \
+    "$(printf '%s\n' "$row_scalar_expression_order" | sed -n '3p')"
+expect_value "sum row-scalar expression order null first" "2	NULL" \
+    "$(printf '%s\n' "$row_scalar_expression_order" | sed -n '4p')"
+expect_value "sum row-scalar expression order low" "NULL	6" \
+    "$(printf '%s\n' "$row_scalar_expression_order" | sed -n '5p')"
+expect_value "sum row-scalar expression order high" "1	32" \
+    "$(printf '%s\n' "$row_scalar_expression_order" | sed -n '6p')"
+expect_value "avg row-scalar expression order high" "1	16.0000" \
+    "$(printf '%s\n' "$row_scalar_expression_order" | sed -n '7p')"
+expect_value "avg row-scalar expression order low" "NULL	6.0000" \
+    "$(printf '%s\n' "$row_scalar_expression_order" | sed -n '8p')"
+expect_value "max row-scalar expression order desc limit" "1	21" \
+    "$(printf '%s\n' "$row_scalar_expression_order" | sed -n '9p')"
+expect_value "bitwise row-scalar expression order desc limit" "2	15" \
+    "$(printf '%s\n' "$row_scalar_expression_order" | sed -n '10p')"
+
 headers=$(run_mysql_with_headers \
     "USE ${DATABASE};
      SELECT g AS k, COUNT(*) AS c, SUM(n) AS s FROM t GROUP BY g ORDER BY c DESC LIMIT 1;"

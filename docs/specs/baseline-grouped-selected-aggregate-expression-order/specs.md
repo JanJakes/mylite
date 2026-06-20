@@ -69,8 +69,8 @@ ORDER BY aggregate_expression [ASC|DESC] [, supported_grouped_order_key ...]
 ```
 
 The repeated `aggregate_expression` must match exactly one selected aggregate
-result after MyLite descriptor resolution. Supported expressions are the
-current grouped descriptor-column forms:
+result after MyLite descriptor resolution. This slice covers the current grouped
+descriptor-column forms:
 
 - `COUNT(*)`
 - `COUNT(integer_descriptor_column)`
@@ -79,6 +79,10 @@ current grouped descriptor-column forms:
 - `MAX(integer_descriptor_column)`
 - `SUM(integer_descriptor_column)`
 - `AVG(integer_descriptor_column)`
+
+Selected aggregate-expression ordering for supported row-scalar aggregate
+arguments is covered by
+`docs/specs/baseline-grouped-selected-row-scalar-aggregate-expression-order/specs.md`.
 
 MyLite Lemon-syntax grammar snippets are unchanged for this slice; the existing
 grouped `ORDER BY` grammar already admits the aggregate-expression keys.
@@ -106,8 +110,6 @@ This slice does not add:
 
 - hidden aggregate order keys that do not match a selected aggregate result,
   such as `SELECT g FROM t GROUP BY g ORDER BY SUM(n)`;
-- row-scalar aggregate argument matching such as selected `SUM(n + 1)` ordered
-  by `SUM(n + 1)`;
 - `GROUP_CONCAT()` aggregate-expression order keys;
 - bitwise aggregate-expression order keys, which are tracked by
   `docs/specs/baseline-grouped-selected-bitwise-aggregate-expression-order/specs.md`;

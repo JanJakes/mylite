@@ -69,7 +69,8 @@ ORDER BY statistical_aggregate(integer_descriptor_column) [ASC|DESC]
 ```
 
 `statistical_aggregate` is one of `STD`, `STDDEV`, `STDDEV_POP`,
-`STDDEV_SAMP`, `VAR_POP`, `VAR_SAMP`, or `VARIANCE`. The repeated aggregate
+`STDDEV_SAMP`, `VAR_POP`, `VAR_SAMP`, or `VARIANCE`. This slice covers
+descriptor-column statistical aggregate arguments. The repeated aggregate
 expression must match exactly one selected aggregate result after MyLite
 descriptor resolution.
 
@@ -83,9 +84,9 @@ selected_grouped_aggregate_expression ::= IDENTIFIER LPAREN sum_aggregate_argume
    reject the production as a syntax error. */
 ```
 
-The execution subset is descriptor-column statistical aggregates. Row-scalar
-statistical aggregate expression matching remains out of scope even though the
-shared aggregate grammar can parse broader argument shapes.
+Selected statistical aggregate-expression ordering for supported row-scalar
+aggregate arguments is covered by
+`docs/specs/baseline-grouped-selected-row-scalar-aggregate-expression-order/specs.md`.
 
 ## Runtime Semantics
 
@@ -112,8 +113,6 @@ This slice does not add:
 
 - hidden statistical aggregate order keys that do not match a selected
   aggregate result, such as `SELECT g FROM t GROUP BY g ORDER BY VAR_POP(n)`;
-- row-scalar statistical aggregate argument matching such as selected
-  `STDDEV_POP(n + 1)` ordered by `STDDEV_POP(n + 1)`;
 - `DISTINCT` statistical aggregate arguments;
 - string-to-double coercion warnings or broader noninteger argument domains;
 - broader aggregate argument domains, hidden aggregate projection, full

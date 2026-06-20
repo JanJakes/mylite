@@ -194,6 +194,21 @@ expect_value "group statistical stddev expression descending limit" "2	5" \
 expect_value "group statistical variance expression descending limit" "2	25" \
     "$(printf '%s\n' "$grouped_order" | sed -n '22p')"
 
+grouped_row_scalar_expression_order=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT g, STDDEV_POP(n + 1) AS s FROM t GROUP BY g ORDER BY STDDEV_POP(n + 1);
+     SELECT g, VAR_POP(n + 1) AS v FROM t GROUP BY g ORDER BY VAR_POP(n + 1) DESC
+       LIMIT 1;"
+)
+expect_value "group statistical row-scalar expression null row" "NULL	NULL" \
+    "$(printf '%s\n' "$grouped_row_scalar_expression_order" | sed -n '1p')"
+expect_value "group statistical row-scalar expression zero row" "1	0" \
+    "$(printf '%s\n' "$grouped_row_scalar_expression_order" | sed -n '2p')"
+expect_value "group statistical row-scalar expression nonzero row" "2	5" \
+    "$(printf '%s\n' "$grouped_row_scalar_expression_order" | sed -n '3p')"
+expect_value "group statistical variance row-scalar expression desc limit" "2	25" \
+    "$(printf '%s\n' "$grouped_row_scalar_expression_order" | sed -n '4p')"
+
 expressions=$(run_mysql \
     "USE ${DATABASE};
      SELECT STDDEV_POP(n + 1), VAR_POP(n + 1) FROM t;

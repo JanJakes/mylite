@@ -463,6 +463,18 @@ static int test_statistical_values_and_grouping(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT g, STDDEV_POP(n + 1) AS s FROM numbers GROUP BY g "
+                   "ORDER BY STDDEV_POP(n + 1)",
+            .columns = grouped_alias_columns,
+            .column_count = sizeof(grouped_alias_columns) / sizeof(grouped_alias_columns[0]),
+            .values = grouped_stddev_pop_alias_order_values,
+            .row_count = 3U,
+            .context = "grouped statistical row-scalar aggregate expression order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT STDDEV_POP(n + 1) FROM numbers",
             .columns = (const char *const[]){"STDDEV_POP(n + 1)"},
             .column_count = 1U,

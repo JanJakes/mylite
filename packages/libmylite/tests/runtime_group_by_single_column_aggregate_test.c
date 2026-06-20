@@ -110,6 +110,15 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const g_count_distinct_nn_values[] = {NULL, "1", "1", "2", "2", "2"};
     static const char *const g_count_ifnull_columns[] = {"g", "COUNT(IFNULL(n, 0))"};
     static const char *const g_count_ifnull_values[] = {NULL, "1", "1", "2", "2", "2"};
+    static const char *const count_ifnull_expression_order_columns[] = {"g", "c"};
+    static const char *const count_ifnull_expression_order_values[] = {
+        "2",
+        "2",
+        "1",
+        "2",
+        NULL,
+        "1",
+    };
     static const char *const g_count_nullif_columns[] = {"g", "COUNT(NULLIF(n, 20))"};
     static const char *const g_count_nullif_values[] = {NULL, "0", "1", "1", "2", "1"};
     static const char *const g_min_columns[] = {"g", "MIN(n)"};
@@ -118,11 +127,14 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const g_max_columns[] = {"g", "MAX(n)"};
     static const char *const g_max_values[] = {NULL, NULL, "1", "10", "2", "30"};
     static const char *const g_max_distinct_columns[] = {"g", "MAX(DISTINCT n)"};
+    static const char *const g_max_expression_order_columns[] = {"g", "m"};
+    static const char *const g_max_expression_desc_limit_values[] = {"2", "31"};
     static const char *const g_sum_columns[] = {"g", "SUM(n)"};
     static const char *const g_sum_values[] = {NULL, NULL, "1", "10", "2", "50"};
     static const char *const g_sum_distinct_columns[] = {"g", "SUM(DISTINCT n)"};
     static const char *const g_sum_expression_columns[] = {"g", "SUM(n + 1)"};
     static const char *const g_sum_expression_values[] = {NULL, NULL, "1", "11", "2", "52"};
+    static const char *const g_sum_expression_desc_values[] = {"2", "52", "1", "11", NULL, NULL};
     static const char *const g_avg_columns[] = {"g", "AVG(n)"};
     static const char *const g_avg_values[] = {NULL, NULL, "1", "10.0000", "2", "25.0000"};
     static const char *const g_avg_distinct_columns[] = {"g", "AVG(DISTINCT n)"};
@@ -135,6 +147,7 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
         "2",
         "26.0000",
     };
+    static const char *const g_avg_expression_desc_limit_values[] = {"2", "26.0000"};
     static const char *const g_bit_and_columns[] = {"g", "BIT_AND(n)"};
     static const char *const g_bit_and_values[] = {
         NULL,
@@ -231,6 +244,8 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
         "15",
     };
     static const char *const bitwise_alias_order_desc_limit_values[] = {"1", "15"};
+    static const char *const bit_or_row_scalar_expression_order_columns[] = {"g", "bo"};
+    static const char *const bit_or_row_scalar_expression_desc_limit_values[] = {"2", "11"};
     static const char *const where_columns[] = {"g", "COUNT(*)"};
     static const char *const where_values[] = {"1", "1", "2", "2"};
     static const char *const alias_columns[] = {"k", "s"};
@@ -1069,6 +1084,18 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(IFNULL(n, 0)) AS c FROM grouped_numbers GROUP BY g "
+                   "ORDER BY COUNT(IFNULL(n, 0)) DESC, g DESC",
+            .columns = count_ifnull_expression_order_columns,
+            .column_count = 2U,
+            .values = count_ifnull_expression_order_values,
+            .row_count = 3U,
+            .context = "grouped count row-scalar aggregate expression order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
             .sql = "SELECT g, COUNT(DISTINCT n) AS cd FROM grouped_numbers GROUP BY g "
                    "ORDER BY COUNT(DISTINCT n) DESC LIMIT 2",
             .columns = count_distinct_expression_order_columns,
@@ -1129,6 +1156,18 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
+            .sql = "SELECT g, MAX(n + 1) AS m FROM grouped_numbers GROUP BY g "
+                   "ORDER BY MAX(n + 1) DESC LIMIT 1",
+            .columns = g_max_expression_order_columns,
+            .column_count = 2U,
+            .values = g_max_expression_desc_limit_values,
+            .row_count = 1U,
+            .context = "grouped max row-scalar aggregate expression descending limit",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
             .sql = "SELECT g, AVG(n) AS a FROM grouped_avg_order GROUP BY g ORDER BY a ASC",
             .columns = avg_alias_order_columns,
             .column_count = 2U,
@@ -1159,6 +1198,30 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = avg_alias_order_desc_limit_values,
             .row_count = 1U,
             .context = "grouped avg aggregate expression descending exact limit",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, SUM(n + 1) FROM grouped_numbers GROUP BY g "
+                   "ORDER BY SUM(n + 1) DESC",
+            .columns = g_sum_expression_columns,
+            .column_count = 2U,
+            .values = g_sum_expression_desc_values,
+            .row_count = 3U,
+            .context = "grouped sum row-scalar aggregate expression order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, AVG(n + 1) FROM grouped_numbers GROUP BY g "
+                   "ORDER BY AVG(n + 1) DESC LIMIT 1",
+            .columns = g_avg_expression_columns,
+            .column_count = 2U,
+            .values = g_avg_expression_desc_limit_values,
+            .row_count = 1U,
+            .context = "grouped avg row-scalar aggregate expression descending limit",
         }
     );
     failures += expect_grouped_query(
@@ -1255,6 +1318,18 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = bitwise_alias_order_desc_limit_values,
             .row_count = 1U,
             .context = "grouped bitwise aggregate expression descending order limit",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, BIT_OR(bor + 1) AS bo FROM grouped_bitwise_order GROUP BY g "
+                   "ORDER BY BIT_OR(bor + 1) DESC LIMIT 1",
+            .columns = bit_or_row_scalar_expression_order_columns,
+            .column_count = 2U,
+            .values = bit_or_row_scalar_expression_desc_limit_values,
+            .row_count = 1U,
+            .context = "grouped bitwise row-scalar aggregate expression descending limit",
         }
     );
     failures += expect_grouped_query(

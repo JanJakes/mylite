@@ -692,7 +692,13 @@ static bool grouped_order_aggregate_items_match(
         left->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
         return false;
     }
-    if (left->aggregate_uses_row_scalar_expression || right->aggregate_uses_row_scalar_expression) {
+    if (left->aggregate_uses_row_scalar_expression && right->aggregate_uses_row_scalar_expression) {
+        return grouped_order_row_scalar_aggregate_expressions_match(
+            &left->aggregate_row_scalar_expression,
+            &right->aggregate_row_scalar_expression
+        );
+    }
+    if (left->aggregate_uses_row_scalar_expression != right->aggregate_uses_row_scalar_expression) {
         return false;
     }
     return planned_grouped_aggregate_columns_match(
@@ -701,6 +707,151 @@ static bool grouped_order_aggregate_items_match(
         &right->aggregate_column,
         right->aggregate_column_source_index
     );
+}
+
+static bool grouped_order_row_scalar_aggregate_expressions_match(
+    const struct planned_row_scalar_expression *left,
+    const struct planned_row_scalar_expression *right
+) {
+    if (!grouped_order_row_scalar_aggregate_expression_fields_match(left, right) ||
+        !grouped_order_planned_values_match(&left->value, &right->value) ||
+        !grouped_order_row_scalar_conversion_steps_match(left, right)) {
+        return false;
+    }
+
+    for (size_t argument_index = 0U; argument_index < left->argument_count; ++argument_index) {
+        if (!grouped_order_row_scalar_aggregate_expressions_match(
+                &left->arguments[argument_index],
+                &right->arguments[argument_index]
+            )) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool grouped_order_row_scalar_aggregate_expression_fields_match(
+    const struct planned_row_scalar_expression *left,
+    const struct planned_row_scalar_expression *right
+) {
+    if (left == NULL || right == NULL || left->kind != right->kind ||
+        left->field_domain != right->field_domain ||
+        left->string_length_kind != right->string_length_kind ||
+        left->string_case_kind != right->string_case_kind ||
+        left->string_codepoint_kind != right->string_codepoint_kind ||
+        left->string_trim_kind != right->string_trim_kind ||
+        left->string_slice_kind != right->string_slice_kind ||
+        left->string_search_kind != right->string_search_kind ||
+        left->string_padding_kind != right->string_padding_kind ||
+        left->string_bitmask_kind != right->string_bitmask_kind ||
+        left->regexp_string_kind != right->regexp_string_kind ||
+        left->conversion_kind != right->conversion_kind ||
+        left->digest_kind != right->digest_kind ||
+        left->numeric_function_kind != right->numeric_function_kind ||
+        left->base_conversion_kind != right->base_conversion_kind ||
+        left->numeric_extra_kind != right->numeric_extra_kind ||
+        left->numeric_extra_has_decimal_scale != right->numeric_extra_has_decimal_scale ||
+        left->numeric_extra_decimal_scale != right->numeric_extra_decimal_scale ||
+        left->window_function_kind != right->window_function_kind ||
+        left->temporal_extract_kind != right->temporal_extract_kind ||
+        left->operator_kind != right->operator_kind ||
+        left->arithmetic_operator != right->arithmetic_operator ||
+        left->json_value_kind != right->json_value_kind ||
+        left->json_mutation_kind != right->json_mutation_kind ||
+        left->regexp_case_sensitive != right->regexp_case_sensitive ||
+        left->like_uses_escape != right->like_uses_escape ||
+        left->case_has_else != right->case_has_else ||
+        left->has_rand_seed != right->has_rand_seed ||
+        left->rand_seed_is_expression != right->rand_seed_is_expression ||
+        left->rand_seed != right->rand_seed ||
+        left->window_has_partition != right->window_has_partition ||
+        left->window_has_order != right->window_has_order ||
+        left->window_has_frame != right->window_has_frame ||
+        left->conversion_ascii_only != right->conversion_ascii_only ||
+        left->conversion_step_count != right->conversion_step_count ||
+        left->window_order_direction != right->window_order_direction ||
+        left->window_frame_unit != right->window_frame_unit ||
+        left->window_partition_column.column_id != right->window_partition_column.column_id ||
+        left->window_order_column.column_id != right->window_order_column.column_id ||
+        left->column.column_id != right->column.column_id ||
+        left->column_cast_as_integer != right->column_cast_as_integer ||
+        left->column_has_source_index != right->column_has_source_index ||
+        left->argument_count != right->argument_count ||
+        (left->argument_count != 0U && (left->arguments == NULL || right->arguments == NULL))) {
+        return false;
+    }
+
+    if (left->column_has_source_index && left->column_source_index != right->column_source_index) {
+        return false;
+    }
+
+    return grouped_order_optional_strings_match(left->conversion_charset, right->conversion_charset) &&
+           grouped_order_optional_strings_match(
+               left->conversion_collation,
+               right->conversion_collation
+           ) &&
+           grouped_order_optional_strings_match(left->collation_name, right->collation_name) &&
+           strcmp(left->column_effective_charset, right->column_effective_charset) == 0 &&
+           strcmp(left->column_effective_collation, right->column_effective_collation) == 0 &&
+           grouped_order_window_frame_bounds_match(
+               &left->window_frame_start,
+               &right->window_frame_start
+           ) &&
+           grouped_order_window_frame_bounds_match(&left->window_frame_end, &right->window_frame_end);
+}
+
+static bool grouped_order_planned_values_match(
+    const struct planned_value *left,
+    const struct planned_value *right
+) {
+    if (left->is_null != right->is_null || left->is_text != right->is_text ||
+        left->is_blob != right->is_blob || left->is_real != right->is_real) {
+        return false;
+    }
+    if (left->is_null) {
+        return true;
+    }
+    if (left->is_text || left->is_blob) {
+        return left->text_length == right->text_length &&
+               (left->text_length == 0U || memcmp(left->text, right->text, left->text_length) == 0);
+    }
+    if (left->is_real) {
+        return left->real == right->real;
+    }
+    return left->integer == right->integer;
+}
+
+static bool grouped_order_row_scalar_conversion_steps_match(
+    const struct planned_row_scalar_expression *left,
+    const struct planned_row_scalar_expression *right
+) {
+    for (size_t step_index = 0U; step_index < left->conversion_step_count; ++step_index) {
+        const struct planned_row_scalar_conversion_step *left_step =
+            &left->conversion_steps[step_index];
+        const struct planned_row_scalar_conversion_step *right_step =
+            &right->conversion_steps[step_index];
+
+        if (left_step->kind != right_step->kind || left_step->ascii_only != right_step->ascii_only ||
+            !grouped_order_optional_strings_match(left_step->charset, right_step->charset) ||
+            !grouped_order_optional_strings_match(left_step->collation, right_step->collation)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool grouped_order_window_frame_bounds_match(
+    const struct planned_window_frame_bound *left,
+    const struct planned_window_frame_bound *right
+) {
+    return left->kind == right->kind && left->value == right->value;
+}
+
+static bool grouped_order_optional_strings_match(const char *left, const char *right) {
+    if (left == NULL || right == NULL) {
+        return left == right;
+    }
+    return strcmp(left, right) == 0;
 }
 
 static int order_identifier_matches_alias(

@@ -66,9 +66,10 @@ ORDER BY bitwise_aggregate(integer_descriptor_column) [ASC|DESC]
 [LIMIT supported_limit]
 ```
 
-`bitwise_aggregate` is `BIT_AND`, `BIT_OR`, or `BIT_XOR`. The repeated
-aggregate expression must match exactly one selected aggregate result after
-MyLite descriptor resolution.
+`bitwise_aggregate` is `BIT_AND`, `BIT_OR`, or `BIT_XOR`. This slice covers
+descriptor-column bitwise aggregate arguments. The repeated aggregate
+expression must match exactly one selected aggregate result after MyLite
+descriptor resolution.
 
 MyLite Lemon-syntax grammar snippets:
 
@@ -78,9 +79,9 @@ selected_grouped_aggregate_expression ::= BIT_OR LPAREN sum_aggregate_argument R
 selected_grouped_aggregate_expression ::= BIT_XOR LPAREN sum_aggregate_argument RPAREN.
 ```
 
-The execution subset is descriptor-column bitwise aggregates. Row-scalar
-bitwise aggregate expression matching remains out of scope even though the
-shared aggregate grammar can parse broader argument shapes.
+Selected bitwise aggregate-expression ordering for supported row-scalar
+aggregate arguments is covered by
+`docs/specs/baseline-grouped-selected-row-scalar-aggregate-expression-order/specs.md`.
 
 ## Runtime Semantics
 
@@ -108,8 +109,6 @@ This slice does not add:
 
 - hidden bitwise aggregate order keys that do not match a selected aggregate
   result, such as `SELECT g FROM t GROUP BY g ORDER BY BIT_OR(n)`;
-- row-scalar bitwise aggregate argument matching such as selected
-  `BIT_OR(n + 1)` ordered by `BIT_OR(n + 1)`;
 - binary-string bitwise aggregate evaluation;
 - `DISTINCT` bitwise aggregate arguments;
 - grouped `HAVING` predicates on bitwise aggregate results;

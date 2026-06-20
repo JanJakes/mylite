@@ -631,6 +631,27 @@ static bool grouped_order_aggregate_items_match(
     const struct planned_grouped_aggregate_item *left,
     const struct planned_grouped_aggregate_item *right
 );
+static bool grouped_order_row_scalar_aggregate_expressions_match(
+    const struct planned_row_scalar_expression *left,
+    const struct planned_row_scalar_expression *right
+);
+static bool grouped_order_row_scalar_aggregate_expression_fields_match(
+    const struct planned_row_scalar_expression *left,
+    const struct planned_row_scalar_expression *right
+);
+static bool grouped_order_planned_values_match(
+    const struct planned_value *left,
+    const struct planned_value *right
+);
+static bool grouped_order_row_scalar_conversion_steps_match(
+    const struct planned_row_scalar_expression *left,
+    const struct planned_row_scalar_expression *right
+);
+static bool grouped_order_window_frame_bounds_match(
+    const struct planned_window_frame_bound *left,
+    const struct planned_window_frame_bound *right
+);
+static bool grouped_order_optional_strings_match(const char *left, const char *right);
 static int execute_grouped_aggregate_from_plan(
     struct mylite_db *database,
     const struct planned_grouped_aggregate *plan,

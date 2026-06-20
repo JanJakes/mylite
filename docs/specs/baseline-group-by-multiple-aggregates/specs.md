@@ -245,8 +245,8 @@ aggregate-alias and aggregate-expression ordering wraps the generated `SUM()`
 and `COUNT()` components in an internal exact signed-rational order-key scalar
 so large integer averages do not sort through SQLite `REAL`.
 Statistical aggregates call MyLite's registered aggregate callbacks and selected
-statistical aggregate-alias or descriptor-column aggregate-expression ordering
-repeats the same aggregate expression in the generated `ORDER BY`.
+statistical aggregate-alias or aggregate-expression ordering repeats the same
+aggregate expression in the generated `ORDER BY`.
 
 All generated identifiers are quoted. Predicate, separator, `HAVING`, and
 limit values are bound parameters. This feature adds no SQLite fork patch:

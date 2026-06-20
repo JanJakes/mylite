@@ -15,8 +15,9 @@ descriptor-backed aggregate envelope:
 
 The slice covers one-table aggregate reads, tableless scalar aggregate reads,
 supported row-scalar aggregate arguments, optional baseline `WHERE`, aliases,
-grouped aggregate forms that already work for `SUM()` and `AVG()`, and selected
-grouped statistical aggregate-alias ordering.
+grouped aggregate forms that already work for `SUM()` and `AVG()`, selected
+grouped statistical aggregate-alias ordering, and selected descriptor-column
+statistical aggregate-expression ordering.
 
 The implementation does not cover executable aggregate windows, `DISTINCT`,
 string-to-double conversion warnings, decimal widening metadata, or full MySQL
@@ -46,9 +47,10 @@ Runtime probes were executed against `mysql:8.4.9` in the
 - `STDDEV_POP(DISTINCT n)` is a MySQL syntax error.
 - Aggregate-window forms are valid MySQL syntax but remain an explicit MyLite
   runtime gap for this slice.
-- Selected grouped statistical aggregate aliases sort by their aggregate
-  double/`NULL` value. `NULL` aggregate results sort first for ascending order
-  and last for descending order in the verified subset.
+- Selected grouped statistical aggregate aliases and descriptor-column
+  aggregate expressions sort by their aggregate double/`NULL` value. `NULL`
+  aggregate results sort first for ascending order and last for descending
+  order in the verified subset.
 
 ## MyLite Syntax
 
@@ -118,5 +120,6 @@ The C runtime test covers:
 - row-scalar aggregate arguments;
 - grouped forms;
 - selected grouped aggregate-alias ordering;
+- selected descriptor-column grouped aggregate-expression ordering;
 - rename/truncate/drop behavior;
 - unsupported diagnostics.

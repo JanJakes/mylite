@@ -138,7 +138,16 @@ grouped_order=$(run_mysql \
      SELECT g, VAR_SAMP(n) AS v FROM t GROUP BY g ORDER BY v DESC LIMIT 1;
      SELECT g, STD(n) AS s FROM t GROUP BY g ORDER BY s DESC LIMIT 1;
      SELECT g, VARIANCE(n) AS v FROM t GROUP BY g ORDER BY v DESC LIMIT 1;
-     SELECT g, STDDEV_POP(n + 1) AS s FROM t GROUP BY g ORDER BY s;"
+     SELECT g, STDDEV_POP(n + 1) AS s FROM t GROUP BY g ORDER BY s;
+     SELECT g, STDDEV_POP(n) AS s FROM t GROUP BY g ORDER BY STDDEV_POP(n);
+     SELECT g, VAR_POP(n) AS v FROM t GROUP BY g ORDER BY VAR_POP(n) DESC LIMIT 2;
+     SELECT g, STDDEV_SAMP(n) AS s FROM t GROUP BY g ORDER BY STDDEV_SAMP(n) DESC
+       LIMIT 1;
+     SELECT g, VAR_SAMP(n) AS v FROM t GROUP BY g ORDER BY VAR_SAMP(n) DESC LIMIT 1;
+     SELECT g, STD(n) AS s FROM t GROUP BY g ORDER BY STD(n) DESC LIMIT 1;
+     SELECT g, STDDEV(n) AS s FROM t GROUP BY g ORDER BY STDDEV(n) DESC LIMIT 1;
+     SELECT g, VARIANCE(n) AS v FROM t GROUP BY g ORDER BY VARIANCE(n) DESC
+       LIMIT 1;"
 )
 expect_value "group statistical stddev_pop alias null row" "NULL	NULL" \
     "$(printf '%s\n' "$grouped_order" | sed -n '1p')"
@@ -164,6 +173,26 @@ expect_value "group statistical row-scalar alias zero row" "1	0" \
     "$(printf '%s\n' "$grouped_order" | sed -n '11p')"
 expect_value "group statistical row-scalar alias nonzero row" "2	5" \
     "$(printf '%s\n' "$grouped_order" | sed -n '12p')"
+expect_value "group statistical stddev_pop expression null row" "NULL	NULL" \
+    "$(printf '%s\n' "$grouped_order" | sed -n '13p')"
+expect_value "group statistical stddev_pop expression zero row" "1	0" \
+    "$(printf '%s\n' "$grouped_order" | sed -n '14p')"
+expect_value "group statistical stddev_pop expression nonzero row" "2	5" \
+    "$(printf '%s\n' "$grouped_order" | sed -n '15p')"
+expect_value "group statistical var_pop expression descending first row" "2	25" \
+    "$(printf '%s\n' "$grouped_order" | sed -n '16p')"
+expect_value "group statistical var_pop expression descending second row" "1	0" \
+    "$(printf '%s\n' "$grouped_order" | sed -n '17p')"
+expect_value "group statistical stddev_samp expression descending limit" "2	7.0710678118654755" \
+    "$(printf '%s\n' "$grouped_order" | sed -n '18p')"
+expect_value "group statistical var_samp expression descending limit" "2	50" \
+    "$(printf '%s\n' "$grouped_order" | sed -n '19p')"
+expect_value "group statistical std expression descending limit" "2	5" \
+    "$(printf '%s\n' "$grouped_order" | sed -n '20p')"
+expect_value "group statistical stddev expression descending limit" "2	5" \
+    "$(printf '%s\n' "$grouped_order" | sed -n '21p')"
+expect_value "group statistical variance expression descending limit" "2	25" \
+    "$(printf '%s\n' "$grouped_order" | sed -n '22p')"
 
 expressions=$(run_mysql \
     "USE ${DATABASE};

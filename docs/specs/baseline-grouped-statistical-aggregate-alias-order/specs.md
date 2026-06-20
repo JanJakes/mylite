@@ -105,8 +105,9 @@ current MyLite statistical envelope and requires no SQLite fork hook.
 
 This slice does not add:
 
-- `ORDER BY STDDEV_POP(column)` or other aggregate expressions that are not
-  matched through a selected alias;
+- repeated statistical aggregate expressions, which are tracked by
+  `docs/specs/baseline-grouped-selected-statistical-aggregate-expression-order/specs.md`
+  for selected descriptor-column statistical aggregate expressions;
 - `DISTINCT` statistical aggregate arguments;
 - executable aggregate windows;
 - string-to-double coercion warnings or broader noninteger argument domains;

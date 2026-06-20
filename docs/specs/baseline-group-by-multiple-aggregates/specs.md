@@ -68,9 +68,9 @@ expectations for this slice:
   repeated selected core aggregate expressions such as `ORDER BY SUM(n)`.
   MyLite admits selected `COUNT`, `MIN`, `MAX`, `SUM`, `AVG`, bitwise, and
   statistical aggregate aliases, plus repeated selected `COUNT`, `MIN`, `MAX`,
-  `SUM`, `AVG`, and bitwise descriptor-column aggregate expressions in this
-  slice. `AVG` keys order by exact signed `SUM()/COUNT()` rational value rather
-  than SQLite's floating `AVG()`.
+  `SUM`, `AVG`, bitwise, and statistical descriptor-column aggregate
+  expressions in this slice. `AVG` keys order by exact signed `SUM()/COUNT()`
+  rational value rather than SQLite's floating `AVG()`.
 - Successful grouped selects report `ROW_COUNT() = -1` and `@@warning_count = 0`.
 - With default `ONLY_FULL_GROUP_BY`, selecting a nonaggregate descriptor column
   that is not the group column fails with `1055 / 42000`.
@@ -117,7 +117,7 @@ MyLite supports this exact extension to the existing grouped aggregate path:
   `COUNT`, `MIN`, `MAX`, `SUM`, `AVG`, bitwise, or statistical aggregate alias,
   or one repeated selected `COUNT`, `MIN`, `MAX`, `SUM`, or `AVG`
   descriptor-column aggregate expression, or selected descriptor-column bitwise
-  aggregate expression;
+  or statistical aggregate expression;
 - optional `ASC` / `DESC`; default direction is ascending;
 - optional `LIMIT` and `OFFSET` using the existing select limit subset;
 - `SELECT ALL` and no-op select modifiers keep their existing admission rules;
@@ -245,8 +245,8 @@ aggregate-alias and aggregate-expression ordering wraps the generated `SUM()`
 and `COUNT()` components in an internal exact signed-rational order-key scalar
 so large integer averages do not sort through SQLite `REAL`.
 Statistical aggregates call MyLite's registered aggregate callbacks and selected
-statistical aggregate-alias ordering repeats the same aggregate expression in
-the generated `ORDER BY`.
+statistical aggregate-alias or descriptor-column aggregate-expression ordering
+repeats the same aggregate expression in the generated `ORDER BY`.
 
 All generated identifiers are quoted. Predicate, separator, `HAVING`, and
 limit values are bound parameters. This feature adds no SQLite fork patch:
@@ -314,9 +314,9 @@ expectation script covering:
   select;
 - `ORDER BY` grouped column, selected `COUNT`, `MIN`, `MAX`, `SUM`, `AVG`,
   bitwise, and statistical aggregate aliases, and repeated selected `COUNT`,
-  `MIN`, `MAX`, `SUM`, `AVG`, and bitwise descriptor-column aggregate
-  expressions, including default, `ASC`, `DESC`, `NULL` aggregate ordering, exact
-  large-integer `AVG` ordering, and `LIMIT`;
+  `MIN`, `MAX`, `SUM`, `AVG`, bitwise, and statistical descriptor-column
+  aggregate expressions, including default, `ASC`, `DESC`, `NULL` aggregate
+  ordering, exact large-integer `AVG` ordering, and `LIMIT`;
 - result labels, warning count, row count, no catalog generation changes, no
   SQLite schema generation changes, file preamble preservation, reopen
   persistence, rename/drop behavior, independent file-backed handles, and

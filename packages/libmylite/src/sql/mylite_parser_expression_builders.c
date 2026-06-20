@@ -1401,6 +1401,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_generic_function(
     return function;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_statistical_aggregate_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_ast_node *argument,
+    struct mylite_sql_token right_paren
+) {
+    enum mylite_sql_ast_node_kind function_kind = MYLITE_SQL_AST_SCRIPT;
+
+    if (!generic_function_statistical_aggregate_kind(&function_token, &function_kind)) {
+        mylite_sql_parser_set_state_status(state, MYLITE_SQL_PARSE_SYNTAX_ERROR);
+        return NULL;
+    }
+    return mylite_sql_parser_make_one_argument_function(
+        state,
+        function_token,
+        function_kind,
+        argument,
+        right_paren
+    );
+}
+
 static bool generic_function_statistical_aggregate_kind(
     const struct mylite_sql_token *function_token,
     enum mylite_sql_ast_node_kind *out_function_kind

@@ -51,16 +51,23 @@ static int plan_grouped_aggregate_item(
     struct planned_grouped_aggregate *out_plan,
     struct planned_grouped_aggregate_item *out_item
 ) {
-    const struct mylite_sql_ast_node *aggregate_expression =
-        unwrap_parenthesized_expression(child_at(aggregate_item, 0U));
+    const struct mylite_sql_ast_node *aggregate_expression = child_at(aggregate_item, 0U);
     struct mylite_catalog_column_descriptor selected_column = {0};
     size_t selected_source_index = 0U;
-    int rc = MYLITE_OK;
+    int rc = plan_grouped_aggregate_expression(
+        database,
+        aggregate_expression,
+        source_context,
+        table_columns,
+        table_column_count,
+        out_plan,
+        child_at(aggregate_item, 1U),
+        out_item
+    );
 
-    *out_item = (struct planned_grouped_aggregate_item){0};
-    out_item->expression = child_at(aggregate_item, 0U);
-    out_item->alias = child_at(aggregate_item, 1U);
-    out_item->function = grouped_aggregate_function_from_expression(aggregate_expression);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
     if (out_item->function == PLANNED_GROUPED_AGGREGATE_NONE) {
         const struct mylite_sql_ast_node *selected_column_node = NULL;
 
@@ -92,9 +99,33 @@ static int plan_grouped_aggregate_item(
         }
         return rc;
     }
+    return MYLITE_OK;
+}
+
+static int plan_grouped_aggregate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *aggregate_expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan,
+    const struct mylite_sql_ast_node *alias,
+    struct planned_grouped_aggregate_item *out_item
+) {
+    const struct mylite_sql_ast_node *unwrapped_expression =
+        unwrap_parenthesized_expression(aggregate_expression);
+    int rc = MYLITE_OK;
+
+    *out_item = (struct planned_grouped_aggregate_item){0};
+    out_item->expression = aggregate_expression;
+    out_item->alias = alias;
+    out_item->function = grouped_aggregate_function_from_expression(unwrapped_expression);
+    if (out_item->function == PLANNED_GROUPED_AGGREGATE_NONE) {
+        return MYLITE_OK;
+    }
     out_item->aggregate_is_distinct =
         (out_item->function == PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN) ||
-        aggregate_function_is_distinct(aggregate_expression);
+        aggregate_function_is_distinct(unwrapped_expression);
     if (!grouped_aggregate_function_has_column(out_item->function)) {
         return MYLITE_OK;
     }
@@ -115,7 +146,7 @@ static int plan_grouped_aggregate_item(
         }
         return plan_grouped_group_concat_options(
             database,
-            aggregate_expression,
+            unwrapped_expression,
             source_context,
             table_columns,
             table_column_count,
@@ -124,10 +155,10 @@ static int plan_grouped_aggregate_item(
     }
     if (out_item->function == PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN ||
         out_item->function == PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN) {
-        if (column_aggregate_argument_is_row_scalar_expression(aggregate_expression)) {
+        if (column_aggregate_argument_is_row_scalar_expression(unwrapped_expression)) {
             return plan_grouped_aggregate_row_scalar_expression(
                 database,
-                aggregate_expression,
+                unwrapped_expression,
                 source_context,
                 table_columns,
                 table_column_count,
@@ -136,7 +167,7 @@ static int plan_grouped_aggregate_item(
         }
         rc = plan_grouped_count_column(
             database,
-            aggregate_expression,
+            unwrapped_expression,
             source_context,
             table_columns,
             table_column_count,
@@ -159,7 +190,7 @@ static int plan_grouped_aggregate_item(
     if (out_item->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
         return plan_grouped_any_value_column(
             database,
-            aggregate_expression,
+            unwrapped_expression,
             source_context,
             table_columns,
             table_column_count,
@@ -167,10 +198,10 @@ static int plan_grouped_aggregate_item(
             &out_item->aggregate_column_source_index
         );
     }
-    if (column_aggregate_argument_is_row_scalar_expression(aggregate_expression)) {
+    if (column_aggregate_argument_is_row_scalar_expression(unwrapped_expression)) {
         return plan_grouped_aggregate_row_scalar_expression(
             database,
-            aggregate_expression,
+            unwrapped_expression,
             source_context,
             table_columns,
             table_column_count,
@@ -180,7 +211,7 @@ static int plan_grouped_aggregate_item(
 
     return plan_grouped_column_aggregate_column(
         database,
-        aggregate_expression,
+        unwrapped_expression,
         grouped_column_aggregate_function(out_item->function),
         source_context,
         table_columns,

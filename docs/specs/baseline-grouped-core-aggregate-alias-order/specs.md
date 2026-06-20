@@ -116,8 +116,9 @@ No SQLite fork hook is required.
 
 This slice does not add:
 
-- `ORDER BY COUNT(*)`, `ORDER BY SUM(column)`, or other nonselected aggregate
-  expression order keys;
+- aggregate-expression order keys, which are tracked by
+  `docs/specs/baseline-grouped-selected-aggregate-expression-order/specs.md`
+  for selected descriptor-column aggregate expressions;
 - duplicate selected aggregate alias ambiguity handling beyond the current
   deterministic unsupported diagnostic;
 - broader `COUNT(DISTINCT ...)` forms such as multiple expressions, literals,

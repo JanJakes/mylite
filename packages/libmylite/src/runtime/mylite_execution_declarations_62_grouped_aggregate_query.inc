@@ -90,8 +90,7 @@ static int count_grouped_source_columns_by_unqualified_name(
     size_t *out_match_count
 );
 static size_t grouped_aggregate_group_key_count(const struct mylite_sql_ast_node *group_clause);
-static bool grouped_aggregate_group_clause_has_rollup(
-    const struct mylite_sql_ast_node *group_clause
+static bool grouped_aggregate_group_clause_has_rollup(const struct mylite_sql_ast_node *group_clause
 );
 static int validate_grouped_aggregate_group_column(
     struct mylite_db *database,
@@ -287,6 +286,16 @@ static int plan_grouped_aggregate_item(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_grouped_aggregate *out_plan,
+    struct planned_grouped_aggregate_item *out_item
+);
+static int plan_grouped_aggregate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *aggregate_expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan,
+    const struct mylite_sql_ast_node *alias,
     struct planned_grouped_aggregate_item *out_item
 );
 static int plan_grouped_count_column(
@@ -608,6 +617,20 @@ static int find_grouped_order_aggregate_alias(
     bool *out_matched,
     size_t *out_aggregate_index
 );
+static int find_grouped_order_aggregate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *plan,
+    bool *out_matched,
+    size_t *out_aggregate_index
+);
+static bool grouped_order_aggregate_items_match(
+    const struct planned_grouped_aggregate_item *left,
+    const struct planned_grouped_aggregate_item *right
+);
 static int execute_grouped_aggregate_from_plan(
     struct mylite_db *database,
     const struct planned_grouped_aggregate *plan,
@@ -759,8 +782,7 @@ static bool aggregate_function_is_distinct(const struct mylite_sql_ast_node *fun
 static bool column_aggregate_function_is_count(enum planned_column_aggregate_function function);
 static bool column_aggregate_function_is_bitwise(enum planned_column_aggregate_function function);
 static bool column_aggregate_function_is_min_max(enum planned_column_aggregate_function function);
-static bool column_aggregate_function_is_statistical(
-    enum planned_column_aggregate_function function
+static bool column_aggregate_function_is_statistical(enum planned_column_aggregate_function function
 );
 static const char *column_aggregate_source_error(enum planned_column_aggregate_function function);
 static const char *column_aggregate_column_error(enum planned_column_aggregate_function function);

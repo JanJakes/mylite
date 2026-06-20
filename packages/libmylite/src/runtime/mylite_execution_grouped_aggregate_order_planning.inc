@@ -286,6 +286,7 @@ static int resolve_grouped_order_key(
 ) {
     bool matches_alias = false;
     bool matches_unaliased_column = false;
+    bool matches_aggregate_expression = false;
     size_t matched_index = 0U;
     size_t order_source_index = 0U;
     int rc = find_grouped_order_projection_alias(
@@ -378,6 +379,25 @@ static int resolve_grouped_order_key(
         return rc;
     }
     if (matches_alias) {
+        *out_uses_aggregate = true;
+        *out_aggregate_index = matched_index;
+        return MYLITE_OK;
+    }
+
+    rc = find_grouped_order_aggregate_expression(
+        database,
+        order_key,
+        source_context,
+        table_columns,
+        table_column_count,
+        out_plan,
+        &matches_aggregate_expression,
+        &matched_index
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (matches_aggregate_expression) {
         *out_uses_aggregate = true;
         *out_aggregate_index = matched_index;
         return MYLITE_OK;
@@ -587,6 +607,100 @@ static int find_grouped_order_aggregate_alias(
     *out_matched = true;
     *out_aggregate_index = matched_index;
     return MYLITE_OK;
+}
+
+static int find_grouped_order_aggregate_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *order_key,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *plan,
+    bool *out_matched,
+    size_t *out_aggregate_index
+) {
+    struct planned_grouped_aggregate_item order_item = {0};
+    size_t matched_index = SIZE_MAX;
+    int rc = MYLITE_OK;
+
+    *out_matched = false;
+    *out_aggregate_index = 0U;
+    if (grouped_aggregate_function_from_expression(unwrap_parenthesized_expression(order_key)) ==
+        PLANNED_GROUPED_AGGREGATE_NONE) {
+        return MYLITE_OK;
+    }
+
+    rc = plan_grouped_aggregate_expression(
+        database,
+        order_key,
+        source_context,
+        table_columns,
+        table_column_count,
+        plan,
+        NULL,
+        &order_item
+    );
+    if (rc != MYLITE_OK) {
+        goto cleanup;
+    }
+    for (size_t aggregate_index = 0U; aggregate_index < plan->aggregate_count; ++aggregate_index) {
+        if (!grouped_order_aggregate_items_match(&order_item, &plan->aggregates[aggregate_index])) {
+            continue;
+        }
+        if (matched_index != SIZE_MAX) {
+            set_unsupported_error(
+                database,
+                "GROUP BY supports ORDER BY only on unique selected aggregate expressions"
+            );
+            rc = MYLITE_ERROR;
+            goto cleanup;
+        }
+        matched_index = aggregate_index;
+    }
+    if (matched_index == SIZE_MAX) {
+        set_unsupported_error(
+            database,
+            "GROUP BY supports ORDER BY aggregate expressions only when they match selected "
+            "aggregate results"
+        );
+        rc = MYLITE_ERROR;
+        goto cleanup;
+    }
+
+    *out_matched = true;
+    *out_aggregate_index = matched_index;
+
+cleanup:
+    planned_row_scalar_expression_deinit(&order_item.aggregate_row_scalar_expression);
+    planned_select_order_deinit(&order_item.aggregate_order);
+    planned_value_deinit(&order_item.separator);
+    return rc;
+}
+
+static bool grouped_order_aggregate_items_match(
+    const struct planned_grouped_aggregate_item *left,
+    const struct planned_grouped_aggregate_item *right
+) {
+    if (left->function != right->function ||
+        left->aggregate_is_distinct != right->aggregate_is_distinct) {
+        return false;
+    }
+    if (left->function == PLANNED_GROUPED_AGGREGATE_COUNT_STAR) {
+        return true;
+    }
+    if (left->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT ||
+        left->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
+        return false;
+    }
+    if (left->aggregate_uses_row_scalar_expression || right->aggregate_uses_row_scalar_expression) {
+        return false;
+    }
+    return planned_grouped_aggregate_columns_match(
+        &left->aggregate_column,
+        left->aggregate_column_source_index,
+        &right->aggregate_column,
+        right->aggregate_column_source_index
+    );
 }
 
 static int order_identifier_matches_alias(

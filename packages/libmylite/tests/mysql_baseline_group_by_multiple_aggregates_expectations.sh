@@ -157,6 +157,53 @@ expect_value "order aggregate desc second" "NULL	2	5" "$(printf '%s\n' "$having_
 expect_value "count column alias order first" "1	2" "$(printf '%s\n' "$having_order" | sed -n '9p')"
 expect_value "count column alias order second" "NULL	1" "$(printf '%s\n' "$having_order" | sed -n '10p')"
 
+expression_order=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT g, COUNT(*) AS c, SUM(n) AS s FROM t GROUP BY g ORDER BY SUM(n) ASC;
+     SELECT g, COUNT(*) AS c, SUM(n) AS s FROM t GROUP BY g ORDER BY COUNT(*) DESC, g DESC;
+     SELECT g, COUNT(n) AS cn FROM t GROUP BY g ORDER BY COUNT(n) DESC LIMIT 2;
+     SELECT g, COUNT(DISTINCT n) AS cd FROM t GROUP BY g ORDER BY COUNT(DISTINCT n) DESC LIMIT 2;
+     SELECT g, MIN(n) AS mn, MAX(n) AS mx FROM t GROUP BY g ORDER BY MIN(n) ASC;
+     SELECT g, MIN(n) AS mn, MAX(n) AS mx FROM t GROUP BY g ORDER BY MAX(n) DESC;
+     SELECT g, AVG(n) AS a FROM t GROUP BY g ORDER BY AVG(n) DESC LIMIT 2;"
+)
+expect_value "sum expression order null first" "2	2	NULL" \
+    "$(printf '%s\n' "$expression_order" | sed -n '1p')"
+expect_value "sum expression order low next" "NULL	2	5" \
+    "$(printf '%s\n' "$expression_order" | sed -n '2p')"
+expect_value "sum expression order high last" "1	3	30" \
+    "$(printf '%s\n' "$expression_order" | sed -n '3p')"
+expect_value "count star expression order first" "1	3	30" \
+    "$(printf '%s\n' "$expression_order" | sed -n '4p')"
+expect_value "count star expression order tiebreak second" "2	2	NULL" \
+    "$(printf '%s\n' "$expression_order" | sed -n '5p')"
+expect_value "count star expression order tiebreak third" "NULL	2	5" \
+    "$(printf '%s\n' "$expression_order" | sed -n '6p')"
+expect_value "count column expression order first" "1	2" \
+    "$(printf '%s\n' "$expression_order" | sed -n '7p')"
+expect_value "count column expression order second" "NULL	1" \
+    "$(printf '%s\n' "$expression_order" | sed -n '8p')"
+expect_value "count distinct expression order first" "1	2" \
+    "$(printf '%s\n' "$expression_order" | sed -n '9p')"
+expect_value "count distinct expression order second" "NULL	1" \
+    "$(printf '%s\n' "$expression_order" | sed -n '10p')"
+expect_value "min expression order null first" "2	NULL	NULL" \
+    "$(printf '%s\n' "$expression_order" | sed -n '11p')"
+expect_value "min expression order low next" "NULL	5	5" \
+    "$(printf '%s\n' "$expression_order" | sed -n '12p')"
+expect_value "min expression order high last" "1	10	20" \
+    "$(printf '%s\n' "$expression_order" | sed -n '13p')"
+expect_value "max expression order high first" "1	10	20" \
+    "$(printf '%s\n' "$expression_order" | sed -n '14p')"
+expect_value "max expression order low next" "NULL	5	5" \
+    "$(printf '%s\n' "$expression_order" | sed -n '15p')"
+expect_value "max expression order null last" "2	NULL	NULL" \
+    "$(printf '%s\n' "$expression_order" | sed -n '16p')"
+expect_value "avg expression order high first" "1	15.0000" \
+    "$(printf '%s\n' "$expression_order" | sed -n '17p')"
+expect_value "avg expression order low second" "NULL	5.0000" \
+    "$(printf '%s\n' "$expression_order" | sed -n '18p')"
+
 aggregate_order=$(run_mysql \
     "USE ${DATABASE};
      SELECT g, MIN(n) AS mn, MAX(n) AS mx FROM t GROUP BY g ORDER BY mn ASC;

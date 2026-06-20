@@ -15,9 +15,11 @@ ORDER BY average_value [ASC|DESC]
 It covers selected `AVG([DISTINCT] expr)` aliases in the current
 descriptor-backed grouped aggregate envelopes, where the existing grouped AVG
 path already lowers the public result through signed-64 `SUM()` plus
-`COUNT()`. It does not add nonselected `ORDER BY AVG(...)` expressions, broader
-decimal widening, aggregate windows, general grouped expression ordering, or
-new source forms.
+`COUNT()`. Repeated selected `ORDER BY AVG(...)` expressions are tracked by
+`docs/specs/baseline-grouped-selected-aggregate-expression-order/specs.md`.
+This slice does not add hidden `ORDER BY AVG(...)` expressions, broader decimal
+widening, aggregate windows, general grouped expression ordering, or new source
+forms.
 
 ## Sources
 
@@ -105,8 +107,8 @@ No SQLite fork hook is required.
 
 This slice does not add:
 
-- `ORDER BY AVG(column)` or other aggregate expressions that are not matched
-  through a selected alias;
+- hidden `ORDER BY AVG(column)` expressions that are not matched through a
+  selected aggregate result;
 - wider AVG result precision or decimal widening beyond the current signed-64
   `SUM()` intermediate envelope;
 - grouped `GROUP_CONCAT()` alias ordering;

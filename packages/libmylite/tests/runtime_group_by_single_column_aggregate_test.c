@@ -158,6 +158,19 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const multi_order_values[] = {"2", "2", "50", "1", "2", "10"};
     static const char *const count_column_alias_order_columns[] = {"g", "cn"};
     static const char *const count_column_alias_order_values[] = {"2", "2", "1", "1"};
+    static const char *const sum_expression_order_values[] = {
+        NULL,
+        "1",
+        NULL,
+        "1",
+        "2",
+        "10",
+        "2",
+        "2",
+        "50",
+    };
+    static const char *const count_distinct_expression_order_columns[] = {"g", "cd"};
+    static const char *const count_distinct_expression_order_values[] = {"2", "2", "1", "1"};
     static const char *const multi_order_tiebreak_values[] = {
         "2",
         "2",
@@ -1020,6 +1033,54 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) AS c, SUM(n) AS s FROM grouped_numbers "
+                   "GROUP BY g ORDER BY SUM(n) ASC",
+            .columns = multi_having_columns,
+            .column_count = 3U,
+            .values = sum_expression_order_values,
+            .row_count = 3U,
+            .context = "multi aggregate order by selected sum expression",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) AS c, SUM(n) AS s FROM grouped_numbers "
+                   "GROUP BY g ORDER BY COUNT(*) DESC, g DESC",
+            .columns = multi_having_columns,
+            .column_count = 3U,
+            .values = multi_order_tiebreak_values,
+            .row_count = 3U,
+            .context = "multi aggregate order by selected count star expression",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(n) AS cn FROM grouped_numbers GROUP BY g "
+                   "ORDER BY COUNT(n) DESC LIMIT 2",
+            .columns = count_column_alias_order_columns,
+            .column_count = 2U,
+            .values = count_column_alias_order_values,
+            .row_count = 2U,
+            .context = "grouped count column aggregate expression order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(DISTINCT n) AS cd FROM grouped_numbers GROUP BY g "
+                   "ORDER BY COUNT(DISTINCT n) DESC LIMIT 2",
+            .columns = count_distinct_expression_order_columns,
+            .column_count = 2U,
+            .values = count_distinct_expression_order_values,
+            .row_count = 2U,
+            .context = "grouped count distinct aggregate expression order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
             .sql = "SELECT g, MIN(n) AS mn, MAX(n) AS mx FROM grouped_numbers "
                    "GROUP BY g ORDER BY mn ASC",
             .columns = min_max_alias_columns,
@@ -1044,6 +1105,30 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
+            .sql = "SELECT g, MIN(n) AS mn, MAX(n) AS mx FROM grouped_numbers "
+                   "GROUP BY g ORDER BY MIN(n) ASC",
+            .columns = min_max_alias_columns,
+            .column_count = 3U,
+            .values = min_alias_order_values,
+            .row_count = 3U,
+            .context = "multi aggregate order by selected min expression",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, MIN(n) AS mn, MAX(n) AS mx FROM grouped_numbers "
+                   "GROUP BY g ORDER BY MAX(n) DESC",
+            .columns = min_max_alias_columns,
+            .column_count = 3U,
+            .values = max_alias_order_values,
+            .row_count = 3U,
+            .context = "multi aggregate order by selected max expression",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
             .sql = "SELECT g, AVG(n) AS a FROM grouped_avg_order GROUP BY g ORDER BY a ASC",
             .columns = avg_alias_order_columns,
             .column_count = 2U,
@@ -1062,6 +1147,18 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = avg_alias_order_desc_limit_values,
             .row_count = 1U,
             .context = "grouped avg aggregate alias descending exact limit",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, AVG(n) AS a FROM grouped_avg_order GROUP BY g ORDER BY AVG(n) DESC "
+                   "LIMIT 1",
+            .columns = avg_alias_order_columns,
+            .column_count = 2U,
+            .values = avg_alias_order_desc_limit_values,
+            .row_count = 1U,
+            .context = "grouped avg aggregate expression descending exact limit",
         }
     );
     failures += expect_grouped_query(
@@ -1882,13 +1979,13 @@ static int test_grouped_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g ORDER BY g, COUNT(*)",
+        "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g ORDER BY SUM(n)",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part =
-                "GROUP BY supports ORDER BY only on grouped, primary-key-dependent, or selected "
-                "aggregate columns",
+                "GROUP BY supports ORDER BY aggregate expressions only when they match selected "
+                "aggregate results",
         }
     );
     failures += execute_error(

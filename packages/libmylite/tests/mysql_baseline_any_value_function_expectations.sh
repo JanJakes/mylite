@@ -203,6 +203,32 @@ expect_output \
     "USE ${DATABASE}; "\
 "SELECT g, ANY_VALUE(v) AS av, MAX(v) AS mx FROM t GROUP BY g HAVING av IS NULL ORDER BY g;"
 
+expect_error \
+    "grouped any_value selected expression having" \
+    1054 \
+    "42S22" \
+    "Unknown column 'v' in 'having clause'" \
+    "USE ${DATABASE}; "\
+"SELECT g, ANY_VALUE(v) AS av, MAX(v) AS mx FROM t "\
+"GROUP BY g HAVING ANY_VALUE(v) IS NOT NULL ORDER BY g;"
+
+expect_error \
+    "grouped any_value selected expression having comparison" \
+    1054 \
+    "42S22" \
+    "Unknown column 'v' in 'having clause'" \
+    "USE ${DATABASE}; "\
+"SELECT g, ANY_VALUE(v) AS av, MAX(v) AS mx FROM t "\
+"GROUP BY g HAVING ANY_VALUE(v) = 10 ORDER BY g;"
+
+expect_error \
+    "grouped any_value selected string expression having" \
+    1054 \
+    "42S22" \
+    "Unknown column 's' in 'having clause'" \
+    "USE ${DATABASE}; "\
+"SELECT g, ANY_VALUE(s) AS av FROM t GROUP BY g HAVING ANY_VALUE(s) IS NOT NULL ORDER BY g;"
+
 order_asc_expected=$(cat <<EXPECTED
 2	NULL
 1	10

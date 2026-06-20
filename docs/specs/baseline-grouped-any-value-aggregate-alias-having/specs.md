@@ -82,7 +82,8 @@ No SQLite fork hook is required.
 This slice does not add:
 
 - expression arguments in grouped `ANY_VALUE()`;
-- repeated `HAVING ANY_VALUE(column)` expression operands;
+- repeated `HAVING ANY_VALUE(column)` expression operands, which MySQL rejects
+  with unknown-column diagnostics in the verified envelope;
 - deterministic representative-row selection;
 - broader grouped `HAVING` predicates beyond the existing supported subset;
 - aggregate windows;

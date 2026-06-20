@@ -45,6 +45,9 @@ expectations for this slice:
   guaranteed when a group contains different candidate values.
 - Repeating a selected grouped `ANY_VALUE(column)` expression in `ORDER BY` is
   accepted and sorts by the selected representative value.
+- Repeating a selected grouped `ANY_VALUE(column)` expression directly in
+  `HAVING` returns MySQL's unknown-column diagnostic for the function argument;
+  selected aliases remain the supported grouped `HAVING` form.
 - A hidden grouped `ORDER BY ANY_VALUE(column)` expression is accepted in the
   current grouped envelope and sorts by the representative value without adding
   a public result column.
@@ -98,6 +101,8 @@ This slice intentionally does not support:
 - expression arguments in mixed ungrouped or grouped `ANY_VALUE()`;
 - hidden or repeated grouped `ANY_VALUE()` order keys outside the documented
   grouped aggregate order-key envelope;
+- direct grouped `HAVING ANY_VALUE(column)` expression operands, which MySQL
+  rejects as unknown `HAVING` columns in the verified envelope;
 - `ANY_VALUE(*)`, `ANY_VALUE(DISTINCT ...)`, or multi-argument forms;
 - use as a window function;
 - `ANY_VALUE()` in DML assignments, defaults, generated columns, check
@@ -205,6 +210,8 @@ Required diagnostics:
   `HAVING`/`ORDER BY` unsupported diagnostics;
 - repeated grouped `ANY_VALUE()` order expression does not match a selected
   result: existing grouped aggregate-expression order diagnostic;
+- direct grouped `HAVING ANY_VALUE(column)` expression operands: unknown-column
+  diagnostic for the function argument in the `HAVING` clause;
 - allocation failure: existing `MYLITE_NOMEM` diagnostic behavior;
 - public API misuse: no public API changes.
 
@@ -224,7 +231,9 @@ Required diagnostics:
   another selected item already requires the mixed aggregate planner.
   Repeated selected grouped `ANY_VALUE(column)` order expressions reuse the
   selected-result ordering path when descriptor resolution matches exactly one
-  selected result.
+  selected result. Direct grouped `HAVING ANY_VALUE(column)` expression
+  operands are rejected before descriptor aggregate matching to mirror MySQL's
+  unknown-column behavior.
 - Catalog: untouched. The function does not read or mutate descriptor versions,
   descriptor caches, catalog generation, or `sqlite_schema_generation`.
 - Result builder: scalar and row-scalar result metadata stays on the existing
@@ -268,7 +277,8 @@ Add fast C coverage under `packages/libmylite/tests/`:
   `ORDER BY ANY_VALUE(column)`, and `LIMIT`;
 - diagnostics cover wrong arity, syntax rejections for `*`/`DISTINCT`, unknown
   argument columns, unsupported grouped expression arguments, and unsupported
-  mixed ungrouped aggregate expression arguments;
+  mixed ungrouped aggregate expression arguments, plus direct grouped
+  `HAVING ANY_VALUE(column)` expression operands;
 - `ANY_VALUE` remains usable as a table name in tested DDL contexts;
 - no catalog, file-format, VFS, or public ABI changes are introduced.
 

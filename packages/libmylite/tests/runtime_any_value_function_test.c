@@ -479,6 +479,33 @@ static int test_any_value_errors_and_identifier_use(void) {
             .message_part = "ANY_VALUE(column) supports only descriptor columns",
         }
     );
+    failures += execute_error(
+        database,
+        "SELECT g, ANY_VALUE(v) FROM t GROUP BY g HAVING ANY_VALUE(v) IS NOT NULL",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'v' in 'having clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, ANY_VALUE(v) FROM t GROUP BY g HAVING ANY_VALUE(v) = 10",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'v' in 'having clause'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, ANY_VALUE(s) FROM t GROUP BY g HAVING ANY_VALUE(s) IS NOT NULL",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 's' in 'having clause'",
+        }
+    );
 
     mylite_close(database);
     remove_related_files(path);

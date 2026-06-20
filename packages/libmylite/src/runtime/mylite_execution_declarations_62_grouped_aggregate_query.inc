@@ -497,6 +497,10 @@ static int plan_grouped_having_aggregate_operand(
     size_t table_column_count,
     struct planned_grouped_aggregate *out_plan
 );
+static int reject_grouped_having_any_value_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *operand_node
+);
 static int find_grouped_having_aggregate_alias_operand(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *operand_node,

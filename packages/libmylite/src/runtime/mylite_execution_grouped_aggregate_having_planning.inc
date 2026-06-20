@@ -551,6 +551,9 @@ static int plan_grouped_having_aggregate_operand(
         set_unsupported_error(database, "HAVING supports only grouped columns or aggregates");
         return MYLITE_ERROR;
     }
+    if (function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
+        return reject_grouped_having_any_value_operand(database, operand_node);
+    }
     if (function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
         if (predicate_kind != MYLITE_SQL_AST_IS_NULL_PREDICATE) {
             set_unsupported_error(
@@ -701,6 +704,38 @@ cleanup:
     planned_select_order_deinit(&having_item.aggregate_order);
     planned_value_deinit(&having_item.separator);
     return rc;
+}
+
+static int reject_grouped_having_any_value_operand(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *operand_node
+) {
+    const struct mylite_sql_ast_node *argument = child_at(operand_node, 0U);
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char column_name[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    size_t part_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (argument == NULL) {
+        set_unsupported_error(database, "HAVING supports only grouped columns or aggregates");
+        return MYLITE_ERROR;
+    }
+    rc = collect_column_reference_parts(database, argument, parts, &part_count);
+    if (rc == MYLITE_OK) {
+        rc = format_column_reference_name(
+            database,
+            parts,
+            part_count,
+            column_name,
+            sizeof(column_name)
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    set_unknown_having_column_error(database, column_name);
+    return MYLITE_ERROR;
 }
 
 static int find_grouped_having_aggregate_alias_operand(

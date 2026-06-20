@@ -5787,6 +5787,12 @@ values_order_key(A) ::= qualified_identifier(K). {
 values_order_key(A) ::= INTEGER(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_INTEGER);
 }
+values_order_key(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
+}
+values_order_key(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
 
 table_index_hints_opt(A) ::= . {
     A = NULL;

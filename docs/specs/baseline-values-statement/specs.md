@@ -5,7 +5,7 @@
 This phase adds a narrow standalone MySQL `VALUES` statement:
 
 ```sql
-VALUES ROW(value[, ...]) [, ROW(value[, ...]) ...] [ORDER BY column_designator ...] [LIMIT ...]
+VALUES ROW(value[, ...]) [, ROW(value[, ...]) ...] [ORDER BY order_designator ...] [LIMIT ...]
 ```
 
 It returns an in-memory result set whose columns are named `column_0`,
@@ -67,11 +67,13 @@ Runtime probes for this phase establish:
   MyLite defers that wider numeric envelope and supports the current signed
   64-bit limit literal subset used by existing `SELECT` and `TABLE` paths.
 - MySQL accepts `ORDER BY column_N`, quoted/case-varied `column_N`, ordinals,
-  multiple order keys, and optional `ASC` / `DESC`; unknown `column_N` names
-  fail with `1054 / 42S22`. On the observed MySQL 8.4.9 runtime, standalone
-  `VALUES ... ORDER BY column_N` validates names but preserves constructor
-  order for the probed cases. MyLite's first slice matches this observed
-  standalone behavior rather than claiming full sorting semantics.
+  row-constant `NULL` and ordinary string literal keys, multiple order keys,
+  and optional `ASC` / `DESC`; unknown `column_N` names fail with
+  `1054 / 42S22`. On the observed MySQL 8.4.9 runtime, standalone
+  `VALUES ... ORDER BY column_N`, `ORDER BY NULL`, and `ORDER BY 'text'`
+  validate keys but preserve constructor order for the probed cases. MyLite's
+  first slice matches this observed standalone behavior rather than claiming
+  full sorting semantics.
 - `VALUES ROW(1) AS t`, `VALUES (1)`, and `VALUES ROW(1) WHERE TRUE` are syntax
   errors.
 - MySQL accepts arbitrary scalar expressions such as `1 + 2` and `DATABASE()`
@@ -97,8 +99,9 @@ Supported:
 - `ROW_COUNT() == -1`, `affected_rows == 0`, and zero warnings for supported
   in-range successful statements;
 - optional `ORDER BY` that validates admitted implicit output column names,
-  quoted identifiers, and positive ordinal designators, accepts optional
-  `ASC`/`DESC`, and preserves constructor order for this standalone slice;
+  quoted identifiers, positive ordinal designators, and row-constant `NULL` or
+  ordinary string literal keys, accepts optional `ASC`/`DESC`, and preserves
+  constructor order for this standalone slice;
 - optional `LIMIT row_count`, `LIMIT offset, row_count`, and
   `LIMIT row_count OFFSET offset` over the current unsigned decimal integer
   literal syntax whose value fits the existing signed 64-bit limit conversion
@@ -119,7 +122,8 @@ Deferred:
   introducers, collations, identifiers as values, and `VALUES()` duplicate-key
   function semantics;
 - visible sorting semantics for standalone `VALUES ... ORDER BY`; the admitted
-  first slice validates order designators and preserves constructor order;
+  first slice validates order designators and row-constant order keys, then
+  preserves constructor order;
 - multiple result-set protocol metadata fidelity beyond current MyLite result
   conventions;
 - arbitrary SQLite SQL pass-through, SQLite temporary tables, or SQLite fork
@@ -205,6 +209,17 @@ values_value(A) ::= PLUS(P) INTEGER_LITERAL(V). {
 values_value(A) ::= MINUS(M) INTEGER_LITERAL(V). {
     A = mylite_sql_parser_make_unary_expression(state, M, V);
 }
+
+values_order_key(A) ::= qualified_identifier(K). { A = K; }
+values_order_key(A) ::= INTEGER_LITERAL(T). {
+    A = mylite_sql_parser_make_integer_literal(state, T);
+}
+values_order_key(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_null_literal(state, T);
+}
+values_order_key(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_string_literal(state, T);
+}
 ```
 
 The parser may reuse existing literal AST nodes and existing `limit_clause`
@@ -233,8 +248,9 @@ values are deliberately not admitted by this first grammar snippet.
    range; `0` and out-of-range ordinals produce unknown-column diagnostics
    matching MySQL's observed behavior.
 8. For this standalone slice, admitted `ORDER BY` does not reorder rows. It
-   validates the clause and preserves constructor order to match the recorded
-   MySQL 8.4.9 behavior.
+   validates identifier and ordinal designators, accepts row-constant `NULL`
+   and ordinary string literal keys as no-op keys, and preserves constructor
+   order to match the recorded MySQL 8.4.9 behavior.
 9. Optional `LIMIT` and `OFFSET` are applied after order validation to the
    constructor-order row sequence. `LIMIT 0` returns no rows. Offsets beyond
    the row count return no rows.
@@ -293,8 +309,9 @@ Fast C tests must cover:
 - empty row, mismatched row counts, and `DEFAULT` diagnostics;
 - optional `LIMIT 0`, exact row counts, row counts larger than the constructor
   count, offset forms, and unsupported signed/string/decimal/`NULL` limits;
-- optional `ORDER BY` designator validation, `ASC`/`DESC`, unknown column
-  names, out-of-range ordinals, and constructor-order preservation;
+- optional `ORDER BY` designator validation, `ASC`/`DESC`, row-constant `NULL`
+  and ordinary string literal keys, unknown column names, out-of-range
+  ordinals, and constructor-order preservation;
 - no-default-schema execution;
 - unsupported syntax for aliases, missing `ROW`, `WHERE`, expression values,
   function values, identifiers, parameters, and nested query-expression use;

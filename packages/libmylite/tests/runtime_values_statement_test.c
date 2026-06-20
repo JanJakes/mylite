@@ -116,6 +116,7 @@ static int test_values_statement_limits_and_order_validation(void) {
     static const char *const keyword_offset_values[] = {"2", "3"};
     static const char *const order_name_values[] = {"1", "9", "2", "8"};
     static const char *const order_ordinal_values[] = {"1", "9"};
+    static const char *const order_constant_values[] = {"1", "2"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -185,6 +186,28 @@ static int test_values_statement_limits_and_order_validation(void) {
             .values = order_ordinal_values,
             .row_count = 1U,
             .context = "values quoted name and ordinal order keys",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "VALUES ROW(1), ROW(2) ORDER BY NULL DESC",
+            .columns = one_column,
+            .column_count = 1U,
+            .values = order_constant_values,
+            .row_count = 2U,
+            .context = "values NULL order key preserves constructor order",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "VALUES ROW(1), ROW(2) ORDER BY '1' DESC",
+            .columns = one_column,
+            .column_count = 1U,
+            .values = order_constant_values,
+            .row_count = 2U,
+            .context = "values string order key preserves constructor order",
         }
     );
 

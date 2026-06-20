@@ -278,16 +278,26 @@ static int validate_values_order_key(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
-    if (order_key->kind == MYLITE_SQL_AST_LITERAL &&
-        mylite_sql_ast_node_literal_kind(order_key) == MYLITE_SQL_AST_LITERAL_INTEGER) {
-        return validate_values_order_ordinal(database, order_key, column_count);
+    if (order_key->kind == MYLITE_SQL_AST_LITERAL) {
+        enum mylite_sql_ast_literal_kind literal_kind = mylite_sql_ast_node_literal_kind(order_key);
+
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER) {
+            return validate_values_order_ordinal(database, order_key, column_count);
+        }
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_STRING) {
+            return MYLITE_OK;
+        }
     }
     if (order_key->kind == MYLITE_SQL_AST_IDENTIFIER ||
         order_key->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         return validate_values_order_identifier(database, order_key, column_count);
     }
 
-    set_unsupported_error(database, "VALUES ORDER BY supports only column names and ordinals");
+    set_unsupported_error(
+        database,
+        "VALUES ORDER BY supports only column names, ordinals, NULL, and string constants"
+    );
     return MYLITE_ERROR;
 }
 

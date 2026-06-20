@@ -143,6 +143,18 @@ expect_output \
     "1|2|3" \
     'VALUES ROW(1,2,3) ORDER BY `column_1`;'
 
+expect_output \
+    "order by NULL constant preserves constructor order" \
+    "1
+2" \
+    "VALUES ROW(1), ROW(2) ORDER BY NULL DESC;"
+
+expect_output \
+    "order by string constant preserves constructor order" \
+    "1
+2" \
+    "VALUES ROW(1), ROW(2) ORDER BY '1' DESC;"
+
 expect_error \
     "values rejects empty row" \
     3942 \

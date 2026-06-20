@@ -41,6 +41,7 @@ static int test_query_expression_clause_surfaces(void) {
     static const char *const arithmetic_predicate_count_rows[] = {"2"};
     static const char *const nested_arithmetic_predicate_count_rows[] = {"1"};
     static const char *const function_order_key_rows[] = {"3", "1"};
+    static const char *const values_order_key_rows[] = {"1", "2"};
     static const char *const subquery_arithmetic_predicate_rows[] = {"1", "3"};
     mylite_db *database = NULL;
     int failures = 0;
@@ -288,13 +289,14 @@ static int test_query_expression_clause_surfaces(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "VALUES ROW(1),ROW(2) ORDER BY '1' DESC",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "VALUES ROW(1),ROW(2) ORDER BY '1' DESC",
+            .values = values_order_key_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "values string order key support",
         }
     );
     failures += expect_query_values(

@@ -60,8 +60,6 @@ static int test_query_expression_clause_placeholders(void) {
         {.sql = "SELECT x FROM t GROUP BY x, MATCH(x) AGAINST ('abc') "
                 "HAVING MATCH(x) AGAINST ('abc')",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "VALUES ROW(1),ROW(2) ORDER BY '1' DESC",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "select f2 from t1 where '2001-04-10 12:34:56' between f2 and '01-05-01'",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "select f2, f3 from t1 where '01-03-10' between f2 and f3",
@@ -123,6 +121,8 @@ static int test_query_expression_clause_placeholders(void) {
     failures += parse_ok("SELECT t1.a, t2.a FROM t1 JOIN t2 ON t1.a = t2.a");
     failures += parse_ok("SELECT * FROM (SELECT 1) AS dt");
     failures += parse_ok("SELECT a FROM t1 ORDER BY ABS(b - 5)");
+    failures += parse_ok("VALUES ROW(1),ROW(2) ORDER BY NULL DESC");
+    failures += parse_ok("VALUES ROW(1),ROW(2) ORDER BY '1' DESC");
     for (size_t index = 0U; index < sizeof(placeholders) / sizeof(placeholders[0]); ++index) {
         failures += expect_statement_kind(placeholders[index]);
     }

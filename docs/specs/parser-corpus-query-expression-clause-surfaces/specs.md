@@ -27,7 +27,8 @@ against MySQL 8.4.9:
   predicates, ODBC expression escapes, qualified column-to-column `BETWEEN`,
   qualified descriptor `IN` lists, `ROW(...)` comparisons, parenthesized
   `MATCH(...) AGAINST(...)`, and string-literal `ORDER BY` keys in `VALUES`
-  statements are valid syntax;
+  statements are valid syntax and execute through the baseline `VALUES`
+  statement subset;
 - subqueries may contain their own expression predicates;
 - multi-table `UPDATE` and ordered `DELETE` statements may contain expression
   assignments and predicates.
@@ -88,8 +89,8 @@ In scope:
   predicates;
 - `ROW(...)` comparison predicates in table-backed clauses;
 - parenthesized full-text `MATCH(column[, ...]) AGAINST(...)` expressions;
-- string-literal `ORDER BY` keys in otherwise unsupported `VALUES` statement
-  order clauses;
+- string-literal `ORDER BY` keys in `VALUES` statement order clauses, now
+  executable through the baseline standalone `VALUES` subset;
 - bare truth expressions in table-backed predicate clauses;
 - deterministic unsupported diagnostics instead of generic syntax errors for
   recognized expression-clause surfaces;
@@ -108,7 +109,8 @@ Out of scope:
 - executable column-to-column range or membership semantics beyond documented
   descriptor predicates;
 - executable full-text search ranking or index lookup;
-- executable string-literal `VALUES` ordering semantics;
+- visible string-literal `VALUES` sorting semantics beyond the current
+  constructor-order behavior;
 - pure function-call query-clause admission without an expression operator or
   another recognized expression-clause signal;
 - broad multi-table DML execution beyond current MyLite support;
@@ -190,7 +192,9 @@ Tests cover:
   expression-clause surfaces;
 - normal parser/runtime execution for the row arithmetic predicate
   representatives;
-- runtime unsupported diagnostics for recognized expression-clause surfaces;
+- runtime unsupported diagnostics for recognized expression-clause surfaces,
+  except `VALUES` string order keys, which execute through the baseline
+  standalone `VALUES` subset;
 - regression coverage that existing simple predicates and flat joins continue
   to parse normally.
 

@@ -514,6 +514,14 @@ static int convert_grouped_having_comparison_value(
     enum planned_grouped_having_operand operand,
     struct planned_value *out_value
 );
+static int convert_grouped_having_in_values(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_list,
+    struct planned_grouped_aggregate *plan,
+    enum planned_grouped_having_operand operand,
+    struct planned_value **out_values,
+    size_t *out_value_count
+);
 static int convert_grouped_having_any_value_alias_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,

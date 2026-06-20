@@ -96,7 +96,9 @@ filters=$(run_mysql \
      SELECT name AS k, COUNT(*) AS c FROM s GROUP BY name HAVING name <> 'ALICE' ORDER BY k;
      SELECT name AS k, COUNT(*) AS c FROM s GROUP BY name HAVING s.name = 'BOB';
      SELECT label AS k, COUNT(*) AS c FROM s GROUP BY label HAVING k = 'a';
-     SELECT body AS k, COUNT(*) AS c FROM s GROUP BY body HAVING body <= 'NOTE' ORDER BY k;"
+     SELECT body AS k, COUNT(*) AS c FROM s GROUP BY body HAVING body <= 'NOTE' ORDER BY k;
+     SELECT name AS k, COUNT(*) AS c FROM s GROUP BY name
+       HAVING k IN ('ALICE','carol') ORDER BY k;"
 )
 expect_value "having aggregate alias desc limit" "bob	2" \
     "$(printf '%s\n' "$filters" | sed -n '1p')"
@@ -118,6 +120,10 @@ expect_value "having text direct range first" "essay	2" \
     "$(printf '%s\n' "$filters" | sed -n '10p')"
 expect_value "having text direct range second" "note	2" \
     "$(printf '%s\n' "$filters" | sed -n '11p')"
+expect_value "having string alias in first" "alice	2" \
+    "$(printf '%s\n' "$filters" | sed -n '12p')"
+expect_value "having string alias in second" "carol	1" \
+    "$(printf '%s\n' "$filters" | sed -n '13p')"
 
 limits=$(run_mysql \
     "USE ${DATABASE};

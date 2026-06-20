@@ -45,7 +45,8 @@ static int plan_grouped_having_node(
         return MYLITE_ERROR;
     }
     if (current->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE &&
-        current->kind != MYLITE_SQL_AST_IS_NULL_PREDICATE) {
+        current->kind != MYLITE_SQL_AST_IS_NULL_PREDICATE &&
+        current->kind != MYLITE_SQL_AST_IN_PREDICATE) {
         set_unsupported_error(database, "HAVING supports only one grouped predicate");
         return MYLITE_ERROR;
     }
@@ -64,6 +65,12 @@ static int plan_grouped_having_node(
         return rc;
     }
 
+    if (current->kind == MYLITE_SQL_AST_IN_PREDICATE &&
+        operand != PLANNED_GROUPED_HAVING_OPERAND_GROUP_COLUMN) {
+        set_unsupported_error(database, "HAVING IN supports only grouped columns");
+        return MYLITE_ERROR;
+    }
+
     if (current->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE &&
         operand == PLANNED_GROUPED_HAVING_OPERAND_AGGREGATE &&
         out_plan->having.aggregate_index < out_plan->aggregate_count &&
@@ -80,6 +87,21 @@ static int plan_grouped_having_node(
     out_plan->having.operator_kind = mylite_sql_ast_node_operator(current);
     if (current->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE) {
         out_plan->having.kind = PLANNED_GROUPED_HAVING_IS_NULL;
+        return MYLITE_OK;
+    }
+    if (current->kind == MYLITE_SQL_AST_IN_PREDICATE) {
+        rc = convert_grouped_having_in_values(
+            database,
+            child_at(current, 1U),
+            out_plan,
+            operand,
+            &out_plan->having.values,
+            &out_plan->having.value_count
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        out_plan->having.kind = PLANNED_GROUPED_HAVING_IN;
         return MYLITE_OK;
     }
 
@@ -855,6 +877,69 @@ static int convert_grouped_having_comparison_value(
         operand_name,
         out_value
     );
+}
+
+static int convert_grouped_having_in_values(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_list,
+    struct planned_grouped_aggregate *plan,
+    enum planned_grouped_having_operand operand,
+    struct planned_value **out_values,
+    size_t *out_value_count
+) {
+    struct planned_value *values = NULL;
+    size_t value_count = 0U;
+    int rc = MYLITE_OK;
+
+    *out_values = NULL;
+    *out_value_count = 0U;
+    if (operand != PLANNED_GROUPED_HAVING_OPERAND_GROUP_COLUMN) {
+        set_unsupported_error(database, "HAVING IN supports only grouped columns");
+        return MYLITE_ERROR;
+    }
+    if (value_list == NULL || value_list->kind != MYLITE_SQL_AST_PREDICATE_VALUE_LIST ||
+        mylite_sql_ast_node_child_count(value_list) == 0U) {
+        set_unsupported_error(database, "HAVING IN supports only nonempty literal lists");
+        return MYLITE_ERROR;
+    }
+
+    value_count = mylite_sql_ast_node_child_count(value_list);
+    if (value_count > SIZE_MAX / sizeof(*values)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    values = calloc(value_count, sizeof(*values));
+    if (values == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    for (size_t value_index = 0U; rc == MYLITE_OK && value_index < value_count; ++value_index) {
+        const struct mylite_sql_ast_node *value_node = child_at(value_list, value_index);
+
+        if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_LITERAL &&
+            mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
+            values[value_index] = (struct planned_value){.is_null = true};
+            continue;
+        }
+
+        rc = convert_grouped_having_comparison_value(
+            database,
+            value_node,
+            plan,
+            operand,
+            &values[value_index]
+        );
+    }
+    if (rc != MYLITE_OK) {
+        planned_value_array_deinit(values, value_count);
+        free(values);
+        return rc;
+    }
+
+    *out_values = values;
+    *out_value_count = value_count;
+    return MYLITE_OK;
 }
 
 static int convert_grouped_having_any_value_alias_value(

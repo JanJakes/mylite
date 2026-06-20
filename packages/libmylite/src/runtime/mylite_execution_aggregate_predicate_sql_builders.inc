@@ -1200,6 +1200,25 @@ static int append_grouped_having_sql(
         if (rc == MYLITE_OK) {
             ++(*next_parameter);
         }
+    } else if (plan->having.kind == PLANNED_GROUPED_HAVING_IN) {
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, " IN (");
+        }
+        for (size_t value_index = 0U; rc == MYLITE_OK && value_index < plan->having.value_count;
+             ++value_index) {
+            if (value_index != 0U) {
+                rc = mylite_dynamic_string_append(string, ", ");
+            }
+            if (rc == MYLITE_OK) {
+                rc = append_numbered_parameter(string, *next_parameter);
+            }
+            if (rc == MYLITE_OK) {
+                ++(*next_parameter);
+            }
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append_char(string, ')');
+        }
     } else if (plan->having.kind == PLANNED_GROUPED_HAVING_IS_NULL) {
         if (plan->having.operator_kind == MYLITE_SQL_AST_OPERATOR_IS_NOT_NULL) {
             if (rc == MYLITE_OK) {

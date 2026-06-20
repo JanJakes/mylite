@@ -47,6 +47,7 @@ parentheses:
 
 ```sql
 having_operand comparison_operator having_integer_value
+having_operand IN (having_integer_value_or_string_or_null_list)
 having_operand IS NULL
 having_operand IS NOT NULL
 ```
@@ -87,6 +88,9 @@ Supported `having_operand` forms:
 - Supported grouped `CHAR`, `VARCHAR`, and baseline `TEXT` descriptor columns
   and selected aliases with ordinary string-literal comparisons in the
   companion `baseline-grouped-string-comparison-having` slice.
+- Supported grouped integer and nonbinary string descriptor columns and
+  selected aliases with nonempty literal-list membership predicates in the
+  companion `baseline-grouped-having-in-predicate` slice.
 
 The aggregate function expression in `HAVING` must refer to the selected
 aggregate result. MyLite does not yet support aggregate expressions that are
@@ -230,6 +234,13 @@ string descriptor columns or their selected aliases to a single ordinary string
 literal token in the companion `baseline-grouped-string-comparison-having`
 slice. MyLite binds the decoded literal as text and emits descriptor-owned
 ASCII collation on the left expression.
+
+Grouped-column `IN` predicates compare supported grouped integer and nonbinary
+string descriptor columns or their selected aliases to a nonempty literal list
+in the companion `baseline-grouped-having-in-predicate` slice. MyLite converts
+list items with the same descriptor-owned conversion rules as grouped
+comparison predicates, admits `NULL` list items, and binds each value as a
+SQLite parameter.
 
 `NULL` is not admitted as a comparison literal in this phase. Use `IS NULL` or
 `IS NOT NULL` for supported null tests.

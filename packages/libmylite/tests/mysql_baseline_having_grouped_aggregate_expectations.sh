@@ -125,7 +125,9 @@ group_key=$(run_mysql \
      SELECT g, COUNT(*) FROM t GROUP BY g HAVING g > 0 ORDER BY g LIMIT 1;
      SELECT g AS k, COUNT(*) FROM t GROUP BY g HAVING k = 2 ORDER BY k;
      SELECT g AS x, COUNT(*) AS x FROM t GROUP BY g HAVING x > 2 ORDER BY g;
-     SELECT g, COUNT(*) AS g FROM t GROUP BY g HAVING g > 1;"
+     SELECT g, COUNT(*) AS g FROM t GROUP BY g HAVING g > 1;
+     SELECT g, COUNT(*) FROM t GROUP BY g HAVING g IN (1,2) ORDER BY g;
+     SELECT g AS k, COUNT(*) FROM t GROUP BY g HAVING k IN (1,NULL) ORDER BY k;"
 )
 expect_value "group is null" "NULL	2" "$(printf '%s\n' "$group_key" | sed -n '1p')"
 expect_value "group null safe equal" "1	3" "$(printf '%s\n' "$group_key" | sed -n '2p')"
@@ -135,6 +137,10 @@ expect_value "duplicate alias aggregate precedence group one" "1	3" \
     "$(printf '%s\n' "$group_key" | sed -n '5p')"
 expect_value "descriptor name before aggregate alias" "2	2" \
     "$(printf '%s\n' "$group_key" | sed -n '6p')"
+expect_value "group in first" "1	3" "$(printf '%s\n' "$group_key" | sed -n '7p')"
+expect_value "group in second" "2	2" "$(printf '%s\n' "$group_key" | sed -n '8p')"
+expect_value "group alias in skips null list item" "1	3" \
+    "$(printf '%s\n' "$group_key" | sed -n '9p')"
 
 where_and_limit=$(run_mysql \
     "USE ${DATABASE};

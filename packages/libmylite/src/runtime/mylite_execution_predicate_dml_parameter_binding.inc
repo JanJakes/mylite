@@ -816,6 +816,19 @@ static int bind_grouped_aggregate_parameters_at(
             ++(*parameter_index);
         }
     }
+    for (size_t value_index = 0U; rc == MYLITE_OK &&
+         plan->having.kind == PLANNED_GROUPED_HAVING_IN &&
+         value_index < plan->having.value_count;
+         ++value_index) {
+        rc = bind_planned_value_parameter(
+            statement,
+            *parameter_index,
+            &plan->having.values[value_index]
+        );
+        if (rc == MYLITE_OK) {
+            ++(*parameter_index);
+        }
+    }
     if (rc == MYLITE_OK && include_limit) {
         rc = bind_grouped_order_parameters(statement, plan, parameter_index);
     }

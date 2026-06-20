@@ -41,6 +41,7 @@ static int test_select_clause_residuals(void) {
     static const char *const tableless_expr[] = {"9"};
     static const char *const locking_rows[] = {"1", "1", "2", "2"};
     static const char *const having_string_rhs_rows[] = {"10", "hello"};
+    static const char *const having_in_rows[] = {"10", "20"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -137,13 +138,14 @@ static int test_select_clause_residuals(void) {
             .context = "having string rhs",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT a FROM t1 GROUP BY a HAVING a IN (10,20)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+        (struct expected_query){
+            .sql = "SELECT a FROM t1 GROUP BY a HAVING a IN (10,20) ORDER BY a",
+            .values = having_in_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "having in",
         }
     );
 

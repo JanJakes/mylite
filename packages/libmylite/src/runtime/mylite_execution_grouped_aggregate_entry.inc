@@ -211,6 +211,8 @@ static void planned_grouped_aggregate_deinit(struct planned_grouped_aggregate *p
     planned_row_scalar_expression_deinit(plan->having.row_scalar_expression);
     free(plan->having.row_scalar_expression);
     planned_value_deinit(&plan->having.value);
+    planned_value_array_deinit(plan->having.values, plan->having.value_count);
+    free(plan->having.values);
     planned_select_order_deinit(&plan->order);
     *plan = (struct planned_grouped_aggregate){0};
 }

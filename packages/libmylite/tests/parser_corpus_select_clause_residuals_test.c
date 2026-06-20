@@ -30,8 +30,6 @@ static int test_select_clause_residuals(void) {
         {.sql = "SELECT t1.a AS t1c1, t2.a AS t2c1 "
                 "FROM t1 JOIN t2 ON t1.id=t2.id HAVING t1c1 != t2c1",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "SELECT a FROM t1 GROUP BY a HAVING a IN (10,20)",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
     };
     int failures = 0;
 
@@ -44,6 +42,7 @@ static int test_select_clause_residuals(void) {
                          "FOR SHARE OF t1 NOWAIT FOR UPDATE OF t2 SKIP LOCKED");
     failures += parse_ok("SELECT id FROM t1 LOCK IN SHARE MODE FOR UPDATE");
     failures += parse_ok("SELECT a,b FROM t1 GROUP BY a,b HAVING b='hello'");
+    failures += parse_ok("SELECT a FROM t1 GROUP BY a HAVING a IN (10,20)");
     for (size_t index = 0U; index < sizeof(placeholders) / sizeof(placeholders[0]); ++index) {
         failures += expect_statement_kind(placeholders[index]);
     }

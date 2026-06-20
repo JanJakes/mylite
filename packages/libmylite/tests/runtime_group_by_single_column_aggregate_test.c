@@ -452,6 +452,7 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const string_having_null_values[] = {NULL, "1"};
     static const char *const string_having_eq_values[] = {"alice", "2"};
     static const char *const string_having_ne_values[] = {"bob", "2", "carol", "1"};
+    static const char *const string_having_in_values[] = {"alice", "2", "carol", "1"};
     static const char *const char_having_eq_values[] = {"A", "2"};
     static const char *const text_having_range_values[] = {"essay", "2", "note", "2"};
     static const char *const string_where_offset_values[] = {"alice", "2", "BOB", "1"};
@@ -1956,6 +1957,30 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) AS c FROM grouped_numbers "
+                   "GROUP BY g HAVING g IN (1, 2) ORDER BY g",
+            .columns = having_count_columns,
+            .column_count = 2U,
+            .values = having_count_values,
+            .row_count = 2U,
+            .context = "having grouped column in literal list",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g AS k, COUNT(*) FROM grouped_numbers "
+                   "GROUP BY g HAVING k IN (1, NULL) ORDER BY k",
+            .columns = having_group_alias_columns,
+            .column_count = 2U,
+            .values = having_group_alias_values,
+            .row_count = 1U,
+            .context = "having grouped alias in literal list with null",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
             .sql = "SELECT g, COUNT(*) AS c FROM grouped_numbers WHERE id >= 2 "
                    "GROUP BY g HAVING c > 1 ORDER BY g DESC LIMIT 1",
             .columns = having_count_columns,
@@ -2229,6 +2254,18 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = string_having_ne_values,
             .row_count = 2U,
             .context = "string grouped direct having inequality",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT name AS k, COUNT(*) AS c FROM string_grouped GROUP BY name "
+                   "HAVING k IN ('ALICE', 'carol') ORDER BY k",
+            .columns = string_having_columns,
+            .column_count = 2U,
+            .values = string_having_in_values,
+            .row_count = 2U,
+            .context = "string grouped alias having in",
         }
     );
     failures += expect_grouped_query(

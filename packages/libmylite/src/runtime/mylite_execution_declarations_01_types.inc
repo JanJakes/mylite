@@ -1323,6 +1323,7 @@ enum planned_grouped_having_kind {
     PLANNED_GROUPED_HAVING_NONE = 0,
     PLANNED_GROUPED_HAVING_COMPARISON = 1,
     PLANNED_GROUPED_HAVING_IS_NULL = 2,
+    PLANNED_GROUPED_HAVING_IN = 3,
 };
 
 enum planned_grouped_having_operand {
@@ -1337,6 +1338,8 @@ struct planned_grouped_having {
     enum planned_grouped_having_operand operand;
     enum mylite_sql_ast_operator operator_kind;
     struct planned_value value;
+    struct planned_value *values;
+    size_t value_count;
     bool value_uses_uint64_order_key;
     char uint64_order_key[uint64_decimal_digit_capacity + 1U];
     size_t group_index;

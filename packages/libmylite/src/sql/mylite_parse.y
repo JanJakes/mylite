@@ -6234,6 +6234,9 @@ having_predicate_atom(A) ::= having_operand(C) GREATER_EQUAL(O) STRING(V). {
         state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL,
         mylite_sql_parser_make_literal(state, V, MYLITE_SQL_AST_LITERAL_STRING));
 }
+having_predicate_atom(A) ::= having_operand(C) IN(I) LPAREN having_in_value_list(V) RPAREN(R). {
+    A = mylite_sql_parser_make_in_predicate(state, C, I, V, R);
+}
 having_predicate_atom(A) ::= having_operand(C). {
     A = C;
 }
@@ -6623,6 +6626,23 @@ having_integer_value(A) ::= TRUE(T). {
 }
 having_integer_value(A) ::= FALSE(T). {
     A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_FALSE);
+}
+
+having_in_value_list(A) ::= having_in_value(V). {
+    A = mylite_sql_parser_make_predicate_value_list(state, V);
+}
+having_in_value_list(A) ::= having_in_value_list(L) COMMA having_in_value(V). {
+    A = mylite_sql_parser_append_predicate_value(state, L, V);
+}
+
+having_in_value(A) ::= having_integer_value(V). {
+    A = V;
+}
+having_in_value(A) ::= STRING(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_STRING);
+}
+having_in_value(A) ::= NULL(T). {
+    A = mylite_sql_parser_make_literal(state, T, MYLITE_SQL_AST_LITERAL_NULL);
 }
 
 predicate(A) ::= predicate_disjunction(B). {

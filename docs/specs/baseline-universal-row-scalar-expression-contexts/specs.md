@@ -104,7 +104,8 @@ remains consistent with current integer AVG behavior.
 
 `GROUP_CONCAT()` remains separate because its MySQL compatibility surface
 includes ordering, separator handling, length limits, and string aggregation
-state. It can be widened later with a dedicated slice.
+state. Supported `GROUP_CONCAT()` row-scalar value arguments are tracked in
+`docs/specs/baseline-group-concat-row-scalar-arguments/specs.md`.
 
 ## Syntax
 

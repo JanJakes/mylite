@@ -390,7 +390,8 @@ CTest name. Coverage must include:
   `sqlite_schema_generation` mutation for reads;
 - zero-initialized cleanup for new plan fields;
 - deterministic rejection of unsupported value types and unsupported syntax:
-  `DISTINCT`, unsupported row-scalar expressions, aggregate-local
+  multi-value `DISTINCT`, unsupported row-scalar expression forms,
+  aggregate-local
   ordinal/expression/multiple
   order keys, nullable order keys, string order keys, `SEPARATOR NULL`,
   numeric separators, parameters, window forms, subqueries, joins, and

@@ -507,7 +507,7 @@ static int find_grouped_having_aggregate_alias_operand(
     struct planned_grouped_aggregate *out_plan,
     bool *out_matched
 );
-static int convert_grouped_having_integer_literal(
+static int convert_grouped_having_comparison_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     struct planned_grouped_aggregate *plan,

@@ -450,6 +450,10 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const string_having_columns[] = {"k", "c"};
     static const char *const string_having_desc_limit_values[] = {"bob", "2"};
     static const char *const string_having_null_values[] = {NULL, "1"};
+    static const char *const string_having_eq_values[] = {"alice", "2"};
+    static const char *const string_having_ne_values[] = {"bob", "2", "carol", "1"};
+    static const char *const char_having_eq_values[] = {"A", "2"};
+    static const char *const text_having_range_values[] = {"essay", "2", "note", "2"};
     static const char *const string_where_offset_values[] = {"alice", "2", "BOB", "1"};
     static const char *const string_selected_alias_columns[] = {"grouped_name", "c"};
     static const char *const string_selected_alias_values[] = {
@@ -2201,6 +2205,66 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = string_having_null_values,
             .row_count = 1U,
             .context = "string grouped alias having is null",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT name AS k, COUNT(*) AS c FROM string_grouped GROUP BY name "
+                   "HAVING k = 'ALICE'",
+            .columns = string_having_columns,
+            .column_count = 2U,
+            .values = string_having_eq_values,
+            .row_count = 1U,
+            .context = "string grouped alias having equality",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT name AS k, COUNT(*) AS c FROM string_grouped GROUP BY name "
+                   "HAVING name <> 'ALICE' ORDER BY k",
+            .columns = string_having_columns,
+            .column_count = 2U,
+            .values = string_having_ne_values,
+            .row_count = 2U,
+            .context = "string grouped direct having inequality",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT name AS k, COUNT(*) AS c FROM string_grouped GROUP BY name "
+                   "HAVING string_grouped.name = 'BOB'",
+            .columns = string_having_columns,
+            .column_count = 2U,
+            .values = string_having_desc_limit_values,
+            .row_count = 1U,
+            .context = "string grouped qualified having equality",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT label AS k, COUNT(*) AS c FROM string_grouped GROUP BY label "
+                   "HAVING k = 'a'",
+            .columns = string_having_columns,
+            .column_count = 2U,
+            .values = char_having_eq_values,
+            .row_count = 1U,
+            .context = "char grouped alias having equality",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT body AS k, COUNT(*) AS c FROM string_grouped GROUP BY body "
+                   "HAVING body <= 'NOTE' ORDER BY k",
+            .columns = string_having_columns,
+            .column_count = 2U,
+            .values = text_having_range_values,
+            .row_count = 2U,
+            .context = "text grouped direct having range",
         }
     );
     failures += expect_grouped_query(

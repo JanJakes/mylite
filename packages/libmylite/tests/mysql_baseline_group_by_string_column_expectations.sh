@@ -91,7 +91,12 @@ filters=$(run_mysql \
      SELECT name AS k, COUNT(*) AS c FROM s GROUP BY name HAVING c > 1 ORDER BY k DESC LIMIT 1;
      SELECT name AS k, COUNT(*) AS c FROM s GROUP BY name HAVING k IS NULL;
      SELECT name AS k, COUNT(*) AS c FROM s WHERE n IS NOT NULL
-       GROUP BY name HAVING c >= 1 ORDER BY k LIMIT 2 OFFSET 1;"
+       GROUP BY name HAVING c >= 1 ORDER BY k LIMIT 2 OFFSET 1;
+     SELECT name AS k, COUNT(*) AS c FROM s GROUP BY name HAVING k = 'ALICE';
+     SELECT name AS k, COUNT(*) AS c FROM s GROUP BY name HAVING name <> 'ALICE' ORDER BY k;
+     SELECT name AS k, COUNT(*) AS c FROM s GROUP BY name HAVING s.name = 'BOB';
+     SELECT label AS k, COUNT(*) AS c FROM s GROUP BY label HAVING k = 'a';
+     SELECT body AS k, COUNT(*) AS c FROM s GROUP BY body HAVING body <= 'NOTE' ORDER BY k;"
 )
 expect_value "having aggregate alias desc limit" "bob	2" \
     "$(printf '%s\n' "$filters" | sed -n '1p')"
@@ -100,6 +105,19 @@ expect_value "where before grouping offset first" "alice	2" \
     "$(printf '%s\n' "$filters" | sed -n '3p')"
 expect_value "where before grouping offset second" "BOB	1" \
     "$(printf '%s\n' "$filters" | sed -n '4p')"
+expect_value "having string alias equality" "alice	2" \
+    "$(printf '%s\n' "$filters" | sed -n '5p')"
+expect_value "having string direct inequality first" "bob	2" \
+    "$(printf '%s\n' "$filters" | sed -n '6p')"
+expect_value "having string direct inequality second" "carol	1" \
+    "$(printf '%s\n' "$filters" | sed -n '7p')"
+expect_value "having string qualified equality" "bob	2" \
+    "$(printf '%s\n' "$filters" | sed -n '8p')"
+expect_value "having char alias equality" "A	2" "$(printf '%s\n' "$filters" | sed -n '9p')"
+expect_value "having text direct range first" "essay	2" \
+    "$(printf '%s\n' "$filters" | sed -n '10p')"
+expect_value "having text direct range second" "note	2" \
+    "$(printf '%s\n' "$filters" | sed -n '11p')"
 
 limits=$(run_mysql \
     "USE ${DATABASE};

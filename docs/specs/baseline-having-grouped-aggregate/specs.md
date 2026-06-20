@@ -60,7 +60,9 @@ having_operand IS NOT NULL
 `having_integer_value` is an unsigned decimal integer literal in MyLite's
 current signed-64 expression envelope, optionally prefixed by unary `+` or
 `-`, or a `TRUE` / `FALSE` boolean literal. Boolean literals convert to `1`
-and `0`.
+and `0`. Grouped string comparison companions also admit a single ordinary
+string literal token for supported nonbinary string grouped columns and
+selected `ANY_VALUE()` aliases.
 
 Supported `having_operand` forms:
 
@@ -82,6 +84,9 @@ Supported `having_operand` forms:
   `VAR_POP()`, `VAR_SAMP()`, or `VARIANCE()` alias or repeated selected
   aggregate function expression in the companion
   `baseline-grouped-statistical-aggregate-having` slice.
+- Supported grouped `CHAR`, `VARCHAR`, and baseline `TEXT` descriptor columns
+  and selected aliases with ordinary string-literal comparisons in the
+  companion `baseline-grouped-string-comparison-having` slice.
 
 The aggregate function expression in `HAVING` must refer to the selected
 aggregate result. MyLite does not yet support aggregate expressions that are
@@ -113,7 +118,9 @@ This phase does not add:
 - bare truth tests such as `HAVING COUNT(*)`;
 - literal-left predicates;
 - `NULL` comparison literals such as `HAVING SUM(col) <=> NULL`;
-- string, decimal, float, hex, bit, parameter, subquery, or function literals;
+- string literals outside documented grouped string-column and selected
+  `ANY_VALUE()` alias comparison slices, decimal, float, hex, bit, parameter,
+  subquery, or function literals;
 - arithmetic or arbitrary expressions in `HAVING`;
 - arbitrary `COUNT(DISTINCT ...)` expressions outside the selected
   descriptor-column grouped count-distinct slice and documented
@@ -218,6 +225,12 @@ Selected statistical aggregate result predicates compare the MyLite statistical
 aggregate UDF double or `NULL` result against the admitted integer literal in
 the companion `baseline-grouped-statistical-aggregate-having` slice.
 
+Grouped string-column comparison predicates compare supported grouped nonbinary
+string descriptor columns or their selected aliases to a single ordinary string
+literal token in the companion `baseline-grouped-string-comparison-having`
+slice. MyLite binds the decoded literal as text and emits descriptor-owned
+ASCII collation on the left expression.
+
 `NULL` is not admitted as a comparison literal in this phase. Use `IS NULL` or
 `IS NOT NULL` for supported null tests.
 
@@ -286,6 +299,7 @@ having_predicate_atom(A) ::= having_operand(C) LESS(O) having_integer_value(V).
 having_predicate_atom(A) ::= having_operand(C) LESS_EQUAL(O) having_integer_value(V).
 having_predicate_atom(A) ::= having_operand(C) GREATER(O) having_integer_value(V).
 having_predicate_atom(A) ::= having_operand(C) GREATER_EQUAL(O) having_integer_value(V).
+having_predicate_atom(A) ::= having_operand(C) comparison_operator(O) STRING(V).
 having_predicate_atom(A) ::= having_operand(C) IS(I) NULL(N).
 having_predicate_atom(A) ::= having_operand(C) IS(I) NOT NULL(N).
 

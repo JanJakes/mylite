@@ -83,7 +83,7 @@ static int plan_grouped_having_node(
         return MYLITE_OK;
     }
 
-    rc = convert_grouped_having_integer_literal(
+    rc = convert_grouped_having_comparison_value(
         database,
         child_at(current, 1U),
         out_plan,
@@ -778,7 +778,7 @@ static int find_grouped_having_aggregate_alias_operand(
     return MYLITE_OK;
 }
 
-static int convert_grouped_having_integer_literal(
+static int convert_grouped_having_comparison_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     struct planned_grouped_aggregate *plan,
@@ -809,6 +809,13 @@ static int convert_grouped_having_integer_literal(
     );
     if (rc != MYLITE_OK || handled) {
         return rc;
+    }
+
+    if (operand == PLANNED_GROUPED_HAVING_OPERAND_GROUP_COLUMN && group_column != NULL &&
+        column_descriptor_is_string_family(group_column) && value_node != NULL &&
+        value_node->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_STRING) {
+        return convert_grouped_having_string_value(database, value_node, out_value);
     }
 
     rc = parse_grouped_having_integer_literal(
@@ -911,7 +918,7 @@ static int convert_grouped_having_string_value(
         mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
         set_unsupported_error(
             database,
-            "HAVING string aggregate aliases support only string literals"
+            "HAVING string comparisons support only string literals"
         );
         return MYLITE_ERROR;
     }
@@ -919,8 +926,8 @@ static int convert_grouped_having_string_value(
     rc = decode_sql_string_literal_with_policy(
         database,
         value_node,
-        "HAVING string aggregate aliases support only string literals",
-        "HAVING string aggregate alias literals do not support NUL bytes",
+        "HAVING string comparisons support only string literals",
+        "HAVING string comparison literals do not support NUL bytes",
         true,
         &text,
         &text_length

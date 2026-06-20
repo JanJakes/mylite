@@ -56,6 +56,9 @@ admitted subset:
   grouping. `ORDER BY` and `LIMIT` apply after `HAVING`.
 - `HAVING` can refer to selected aggregate aliases such as `c` in
   `HAVING c > 1`. `HAVING group_alias IS NULL` is accepted.
+- `HAVING` can compare supported string group columns and selected aliases to
+  ordinary string literals in the companion
+  `baseline-grouped-string-comparison-having` slice.
 - `LIMIT 0` returns no result rows. `LIMIT row_count OFFSET offset` and
   `LIMIT offset, row_count` keep the existing grouped SELECT limit behavior.
 - Successful statements leave warning count `0`; `ROW_COUNT()` returns `-1`
@@ -105,8 +108,8 @@ This phase must not add:
   non-ASCII comparison guarantees;
 - binary string, `ENUM`, `SET`, JSON, temporal, decimal, or approximate numeric
   group keys;
-- string group-column comparison predicates in `HAVING`, such as
-  `HAVING name = 'alice'`;
+- grouped string comparison predicates outside the companion
+  `baseline-grouped-string-comparison-having` literal subset;
 - `HAVING` boolean composition, unselected aggregate predicates, subqueries, or
   arbitrary expressions;
 - functional-dependence analysis, rollup, grouping sets, windows, CTEs,
@@ -211,17 +214,25 @@ HAVING count_alias > 1
 HAVING SUM(integer_column) IS NOT NULL
 ```
 
-The grouped string column itself is admitted only for existing `IS NULL` and
-`IS NOT NULL` group-column `HAVING` predicates in this phase:
+The grouped string column itself is admitted for existing `IS NULL` and
+`IS NOT NULL` group-column `HAVING` predicates:
 
 ```sql
 HAVING group_alias IS NULL
 HAVING group_column IS NOT NULL
 ```
 
-String group-column comparison predicates such as `HAVING group_column =
-'alice'` remain unsupported until the grouped `HAVING` planner owns
-descriptor-driven string literal conversion and collation-aware comparison.
+The companion `baseline-grouped-string-comparison-having` slice admits
+descriptor-driven ordinary string-literal comparisons:
+
+```sql
+HAVING group_alias = 'alice'
+HAVING group_column <> 'bob'
+```
+
+Numeric/string coercions, boolean composition, `BETWEEN`, `IN`, `LIKE`,
+`REGEXP`, arbitrary expressions, and full Unicode collation parity remain
+outside the grouped string-column baseline.
 
 ## SQLite Handling
 
@@ -274,6 +285,7 @@ Fast C tests must cover:
 - `WHERE` before grouping;
 - aggregate-alias `HAVING` with a string group key;
 - group-column `HAVING IS NULL`;
+- group-column and selected-alias string comparison `HAVING`;
 - `ORDER BY` default/`ASC` and `DESC`;
 - `LIMIT 0`, exact limits, and offset forms inherited from grouped SELECT;
 - successful result labels, warning count `0`, no affected rows, and

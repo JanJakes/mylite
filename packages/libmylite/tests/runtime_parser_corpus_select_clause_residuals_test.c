@@ -40,6 +40,7 @@ static int test_select_clause_residuals(void) {
     static const char *const tableless_one[] = {"1"};
     static const char *const tableless_expr[] = {"9"};
     static const char *const locking_rows[] = {"1", "1", "2", "2"};
+    static const char *const having_string_rhs_rows[] = {"10", "hello"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -126,13 +127,14 @@ static int test_select_clause_residuals(void) {
             .message_part = "utility statement is not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT a,b FROM t1 GROUP BY a,b HAVING b='hello'",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "HAVING supports only integer or boolean literals",
+        (struct expected_query){
+            .sql = "SELECT a,b FROM t1 GROUP BY a,b HAVING b='hello'",
+            .values = having_string_rhs_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "having string rhs",
         }
     );
     failures += execute_error(

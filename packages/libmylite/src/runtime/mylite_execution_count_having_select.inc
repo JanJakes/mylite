@@ -334,7 +334,7 @@ static int plan_count_having_clause(
     }
 
     *out_operator_kind = mylite_sql_ast_node_operator(comparison);
-    rc = convert_grouped_having_integer_literal(
+    rc = convert_grouped_having_comparison_value(
         database,
         child_at(comparison, 1U),
         &aggregate,

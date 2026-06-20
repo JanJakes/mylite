@@ -14,7 +14,8 @@ aggregate expressions,
 selected `GROUP_CONCAT()` aggregate aliases and repeated selected
 `GROUP_CONCAT()` expressions with `IS NULL` / `IS NOT NULL`,
 selected `ANY_VALUE()` aggregate aliases with supported null and comparison
-predicates,
+predicates, grouped nonbinary string descriptor columns and selected aliases
+with ordinary string-literal comparison predicates,
 and selected `COUNT()`, `SUM()`, `AVG()`, `MIN()`, and `MAX()` row-scalar
 aggregate expressions in the documented envelopes; see
 [baseline HAVING grouped aggregate](../specs/baseline-having-grouped-aggregate/specs.md)
@@ -29,7 +30,9 @@ and
 and
 [baseline grouped selected GROUP_CONCAT aggregate expression HAVING](../specs/baseline-grouped-selected-group-concat-aggregate-expression-having/specs.md)
 and
-[baseline grouped ANY_VALUE aggregate alias comparison HAVING](../specs/baseline-grouped-any-value-aggregate-alias-comparison-having/specs.md).
+[baseline grouped ANY_VALUE aggregate alias comparison HAVING](../specs/baseline-grouped-any-value-aggregate-alias-comparison-having/specs.md)
+and
+[baseline grouped string comparison HAVING](../specs/baseline-grouped-string-comparison-having/specs.md).
 
 The parser also admits common MySQL aggregate-window `OVER` syntax for the
 current `COUNT(*)`, `COUNT(column)`, `COUNT(DISTINCT column)`, supported

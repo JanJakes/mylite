@@ -116,3 +116,18 @@ This slice does not add:
 - new source forms outside the current grouped aggregate envelopes.
 
 Unsupported forms continue to return deterministic MyLite diagnostics.
+
+## Validation
+
+Required verification for this slice:
+
+```sh
+sh -n packages/libmylite/tests/mysql_baseline_group_by_multiple_aggregates_expectations.sh
+sh -n packages/libmylite/tests/mysql_baseline_group_by_multiple_keys_expectations.sh
+packages/libmylite/tests/mysql_baseline_group_by_multiple_aggregates_expectations.sh
+packages/libmylite/tests/mysql_baseline_group_by_multiple_keys_expectations.sh
+cmake --build --preset dev --target mylite_runtime_group_by_single_column_aggregate_test
+ctest --preset dev -R '^libmylite\.runtime\.group_by_single_column_aggregate$' --output-on-failure
+git diff --check
+cmake --workflow --preset check
+```

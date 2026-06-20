@@ -272,6 +272,33 @@ static int test_any_value_row_scalar_and_grouped_values(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT g, ANY_VALUE(v) AS av FROM t GROUP BY g ORDER BY ANY_VALUE(v) DESC",
+            .columns = grouped_order_columns,
+            .column_count = any_value_grouped_order_column_count,
+            .values = grouped_order_values,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "grouped any_value order expression",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, ANY_VALUE(t.v) AS av FROM t GROUP BY g "
+                   "ORDER BY ANY_VALUE(t.v) DESC LIMIT 2",
+            .columns = grouped_order_columns,
+            .column_count = any_value_grouped_order_column_count,
+            .values = grouped_limit_values,
+            .row_count = 2U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "grouped qualified any_value order expression limit",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT g, ANY_VALUE(t.v) AS av FROM t GROUP BY g ORDER BY g",
             .columns = grouped_order_columns,
             .column_count = any_value_grouped_order_column_count,
@@ -353,6 +380,15 @@ static int test_any_value_errors_and_identifier_use(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "ANY_VALUE(column) supports only descriptor columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, ANY_VALUE(v) AS av FROM t GROUP BY g ORDER BY ANY_VALUE(s)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "only when they match selected aggregate results",
         }
     );
     failures += execute_error(

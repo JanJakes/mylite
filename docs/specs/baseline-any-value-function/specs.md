@@ -43,6 +43,8 @@ expectations for this slice:
 - `SELECT g, ANY_VALUE(v), ANY_VALUE(s), MAX(v), COUNT(*) FROM t GROUP BY g`
   is accepted under `ONLY_FULL_GROUP_BY`; observed representative values are not
   guaranteed when a group contains different candidate values.
+- Repeating a selected grouped `ANY_VALUE(column)` expression in `ORDER BY` is
+  accepted and sorts by the selected representative value.
 - `ANY_VALUE()` and `ANY_VALUE(1,2)` return error 1582 / SQLSTATE `42000` with
   the native-function parameter-count diagnostic.
 - `ANY_VALUE(*)` and `ANY_VALUE(DISTINCT v)` are syntax errors in the observed
@@ -67,6 +69,9 @@ MyLite supports this exact subset:
 - optional aliases on selected `ANY_VALUE()` results;
 - selected aggregate aliases in the existing grouped `HAVING ... IS NULL` /
   `IS NOT NULL` and grouped `ORDER BY alias [ASC|DESC]` paths;
+- selected grouped `ANY_VALUE(column)` expressions repeated as grouped
+  `ORDER BY ANY_VALUE(column) [ASC|DESC]` keys when they match exactly one
+  selected result;
 - successful in-range expressions produce `warning_count == 0`;
 - result labels follow the existing public result conventions: the original
   expression text when no alias is supplied, or the explicit alias.
@@ -84,6 +89,8 @@ This slice intentionally does not support:
 - mixed ungrouped aggregate queries such as `SELECT ANY_VALUE(col), MAX(col)
   FROM t`;
 - expression arguments in grouped `ANY_VALUE()`;
+- hidden grouped `ANY_VALUE()` order keys and repeated grouped `ANY_VALUE()`
+  order keys that do not match a selected result;
 - `ANY_VALUE(*)`, `ANY_VALUE(DISTINCT ...)`, or multi-argument forms;
 - use as a window function;
 - `ANY_VALUE()` in DML assignments, defaults, generated columns, check
@@ -100,6 +107,7 @@ The parser admits the independently authored one-argument function form:
 
 ```lemon
 expression ::= ANY_VALUE LPAREN expression RPAREN.
+selected_grouped_aggregate_expression ::= ANY_VALUE LPAREN expression RPAREN.
 ```
 
 Wrong-arity calls are represented with an explicit AST error node so execution
@@ -173,6 +181,8 @@ Required diagnostics:
   descriptor columns`;
 - grouped `HAVING` or `ORDER BY` unsupported form: existing grouped
   `HAVING`/`ORDER BY` unsupported diagnostics;
+- repeated grouped `ANY_VALUE()` order expression does not match a selected
+  result: existing grouped aggregate-expression order diagnostic;
 - allocation failure: existing `MYLITE_NOMEM` diagnostic behavior;
 - public API misuse: no public API changes.
 
@@ -188,6 +198,9 @@ Required diagnostics:
 - Analyzer/planner/runtime: scalar and row-scalar paths unwrap to existing
   planners; grouped planning treats `ANY_VALUE(column)` as a selected
   aggregate-like item while resolving the argument from MyLite descriptors.
+  Repeated selected grouped `ANY_VALUE(column)` order expressions reuse the
+  selected-result ordering path when descriptor resolution matches exactly one
+  selected result.
 - Catalog: untouched. The function does not read or mutate descriptor versions,
   descriptor caches, catalog generation, or `sqlite_schema_generation`.
 - Result builder: scalar and row-scalar result metadata stays on the existing
@@ -223,8 +236,8 @@ Add fast C coverage under `packages/libmylite/tests/`:
 - grouped runtime covers integer, nullable integer, and nonbinary string
   descriptor arguments with deterministic same-value and all-`NULL` groups;
 - grouped runtime covers composition with `MAX()` and `COUNT(*)`, selected
-  alias `HAVING ... IS NOT NULL`, selected alias `ORDER BY ... DESC`, and
-  `LIMIT`;
+  alias `HAVING ... IS NOT NULL`, selected alias `ORDER BY ... DESC`, repeated
+  selected expression `ORDER BY ANY_VALUE(column)`, and `LIMIT`;
 - diagnostics cover wrong arity, syntax rejections for `*`/`DISTINCT`, unknown
   argument columns, unsupported grouped expression arguments, and unsupported
   mixed ungrouped aggregate use;

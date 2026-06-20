@@ -203,6 +203,11 @@ expect_output \
     "USE ${DATABASE}; SELECT g, ANY_VALUE(v) AS av FROM t GROUP BY g ORDER BY av DESC;"
 
 expect_output \
+    "grouped any_value selected expression order" \
+    "$order_expected" \
+    "USE ${DATABASE}; SELECT g, ANY_VALUE(v) AS av FROM t GROUP BY g ORDER BY ANY_VALUE(v) DESC;"
+
+expect_output \
     "any_value ordinary table identifier" \
     "" \
     "USE ${DATABASE}; CREATE TABLE any_value(id INT); DROP TABLE any_value;"

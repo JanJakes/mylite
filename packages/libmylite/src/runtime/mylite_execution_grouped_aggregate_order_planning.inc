@@ -692,7 +692,16 @@ static bool grouped_order_aggregate_items_match(
         return grouped_order_group_concat_items_match(left, right);
     }
     if (left->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
-        return false;
+        if (left->aggregate_uses_row_scalar_expression ||
+            right->aggregate_uses_row_scalar_expression) {
+            return false;
+        }
+        return planned_grouped_aggregate_columns_match(
+            &left->aggregate_column,
+            left->aggregate_column_source_index,
+            &right->aggregate_column,
+            right->aggregate_column_source_index
+        );
     }
     if (left->aggregate_uses_row_scalar_expression && right->aggregate_uses_row_scalar_expression) {
         return grouped_order_row_scalar_aggregate_expressions_match(

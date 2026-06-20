@@ -5348,6 +5348,31 @@ static int test_any_value_function(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "SELECT g, ANY_VALUE(t.v) AS av FROM app.t GROUP BY g ORDER BY ANY_VALUE(t.v) DESC;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    order_clause = parser_test_first_child_kind(statement, MYLITE_SQL_AST_ORDER_BY_CLAUSE);
+    first_expression = parser_test_child_at(order_clause, 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_ANY_VALUE_FUNCTION,
+        "grouped order any_value expression"
+    );
+    failures += parser_test_expect_span_text(
+        first_expression,
+        "ANY_VALUE(t.v)",
+        "grouped order any_value expression span"
+    );
+    failures += parser_test_expect_order_direction(
+        parser_test_child_at(order_clause, 1U),
+        MYLITE_SQL_AST_ORDER_DIRECTION_DESC,
+        "any_value expression order desc"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parser_test_parse_sql("SELECT ANY_VALUE (1);", MYLITE_SQL_PARSE_OK, &result);
     first_expression = parser_test_child_at(
         parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),

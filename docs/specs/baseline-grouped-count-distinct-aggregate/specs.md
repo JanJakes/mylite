@@ -3,7 +3,8 @@
 ## Status
 
 This slice extends the existing descriptor-backed grouped aggregate path with
-`COUNT(DISTINCT column)` over integer and nonbinary string descriptor columns.
+`COUNT(DISTINCT column)` over integer, nonbinary string, and binary string
+descriptor columns.
 It builds on the baseline `GROUP BY`, `HAVING`, and ungrouped
 `COUNT(DISTINCT column)` features.
 
@@ -11,9 +12,8 @@ The feature is intentionally narrow. It supports the current base-table grouped
 aggregate path, including the current multiple-key grouped base-table path,
 and the current two-source joined grouped aggregate path with one distinct
 descriptor-column argument. It does not implement MySQL's full
-`COUNT(DISTINCT expr[, expr...])` surface, binary string distinct-count
-execution, aggregate windows, joined multiple-key grouped sources, or arbitrary
-grouped expressions.
+`COUNT(DISTINCT expr[, expr...])` surface, aggregate windows, joined
+multiple-key grouped sources, or arbitrary grouped expressions.
 
 ## Sources
 
@@ -55,6 +55,8 @@ records the runtime probes for this feature. Observed behavior:
   per group. The covered `VARCHAR`, `CHAR`, and `TEXT` probes use MySQL's
   default collation behavior, including ASCII case folding and insignificant
   trailing spaces for `CHAR`.
+- Binary string descriptor arguments apply bytewise distinct-count semantics
+  per group.
 - The aggregate may be selected with an alias and filtered by that alias in
   `HAVING`.
 - A matching selected aggregate expression such as
@@ -84,10 +86,10 @@ two-source joined grouped source envelope. A base-table source may use the
 current one-to-four descriptor-key grouping subset. The joined source envelope
 keeps the current joined grouped-key limits. `group_column`, `WHERE`,
 `ORDER BY`, and `LIMIT` inherit the current grouped aggregate envelope.
-`aggregate_column` must resolve to one integer or nonbinary string descriptor
-column from the grouped source. Source-qualified and parenthesized
-descriptor-column forms admitted by the existing parser are supported when they
-resolve to that descriptor column.
+`aggregate_column` must resolve to one integer, nonbinary string, or binary
+string descriptor column from the grouped source. Source-qualified and
+parenthesized descriptor-column forms admitted by the existing parser are
+supported when they resolve to that descriptor column.
 
 Supported `HAVING` operands:
 
@@ -111,8 +113,9 @@ having_operand ::= selected_grouped_aggregate_expression.
 ## Runtime Semantics
 
 The planner resolves the aggregate argument against MyLite descriptors,
-verifies that it is an integer or nonbinary string descriptor column, and
-lowers integer arguments to SQLite as `COUNT(DISTINCT "physical_column")`.
+verifies that it is an integer, nonbinary string, or binary string descriptor
+column, and lowers integer and binary string arguments to SQLite as
+`COUNT(DISTINCT "physical_column")`.
 Nonbinary string arguments add MyLite's registered string-key collation inside
 the distinct expression. SQLite owns source scanning, filtering, grouping,
 distinct aggregation, `HAVING`, ordering, and limiting. MyLite owns descriptor
@@ -131,8 +134,8 @@ This slice does not add:
 
 - multiple distinct expressions;
 - literal or arbitrary expression distinct arguments;
-- binary, decimal, floating, temporal, enum, set, JSON, or per-expression
-  collation distinct-count semantics;
+- decimal, floating, temporal, enum, set, JSON, or per-expression collation
+  distinct-count semantics;
 - wider grouped source forms than the current base-table, multiple-key
   base-table, and two-source joined grouped aggregate envelopes;
 - joined multiple-key grouped count-distinct combinations beyond the current

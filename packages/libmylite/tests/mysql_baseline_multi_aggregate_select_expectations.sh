@@ -48,25 +48,26 @@ run_mysql \
        n INT NULL,
        m INT NOT NULL,
        label VARCHAR(20) NULL,
-       name VARCHAR(20) NULL
+       name VARCHAR(20) NULL,
+       raw VARBINARY(4) NULL
      ) ENGINE=InnoDB;
      INSERT INTO t VALUES
-       (1, NULL, 5, 'a', NULL),
-       (2, 10, 7, 'b', 'alpha'),
-       (3, 20, 9, 'c', 'Alpha'),
-       (4, 30, 11, NULL, 'beta');" >/dev/null
+       (1, NULL, 5, 'a', NULL, NULL),
+       (2, 10, 7, 'b', 'alpha', X'41'),
+       (3, 20, 9, 'c', 'Alpha', X'4100'),
+       (4, 30, 11, NULL, 'beta', X'41');" >/dev/null
 
 mixed=$(run_mysql \
     "USE ${DATABASE};
      SELECT COUNT(*), COUNT(n), COUNT(NULL), COUNT(DISTINCT n), COUNT(DISTINCT name),
-            SUM(n), AVG(n), MIN(n), MAX(n), BIT_AND(n), BIT_OR(n), BIT_XOR(n), STDDEV_POP(n),
-            STDDEV_SAMP(n), VAR_POP(n), VAR_SAMP(n),
+            COUNT(DISTINCT raw), SUM(n), AVG(n), MIN(n), MAX(n), BIT_AND(n), BIT_OR(n),
+            BIT_XOR(n), STDDEV_POP(n), STDDEV_SAMP(n), VAR_POP(n), VAR_SAMP(n),
             GROUP_CONCAT(label ORDER BY id SEPARATOR '|')
        FROM t;"
 )
 expect_value \
     "mixed aggregate row" \
-    "4	3	0	3	2	60	20.0000	10	30	0	30	0	8.16496580927726	10	66.66666666666667	100	a|b|c" \
+    "4	3	0	3	2	2	60	20.0000	10	30	0	30	0	8.16496580927726	10	66.66666666666667	100	a|b|c" \
     "$mixed"
 
 filtered=$(run_mysql \

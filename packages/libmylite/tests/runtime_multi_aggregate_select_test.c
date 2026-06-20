@@ -71,6 +71,7 @@ static int test_multi_aggregate_values(void) {
         "null_count",
         "distinct_n",
         "distinct_name",
+        "distinct_raw",
         "sum_n",
         "avg_n",
         "min_n",
@@ -89,6 +90,7 @@ static int test_multi_aggregate_values(void) {
         "3",
         "0",
         "3",
+        "2",
         "2",
         "60",
         "20.0000",
@@ -163,8 +165,9 @@ static int test_multi_aggregate_values(void) {
         "COUNT(n)",
         "COUNT(DISTINCT n)",
         "COUNT(DISTINCT name)",
+        "COUNT(DISTINCT raw)",
     };
-    static const char *const count_values[] = {"4", "3", "3", "2"};
+    static const char *const count_values[] = {"4", "3", "3", "2", "2"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -182,6 +185,7 @@ static int test_multi_aggregate_values(void) {
             .sql = "SELECT COUNT(*) AS total, COUNT(n) AS nonnull_n, "
                    "COUNT(NULL) AS null_count, COUNT(DISTINCT n) AS distinct_n, "
                    "COUNT(DISTINCT name) AS distinct_name, "
+                   "COUNT(DISTINCT raw) AS distinct_raw, "
                    "SUM(n) AS sum_n, AVG(n) AS avg_n, MIN(n) AS min_n, MAX(n) AS max_n, "
                    "BIT_AND(n) AS and_n, BIT_OR(n) AS or_n, BIT_XOR(n) AS xor_n, "
                    "STDDEV_POP(n) AS stdp_n, STDDEV_SAMP(n) AS stds_n, "
@@ -197,7 +201,8 @@ static int test_multi_aggregate_values(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT COUNT(*), COUNT(n), COUNT(DISTINCT n), COUNT(DISTINCT name) FROM t",
+            .sql = "SELECT COUNT(*), COUNT(n), COUNT(DISTINCT n), COUNT(DISTINCT name), "
+                   "COUNT(DISTINCT raw) FROM t",
             .columns = count_columns,
             .column_count = sizeof(count_columns) / sizeof(count_columns[0]),
             .values = count_values,
@@ -339,15 +344,17 @@ static int seed_database(mylite_db *database) {
     failures += execute_ok(
         database,
         "CREATE TABLE t(id INT NOT NULL, n INT NULL, m INT NOT NULL, "
-        "label VARCHAR(20) NULL, name VARCHAR(20) NULL)",
+        "label VARCHAR(20) NULL, name VARCHAR(20) NULL, raw VARBINARY(4) NULL)",
         &result
     );
     mylite_result_free(result);
     result = NULL;
     failures += execute_ok(
         database,
-        "INSERT INTO t VALUES (1, NULL, 5, 'a', NULL), (2, 10, 7, 'b', 'alpha'), "
-        "(3, 20, 9, 'c', 'Alpha'), (4, 30, 11, NULL, 'beta')",
+        "INSERT INTO t VALUES (1, NULL, 5, 'a', NULL, NULL), "
+        "(2, 10, 7, 'b', 'alpha', X'41'), "
+        "(3, 20, 9, 'c', 'Alpha', X'4100'), "
+        "(4, 30, 11, NULL, 'beta', X'41')",
         &result
     );
     mylite_result_free(result);

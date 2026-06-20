@@ -89,7 +89,8 @@ MyLite supports this exact extension to the existing grouped aggregate path:
 - aggregate forms:
   - `COUNT(*)`;
   - `COUNT(column)`;
-  - `COUNT(DISTINCT column)` for integer descriptor columns;
+  - `COUNT(DISTINCT column)` for the current descriptor-column count-distinct
+    subset;
   - `MIN(column)`;
   - `MAX(column)`;
   - `SUM(column)`;
@@ -143,8 +144,8 @@ This slice intentionally does not add:
 - grouping by alias, ordinal, string literal, expression, parenthesized
   expression, aggregate result, or function result;
 - aggregate-only grouped projection without projecting the grouped column;
-- full `COUNT(DISTINCT expr[, expr...])` support beyond the integer
-  descriptor-column grouped slice;
+- full `COUNT(DISTINCT expr[, expr...])` support beyond the descriptor-column
+  grouped slice;
 - grouped `SUM(expr)` beyond the exact two-column integer addition shape;
 - grouped `GROUP_CONCAT()` mixed with other aggregate results;
 - `GROUP_CONCAT(DISTINCT ...)`, multiple `GROUP_CONCAT()` expressions, or wider

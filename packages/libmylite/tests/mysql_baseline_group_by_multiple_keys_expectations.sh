@@ -91,7 +91,18 @@ run_mysql \
        (5, 2, 1, 'bob', 'B', 40),
        (6, 2, 1, 'BOB', 'B   ', NULL),
        (7, 2, 2, 'bob', 'C', 50),
-       (8, 2, 2, 'carol', 'C', 60);" >/dev/null
+       (8, 2, 2, 'carol', 'C', 60);
+     CREATE TABLE binary_pairs(
+       a INT NULL,
+       b INT NULL,
+       raw VARBINARY(4) NULL
+     ) ENGINE=InnoDB;
+     INSERT INTO binary_pairs VALUES
+       (NULL, NULL, X'41'), (NULL, NULL, X'41'), (NULL, NULL, NULL),
+       (1, 1, X'41'), (1, 1, X'4100'), (1, 1, NULL),
+       (1, 2, NULL), (1, 2, NULL),
+       (2, 1, X'42'), (2, 1, X'42'), (2, 1, NULL),
+       (2, 2, X'43'), (2, 2, X'44');" >/dev/null
 
 run_mysql \
     "USE ${DATABASE};
@@ -240,7 +251,10 @@ count_distinct=$(run_mysql \
     "USE ${DATABASE};
      SELECT a, b, COUNT(DISTINCT n) AS cd FROM t GROUP BY a, b ORDER BY a, b;
      SELECT a, b, COUNT(DISTINCT n) AS cd FROM t GROUP BY a, b HAVING cd > 1 ORDER BY a, b;
-     SELECT a, b, COUNT(DISTINCT n) AS cd FROM t GROUP BY a, b ORDER BY cd DESC, a, b LIMIT 2;"
+     SELECT a, b, COUNT(DISTINCT n) AS cd FROM t GROUP BY a, b ORDER BY cd DESC, a, b LIMIT 2;
+     SELECT a, b, COUNT(DISTINCT raw) AS cd FROM binary_pairs GROUP BY a, b ORDER BY a, b;
+     SELECT a, b, COUNT(DISTINCT raw) AS cd FROM binary_pairs
+      GROUP BY a, b HAVING cd > 1 ORDER BY a, b;"
 )
 expect_value "count distinct null tuple" "NULL	NULL	1" \
     "$(printf '%s\n' "$count_distinct" | sed -n '1p')"
@@ -260,6 +274,20 @@ expect_value "count distinct alias order first" "1	1	2" \
     "$(printf '%s\n' "$count_distinct" | sed -n '8p')"
 expect_value "count distinct alias order second" "2	2	2" \
     "$(printf '%s\n' "$count_distinct" | sed -n '9p')"
+expect_value "binary count distinct null tuple" "NULL	NULL	1" \
+    "$(printf '%s\n' "$count_distinct" | sed -n '10p')"
+expect_value "binary count distinct one one tuple" "1	1	2" \
+    "$(printf '%s\n' "$count_distinct" | sed -n '11p')"
+expect_value "binary count distinct one two tuple" "1	2	0" \
+    "$(printf '%s\n' "$count_distinct" | sed -n '12p')"
+expect_value "binary count distinct two one tuple" "2	1	1" \
+    "$(printf '%s\n' "$count_distinct" | sed -n '13p')"
+expect_value "binary count distinct two two tuple" "2	2	2" \
+    "$(printf '%s\n' "$count_distinct" | sed -n '14p')"
+expect_value "binary count distinct having first" "1	1	2" \
+    "$(printf '%s\n' "$count_distinct" | sed -n '15p')"
+expect_value "binary count distinct having second" "2	2	2" \
+    "$(printf '%s\n' "$count_distinct" | sed -n '16p')"
 
 run_mysql \
     "USE ${DATABASE};

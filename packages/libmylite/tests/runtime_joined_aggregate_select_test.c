@@ -85,6 +85,17 @@ static int test_joined_aggregate_values_and_persistence(void) {
     static const char *const count_column_values[] = {"1", "2", "2", "1", "3", "0", "4", "0"};
     static const char *const count_distinct_columns[] = {"id", "COUNT(DISTINCT c.id)"};
     static const char *const count_distinct_values[] = {"1", "2", "2", "1", "3", "0", "4", "0"};
+    static const char *const binary_count_distinct_columns[] = {"id", "COUNT(DISTINCT c.raw)"};
+    static const char *const binary_count_distinct_values[] = {
+        "1",
+        "2",
+        "2",
+        "1",
+        "3",
+        "0",
+        "4",
+        "0",
+    };
     static const char *const min_columns[] = {"id", "MIN(c.score)"};
     static const char *const min_values[] = {"1", "5", "2", "7", "3", NULL, "4", NULL};
     static const char *const max_columns[] = {"id", "MAX(c.score)"};
@@ -233,6 +244,18 @@ static int test_joined_aggregate_values_and_persistence(void) {
             .values = count_distinct_values,
             .row_count = 4U,
             .context = "left join grouped count distinct skips null-extended rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT p.id, COUNT(DISTINCT c.raw) FROM posts AS p LEFT JOIN comments AS c "
+                   "ON p.id = c.post_id GROUP BY p.id ORDER BY p.id",
+            .columns = binary_count_distinct_columns,
+            .column_count = 2U,
+            .values = binary_count_distinct_values,
+            .row_count = 4U,
+            .context = "left join grouped binary count distinct skips null-extended rows",
         }
     );
     failures += expect_query(
@@ -702,11 +725,12 @@ static int test_independent_joined_aggregate_handles(void) {
     failures += execute_ok(second, "CREATE TABLE posts(id INT NOT NULL, category INT NULL)", NULL);
     failures += execute_ok(
         second,
-        "CREATE TABLE comments(id INT NOT NULL, post_id INT NULL, score INT NULL)",
+        "CREATE TABLE comments("
+        "id INT NOT NULL, post_id INT NULL, score INT NULL, raw VARBINARY(4) NULL)",
         NULL
     );
     failures += execute_ok(second, "INSERT INTO posts VALUES (1, 10), (2, 20)", NULL);
-    failures += execute_ok(second, "INSERT INTO comments VALUES (201, 2, 4)", NULL);
+    failures += execute_ok(second, "INSERT INTO comments VALUES (201, 2, 4, NULL)", NULL);
 
     failures += expect_query(
         first,
@@ -750,7 +774,8 @@ static int seed_joined_aggregate_schema(mylite_db *database) {
         execute_ok(database, "CREATE TABLE posts(id INT NOT NULL, category INT NULL)", NULL);
     failures += execute_ok(
         database,
-        "CREATE TABLE comments(id INT NOT NULL, post_id INT NULL, score INT NULL)",
+        "CREATE TABLE comments("
+        "id INT NOT NULL, post_id INT NULL, score INT NULL, raw VARBINARY(4) NULL)",
         NULL
     );
     failures += execute_ok(
@@ -764,8 +789,8 @@ static int seed_joined_aggregate_schema(mylite_db *database) {
     failures += execute_ok(
         database,
         "INSERT INTO comments VALUES "
-        "(101, 1, 5), (102, 1, NULL), (103, 2, 7), "
-        "(104, NULL, 9), (105, 99, 11)",
+        "(101, 1, 5, X'41'), (102, 1, NULL, X'4100'), (103, 2, 7, X'41'), "
+        "(104, NULL, 9, X'42'), (105, 99, 11, X'43')",
         NULL
     );
     failures += execute_ok(

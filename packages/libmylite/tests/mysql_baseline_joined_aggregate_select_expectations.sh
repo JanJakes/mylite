@@ -76,12 +76,18 @@ cleanup
 run_mysql \
     "CREATE DATABASE ${DATABASE}; USE ${DATABASE};
      CREATE TABLE posts(id INT NOT NULL, category INT NULL, title VARCHAR(20));
-     CREATE TABLE comments(id INT NOT NULL, post_id INT NULL, score INT NULL, body VARCHAR(20));
+     CREATE TABLE comments(
+       id INT NOT NULL,
+       post_id INT NULL,
+       score INT NULL,
+       body VARCHAR(20),
+       raw VARBINARY(4) NULL
+     );
      INSERT INTO posts VALUES
        (1,10,'alpha'),(2,10,'beta'),(3,20,'gamma'),(4,NULL,'delta');
      INSERT INTO comments VALUES
-       (101,1,5,'good'),(102,1,NULL,'none'),(103,2,7,'ok'),
-       (104,NULL,9,'orphan'),(105,99,11,'missing');" >/dev/null
+       (101,1,5,'good',X'41'),(102,1,NULL,'none',X'4100'),(103,2,7,'ok',X'41'),
+       (104,NULL,9,'orphan',X'42'),(105,99,11,'missing',X'43');" >/dev/null
 
 core=$(run_mysql_with_headers \
     "USE ${DATABASE};
@@ -173,7 +179,8 @@ accepted_but_deferred=$(run_mysql \
     "USE ${DATABASE};
      SELECT p.id, COUNT(c.id) FROM posts p LEFT JOIN comments c USING (id) GROUP BY p.id;
      SELECT p.id, COUNT(c.id) FROM posts p LEFT JOIN comments c ON p.id = c.post_id GROUP BY 1;
-     SELECT p.id, COUNT(DISTINCT c.id) FROM posts p LEFT JOIN comments c ON p.id = c.post_id GROUP BY p.id;"
+     SELECT p.id, COUNT(DISTINCT c.id) FROM posts p LEFT JOIN comments c ON p.id = c.post_id GROUP BY p.id;
+     SELECT p.id, COUNT(DISTINCT c.raw) FROM posts p LEFT JOIN comments c ON p.id = c.post_id GROUP BY p.id;"
 )
 expect_value "using accepted by mysql" "1	0" "$(printf '%s\n' "$accepted_but_deferred" | sed -n '1p')"
 expect_value "group ordinal accepted by mysql" "1	2" "$(printf '%s\n' "$accepted_but_deferred" | sed -n '5p')"
@@ -185,6 +192,14 @@ expect_value "grouped distinct no comment post" "3	0" \
     "$(printf '%s\n' "$accepted_but_deferred" | sed -n '11p')"
 expect_value "grouped distinct null category post" "4	0" \
     "$(printf '%s\n' "$accepted_but_deferred" | sed -n '12p')"
+expect_value "grouped binary distinct accepted by mysql" "1	2" \
+    "$(printf '%s\n' "$accepted_but_deferred" | sed -n '13p')"
+expect_value "grouped binary distinct second post" "2	1" \
+    "$(printf '%s\n' "$accepted_but_deferred" | sed -n '14p')"
+expect_value "grouped binary distinct no comment post" "3	0" \
+    "$(printf '%s\n' "$accepted_but_deferred" | sed -n '15p')"
+expect_value "grouped binary distinct null category post" "4	0" \
+    "$(printf '%s\n' "$accepted_but_deferred" | sed -n '16p')"
 
 expect_error \
     "ambiguous selected group column" \

@@ -2,9 +2,11 @@
 
 ## Status
 
-This slice extends the existing `COUNT(DISTINCT column)` aggregate paths from
+This slice extended the existing `COUNT(DISTINCT column)` aggregate paths from
 integer descriptor columns to nonbinary string descriptor columns in the current
-ungrouped, mixed ungrouped, and grouped aggregate envelopes.
+ungrouped, mixed ungrouped, and grouped aggregate envelopes. Binary string
+descriptor columns are covered separately by
+`docs/specs/baseline-binary-count-distinct-aggregates/specs.md`.
 
 The feature does not add new syntax. It reuses the existing descriptor-column
 `COUNT(DISTINCT column)` grammar and planner surfaces from the ungrouped and
@@ -85,9 +87,8 @@ Integer `COUNT(DISTINCT column)` lowering remains unchanged.
 
 ## Non-Goals
 
-This slice does not add:
+This slice did not add:
 
-- binary string distinct-count execution;
 - full Unicode collation parity beyond MyLite's current registered ASCII
   `utf8mb4_0900_ai_ci` approximation;
 - explicit per-expression `COLLATE` handling inside `COUNT(DISTINCT ...)`;
@@ -96,10 +97,11 @@ This slice does not add:
 - wider grouped source forms than the existing grouped count-distinct envelope;
 - aggregate windows.
 
-Unsupported argument columns continue to return a deterministic diagnostic:
+Unsupported argument columns continue to return a deterministic diagnostic
+after the later binary-string extension:
 
 ```text
-COUNT(DISTINCT column) supports only integer and nonbinary string descriptor columns
+COUNT(DISTINCT column) supports only integer, string, and binary string descriptor columns
 ```
 
 ## Tests
@@ -109,8 +111,7 @@ Coverage is provided by:
 - MySQL expectation scripts for ungrouped, mixed, and grouped string
   count-distinct behavior;
 - runtime single-count aggregate tests for `VARCHAR`, `CHAR`, `TEXT`, qualified
-  parenthesized string arguments, filtered string distinct counts, and binary
-  rejection;
+  parenthesized string arguments, and filtered string distinct counts;
 - mixed aggregate tests for string count-distinct alongside other aggregate
   results;
 - grouped aggregate tests for selected string count-distinct results, selected

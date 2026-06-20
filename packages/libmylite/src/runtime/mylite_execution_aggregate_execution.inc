@@ -1867,13 +1867,14 @@ static int validate_count_distinct_column_descriptor(
 ) {
     struct integer_column_range range = {0};
 
-    if (column_descriptor_uses_string_key_collation(column, true)) {
+    if (column_descriptor_uses_string_key_collation(column, true) ||
+        column_descriptor_is_binary_string_family(column)) {
         return MYLITE_OK;
     }
     return integer_range_for_column(
         database,
         column,
-        "COUNT(DISTINCT column) supports only integer and nonbinary string descriptor columns",
+        "COUNT(DISTINCT column) supports only integer, string, and binary string descriptor columns",
         &range
     );
 }

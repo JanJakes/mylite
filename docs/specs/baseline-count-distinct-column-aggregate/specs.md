@@ -272,6 +272,13 @@ SELECT COUNT(DISTINCT "physical_column" COLLATE "utf8mb4_0900_ai_ci")
 FROM "physical_table" [WHERE ...]
 ```
 
+Binary string descriptor arguments are lowered without a text collation:
+
+```sql
+SELECT COUNT(DISTINCT "physical_column")
+FROM "physical_table" [WHERE ...]
+```
+
 This feature uses MyLite wrapper/translation code and public SQLite prepared
 statement APIs only. It must not add SQLite fork patches or custom SQLite
 functions.
@@ -331,7 +338,9 @@ Add or extend fast C tests covering:
   reopen persistence, physical failure, independent handle, and preamble
   behavior;
 - nonbinary string descriptor arguments for `VARCHAR`, `CHAR`, and baseline
-  `TEXT` family columns, plus binary string rejection;
+  `TEXT` family columns;
+- binary string descriptor arguments for `VARBINARY`, fixed `BINARY`, and
+  baseline `BLOB` family columns;
 - descriptor resolution for visible and invisible columns;
 - unchanged behavior for existing `COUNT(*)`, `COUNT(column)`, and
   `COUNT(literal)` tests.

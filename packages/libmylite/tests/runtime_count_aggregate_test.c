@@ -1179,6 +1179,33 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
     failures += expect_count_query(
         database,
         (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT raw) FROM numbers",
+            .column = "COUNT(DISTINCT raw)",
+            .value = "2",
+            .context = "varbinary count distinct column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT fixed_raw) FROM numbers",
+            .column = "COUNT(DISTINCT fixed_raw)",
+            .value = "2",
+            .context = "binary count distinct column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT payload) FROM numbers",
+            .column = "COUNT(DISTINCT payload)",
+            .value = "3",
+            .context = "blob count distinct column",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
             .sql = "SELECT COUNT(DISTINCT(nums.name)) FROM numbers AS nums",
             .column = "COUNT(DISTINCT(nums.name))",
             .value = "2",
@@ -1818,6 +1845,15 @@ static int test_count_aggregate_values_persistence_rename_and_truncate(void) {
             .column = "COUNT(DISTINCT name)",
             .value = "2",
             .context = "string count distinct with integer where",
+        }
+    );
+    failures += expect_count_query(
+        database,
+        (struct expected_count_query){
+            .sql = "SELECT COUNT(DISTINCT raw) FROM numbers WHERE id >= 3",
+            .column = "COUNT(DISTINCT raw)",
+            .value = "2",
+            .context = "varbinary count distinct with integer where",
         }
     );
 
@@ -2519,17 +2555,6 @@ static int test_count_aggregate_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT COUNT(DISTINCT raw) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "COUNT(DISTINCT column) supports only integer and nonbinary string descriptor "
-                "columns",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT COUNT (*) FROM numbers",
         (struct expected_sql_error){
             .code = mysql_error_parse,
@@ -2973,7 +2998,9 @@ static int create_count_table(mylite_db *database) {
         "name VARCHAR(20), "
         "label CHAR(5), "
         "body TEXT, "
-        "raw VARBINARY(4))",
+        "raw VARBINARY(4), "
+        "fixed_raw BINARY(2), "
+        "payload BLOB)",
         NULL
     );
 }
@@ -2983,14 +3010,14 @@ static int insert_count_rows(mylite_db *database) {
         database,
         "INSERT INTO numbers VALUES "
         "(1, -2147483648, 0, -9223372036854775808, 0, NULL, 10, "
-        "-128, -1, -32768, -8388608, 1, 0, NULL, NULL, NULL, NULL), "
+        "-128, -1, -32768, -8388608, 1, 0, NULL, NULL, NULL, NULL, NULL, NULL), "
         "(2, 0, 2, -1, 2, 20, 20, 0, 0, 0, 0, NULL, 1, "
-        "'alice', 'A', 'essay', X'41'), "
+        "'alice', 'A', 'essay', X'41', X'41', X'41'), "
         "(3, 2147483647, 4294967295, 9223372036854775807, "
         "9223372036854775807, 20, 30, 127, 1, 32767, 8388607, 0, NULL, "
-        "'Alice', 'A   ', 'Essay', X'41'), "
+        "'Alice', 'A   ', 'Essay', X'41', X'4100', X'4100'), "
         "(4, 5, NULL, NULL, NULL, 30, 40, NULL, NULL, NULL, NULL, 1, 1, "
-        "'bob', 'B', 'note', X'42')",
+        "'bob', 'B', 'note', X'42', X'42', X'42')",
         NULL
     );
 }

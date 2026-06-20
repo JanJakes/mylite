@@ -320,7 +320,7 @@ Add MySQL-runtime expectation coverage and fast C tests for:
 
 - `GROUP BY a, b` integer keys with `COUNT(*)`, `COUNT(column)`, `SUM`,
   `MIN`, `MAX`, `AVG`, and descriptor-column `COUNT(DISTINCT column)`
-  where already supported;
+  where already supported, including binary string descriptor arguments;
 - nullable grouped keys and nullable aggregate arguments;
 - ASCII nonbinary string plus `CHAR` grouped keys, including case-insensitive
   and trailing-space grouping;

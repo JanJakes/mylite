@@ -315,20 +315,25 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
         "name",
         "COUNT(DISTINCT label)",
         "COUNT(DISTINCT body)",
+        "COUNT(DISTINCT raw)",
     };
     static const char *const name_count_distinct_values[] = {
         NULL,
         "0",
         "0",
+        "0",
         "alice",
         "1",
         "1",
+        "2",
         "bob",
+        "1",
         "1",
         "1",
         "carol",
         "1",
         "0",
+        "1",
     };
     static const char *const name_count_distinct_having_columns[] = {"name", "c"};
     static const char *const name_count_distinct_having_values[] = {NULL, "0", "carol", "0"};
@@ -338,6 +343,12 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
         "bob",
         NULL,
         "carol",
+    };
+    static const char *const name_hidden_binary_count_distinct_order_values[] = {
+        "alice",
+        "bob",
+        "carol",
+        NULL,
     };
     static const char *const label_group_columns[] = {"label", "COUNT(*)", "SUM(n)"};
     static const char *const label_group_values[] = {
@@ -597,6 +608,25 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
         "(1, 2, NULL), (1, 2, NULL), "
         "(2, 1, 30), (2, 1, 30), (2, 1, NULL), "
         "(2, 2, 40), (2, 2, 50)",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "CREATE TABLE grouped_binary_distinct_pairs(a INT, b INT, raw VARBINARY(4))",
+        &result
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(
+        database,
+        "INSERT INTO grouped_binary_distinct_pairs VALUES "
+        "(NULL, NULL, X'41'), (NULL, NULL, X'41'), (NULL, NULL, NULL), "
+        "(1, 1, X'41'), (1, 1, X'4100'), (1, 1, NULL), "
+        "(1, 2, NULL), (1, 2, NULL), "
+        "(2, 1, X'42'), (2, 1, X'42'), (2, 1, NULL), "
+        "(2, 2, X'43'), (2, 2, X'44')",
         &result
     );
     mylite_result_free(result);
@@ -1764,10 +1794,11 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
-            .sql = "SELECT name, COUNT(DISTINCT label), COUNT(DISTINCT body) "
+            .sql = "SELECT name, COUNT(DISTINCT label), COUNT(DISTINCT body), "
+                   "COUNT(DISTINCT raw) "
                    "FROM string_grouped GROUP BY name ORDER BY name",
             .columns = name_count_distinct_columns,
-            .column_count = 3U,
+            .column_count = 4U,
             .values = name_count_distinct_values,
             .row_count = 4U,
             .context = "string count distinct grouped aggregates",
@@ -1795,6 +1826,18 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = name_hidden_count_distinct_order_values,
             .row_count = 4U,
             .context = "hidden string count distinct grouped order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT name FROM string_grouped GROUP BY name "
+                   "ORDER BY COUNT(DISTINCT raw) DESC, name",
+            .columns = name_hidden_count_distinct_order_columns,
+            .column_count = 1U,
+            .values = name_hidden_binary_count_distinct_order_values,
+            .row_count = 4U,
+            .context = "hidden binary count distinct grouped order",
         }
     );
     failures += expect_grouped_query(
@@ -1971,6 +2014,18 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
+            .sql = "SELECT a, b, COUNT(DISTINCT raw) AS cd "
+                   "FROM grouped_binary_distinct_pairs GROUP BY a, b ORDER BY a, b",
+            .columns = a_b_count_distinct_columns,
+            .column_count = 3U,
+            .values = a_b_count_distinct_values,
+            .row_count = grouped_count_distinct_pair_row_count,
+            .context = "multiple grouped keys with binary count distinct",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
             .sql = "SELECT a, b, COUNT(DISTINCT n) AS cd FROM grouped_distinct_pairs "
                    "GROUP BY a, b HAVING cd > 1 ORDER BY a, b",
             .columns = a_b_count_distinct_columns,
@@ -1978,6 +2033,19 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = a_b_count_distinct_having_values,
             .row_count = 2U,
             .context = "multiple grouped keys count distinct having alias",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT a, b, COUNT(DISTINCT raw) AS cd "
+                   "FROM grouped_binary_distinct_pairs GROUP BY a, b "
+                   "HAVING cd > 1 ORDER BY a, b",
+            .columns = a_b_count_distinct_columns,
+            .column_count = 3U,
+            .values = a_b_count_distinct_having_values,
+            .row_count = 2U,
+            .context = "multiple grouped keys binary count distinct having alias",
         }
     );
     failures += expect_grouped_query(
@@ -2710,7 +2778,7 @@ static int create_string_grouped_table(mylite_db *database, const char *table_na
         sql,
         sizeof(sql),
         "CREATE TABLE %s (id INT NOT NULL, name VARCHAR(20) NULL, label CHAR(5) NULL, "
-        "body TEXT NULL, n INT NULL)",
+        "body TEXT NULL, raw VARBINARY(4) NULL, n INT NULL)",
         table_name
     );
     int failures = 0;
@@ -2727,12 +2795,12 @@ static int create_string_grouped_table(mylite_db *database, const char *table_na
         sql,
         sizeof(sql),
         "INSERT INTO %s VALUES "
-        "(1, NULL, NULL, NULL, 10), "
-        "(2, 'alice', 'A', 'essay', 20), "
-        "(3, 'Alice', 'A   ', 'Essay', 30), "
-        "(4, 'bob', 'B', 'note', NULL), "
-        "(5, 'BOB', 'B    ', 'Note', 5), "
-        "(6, 'carol', 'C', NULL, 7)",
+        "(1, NULL, NULL, NULL, NULL, 10), "
+        "(2, 'alice', 'A', 'essay', X'41', 20), "
+        "(3, 'Alice', 'A   ', 'Essay', X'4100', 30), "
+        "(4, 'bob', 'B', 'note', X'42', NULL), "
+        "(5, 'BOB', 'B    ', 'Note', X'42', 5), "
+        "(6, 'carol', 'C', NULL, X'43', 7)",
         table_name
     );
     if (written < 0 || (size_t)written >= sizeof(sql)) {

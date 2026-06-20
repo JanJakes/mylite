@@ -849,12 +849,21 @@ static int test_group_concat_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT g FROM diag GROUP BY g ORDER BY GROUP_CONCAT(name)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "does not support hidden GROUP_CONCAT() ORDER BY keys",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT g, GROUP_CONCAT(name ORDER BY id SEPARATOR ':') AS names FROM diag "
         "GROUP BY g ORDER BY GROUP_CONCAT(name ORDER BY id SEPARATOR '|')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "only when they match selected aggregate results",
+            .message_part = "does not support hidden GROUP_CONCAT() ORDER BY keys",
         }
     );
     failures += execute_error(
@@ -864,7 +873,7 @@ static int test_group_concat_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "only when they match selected aggregate results",
+            .message_part = "does not support hidden GROUP_CONCAT() ORDER BY keys",
         }
     );
     failures += execute_error(

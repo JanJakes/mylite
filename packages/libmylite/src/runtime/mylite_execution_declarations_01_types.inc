@@ -2129,6 +2129,7 @@ struct planned_grouped_aggregate_item {
     const struct mylite_sql_ast_node *expression;
     const struct mylite_sql_ast_node *alias;
     enum planned_grouped_aggregate_function function;
+    bool is_hidden_order_key;
     struct mylite_catalog_column_descriptor aggregate_column;
     size_t aggregate_column_source_index;
     bool aggregate_uses_row_scalar_expression;

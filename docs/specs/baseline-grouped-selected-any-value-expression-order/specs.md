@@ -13,9 +13,10 @@ ORDER BY ANY_VALUE(value_column) [ASC|DESC]
 ```
 
 The repeated expression must match exactly one selected `ANY_VALUE(column)`
-result after MyLite descriptor planning. This is separate from hidden grouped
-order keys and does not broaden grouped `ANY_VALUE()` arguments beyond
-descriptor columns.
+result after MyLite descriptor planning. Hidden grouped order keys are covered
+by `docs/specs/baseline-hidden-grouped-aggregate-order-keys/specs.md`; this
+slice does not broaden grouped `ANY_VALUE()` arguments beyond descriptor
+columns.
 
 ## Sources
 
@@ -98,8 +99,6 @@ No SQLite fork hook is required.
 
 This slice does not add:
 
-- hidden `ANY_VALUE()` order keys, such as
-  `SELECT g FROM t GROUP BY g ORDER BY ANY_VALUE(v)`;
 - repeated expressions that refer to a different descriptor column or source;
 - expression arguments in grouped `ANY_VALUE()`;
 - mixed ungrouped aggregate `ANY_VALUE()` execution;

@@ -620,14 +620,22 @@ static int find_grouped_order_aggregate_expression(
     size_t *out_aggregate_index
 ) {
     struct planned_grouped_aggregate_item order_item = {0};
+    enum planned_grouped_aggregate_function function =
+        grouped_aggregate_function_from_expression(unwrap_parenthesized_expression(order_key));
     size_t matched_index = SIZE_MAX;
     int rc = MYLITE_OK;
 
     *out_matched = false;
     *out_aggregate_index = 0U;
-    if (grouped_aggregate_function_from_expression(unwrap_parenthesized_expression(order_key)) ==
-        PLANNED_GROUPED_AGGREGATE_NONE) {
+    if (function == PLANNED_GROUPED_AGGREGATE_NONE) {
         return MYLITE_OK;
+    }
+    if (function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT && plan->aggregate_count == 0U) {
+        set_unsupported_error(
+            database,
+            "GROUP BY does not support hidden GROUP_CONCAT() ORDER BY keys"
+        );
+        return MYLITE_ERROR;
     }
 
     rc = plan_grouped_aggregate_expression(
@@ -658,13 +666,10 @@ static int find_grouped_order_aggregate_expression(
         matched_index = aggregate_index;
     }
     if (matched_index == SIZE_MAX) {
-        set_unsupported_error(
-            database,
-            "GROUP BY supports ORDER BY aggregate expressions only when they match selected "
-            "aggregate results"
-        );
-        rc = MYLITE_ERROR;
-        goto cleanup;
+        rc = append_hidden_grouped_order_aggregate(database, plan, &order_item, &matched_index);
+        if (rc != MYLITE_OK) {
+            goto cleanup;
+        }
     }
 
     *out_matched = true;
@@ -675,6 +680,47 @@ cleanup:
     planned_select_order_deinit(&order_item.aggregate_order);
     planned_value_deinit(&order_item.separator);
     return rc;
+}
+
+static int append_hidden_grouped_order_aggregate(
+    struct mylite_db *database,
+    struct planned_grouped_aggregate *plan,
+    struct planned_grouped_aggregate_item *item,
+    size_t *out_aggregate_index
+) {
+    struct planned_grouped_aggregate_item *aggregates = NULL;
+    size_t aggregate_index = plan->aggregate_count;
+    size_t required_count = aggregate_index + 1U;
+
+    if (item->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
+        set_unsupported_error(
+            database,
+            "GROUP BY does not support hidden GROUP_CONCAT() ORDER BY keys"
+        );
+        return MYLITE_ERROR;
+    }
+    if (plan->aggregate_count >= grouped_aggregate_max_results) {
+        set_unsupported_error(database, "GROUP BY supports at most sixteen aggregate results");
+        return MYLITE_ERROR;
+    }
+    if (required_count > SIZE_MAX / sizeof(*aggregates)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    aggregates = realloc(plan->aggregates, required_count * sizeof(*aggregates));
+    if (aggregates == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    plan->aggregates = aggregates;
+    item->is_hidden_order_key = true;
+    plan->aggregates[aggregate_index] = *item;
+    plan->aggregate_count = required_count;
+    *item = (struct planned_grouped_aggregate_item){0};
+    *out_aggregate_index = aggregate_index;
+    return MYLITE_OK;
 }
 
 static bool grouped_order_aggregate_items_match(

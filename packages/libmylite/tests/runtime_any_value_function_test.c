@@ -180,6 +180,8 @@ static int test_any_value_row_scalar_and_grouped_values(void) {
     static const char *const grouped_order_values[] = {"3", "20", "1", "10", "2", NULL};
     static const char *const grouped_limit_values[] = {"3", "20", "1", "10"};
     static const char *const grouped_qualified_values[] = {"1", "10", "2", NULL, "3", "20"};
+    static const char *const hidden_grouped_order_columns[] = {"g"};
+    static const char *const hidden_grouped_order_values[] = {"3", "1", "2"};
     static const char *const mixed_columns[] = {"ANY_VALUE(label)", "MAX(v)", "COUNT(*)"};
     static const char *const mixed_alias_columns[] = {"av", "mx", "COUNT(*)"};
     static const char *const mixed_values[] = {"same", "3", "2"};
@@ -317,6 +319,19 @@ static int test_any_value_row_scalar_and_grouped_values(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT g FROM t GROUP BY g ORDER BY ANY_VALUE(v) DESC",
+            .columns = hidden_grouped_order_columns,
+            .column_count = any_value_row_scalar_column_count,
+            .values = hidden_grouped_order_values,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "grouped hidden any_value order expression",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT ANY_VALUE(label), MAX(v), COUNT(*) FROM u",
             .columns = mixed_columns,
             .column_count = any_value_mixed_column_count,
@@ -424,15 +439,6 @@ static int test_any_value_errors_and_identifier_use(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "ANY_VALUE(column) supports only descriptor columns",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT g, ANY_VALUE(v) AS av FROM t GROUP BY g ORDER BY ANY_VALUE(s)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "only when they match selected aggregate results",
         }
     );
     failures += execute_error(

@@ -45,6 +45,9 @@ expectations for this slice:
   guaranteed when a group contains different candidate values.
 - Repeating a selected grouped `ANY_VALUE(column)` expression in `ORDER BY` is
   accepted and sorts by the selected representative value.
+- A hidden grouped `ORDER BY ANY_VALUE(column)` expression is accepted in the
+  current grouped envelope and sorts by the representative value without adding
+  a public result column.
 - `ANY_VALUE(column)` is accepted in mixed ungrouped aggregate select lists when
   another selected item is a supported aggregate.
 - `ANY_VALUE()` and `ANY_VALUE(1,2)` return error 1582 / SQLSTATE `42000` with
@@ -93,8 +96,8 @@ This slice intentionally does not support:
 
 - expression arguments in grouped `ANY_VALUE()`;
 - expression arguments in mixed ungrouped or grouped `ANY_VALUE()`;
-- hidden grouped `ANY_VALUE()` order keys and repeated grouped `ANY_VALUE()`
-  order keys that do not match a selected result;
+- hidden or repeated grouped `ANY_VALUE()` order keys outside the documented
+  grouped aggregate order-key envelope;
 - `ANY_VALUE(*)`, `ANY_VALUE(DISTINCT ...)`, or multi-argument forms;
 - use as a window function;
 - `ANY_VALUE()` in DML assignments, defaults, generated columns, check
@@ -260,7 +263,8 @@ Add fast C coverage under `packages/libmylite/tests/`:
   aggregate input, and descriptor-column diagnostics;
 - grouped runtime covers composition with `MAX()` and `COUNT(*)`, selected
   alias `HAVING ... IS NOT NULL`, selected alias `ORDER BY ... DESC`, repeated
-  selected expression `ORDER BY ANY_VALUE(column)`, and `LIMIT`;
+  selected expression `ORDER BY ANY_VALUE(column)`, hidden expression
+  `ORDER BY ANY_VALUE(column)`, and `LIMIT`;
 - diagnostics cover wrong arity, syntax rejections for `*`/`DISTINCT`, unknown
   argument columns, unsupported grouped expression arguments, and unsupported
   mixed ungrouped aggregate expression arguments;

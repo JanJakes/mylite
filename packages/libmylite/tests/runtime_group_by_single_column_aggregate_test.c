@@ -195,6 +195,22 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
         "1",
         NULL,
     };
+    static const char *const hidden_group_columns[] = {"g"};
+    static const char *const hidden_group_count_columns[] = {"g", "c"};
+    static const char *const hidden_sum_order_values[] = {NULL, "1", "2"};
+    static const char *const hidden_sum_count_order_values[] = {
+        NULL,
+        "1",
+        "1",
+        "2",
+        "2",
+        "2",
+    };
+    static const char *const hidden_count_order_values[] = {"2", "1", NULL};
+    static const char *const hidden_avg_order_desc_limit_values[] = {"2"};
+    static const char *const hidden_bit_or_order_desc_limit_values[] = {"1"};
+    static const char *const hidden_stddev_pop_order_values[] = {NULL, "1", "2"};
+    static const char *const hidden_row_scalar_sum_desc_values[] = {"2", "1", NULL};
     static const char *const min_max_alias_columns[] = {"g", "mn", "mx"};
     static const char *const min_alias_order_values[] = {
         NULL,
@@ -1227,6 +1243,84 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
+            .sql = "SELECT g FROM grouped_numbers GROUP BY g ORDER BY SUM(n) ASC",
+            .columns = hidden_group_columns,
+            .column_count = 1U,
+            .values = hidden_sum_order_values,
+            .row_count = 3U,
+            .context = "hidden grouped sum aggregate order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) AS c FROM grouped_numbers GROUP BY g ORDER BY SUM(n) ASC",
+            .columns = hidden_group_count_columns,
+            .column_count = 2U,
+            .values = hidden_sum_count_order_values,
+            .row_count = 3U,
+            .context = "hidden grouped sum aggregate order with selected count",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g FROM grouped_numbers GROUP BY g ORDER BY COUNT(*) DESC, g DESC",
+            .columns = hidden_group_columns,
+            .column_count = 1U,
+            .values = hidden_count_order_values,
+            .row_count = 3U,
+            .context = "hidden grouped count aggregate order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g FROM grouped_avg_order GROUP BY g ORDER BY AVG(n) DESC LIMIT 1",
+            .columns = hidden_group_columns,
+            .column_count = 1U,
+            .values = hidden_avg_order_desc_limit_values,
+            .row_count = 1U,
+            .context = "hidden grouped avg aggregate order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g FROM grouped_bitwise_order GROUP BY g ORDER BY BIT_OR(bor) DESC "
+                   "LIMIT 1",
+            .columns = hidden_group_columns,
+            .column_count = 1U,
+            .values = hidden_bit_or_order_desc_limit_values,
+            .row_count = 1U,
+            .context = "hidden grouped bit_or aggregate order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g FROM grouped_numbers GROUP BY g ORDER BY STDDEV_POP(n) ASC",
+            .columns = hidden_group_columns,
+            .column_count = 1U,
+            .values = hidden_stddev_pop_order_values,
+            .row_count = 3U,
+            .context = "hidden grouped stddev_pop aggregate order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g FROM grouped_numbers GROUP BY g ORDER BY SUM(n + 1) DESC",
+            .columns = hidden_group_columns,
+            .column_count = 1U,
+            .values = hidden_row_scalar_sum_desc_values,
+            .row_count = 3U,
+            .context = "hidden grouped row-scalar sum aggregate order",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
             .sql = "SELECT g, BIT_AND(band) AS ba FROM grouped_bitwise_order GROUP BY g "
                    "ORDER BY ba ASC",
             .columns = bit_and_alias_order_columns,
@@ -2098,17 +2192,6 @@ static int test_grouped_diagnostics(void) {
             .code = mysql_error_unknown_column,
             .sqlstate = "42S22",
             .message_part = "Unknown column 'missing' in 'order clause'",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g ORDER BY SUM(n)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part =
-                "GROUP BY supports ORDER BY aggregate expressions only when they match selected "
-                "aggregate results",
         }
     );
     failures += execute_error(

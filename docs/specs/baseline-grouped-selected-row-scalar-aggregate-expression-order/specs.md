@@ -14,7 +14,9 @@ ORDER BY SUM(integer_column + 1) [ASC|DESC]
 
 The repeated aggregate expression must match one selected aggregate result in
 the current grouped aggregate planner. This extends selected aggregate-expression
-ordering; it does not add hidden aggregate order keys.
+ordering. Hidden aggregate order keys with row-scalar arguments are covered
+separately by
+`docs/specs/baseline-hidden-grouped-aggregate-order-keys/specs.md`.
 
 ## Sources
 
@@ -78,8 +80,8 @@ The aggregate function is one of the currently executable grouped aggregate
 functions that accepts a supported row-scalar argument: `COUNT`, `SUM`, `AVG`,
 `MIN`, `MAX`, `BIT_AND`, `BIT_OR`, `BIT_XOR`, `STD`, `STDDEV`, `STDDEV_POP`,
 `STDDEV_SAMP`, `VAR_POP`, `VAR_SAMP`, or `VARIANCE`. `COUNT(*)`, descriptor
-column arguments, aliases, `DISTINCT` descriptor-column arguments, and hidden
-order-key exclusions remain governed by the existing grouped aggregate specs.
+column arguments, aliases, and `DISTINCT` descriptor-column arguments remain
+governed by the existing grouped aggregate specs.
 
 MyLite Lemon-syntax grammar snippets are unchanged for this slice; the existing
 grouped `ORDER BY` aggregate-expression grammar already admits supported
@@ -111,8 +113,6 @@ No SQLite fork hook is required.
 
 This slice does not add:
 
-- hidden aggregate order keys that do not match a selected aggregate result,
-  such as `SELECT g FROM t GROUP BY g ORDER BY SUM(n + 1)`;
 - algebraic or semantic equivalence between differently spelled row-scalar
   expressions;
 - `GROUP_CONCAT()` aggregate-expression order keys;

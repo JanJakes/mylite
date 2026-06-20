@@ -13,8 +13,8 @@ ORDER BY SUM(integer_column) [ASC|DESC]
 ```
 
 The order expression must match one selected aggregate result in the current
-grouped aggregate planner. This is separate from selected alias ordering and
-does not add hidden aggregate order keys.
+grouped aggregate planner. Hidden aggregate order keys are covered separately by
+`docs/specs/baseline-hidden-grouped-aggregate-order-keys/specs.md`.
 
 ## Sources
 
@@ -108,8 +108,6 @@ No SQLite fork hook is required.
 
 This slice does not add:
 
-- hidden aggregate order keys that do not match a selected aggregate result,
-  such as `SELECT g FROM t GROUP BY g ORDER BY SUM(n)`;
 - `GROUP_CONCAT()` aggregate-expression order keys;
 - bitwise aggregate-expression order keys, which are tracked by
   `docs/specs/baseline-grouped-selected-bitwise-aggregate-expression-order/specs.md`;
@@ -117,7 +115,7 @@ This slice does not add:
   `docs/specs/baseline-grouped-selected-statistical-aggregate-expression-order/specs.md`;
 - duplicate selected aggregate expression ambiguity handling beyond a
   deterministic unsupported diagnostic;
-- broader aggregate argument domains, hidden aggregate projection, full
-  grouping, or executable aggregate windows.
+- broader aggregate argument domains, full grouping, or executable aggregate
+  windows.
 
 Unsupported forms continue to return deterministic MyLite diagnostics.

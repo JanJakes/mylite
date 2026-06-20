@@ -806,11 +806,12 @@ static int append_grouped_aggregate_select_list_sql(
     bool include_aliases
 ) {
     bool qualify = plan->source_count > 0U;
+    bool has_output_item = false;
     int rc = MYLITE_OK;
 
     for (size_t projection_index = 0U; rc == MYLITE_OK && projection_index < plan->projection_count;
          ++projection_index) {
-        if (projection_index > 0U) {
+        if (has_output_item) {
             rc = mylite_dynamic_string_append(string, ", ");
         }
         if (rc == MYLITE_OK) {
@@ -822,11 +823,17 @@ static int append_grouped_aggregate_select_list_sql(
                 include_aliases
             );
         }
+        if (rc == MYLITE_OK) {
+            has_output_item = true;
+        }
     }
 
     for (size_t aggregate_index = 0U; rc == MYLITE_OK && aggregate_index < plan->aggregate_count;
          ++aggregate_index) {
-        if (aggregate_index > 0U || plan->projection_count > 0U) {
+        if (plan->aggregates[aggregate_index].is_hidden_order_key) {
+            continue;
+        }
+        if (has_output_item) {
             rc = mylite_dynamic_string_append(string, ", ");
         }
         if (rc == MYLITE_OK) {
@@ -837,6 +844,9 @@ static int append_grouped_aggregate_select_list_sql(
                 next_parameter,
                 include_aliases
             );
+        }
+        if (rc == MYLITE_OK) {
+            has_output_item = true;
         }
     }
 

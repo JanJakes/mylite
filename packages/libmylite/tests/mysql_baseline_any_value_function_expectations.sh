@@ -209,6 +209,17 @@ expect_output \
     "$order_expected" \
     "USE ${DATABASE}; SELECT g, ANY_VALUE(v) AS av FROM t GROUP BY g ORDER BY ANY_VALUE(v) DESC;"
 
+hidden_order_expected=$(cat <<EXPECTED
+3
+1
+2
+EXPECTED
+)
+expect_output \
+    "grouped any_value hidden expression order" \
+    "$hidden_order_expected" \
+    "USE ${DATABASE}; SELECT g FROM t GROUP BY g ORDER BY ANY_VALUE(v) DESC;"
+
 mixed_expected=$(cat <<EXPECTED
 same	3	2
 EXPECTED

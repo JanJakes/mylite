@@ -751,6 +751,9 @@ static int bind_grouped_aggregate_parameters_at(
          ++aggregate_index) {
         const struct planned_grouped_aggregate_item *item = &plan->aggregates[aggregate_index];
 
+        if (item->is_hidden_order_key) {
+            continue;
+        }
         rc = bind_grouped_aggregate_row_scalar_expression_parameters(
             statement,
             item,

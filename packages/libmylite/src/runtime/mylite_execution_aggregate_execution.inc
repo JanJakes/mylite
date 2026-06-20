@@ -135,6 +135,9 @@ static int append_grouped_aggregate_result_columns(
         char *aggregate_column_name = NULL;
         const struct planned_grouped_aggregate_item *item = &plan->aggregates[aggregate_index];
 
+        if (item->is_hidden_order_key) {
+            continue;
+        }
         if (item->alias != NULL) {
             rc = copy_select_item_alias_text(database, item->alias, &aggregate_column_name);
         } else {
@@ -2371,9 +2374,17 @@ static int append_grouped_aggregate_sqlite_row(
     char (*projection_buffers)[approximate_numeric_text_capacity] = NULL;
     char (*aggregate_buffers)[approximate_numeric_text_capacity] = NULL;
     int sqlite_column_index = 0;
-    size_t result_column_count = plan->projection_count + plan->aggregate_count;
+    size_t visible_aggregate_count = 0U;
+    size_t result_column_count = 0U;
+    size_t result_aggregate_index = 0U;
     int rc = MYLITE_OK;
 
+    for (size_t aggregate_index = 0U; aggregate_index < plan->aggregate_count; ++aggregate_index) {
+        if (!plan->aggregates[aggregate_index].is_hidden_order_key) {
+            ++visible_aggregate_count;
+        }
+    }
+    result_column_count = plan->projection_count + visible_aggregate_count;
     if (plan->projection_count > (size_t)INT_MAX) {
         return MYLITE_ERROR;
     }
@@ -2416,15 +2427,21 @@ static int append_grouped_aggregate_sqlite_row(
     }
     for (size_t aggregate_index = 0U; rc == MYLITE_OK && aggregate_index < plan->aggregate_count;
          ++aggregate_index) {
+        if (plan->aggregates[aggregate_index].is_hidden_order_key) {
+            continue;
+        }
         rc = append_grouped_aggregate_sqlite_cell(
             database,
             statement,
             &plan->aggregates[aggregate_index],
             &sqlite_column_index,
-            &cells[plan->projection_count + aggregate_index],
+            &cells[plan->projection_count + result_aggregate_index],
             aggregate_buffers[aggregate_index],
             sizeof(aggregate_buffers[aggregate_index])
         );
+        if (rc == MYLITE_OK) {
+            ++result_aggregate_index;
+        }
     }
     if (rc == MYLITE_OK) {
         rc = mylite_result_append_bytes_row(result, cells);

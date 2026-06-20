@@ -627,6 +627,12 @@ static int find_grouped_order_aggregate_expression(
     bool *out_matched,
     size_t *out_aggregate_index
 );
+static int append_hidden_grouped_order_aggregate(
+    struct mylite_db *database,
+    struct planned_grouped_aggregate *plan,
+    struct planned_grouped_aggregate_item *item,
+    size_t *out_aggregate_index
+);
 static bool grouped_order_aggregate_items_match(
     const struct planned_grouped_aggregate_item *left,
     const struct planned_grouped_aggregate_item *right

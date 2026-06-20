@@ -13,8 +13,9 @@ ORDER BY BIT_OR(integer_column) [ASC|DESC]
 ```
 
 The repeated expression must match one selected bitwise aggregate result in the
-current grouped aggregate planner. This extends bitwise alias ordering; it does
-not add hidden aggregate order keys.
+current grouped aggregate planner. This extends bitwise alias ordering. Hidden
+bitwise aggregate order keys are covered separately by
+`docs/specs/baseline-hidden-grouped-aggregate-order-keys/specs.md`.
 
 ## Sources
 
@@ -107,14 +108,12 @@ No SQLite fork hook is required.
 
 This slice does not add:
 
-- hidden bitwise aggregate order keys that do not match a selected aggregate
-  result, such as `SELECT g FROM t GROUP BY g ORDER BY BIT_OR(n)`;
 - binary-string bitwise aggregate evaluation;
 - `DISTINCT` bitwise aggregate arguments;
 - grouped `HAVING` predicates on bitwise aggregate results;
 - statistical aggregate-expression order keys, which are tracked by
   `docs/specs/baseline-grouped-selected-statistical-aggregate-expression-order/specs.md`;
-- broader aggregate argument domains, hidden aggregate projection, full
-  grouping, or executable aggregate windows.
+- broader aggregate argument domains, full grouping, or executable aggregate
+  windows.
 
 Unsupported forms continue to return deterministic MyLite diagnostics.

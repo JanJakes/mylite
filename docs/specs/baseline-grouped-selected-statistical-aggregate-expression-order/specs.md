@@ -13,8 +13,9 @@ ORDER BY STDDEV_POP(integer_column) [ASC|DESC]
 ```
 
 The repeated expression must match one selected statistical aggregate result in
-the current grouped aggregate planner. This extends statistical alias ordering;
-it does not add hidden aggregate order keys.
+the current grouped aggregate planner. This extends statistical alias ordering.
+Hidden statistical aggregate order keys are covered separately by
+`docs/specs/baseline-hidden-grouped-aggregate-order-keys/specs.md`.
 
 ## Sources
 
@@ -111,11 +112,9 @@ No SQLite fork hook is required.
 
 This slice does not add:
 
-- hidden statistical aggregate order keys that do not match a selected
-  aggregate result, such as `SELECT g FROM t GROUP BY g ORDER BY VAR_POP(n)`;
 - `DISTINCT` statistical aggregate arguments;
 - string-to-double coercion warnings or broader noninteger argument domains;
-- broader aggregate argument domains, hidden aggregate projection, full
-  grouping, or executable aggregate windows.
+- broader aggregate argument domains, full grouping, or executable aggregate
+  windows.
 
 Unsupported forms continue to return deterministic MyLite diagnostics.

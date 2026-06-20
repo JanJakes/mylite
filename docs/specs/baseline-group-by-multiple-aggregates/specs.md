@@ -11,7 +11,8 @@ FROM source
 [WHERE predicate]
 GROUP BY group_column
 [HAVING grouped_or_selected_aggregate_predicate]
-[ORDER BY group_column_or_selected_count_min_max_sum_avg_bitwise_statistical_key [ASC|DESC]]
+[ORDER BY group_column_or_selected_or_hidden_count_min_max_sum_avg_bitwise_statistical_key
+          [ASC|DESC]]
 [LIMIT row_count [OFFSET offset]]
 ```
 
@@ -20,7 +21,8 @@ group column and the current one-source or two-source joined source envelope.
 The new behavior is multiple selected count/numeric/bitwise/statistical aggregate results,
 including the integer descriptor-column `COUNT(DISTINCT column)` slice for the
 base-table grouped path, and one selected `COUNT`, `MIN`, `MAX`, `SUM`, `AVG`,
-bitwise, or statistical aggregate-alias order key.
+bitwise, or statistical aggregate-alias order key, plus hidden non-`GROUP_CONCAT()`
+aggregate expression order keys in the current grouped aggregate envelope.
 SQLite still performs source scanning, filtering, grouping, aggregate stepping,
 ordering, and limiting through a generated physical query; MyLite owns
 descriptor resolution, supported-surface validation, result metadata, and
@@ -66,6 +68,8 @@ expectations for this slice:
 - MySQL accepts `ORDER BY selected_aggregate_alias` for `COUNT`, `MIN`, `MAX`,
   `SUM`, `AVG`, bitwise, and statistical aggregate aliases, and accepts
   repeated selected core aggregate expressions such as `ORDER BY SUM(n)`.
+  MySQL also accepts aggregate expressions in `ORDER BY` when the aggregate is
+  not selected, such as `SELECT g FROM t GROUP BY g ORDER BY SUM(n)`.
   MyLite admits selected `COUNT`, `MIN`, `MAX`, `SUM`, `AVG`, bitwise, and
   statistical aggregate aliases, plus repeated selected `COUNT`, `MIN`, `MAX`,
   `SUM`, `AVG`, bitwise, and statistical descriptor-column aggregate
@@ -117,7 +121,8 @@ MyLite supports this exact extension to the existing grouped aggregate path:
   `COUNT`, `MIN`, `MAX`, `SUM`, `AVG`, bitwise, or statistical aggregate alias,
   or one repeated selected `COUNT`, `MIN`, `MAX`, `SUM`, or `AVG`
   descriptor-column aggregate expression, or selected descriptor-column bitwise
-  or statistical aggregate expression;
+  or statistical aggregate expression, or one hidden non-`GROUP_CONCAT()`
+  aggregate expression from the same supported grouped aggregate subset;
 - optional `ASC` / `DESC`; default direction is ascending;
 - optional `LIMIT` and `OFFSET` using the existing select limit subset;
 - `SELECT ALL` and no-op select modifiers keep their existing admission rules;
@@ -145,9 +150,9 @@ This slice intentionally does not add:
 - `GROUP_CONCAT(DISTINCT ...)`, multiple `GROUP_CONCAT()` expressions, or wider
   joined-source grouped `GROUP_CONCAT()`;
 - multiple `ORDER BY` keys;
-- ordering by hidden/unselected aggregate expression, row-scalar aggregate
-  expression, ordinal, string literal, unselected alias, unaliased aggregate
-  output label, or arbitrary expression;
+- hidden `GROUP_CONCAT()` order keys, ordinal, string literal, unselected alias,
+  unaliased aggregate output label, or arbitrary non-aggregate expression
+  order keys;
 - `HAVING` boolean composition, unselected aggregate predicates, bitwise
   aggregate predicates, `GROUP_CONCAT()` predicates, arbitrary expressions,
   parameters, subqueries, or general alias ambiguity handling;
@@ -246,7 +251,9 @@ and `COUNT()` components in an internal exact signed-rational order-key scalar
 so large integer averages do not sort through SQLite `REAL`.
 Statistical aggregates call MyLite's registered aggregate callbacks and selected
 statistical aggregate-alias or aggregate-expression ordering repeats the same
-aggregate expression in the generated `ORDER BY`.
+aggregate expression in the generated `ORDER BY`. Hidden aggregate order keys
+are planned as private aggregate items and emitted only in `ORDER BY`, so they
+do not add public result columns.
 
 All generated identifiers are quoted. Predicate, separator, `HAVING`, and
 limit values are bound parameters. This feature adds no SQLite fork patch:
@@ -289,8 +296,8 @@ Required diagnostics include:
   aggregate predicate, `GROUP_CONCAT()` predicate, or out-of-range literal:
   existing grouped `HAVING` diagnostics, extended to selected aggregate items;
 - unsupported `ORDER BY` key, duplicate aggregate alias/expression order key,
-  hidden aggregate expression order key, multiple unsupported order keys,
-  ordinal, string literal, or expression: existing parser or planner
+  unsupported hidden aggregate expression order key, multiple unsupported order
+  keys, ordinal, string literal, or expression: existing parser or planner
   unsupported diagnostics;
 - physical SQLite failures: existing internal SQLite row-operation diagnostic;
 - allocation failure: existing `MYLITE_NOMEM` diagnostic behavior;
@@ -317,6 +324,9 @@ expectation script covering:
   `MIN`, `MAX`, `SUM`, `AVG`, bitwise, and statistical descriptor-column
   aggregate expressions, including default, `ASC`, `DESC`, `NULL` aggregate
   ordering, exact large-integer `AVG` ordering, and `LIMIT`;
+- hidden non-`GROUP_CONCAT()` grouped aggregate order keys, including public
+  result shape, selected aggregate composition, row-scalar aggregate arguments,
+  tie-break keys, and `LIMIT`;
 - result labels, warning count, row count, no catalog generation changes, no
   SQLite schema generation changes, file preamble preservation, reopen
   persistence, rename/drop behavior, independent file-backed handles, and

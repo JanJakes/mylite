@@ -204,6 +204,51 @@ expect_value "avg expression order high first" "1	15.0000" \
 expect_value "avg expression order low second" "NULL	5.0000" \
     "$(printf '%s\n' "$expression_order" | sed -n '18p')"
 
+hidden_order=$(run_mysql \
+    "USE ${DATABASE};
+     SELECT g FROM t GROUP BY g ORDER BY SUM(n) ASC;
+     SELECT g, COUNT(*) AS c FROM t GROUP BY g ORDER BY SUM(n) ASC;
+     SELECT g FROM t GROUP BY g ORDER BY COUNT(*) DESC, g DESC;
+     SELECT g FROM avg_order GROUP BY g ORDER BY AVG(n) DESC LIMIT 1;
+     SELECT g FROM bitwise_order GROUP BY g ORDER BY BIT_OR(bor) DESC LIMIT 1;
+     SELECT g FROM t GROUP BY g ORDER BY STDDEV_POP(n) ASC;
+     SELECT g FROM t GROUP BY g ORDER BY SUM(n + 1) DESC;"
+)
+expect_value "hidden sum order null aggregate first" "2" \
+    "$(printf '%s\n' "$hidden_order" | sed -n '1p')"
+expect_value "hidden sum order low next" "NULL" \
+    "$(printf '%s\n' "$hidden_order" | sed -n '2p')"
+expect_value "hidden sum order high last" "1" \
+    "$(printf '%s\n' "$hidden_order" | sed -n '3p')"
+expect_value "hidden sum with selected count first" "2	2" \
+    "$(printf '%s\n' "$hidden_order" | sed -n '4p')"
+expect_value "hidden sum with selected count second" "NULL	2" \
+    "$(printf '%s\n' "$hidden_order" | sed -n '5p')"
+expect_value "hidden sum with selected count third" "1	3" \
+    "$(printf '%s\n' "$hidden_order" | sed -n '6p')"
+expect_value "hidden count order first" "1" \
+    "$(printf '%s\n' "$hidden_order" | sed -n '7p')"
+expect_value "hidden count order tiebreak second" "2" \
+    "$(printf '%s\n' "$hidden_order" | sed -n '8p')"
+expect_value "hidden count order tiebreak third" "NULL" \
+    "$(printf '%s\n' "$hidden_order" | sed -n '9p')"
+expect_value "hidden avg order desc limit" "2" \
+    "$(printf '%s\n' "$hidden_order" | sed -n '10p')"
+expect_value "hidden bit_or order desc limit" "1" \
+    "$(printf '%s\n' "$hidden_order" | sed -n '11p')"
+expect_value "hidden stddev_pop order null aggregate first" "2" \
+    "$(printf '%s\n' "$hidden_order" | sed -n '12p')"
+expect_value "hidden stddev_pop order low next" "NULL" \
+    "$(printf '%s\n' "$hidden_order" | sed -n '13p')"
+expect_value "hidden stddev_pop order high last" "1" \
+    "$(printf '%s\n' "$hidden_order" | sed -n '14p')"
+expect_value "hidden row-scalar sum order high" "1" \
+    "$(printf '%s\n' "$hidden_order" | sed -n '15p')"
+expect_value "hidden row-scalar sum order low" "NULL" \
+    "$(printf '%s\n' "$hidden_order" | sed -n '16p')"
+expect_value "hidden row-scalar sum order null" "2" \
+    "$(printf '%s\n' "$hidden_order" | sed -n '17p')"
+
 aggregate_order=$(run_mysql \
     "USE ${DATABASE};
      SELECT g, MIN(n) AS mn, MAX(n) AS mx FROM t GROUP BY g ORDER BY mn ASC;

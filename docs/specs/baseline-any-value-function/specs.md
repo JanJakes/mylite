@@ -262,8 +262,9 @@ Add fast C coverage under `packages/libmylite/tests/`:
 - mixed ungrouped runtime covers composition with `MAX()` and `COUNT(*)`, empty
   aggregate input, and descriptor-column diagnostics;
 - grouped runtime covers composition with `MAX()` and `COUNT(*)`, selected
-  alias `HAVING ... IS NOT NULL`, selected alias `ORDER BY ... DESC`, repeated
-  selected expression `ORDER BY ANY_VALUE(column)`, hidden expression
+  alias `HAVING ... IS NULL` and `IS NOT NULL`, selected alias
+  `ORDER BY ... ASC` and `DESC`, repeated selected expression
+  `ORDER BY ANY_VALUE(column)`, hidden expression
   `ORDER BY ANY_VALUE(column)`, and `LIMIT`;
 - diagnostics cover wrong arity, syntax rejections for `*`/`DISTINCT`, unknown
   argument columns, unsupported grouped expression arguments, and unsupported

@@ -176,7 +176,9 @@ static int test_any_value_row_scalar_and_grouped_values(void) {
     };
     static const char *const grouped_having_columns[] = {"g", "av", "mx"};
     static const char *const grouped_having_values[] = {"1", "10", "10", "3", "20", "20"};
+    static const char *const grouped_having_null_values[] = {"2", NULL, NULL};
     static const char *const grouped_order_columns[] = {"g", "av"};
+    static const char *const grouped_order_asc_values[] = {"2", NULL, "1", "10", "3", "20"};
     static const char *const grouped_order_values[] = {"3", "20", "1", "10", "2", NULL};
     static const char *const grouped_limit_values[] = {"3", "20", "1", "10"};
     static const char *const grouped_qualified_values[] = {"1", "10", "2", NULL, "3", "20"};
@@ -248,6 +250,33 @@ static int test_any_value_row_scalar_and_grouped_values(void) {
             .warning_count = 0U,
             .affected_rows = 0,
             .context = "grouped any_value having alias",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, ANY_VALUE(v) AS av, MAX(v) AS mx FROM t GROUP BY g "
+                   "HAVING av IS NULL ORDER BY g",
+            .columns = grouped_having_columns,
+            .column_count = any_value_grouped_having_column_count,
+            .values = grouped_having_null_values,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "grouped any_value having null alias",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT g, ANY_VALUE(v) AS av FROM t GROUP BY g ORDER BY av ASC",
+            .columns = grouped_order_columns,
+            .column_count = any_value_grouped_order_column_count,
+            .values = grouped_order_asc_values,
+            .row_count = 3U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "grouped any_value order alias ascending",
         }
     );
     failures += expect_query(

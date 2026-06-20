@@ -193,6 +193,27 @@ expect_output \
     "USE ${DATABASE}; "\
 "SELECT g, ANY_VALUE(v) AS av, MAX(v) AS mx FROM t GROUP BY g HAVING av IS NOT NULL ORDER BY g;"
 
+having_null_expected=$(cat <<EXPECTED
+2	NULL	NULL
+EXPECTED
+)
+expect_output \
+    "grouped any_value selected alias having null" \
+    "$having_null_expected" \
+    "USE ${DATABASE}; "\
+"SELECT g, ANY_VALUE(v) AS av, MAX(v) AS mx FROM t GROUP BY g HAVING av IS NULL ORDER BY g;"
+
+order_asc_expected=$(cat <<EXPECTED
+2	NULL
+1	10
+3	20
+EXPECTED
+)
+expect_output \
+    "grouped any_value selected alias order ascending" \
+    "$order_asc_expected" \
+    "USE ${DATABASE}; SELECT g, ANY_VALUE(v) AS av FROM t GROUP BY g ORDER BY av ASC;"
+
 order_expected=$(cat <<EXPECTED
 3	20
 1	10

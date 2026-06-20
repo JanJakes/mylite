@@ -504,8 +504,20 @@ static int find_grouped_having_aggregate_alias_operand(
 static int convert_grouped_having_integer_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
-    const struct planned_grouped_aggregate *plan,
+    struct planned_grouped_aggregate *plan,
     enum planned_grouped_having_operand operand,
+    struct planned_value *out_value
+);
+static bool grouped_having_operand_uses_uint64_order_key(
+    const struct planned_grouped_aggregate *plan,
+    enum planned_grouped_having_operand operand
+);
+static int convert_grouped_having_bitwise_value(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    bool is_negative,
+    const char *operand_name,
+    struct planned_grouped_aggregate *plan,
     struct planned_value *out_value
 );
 static int parse_grouped_having_integer_literal(

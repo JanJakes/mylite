@@ -74,17 +74,20 @@ Supported `having_operand` forms:
 - The selected aggregate function expression itself, for supported
   row-scalar-expression arguments in the companion
   `baseline-grouped-selected-row-scalar-aggregate-expression-having` slice.
+- The selected `BIT_AND()`, `BIT_OR()`, or `BIT_XOR()` alias or repeated
+  selected aggregate function expression for supported nonnegative integer
+  comparison literals in the companion
+  `baseline-grouped-bitwise-aggregate-having` slice.
 
 The aggregate function expression in `HAVING` must refer to the selected
 aggregate result. MyLite does not yet support aggregate expressions that are
 only present in `HAVING`.
 
-`BIT_AND()`, `BIT_OR()`, and `BIT_XOR()` remain valid selected grouped
-aggregate results. Their result predicates in `HAVING` are deferred for this
-slice because the current MyLite bitwise aggregate callback returns
-unsigned-64 decimal text and needs a separate comparison contract for
-unsigned values above the signed-64 physical storage range. Group-column
-`HAVING` predicates may still be used with a selected bitwise aggregate.
+`BIT_AND()`, `BIT_OR()`, and `BIT_XOR()` result predicates are covered by
+`baseline-grouped-bitwise-aggregate-having` for selected aliases and repeated
+selected aggregate expressions with nonnegative integer comparison literals.
+Group-column `HAVING` predicates may also be used with a selected bitwise
+aggregate.
 
 ## Out Of Scope
 
@@ -102,7 +105,9 @@ This phase does not add:
   descriptor-column grouped count-distinct slice and documented
   single-expression row-scalar companion slices;
 - aggregate expressions in `HAVING` that differ from the selected aggregate;
-- bitwise aggregate result predicates;
+- negative bitwise aggregate comparison literals and broader unsigned numeric
+  conversion behavior outside
+  `baseline-grouped-bitwise-aggregate-having`;
 - multiple grouping keys, grouping aliases in the `GROUP BY` clause, ordinals,
   rollup, `GROUPING()`, functional-dependence inference, joins, windows, CTEs,
   derived tables, collations, or general MySQL expression evaluation.
@@ -188,6 +193,10 @@ expression values are deferred.
 against the admitted integer literal while the public selected result keeps
 the existing MyLite four-fractional-digit formatting.
 
+Selected bitwise aggregate result predicates compare the unsigned decimal
+aggregate value through a fixed-width decimal order key in the companion
+`baseline-grouped-bitwise-aggregate-having` slice.
+
 `NULL` is not admitted as a comparison literal in this phase. Use `IS NULL` or
 `IS NOT NULL` for supported null tests.
 
@@ -270,6 +279,9 @@ selected_grouped_aggregate_expression(A) ::= MIN(T) LPAREN(L) qualified_identifi
 selected_grouped_aggregate_expression(A) ::= MAX(T) LPAREN(L) qualified_identifier(B) RPAREN(R).
 selected_grouped_aggregate_expression(A) ::= SUM(T) LPAREN(L) qualified_identifier(B) RPAREN(R).
 selected_grouped_aggregate_expression(A) ::= AVG(T) LPAREN(L) qualified_identifier(B) RPAREN(R).
+selected_grouped_aggregate_expression(A) ::= BIT_AND(T) LPAREN(L) qualified_identifier(B) RPAREN(R).
+selected_grouped_aggregate_expression(A) ::= BIT_OR(T) LPAREN(L) qualified_identifier(B) RPAREN(R).
+selected_grouped_aggregate_expression(A) ::= BIT_XOR(T) LPAREN(L) qualified_identifier(B) RPAREN(R).
 
 having_integer_value(A) ::= INTEGER(T).
 having_integer_value(A) ::= PLUS(P) INTEGER(T).
@@ -289,7 +301,7 @@ Expected diagnostics for this phase:
 - Source descriptor column that is not the selected group column: same unknown
   `HAVING` column diagnostic for this slice.
 - Unsupported `HAVING` operand: MyLite unsupported diagnostic.
-- Unsupported aggregate result predicate, including bitwise result predicates:
+- Unsupported aggregate result predicate outside documented companion slices:
   MyLite unsupported diagnostic.
 - Aggregate expression in `HAVING` that does not match the selected aggregate:
   MyLite unsupported diagnostic.
@@ -306,6 +318,8 @@ Runtime tests must cover:
   `COUNT(*)`, `COUNT(column)`, `MIN`, `MAX`, `SUM`, and `AVG`;
 - selected row-scalar aggregate-expression predicates in the companion
   grouped row-scalar aggregate `HAVING` slice;
+- selected bitwise aggregate result predicates in the companion grouped
+  bitwise aggregate `HAVING` slice;
 - group-column predicates, including `IS NULL`, `<=>`, comparisons, and aliases;
 - `WHERE` before grouping combined with `HAVING`;
 - `ORDER BY` and `LIMIT` after `HAVING`, including `LIMIT 0`;
@@ -313,7 +327,7 @@ Runtime tests must cover:
 - schema-qualified table names and table aliases;
 - `ROW_COUNT() == -1`, warning count `0`, result column names, and result rows;
 - unknown `HAVING` columns, non-group source columns, unsupported aggregate-only
-  `HAVING` expressions, unsupported bitwise aggregate result predicates, and
+  `HAVING` expressions, negative bitwise aggregate comparison literals, and
   unsupported expression predicates;
 - reopen persistence and independence of file-backed handles;
 - generation stability and `.mylite` preamble preservation;

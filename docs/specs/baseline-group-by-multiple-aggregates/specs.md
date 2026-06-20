@@ -64,7 +64,8 @@ expectations for this slice:
   digits for the verified integer descriptor families in this baseline.
 - `HAVING` can reference a selected aggregate by expression or by alias. In a
   multi-aggregate select, the verified baseline predicates use one selected
-  non-bitwise aggregate result.
+  aggregate result, with bitwise result comparisons limited to supported
+  nonnegative integer literals.
 - MySQL accepts `ORDER BY selected_aggregate_alias` for `COUNT`, `MIN`, `MAX`,
   `SUM`, `AVG`, bitwise, and statistical aggregate aliases, and accepts
   repeated selected core aggregate expressions such as `ORDER BY SUM(n)`.
@@ -116,8 +117,9 @@ MyLite supports this exact extension to the existing grouped aggregate path:
 - optional aliases on the grouped column and each aggregate result;
 - optional `WHERE` using the existing grouped source predicate subset;
 - optional `HAVING` on the grouped column, grouped-column alias, selected
-  non-bitwise aggregate expression, or selected non-bitwise aggregate alias,
-  using the existing one-predicate `HAVING` comparison/`IS NULL` subset;
+  aggregate expression, or selected aggregate alias, using the existing
+  one-predicate `HAVING` comparison/`IS NULL` subset and the documented
+  bitwise aggregate nonnegative-literal comparison slice;
 - optional `ORDER BY` on the grouped column, grouped-column alias, one selected
   `COUNT`, `MIN`, `MAX`, `SUM`, `AVG`, bitwise, or statistical aggregate alias,
   or one repeated selected `COUNT`, `MIN`, `MAX`, `SUM`, or `AVG`
@@ -154,9 +156,10 @@ This slice intentionally does not add:
 - hidden `GROUP_CONCAT()` order keys, ordinal, string literal, unselected alias,
   unaliased aggregate output label, or arbitrary non-aggregate expression
   order keys;
-- `HAVING` boolean composition, unselected aggregate predicates, bitwise
-  aggregate predicates, `GROUP_CONCAT()` predicates, arbitrary expressions,
-  parameters, subqueries, or general alias ambiguity handling;
+- `HAVING` boolean composition, unselected aggregate predicates, negative
+  bitwise aggregate comparison literals, `GROUP_CONCAT()` predicates,
+  arbitrary expressions, parameters, subqueries, or general alias ambiguity
+  handling;
 - string, binary, decimal, approximate numeric, enum, set, JSON, or temporal
   grouping or aggregate argument semantics beyond already-supported descriptors;
 - `WITH ROLLUP`, window functions, derived tables, CTEs, subqueries, privilege

@@ -2126,6 +2126,12 @@ static int append_grouped_having_aggregate_sql(
     const struct planned_grouped_aggregate *plan,
     size_t *next_parameter
 );
+static int append_grouped_bitwise_having_operand_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    const struct planned_grouped_aggregate_item *item,
+    size_t *next_parameter
+);
 static int append_grouped_avg_having_operand_sql(
     struct mylite_dynamic_string *string,
     const struct planned_grouped_aggregate *plan,

@@ -311,6 +311,14 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const bitwise_alias_order_desc_limit_values[] = {"1", "15"};
     static const char *const bit_or_row_scalar_expression_order_columns[] = {"g", "bo"};
     static const char *const bit_or_row_scalar_expression_desc_limit_values[] = {"2", "11"};
+    static const char *const bit_or_having_values[] = {"1", "15"};
+    static const char *const bit_and_having_values[] = {"2", "11", "1", "13"};
+    static const char *const bit_xor_having_values[] = {NULL, "7", "2", "11"};
+    static const char *const bit_or_row_scalar_having_values[] = {"2", "11"};
+    static const char *const bit_and_uint64_having_values[] = {
+        NULL,
+        "18446744073709551615",
+    };
     static const char *const where_columns[] = {"g", "COUNT(*)"};
     static const char *const where_values[] = {"1", "1", "2", "2"};
     static const char *const alias_columns[] = {"k", "s"};
@@ -1598,6 +1606,78 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
+            .sql = "SELECT g, BIT_OR(bor) AS bo FROM grouped_bitwise_order GROUP BY g "
+                   "HAVING bo > 11 ORDER BY bo",
+            .columns = bit_or_alias_order_columns,
+            .column_count = 2U,
+            .values = bit_or_having_values,
+            .row_count = 1U,
+            .context = "grouped bit or aggregate alias having",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, BIT_AND(band) AS ba FROM grouped_bitwise_order GROUP BY g "
+                   "HAVING ba >= 11 ORDER BY ba",
+            .columns = bit_and_alias_order_columns,
+            .column_count = 2U,
+            .values = bit_and_having_values,
+            .row_count = 2U,
+            .context = "grouped bit and aggregate alias having",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, BIT_XOR(bxor) AS bx FROM grouped_bitwise_order GROUP BY g "
+                   "HAVING bx < 12 ORDER BY bx",
+            .columns = bit_xor_alias_order_columns,
+            .column_count = 2U,
+            .values = bit_xor_having_values,
+            .row_count = 2U,
+            .context = "grouped bit xor aggregate alias having",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, BIT_OR(bor) AS bo FROM grouped_bitwise_order GROUP BY g "
+                   "HAVING BIT_OR(bor) = 15 ORDER BY g",
+            .columns = bit_or_alias_order_columns,
+            .column_count = 2U,
+            .values = bit_or_having_values,
+            .row_count = 1U,
+            .context = "grouped bit or aggregate expression having",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, BIT_OR(bor + 1) AS bo FROM grouped_bitwise_order GROUP BY g "
+                   "HAVING BIT_OR(bor + 1) > 9 ORDER BY g",
+            .columns = bit_or_row_scalar_expression_order_columns,
+            .column_count = 2U,
+            .values = bit_or_row_scalar_having_values,
+            .row_count = 1U,
+            .context = "grouped bitwise row-scalar aggregate expression having",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, BIT_AND(n) AS ba FROM grouped_numbers GROUP BY g "
+                   "HAVING ba > 9223372036854775807 ORDER BY g",
+            .columns = bit_and_alias_order_columns,
+            .column_count = 2U,
+            .values = bit_and_uint64_having_values,
+            .row_count = 1U,
+            .context = "grouped bit and aggregate having above signed range",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
             .sql = "SELECT g, COUNT(*) FROM grouped_numbers WHERE n IS NOT NULL "
                    "GROUP BY g ORDER BY g",
             .columns = where_columns,
@@ -2591,11 +2671,11 @@ static int test_grouped_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT g, BIT_OR(nn) AS bits FROM grouped_numbers GROUP BY g HAVING bits > 1",
+        "SELECT g, BIT_OR(nn) AS bits FROM grouped_numbers GROUP BY g HAVING bits > -1",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "HAVING does not support bitwise aggregate predicates",
+            .code = mysql_error_data_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Out of range value for 'aggregate' in HAVING",
         }
     );
     failures += execute_error(

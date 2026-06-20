@@ -1337,6 +1337,8 @@ struct planned_grouped_having {
     enum planned_grouped_having_operand operand;
     enum mylite_sql_ast_operator operator_kind;
     struct planned_value value;
+    bool value_uses_uint64_order_key;
+    char uint64_order_key[uint64_decimal_digit_capacity + 1U];
     size_t group_index;
     size_t aggregate_index;
     struct planned_row_scalar_expression *row_scalar_expression;

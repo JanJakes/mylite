@@ -8,8 +8,9 @@ argument is a supported row-scalar expression.
 
 The feature is intentionally narrow. It does not add aggregate expressions
 that appear only in `HAVING`, boolean composition, broader `HAVING` expression
-evaluation, bitwise aggregate result predicates, or new row-scalar expression
-families.
+evaluation, or new row-scalar expression families. Bitwise aggregate result
+predicates are covered by
+`docs/specs/baseline-grouped-bitwise-aggregate-having/specs.md`.
 
 ## Sources
 
@@ -104,7 +105,8 @@ This slice does not add:
 - aggregate expressions that appear only in `HAVING`;
 - row-scalar expression families outside the current aggregate-argument
   subset;
-- bitwise aggregate result predicates;
+- bitwise aggregate result predicates outside
+  `docs/specs/baseline-grouped-bitwise-aggregate-having/specs.md`;
 - `GROUP_CONCAT()` result predicates;
 - boolean composition such as `AND`, `OR`, `XOR`, or `NOT`;
 - bare truth tests such as `HAVING SUM(expr)`;

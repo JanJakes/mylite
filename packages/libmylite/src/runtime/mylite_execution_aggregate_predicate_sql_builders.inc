@@ -1254,10 +1254,30 @@ static int append_grouped_having_aggregate_sql(
         return MYLITE_ERROR;
     }
     item = &plan->aggregates[plan->having.aggregate_index];
+    if (grouped_aggregate_function_is_bitwise(item->function)) {
+        return append_grouped_bitwise_having_operand_sql(string, plan, item, next_parameter);
+    }
     if (item->function == PLANNED_GROUPED_AGGREGATE_AVG) {
         return append_grouped_avg_having_operand_sql(string, plan, item, next_parameter);
     }
     return append_grouped_aggregate_expression_sql(string, plan, item, next_parameter);
+}
+
+static int append_grouped_bitwise_having_operand_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    const struct planned_grouped_aggregate_item *item,
+    size_t *next_parameter
+) {
+    int rc = mylite_dynamic_string_append(string, "_mylite_uint64_decimal_order_key(");
+
+    if (rc == MYLITE_OK) {
+        rc = append_grouped_aggregate_expression_sql(string, plan, item, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
 }
 
 static int append_grouped_avg_having_operand_sql(

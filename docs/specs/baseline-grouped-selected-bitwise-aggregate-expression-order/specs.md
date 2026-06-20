@@ -110,7 +110,8 @@ This slice does not add:
 
 - binary-string bitwise aggregate evaluation;
 - `DISTINCT` bitwise aggregate arguments;
-- grouped `HAVING` predicates on bitwise aggregate results;
+- grouped `HAVING` predicates on bitwise aggregate results, which are tracked
+  by `docs/specs/baseline-grouped-bitwise-aggregate-having/specs.md`;
 - statistical aggregate-expression order keys, which are tracked by
   `docs/specs/baseline-grouped-selected-statistical-aggregate-expression-order/specs.md`;
 - broader aggregate argument domains, full grouping, or executable aggregate

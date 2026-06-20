@@ -807,7 +807,11 @@ static int bind_grouped_aggregate_parameters_at(
         );
     }
     if (rc == MYLITE_OK && plan->having.kind == PLANNED_GROUPED_HAVING_COMPARISON) {
-        rc = bind_int64_parameter(statement, *parameter_index, plan->having.value.integer);
+        if (plan->having.value_uses_uint64_order_key) {
+            rc = bind_text_parameter(statement, *parameter_index, plan->having.uint64_order_key);
+        } else {
+            rc = bind_int64_parameter(statement, *parameter_index, plan->having.value.integer);
+        }
         if (rc == MYLITE_OK) {
             ++(*parameter_index);
         }

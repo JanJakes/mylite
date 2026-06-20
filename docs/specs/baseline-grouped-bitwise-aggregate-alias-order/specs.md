@@ -13,10 +13,10 @@ ORDER BY bits [ASC|DESC]
 ```
 
 It covers selected `BIT_AND()`, `BIT_OR()`, and `BIT_XOR()` aliases in the
-current descriptor-backed grouped aggregate envelopes. It does not add bitwise
-aggregate result predicates, repeated bitwise aggregate-expression order keys,
-binary-string bitwise aggregate semantics, aggregate windows, or general grouped
-expression ordering.
+current descriptor-backed grouped aggregate envelopes. It does not add repeated
+bitwise aggregate-expression order keys, bitwise aggregate result predicates
+tracked by `baseline-grouped-bitwise-aggregate-having`, binary-string bitwise
+aggregate semantics, aggregate windows, or general grouped expression ordering.
 
 ## Sources
 
@@ -96,7 +96,8 @@ This slice does not add:
   tracked by
   `docs/specs/baseline-grouped-selected-bitwise-aggregate-expression-order/specs.md`
   for selected descriptor-column bitwise aggregate expressions;
-- grouped `HAVING` predicates on bitwise aggregate results;
+- grouped `HAVING` predicates on bitwise aggregate results, which are tracked
+  by `docs/specs/baseline-grouped-bitwise-aggregate-having/specs.md`;
 - binary-string bitwise aggregate evaluation;
 - `DISTINCT` bitwise aggregate arguments;
 - `GROUP_CONCAT()` aggregate-alias ordering;

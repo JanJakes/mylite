@@ -535,10 +535,6 @@ static int plan_grouped_having_aggregate_operand(
         set_unsupported_error(database, "HAVING supports only grouped columns or aggregates");
         return MYLITE_ERROR;
     }
-    if (grouped_aggregate_function_is_bitwise(function)) {
-        set_unsupported_error(database, "HAVING does not support bitwise aggregate predicates");
-        return MYLITE_ERROR;
-    }
     if (function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
         set_unsupported_error(
             database,
@@ -685,10 +681,6 @@ static int find_grouped_having_aggregate_alias_operand(
         return MYLITE_OK;
     }
 
-    if (grouped_aggregate_function_is_bitwise(out_plan->aggregates[matched_index].function)) {
-        set_unsupported_error(database, "HAVING does not support bitwise aggregate predicates");
-        return MYLITE_ERROR;
-    }
     if (out_plan->aggregates[matched_index].function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
         set_unsupported_error(
             database,
@@ -705,7 +697,7 @@ static int find_grouped_having_aggregate_alias_operand(
 static int convert_grouped_having_integer_literal(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
-    const struct planned_grouped_aggregate *plan,
+    struct planned_grouped_aggregate *plan,
     enum planned_grouped_having_operand operand,
     struct planned_value *out_value
 ) {
@@ -740,6 +732,16 @@ static int convert_grouped_having_integer_literal(
             out_value
         );
     }
+    if (grouped_having_operand_uses_uint64_order_key(plan, operand)) {
+        return convert_grouped_having_bitwise_value(
+            database,
+            magnitude,
+            is_negative,
+            operand_name,
+            plan,
+            out_value
+        );
+    }
 
     return convert_grouped_having_aggregate_value(
         database,
@@ -748,4 +750,49 @@ static int convert_grouped_having_integer_literal(
         operand_name,
         out_value
     );
+}
+
+static bool grouped_having_operand_uses_uint64_order_key(
+    const struct planned_grouped_aggregate *plan,
+    enum planned_grouped_having_operand operand
+) {
+    if (plan == NULL || operand != PLANNED_GROUPED_HAVING_OPERAND_AGGREGATE ||
+        plan->having.aggregate_index >= plan->aggregate_count) {
+        return false;
+    }
+
+    return grouped_aggregate_function_is_bitwise(
+        plan->aggregates[plan->having.aggregate_index].function
+    );
+}
+
+static int convert_grouped_having_bitwise_value(
+    struct mylite_db *database,
+    uint64_t magnitude,
+    bool is_negative,
+    const char *operand_name,
+    struct planned_grouped_aggregate *plan,
+    struct planned_value *out_value
+) {
+    int written = 0;
+
+    if (plan == NULL || out_value == NULL) {
+        return MYLITE_ERROR;
+    }
+    if (is_negative) {
+        set_having_out_of_range_error(database, operand_name);
+        return MYLITE_ERROR;
+    }
+
+    written = snprintf(plan->having.uint64_order_key, sizeof(plan->having.uint64_order_key),
+                       "%020" PRIu64, magnitude);
+    if (written < 0 || (size_t)written >= sizeof(plan->having.uint64_order_key)) {
+        set_runtime_error(database, "failed to format bitwise HAVING comparison key");
+        return MYLITE_ERROR;
+    }
+
+    plan->having.value_uses_uint64_order_key = true;
+    out_value->is_null = false;
+    out_value->integer = 0;
+    return MYLITE_OK;
 }

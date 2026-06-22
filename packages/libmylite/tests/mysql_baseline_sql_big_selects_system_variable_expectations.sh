@@ -130,6 +130,32 @@ expect_value \
     "0	1	0	0	0	0	0" \
     "$mutable_values"
 
+show_mutable_values=$(run_mysql \
+    "SET SESSION sql_big_selects=0; \
+     SHOW VARIABLES LIKE 'sql_big_selects'; \
+     SHOW GLOBAL VARIABLES LIKE 'sql_big_selects'; \
+     SET SESSION sql_big_selects=DEFAULT;" \
+    | tr '\n' '|')
+expect_value \
+    "mysql SHOW VARIABLES reflects session sql_big_selects" \
+    "sql_big_selects	OFF|sql_big_selects	ON|" \
+    "$show_mutable_values"
+
+boolean_form_values=$(run_mysql \
+    "SET SESSION sql_big_selects=ON; \
+     SELECT @@sql_big_selects; \
+     SET LOCAL sql_big_selects=FALSE; \
+     SELECT @@sql_big_selects; \
+     SET @@session.sql_big_selects=TRUE; \
+     SELECT @@sql_big_selects; \
+     SET SESSION sql_big_selects=DEFAULT; \
+     SELECT @@sql_big_selects;" \
+    | tr '\n' '|')
+expect_value \
+    "mysql sql_big_selects accepts boolean session SET forms" \
+    "1|0|1|1|" \
+    "$boolean_form_values"
+
 max_join_size_values=$(run_mysql \
     "SET SESSION max_join_size=1000; \
      SELECT @@sql_big_selects, @@max_join_size; \

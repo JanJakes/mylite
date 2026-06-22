@@ -2,22 +2,22 @@
 
 ## Status
 
-This feature specifies a narrow scalar system-variable slice for
+This feature specifies the baseline session-variable slice for
 `@@sql_big_selects`.
 
 It builds on the existing `SYSTEM_VARIABLE` lexer/parser token, scalar
-`SELECT` execution, diagnostics lifecycle, and descriptor-driven table read
-paths. MySQL exposes `sql_big_selects` as mutable global and session state
-that controls whether MySQL aborts selected `SELECT` statements that the
-optimizer estimates as too large relative to `max_join_size`. MyLite does not
-implement mutable system-variable assignment, `max_join_size`, or MySQL's
-optimizer row-examination limits in the baseline yet, so this slice exposes
-only the default enabled scalar value.
+`SELECT` execution, generic Boolean session-variable assignment, diagnostics
+lifecycle, `SHOW VARIABLES`, and descriptor-driven table read paths. MySQL
+exposes `sql_big_selects` as mutable global and session state that controls
+whether MySQL aborts selected `SELECT` statements that the optimizer estimates
+as too large relative to `max_join_size`. MyLite implements the embedded
+compatibility baseline: session `SET`/readback and `SHOW VARIABLES` state,
+fixed global default `ON`, and no changed query execution.
 
 This is not big-select limiting support. It does not implement
-`SET sql_big_selects`, mutable global/session state, `max_join_size`
-interaction, row-examination estimates, optimizer aborts, or changed
-descriptor-backed `SELECT` behavior.
+server-global mutation, persisted startup state, `max_join_size` interaction,
+row-examination estimates, optimizer aborts, or changed descriptor-backed
+`SELECT` behavior.
 
 ## Sources
 
@@ -71,10 +71,11 @@ records the runtime probes for this feature. Observed behavior:
   Those forms remain outside this MyLite slice.
 
 The official MySQL system-variable documentation classifies `sql_big_selects`
-as a dynamic boolean variable with global and session scope and default value
+as a dynamic Boolean variable with global and session scope and default value
 `ON`. When disabled, MySQL can reject `SELECT` statements estimated to examine
-more rows than `max_join_size` permits. MyLite returns the fixed default
-enabled value `1`, so this slice does not alter query planning or execution.
+more rows than `max_join_size` permits. MyLite records the session value but
+leaves descriptor-backed `SELECT` planning and execution unchanged in the
+embedded baseline.
 
 ## Scope
 
@@ -83,10 +84,14 @@ The implementation must add:
 - runtime recognition of `sql_big_selects` inside the existing scalar `SELECT`
   subset;
 - support for no scope, `session`, `local`, and `global` scope qualifiers;
+- session `SET sql_big_selects = 0|1|ON|OFF|TRUE|FALSE|DEFAULT` handling
+  through the existing Boolean system-variable override path;
+- `SHOW VARIABLES` and `SHOW GLOBAL VARIABLES` values for the session/global
+  baseline;
 - case-insensitive matching for unquoted scope and variable names;
 - backtick-quoted final variable-name components;
 - one-row scalar result sets with existing source-span column labels;
-- fixed value `1` for all supported scopes;
+- fixed global value `1` and session-local values that default to `1`;
 - MySQL-compatible unknown-variable diagnostics for unsupported names;
 - deterministic rejection of quoted scopes;
 - fast C tests and a MySQL 8.4.9 expectation artifact.
@@ -100,19 +105,22 @@ SELECT @@session.sql_big_selects, @@local.sql_big_selects
 SELECT @@global.sql_big_selects
 SELECT @@session.`sql_big_selects`, @@`sql_big_selects`
 SELECT @@sql_big_selects, @@warning_count, ROW_COUNT()
+SET SESSION sql_big_selects = 0
+SHOW VARIABLES LIKE 'sql_big_selects'
+SHOW GLOBAL VARIABLES LIKE 'sql_big_selects'
 ```
 
 ## Non-Goals
 
 This feature must not implement:
 
-- `SET`, startup options, persisted variables, `SET_VAR` hints, or mutable
-  global/session `sql_big_selects` state;
+- startup options, persisted variables, `SET_VAR` hints, or mutable
+  server-global `sql_big_selects` state;
 - `max_join_size`, safe-updates initialization, row-examination estimates,
   optimizer aborts, or changed `SELECT` diagnostics;
 - variables other than `sql_big_selects`;
 - changed descriptor-backed `SELECT` result production;
-- `SHOW VARIABLES` or Performance Schema variable tables;
+- Performance Schema variable tables;
 - table-backed variable evaluation, aliases, clauses, subqueries, arithmetic,
   functions over variables, parameters, prepared statements, or arbitrary
   SQLite pass-through;
@@ -130,10 +138,11 @@ This feature must not implement:
 - Lexer/parser/AST own syntax admission and source spans for
   `SYSTEM_VARIABLE` expressions. No new grammar is needed beyond the existing
   `expression ::= SYSTEM_VARIABLE` rule.
-- Runtime execution owns system-variable path parsing, scope validation, fixed
-  value selection, and diagnostics for unsupported names.
-- Descriptor-driven `SELECT` execution remains unchanged because the fixed
-  value is enabled and no `max_join_size` or optimizer limit state exists yet.
+- Runtime execution owns system-variable path parsing, scope validation,
+  session/global value selection, and diagnostics for unsupported names.
+- Descriptor-driven `SELECT` execution remains unchanged because the embedded
+  baseline does not implement `max_join_size` or optimizer row-estimate
+  aborts.
 - The catalog remains authoritative for descriptors. This variable slice does
   not create optimizer metadata or affect table lifecycle or query planning.
 - Result builder owns scalar result column labels and one-row text values.
@@ -185,22 +194,24 @@ Runtime parses the raw token as a `@@` system variable:
   SQLSTATE `HY000`;
 - it preserves the original source text as the scalar result column label.
 
-For this slice, all scopes return the same fixed value. This is a deliberate
-MyLite limitation: no mutable `sql_big_selects` state exists yet.
+For this slice, global scope returns the fixed embedded default `1`. Unscoped,
+`session`, and `local` scope read the current session override when one exists,
+and otherwise return `1`.
 
 ## Runtime Semantics
 
 The supported variable returns:
 
-| Variable | Value |
+| Scope | Value |
 | --- | --- |
-| `sql_big_selects` | `1` |
+| Global | fixed `1` |
+| Session/local/unscoped default | `1` |
+| Session/local/unscoped after `SET SESSION sql_big_selects = 0` | `0` |
 
-The value is independent of selected schema, close/reopen, table DDL, DML, and
-independent handles. It is a compatibility scalar only. Because the fixed
-value is enabled, existing descriptor-backed `SELECT` behavior must not
-change, and MyLite must not reject large reads based on row-estimate policy in
-this slice.
+The session value is independent per handle and resets on close/reopen.
+Existing descriptor-backed `SELECT` behavior must not change: disabling the
+variable records compatibility state but does not reject reads based on
+optimizer row-estimate policy.
 
 Successful scalar reads:
 
@@ -224,17 +235,18 @@ This slice uses existing diagnostics for:
 - public API misuse through the existing execution/result API behavior;
 - allocation failures through existing MyLite allocation diagnostics.
 
-Supported reads of `@@sql_big_selects` do not emit warnings. This slice does
-not implement MySQL's mutable `SET SESSION sql_big_selects=...` surface,
-`max_join_size`, or optimizer abort behavior, so those assignment and planning
-diagnostics are out of scope.
+Supported reads and session assignments of `@@sql_big_selects` do not emit
+warnings. Unsupported global assignment uses the existing embedded
+global-variable diagnostic path. `max_join_size` assignment and optimizer abort
+behavior remain out of scope.
 
 ## Tests
 
 Tests must cover:
 
 - unscoped, `global`, `session`, and `local` forms;
-- fixed `1` value for all supported scopes;
+- default `1` values, mutable session values, fixed global `1`, and
+  close/reopen reset behavior;
 - case-insensitive names and scopes;
 - backtick-quoted final variable names;
 - quoted scope rejection;
@@ -244,20 +256,21 @@ Tests must cover:
   quote-control, foreign-key-check, unique-check, updatable-view,
   auto-is-null, result-buffering, safe-updates, select-limit, notes,
   warning-reporting, and version variables;
+- session and global `SHOW VARIABLES` rows after session assignment;
 - diagnostics read-and-clear behavior after warnings and errors;
 - unknown unscoped and scoped variable names;
 - unsupported wider expressions;
-- selected schema, close/reopen, table DDL, DML, and independent handles do not
-  change the fixed value;
+- selected schema, table DDL, DML, and independent handles do not leak session
+  state;
 - representative descriptor-backed `SELECT` statements still return normal
-  result rows and are not rejected as big selects;
+  result rows while the session value is disabled;
 - `.mylite` preamble preservation and unchanged catalog/SQLite generation after
   variable reads;
 - existing parser/runtime/system-variable and table lifecycle tests still pass.
 
 The MySQL expectation script verifies the MySQL 8.4.9 reference behavior for
-the supported SQL forms and explicitly records mutable `sql_big_selects` /
-`max_join_size` behavior that this slice leaves unsupported.
+the supported SQL forms, session mutability, `SHOW VARIABLES` readback, and
+the `max_join_size` interaction that this slice leaves unsupported.
 
 ## Compatibility Documentation
 
@@ -267,6 +280,6 @@ Update:
 - `docs/compatibility/runtime-system-variables.md`;
 - `docs/compatibility/sql-query-expressions.md`.
 
-Do not overclaim mutable system variables, `SET`, `SHOW VARIABLES`,
-`max_join_size`, optimizer row-examination estimates, big-select aborts, or
-changed descriptor-backed `SELECT` behavior.
+Do not overclaim server-global mutation, persisted state, Performance Schema
+variable tables, `max_join_size`, optimizer row-examination estimates,
+big-select aborts, or changed descriptor-backed `SELECT` behavior.

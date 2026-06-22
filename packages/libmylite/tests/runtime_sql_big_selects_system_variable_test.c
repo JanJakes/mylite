@@ -100,6 +100,8 @@ static int test_sql_big_selects_values_and_persistence(void) {
         "ROW_COUNT()",
     };
     static const char *const value_values[] = {"1", "1", "1", "1", "0", "-1"};
+    static const char *const set_off_values[] = {"0", "1", "0", "0", "0", "0"};
+    static const char *const set_on_values[] = {"1", "1", "1", "1", "0", "0"};
     static const char *const label_columns[] = {
         "@@SQL_BIG_SELECTS",
         "@@Global.Sql_Big_Selects",
@@ -149,7 +151,10 @@ static int test_sql_big_selects_values_and_persistence(void) {
     static const char *const warning_values[] = {"1", "1", "0", "-1"};
     static const char *const error_values[] = {"1", "1", "1", "-1"};
     static const char *const selected_columns[] = {"@@sql_big_selects", "DATABASE()"};
-    static const char *const selected_values[] = {"1", "app"};
+    static const char *const selected_values[] = {"0", "app"};
+    static const char *const show_variable_columns[] = {"Variable_name", "Value"};
+    static const char *const show_session_values[] = {"sql_big_selects", "OFF"};
+    static const char *const show_global_values[] = {"sql_big_selects", "ON"};
     static const char *const table_columns[] = {"id", "score"};
     static const char *const table_values[] = {"2", "20"};
     static const char *const null_count_columns[] = {"COUNT(*)"};
@@ -304,6 +309,93 @@ static int test_sql_big_selects_values_and_persistence(void) {
         sizeof(expected_preamble),
         "preamble after sql big selects reads"
     );
+
+    failures += execute_statement_ok(database, "SET SESSION sql_big_selects=0");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_big_selects, @@global.sql_big_selects, "
+        "@@session.sql_big_selects, @@local.sql_big_selects, @@warning_count, "
+        "ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_off_values,
+            .count = sql_big_selects_value_column_count,
+            .context = "set sql big selects values",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW VARIABLES LIKE 'sql_big_selects'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_session_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show session sql big selects value",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'sql_big_selects'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_global_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show global sql big selects value",
+        }
+    );
+    failures += execute_statement_ok(database, "SET SESSION sql_big_selects=ON");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_big_selects, @@global.sql_big_selects, "
+        "@@session.sql_big_selects, @@local.sql_big_selects, @@warning_count, "
+        "ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_on_values,
+            .count = sql_big_selects_value_column_count,
+            .context = "set sql big selects ON values",
+        }
+    );
+    failures += execute_statement_ok(database, "SET LOCAL sql_big_selects=FALSE");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_big_selects, @@global.sql_big_selects, "
+        "@@session.sql_big_selects, @@local.sql_big_selects, @@warning_count, "
+        "ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_off_values,
+            .count = sql_big_selects_value_column_count,
+            .context = "set local sql big selects FALSE values",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @@session.sql_big_selects=TRUE");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_big_selects, @@global.sql_big_selects, "
+        "@@session.sql_big_selects, @@local.sql_big_selects, @@warning_count, "
+        "ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_on_values,
+            .count = sql_big_selects_value_column_count,
+            .context = "set @@session sql big selects TRUE values",
+        }
+    );
+    failures += execute_statement_ok(database, "SET SESSION sql_big_selects=DEFAULT");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_big_selects, @@global.sql_big_selects, "
+        "@@session.sql_big_selects, @@local.sql_big_selects, @@warning_count, "
+        "ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_on_values,
+            .count = sql_big_selects_value_column_count,
+            .context = "set sql big selects DEFAULT values",
+        }
+    );
+    failures += execute_statement_ok(database, "SET SESSION sql_big_selects=OFF");
 
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "USE app");
@@ -482,7 +574,7 @@ static int test_independent_sql_big_selects_handles(void) {
         "@@warning_count",
         "@@error_count",
     };
-    static const char *const first_values[] = {"1", "1", "0"};
+    static const char *const first_values[] = {"0", "1", "0"};
     static const char *const second_values[] = {"1", "0", "0"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
@@ -493,6 +585,7 @@ static int test_independent_sql_big_selects_handles(void) {
         expect_int(mylite_open_memory(&first), MYLITE_OK, "open first sql big selects handle");
     failures +=
         expect_int(mylite_open_memory(&second), MYLITE_OK, "open second sql big selects handle");
+    failures += execute_statement_ok(first, "SET SESSION sql_big_selects=0");
     failures += execute_statement_ok(first, "SHOW PROCESSLIST");
 
     failures +=

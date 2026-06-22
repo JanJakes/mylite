@@ -2,20 +2,20 @@
 
 ## Status
 
-This feature specifies a narrow scalar system-variable slice for
+This feature specifies a narrow session system-variable slice for
 `@@updatable_views_with_limit`.
 
 It builds on the existing `SYSTEM_VARIABLE` lexer/parser token, scalar
-`SELECT` execution, diagnostics lifecycle, and MyLite's current no-view
-descriptor model. MySQL exposes `updatable_views_with_limit` as mutable global
-and session state that controls whether selected limited updates against
-updatable views produce warnings or errors. MyLite does not implement views or
-mutable system-variable assignment in the baseline yet, so this slice exposes
-only the default scalar value.
+`SELECT` execution, `SHOW VARIABLES`, `SET` assignment, diagnostics lifecycle,
+and MyLite's current baseline view metadata. MySQL exposes
+`updatable_views_with_limit` as mutable global and session state that controls
+whether selected limited updates against updatable views produce warnings or
+errors. MyLite does not implement writable view DML yet, so this slice exposes
+the variable state and preserves embedded execution behavior.
 
 This is not view support. It does not implement `SET
-updatable_views_with_limit`, view DDL, view metadata, view DML, check-option
-behavior, or update/delete behavior changes.
+GLOBAL updatable_views_with_limit`, view DML, check-option behavior, or
+update/delete behavior changes.
 
 ## Sources
 
@@ -79,15 +79,21 @@ default as `YES`, so MyLite returns `YES` for the fixed baseline value.
 
 The implementation must add:
 
-- runtime recognition of `updatable_views_with_limit` inside the existing
-  scalar `SELECT` subset;
+- runtime recognition of `updatable_views_with_limit` inside scalar `SELECT`,
+  `SHOW VARIABLES`, and `SET` paths;
 - support for no scope, `session`, `local`, and `global` scope qualifiers;
 - case-insensitive matching for unquoted scope and variable names;
 - backtick-quoted final variable-name components;
 - one-row scalar result sets with existing source-span column labels;
-- fixed value `YES` for all supported scopes;
+- fixed global value `YES`;
+- handle-local session/default/local values with default `YES` and mutable
+  `YES`/`NO` readback;
+- session/local/unscoped `SET` forms for `DEFAULT`, Boolean literals, integer
+  `0`/`1`, and supported integer user variables;
+- limited `SHOW VARIABLES` and `SHOW GLOBAL VARIABLES` rows with `YES`/`NO`
+  session display and fixed `YES` global display;
 - MySQL-compatible unknown-variable diagnostics for unsupported names;
-- deterministic rejection of quoted scopes;
+- deterministic rejection of quoted scopes and mutable global assignment;
 - fast C tests and a MySQL 8.4.9 expectation artifact.
 
 Supported SQL examples:
@@ -99,20 +105,26 @@ SELECT @@session.updatable_views_with_limit, @@local.updatable_views_with_limit
 SELECT @@global.updatable_views_with_limit
 SELECT @@session.`updatable_views_with_limit`, @@`updatable_views_with_limit`
 SELECT @@updatable_views_with_limit, @@warning_count, ROW_COUNT()
+SHOW VARIABLES LIKE 'updatable_views_with_limit'
+SHOW GLOBAL VARIABLES LIKE 'updatable_views_with_limit'
+SET SESSION updatable_views_with_limit = 0
+SET LOCAL updatable_views_with_limit = FALSE
+SET @@updatable_views_with_limit = DEFAULT
+SET @@session.updatable_views_with_limit = @enabled_flag
 ```
 
 ## Non-Goals
 
 This feature must not implement:
 
-- `SET`, startup options, persisted variables, `SET_VAR` hints, or mutable
-  global/session `updatable_views_with_limit` state;
+- mutable global `updatable_views_with_limit` state, startup options,
+  persisted variables, or `SET_VAR` hints;
 - variables other than `updatable_views_with_limit`;
-- `CREATE VIEW`, `ALTER VIEW`, `DROP VIEW`, view descriptors, view query
-  expansion, view metadata, `INFORMATION_SCHEMA.VIEWS`, check options,
+- additional `CREATE VIEW`, `ALTER VIEW`, `DROP VIEW`, view descriptors, view
+  query expansion, view metadata, `INFORMATION_SCHEMA.VIEWS`, check options,
   definer/security semantics, or view privileges;
 - `UPDATE`, `DELETE`, or `INSERT` behavior changes for views;
-- `SHOW VARIABLES` or Performance Schema variable tables;
+- Performance Schema variable tables;
 - table-backed variable evaluation, aliases, clauses, subqueries, arithmetic,
   functions over variables, parameters, prepared statements, or arbitrary
   SQLite pass-through;
@@ -167,7 +179,16 @@ from_dual_opt ::= FROM DUAL.
 System variables are admitted only when every selected expression is in the
 existing scalar expression set. Clauses such as `WHERE`, `ORDER BY`, `LIMIT`,
 table-backed `FROM`, aliases, and general expressions remain outside this
-slice.
+slice. `SET` uses the existing system-variable assignment grammar:
+
+```lemon
+set_statement ::= SET set_assignment_list.
+set_assignment ::= system_variable_target EQ set_value.
+system_variable_target ::= IDENTIFIER.
+system_variable_target ::= system_variable_reference.
+set_value ::= DEFAULT.
+set_value ::= literal.
+```
 
 ## Variable Resolution
 
@@ -183,22 +204,23 @@ Runtime parses the raw token as a `@@` system variable:
   SQLSTATE `HY000`;
 - it preserves the original source text as the scalar result column label.
 
-For this slice, all scopes return the same fixed value. This is a deliberate
-MyLite limitation: no view descriptors or mutable system-variable state exist
-yet.
+The global scope returns fixed `YES`. Session, local, and unscoped reads return
+the current handle-local value, defaulting to `YES`.
 
 ## Runtime Semantics
 
 The supported variable returns:
 
-| Variable | Value |
+| Context | Value |
 | --- | --- |
-| `updatable_views_with_limit` | `YES` |
+| scalar global read | `YES` |
+| scalar session/local/unscoped read | `YES` or `NO` |
+| `SHOW GLOBAL VARIABLES` value | `YES` |
+| `SHOW VARIABLES` session value | `YES` or `NO` |
 
-The value is independent of selected schema, close/reopen, table DDL, DML, and
-independent handles. It is a compatibility scalar only. It must not affect
-accepted or rejected SQL because view syntax and descriptors remain out of
-scope.
+The session value is handle-local and non-persistent. It is independent of
+selected schema, close/reopen, table DDL, and DML, and it must not affect
+accepted or rejected SQL because writable view DML remains out of scope.
 
 Successful scalar reads:
 
@@ -211,6 +233,14 @@ Successful scalar reads:
 - follow existing scalar `SELECT` row-count behavior, so `ROW_COUNT()` after a
   successful scalar row result is `-1`.
 
+Successful supported `SET` forms:
+
+- update only the current handle-local session value;
+- leave the global readback fixed at `YES`;
+- produce `affected_rows == 0` and `warning_count == 0`;
+- clear prior diagnostics like other successful nondiagnostic statements;
+- do not mutate catalog or storage state.
+
 ## Diagnostics
 
 This slice uses existing diagnostics for:
@@ -218,21 +248,25 @@ This slice uses existing diagnostics for:
 - syntax errors, including quoted scopes and unsupported scalar-select
   clauses;
 - unknown system variables: error `1193`, SQLSTATE `HY000`;
+- unsupported mutable global assignment;
+- unsupported assignment value forms, including `NULL`, strings, decimal user
+  variables, and arbitrary expressions;
 - unsupported expressions such as arithmetic over system variables;
 - public API misuse through the existing execution/result API behavior;
 - allocation failures through existing MyLite allocation diagnostics.
 
-Supported reads of `@@updatable_views_with_limit` do not emit warnings. This
-slice does not implement MySQL's mutable `SET SESSION
-updatable_views_with_limit=...` surface, so assignment diagnostics and view
-DML side effects are out of scope.
+Supported reads and assignments of `@@updatable_views_with_limit` do not emit
+warnings. View-DML side effects are out of scope.
 
 ## Tests
 
 Tests must cover:
 
 - unscoped, `global`, `session`, and `local` forms;
-- fixed `YES` value for all supported scopes;
+- fixed global `YES` value and session/local/unscoped `YES`/`NO` readback;
+- session/local/unscoped `SET` assignment, `SHOW VARIABLES` readback, global
+  `SHOW VARIABLES` readback, `SET DEFAULT`, user-variable assignment, and
+  global assignment rejection;
 - case-insensitive names and scopes;
 - backtick-quoted final variable names;
 - quoted scope rejection;

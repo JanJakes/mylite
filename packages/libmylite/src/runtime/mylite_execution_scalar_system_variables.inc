@@ -15,7 +15,7 @@ static int system_variable_value(
         return rc;
     }
     global_scope = system_variable_expression_has_global_scope(expression);
-    if (!global_scope) {
+    if (!global_scope && variable != MYLITE_EXECUTION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT) {
         override_value = session_system_variable_override_value(database, variable);
         if (override_value != NULL) {
             out_cell->value = override_value;
@@ -63,7 +63,10 @@ static int system_variable_value(
         out_cell->value = "InnoDB";
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT:
-        out_cell->value = "YES";
+        override_value =
+            global_scope ? NULL : session_system_variable_override_value(database, variable);
+        out_cell->value =
+            (override_value != NULL && strcmp(override_value, "0") == 0) ? "NO" : "YES";
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM:
         out_cell->value = "utf8mb3";

@@ -100,6 +100,8 @@ static int test_updatable_views_with_limit_values_and_persistence(void) {
         "ROW_COUNT()",
     };
     static const char *const value_values[] = {"YES", "YES", "YES", "YES", "0", "-1"};
+    static const char *const disabled_values[] = {"NO", "YES", "NO", "NO", "0", "0"};
+    static const char *const enabled_values[] = {"YES", "YES", "YES", "YES", "0", "0"};
     static const char *const label_columns[] = {
         "@@UPDATABLE_VIEWS_WITH_LIMIT",
         "@@Global.Updatable_Views_With_Limit",
@@ -136,6 +138,9 @@ static int test_updatable_views_with_limit_values_and_persistence(void) {
     };
     static const char *const warning_values[] = {"YES", "1", "0", "-1"};
     static const char *const error_values[] = {"YES", "1", "1", "-1"};
+    static const char *const show_variable_columns[] = {"Variable_name", "Value"};
+    static const char *const show_session_disabled_values[] = {"updatable_views_with_limit", "NO"};
+    static const char *const show_global_enabled_values[] = {"updatable_views_with_limit", "YES"};
     static const char *const selected_columns[] = {"@@updatable_views_with_limit", "DATABASE()"};
     static const char *const selected_values[] = {"YES", "app"};
     static const char *const table_columns[] = {"id"};
@@ -219,6 +224,101 @@ static int test_updatable_views_with_limit_values_and_persistence(void) {
     );
     mylite_result_free(result);
     result = NULL;
+
+    failures += execute_statement_ok(database, "SET SESSION updatable_views_with_limit=0");
+    failures += expect_query_result(
+        database,
+        "SELECT @@updatable_views_with_limit, @@global.updatable_views_with_limit, "
+        "@@session.updatable_views_with_limit, @@local.updatable_views_with_limit, "
+        "@@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = disabled_values,
+            .count = updatable_views_with_limit_value_column_count,
+            .context = "disabled updatable views with limit session value",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW VARIABLES LIKE 'updatable_views_with_limit'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_session_disabled_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show variables disabled updatable views with limit",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'updatable_views_with_limit'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_global_enabled_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show global variables updatable views with limit",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @updatable_views_with_limit=1");
+    failures += execute_statement_ok(
+        database,
+        "SET @@session.updatable_views_with_limit=@updatable_views_with_limit"
+    );
+    failures += expect_query_result(
+        database,
+        "SELECT @@updatable_views_with_limit, @@global.updatable_views_with_limit, "
+        "@@session.updatable_views_with_limit, @@local.updatable_views_with_limit, "
+        "@@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = enabled_values,
+            .count = updatable_views_with_limit_value_column_count,
+            .context = "enabled updatable views with limit user variable assignment",
+        }
+    );
+    failures += execute_statement_ok(database, "SET LOCAL updatable_views_with_limit=FALSE");
+    failures += expect_query_result(
+        database,
+        "SELECT @@updatable_views_with_limit, @@global.updatable_views_with_limit, "
+        "@@session.updatable_views_with_limit, @@local.updatable_views_with_limit, "
+        "@@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = disabled_values,
+            .count = updatable_views_with_limit_value_column_count,
+            .context = "local disabled updatable views with limit value",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @@updatable_views_with_limit=DEFAULT");
+    failures += expect_query_result(
+        database,
+        "SELECT @@updatable_views_with_limit, @@global.updatable_views_with_limit, "
+        "@@session.updatable_views_with_limit, @@local.updatable_views_with_limit, "
+        "@@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = enabled_values,
+            .count = updatable_views_with_limit_value_column_count,
+            .context = "default updatable views with limit value",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET GLOBAL updatable_views_with_limit=1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SET GLOBAL system variable assignment is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET @@global.updatable_views_with_limit=@updatable_views_with_limit",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SET GLOBAL system variable assignment is not supported",
+        }
+    );
 
     failures += execute_statement_ok(database, "SHOW PROCESSLIST");
     failures += execute_ok(
@@ -447,7 +547,7 @@ static int test_independent_updatable_views_with_limit_handles(void) {
         "@@warning_count",
         "@@error_count",
     };
-    static const char *const first_values[] = {"YES", "1", "0"};
+    static const char *const first_values[] = {"NO", "0", "0"};
     static const char *const second_values[] = {"YES", "0", "0"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
@@ -464,7 +564,7 @@ static int test_independent_updatable_views_with_limit_handles(void) {
         MYLITE_OK,
         "open second updatable views with limit handle"
     );
-    failures += execute_statement_ok(first, "SHOW PROCESSLIST");
+    failures += execute_statement_ok(first, "SET SESSION updatable_views_with_limit=0");
 
     failures += execute_ok(
         first,

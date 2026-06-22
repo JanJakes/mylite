@@ -132,6 +132,32 @@ expect_value \
     "NO	YES	NO	NO	0	0	0" \
     "$mutable_values"
 
+show_values=$(run_mysql \
+    "SET SESSION updatable_views_with_limit=0; \
+     SHOW VARIABLES LIKE 'updatable_views_with_limit'; \
+     SHOW GLOBAL VARIABLES LIKE 'updatable_views_with_limit'; \
+     SET SESSION updatable_views_with_limit=DEFAULT;" \
+    | tr '\n' '|')
+expect_value \
+    "mysql SHOW VARIABLES reflects session updatable_views_with_limit" \
+    "updatable_views_with_limit	NO|updatable_views_with_limit	YES|" \
+    "$show_values"
+
+set_values=$(run_mysql \
+    "SET @updatable_views_with_limit=1; \
+     SET @@session.updatable_views_with_limit=@updatable_views_with_limit; \
+     SELECT @@updatable_views_with_limit, @@warning_count, @@error_count, ROW_COUNT(); \
+     SET LOCAL updatable_views_with_limit=FALSE; \
+     SELECT @@updatable_views_with_limit, @@warning_count, @@error_count, ROW_COUNT(); \
+     SET @@updatable_views_with_limit=DEFAULT; \
+     SELECT @@updatable_views_with_limit, @@warning_count, @@error_count, ROW_COUNT();" \
+    | tail -n 3 \
+    | tr '\n' '|')
+expect_value \
+    "mysql updatable_views_with_limit accepts boolean session SET forms" \
+    "YES	0	0	0|NO	0	0	0|YES	0	0	0|" \
+    "$set_values"
+
 warning_values=$(run_mysql \
     "SELECT 1; SHOW PROCESSLIST; \
      SELECT @@updatable_views_with_limit, @@warning_count, @@error_count, ROW_COUNT(); \

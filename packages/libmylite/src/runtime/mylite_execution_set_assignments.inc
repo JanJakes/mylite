@@ -1083,6 +1083,15 @@ static const char *session_system_variable_override_show_value(
     if (!mylite_execution_system_variable_is_boolean_session_placeholder(kind)) {
         return value;
     }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT) {
+        if (strcmp(value, "1") == 0) {
+            return "YES";
+        }
+        if (strcmp(value, "0") == 0) {
+            return "NO";
+        }
+        return value;
+    }
     if (strcmp(value, "1") == 0) {
         return "ON";
     }

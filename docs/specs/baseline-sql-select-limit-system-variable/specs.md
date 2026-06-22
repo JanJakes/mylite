@@ -1,14 +1,16 @@
 # Baseline SQL Select Limit System Variable
 
-Status note: this earlier fixed-read slice is extended by
+Status note: this document records the original fixed-read slice. The current
+green baseline is completed by
 `docs/specs/baseline-mutable-sql-select-limit/specs.md`, which adds
-handle-local mutable session state and implicit top-level `SELECT` caps while
-keeping global state fixed.
+handle-local mutable session state, `SHOW VARIABLES`, supported `SET` forms,
+and implicit top-level `SELECT` caps while keeping global state fixed.
 
 ## Status
 
-This feature specifies a narrow scalar system-variable slice for
-`@@sql_select_limit`.
+This historical slice specifies the original narrow scalar system-variable
+readback for `@@sql_select_limit`. Current behavior is specified by the
+mutable extension linked above.
 
 It builds on the existing `SYSTEM_VARIABLE` lexer/parser token, scalar
 `SELECT` execution, diagnostics lifecycle, and descriptor-driven table read

@@ -30,6 +30,7 @@ enum {
     unique_independent_column_count = 3,
     mysql_error_parse = 1064,
     mysql_error_unknown_system_variable = 1193,
+    mysql_error_duplicate_key = 1062,
 };
 
 struct expected_sql_error {
@@ -100,6 +101,8 @@ static int test_unique_checks_values_and_persistence(void) {
         "ROW_COUNT()",
     };
     static const char *const value_values[] = {"1", "1", "1", "1", "0", "-1"};
+    static const char *const disabled_values[] = {"0", "1", "0", "0", "0", "0"};
+    static const char *const enabled_values[] = {"1", "1", "1", "1", "0", "0"};
     static const char *const label_columns[] = {
         "@@UNIQUE_CHECKS",
         "@@Global.Unique_Checks",
@@ -127,6 +130,9 @@ static int test_unique_checks_values_and_persistence(void) {
     };
     static const char *const warning_values[] = {"1", "1", "0", "-1"};
     static const char *const error_values[] = {"1", "1", "1", "-1"};
+    static const char *const show_variable_columns[] = {"Variable_name", "Value"};
+    static const char *const show_session_disabled_values[] = {"unique_checks", "OFF"};
+    static const char *const show_global_enabled_values[] = {"unique_checks", "ON"};
     static const char *const selected_columns[] = {"@@unique_checks", "DATABASE()"};
     static const char *const selected_values[] = {"1", "app"};
     static const char *const table_columns[] = {"id"};
@@ -206,6 +212,107 @@ static int test_unique_checks_values_and_persistence(void) {
     );
     mylite_result_free(result);
     result = NULL;
+
+    failures += execute_statement_ok(database, "SET SESSION unique_checks=0");
+    failures += expect_query_result(
+        database,
+        "SELECT @@unique_checks, @@global.unique_checks, "
+        "@@session.unique_checks, @@local.unique_checks, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = disabled_values,
+            .count = unique_value_column_count,
+            .context = "disabled unique checks session value",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW VARIABLES LIKE 'unique_checks'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_session_disabled_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show variables disabled unique checks",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'unique_checks'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_global_enabled_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show global variables unique checks",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @unique_checks_enabled=1");
+    failures +=
+        execute_statement_ok(database, "SET @@session.unique_checks=@unique_checks_enabled");
+    failures += expect_query_result(
+        database,
+        "SELECT @@unique_checks, @@global.unique_checks, "
+        "@@session.unique_checks, @@local.unique_checks, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = enabled_values,
+            .count = unique_value_column_count,
+            .context = "enabled unique checks user variable assignment",
+        }
+    );
+    failures += execute_statement_ok(database, "SET LOCAL unique_checks=FALSE");
+    failures += expect_query_result(
+        database,
+        "SELECT @@unique_checks, @@global.unique_checks, "
+        "@@session.unique_checks, @@local.unique_checks, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = disabled_values,
+            .count = unique_value_column_count,
+            .context = "local disabled unique checks value",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @@unique_checks=DEFAULT");
+    failures += expect_query_result(
+        database,
+        "SELECT @@unique_checks, @@global.unique_checks, "
+        "@@session.unique_checks, @@local.unique_checks, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = disabled_values,
+            .count = unique_value_column_count,
+            .context = "default unique checks preserves current value",
+        }
+    );
+    failures += execute_statement_ok(database, "SET SESSION unique_checks=1");
+    failures += expect_query_result(
+        database,
+        "SELECT @@unique_checks, @@global.unique_checks, "
+        "@@session.unique_checks, @@local.unique_checks, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = enabled_values,
+            .count = unique_value_column_count,
+            .context = "explicitly enabled unique checks value",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET GLOBAL unique_checks=1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SET GLOBAL system variable assignment is not supported",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET @@global.unique_checks=@unique_checks_enabled",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SET GLOBAL system variable assignment is not supported",
+        }
+    );
 
     failures += execute_statement_ok(database, "SHOW PROCESSLIST");
     failures += execute_ok(
@@ -301,6 +408,22 @@ static int test_unique_checks_values_and_persistence(void) {
             .context = "unique checks table DDL independence",
         }
     );
+    failures += execute_statement_ok(database, "SET SESSION unique_checks=0");
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE unique_checks_guard (id INT, UNIQUE KEY u_id (id))"
+    );
+    failures += execute_statement_ok(database, "INSERT INTO unique_checks_guard VALUES (1)");
+    failures += execute_error(
+        database,
+        "INSERT INTO unique_checks_guard VALUES (1)",
+        (struct expected_sql_error){
+            .code = mysql_error_duplicate_key,
+            .sqlstate = "23000",
+            .message_part = "Duplicate entry '1' for key 'unique_checks_guard.u_id'",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @@unique_checks=DEFAULT");
 
     mylite_close(database);
     database = NULL;
@@ -421,7 +544,7 @@ static int test_independent_unique_checks_handles(void) {
         "@@warning_count",
         "@@error_count",
     };
-    static const char *const first_values[] = {"1", "1", "0"};
+    static const char *const first_values[] = {"0", "0", "0"};
     static const char *const second_values[] = {"1", "0", "0"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
@@ -432,7 +555,7 @@ static int test_independent_unique_checks_handles(void) {
         expect_int(mylite_open_memory(&first), MYLITE_OK, "open first unique checks handle");
     failures +=
         expect_int(mylite_open_memory(&second), MYLITE_OK, "open second unique checks handle");
-    failures += execute_statement_ok(first, "SHOW PROCESSLIST");
+    failures += execute_statement_ok(first, "SET SESSION unique_checks=0");
 
     failures +=
         execute_ok(first, "SELECT @@unique_checks, @@warning_count, @@error_count", &result);

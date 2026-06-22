@@ -2,20 +2,20 @@
 
 ## Status
 
-This feature specifies a narrow scalar system-variable slice for
+This feature specifies a narrow session system-variable slice for
 `@@unique_checks`.
 
 It builds on the existing `SYSTEM_VARIABLE` lexer/parser token, scalar
-`SELECT` execution, diagnostics lifecycle, and MyLite's current no-index
-descriptor model. MySQL exposes `unique_checks` as mutable global and session
-state that can let storage engines relax secondary unique-index checking during
-bulk loads. MyLite does not implement unique indexes, index descriptors, or
-mutable system-variable assignment in the baseline yet, so this slice exposes
-only the default enabled scalar value.
+`SELECT` execution, `SHOW VARIABLES`, `SET` assignment, diagnostics lifecycle,
+and MyLite's descriptor-owned unique index support. MySQL exposes
+`unique_checks` as mutable global and session state that can let storage
+engines relax secondary unique-index checking during bulk loads. MyLite exposes
+the session variable state for compatibility, but keeps descriptor-owned
+primary-key and unique-index duplicate checks enabled.
 
-This is not unique-index support. It does not implement `SET unique_checks`,
-unique index DDL, duplicate-key enforcement, index metadata, optimizer changes,
-or bulk-load behavior changes.
+This is not unique-index support. It does not implement `SET GLOBAL
+unique_checks`, optimizer changes, import optimizations, or bulk-load behavior
+changes.
 
 ## Sources
 
@@ -50,6 +50,14 @@ records the runtime probes for this feature. Observed behavior:
   `SET SESSION unique_checks=0`, unscoped, `session`, and `local` reads return
   `0`, while `global` still returns `1`; resetting the session value to `1`
   restores the default.
+- `SHOW VARIABLES` reflects the current session value as `ON` or `OFF`, while
+  `SHOW GLOBAL VARIABLES` remains `ON`.
+- `SET @@session.unique_checks=@integer_user_variable`, `SET LOCAL
+  unique_checks=FALSE`, and `SET @@unique_checks=DEFAULT` are accepted; in
+  the observed runtime, `DEFAULT` preserves the current session value.
+- In the observed InnoDB target runtime, an immediate duplicate insert into a
+  unique secondary index is still rejected with `1062 / 23000` while
+  `unique_checks=0`.
 - Variable and scope names are case-insensitive.
 - Backtick-quoted final variable-name components are accepted.
 - Backtick-quoted scope names, such as ``@@`session`.unique_checks``, are
@@ -73,15 +81,22 @@ duplicate-key checks.
 
 The implementation must add:
 
-- runtime recognition of `unique_checks` inside the existing scalar `SELECT`
-  subset;
+- runtime recognition of `unique_checks` inside scalar `SELECT`, `SHOW
+  VARIABLES`, and `SET` paths;
 - support for no scope, `session`, `local`, and `global` scope qualifiers;
 - case-insensitive matching for unquoted scope and variable names;
 - backtick-quoted final variable-name components;
 - one-row scalar result sets with existing source-span column labels;
-- fixed value `1` for all supported scopes;
+- fixed global value `1`;
+- handle-local session/default/local values with default `1` and mutable
+  `1`/`0` readback;
+- session/local/unscoped `SET` forms for `DEFAULT`, Boolean literals, integer
+  `0`/`1`, and supported integer user variables, with `DEFAULT` preserving
+  the current session value;
+- limited `SHOW VARIABLES` and `SHOW GLOBAL VARIABLES` rows with session
+  `ON`/`OFF` display and fixed global `ON` display;
 - MySQL-compatible unknown-variable diagnostics for unsupported names;
-- deterministic rejection of quoted scopes;
+- deterministic rejection of quoted scopes and mutable global assignment;
 - fast C tests and a MySQL 8.4.9 expectation artifact.
 
 Supported SQL examples:
@@ -93,19 +108,25 @@ SELECT @@session.unique_checks, @@local.unique_checks
 SELECT @@global.unique_checks
 SELECT @@session.`unique_checks`, @@`unique_checks`
 SELECT @@unique_checks, @@warning_count, ROW_COUNT()
+SHOW VARIABLES LIKE 'unique_checks'
+SHOW GLOBAL VARIABLES LIKE 'unique_checks'
+SET SESSION unique_checks = 0
+SET LOCAL unique_checks = FALSE
+SET @@unique_checks = DEFAULT
+SET @@session.unique_checks = @enabled_flag
 ```
 
 ## Non-Goals
 
 This feature must not implement:
 
-- `SET`, startup options, persisted variables, `SET_VAR` hints, or mutable
-  global/session `unique_checks` state;
+- mutable global `unique_checks` state, startup options, persisted variables,
+  or `SET_VAR` hints;
 - variables other than `unique_checks`;
-- unique, primary-key, secondary-index, or constraint syntax;
-- index descriptors, index storage, duplicate-key checks, index metadata,
-  optimizer changes, import optimizations, or DDL behavior changes;
-- `SHOW VARIABLES` or Performance Schema variable tables;
+- changed primary-key, unique-index, secondary-index, or constraint syntax;
+- disabled descriptor-owned duplicate-key checks, optimizer changes, import
+  optimizations, or DDL behavior changes;
+- Performance Schema variable tables;
 - table-backed variable evaluation, aliases, clauses, subqueries, arithmetic,
   functions over variables, parameters, prepared statements, or arbitrary
   SQLite pass-through;
@@ -176,22 +197,24 @@ Runtime parses the raw token as a `@@` system variable:
   SQLSTATE `HY000`;
 - it preserves the original source text as the scalar result column label.
 
-For this slice, all scopes return the same fixed value. This is a deliberate
-MyLite limitation: descriptor-owned unique indexes remain always enforced and
-no mutable system-variable state exists.
+The global scope returns fixed `1`. Session, local, and unscoped reads return
+the current handle-local value, defaulting to `1`.
 
 ## Runtime Semantics
 
 The supported variable returns:
 
-| Variable | Value |
+| Context | Value |
 | --- | --- |
-| `unique_checks` | `1` |
+| scalar global read | `1` |
+| scalar session/local/unscoped read | `1` or `0` |
+| `SHOW GLOBAL VARIABLES` value | `ON` |
+| `SHOW VARIABLES` session value | `ON` or `OFF` |
 
-The value is independent of selected schema, close/reopen, table DDL, DML, and
-independent handles. It is a compatibility scalar only. It must not affect
-accepted or rejected DDL because unique-index syntax and descriptors remain out
-of scope.
+The session value is handle-local and non-persistent. It is independent of
+selected schema, close/reopen, table DDL, and DML. Descriptor-owned primary-key
+and unique-index duplicate checks remain enabled when the session value is
+`0`.
 
 Successful scalar reads:
 
@@ -204,6 +227,16 @@ Successful scalar reads:
 - follow existing scalar `SELECT` row-count behavior, so `ROW_COUNT()` after a
   successful scalar row result is `-1`.
 
+Successful supported `SET` forms:
+
+- update only the current handle-local session value;
+- preserve the current session value for `DEFAULT`, matching the observed
+  MySQL 8.4.9 behavior for this variable;
+- leave the global readback fixed at `1`;
+- produce `affected_rows == 0` and `warning_count == 0`;
+- clear prior diagnostics like other successful nondiagnostic statements;
+- do not mutate catalog or storage state.
+
 ## Diagnostics
 
 This slice uses existing diagnostics for:
@@ -211,19 +244,28 @@ This slice uses existing diagnostics for:
 - syntax errors, including quoted scopes and unsupported scalar-select
   clauses;
 - unknown system variables: error `1193`, SQLSTATE `HY000`;
+- unsupported mutable global assignment;
+- unsupported assignment value forms, including `NULL`, strings, decimal user
+  variables, and arbitrary expressions;
 - unsupported expressions such as arithmetic over system variables;
 - public API misuse through the existing execution/result API behavior;
 - allocation failures through existing MyLite allocation diagnostics.
 
-Supported reads of `@@unique_checks` do not emit warnings. This slice does not
-implement MySQL's mutable `SET SESSION unique_checks=...` surface, so
-assignment diagnostics and index side effects are out of scope.
+Supported reads and assignments of `@@unique_checks` do not emit warnings.
+Bulk-load optimization and index side effects are out of scope.
 
 ## Tests
 
 Tests must cover:
 
 - unscoped, `global`, `session`, and `local` forms;
+- fixed global `1` value and session/local/unscoped `1`/`0` readback;
+- session/local/unscoped `SET` assignment, `SHOW VARIABLES` readback, global
+  `SHOW VARIABLES` readback, `SET DEFAULT` current-value preservation,
+  user-variable assignment, explicit re-enable, and global assignment
+  rejection;
+- immediate duplicate-key enforcement remains active when the session value is
+  `0`;
 - case-insensitive names and scopes;
 - backtick-quoted final variable names;
 - quoted scope rejection;

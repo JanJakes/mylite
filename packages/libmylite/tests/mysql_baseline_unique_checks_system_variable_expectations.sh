@@ -130,6 +130,48 @@ expect_value \
     "0	1	0	0	0	0	0" \
     "$mutable_values"
 
+show_values=$(run_mysql \
+    "SET SESSION unique_checks=0; \
+     SHOW VARIABLES LIKE 'unique_checks'; \
+     SHOW GLOBAL VARIABLES LIKE 'unique_checks'; \
+     SET SESSION unique_checks=DEFAULT;" \
+    | tr '\n' '|')
+expect_value \
+    "mysql SHOW VARIABLES reflects session unique_checks" \
+    "unique_checks	OFF|unique_checks	ON|" \
+    "$show_values"
+
+set_values=$(run_mysql \
+    "SET @unique_checks_enabled=1; \
+     SET @@session.unique_checks=@unique_checks_enabled; \
+     SELECT @@unique_checks, @@warning_count, @@error_count, ROW_COUNT(); \
+     SET LOCAL unique_checks=FALSE; \
+     SELECT @@unique_checks, @@warning_count, @@error_count, ROW_COUNT(); \
+     SET @@unique_checks=DEFAULT; \
+     SELECT @@unique_checks, @@warning_count, @@error_count, ROW_COUNT(); \
+     SET SESSION unique_checks=1; \
+     SELECT @@unique_checks, @@warning_count, @@error_count, ROW_COUNT();" \
+    | tail -n 4 \
+    | tr '\n' '|')
+expect_value \
+    "mysql unique_checks accepts boolean session SET forms and preserves DEFAULT" \
+    "1	0	0	0|0	0	0	0|0	0	0	0|1	0	0	0|" \
+    "$set_values"
+
+run_mysql "DROP DATABASE IF EXISTS mylite_unique_checks_probe; \
+           CREATE DATABASE mylite_unique_checks_probe; \
+           USE mylite_unique_checks_probe; \
+           CREATE TABLE t (id INT, UNIQUE KEY u_id (id)); \
+           INSERT INTO t VALUES (1);" >/dev/null
+expect_error \
+    "mysql unique_checks off still rejects immediate unique duplicates" \
+    1062 \
+    23000 \
+    "Duplicate entry '1' for key 't.u_id'" \
+    "USE mylite_unique_checks_probe; SET SESSION unique_checks=0; INSERT INTO t VALUES (1);"
+run_mysql "DROP DATABASE IF EXISTS mylite_unique_checks_probe; SET SESSION unique_checks=DEFAULT;" \
+    >/dev/null
+
 warning_values=$(run_mysql \
     "SELECT 1; SHOW PROCESSLIST; \
      SELECT @@unique_checks, @@warning_count, @@error_count, ROW_COUNT(); \

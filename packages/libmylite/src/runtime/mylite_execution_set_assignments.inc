@@ -1527,7 +1527,12 @@ static int copy_set_session_placeholder_node_value(
         return MYLITE_ERROR;
     }
     if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
-        default_value = mylite_execution_system_variable_default_value(target->kind);
+        default_value = target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_UNIQUE_CHECKS
+                            ? session_system_variable_override_value(database, target->kind)
+                            : NULL;
+        if (default_value == NULL) {
+            default_value = mylite_execution_system_variable_default_value(target->kind);
+        }
         if (default_value == NULL) {
             set_runtime_error(database, "invalid SET DEFAULT placeholder system variable");
             return MYLITE_ERROR;

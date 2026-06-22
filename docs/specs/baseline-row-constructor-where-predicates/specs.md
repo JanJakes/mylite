@@ -96,5 +96,7 @@ Tests cover:
 
 This slice narrows the row-constructor and `WHERE` gaps for explicit
 descriptor-backed `ROW(...)` equality/null-safe-equality/inequality predicates.
-Parenthesized tuple predicates, tuple membership, row subqueries, and
-lexicographic tuple ordering remain documented gaps.
+The later
+[baseline row constructor table-backed comparisons](../baseline-row-constructor-table-backed-comparisons/specs.md)
+slice adds parenthesized tuple syntax and lexicographic ordering. Tuple
+membership and row subqueries remain documented gaps.

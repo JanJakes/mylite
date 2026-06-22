@@ -21,6 +21,7 @@ struct expected_literal_left_in_ast {
 struct expected_row_constructor_predicate_ast {
     const char *sql;
     enum mylite_sql_ast_operator expected_operator;
+    size_t expected_child_count;
 };
 
 static int test_query_expression_clause_placeholders(void);
@@ -53,10 +54,6 @@ static int test_query_expression_clause_placeholders(void) {
         {.sql = "SELECT a, COUNT(*) FROM t1 GROUP BY a HAVING a = b - 1",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT t1.a FROM t1 JOIN t2 ON t1.a = t2.b - 1",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "SELECT a FROM t1 WHERE (a,b) = (1,2)",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "SELECT a FROM t1 WHERE(a,b) = (1,2)",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT * FROM t1 WHERE f1->\"$.id\"= 5",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
@@ -149,31 +146,61 @@ static int test_query_expression_clause_placeholders(void) {
         expect_row_constructor_predicate_ast((struct expected_row_constructor_predicate_ast){
             .sql = "SELECT COUNT(*) FROM t1 WHERE ROW(1,2,'x')=ROW(a,b,c)",
             .expected_operator = MYLITE_SQL_AST_OPERATOR_EQUAL,
+            .expected_child_count = 3U,
         });
     failures +=
         expect_row_constructor_predicate_ast((struct expected_row_constructor_predicate_ast){
             .sql = "SELECT COUNT(*) FROM t1 WHERE ROW(1,2,'x')<=>ROW(a,b,c)",
             .expected_operator = MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL,
+            .expected_child_count = 3U,
         });
     failures +=
         expect_row_constructor_predicate_ast((struct expected_row_constructor_predicate_ast){
             .sql = "SELECT COUNT(*) FROM t1 WHERE ROW(1,2,'z')<>ROW(a,b,c)",
             .expected_operator = MYLITE_SQL_AST_OPERATOR_NOT_EQUAL,
+            .expected_child_count = 3U,
         });
     failures +=
         expect_row_constructor_predicate_ast((struct expected_row_constructor_predicate_ast){
             .sql = "SELECT COUNT(*) FROM t1 WHERE ROW(1,2,'z')!=ROW(a,b,c)",
             .expected_operator = MYLITE_SQL_AST_OPERATOR_NOT_EQUAL,
+            .expected_child_count = 3U,
         });
     failures +=
         expect_row_constructor_predicate_ast((struct expected_row_constructor_predicate_ast){
             .sql = "SELECT COUNT(*) FROM t1 WHERE ROW(1,2,NULL)<>ROW(a,b,c)",
             .expected_operator = MYLITE_SQL_AST_OPERATOR_NOT_EQUAL,
+            .expected_child_count = 3U,
         });
     failures +=
         expect_row_constructor_predicate_ast((struct expected_row_constructor_predicate_ast){
             .sql = "SELECT COUNT(*) FROM t1 WHERE ROW(1,2,NULL)<=>ROW(a,b,c)",
             .expected_operator = MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL,
+            .expected_child_count = 3U,
+        });
+    failures +=
+        expect_row_constructor_predicate_ast((struct expected_row_constructor_predicate_ast){
+            .sql = "SELECT a FROM t1 WHERE (a,b) = (1,2)",
+            .expected_operator = MYLITE_SQL_AST_OPERATOR_EQUAL,
+            .expected_child_count = 2U,
+        });
+    failures +=
+        expect_row_constructor_predicate_ast((struct expected_row_constructor_predicate_ast){
+            .sql = "SELECT a FROM t1 WHERE(a,b) <=> (1,NULL)",
+            .expected_operator = MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL,
+            .expected_child_count = 2U,
+        });
+    failures +=
+        expect_row_constructor_predicate_ast((struct expected_row_constructor_predicate_ast){
+            .sql = "SELECT COUNT(*) FROM t1 WHERE ROW(a,b)>ROW(1,2)",
+            .expected_operator = MYLITE_SQL_AST_OPERATOR_GREATER,
+            .expected_child_count = 2U,
+        });
+    failures +=
+        expect_row_constructor_predicate_ast((struct expected_row_constructor_predicate_ast){
+            .sql = "SELECT COUNT(*) FROM t1 WHERE (a,b) <= (3,4)",
+            .expected_operator = MYLITE_SQL_AST_OPERATOR_LESS_EQUAL,
+            .expected_child_count = 2U,
         });
     failures += expect_literal_left_between_ast((struct expected_literal_left_between_ast){
         .sql = "select f2 from t1 where '2001-04-10 12:34:56' between f2 and '01-05-01'",
@@ -316,8 +343,16 @@ static int expect_row_constructor_predicate_ast(
         MYLITE_SQL_AST_ROW_CONSTRUCTOR,
         "row-constructor right operand"
     );
-    failures += parser_test_expect_child_count(left_row, 3U, "left ROW operand child count");
-    failures += parser_test_expect_child_count(right_row, 3U, "right ROW operand child count");
+    failures += parser_test_expect_child_count(
+        left_row,
+        expected.expected_child_count,
+        "left ROW operand child count"
+    );
+    failures += parser_test_expect_child_count(
+        right_row,
+        expected.expected_child_count,
+        "right ROW operand child count"
+    );
     mylite_sql_parse_result_deinit(&result);
     return failures;
 }

@@ -511,14 +511,14 @@ static bool placeholder_scan_row_constructor_comparison_starts_at(
     size_t right_row_index = 0U;
     size_t right_right_paren_index = 0U;
 
-    if (!placeholder_scan_row_constructor_starts_at(scan, index, &left_right_paren_index)) {
+    if (!placeholder_scan_predicate_row_value_starts_at(scan, index, &left_right_paren_index)) {
         return false;
     }
     operator_index = left_right_paren_index + 1U;
     right_row_index = operator_index + 1U;
     if (right_row_index >= scan->token_count ||
         !placeholder_scan_token_is_row_constructor_comparison_operator(scan, operator_index) ||
-        !placeholder_scan_row_constructor_starts_at(
+        !placeholder_scan_predicate_row_value_starts_at(
             scan,
             right_row_index,
             &right_right_paren_index
@@ -536,6 +536,15 @@ static bool placeholder_scan_row_constructor_comparison_starts_at(
     return true;
 }
 
+static bool placeholder_scan_predicate_row_value_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    size_t *out_right_paren_index
+) {
+    return placeholder_scan_row_constructor_starts_at(scan, index, out_right_paren_index) ||
+           placeholder_scan_row_tuple_starts_at(scan, index, out_right_paren_index);
+}
+
 static bool placeholder_scan_token_is_row_constructor_comparison_operator(
     const struct placeholder_statement_scan *scan,
     size_t index
@@ -543,7 +552,11 @@ static bool placeholder_scan_token_is_row_constructor_comparison_operator(
     return placeholder_scan_token_text_equals(scan, index, "=") ||
            placeholder_scan_token_text_equals(scan, index, "<=>") ||
            placeholder_scan_token_text_equals(scan, index, "<>") ||
-           placeholder_scan_token_text_equals(scan, index, "!=");
+           placeholder_scan_token_text_equals(scan, index, "!=") ||
+           placeholder_scan_token_text_equals(scan, index, "<") ||
+           placeholder_scan_token_text_equals(scan, index, "<=") ||
+           placeholder_scan_token_text_equals(scan, index, ">") ||
+           placeholder_scan_token_text_equals(scan, index, ">=");
 }
 
 enum mylite_sql_parse_status mylite_sql_parser_try_parse_parenthesized_row_arithmetic_predicate_statement(
@@ -3146,10 +3159,12 @@ static enum mylite_sql_parse_status parse_row_arithmetic_subject_expression_toke
     struct mylite_sql_ast_node **out_expression
 ) {
     static const char do_text[] = "DO";
+    static const char row_text[] = "ROW";
     struct mylite_sql_parser_state state;
     struct mylite_sql_parser_token_history token_history = {0};
     void *parser = NULL;
     bool previous_token_was_dot = false;
+    bool inject_parenthesized_row_constructor = false;
     struct mylite_sql_ast_node *statement = NULL;
     struct mylite_sql_ast_node *expression_list = NULL;
     struct mylite_sql_ast_node *expression = NULL;
@@ -3158,6 +3173,14 @@ static enum mylite_sql_parse_status parse_row_arithmetic_subject_expression_toke
         .kind = MYLITE_SQL_TOKEN_KEYWORD,
         .text = do_text,
         .length = sizeof(do_text) - 1U,
+        .offset = scan == NULL || start_index >= scan->token_count
+                      ? 0U
+                      : scan->tokens[start_index].offset,
+    };
+    struct mylite_sql_token row_token = {
+        .kind = MYLITE_SQL_TOKEN_KEYWORD,
+        .text = row_text,
+        .length = sizeof(row_text) - 1U,
         .offset = scan == NULL || start_index >= scan->token_count
                       ? 0U
                       : scan->tokens[start_index].offset,
@@ -3184,6 +3207,8 @@ static enum mylite_sql_parse_status parse_row_arithmetic_subject_expression_toke
     if (parser == NULL) {
         return MYLITE_SQL_PARSE_NOMEM;
     }
+    inject_parenthesized_row_constructor =
+        placeholder_scan_row_tuple_starts_at(scan, start_index, NULL);
 
     status = feed_token_with_parser_token_override(
         config,
@@ -3194,6 +3219,17 @@ static enum mylite_sql_parse_status parse_row_arithmetic_subject_expression_toke
         &do_token,
         MYLITE_SQL_PARSE_DO
     );
+    if (status == MYLITE_SQL_PARSE_OK && inject_parenthesized_row_constructor) {
+        status = feed_token_with_parser_token_override(
+            config,
+            parser,
+            &state,
+            &token_history,
+            &previous_token_was_dot,
+            &row_token,
+            MYLITE_SQL_PARSE_ROW
+        );
+    }
     for (size_t index = start_index; status == MYLITE_SQL_PARSE_OK && index <= end_index; ++index) {
         status = feed_row_arithmetic_subject_expression_token(
             config,

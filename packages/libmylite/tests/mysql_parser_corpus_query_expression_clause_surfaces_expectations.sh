@@ -76,6 +76,8 @@ esac
 cleanup
 run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE}; "\
 "CREATE TABLE t1 (a INT, b INT, c VARCHAR(20), j JSON, col_varchar_10 VARCHAR(10)); "\
+"CREATE TABLE t_tuple (a INT, b INT, c VARCHAR(20)); "\
+"CREATE TABLE t_dml (a INT, b INT, c VARCHAR(20)); "\
 "CREATE TABLE t2 (a INT, b INT, c2 DATE, c3 TIME, c4 TIMESTAMP NULL, "\
 "pk INT, col_int_key INT, col_varchar_10_key VARCHAR(10)); "\
 "CREATE TABLE t (u INT); "\
@@ -85,6 +87,8 @@ run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE}; "\
 "CREATE TABLE v1 (f1 DATE); "\
 "INSERT INTO t1 VALUES (1,2,'x','{\"id\":5,\"name\":\"James\"}','k1'),"\
 "(3,4,'y','{\"id\":7,\"name\":\"james\"}','k2'); "\
+"INSERT INTO t_tuple VALUES (1,2,'x'),(1,NULL,'n'),(3,4,'y'); "\
+"INSERT INTO t_dml VALUES (1,2,'x'),(3,4,'y'),(5,6,'z'); "\
 "INSERT INTO t2 VALUES (1,20,'2014-01-03','01:01:03','2014-01-03 01:01:01',"\
 "1,10,'k1'),"\
 "(3,40,'2014-02-01','02:00:00','2014-02-01 01:01:01',0,20,'k2'); "\
@@ -125,6 +129,11 @@ expect_output \
     "row tuple comparison" \
     "1" \
     "USE ${DATABASE}; SELECT a FROM t1 WHERE (a,b) = (1,2);"
+
+expect_output \
+    "row tuple null-safe comparison" \
+    "0" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE(a,b) <=> (1,NULL);"
 
 expect_output \
     "postfix IS predicate" \
@@ -226,6 +235,73 @@ expect_output \
     "row constructor null-safe NULL comparison" \
     "0" \
     "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE ROW(1,2,NULL)<=>ROW(a,b,c);"
+
+expect_output \
+    "parenthesized row tuple inequality comparison" \
+    "1" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE (a,b) <> (1,2);"
+
+expect_output \
+    "row constructor greater comparison" \
+    "1" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE ROW(a,b) > ROW(1,2);"
+
+expect_output \
+    "row constructor greater-equal comparison" \
+    "2" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE ROW(a,b) >= ROW(1,2);"
+
+expect_output \
+    "row constructor less comparison" \
+    "1" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE ROW(a,b) < ROW(3,4);"
+
+expect_output \
+    "parenthesized row tuple less-equal comparison" \
+    "2" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE (a,b) <= (3,4);"
+
+expect_output \
+    "literal-left row constructor order comparison" \
+    "1" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t1 WHERE ROW(1,3) > ROW(a,b);"
+
+expect_output \
+    "row constructor NULL null-safe comparison" \
+    "1" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t_tuple WHERE ROW(a,b) <=> ROW(1,NULL);"
+
+expect_output \
+    "row constructor NULL equality comparison" \
+    "0" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t_tuple WHERE ROW(a,b) = ROW(1,NULL);"
+
+expect_output \
+    "row constructor NULL inequality comparison" \
+    "1" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t_tuple WHERE ROW(a,b) <> ROW(1,NULL);"
+
+expect_output \
+    "row constructor NULL order comparison" \
+    "1" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t_tuple WHERE ROW(a,b) > ROW(1,2);"
+
+expect_output \
+    "row constructor NULL inclusive order comparison" \
+    "0" \
+    "USE ${DATABASE}; SELECT COUNT(*) FROM t_tuple WHERE ROW(a,b) <= ROW(1,NULL);"
+
+expect_output \
+    "row constructor UPDATE predicate" \
+    "2" \
+    "USE ${DATABASE}; UPDATE t_dml SET c = 'hit' WHERE (a,b) >= (3,4); "\
+"SELECT COUNT(*) FROM t_dml WHERE c = 'hit';"
+
+expect_output \
+    "row constructor DELETE predicate" \
+    "2" \
+    "USE ${DATABASE}; DELETE FROM t_dml WHERE ROW(a,b) < ROW(3,4); "\
+"SELECT COUNT(*) FROM t_dml;"
 
 expect_error \
     "row constructor arity mismatch predicate" \

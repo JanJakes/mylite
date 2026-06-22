@@ -151,6 +151,11 @@ static bool placeholder_scan_row_constructor_comparison_starts_at(
     size_t index,
     struct row_constructor_predicate_scan *out_predicate_scan
 );
+static bool placeholder_scan_predicate_row_value_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    size_t *out_right_paren_index
+);
 static bool placeholder_scan_token_is_row_constructor_comparison_operator(
     const struct placeholder_statement_scan *scan,
     size_t index

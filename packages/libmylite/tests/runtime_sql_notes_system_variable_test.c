@@ -100,6 +100,8 @@ static int test_sql_notes_values_and_persistence(void) {
         "ROW_COUNT()",
     };
     static const char *const value_values[] = {"1", "1", "1", "1", "0", "-1"};
+    static const char *const disabled_values[] = {"0", "1", "0", "0", "0", "0"};
+    static const char *const enabled_values[] = {"1", "1", "1", "1", "0", "0"};
     static const char *const label_columns[] = {
         "@@SQL_NOTES",
         "@@Global.Sql_Notes",
@@ -144,6 +146,9 @@ static int test_sql_notes_values_and_persistence(void) {
     };
     static const char *const warning_values[] = {"1", "1", "0", "-1"};
     static const char *const error_values[] = {"1", "1", "1", "-1"};
+    static const char *const show_variable_columns[] = {"Variable_name", "Value"};
+    static const char *const show_session_disabled_values[] = {"sql_notes", "OFF"};
+    static const char *const show_global_enabled_values[] = {"sql_notes", "ON"};
     static const char *const selected_columns[] = {"@@sql_notes", "DATABASE()"};
     static const char *const selected_values[] = {"1", "app"};
     static const char *const table_columns[] = {"id", "score"};
@@ -225,6 +230,63 @@ static int test_sql_notes_values_and_persistence(void) {
     );
     mylite_result_free(result);
     result = NULL;
+
+    failures += execute_statement_ok(database, "SET SESSION sql_notes=0");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_notes, @@global.sql_notes, "
+        "@@session.sql_notes, @@local.sql_notes, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = disabled_values,
+            .count = sql_notes_value_column_count,
+            .context = "disabled sql notes session value",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW VARIABLES LIKE 'sql_notes'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_session_disabled_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show variables disabled sql notes",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'sql_notes'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_global_enabled_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show global variables sql notes",
+        }
+    );
+    failures += execute_statement_ok(database, "SET LOCAL sql_notes=TRUE");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_notes, @@global.sql_notes, "
+        "@@session.sql_notes, @@local.sql_notes, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = enabled_values,
+            .count = sql_notes_value_column_count,
+            .context = "local enabled sql notes value",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @@sql_notes=DEFAULT");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_notes, @@global.sql_notes, "
+        "@@session.sql_notes, @@local.sql_notes, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = enabled_values,
+            .count = sql_notes_value_column_count,
+            .context = "default enabled sql notes value",
+        }
+    );
 
     failures += execute_statement_ok(database, "SHOW PROCESSLIST");
     failures += execute_ok(
@@ -322,6 +384,26 @@ static int test_sql_notes_values_and_persistence(void) {
             .context = "sql notes table DDL independence",
         }
     );
+    failures += execute_statement_ok(database, "SET SESSION sql_notes=0");
+    failures += execute_ok(database, "DROP TABLE IF EXISTS suppressed_note", &result);
+    failures += expect_size(
+        mylite_result_warning_count(result),
+        0U,
+        "sql notes suppressed result warning count"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_show_count_warnings(database, "0", "sql notes suppressed show count");
+    failures += execute_statement_ok(database, "SET SESSION sql_notes=DEFAULT");
+    failures += execute_ok(database, "DROP TABLE IF EXISTS visible_note", &result);
+    failures += expect_size(
+        mylite_result_warning_count(result),
+        1U,
+        "sql notes restored result warning count"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_show_count_warnings(database, "1", "sql notes restored show count");
 
     mylite_close(database);
     database = NULL;
@@ -442,7 +524,7 @@ static int test_independent_sql_notes_handles(void) {
         "@@warning_count",
         "@@error_count",
     };
-    static const char *const first_values[] = {"1", "1", "0"};
+    static const char *const first_values[] = {"0", "0", "0"};
     static const char *const second_values[] = {"1", "0", "0"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
@@ -451,7 +533,7 @@ static int test_independent_sql_notes_handles(void) {
 
     failures += expect_int(mylite_open_memory(&first), MYLITE_OK, "open first sql notes handle");
     failures += expect_int(mylite_open_memory(&second), MYLITE_OK, "open second sql notes handle");
-    failures += execute_statement_ok(first, "SHOW PROCESSLIST");
+    failures += execute_statement_ok(first, "SET SESSION sql_notes=0");
 
     failures += execute_ok(first, "SELECT @@sql_notes, @@warning_count, @@error_count", &result);
     failures += expect_result(

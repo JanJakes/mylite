@@ -100,6 +100,7 @@ static int test_sql_buffer_result_values_and_persistence(void) {
         "ROW_COUNT()",
     };
     static const char *const value_values[] = {"0", "0", "0", "0", "0", "-1"};
+    static const char *const set_value_values[] = {"1", "0", "1", "1", "0", "0"};
     static const char *const label_columns[] = {
         "@@SQL_BUFFER_RESULT",
         "@@Global.Sql_Buffer_Result",
@@ -147,7 +148,10 @@ static int test_sql_buffer_result_values_and_persistence(void) {
     static const char *const warning_values[] = {"0", "1", "0", "-1"};
     static const char *const error_values[] = {"0", "1", "1", "-1"};
     static const char *const selected_columns[] = {"@@sql_buffer_result", "DATABASE()"};
-    static const char *const selected_values[] = {"0", "app"};
+    static const char *const selected_values[] = {"1", "app"};
+    static const char *const show_variable_columns[] = {"Variable_name", "Value"};
+    static const char *const show_session_values[] = {"sql_buffer_result", "ON"};
+    static const char *const show_global_values[] = {"sql_buffer_result", "OFF"};
     static const char *const table_columns[] = {"id", "score"};
     static const char *const table_values[] = {"2", "20"};
     char path[test_path_capacity];
@@ -297,6 +301,40 @@ static int test_sql_buffer_result_values_and_persistence(void) {
         expected_preamble,
         sizeof(expected_preamble),
         "preamble after sql buffer result reads"
+    );
+
+    failures += execute_statement_ok(database, "SET SESSION sql_buffer_result=1");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_buffer_result, @@global.sql_buffer_result, "
+        "@@session.sql_buffer_result, @@local.sql_buffer_result, @@warning_count, "
+        "ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_value_values,
+            .count = sql_buffer_result_value_column_count,
+            .context = "set sql buffer result values",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW VARIABLES LIKE 'sql_buffer_result'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_session_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show session sql buffer result value",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'sql_buffer_result'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_global_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show global sql buffer result value",
+        }
     );
 
     failures += execute_statement_ok(database, "CREATE DATABASE app");
@@ -458,7 +496,7 @@ static int test_independent_sql_buffer_result_handles(void) {
         "@@warning_count",
         "@@error_count",
     };
-    static const char *const first_values[] = {"0", "1", "0"};
+    static const char *const first_values[] = {"1", "1", "0"};
     static const char *const second_values[] = {"0", "0", "0"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
@@ -469,6 +507,7 @@ static int test_independent_sql_buffer_result_handles(void) {
         expect_int(mylite_open_memory(&first), MYLITE_OK, "open first sql buffer result handle");
     failures +=
         expect_int(mylite_open_memory(&second), MYLITE_OK, "open second sql buffer result handle");
+    failures += execute_statement_ok(first, "SET SESSION sql_buffer_result=1");
     failures += execute_statement_ok(first, "SHOW PROCESSLIST");
 
     failures +=

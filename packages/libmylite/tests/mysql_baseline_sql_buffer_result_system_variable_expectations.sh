@@ -130,6 +130,17 @@ expect_value \
     "1	0	1	1	0	0	0" \
     "$mutable_values"
 
+show_mutable_values=$(run_mysql \
+    "SET SESSION sql_buffer_result=1; \
+     SHOW VARIABLES LIKE 'sql_buffer_result'; \
+     SHOW GLOBAL VARIABLES LIKE 'sql_buffer_result'; \
+     SET SESSION sql_buffer_result=DEFAULT;" \
+    | tr '\n' '|')
+expect_value \
+    "mysql SHOW VARIABLES reflects session sql_buffer_result" \
+    "sql_buffer_result	ON|sql_buffer_result	OFF|" \
+    "$show_mutable_values"
+
 warning_values=$(run_mysql \
     "SELECT 1; SHOW PROCESSLIST; \
      SELECT @@sql_buffer_result, @@warning_count, @@error_count, ROW_COUNT(); \

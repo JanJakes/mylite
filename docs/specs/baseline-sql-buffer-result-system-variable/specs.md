@@ -2,19 +2,19 @@
 
 ## Status
 
-This feature specifies a narrow scalar system-variable slice for
+This feature specifies the baseline session-variable slice for
 `@@sql_buffer_result`.
 
 It builds on the existing `SYSTEM_VARIABLE` lexer/parser token, scalar
-`SELECT` execution, diagnostics lifecycle, and descriptor-driven table read
-paths. MySQL exposes `sql_buffer_result` as mutable global and session state
-that forces `SELECT` results into temporary tables. MyLite does not implement
-mutable system-variable assignment or MySQL server-side result buffering in
-the baseline yet, so this slice exposes only the default disabled scalar
-value.
+`SELECT` execution, generic Boolean session-variable assignment, diagnostics
+lifecycle, `SHOW VARIABLES`, and descriptor-driven table read paths. MySQL
+exposes `sql_buffer_result` as mutable global and session state that forces
+`SELECT` results into temporary tables. MyLite implements the embedded
+compatibility baseline: session `SET`/readback and `SHOW VARIABLES` state,
+fixed global default `OFF`, and no changed query execution.
 
-This is not result-buffering support. It does not implement
-`SET sql_buffer_result`, mutable global/session state, temporary result table
+This is not physical result-buffering support. It does not implement
+server-global mutation, persisted startup state, temporary result table
 materialization, lock-release behavior, optimizer effects, or protocol changes.
 
 ## Sources
@@ -67,11 +67,11 @@ records the runtime probes for this feature. Observed behavior:
   slice.
 
 The official MySQL system-variable documentation classifies
-`sql_buffer_result` as a dynamic boolean variable with global and session
+`sql_buffer_result` as a dynamic Boolean variable with global and session
 scope and default value `OFF`. When enabled, MySQL materializes `SELECT`
 results into temporary tables so table locks can be released earlier. MyLite
-returns the fixed default disabled value `0`, so this slice does not alter
-query execution.
+records the session value but leaves descriptor-backed `SELECT` execution
+unchanged in the embedded baseline.
 
 ## Scope
 
@@ -80,10 +80,14 @@ The implementation must add:
 - runtime recognition of `sql_buffer_result` inside the existing scalar
   `SELECT` subset;
 - support for no scope, `session`, `local`, and `global` scope qualifiers;
+- session `SET sql_buffer_result = 0|1|ON|OFF|TRUE|FALSE|DEFAULT` handling
+  through the existing Boolean system-variable override path;
+- `SHOW VARIABLES` and `SHOW GLOBAL VARIABLES` values for the session/global
+  baseline;
 - case-insensitive matching for unquoted scope and variable names;
 - backtick-quoted final variable-name components;
 - one-row scalar result sets with existing source-span column labels;
-- fixed value `0` for all supported scopes;
+- fixed global value `0` and session-local values that default to `0`;
 - MySQL-compatible unknown-variable diagnostics for unsupported names;
 - deterministic rejection of quoted scopes;
 - fast C tests and a MySQL 8.4.9 expectation artifact.
@@ -97,20 +101,23 @@ SELECT @@session.sql_buffer_result, @@local.sql_buffer_result
 SELECT @@global.sql_buffer_result
 SELECT @@session.`sql_buffer_result`, @@`sql_buffer_result`
 SELECT @@sql_buffer_result, @@warning_count, ROW_COUNT()
+SET SESSION sql_buffer_result = 1
+SHOW VARIABLES LIKE 'sql_buffer_result'
+SHOW GLOBAL VARIABLES LIKE 'sql_buffer_result'
 ```
 
 ## Non-Goals
 
 This feature must not implement:
 
-- `SET`, startup options, persisted variables, `SET_VAR` hints, or mutable
-  global/session `sql_buffer_result` state;
+- startup options, persisted variables, `SET_VAR` hints, or mutable
+  server-global `sql_buffer_result` state;
 - temporary result table materialization, server cursor buffering,
   lock-release behavior, optimizer effects, memory/disk spill policy, or
   protocol changes;
 - variables other than `sql_buffer_result`;
 - changed descriptor-backed `SELECT` result production;
-- `SHOW VARIABLES` or Performance Schema variable tables;
+- Performance Schema variable tables;
 - table-backed variable evaluation, aliases, clauses, subqueries, arithmetic,
   functions over variables, parameters, prepared statements, or arbitrary
   SQLite pass-through;
@@ -128,10 +135,10 @@ This feature must not implement:
 - Lexer/parser/AST own syntax admission and source spans for
   `SYSTEM_VARIABLE` expressions. No new grammar is needed beyond the existing
   `expression ::= SYSTEM_VARIABLE` rule.
-- Runtime execution owns system-variable path parsing, scope validation, fixed
-  value selection, and diagnostics for unsupported names.
-- Descriptor-driven `SELECT` execution remains unchanged because the fixed
-  value is disabled and no mutable `sql_buffer_result` state exists.
+- Runtime execution owns system-variable path parsing, scope validation,
+  session/global value selection, and diagnostics for unsupported names.
+- Descriptor-driven `SELECT` execution remains unchanged because the embedded
+  baseline does not materialize server-side temporary result tables.
 - The catalog remains authoritative for descriptors. This variable slice does
   not affect table lifecycle or query planning.
 - Result builder owns scalar result column labels and one-row text values.
@@ -183,21 +190,24 @@ Runtime parses the raw token as a `@@` system variable:
   SQLSTATE `HY000`;
 - it preserves the original source text as the scalar result column label.
 
-For this slice, all scopes return the same fixed value. This is a deliberate
-MyLite limitation: no mutable `sql_buffer_result` state exists yet.
+For this slice, global scope returns the fixed embedded default `0`. Unscoped,
+`session`, and `local` scope read the current session override when one exists,
+and otherwise return `0`.
 
 ## Runtime Semantics
 
 The supported variable returns:
 
-| Variable | Value |
+| Scope | Value |
 | --- | --- |
-| `sql_buffer_result` | `0` |
+| Global | fixed `0` |
+| Session/local/unscoped default | `0` |
+| Session/local/unscoped after `SET SESSION sql_buffer_result = 1` | `1` |
 
-The value is independent of selected schema, close/reopen, table DDL, DML, and
-independent handles. It is a compatibility scalar only. Because the fixed
-value is disabled, existing descriptor-driven `SELECT` behavior must not
-change.
+The session value is independent per handle and resets on close/reopen.
+Existing descriptor-driven `SELECT` behavior must not change: enabling the
+variable records compatibility state but does not force temporary result-table
+materialization or alter row production.
 
 Successful scalar reads:
 
@@ -221,16 +231,18 @@ This slice uses existing diagnostics for:
 - public API misuse through the existing execution/result API behavior;
 - allocation failures through existing MyLite allocation diagnostics.
 
-Supported reads of `@@sql_buffer_result` do not emit warnings. This slice does
-not implement MySQL's mutable `SET SESSION sql_buffer_result=...` surface, so
-assignment diagnostics and result-buffering side effects are out of scope.
+Supported reads and session assignments of `@@sql_buffer_result` do not emit
+warnings. Unsupported global assignment uses the existing embedded
+global-variable diagnostic path, and physical result-buffering effects remain
+out of scope.
 
 ## Tests
 
 Tests must cover:
 
 - unscoped, `global`, `session`, and `local` forms;
-- fixed `0` value for all supported scopes;
+- default `0` values, mutable session values, fixed global `0`, and
+  close/reopen reset behavior;
 - case-insensitive names and scopes;
 - backtick-quoted final variable names;
 - quoted scope rejection;
@@ -239,20 +251,20 @@ Tests must cover:
 - mixed scalar reads with existing diagnostics, charset, engine, autocommit,
   quote-control, foreign-key-check, unique-check, updatable-view,
   safe-updates, select-limit, notes, warning-reporting, and version variables;
+- session and global `SHOW VARIABLES` rows after session assignment;
 - diagnostics read-and-clear behavior after warnings and errors;
 - unknown unscoped and scoped variable names;
 - unsupported wider expressions;
-- selected schema, close/reopen, table DDL, DML, and independent handles do not
-  change the fixed value;
+- selected schema, table DDL, DML, and independent handles do not leak session
+  state;
 - representative descriptor-backed `SELECT` statements still return normal
-  result rows;
+  result rows while the session value is enabled;
 - `.mylite` preamble preservation and unchanged catalog/SQLite generation after
   variable reads;
 - existing parser/runtime/system-variable and table lifecycle tests still pass.
 
 The MySQL expectation script verifies the MySQL 8.4.9 reference behavior for
-the supported SQL forms and explicitly records mutable result-buffering
-behavior that this slice leaves unsupported.
+the supported SQL forms, session mutability, and `SHOW VARIABLES` readback.
 
 ## Compatibility Documentation
 
@@ -262,6 +274,6 @@ Update:
 - `docs/compatibility/runtime-system-variables.md`;
 - `docs/compatibility/sql-query-expressions.md`.
 
-Do not overclaim mutable system variables, `SET`, `SHOW VARIABLES`,
-temporary result tables, lock-release behavior, optimizer effects, or changed
-descriptor-backed `SELECT` behavior.
+Do not overclaim server-global mutation, persisted state, Performance Schema
+variable tables, physical result buffering, lock-release behavior, optimizer
+effects, or changed descriptor-backed `SELECT` behavior.

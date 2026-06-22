@@ -312,7 +312,6 @@ static int test_set_fixed_system_variables_success_and_file_safety(void) {
 static int test_set_fixed_system_variables_diagnostics(void) {
     static const char *const diagnostic_values[] = {"1", "1", "-1"};
     static const char *const sql_warnings_on[] = {"1"};
-    static const char *const explicit_defaults_off[] = {"0"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -541,18 +540,24 @@ static int test_set_fixed_system_variables_diagnostics(void) {
             .context = "mutable sql_warnings readback",
         }
     );
-    failures += expect_set_ok(database, "SET explicit_defaults_for_timestamp = OFF");
-    failures += expect_query_values(
+    failures += execute_error(
         database,
-        (struct expected_query){
-            .sql = "SELECT @@explicit_defaults_for_timestamp",
-            .values = explicit_defaults_off,
-            .column_count = 1U,
-            .row_count = 1U,
-            .context = "mutable explicit_defaults_for_timestamp readback",
+        "SET explicit_defaults_for_timestamp = OFF",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SET supports only fixed no-op system variable assignments",
         }
     );
-    failures += expect_set_ok(database, "SET explicit_defaults_for_timestamp = 0");
+    failures += execute_error(
+        database,
+        "SET explicit_defaults_for_timestamp = 0",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SET supports only fixed no-op system variable assignments",
+        }
+    );
     failures += execute_error(
         database,
         "SET sql_mode = 'BOGUS'",

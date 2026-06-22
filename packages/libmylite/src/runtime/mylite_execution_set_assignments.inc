@@ -134,6 +134,9 @@ static int apply_set_system_variable_assignment(
         set_unsupported_error(database, "SET GLOBAL system variable assignment is not supported");
         return MYLITE_ERROR;
     }
+    if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP) {
+        return validate_set_fixed_boolean_value(database, value_node, true);
+    }
     if (mylite_execution_system_variable_is_session_placeholder(target.kind)) {
         return apply_set_session_placeholder_system_variable_value(database, &target, value_node);
     }
@@ -157,8 +160,7 @@ static int apply_set_system_variable_assignment(
     return MYLITE_ERROR;
 }
 
-static bool set_system_variable_target_is_read_only(
-    enum mylite_execution_system_variable_kind kind
+static bool set_system_variable_target_is_read_only(enum mylite_execution_system_variable_kind kind
 ) {
     return kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM ||
            kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES ||
@@ -1058,8 +1060,8 @@ static const char *session_system_variable_override_value(
     const struct mylite_db *database,
     enum mylite_execution_system_variable_kind kind
 ) {
-    struct mylite_session_state *session = (struct mylite_session_state *)
-        (database == NULL ? NULL : &database->session);
+    struct mylite_session_state *session =
+        (struct mylite_session_state *)(database == NULL ? NULL : &database->session);
     struct mylite_session_system_variable_override *override =
         find_session_system_variable_override(session, kind);
 
@@ -1125,10 +1127,8 @@ static int ensure_session_system_variable_override_capacity(struct mylite_db *da
         return MYLITE_NOMEM;
     }
 
-    overrides = (struct mylite_session_system_variable_override *)realloc(
-        session->system_variable_overrides,
-        new_capacity * sizeof(*overrides)
-    );
+    overrides = (struct mylite_session_system_variable_override *)
+        realloc(session->system_variable_overrides, new_capacity * sizeof(*overrides));
     if (overrides == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -1463,7 +1463,13 @@ static int apply_set_session_placeholder_system_variable_cell_value(
         return MYLITE_ERROR;
     }
     if (mylite_execution_system_variable_is_boolean_session_placeholder(target->kind)) {
-        rc = parse_set_big_tables_cell_value(database, target->name, value, value_kind, &boolean_value);
+        rc = parse_set_big_tables_cell_value(
+            database,
+            target->name,
+            value,
+            value_kind,
+            &boolean_value
+        );
         if (rc != MYLITE_OK) {
             return rc;
         }

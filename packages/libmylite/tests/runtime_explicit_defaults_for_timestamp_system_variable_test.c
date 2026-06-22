@@ -100,6 +100,7 @@ static int test_explicit_defaults_for_timestamp_values_and_persistence(void) {
         "ROW_COUNT()",
     };
     static const char *const value_values[] = {"1", "1", "1", "1", "0", "-1"};
+    static const char *const set_values[] = {"1", "1", "1", "1", "0", "0"};
     static const char *const label_columns[] = {
         "@@EXPLICIT_DEFAULTS_FOR_TIMESTAMP",
         "@@Global.Explicit_Defaults_For_Timestamp",
@@ -144,6 +145,8 @@ static int test_explicit_defaults_for_timestamp_values_and_persistence(void) {
         "@@error_count",
         "ROW_COUNT()",
     };
+    static const char *const show_variable_columns[] = {"Variable_name", "Value"};
+    static const char *const show_variable_values[] = {"explicit_defaults_for_timestamp", "ON"};
     static const char *const warning_values[] = {"1", "1", "0", "-1"};
     static const char *const error_values[] = {"1", "1", "1", "-1"};
     static const char *const selected_columns[] = {
@@ -236,6 +239,99 @@ static int test_explicit_defaults_for_timestamp_values_and_persistence(void) {
     );
     mylite_result_free(result);
     result = NULL;
+
+    failures += expect_query_result(
+        database,
+        "SHOW VARIABLES LIKE 'explicit_defaults_for_timestamp'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_variable_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show variables explicit defaults for timestamp",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'explicit_defaults_for_timestamp'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_variable_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show global variables explicit defaults for timestamp",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW SESSION VARIABLES WHERE Variable_name = 'explicit_defaults_for_timestamp'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_variable_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show session variables where explicit defaults for timestamp",
+        }
+    );
+    failures += execute_statement_ok(database, "SET explicit_defaults_for_timestamp=DEFAULT");
+    failures += execute_statement_ok(database, "SET SESSION explicit_defaults_for_timestamp=ON");
+    failures += execute_statement_ok(database, "SET LOCAL explicit_defaults_for_timestamp=TRUE");
+    failures += execute_statement_ok(database, "SET @@session.explicit_defaults_for_timestamp=1");
+    failures += expect_query_result(
+        database,
+        "SELECT @@explicit_defaults_for_timestamp, @@global.explicit_defaults_for_timestamp, "
+        "@@session.explicit_defaults_for_timestamp, @@local.explicit_defaults_for_timestamp, "
+        "@@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_values,
+            .count = explicit_defaults_for_timestamp_value_column_count,
+            .context = "explicit defaults for timestamp no-op set values",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET SESSION explicit_defaults_for_timestamp=OFF",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SET supports only fixed no-op system variable assignments",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET LOCAL explicit_defaults_for_timestamp=FALSE",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SET supports only fixed no-op system variable assignments",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET @@session.explicit_defaults_for_timestamp=0",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SET supports only fixed no-op system variable assignments",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET GLOBAL explicit_defaults_for_timestamp=ON",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SET GLOBAL system variable assignment is not supported",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @explicit_defaults_for_timestamp_on=1");
+    failures += execute_error(
+        database,
+        "SET @@global.explicit_defaults_for_timestamp=@explicit_defaults_for_timestamp_on",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SET GLOBAL system variable assignment is not supported",
+        }
+    );
 
     failures += execute_statement_ok(database, "SHOW PROCESSLIST");
     failures += execute_ok(

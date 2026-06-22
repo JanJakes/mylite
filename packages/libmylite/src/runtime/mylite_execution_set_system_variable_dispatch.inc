@@ -56,6 +56,16 @@ static int apply_set_system_variable_cell_value(
     if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_BIG_TABLES) {
         return apply_set_big_tables_cell_value(database, target, value, value_kind);
     }
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP) {
+        if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+            set_unsupported_error(
+                database,
+                "SET GLOBAL system variable assignment is not supported"
+            );
+            return MYLITE_ERROR;
+        }
+        return apply_set_fixed_boolean_system_variable_cell_value(database, target, value, true);
+    }
     if (mylite_execution_system_variable_is_session_placeholder(target->kind)) {
         return apply_set_session_placeholder_system_variable_cell_value(
             database,
@@ -102,7 +112,10 @@ static int apply_set_log_bin_trust_function_creators_cell_value(
         return rc;
     }
     if (boolean_value) {
-        set_unsupported_error(database, "SET supports only fixed no-op system variable assignments");
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
         return MYLITE_ERROR;
     }
     return append_system_variable_read_warning(database, target->kind);
@@ -121,7 +134,10 @@ static int apply_set_fixed_boolean_system_variable_cell_value(
         return rc;
     }
     if (actual != expected_value) {
-        set_unsupported_error(database, "SET supports only fixed no-op system variable assignments");
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
         return MYLITE_ERROR;
     }
     return MYLITE_OK;

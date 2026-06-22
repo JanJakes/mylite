@@ -74,9 +74,8 @@ Observed against the local `mysql:8.4.9` runtime:
   slice defers that optional form.
 - With `@@sql_quote_show_create = 0`, MySQL omits backticks around simple
   schema names in the rendered DDL. MyLite's later
-  `baseline-sql-quote-show-create-system-variable` slice exposes a fixed
-  enabled scalar value only, so rendering remains quoted and disabled rendering
-  remains unsupported.
+  `baseline-sql-quote-show-create-system-variable` slice owns the embedded
+  quote-control subset for structured database DDL output.
 - `SHOW CREATE DATABASE IF EXISTS db_name`, missing schema names, `LIKE`,
   `WHERE`, and schema options are syntax errors.
 
@@ -103,7 +102,8 @@ This feature must not implement:
 
 - `SHOW CREATE DATABASE IF NOT EXISTS`;
 - schema option storage or rendering beyond the fixed default text;
-- mutable `sql_quote_show_create` state or disabled quote rendering;
+- broad `sql_quote_show_create` behavior beyond the structured renderer subset
+  owned by `baseline-sql-quote-show-create-system-variable`;
 - `ALTER DATABASE`, schema default charset/collation mutation, encryption
   mutation, privilege filtering, system schemas, partial revokes,
   `INFORMATION_SCHEMA.SCHEMATA`, or `SHOW DATABASES WHERE`;
@@ -186,11 +186,11 @@ The DDL cell shape is:
 CREATE DATABASE `schema_name` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */
 ```
 
-The schema name is always backtick quoted in the DDL cell. Embedded backticks
-are escaped by doubling them. The first `Database` cell is the raw descriptor
-name. MySQL's `sql_quote_show_create` session variable can suppress quoting in
-server output; MyLite exposes only the fixed enabled scalar value, so the
-descriptor-rendered DDL remains quoted for deterministic baseline output.
+The schema name is backtick quoted by default in the DDL cell. Embedded
+backticks are escaped by doubling them. The first `Database` cell is the raw
+descriptor name. The later `baseline-sql-quote-show-create-system-variable`
+slice adds the supported session quote-control behavior for simple schema
+identifiers in this structured renderer.
 
 The fixed option suffix matches observed MySQL 8.4.9 output for schemas
 created with default options. MyLite does not store schema character-set,
@@ -241,8 +241,8 @@ Tests must cover:
 - independent file-backed handles;
 - catalog generation, SQLite schema generation, and preamble preservation;
 - the MySQL 8.4.9 expectation artifact for supported behavior and deferred
-  `IF NOT EXISTS`, mutable `sql_quote_show_create` state, and disabled quote
-  rendering.
+  `IF NOT EXISTS` plus quote-control behavior outside the structured renderer
+  subset owned by `baseline-sql-quote-show-create-system-variable`.
 
 Existing lexer, parser, runtime handle, diagnostics, statement context, result
 metadata, SQLite bootstrap policy, file-backed opening, VFS, catalog

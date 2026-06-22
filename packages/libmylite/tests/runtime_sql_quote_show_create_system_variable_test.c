@@ -60,6 +60,18 @@ static const char *const table_create_sql =
     "CREATE TABLE `normal_name` (\n"
     "  `normal_col` int DEFAULT NULL\n"
     ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+static const char *const app_create_unquoted_sql =
+    "CREATE DATABASE app /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE "
+    "utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */";
+static const char *const table_create_unquoted_sql =
+    "CREATE TABLE normal_name (\n"
+    "  normal_col int DEFAULT NULL\n"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+static const char *const required_quote_table_create_sql =
+    "CREATE TABLE `select` (\n"
+    "  `two words` int DEFAULT NULL,\n"
+    "  normal_col int DEFAULT NULL\n"
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
 
 static int test_sql_quote_show_create_values_and_persistence(void);
 static int test_sql_quote_show_create_qualifiers_and_errors(void);
@@ -116,6 +128,8 @@ static int test_sql_quote_show_create_values_and_persistence(void) {
         "ROW_COUNT()",
     };
     static const char *const value_values[] = {"1", "1", "1", "1", "0", "-1"};
+    static const char *const set_off_values[] = {"0", "1", "0", "0", "0", "0"};
+    static const char *const set_on_values[] = {"1", "1", "1", "1", "0", "0"};
     static const char *const label_columns[] = {
         "@@SQL_QUOTE_SHOW_CREATE",
         "@@Global.Sql_Quote_Show_Create",
@@ -145,6 +159,21 @@ static int test_sql_quote_show_create_values_and_persistence(void) {
     static const char *const selected_values[] = {"1", "app"};
     static const char *const show_create_database_values[] = {"app", app_create_sql};
     static const char *const show_create_table_values[] = {"normal_name", table_create_sql};
+    static const char *const show_variable_columns[] = {"Variable_name", "Value"};
+    static const char *const show_session_values[] = {"sql_quote_show_create", "OFF"};
+    static const char *const show_global_values[] = {"sql_quote_show_create", "ON"};
+    static const char *const show_create_database_unquoted_values[] = {
+        "app",
+        app_create_unquoted_sql,
+    };
+    static const char *const show_create_table_unquoted_values[] = {
+        "normal_name",
+        table_create_unquoted_sql,
+    };
+    static const char *const required_quote_table_values[] = {
+        "select",
+        required_quote_table_create_sql,
+    };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -325,6 +354,110 @@ static int test_sql_quote_show_create_values_and_persistence(void) {
             .context = "quoted show create table",
         }
     );
+    failures += execute_statement_ok(database, "SET SESSION sql_quote_show_create=0");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_quote_show_create, @@global.sql_quote_show_create, "
+        "@@session.sql_quote_show_create, @@local.sql_quote_show_create, @@warning_count, "
+        "ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_off_values,
+            .count = quote_value_column_count,
+            .context = "set sql quote off values",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW VARIABLES LIKE 'sql_quote_show_create'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_session_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show session sql quote value",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'sql_quote_show_create'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_global_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show global sql quote value",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW CREATE DATABASE app",
+        (struct expected_result){
+            .columns = show_create_database_columns,
+            .values = show_create_database_unquoted_values,
+            .count = sizeof(show_create_database_columns) / sizeof(show_create_database_columns[0]),
+            .context = "unquoted show create database",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW CREATE TABLE normal_name",
+        (struct expected_result){
+            .columns = show_create_table_columns,
+            .values = show_create_table_unquoted_values,
+            .count = sizeof(show_create_table_columns) / sizeof(show_create_table_columns[0]),
+            .context = "unquoted show create table",
+        }
+    );
+    failures +=
+        execute_statement_ok(database, "CREATE TABLE `select` (`two words` INT, normal_col INT)");
+    failures += expect_query_result(
+        database,
+        "SHOW CREATE TABLE `select`",
+        (struct expected_result){
+            .columns = show_create_table_columns,
+            .values = required_quote_table_values,
+            .count = sizeof(show_create_table_columns) / sizeof(show_create_table_columns[0]),
+            .context = "sql quote disabled preserves required identifier quotes",
+        }
+    );
+    failures += execute_statement_ok(database, "SET LOCAL sql_quote_show_create=TRUE");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_quote_show_create, @@global.sql_quote_show_create, "
+        "@@session.sql_quote_show_create, @@local.sql_quote_show_create, @@warning_count, "
+        "ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_on_values,
+            .count = quote_value_column_count,
+            .context = "set local sql quote TRUE values",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @@session.sql_quote_show_create=FALSE");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_quote_show_create, @@global.sql_quote_show_create, "
+        "@@session.sql_quote_show_create, @@local.sql_quote_show_create, @@warning_count, "
+        "ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_off_values,
+            .count = quote_value_column_count,
+            .context = "set @@session sql quote FALSE values",
+        }
+    );
+    failures += execute_statement_ok(database, "SET SESSION sql_quote_show_create=DEFAULT");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_quote_show_create, @@global.sql_quote_show_create, "
+        "@@session.sql_quote_show_create, @@local.sql_quote_show_create, @@warning_count, "
+        "ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_on_values,
+            .count = quote_value_column_count,
+            .context = "set sql quote DEFAULT values",
+        }
+    );
 
     mylite_close(database);
     database = NULL;
@@ -445,7 +578,7 @@ static int test_independent_sql_quote_show_create_handles(void) {
         "@@warning_count",
         "@@error_count",
     };
-    static const char *const first_values[] = {"1", "1", "0"};
+    static const char *const first_values[] = {"0", "1", "0"};
     static const char *const second_values[] = {"1", "0", "0"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
@@ -454,6 +587,7 @@ static int test_independent_sql_quote_show_create_handles(void) {
 
     failures += expect_int(mylite_open_memory(&first), MYLITE_OK, "open first sql quote handle");
     failures += expect_int(mylite_open_memory(&second), MYLITE_OK, "open second sql quote handle");
+    failures += execute_statement_ok(first, "SET SESSION sql_quote_show_create=0");
     failures += execute_statement_ok(first, "SHOW PROCESSLIST");
 
     failures += execute_ok(

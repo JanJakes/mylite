@@ -14,8 +14,10 @@ MySQL-style `CREATE TABLE` statement only for the descriptor shapes MyLite can
 create today: persistent base tables with `INT`, `INTEGER`, `BIGINT`, optional
 `UNSIGNED`, and `NULL`/`NOT NULL` column nullability. It does not add table
 options, indexes, defaults, constraints, generated columns, auto-increment,
-views, temporary tables, mutable `sql_quote_show_create`, privileges, or
-`INFORMATION_SCHEMA`.
+views, temporary tables, privileges, or `INFORMATION_SCHEMA`. Later
+compatibility slices extend this renderer with additional descriptor-owned
+table DDL and session `sql_quote_show_create` quote-control for structured
+base/temporary-table output.
 
 ## Sources
 
@@ -101,8 +103,8 @@ Observed against the local `mysql:8.4.9` runtime using TCP:
 - `LIKE`, `WHERE`, `FROM schema`, `TEMPORARY`, and `FULL` modifiers are syntax
   errors on `SHOW CREATE TABLE`.
 - Setting `sql_quote_show_create = 0` changes identifier quoting in MySQL.
-  MyLite's later `baseline-sql-quote-show-create-system-variable` slice exposes
-  a fixed enabled scalar value only; unquoted rendering remains unsupported.
+  MyLite's later `baseline-sql-quote-show-create-system-variable` slice owns
+  the embedded quote-control subset for structured base/temporary-table output.
 
 ## Scope
 
@@ -131,10 +133,11 @@ This feature must not implement:
 - temporary tables, views, aliases, partitions, table options, row formats,
   charsets, collations, comments, indexes, primary keys, unique keys, foreign
   keys, check constraints, generated columns, generated invisible primary keys,
-  explicit defaults, auto-increment, triggers, privileges, SQL modes,
-  mutable `sql_quote_show_create` state, disabled quote rendering, arbitrary
+  explicit defaults, auto-increment, triggers, privileges, SQL modes, arbitrary
   SQLite metadata reads, arbitrary SQLite SQL pass-through, or SQLite fork
-  patches.
+  patches. Quote-control behavior is owned by
+  `baseline-sql-quote-show-create-system-variable` for the supported structured
+  renderer only.
 
 ## Ownership Boundary
 
@@ -328,8 +331,8 @@ After implementation:
   table option exposure needs explicit cross-reference wording;
 - do not overclaim full `SHOW CREATE TABLE`, views, temporary tables, table
   options, indexes, constraints, defaults, generated columns, auto-increment,
-  privileges, mutable `sql_quote_show_create` state, or disabled quote
-  rendering.
+  privileges, or quote-control behavior outside the supported structured
+  renderer.
 
 ## Verification
 

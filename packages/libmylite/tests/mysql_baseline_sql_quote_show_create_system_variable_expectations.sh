@@ -131,6 +131,7 @@ setup_sql=$(cat <<SQL
 CREATE DATABASE \`$DATABASE\`;
 USE \`$DATABASE\`;
 CREATE TABLE normal_name (normal_col INT);
+CREATE TABLE \`select\` (\`two words\` INT, normal_col INT);
 SHOW CREATE DATABASE \`$DATABASE\`;
 SHOW CREATE TABLE normal_name;
 SQL
@@ -167,6 +168,48 @@ normal_name	CREATE TABLE normal_name (
 EOF
 )
 expect_value "mysql session sql_quote_show_create is mutable upstream" "$expected_unquoted" "$unquoted_output"
+
+required_quote_output=$(run_mysql_with_headers \
+    "USE \`$DATABASE\`; SET SESSION sql_quote_show_create=0; \
+     SHOW CREATE TABLE \`select\`; SET SESSION sql_quote_show_create=1;" \
+    | tail -n 4)
+expected_required_quote=$(cat <<EOF
+select	CREATE TABLE \`select\` (
+  \`two words\` int DEFAULT NULL,
+  normal_col int DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+EOF
+)
+expect_value \
+    "disabled sql_quote_show_create still quotes required identifiers" \
+    "$expected_required_quote" \
+    "$required_quote_output"
+
+show_mutable_values=$(run_mysql \
+    "SET SESSION sql_quote_show_create=0; \
+     SHOW VARIABLES LIKE 'sql_quote_show_create'; \
+     SHOW GLOBAL VARIABLES LIKE 'sql_quote_show_create'; \
+     SET SESSION sql_quote_show_create=DEFAULT;" \
+    | tr '\n' '|')
+expect_value \
+    "mysql SHOW VARIABLES reflects session sql_quote_show_create" \
+    "sql_quote_show_create	OFF|sql_quote_show_create	ON|" \
+    "$show_mutable_values"
+
+boolean_form_values=$(run_mysql \
+    "SET SESSION sql_quote_show_create=ON; \
+     SELECT @@sql_quote_show_create; \
+     SET LOCAL sql_quote_show_create=FALSE; \
+     SELECT @@sql_quote_show_create; \
+     SET @@session.sql_quote_show_create=TRUE; \
+     SELECT @@sql_quote_show_create; \
+     SET SESSION sql_quote_show_create=DEFAULT; \
+     SELECT @@sql_quote_show_create;" \
+    | tr '\n' '|')
+expect_value \
+    "mysql sql_quote_show_create accepts boolean session SET forms" \
+    "1|0|1|1|" \
+    "$boolean_form_values"
 
 warning_values=$(run_mysql \
     "SELECT 1; SHOW PROCESSLIST; \

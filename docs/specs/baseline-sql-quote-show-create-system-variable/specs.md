@@ -2,21 +2,22 @@
 
 ## Status
 
-This feature specifies a narrow scalar system-variable slice for
+This feature specifies the baseline SHOW CREATE quote-control slice for
 `@@sql_quote_show_create`.
 
 It builds on the existing `SYSTEM_VARIABLE` lexer/parser token, scalar
-`SELECT` execution, diagnostics lifecycle, and descriptor-driven
-`SHOW CREATE DATABASE` / `SHOW CREATE TABLE` rendering. MySQL exposes this as
-mutable global and session state that controls whether simple identifiers are
-backtick quoted in `SHOW CREATE` output. MyLite already renders the current
-baseline `SHOW CREATE` output with backtick-quoted identifiers and does not
-implement mutable system-variable assignment, so this slice exposes only the
-default enabled scalar value.
+`SELECT` execution, diagnostics lifecycle, generic Boolean session-variable
+assignment, `SHOW VARIABLES`, and descriptor-driven `SHOW CREATE DATABASE` /
+`SHOW CREATE TABLE` rendering. MySQL exposes this as mutable global and
+session state that controls whether simple identifiers are backtick quoted in
+`SHOW CREATE` output. MyLite implements the embedded compatibility baseline:
+session `SET`/readback, fixed global `ON`, and quote-control behavior for the
+current structured database and table renderers.
 
 This is not full SHOW CREATE quote-control support. It does not implement
-`SET sql_quote_show_create=0`, unquoted `SHOW CREATE` rendering, startup
-options, persisted variables, or `SHOW VARIABLES`.
+server-global mutation, startup options, persisted variables, Performance
+Schema variable tables, or quote-control behavior for pre-rendered
+`SHOW CREATE VIEW`, stored routine, user, trigger, or event output.
 
 ## Sources
 
@@ -60,6 +61,9 @@ records the runtime probes for this feature. Observed behavior:
   `SET SESSION sql_quote_show_create=0`, unscoped, `session`, and `local`
   reads return `0`, while `global` still returns `1`; resetting the session
   value to `1` restores the default.
+- `SHOW VARIABLES LIKE 'sql_quote_show_create'` reflects the session value;
+  `SHOW GLOBAL VARIABLES LIKE 'sql_quote_show_create'` reflects the fixed
+  global value.
 - Variable and scope names are case-insensitive.
 - Backtick-quoted final variable-name components are accepted.
 - Backtick-quoted scope names, such as
@@ -89,10 +93,17 @@ The implementation must add:
 - runtime recognition of `sql_quote_show_create` inside the existing scalar
   `SELECT` subset;
 - support for no scope, `session`, `local`, and `global` scope qualifiers;
+- session `SET sql_quote_show_create = 0|1|ON|OFF|TRUE|FALSE|DEFAULT`
+  handling through the existing Boolean system-variable override path;
+- `SHOW VARIABLES` and `SHOW GLOBAL VARIABLES` values for the session/global
+  baseline;
 - case-insensitive matching for unquoted scope and variable names;
 - backtick-quoted final variable-name components;
 - one-row scalar result sets with existing source-span column labels;
-- fixed value `1` for all supported scopes;
+- fixed global value `1` and session-local values that default to `1`;
+- `SHOW CREATE DATABASE` and structured base/temporary-table `SHOW CREATE
+  TABLE` rendering that omits backticks for safe simple identifiers when the
+  session value is `0` and still quotes identifiers that require quoting;
 - MySQL-compatible unknown-variable diagnostics for unsupported names;
 - deterministic rejection of quoted scopes;
 - fast C tests and a MySQL 8.4.9 expectation artifact.
@@ -106,19 +117,21 @@ SELECT @@session.sql_quote_show_create, @@local.sql_quote_show_create
 SELECT @@global.sql_quote_show_create
 SELECT @@session.`sql_quote_show_create`, @@`sql_quote_show_create`
 SELECT @@sql_quote_show_create, @@warning_count, ROW_COUNT()
+SET SESSION sql_quote_show_create = 0
+SHOW VARIABLES LIKE 'sql_quote_show_create'
+SHOW CREATE TABLE normal_name
 ```
 
 ## Non-Goals
 
 This feature must not implement:
 
-- `SET`, startup options, persisted variables, `SET_VAR` hints, or mutable
-  global/session `sql_quote_show_create` state;
+- startup options, persisted variables, `SET_VAR` hints, or mutable
+  server-global `sql_quote_show_create` state;
 - variables other than `sql_quote_show_create`;
-- disabled quote rendering for `SHOW CREATE DATABASE` or `SHOW CREATE TABLE`;
 - quote-control behavior for `SHOW CREATE VIEW`, events, routines, users,
   triggers, or any not-yet-supported `SHOW CREATE` variant;
-- `SHOW VARIABLES` or Performance Schema variable tables;
+- Performance Schema variable tables;
 - table-backed variable evaluation, aliases, clauses, subqueries, arithmetic,
   functions over variables, parameters, prepared statements, or arbitrary
   SQLite pass-through;
@@ -136,11 +149,11 @@ This feature must not implement:
 - Lexer/parser/AST own syntax admission and source spans for
   `SYSTEM_VARIABLE` expressions. No new grammar is needed beyond the existing
   `expression ::= SYSTEM_VARIABLE` rule.
-- Runtime execution owns system-variable path parsing, scope validation, fixed
-  value selection, and diagnostics for unsupported names.
-- `SHOW CREATE` rendering remains descriptor-driven and currently always emits
-  quoted identifiers. This variable slice documents that fixed enabled state;
-  it does not route mutable state into the renderer.
+- Runtime execution owns system-variable path parsing, scope validation,
+  session/global value selection, and diagnostics for unsupported names.
+- Structured `SHOW CREATE DATABASE` and base/temporary-table `SHOW CREATE
+  TABLE` rendering owns identifier quote policy for this slice. Pre-rendered
+  view, routine, user, trigger, and event text remains unchanged.
 - Result builder owns scalar result column labels and one-row text values.
 - Catalog, storage, VFS, and SQLite physical row storage are not involved.
   This feature must not touch `.mylite` preamble bytes or SQLite schema state.
@@ -190,21 +203,23 @@ Runtime parses the raw token as a `@@` system variable:
   `1193`, SQLSTATE `HY000`;
 - it preserves the original source text as the scalar result column label.
 
-For this slice, all scopes return the same fixed value. This is a deliberate
-MyLite limitation: MyLite currently has deterministic quoted SHOW CREATE
-rendering and no mutable system-variable assignment.
+For this slice, global scope returns the fixed embedded default `1`. Unscoped,
+`session`, and `local` scope read the current session override when one exists,
+and otherwise return `1`.
 
 ## Runtime Semantics
 
 The supported variable returns:
 
-| Variable | Value |
+| Scope | Value |
 | --- | --- |
-| `sql_quote_show_create` | `1` |
+| Global | fixed `1` |
+| Session/local/unscoped default | `1` |
+| Session/local/unscoped after `SET SESSION sql_quote_show_create = 0` | `0` |
 
-The value is independent of selected schema, close/reopen, and independent
-handles. It reflects MyLite's current descriptor-rendered `SHOW CREATE`
-behavior, which always quotes identifiers in supported database and table DDL.
+The session value is independent per handle and resets on close/reopen. It
+affects only the structured database and table SHOW CREATE renderers in this
+slice.
 
 Successful scalar reads:
 
@@ -219,15 +234,15 @@ Successful scalar reads:
 
 ## SHOW CREATE Interaction
 
-This slice only exposes the fixed enabled value. Existing
-`SHOW CREATE DATABASE` and `SHOW CREATE TABLE` output remains quoted.
-Supported tests should verify the visible relationship by reading
-`@@sql_quote_show_create` and observing quoted descriptor-rendered DDL for
-simple identifiers.
+When the session value is `1`, `SHOW CREATE DATABASE` and structured
+`SHOW CREATE TABLE` output backtick-quotes identifiers. When the session value
+is `0`, those renderers omit quotes for simple nonreserved ASCII identifiers
+and retain quotes for identifiers that require quoting, including reserved
+keywords and names containing spaces or other special characters.
 
-MySQL's disabled rendering remains out of scope until MyLite implements mutable
-session variables. When that later happens, renderer tests must be extended to
-cover unquoted simple identifiers and still-quoted required identifiers.
+This quote policy is intentionally conservative for the current embedded
+baseline. It does not rewrite pre-rendered view, stored routine, user,
+trigger, or event SHOW CREATE text.
 
 ## Diagnostics
 
@@ -239,10 +254,8 @@ This slice uses existing diagnostics for:
 - public API misuse through the existing execution/result API behavior;
 - allocation failures through existing MyLite allocation diagnostics.
 
-Supported reads of `@@sql_quote_show_create` do not emit warnings. This slice
-does not implement MySQL's mutable `SET SESSION sql_quote_show_create=...`
-surface, so assignment diagnostics and renderer state changes are out of
-scope.
+Supported reads and session assignments of `@@sql_quote_show_create` do not
+emit warnings.
 
 ## Tests
 
@@ -259,17 +272,19 @@ Tests must cover:
 - diagnostics read-and-clear behavior after warnings and errors;
 - unknown unscoped and scoped variable names;
 - unsupported wider expressions;
-- selected schema, close/reopen, and independent handles do not change the
-  fixed value;
-- quoted `SHOW CREATE DATABASE` and `SHOW CREATE TABLE` output remains visible
-  for supported descriptors;
+- default/session/global values, session assignment, `SHOW VARIABLES`, and
+  close/reopen reset behavior;
+- selected schema and independent handles keep session state isolated;
+- quoted and unquoted `SHOW CREATE DATABASE` and structured `SHOW CREATE
+  TABLE` output for supported descriptors, including still-quoted identifiers
+  that require quoting;
 - `.mylite` preamble preservation and unchanged catalog/SQLite generation
   after variable reads;
 - existing parser/runtime/system-variable and SHOW CREATE tests still pass.
 
 The MySQL expectation script verifies the MySQL 8.4.9 reference behavior for
-the supported SQL forms and explicitly records mutable and wider MySQL
-behavior that this slice leaves unsupported.
+the supported SQL forms and explicitly records wider MySQL behavior that this
+slice leaves unsupported.
 
 ## Compatibility Documentation
 
@@ -281,5 +296,6 @@ Update:
 - existing SHOW CREATE feature specs where they previously listed
   `sql_quote_show_create` as entirely missing.
 
-Do not overclaim mutable system variables, `SET`, `SHOW VARIABLES`, disabled
-quote rendering, or full `SHOW CREATE` coverage.
+Do not overclaim server-global mutation, persisted variables, Performance
+Schema variable tables, or quote-control coverage for pre-rendered SHOW CREATE
+variants.

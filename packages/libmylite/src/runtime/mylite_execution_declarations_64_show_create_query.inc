@@ -498,6 +498,7 @@ static int append_show_create_table_foreign_keys(
     const struct planned_show_create_table *plan
 );
 static int append_show_create_table_check_constraints(
+    struct mylite_db *database,
     struct mylite_dynamic_string *string,
     const struct planned_show_create_table *plan
 );
@@ -556,16 +557,19 @@ static int append_show_create_table_index_options(
     const struct loaded_index_info *index
 );
 static int append_show_create_table_index_part(
+    struct mylite_db *database,
     struct mylite_dynamic_string *string,
     const struct loaded_index_part *part,
     bool needs_comma
 );
 static int append_show_create_table_foreign_key(
+    struct mylite_db *database,
     struct mylite_dynamic_string *string,
     const struct loaded_foreign_key_info *foreign_key,
     bool is_last_foreign_key
 );
 static int append_show_create_table_foreign_key_parts(
+    struct mylite_db *database,
     struct mylite_dynamic_string *string,
     const struct loaded_foreign_key_info *foreign_key,
     bool child_columns
@@ -660,9 +664,20 @@ static int format_binary_string_type_text(
 );
 static const char *integer_descriptor_display_text(const char *logical_type);
 static int build_show_create_database_sql(
+    struct mylite_db *database,
     const struct mylite_catalog_schema_descriptor *schema,
     char **out_sql
 );
+static int append_show_create_identifier(
+    const struct mylite_db *database,
+    struct mylite_dynamic_string *string,
+    const char *identifier
+);
+static bool show_create_sql_quote_show_create_enabled(const struct mylite_db *database);
+static bool show_create_identifier_requires_quotes(const char *identifier);
+static bool show_create_identifier_is_reserved_keyword(const char *identifier);
+static bool show_create_identifier_start_byte_is_bare(unsigned char byte);
+static bool show_create_identifier_part_byte_is_bare(unsigned char byte);
 
 static int maybe_finish_create_if_not_exists_noop(
     struct mylite_db *database,

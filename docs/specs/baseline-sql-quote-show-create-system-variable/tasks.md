@@ -1,7 +1,7 @@
 # Baseline SQL Quote SHOW CREATE System Variable Tasks
 
-Add the narrow scalar system-variable slice for MyLite's fixed enabled
-SHOW CREATE quote-control baseline: `@@sql_quote_show_create`.
+Add the session system-variable slice for MyLite's embedded SHOW CREATE
+quote-control baseline: `@@sql_quote_show_create`.
 
 ## Checklist
 
@@ -9,13 +9,14 @@ SHOW CREATE quote-control baseline: `@@sql_quote_show_create`.
    - Verify MySQL 8.4.9 values, scopes, labels, session mutability, quoted-name
      behavior, diagnostics, `SHOW CREATE` interaction, and statement
      diagnostics.
-   - Specify fixed MyLite value `1` for no-scope, `session`, `local`, and
-     `global` forms.
+   - Specify fixed global value `1`, session-local mutability, `SHOW`
+     readback, and structured database/table SHOW CREATE quote-control
+     behavior.
    - Record supported and intentionally unsupported behavior in `specs.md`.
 
 2. Runtime resolver
    - Add `sql_quote_show_create` to the existing system-variable resolver.
-   - Return fixed value `1` for all supported scopes.
+   - Return fixed global `1` and mutable session/local/unscoped values.
    - Preserve existing unknown-variable, unsupported-expression, and
      quoted-scope diagnostics.
    - Do not change parser grammar, public ABI, storage, VFS, catalog, or
@@ -26,7 +27,9 @@ SHOW CREATE quote-control baseline: `@@sql_quote_show_create`.
    - Cover values, labels, scopes, quoted final names, `FROM DUAL`, selected
      schema behavior, mixed scalar reads, warning/error clearing, unknown
      names, quoted-scope rejection, persistence, preamble preservation,
-     unchanged generations, independent handles, and quoted SHOW CREATE output.
+     unchanged generations, independent handles, `SHOW VARIABLES`, quoted SHOW
+     CREATE output, unquoted simple identifiers while disabled, and
+     still-quoted required identifiers.
 
 4. MySQL expectation artifact
    - Add a shell script that checks MySQL 8.4.9 result shapes, values,
@@ -40,8 +43,9 @@ SHOW CREATE quote-control baseline: `@@sql_quote_show_create`.
    - Update `docs/compatibility/sql-show-statements.md`.
    - Refresh existing SHOW CREATE specs that previously listed
      `sql_quote_show_create` as entirely missing.
-   - Do not claim mutable quote-control state, disabled rendering, `SET`,
-     `SHOW VARIABLES`, or unsupported SHOW CREATE variants.
+   - Do not claim server-global mutation, persisted state, Performance Schema
+     variable tables, or quote-control behavior for unsupported SHOW CREATE
+     variants.
 
 6. Verification
    - Run focused CTest entries for parser, runtime system variables, and SHOW
@@ -51,8 +55,7 @@ SHOW CREATE quote-control baseline: `@@sql_quote_show_create`.
 
 ## Non-Goals
 
-- Do not implement `SET`, startup options, persisted variables, disabled
-  SHOW CREATE quote rendering, full SHOW CREATE variants, `SHOW VARIABLES`,
-  Performance Schema variable tables, table-backed evaluation, aliases,
-  clauses, arbitrary expressions, SQLite SQL, catalog mutations, or SQLite fork
-  patches.
+- Do not implement startup options, persisted variables, server-global state,
+  full SHOW CREATE variants, Performance Schema variable tables, table-backed
+  evaluation, aliases, clauses, arbitrary expressions, SQLite SQL, catalog
+  mutations, or SQLite fork patches.

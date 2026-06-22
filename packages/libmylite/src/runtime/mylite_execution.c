@@ -35,6 +35,7 @@
 #include "mylite_execution_text_internal.h"
 #include "mylite_integer_arithmetic.h"
 #include "mylite_json.h"
+#include "mylite_lexer.h"
 #include "mylite_mysql_error_codes.h"
 #include "mylite_mysql_server_identity.h"
 #include "mylite_named_locks.h"

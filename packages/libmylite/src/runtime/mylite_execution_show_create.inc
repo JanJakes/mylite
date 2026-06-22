@@ -395,7 +395,7 @@ static int execute_show_create_database_statement(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = build_show_create_database_sql(&schema, &create_sql);
+        rc = build_show_create_database_sql(database, &schema, &create_sql);
         if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
         }
@@ -1007,7 +1007,7 @@ static int build_show_create_table_sql(
                                                                 : "CREATE TABLE "
     );
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_mysql_quoted_identifier(&string, plan->table.name);
+        rc = append_show_create_identifier(database, &string, plan->table.name);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(&string, " (\n");
@@ -1030,7 +1030,7 @@ static int build_show_create_table_sql(
         rc = append_show_create_table_foreign_keys(database, &string, plan);
     }
     if (rc == MYLITE_OK) {
-        rc = append_show_create_table_check_constraints(&string, plan);
+        rc = append_show_create_table_check_constraints(database, &string, plan);
     }
     if (rc == MYLITE_OK) {
         rc = append_show_create_table_table_options(database, &string, plan);
@@ -1068,7 +1068,7 @@ static int append_show_create_table_column_definition(
         rc = mylite_dynamic_string_append(string, "  ");
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_mysql_quoted_identifier(string, column->name);
+        rc = append_show_create_identifier(database, string, column->name);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, ' ');
@@ -1528,6 +1528,7 @@ static int append_show_create_table_foreign_keys(
             is_last_constraint = true;
         }
         rc = append_show_create_table_foreign_key(
+            database,
             string,
             &plan->foreign_keys[best_index],
             is_last_constraint
@@ -1539,6 +1540,7 @@ static int append_show_create_table_foreign_keys(
 }
 
 static int append_show_create_table_check_constraints(
+    struct mylite_db *database,
     struct mylite_dynamic_string *string,
     const struct planned_show_create_table *plan
 ) {
@@ -1550,10 +1552,7 @@ static int append_show_create_table_check_constraints(
 
         rc = mylite_dynamic_string_append(string, "  CONSTRAINT ");
         if (rc == MYLITE_OK) {
-            rc = mylite_dynamic_string_append_mysql_quoted_identifier(
-                string,
-                check_constraint->name
-            );
+            rc = append_show_create_identifier(database, string, check_constraint->name);
         }
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append(string, " CHECK (");
@@ -1808,6 +1807,7 @@ static int append_show_create_table_index(
     rc = append_show_create_table_index_header(database, string, plan, index);
     for (size_t part_index = 0U; rc == MYLITE_OK && part_index < index->part_count; ++part_index) {
         rc = append_show_create_table_index_part(
+            database,
             string,
             &index->parts[part_index],
             part_index != 0U
@@ -1857,7 +1857,7 @@ static int append_show_create_table_index_header(
     }
 
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_mysql_quoted_identifier(string, display_name);
+        rc = append_show_create_identifier(database, string, display_name);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(string, " (");
@@ -1965,6 +1965,7 @@ static int append_show_create_table_index_options(
 }
 
 static int append_show_create_table_foreign_key(
+    struct mylite_db *database,
     struct mylite_dynamic_string *string,
     const struct loaded_foreign_key_info *foreign_key,
     bool is_last_foreign_key
@@ -1977,31 +1978,25 @@ static int append_show_create_table_foreign_key(
 
     rc = mylite_dynamic_string_append(string, "  CONSTRAINT ");
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_mysql_quoted_identifier(
-            string,
-            foreign_key->foreign_key.name
-        );
+        rc = append_show_create_identifier(database, string, foreign_key->foreign_key.name);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(string, " FOREIGN KEY (");
     }
     if (rc == MYLITE_OK) {
-        rc = append_show_create_table_foreign_key_parts(string, foreign_key, true);
+        rc = append_show_create_table_foreign_key_parts(database, string, foreign_key, true);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(string, ") REFERENCES ");
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_mysql_quoted_identifier(
-            string,
-            foreign_key->parent_table.name
-        );
+        rc = append_show_create_identifier(database, string, foreign_key->parent_table.name);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(string, " (");
     }
     if (rc == MYLITE_OK) {
-        rc = append_show_create_table_foreign_key_parts(string, foreign_key, false);
+        rc = append_show_create_table_foreign_key_parts(database, string, foreign_key, false);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, ')');
@@ -2031,6 +2026,7 @@ static int append_show_create_table_foreign_key(
 }
 
 static int append_show_create_table_foreign_key_parts(
+    struct mylite_db *database,
     struct mylite_dynamic_string *string,
     const struct loaded_foreign_key_info *foreign_key,
     bool child_columns
@@ -2049,7 +2045,7 @@ static int append_show_create_table_foreign_key_parts(
             rc = mylite_dynamic_string_append(string, ", ");
         }
         if (rc == MYLITE_OK) {
-            rc = mylite_dynamic_string_append_mysql_quoted_identifier(string, column_name);
+            rc = append_show_create_identifier(database, string, column_name);
         }
     }
     return rc;
@@ -2080,6 +2076,7 @@ static int append_show_create_table_foreign_key_rule(
 }
 
 static int append_show_create_table_index_part(
+    struct mylite_db *database,
     struct mylite_dynamic_string *string,
     const struct loaded_index_part *part,
     bool needs_comma
@@ -2090,7 +2087,7 @@ static int append_show_create_table_index_part(
         rc = mylite_dynamic_string_append_char(string, ',');
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_mysql_quoted_identifier(string, part->column.name);
+        rc = append_show_create_identifier(database, string, part->column.name);
     }
     if (rc == MYLITE_OK && part->index_column.has_prefix_length) {
         char prefix_text[integer_text_capacity];
@@ -2631,6 +2628,7 @@ static const char *integer_descriptor_display_text(const char *logical_type) {
 }
 
 static int build_show_create_database_sql(
+    struct mylite_db *database,
     const struct mylite_catalog_schema_descriptor *schema,
     char **out_sql
 ) {
@@ -2642,7 +2640,7 @@ static int build_show_create_database_sql(
 
     rc = mylite_dynamic_string_append(&string, "CREATE DATABASE ");
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_mysql_quoted_identifier(&string, schema->name);
+        rc = append_show_create_identifier(database, &string, schema->name);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append(&string, " /*!40100 DEFAULT CHARACTER SET ");
@@ -2666,4 +2664,58 @@ static int build_show_create_database_sql(
 
     mylite_dynamic_string_deinit(&string);
     return rc;
+}
+
+static int append_show_create_identifier(
+    const struct mylite_db *database,
+    struct mylite_dynamic_string *string,
+    const char *identifier
+) {
+    if (show_create_sql_quote_show_create_enabled(database) ||
+        show_create_identifier_requires_quotes(identifier)) {
+        return mylite_dynamic_string_append_mysql_quoted_identifier(string, identifier);
+    }
+
+    return mylite_dynamic_string_append(string, identifier);
+}
+
+static bool show_create_sql_quote_show_create_enabled(const struct mylite_db *database) {
+    const char *value = session_system_variable_override_value(
+        database,
+        MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE
+    );
+
+    return value == NULL || strcmp(value, "0") != 0;
+}
+
+static bool show_create_identifier_requires_quotes(const char *identifier) {
+    if (identifier == NULL || identifier[0] == '\0') {
+        return true;
+    }
+    if (!show_create_identifier_start_byte_is_bare((unsigned char)identifier[0])) {
+        return true;
+    }
+    for (size_t index = 1U; identifier[index] != '\0'; ++index) {
+        if (!show_create_identifier_part_byte_is_bare((unsigned char)identifier[index])) {
+            return true;
+        }
+    }
+
+    return show_create_identifier_is_reserved_keyword(identifier);
+}
+
+static bool show_create_identifier_is_reserved_keyword(const char *identifier) {
+    struct mylite_sql_keyword_lookup_result keyword = {0};
+
+    return mylite_sql_keyword_lookup(identifier, strlen(identifier), &keyword) &&
+           (keyword.flags & MYLITE_SQL_KEYWORD_RESERVED) != 0U;
+}
+
+static bool show_create_identifier_start_byte_is_bare(unsigned char byte) {
+    return (byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z') || byte == '_' ||
+           byte == '$';
+}
+
+static bool show_create_identifier_part_byte_is_bare(unsigned char byte) {
+    return show_create_identifier_start_byte_is_bare(byte) || (byte >= '0' && byte <= '9');
 }

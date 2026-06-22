@@ -100,6 +100,8 @@ static int test_sql_log_off_values_and_persistence(void) {
         "ROW_COUNT()",
     };
     static const char *const value_values[] = {"0", "0", "0", "0", "0", "-1"};
+    static const char *const set_off_values[] = {"0", "0", "0", "0", "0", "0"};
+    static const char *const set_on_values[] = {"1", "0", "1", "1", "0", "0"};
     static const char *const label_columns[] = {
         "@@SQL_LOG_OFF",
         "@@Global.Sql_Log_Off",
@@ -157,7 +159,10 @@ static int test_sql_log_off_values_and_persistence(void) {
     static const char *const warning_values[] = {"0", "1", "0", "-1"};
     static const char *const error_values[] = {"0", "1", "1", "-1"};
     static const char *const selected_columns[] = {"@@sql_log_off", "DATABASE()"};
-    static const char *const selected_values[] = {"0", "app"};
+    static const char *const selected_values[] = {"1", "app"};
+    static const char *const show_variable_columns[] = {"Variable_name", "Value"};
+    static const char *const show_session_values[] = {"sql_log_off", "ON"};
+    static const char *const show_global_values[] = {"sql_log_off", "OFF"};
     static const char *const table_columns[] = {"id", "score"};
     static const char *const table_values[] = {"2", "30"};
     static const char *const null_count_columns[] = {"COUNT(*)"};
@@ -312,6 +317,76 @@ static int test_sql_log_off_values_and_persistence(void) {
         sizeof(expected_preamble),
         "preamble after sql log off reads"
     );
+
+    failures += execute_statement_ok(database, "SET SESSION sql_log_off=1");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_log_off, @@global.sql_log_off, @@session.sql_log_off, "
+        "@@local.sql_log_off, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_on_values,
+            .count = sql_log_off_value_column_count,
+            .context = "set sql log off values",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW VARIABLES LIKE 'sql_log_off'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_session_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show session sql log off value",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'sql_log_off'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_global_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show global sql log off value",
+        }
+    );
+    failures += execute_statement_ok(database, "SET SESSION sql_log_off=OFF");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_log_off, @@global.sql_log_off, @@session.sql_log_off, "
+        "@@local.sql_log_off, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_off_values,
+            .count = sql_log_off_value_column_count,
+            .context = "set sql log off OFF values",
+        }
+    );
+    failures += execute_statement_ok(database, "SET LOCAL sql_log_off=TRUE");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_log_off, @@global.sql_log_off, @@session.sql_log_off, "
+        "@@local.sql_log_off, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_on_values,
+            .count = sql_log_off_value_column_count,
+            .context = "set local sql log off TRUE values",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @@session.sql_log_off=DEFAULT");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_log_off, @@global.sql_log_off, @@session.sql_log_off, "
+        "@@local.sql_log_off, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_off_values,
+            .count = sql_log_off_value_column_count,
+            .context = "set sql log off DEFAULT values",
+        }
+    );
+    failures += execute_statement_ok(database, "SET SESSION sql_log_off=ON");
 
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "USE app");
@@ -491,7 +566,7 @@ static int test_independent_sql_log_off_handles(void) {
         "@@warning_count",
         "@@error_count",
     };
-    static const char *const first_values[] = {"0", "1", "0"};
+    static const char *const first_values[] = {"1", "1", "0"};
     static const char *const second_values[] = {"0", "0", "0"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
@@ -501,6 +576,7 @@ static int test_independent_sql_log_off_handles(void) {
     failures += expect_int(mylite_open_memory(&first), MYLITE_OK, "open first sql log off handle");
     failures +=
         expect_int(mylite_open_memory(&second), MYLITE_OK, "open second sql log off handle");
+    failures += execute_statement_ok(first, "SET SESSION sql_log_off=1");
     failures += execute_statement_ok(first, "SHOW PROCESSLIST");
 
     failures += execute_ok(first, "SELECT @@sql_log_off, @@warning_count, @@error_count", &result);

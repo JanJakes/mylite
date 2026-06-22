@@ -100,6 +100,8 @@ static int test_sql_log_bin_values_and_persistence(void) {
         "ROW_COUNT()",
     };
     static const char *const value_values[] = {"1", "1", "1", "0", "-1"};
+    static const char *const set_off_values[] = {"0", "0", "0", "0", "0"};
+    static const char *const set_on_values[] = {"1", "1", "1", "0", "0"};
     static const char *const label_columns[] = {
         "@@SQL_LOG_BIN",
         "@@Session.Sql_Log_Bin",
@@ -155,7 +157,9 @@ static int test_sql_log_bin_values_and_persistence(void) {
     static const char *const warning_values[] = {"1", "1", "0", "-1"};
     static const char *const error_values[] = {"1", "1", "1", "-1"};
     static const char *const selected_columns[] = {"@@sql_log_bin", "DATABASE()"};
-    static const char *const selected_values[] = {"1", "app"};
+    static const char *const selected_values[] = {"0", "app"};
+    static const char *const show_variable_columns[] = {"Variable_name", "Value"};
+    static const char *const show_session_values[] = {"sql_log_bin", "OFF"};
     static const char *const table_columns[] = {"id", "score"};
     static const char *const table_values[] = {"2", "30"};
     static const char *const null_count_columns[] = {"COUNT(*)"};
@@ -310,6 +314,94 @@ static int test_sql_log_bin_values_and_persistence(void) {
         sizeof(expected_preamble),
         "preamble after sql log bin reads"
     );
+
+    failures += execute_statement_ok(database, "SET SESSION sql_log_bin=0");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_log_bin, @@session.sql_log_bin, @@local.sql_log_bin, "
+        "@@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_off_values,
+            .count = sql_log_bin_value_column_count,
+            .context = "set sql log bin values",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW VARIABLES LIKE 'sql_log_bin'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_session_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show session sql log bin value",
+        }
+    );
+    failures += execute_ok(database, "SHOW GLOBAL VARIABLES LIKE 'sql_log_bin'", &result);
+    failures += expect_size(
+        mylite_result_column_count(result),
+        sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+        "show global sql log bin omitted column count"
+    );
+    failures += expect_size(
+        mylite_result_row_count(result),
+        0U,
+        "show global sql log bin omitted row count"
+    );
+    failures += expect_text_or_null(
+        mylite_result_column_name(result, 0U),
+        show_variable_columns[0],
+        "show global sql log bin omitted variable column"
+    );
+    failures += expect_text_or_null(
+        mylite_result_column_name(result, 1U),
+        show_variable_columns[1],
+        "show global sql log bin omitted value column"
+    );
+    failures += expect_size(
+        mylite_result_warning_count(result),
+        0U,
+        "show global sql log bin omitted warning count"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_statement_ok(database, "SET LOCAL sql_log_bin=TRUE");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_log_bin, @@session.sql_log_bin, @@local.sql_log_bin, "
+        "@@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_on_values,
+            .count = sql_log_bin_value_column_count,
+            .context = "set local sql log bin TRUE values",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @@session.sql_log_bin=FALSE");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_log_bin, @@session.sql_log_bin, @@local.sql_log_bin, "
+        "@@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_off_values,
+            .count = sql_log_bin_value_column_count,
+            .context = "set @@session sql log bin FALSE values",
+        }
+    );
+    failures += execute_statement_ok(database, "SET SESSION sql_log_bin=DEFAULT");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_log_bin, @@session.sql_log_bin, @@local.sql_log_bin, "
+        "@@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_on_values,
+            .count = sql_log_bin_value_column_count,
+            .context = "set sql log bin DEFAULT values",
+        }
+    );
+    failures += execute_statement_ok(database, "SET SESSION sql_log_bin=OFF");
 
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "USE app");
@@ -489,7 +581,7 @@ static int test_independent_sql_log_bin_handles(void) {
         "@@warning_count",
         "@@error_count",
     };
-    static const char *const first_values[] = {"1", "1", "0"};
+    static const char *const first_values[] = {"0", "1", "0"};
     static const char *const second_values[] = {"1", "0", "0"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
@@ -499,6 +591,7 @@ static int test_independent_sql_log_bin_handles(void) {
     failures += expect_int(mylite_open_memory(&first), MYLITE_OK, "open first sql log bin handle");
     failures +=
         expect_int(mylite_open_memory(&second), MYLITE_OK, "open second sql log bin handle");
+    failures += execute_statement_ok(first, "SET SESSION sql_log_bin=0");
     failures += execute_statement_ok(first, "SHOW PROCESSLIST");
 
     failures += execute_ok(first, "SELECT @@sql_log_bin, @@warning_count, @@error_count", &result);

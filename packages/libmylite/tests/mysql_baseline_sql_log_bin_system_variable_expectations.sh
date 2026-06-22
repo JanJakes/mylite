@@ -129,6 +129,32 @@ expect_value \
     "0	0	0	0	0	0" \
     "$mutable_values"
 
+show_mutable_values=$(run_mysql \
+    "SET SESSION sql_log_bin=0; \
+     SHOW VARIABLES LIKE 'sql_log_bin'; \
+     SHOW GLOBAL VARIABLES LIKE 'sql_log_bin'; \
+     SET SESSION sql_log_bin=1;" \
+    | tr '\n' '|')
+expect_value \
+    "mysql SHOW VARIABLES reflects session sql_log_bin and omits global" \
+    "sql_log_bin	OFF|" \
+    "$show_mutable_values"
+
+boolean_form_values=$(run_mysql \
+    "SET SESSION sql_log_bin=ON; \
+     SELECT @@sql_log_bin; \
+     SET LOCAL sql_log_bin=FALSE; \
+     SELECT @@sql_log_bin; \
+     SET @@session.sql_log_bin=TRUE; \
+     SELECT @@sql_log_bin; \
+     SET SESSION sql_log_bin=DEFAULT; \
+     SELECT @@sql_log_bin;" \
+    | tr '\n' '|')
+expect_value \
+    "mysql sql_log_bin accepts boolean session SET forms" \
+    "1|0|1|1|" \
+    "$boolean_form_values"
+
 expect_error \
     "global sql_log_bin scope is session-only" \
     1238 \

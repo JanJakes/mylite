@@ -11,7 +11,7 @@ Binary log, replica, source, and Group Replication statement compatibility.
 | `SHOW REPLICAS` | 🟡 | Limited no-replication empty result set with MySQL 8.4.9 column labels; no registered replica rows, source topology, privilege filtering, or replication side effects |
 | `PURGE BINARY LOGS` | ❌ | Binary log purge syntax |
 | `RESET BINARY LOGS AND GTIDS` | ❌ | Binary log and GTID reset syntax |
-| `@@sql_log_bin` | 🟡 | Limited read-only scalar value `1` for no-scope, `session`, and `local` forms; no mutable session state, global scope, binary log files, GTID behavior, or replication side effects |
+| `@@sql_log_bin` | ✅ | Session/local/unscoped scalar reads and `SHOW VARIABLES` default to `1`/`ON`; Boolean session `SET` forms are connection-local, global scalar scope is rejected as session-only, and `SHOW GLOBAL VARIABLES` omits the session-only variable. No binary log files, GTID behavior, replication side effects, privilege checks, persisted state, or Performance Schema variable tables |
 | `@@log_bin` | 🟡 | Limited fixed global scalar value `1` and `SHOW VARIABLES` value `ON`; no binary log files, GTID recovery, startup options, replication side effects, or mutable state |
 | `@@log_bin_basename` | 🟡 | Limited fixed global placeholder `binlog`; no configured data directory, binary log sequence, path expansion, rotation, or file creation |
 | `@@log_bin_index` | 🟡 | Limited fixed global placeholder `binlog.index`; no binary log index file, path expansion, rotation, or file creation |
@@ -20,7 +20,7 @@ Binary log, replica, source, and Group Replication statement compatibility.
 | `@@sql_require_primary_key` | 🟡 | Limited handle-local session value with scalar reads, `SHOW VARIABLES`, session/local assignment, fixed global readback `0`, and primary-key DDL enforcement for current supported local table creation and table-change paths; no mutable shared global state, replicated primary-key policy, table import behavior, or replication applier privilege semantics |
 | `@@sql_replica_skip_counter` | 🟡 | Limited read-only scalar value `0` for no-scope and `global` forms; `session` and `local` scopes are rejected as global-only; no mutable state, relay-log event skipping, `START REPLICA` effects, channels, or GTID restrictions; deprecated `@@sql_slave_skip_counter` alias support is tracked separately |
 | `@@sql_slave_skip_counter` | 🟡 | Limited read-only deprecated alias for `@@sql_replica_skip_counter`; returns `0` for no-scope and `global` forms and emits deprecation warning `1287`; `session` and `local` scopes are rejected as global-only; no mutable state, relay-log event skipping, `START REPLICA` effects, channels, or GTID restrictions |
-| `SET sql_log_bin` | ❌ | Session binary logging toggle and privilege semantics |
+| `SET sql_log_bin` | 🟡 | Session value assignment and readback are supported as embedded no-op state; no binary logging toggle side effects, GTID restrictions, privilege checks, or persisted state |
 | `CHANGE REPLICATION FILTER` | ❌ | Replication filter syntax, diagnostics |
 | `CHANGE REPLICATION SOURCE TO` | ⚪ | Parsed and accepted as an embedded no-op with warning `1105`; no source connection/channel metadata, implicit commit, replication thread, or diagnostics beyond the no-op warning |
 | `RESET REPLICA` | ❌ | Replica metadata reset syntax |

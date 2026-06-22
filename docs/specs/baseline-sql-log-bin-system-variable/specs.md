@@ -2,20 +2,21 @@
 
 ## Status
 
-This feature specifies a narrow scalar system-variable slice for
+This feature specifies the baseline session-variable slice for
 `@@sql_log_bin`.
 
 It builds on the existing `SYSTEM_VARIABLE` lexer/parser token, scalar
-`SELECT` execution, diagnostics lifecycle, and descriptor-driven table paths.
-MySQL exposes `sql_log_bin` as session-only state that controls whether the
-current session writes statements to the binary log when binary logging is
-enabled. MyLite does not implement binary logs, replication, GTIDs, restricted
-session variable assignment, or `SET` for this variable in the baseline. This
-slice exposes only the default enabled scalar value.
+`SELECT` execution, diagnostics lifecycle, generic Boolean session-variable
+assignment, `SHOW VARIABLES`, and descriptor-driven table paths. MySQL exposes
+`sql_log_bin` as session-only state that controls whether the current session
+writes statements to the binary log when binary logging is enabled. MyLite
+implements the embedded compatibility baseline: session `SET`/readback and
+`SHOW VARIABLES` state, no global scope, and no changed query or DDL/DML
+execution because MyLite does not implement binary logs.
 
-This is not binary logging support. It does not implement `SET sql_log_bin`,
-mutable session state, binary log files, replication side effects, GTID
-handling, privilege checks, or logging changes for DDL/DML.
+This is not binary logging support. It does not implement binary log files,
+replication side effects, GTID handling, privilege checks, or logging changes
+for DDL/DML.
 
 ## Sources
 
@@ -62,8 +63,9 @@ Observed behavior:
   and message `Variable 'sql_log_bin' is a SESSION variable`.
 - The variable is session-scoped. After `SET SESSION sql_log_bin=0`,
   unscoped, `session`, and `local` reads return `0`; after
-  `SET SESSION sql_log_bin=1`, they return `1` again. MyLite intentionally
-  does not implement this mutable session state yet.
+  `SET SESSION sql_log_bin=1`, they return `1` again.
+- `SHOW VARIABLES LIKE 'sql_log_bin'` reflects the session value; `SHOW GLOBAL
+  VARIABLES LIKE 'sql_log_bin'` returns no rows.
 - Variable and scope names are case-insensitive.
 - Backtick-quoted final variable-name components are accepted.
 - Backtick-quoted scope names, such as ``@@`session`.sql_log_bin``, are
@@ -78,10 +80,10 @@ Observed behavior:
   Those forms remain outside this MyLite slice.
 
 The official MySQL 8.4 documentation classifies `sql_log_bin` as a dynamic
-boolean system variable with session scope and default value `ON`. It controls
+Boolean system variable with session scope and default value `ON`. It controls
 binary logging for the current session when the server binary log itself is
-enabled. MyLite returns the fixed default enabled value `1`, so this slice does
-not create binary logs or alter statement execution.
+enabled. MyLite records the session value but does not create binary logs or
+alter statement execution.
 
 ## Scope
 
@@ -92,10 +94,14 @@ The implementation must add:
 - support for no scope, `session`, and `local` scope qualifiers;
 - deterministic rejection of `global` scope with MySQL's session-only
   diagnostic for this variable;
+- session `SET sql_log_bin = 0|1|ON|OFF|TRUE|FALSE|DEFAULT` handling through
+  the existing Boolean system-variable override path;
+- `SHOW VARIABLES` values for the session baseline and `SHOW GLOBAL VARIABLES`
+  omission for the session-only global surface;
 - case-insensitive matching for unquoted scope and variable names;
 - backtick-quoted final variable-name components;
 - one-row scalar result sets with existing source-span column labels;
-- fixed value `1` for all supported scopes;
+- session values that default to `1`;
 - MySQL-compatible unknown-variable diagnostics for unsupported names;
 - deterministic rejection of quoted scopes;
 - fast C tests and a MySQL 8.4.9 expectation artifact.
@@ -108,6 +114,8 @@ SELECT @@sql_log_bin FROM DUAL
 SELECT @@session.sql_log_bin, @@local.sql_log_bin
 SELECT @@session.`sql_log_bin`, @@`sql_log_bin`
 SELECT @@sql_log_bin, @@warning_count, ROW_COUNT()
+SET SESSION sql_log_bin = 0
+SHOW VARIABLES LIKE 'sql_log_bin'
 ```
 
 The following form is intentionally parsed as a system-variable path but must
@@ -121,13 +129,13 @@ SELECT @@global.sql_log_bin
 
 This feature must not implement:
 
-- `SET`, startup options, persisted variables, `SET_VAR` hints, or mutable
-  session `sql_log_bin` state;
+- startup options, persisted variables, `SET_VAR` hints, or server-global
+  `sql_log_bin` state;
 - binary log files, binary log event generation, GTID behavior, replication
   source or replica semantics, `mysqldump` side effects, or privilege checks;
 - variables other than `sql_log_bin`;
 - changed descriptor-backed DDL or DML execution;
-- `SHOW VARIABLES` or Performance Schema variable tables;
+- Performance Schema variable tables;
 - table-backed variable evaluation, aliases, clauses, subqueries, arithmetic,
   functions over variables, parameters, prepared statements, or arbitrary
   SQLite pass-through;
@@ -145,8 +153,8 @@ This feature must not implement:
 - Lexer/parser/AST own syntax admission and source spans for
   `SYSTEM_VARIABLE` expressions. No new grammar is needed beyond the existing
   `expression ::= SYSTEM_VARIABLE` rule.
-- Runtime execution owns system-variable path parsing, scope validation, fixed
-  value selection, and diagnostics for unsupported names or scopes.
+- Runtime execution owns system-variable path parsing, scope validation,
+  session value selection, and diagnostics for unsupported names or scopes.
 - Descriptor-driven statement execution remains unchanged because this scalar
   variable does not influence MyLite storage, planning, or row visibility in
   this slice.
@@ -202,23 +210,21 @@ Runtime parses the raw token as a `@@` system variable:
   SQLSTATE `HY000`;
 - it preserves the original source text as the scalar result column label.
 
-For this slice, all supported scopes return the same fixed value. This is a
-deliberate MyLite limitation: no mutable `sql_log_bin` session state exists
-yet.
+For this slice, unscoped, `session`, and `local` scope read the current session
+override when one exists, and otherwise return `1`.
 
 ## Runtime Semantics
 
 The supported variable returns:
 
-| Variable | Supported scopes | Value |
-| --- | --- | --- |
-| `sql_log_bin` | no scope, `session`, `local` | `1` |
+| Scope | Value |
+| --- | --- |
+| Session/local/unscoped default | `1` |
+| Session/local/unscoped after `SET SESSION sql_log_bin = 0` | `0` |
 
-The value is independent of selected schema, close/reopen, table DDL, DML, and
-independent handles. It is a compatibility scalar only. Because the fixed
-value is enabled, existing descriptor-backed DDL and DML behavior must not
-change, and MyLite must not write or suppress binary log records in this
-slice.
+The session value is independent per handle and resets on close/reopen.
+Existing descriptor-backed DDL and DML behavior must not change, and MyLite
+must not write or suppress binary log records in this slice.
 
 Successful scalar reads:
 
@@ -243,7 +249,7 @@ This slice uses existing diagnostics for:
 - allocation failures: MyLite runtime failure diagnostics;
 - public API misuse: existing public execution/result misuse behavior.
 
-Successful supported reads produce no warnings.
+Successful supported reads and session assignments produce no warnings.
 
 ## Tests
 
@@ -252,22 +258,23 @@ Add a focused C runtime test under `packages/libmylite/tests/`, registered as
 
 The C tests must cover:
 
-- fixed value `1` for no scope, `session`, and `local`;
+- default value `1`, mutable session values, and close/reopen reset behavior;
 - rejection of `global` scope with the session-only diagnostic;
+- session and global `SHOW VARIABLES` behavior;
 - source-text labels, case-insensitive names, quoted final variable names,
   `FROM DUAL`, selected-schema independence, and mixed scalar reads with other
   baseline variables;
 - warning and error diagnostics snapshot behavior;
 - unknown unscoped and scoped variable diagnostics;
 - quoted-scope rejection and unsupported expression rejection;
-- close/reopen persistence, independent handles, unchanged catalog and SQLite
+- close/reopen reset, independent handles, unchanged catalog and SQLite
   generations, and `.mylite` preamble preservation;
 - descriptor-backed DDL/DML independence, including that simple table changes
   still work and are not logged or blocked by this scalar variable.
 
 The MySQL expectation script must verify the corresponding MySQL 8.4.9
-observable behavior, including upstream session mutability and the
-`@@global.sql_log_bin` session-only error.
+observable behavior, including upstream session mutability, `SHOW VARIABLES`,
+Boolean assignment forms, and the `@@global.sql_log_bin` session-only error.
 
 ## Compatibility Documentation
 
@@ -279,9 +286,8 @@ Update:
 
 Do not update query expression, DDL, or DML compatibility claims except to keep
 existing "no logging side effects" wording accurate if needed. Do not claim
-mutable session state, `SET`, binary log writes, GTID behavior, replication
-semantics, `SHOW VARIABLES`, Performance Schema variable tables, or global
-scope support.
+binary log writes, GTID behavior, replication semantics, Performance Schema
+variable tables, or global scope support.
 
 ## Verification
 

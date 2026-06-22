@@ -130,6 +130,32 @@ expect_value \
     "1	0	1	1	0	0	0" \
     "$mutable_values"
 
+show_mutable_values=$(run_mysql \
+    "SET SESSION sql_log_off=1; \
+     SHOW VARIABLES LIKE 'sql_log_off'; \
+     SHOW GLOBAL VARIABLES LIKE 'sql_log_off'; \
+     SET SESSION sql_log_off=DEFAULT;" \
+    | tr '\n' '|')
+expect_value \
+    "mysql SHOW VARIABLES reflects session sql_log_off" \
+    "sql_log_off	ON|sql_log_off	OFF|" \
+    "$show_mutable_values"
+
+boolean_form_values=$(run_mysql \
+    "SET SESSION sql_log_off=ON; \
+     SELECT @@sql_log_off; \
+     SET LOCAL sql_log_off=FALSE; \
+     SELECT @@sql_log_off; \
+     SET @@session.sql_log_off=TRUE; \
+     SELECT @@sql_log_off; \
+     SET SESSION sql_log_off=DEFAULT; \
+     SELECT @@sql_log_off;" \
+    | tr '\n' '|')
+expect_value \
+    "mysql sql_log_off accepts boolean session SET forms" \
+    "1|0|1|0|" \
+    "$boolean_form_values"
+
 warning_values=$(run_mysql \
     "SELECT 1; SHOW PROCESSLIST; \
      SELECT @@sql_log_off, @@warning_count, @@error_count, ROW_COUNT(); \

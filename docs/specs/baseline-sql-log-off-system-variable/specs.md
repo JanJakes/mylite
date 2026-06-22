@@ -2,21 +2,21 @@
 
 ## Status
 
-This feature specifies a narrow scalar system-variable slice for
+This feature specifies the baseline session-variable slice for
 `@@sql_log_off`.
 
 It builds on the existing `SYSTEM_VARIABLE` lexer/parser token, scalar
-`SELECT` execution, diagnostics lifecycle, and descriptor-driven statement
-paths. MySQL exposes `sql_log_off` as mutable global and session state that
-controls whether the current session suppresses general query log writes when
-the general query log itself is enabled. MyLite does not implement mutable
-system-variable assignment, general query log files, log-row writes to
-`mysql.general_log`, or logging side effects in the baseline yet, so this slice
-exposes only the default disabled scalar value.
+`SELECT` execution, diagnostics lifecycle, generic Boolean session-variable
+assignment, `SHOW VARIABLES`, and descriptor-driven statement paths. MySQL
+exposes `sql_log_off` as mutable global and session state that controls whether
+the current session suppresses general query log writes when the general query
+log itself is enabled. MyLite implements the embedded compatibility baseline:
+session `SET`/readback and `SHOW VARIABLES` state, fixed global default `OFF`,
+and no changed execution because MyLite does not implement general query logs.
 
 This is not general query logging support. It does not implement
-`SET sql_log_off`, mutable global/session state, log file or log-table writes,
-restricted variable privileges, or logging changes for SQL statements.
+server-global mutation, log file or log-table writes, restricted variable
+privileges, or logging changes for SQL statements.
 
 ## Sources
 
@@ -61,6 +61,8 @@ Observed behavior:
   `SET SESSION sql_log_off=1`, unscoped, `session`, and `local` reads return
   `1`, while `global` still returns `0`; assigning `DEFAULT` restores the
   default session value.
+- `SHOW VARIABLES LIKE 'sql_log_off'` reflects the session value; `SHOW GLOBAL
+  VARIABLES LIKE 'sql_log_off'` reflects the fixed global value.
 - Variable and scope names are case-insensitive.
 - Backtick-quoted final variable-name components are accepted.
 - Backtick-quoted scope names, such as ``@@`session`.sql_log_off``, are syntax
@@ -77,9 +79,8 @@ Observed behavior:
 The official MySQL system-variable documentation classifies `sql_log_off` as
 a dynamic boolean variable with global and session scope and default value
 `OFF`. When enabled for a session, MySQL disables general query logging for
-that session, assuming the general log itself is enabled. MyLite returns the
-fixed default disabled value `0`, so this slice does not alter statement
-logging or create log storage.
+that session, assuming the general log itself is enabled. MyLite records the
+session value but does not alter statement logging or create log storage.
 
 ## Scope
 
@@ -88,10 +89,14 @@ The implementation must add:
 - runtime recognition of `sql_log_off` inside the existing scalar `SELECT`
   subset;
 - support for no scope, `session`, `local`, and `global` scope qualifiers;
+- session `SET sql_log_off = 0|1|ON|OFF|TRUE|FALSE|DEFAULT` handling through
+  the existing Boolean system-variable override path;
+- `SHOW VARIABLES` and `SHOW GLOBAL VARIABLES` values for the session/global
+  baseline;
 - case-insensitive matching for unquoted scope and variable names;
 - backtick-quoted final variable-name components;
 - one-row scalar result sets with existing source-span column labels;
-- fixed value `0` for all supported scopes;
+- fixed global value `0` and session-local values that default to `0`;
 - MySQL-compatible unknown-variable diagnostics for unsupported names;
 - deterministic rejection of quoted scopes;
 - fast C tests and a MySQL 8.4.9 expectation artifact.
@@ -105,20 +110,23 @@ SELECT @@session.sql_log_off, @@local.sql_log_off
 SELECT @@global.sql_log_off
 SELECT @@session.`sql_log_off`, @@`sql_log_off`
 SELECT @@sql_log_off, @@warning_count, ROW_COUNT()
+SET SESSION sql_log_off = 1
+SHOW VARIABLES LIKE 'sql_log_off'
+SHOW GLOBAL VARIABLES LIKE 'sql_log_off'
 ```
 
 ## Non-Goals
 
 This feature must not implement:
 
-- `SET`, startup options, persisted variables, `SET_VAR` hints, or mutable
-  global/session `sql_log_off` state;
+- startup options, persisted variables, `SET_VAR` hints, or mutable
+  server-global `sql_log_off` state;
 - general query log enabling, log output routing, log file writes, log-row
   writes to `mysql.general_log`, slow query log behavior, log redaction, or
   restricted variable privilege checks;
 - variables other than `sql_log_off`;
 - changed descriptor-backed DDL, DML, or `SELECT` execution;
-- `SHOW VARIABLES` or Performance Schema variable tables;
+- Performance Schema variable tables;
 - table-backed variable evaluation, aliases, clauses, subqueries, arithmetic,
   functions over variables, parameters, prepared statements, or arbitrary
   SQLite pass-through;
@@ -136,8 +144,8 @@ This feature must not implement:
 - Lexer/parser/AST own syntax admission and source spans for
   `SYSTEM_VARIABLE` expressions. No new grammar is needed beyond the existing
   `expression ::= SYSTEM_VARIABLE` rule.
-- Runtime execution owns system-variable path parsing, scope validation, fixed
-  value selection, and diagnostics for unsupported names.
+- Runtime execution owns system-variable path parsing, scope validation,
+  session/global value selection, and diagnostics for unsupported names.
 - Descriptor-driven statement execution remains unchanged because this scalar
   variable does not influence MyLite storage, planning, or row visibility in
   this slice.
@@ -192,21 +200,23 @@ Runtime parses the raw token as a `@@` system variable:
   SQLSTATE `HY000`;
 - it preserves the original source text as the scalar result column label.
 
-For this slice, all scopes return the same fixed value. This is a deliberate
-MyLite limitation: no mutable `sql_log_off` state or log subsystem exists yet.
+For this slice, global scope returns the fixed embedded default `0`. Unscoped,
+`session`, and `local` scope read the current session override when one exists,
+and otherwise return `0`.
 
 ## Runtime Semantics
 
 The supported variable returns:
 
-| Variable | Value |
+| Scope | Value |
 | --- | --- |
-| `sql_log_off` | `0` |
+| Global | fixed `0` |
+| Session/local/unscoped default | `0` |
+| Session/local/unscoped after `SET SESSION sql_log_off = 1` | `1` |
 
-The value is independent of selected schema, close/reopen, table DDL, DML, and
-independent handles. It is a compatibility scalar only. Because the fixed
-value is disabled, existing statement execution must not change, and MyLite
-must not write general query log records in this slice.
+The session value is independent per handle and resets on close/reopen.
+Existing statement execution must not change, and MyLite must not write
+general query log records in this slice.
 
 Successful scalar reads:
 
@@ -230,7 +240,7 @@ This slice uses existing diagnostics for:
 - allocation failures: MyLite runtime failure diagnostics;
 - public API misuse: existing public execution/result misuse behavior.
 
-Successful supported reads produce no warnings.
+Successful supported reads and session assignments produce no warnings.
 
 ## Tests
 
@@ -239,20 +249,23 @@ Add a focused C runtime test under `packages/libmylite/tests/`, registered as
 
 The C tests must cover:
 
-- fixed value `0` for no scope, `session`, `local`, and `global`;
+- default value `0`, mutable session values, fixed global `0`, and
+  close/reopen reset behavior;
 - source-text labels, case-insensitive names, quoted final variable names,
   `FROM DUAL`, selected-schema independence, and mixed scalar reads with other
   baseline variables;
 - warning and error diagnostics snapshot behavior;
 - unknown unscoped and scoped variable diagnostics;
 - quoted-scope rejection and unsupported expression rejection;
-- close/reopen persistence, independent handles, unchanged catalog and SQLite
+- session and global `SHOW VARIABLES` rows after session assignment;
+- close/reopen reset, independent handles, unchanged catalog and SQLite
   generations, and `.mylite` preamble preservation;
 - descriptor-backed DDL/DML independence, including that simple table changes
   still work and are not logged or blocked by this scalar variable.
 
 The MySQL expectation script must verify the corresponding MySQL 8.4.9
-observable behavior, including upstream session mutability.
+observable behavior, including upstream session mutability, `SHOW VARIABLES`,
+and Boolean assignment forms.
 
 ## Compatibility Documentation
 
@@ -262,9 +275,9 @@ Update:
 - `docs/compatibility/runtime-system-variables.md`
 - `docs/compatibility/metadata-mysql-schema.md`
 
-Do not claim mutable global/session state, `SET`, general query log files,
-log-row writes to `mysql.general_log`, slow query logging, privileges,
-`SHOW VARIABLES`, or Performance Schema variable tables.
+Do not claim server-global mutation, persisted state, general query log files,
+log-row writes to `mysql.general_log`, slow query logging, privileges, or
+Performance Schema variable tables.
 
 ## Verification
 

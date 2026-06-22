@@ -94,6 +94,12 @@ struct row_constructor_predicate_scan {
     size_t right_right_paren_index;
 };
 
+struct row_constructor_in_predicate_scan {
+    size_t left_right_paren_index;
+    size_t list_left_paren_index;
+    size_t list_right_paren_index;
+};
+
 static bool scan_can_retry_select_result_option_before_duplicate(
     const struct placeholder_statement_scan *scan,
     size_t *out_duplicate_index
@@ -151,10 +157,33 @@ static bool placeholder_scan_row_constructor_comparison_starts_at(
     size_t index,
     struct row_constructor_predicate_scan *out_predicate_scan
 );
+static enum mylite_sql_parse_status scan_row_constructor_in_predicate_retries_at(
+    const struct placeholder_statement_scan *scan,
+    size_t row_index,
+    const char *placeholder_text,
+    size_t placeholder_text_length,
+    struct placeholder_row_arithmetic_subject_retries *out_retries,
+    bool *out_can_retry,
+    size_t *out_end_index
+);
+static bool placeholder_scan_row_constructor_in_predicate_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    struct row_constructor_in_predicate_scan *out_predicate_scan
+);
 static bool placeholder_scan_predicate_row_value_starts_at(
     const struct placeholder_statement_scan *scan,
     size_t index,
     size_t *out_right_paren_index
+);
+static enum mylite_sql_parse_status append_row_constructor_predicate_retry(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index,
+    const char *placeholder_text,
+    size_t placeholder_text_length,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry
 );
 static bool placeholder_scan_token_is_row_constructor_comparison_operator(
     const struct placeholder_statement_scan *scan,

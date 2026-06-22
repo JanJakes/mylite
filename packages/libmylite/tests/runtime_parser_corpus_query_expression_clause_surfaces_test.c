@@ -77,6 +77,11 @@ static int test_query_expression_clause_surfaces(void) {
     static const char *const row_constructor_order_inclusive_count_rows[] = {"2"};
     static const char *const row_constructor_null_equal_count_rows[] = {"0"};
     static const char *const row_constructor_dml_rows[] = {"2"};
+    static const char *const row_constructor_tuple_in_count_rows[] = {"1"};
+    static const char *const row_constructor_tuple_in_all_count_rows[] = {"2"};
+    static const char *const row_constructor_tuple_not_in_count_rows[] = {"1"};
+    static const char *const row_constructor_tuple_null_not_in_none_count_rows[] = {"0"};
+    static const char *const row_constructor_dml_in_rows[] = {"2"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -91,6 +96,7 @@ static int test_query_expression_clause_surfaces(void) {
     failures += execute_ok(database, "CREATE TABLE t1 (a INT, b INT, c VARCHAR(20))");
     failures += execute_ok(database, "CREATE TABLE t_tuple (a INT, b INT, c VARCHAR(20))");
     failures += execute_ok(database, "CREATE TABLE t_dml (a INT, b INT, c VARCHAR(20))");
+    failures += execute_ok(database, "CREATE TABLE t_dml_in (a INT, b INT, c VARCHAR(20))");
     failures += execute_ok(database, "CREATE TABLE t2 (a INT, b INT)");
     failures += execute_ok(database, "CREATE TABLE t (u INT)");
     failures += execute_ok(
@@ -104,6 +110,8 @@ static int test_query_expression_clause_surfaces(void) {
         execute_ok(database, "INSERT INTO t_tuple VALUES (1, 2, 'x'), (1, NULL, 'n'), (3, 4, 'y')");
     failures +=
         execute_ok(database, "INSERT INTO t_dml VALUES (1, 2, 'x'), (3, 4, 'y'), (5, 6, 'z')");
+    failures +=
+        execute_ok(database, "INSERT INTO t_dml_in VALUES (1, 2, 'x'), (3, 4, 'y'), (5, 6, 'z')");
     failures += execute_ok(database, "INSERT INTO t2 VALUES (1, 20), (3, 40)");
     failures += execute_ok(database, "INSERT INTO t VALUES (256), (257), (NULL)");
     failures += execute_ok(
@@ -572,6 +580,100 @@ static int test_query_expression_clause_surfaces(void) {
             .context = "row constructor NULL inclusive order predicate support",
         }
     );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t1 WHERE (a,b) IN ((1,2),(9,9))",
+            .values = row_constructor_tuple_in_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "parenthesized row tuple IN predicate support",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t1 WHERE ROW(a,b) IN (ROW(1,2), ROW(3,4))",
+            .values = row_constructor_tuple_in_all_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row constructor IN predicate support",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t1 WHERE (a,b) NOT IN ((1,2),(9,9))",
+            .values = row_constructor_tuple_not_in_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "parenthesized row tuple NOT IN predicate support",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t1 WHERE ROW(1,2) IN (ROW(a,b))",
+            .values = row_constructor_tuple_in_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "literal-left row constructor IN predicate support",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t_tuple WHERE ROW(a,b) IN (ROW(1,NULL), ROW(3,4))",
+            .values = row_constructor_tuple_in_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row constructor NULL IN predicate support",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t_tuple WHERE ROW(a,b) NOT IN (ROW(1,NULL), ROW(9,9))",
+            .values = row_constructor_tuple_not_in_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row constructor NULL NOT IN predicate support",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t_tuple WHERE (a,b) NOT IN ((1,NULL),(3,4))",
+            .values = row_constructor_tuple_null_not_in_none_count_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "parenthesized row tuple NULL NOT IN filtering support",
+        }
+    );
+    failures +=
+        execute_ok(database, "UPDATE t_dml_in SET c = 'tuple-in' WHERE (a,b) IN ((1,2),(5,6))");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t_dml_in WHERE c = 'tuple-in'",
+            .values = row_constructor_dml_in_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row constructor IN UPDATE predicate support",
+        }
+    );
+    failures +=
+        execute_ok(database, "DELETE FROM t_dml_in WHERE ROW(a,b) NOT IN (ROW(3,4), ROW(5,6))");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM t_dml_in",
+            .values = row_constructor_dml_in_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "row constructor NOT IN DELETE predicate support",
+        }
+    );
     failures += execute_ok(database, "UPDATE t_dml SET c = 'hit' WHERE (a,b) >= (3,4)");
     failures += expect_query_values(
         database,
@@ -597,6 +699,15 @@ static int test_query_expression_clause_surfaces(void) {
     failures += execute_error(
         database,
         "SELECT COUNT(*) FROM t1 WHERE ROW(1,2)=ROW(a,b,c)",
+        (struct expected_sql_error){
+            .code = mysql_error_operand_should_contain_one_column,
+            .sqlstate = "21000",
+            .message_part = "Operand should contain 2 column(s)",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT COUNT(*) FROM t1 WHERE (a,b) IN ((1,2,3))",
         (struct expected_sql_error){
             .code = mysql_error_operand_should_contain_one_column,
             .sqlstate = "21000",

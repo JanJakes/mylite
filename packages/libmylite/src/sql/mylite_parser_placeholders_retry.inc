@@ -427,42 +427,54 @@ static enum mylite_sql_parse_status scan_row_constructor_predicate_retries(
 
     for (size_t index = 0U; index < scan->token_count; ++index) {
         struct row_constructor_predicate_scan predicate_scan = {0};
+        size_t end_index = index;
+        enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
 
         if (!placeholder_scan_row_constructor_predicate_is_in_where_context(scan, index)) {
             continue;
         }
-        if (!placeholder_scan_row_constructor_comparison_starts_at(
+        if (!placeholder_scan_row_constructor_comparison_starts_at(scan, index, &predicate_scan)) {
+            status = scan_row_constructor_in_predicate_retries_at(
                 scan,
                 index,
-                &predicate_scan
-            )) {
+                placeholder_text,
+                sizeof(placeholder_text) - 1U,
+                out_retries,
+                out_can_retry,
+                &end_index
+            );
+            if (status != MYLITE_SQL_PARSE_OK) {
+                return status;
+            }
+            if (end_index > index) {
+                index = end_index;
+            }
             continue;
         }
 
-        for (size_t row_index_index = 0U; row_index_index < 2U; ++row_index_index) {
-            size_t start_index =
-                row_index_index == 0U ? index : predicate_scan.right_row_index;
-            size_t end_index = row_index_index == 0U
-                                   ? predicate_scan.left_right_paren_index
-                                   : predicate_scan.right_right_paren_index;
-            struct placeholder_row_arithmetic_subject_retry retry = {
-                .start_index = start_index,
-                .end_index = end_index,
-                .placeholder_token = {
-                    .kind = MYLITE_SQL_TOKEN_IDENTIFIER,
-                    .text = placeholder_text,
-                    .length = sizeof(placeholder_text) - 1U,
-                    .offset = scan->tokens[start_index].offset,
-                },
-            };
-
-            if (!placeholder_row_arithmetic_subject_retries_push(out_retries, retry)) {
-                placeholder_row_arithmetic_subject_retries_deinit(out_retries);
-                return MYLITE_SQL_PARSE_NOMEM;
-            }
+        status = append_row_constructor_predicate_retry(
+            scan,
+            index,
+            predicate_scan.left_right_paren_index,
+            placeholder_text,
+            sizeof(placeholder_text) - 1U,
+            out_retries,
+            out_can_retry
+        );
+        if (status == MYLITE_SQL_PARSE_OK) {
+            status = append_row_constructor_predicate_retry(
+                scan,
+                predicate_scan.right_row_index,
+                predicate_scan.right_right_paren_index,
+                placeholder_text,
+                sizeof(placeholder_text) - 1U,
+                out_retries,
+                out_can_retry
+            );
         }
-
-        *out_can_retry = true;
+        if (status != MYLITE_SQL_PARSE_OK) {
+            return status;
+        }
         index = predicate_scan.right_right_paren_index;
     }
     return MYLITE_SQL_PARSE_OK;
@@ -536,6 +548,140 @@ static bool placeholder_scan_row_constructor_comparison_starts_at(
     return true;
 }
 
+static enum mylite_sql_parse_status scan_row_constructor_in_predicate_retries_at(
+    const struct placeholder_statement_scan *scan,
+    size_t row_index,
+    const char *placeholder_text,
+    size_t placeholder_text_length,
+    struct placeholder_row_arithmetic_subject_retries *out_retries,
+    bool *out_can_retry,
+    size_t *out_end_index
+) {
+    struct row_constructor_in_predicate_scan predicate_scan = {0};
+    size_t value_start = 0U;
+    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+
+    if (out_end_index != NULL) {
+        *out_end_index = row_index;
+    }
+    if (!placeholder_scan_row_constructor_in_predicate_starts_at(
+            scan,
+            row_index,
+            &predicate_scan
+        )) {
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    status = append_row_constructor_predicate_retry(
+        scan,
+        row_index,
+        predicate_scan.left_right_paren_index,
+        placeholder_text,
+        placeholder_text_length,
+        out_retries,
+        out_can_retry
+    );
+    value_start = predicate_scan.list_left_paren_index + 1U;
+    while (status == MYLITE_SQL_PARSE_OK && value_start < predicate_scan.list_right_paren_index) {
+        size_t value_right_paren_index = 0U;
+
+        if (!placeholder_scan_predicate_row_value_starts_at(
+                scan,
+                value_start,
+                &value_right_paren_index
+            ) ||
+            value_right_paren_index >= predicate_scan.list_right_paren_index) {
+            placeholder_row_arithmetic_subject_retries_deinit(out_retries);
+            return MYLITE_SQL_PARSE_MISUSE;
+        }
+        status = append_row_arithmetic_predicate_value_retry(
+            scan,
+            value_start,
+            value_right_paren_index,
+            out_retries,
+            out_can_retry
+        );
+        if (value_right_paren_index + 1U >= predicate_scan.list_right_paren_index) {
+            break;
+        }
+        value_start = value_right_paren_index + 2U;
+    }
+    if (status == MYLITE_SQL_PARSE_OK && out_end_index != NULL) {
+        *out_end_index = predicate_scan.list_right_paren_index;
+    }
+    return status;
+}
+
+static bool placeholder_scan_row_constructor_in_predicate_starts_at(
+    const struct placeholder_statement_scan *scan,
+    size_t index,
+    struct row_constructor_in_predicate_scan *out_predicate_scan
+) {
+    size_t left_right_paren_index = 0U;
+    size_t operator_index = 0U;
+    size_t list_left_paren_index = 0U;
+    size_t list_right_paren_index = 0U;
+    size_t value_start = 0U;
+
+    if (!placeholder_scan_predicate_row_value_starts_at(scan, index, &left_right_paren_index)) {
+        return false;
+    }
+    operator_index = left_right_paren_index + 1U;
+    if (placeholder_scan_token_text_equals(scan, operator_index, "IN")) {
+        list_left_paren_index = operator_index + 1U;
+    } else if (placeholder_scan_token_text_equals(scan, operator_index, "NOT") &&
+               placeholder_scan_token_text_equals(scan, operator_index + 1U, "IN")) {
+        list_left_paren_index = operator_index + 2U;
+    } else {
+        return false;
+    }
+    if (list_left_paren_index >= scan->token_count ||
+        !mylite_sql_parser_token_is_left_paren(&scan->tokens[list_left_paren_index]) ||
+        !placeholder_scan_find_matching_right_paren(
+            scan,
+            list_left_paren_index,
+            &list_right_paren_index
+        ) ||
+        list_right_paren_index <= list_left_paren_index + 1U ||
+        placeholder_scan_in_list_is_subquery(
+            scan,
+            list_left_paren_index + 1U,
+            list_right_paren_index - 1U
+        )) {
+        return false;
+    }
+
+    value_start = list_left_paren_index + 1U;
+    while (value_start < list_right_paren_index) {
+        size_t value_right_paren_index = 0U;
+
+        if (!placeholder_scan_predicate_row_value_starts_at(
+                scan,
+                value_start,
+                &value_right_paren_index
+            ) ||
+            value_right_paren_index >= list_right_paren_index) {
+            return false;
+        }
+        if (value_right_paren_index + 1U == list_right_paren_index) {
+            break;
+        }
+        if (!mylite_sql_parser_token_is_comma(&scan->tokens[value_right_paren_index + 1U])) {
+            return false;
+        }
+        value_start = value_right_paren_index + 2U;
+    }
+
+    if (out_predicate_scan != NULL) {
+        *out_predicate_scan = (struct row_constructor_in_predicate_scan){
+            .left_right_paren_index = left_right_paren_index,
+            .list_left_paren_index = list_left_paren_index,
+            .list_right_paren_index = list_right_paren_index,
+        };
+    }
+    return true;
+}
+
 static bool placeholder_scan_predicate_row_value_starts_at(
     const struct placeholder_statement_scan *scan,
     size_t index,
@@ -543,6 +689,40 @@ static bool placeholder_scan_predicate_row_value_starts_at(
 ) {
     return placeholder_scan_row_constructor_starts_at(scan, index, out_right_paren_index) ||
            placeholder_scan_row_tuple_starts_at(scan, index, out_right_paren_index);
+}
+
+static enum mylite_sql_parse_status append_row_constructor_predicate_retry(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index,
+    const char *placeholder_text,
+    size_t placeholder_text_length,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry
+) {
+    struct placeholder_row_arithmetic_subject_retry retry;
+
+    if (scan == NULL || retries == NULL || inout_can_retry == NULL || placeholder_text == NULL ||
+        start_index > end_index || end_index >= scan->token_count) {
+        return MYLITE_SQL_PARSE_MISUSE;
+    }
+
+    retry = (struct placeholder_row_arithmetic_subject_retry){
+        .start_index = start_index,
+        .end_index = end_index,
+        .placeholder_token = {
+            .kind = MYLITE_SQL_TOKEN_IDENTIFIER,
+            .text = placeholder_text,
+            .length = placeholder_text_length,
+            .offset = scan->tokens[start_index].offset,
+        },
+    };
+    if (!placeholder_row_arithmetic_subject_retries_push(retries, retry)) {
+        placeholder_row_arithmetic_subject_retries_deinit(retries);
+        return MYLITE_SQL_PARSE_NOMEM;
+    }
+    *inout_can_retry = true;
+    return MYLITE_SQL_PARSE_OK;
 }
 
 static bool placeholder_scan_token_is_row_constructor_comparison_operator(

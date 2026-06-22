@@ -542,10 +542,24 @@ static int plan_in_predicate(
     };
     int rc = MYLITE_OK;
     size_t outer_source_count = 1U;
+    bool row_constructor_handled = false;
 
     if (predicate_node == NULL || predicate_node->kind != MYLITE_SQL_AST_IN_PREDICATE) {
         set_unsupported_error(database, "WHERE supports only descriptor column IN predicates");
         return MYLITE_ERROR;
+    }
+    rc = plan_row_constructor_in_predicate(
+        database,
+        predicate_node,
+        source_context,
+        table_columns,
+        table_column_count,
+        predicate,
+        out_node_index,
+        &row_constructor_handled
+    );
+    if (row_constructor_handled || rc != MYLITE_OK) {
+        return rc;
     }
     if (predicate_node_is_literal_left_predicate_value(child_at(predicate_node, 0U)) ||
         predicate_node_is_supported_row_scalar_expression(child_at(predicate_node, 0U))) {
@@ -634,6 +648,95 @@ static int plan_in_predicate(
     }
     predicate->qualify_column_references = true;
 
+    return rc;
+}
+
+static int plan_row_constructor_in_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index,
+    bool *out_handled
+) {
+    const struct mylite_sql_ast_node *left_node =
+        unwrap_parenthesized_predicate(child_at(predicate_node, 0U));
+    const struct mylite_sql_ast_node *value_list = child_at(predicate_node, 1U);
+    size_t element_count = 0U;
+    size_t value_count = 0U;
+    size_t root_index = SIZE_MAX;
+    int rc = MYLITE_OK;
+
+    if (out_handled == NULL) {
+        set_unsupported_error(database, "WHERE row constructor IN predicate planning failed");
+        return MYLITE_ERROR;
+    }
+    *out_handled = predicate_node_is_row_constructor(left_node);
+    if (!*out_handled) {
+        return MYLITE_OK;
+    }
+    if (value_list == NULL || value_list->kind != MYLITE_SQL_AST_PREDICATE_VALUE_LIST) {
+        set_unsupported_error(
+            database,
+            "WHERE row constructor IN predicates support only literal row lists"
+        );
+        return MYLITE_ERROR;
+    }
+
+    element_count = mylite_sql_ast_node_child_count(left_node);
+    value_count = mylite_sql_ast_node_child_count(value_list);
+    if (value_count == 0U) {
+        set_unsupported_error(database, "WHERE row constructor IN predicates require a value list");
+        return MYLITE_ERROR;
+    }
+    for (size_t value_index = 0U; value_index < value_count && rc == MYLITE_OK; ++value_index) {
+        const struct mylite_sql_ast_node *right_node =
+            unwrap_parenthesized_predicate(child_at(value_list, value_index));
+        size_t value_root_index = SIZE_MAX;
+
+        if (!predicate_node_is_row_constructor(right_node)) {
+            set_unsupported_error(
+                database,
+                "WHERE row constructor IN predicates require row constructor list values"
+            );
+            return MYLITE_ERROR;
+        }
+        if (mylite_sql_ast_node_child_count(right_node) != element_count) {
+            set_row_constructor_operand_count_error(database, element_count);
+            return MYLITE_ERROR;
+        }
+
+        rc = plan_row_constructor_equality_predicate(
+            database,
+            left_node,
+            right_node,
+            element_count,
+            source_context,
+            MYLITE_SQL_AST_OPERATOR_EQUAL,
+            table_columns,
+            table_column_count,
+            predicate,
+            &value_root_index
+        );
+        if (rc == MYLITE_OK && root_index == SIZE_MAX) {
+            root_index = value_root_index;
+        } else if (rc == MYLITE_OK) {
+            rc = append_row_constructor_or_node(
+                database,
+                predicate,
+                root_index,
+                value_root_index,
+                &root_index
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        predicate->qualify_column_references =
+            predicate->qualify_column_references || select_source_context_is_joined(source_context);
+        *out_node_index = root_index;
+    }
     return rc;
 }
 

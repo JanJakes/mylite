@@ -1,5 +1,6 @@
 #include "parser_test_support.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 
 struct expected_statement {
@@ -24,12 +25,20 @@ struct expected_row_constructor_predicate_ast {
     size_t expected_child_count;
 };
 
+struct expected_row_constructor_in_ast {
+    const char *sql;
+    bool expect_not;
+    size_t expected_child_count;
+    size_t expected_list_count;
+};
+
 static int test_query_expression_clause_placeholders(void);
 static int expect_literal_left_between_ast(struct expected_literal_left_between_ast expected);
 static int expect_literal_left_in_ast(struct expected_literal_left_in_ast expected);
 static int expect_row_constructor_predicate_ast(
     struct expected_row_constructor_predicate_ast expected
 );
+static int expect_row_constructor_in_ast(struct expected_row_constructor_in_ast expected);
 static int expect_statement_kind(struct expected_statement expected);
 static int parse_ok(const char *sql);
 static int parse_status(
@@ -71,7 +80,11 @@ static int test_query_expression_clause_placeholders(void) {
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT * FROM t1 JOIN t2 ON ROW(1,2)=ROW(t1.a,t2.b)",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
+        {.sql = "SELECT * FROM t1 JOIN t2 ON ROW(t1.a,t1.b) IN (ROW(1,2))",
+         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT COUNT(*) FROM t1 HAVING ROW(1,2)=ROW(a,b)",
+         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
+        {.sql = "SELECT COUNT(*) FROM t1 HAVING ROW(a,b) IN (ROW(1,2))",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT x FROM t GROUP BY x, MATCH(x) AGAINST ('abc') "
                 "HAVING MATCH(x) AGAINST ('abc')",
@@ -202,6 +215,30 @@ static int test_query_expression_clause_placeholders(void) {
             .expected_operator = MYLITE_SQL_AST_OPERATOR_LESS_EQUAL,
             .expected_child_count = 2U,
         });
+    failures += expect_row_constructor_in_ast((struct expected_row_constructor_in_ast){
+        .sql = "SELECT COUNT(*) FROM t1 WHERE (a,b) IN ((1,2),(9,9))",
+        .expect_not = false,
+        .expected_child_count = 2U,
+        .expected_list_count = 2U,
+    });
+    failures += expect_row_constructor_in_ast((struct expected_row_constructor_in_ast){
+        .sql = "SELECT COUNT(*) FROM t1 WHERE ROW(a,b) IN (ROW(1,2), ROW(3,4))",
+        .expect_not = false,
+        .expected_child_count = 2U,
+        .expected_list_count = 2U,
+    });
+    failures += expect_row_constructor_in_ast((struct expected_row_constructor_in_ast){
+        .sql = "SELECT COUNT(*) FROM t1 WHERE (a,b) NOT IN ((1,2),(9,9))",
+        .expect_not = true,
+        .expected_child_count = 2U,
+        .expected_list_count = 2U,
+    });
+    failures += expect_row_constructor_in_ast((struct expected_row_constructor_in_ast){
+        .sql = "SELECT COUNT(*) FROM t1 WHERE ROW(1,2) IN (ROW(a,b))",
+        .expect_not = false,
+        .expected_child_count = 2U,
+        .expected_list_count = 1U,
+    });
     failures += expect_literal_left_between_ast((struct expected_literal_left_between_ast){
         .sql = "select f2 from t1 where '2001-04-10 12:34:56' between f2 and '01-05-01'",
         .lower = "f2",
@@ -353,6 +390,79 @@ static int expect_row_constructor_predicate_ast(
         expected.expected_child_count,
         "right ROW operand child count"
     );
+    mylite_sql_parse_result_deinit(&result);
+    return failures;
+}
+
+static int expect_row_constructor_in_ast(struct expected_row_constructor_in_ast expected) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *predicate = NULL;
+    const struct mylite_sql_ast_node *left_row = NULL;
+    const struct mylite_sql_ast_node *value_list = NULL;
+    int failures = parser_test_parse_sql(expected.sql, MYLITE_SQL_PARSE_OK, &result);
+
+    select = parser_test_child_at(result.root, 0U);
+    where_clause = parser_test_child_at(select, 2U);
+    predicate = parser_test_child_at(where_clause, 0U);
+
+    if (expected.expect_not) {
+        failures += parser_test_expect_node(
+            predicate,
+            MYLITE_SQL_AST_NOT_PREDICATE,
+            "row-constructor NOT IN wrapper"
+        );
+        failures += parser_test_expect_operator(
+            predicate,
+            MYLITE_SQL_AST_OPERATOR_LOGICAL_NOT,
+            "row-constructor NOT IN operator"
+        );
+        predicate = parser_test_child_at(predicate, 0U);
+    }
+
+    left_row = parser_test_child_at(predicate, 0U);
+    value_list = parser_test_child_at(predicate, 1U);
+    failures += parser_test_expect_node(
+        predicate,
+        MYLITE_SQL_AST_IN_PREDICATE,
+        "row-constructor IN predicate"
+    );
+    failures += parser_test_expect_node(
+        left_row,
+        MYLITE_SQL_AST_ROW_CONSTRUCTOR,
+        "row-constructor IN left operand"
+    );
+    failures += parser_test_expect_node(
+        value_list,
+        MYLITE_SQL_AST_PREDICATE_VALUE_LIST,
+        "row-constructor IN value list"
+    );
+    failures += parser_test_expect_child_count(
+        left_row,
+        expected.expected_child_count,
+        "row-constructor IN left operand child count"
+    );
+    failures += parser_test_expect_child_count(
+        value_list,
+        expected.expected_list_count,
+        "row-constructor IN value list count"
+    );
+    for (size_t index = 0U; index < expected.expected_list_count; ++index) {
+        const struct mylite_sql_ast_node *row_value = parser_test_child_at(value_list, index);
+
+        failures += parser_test_expect_node(
+            row_value,
+            MYLITE_SQL_AST_ROW_CONSTRUCTOR,
+            "row-constructor IN list operand"
+        );
+        failures += parser_test_expect_child_count(
+            row_value,
+            expected.expected_child_count,
+            "row-constructor IN list operand child count"
+        );
+    }
+
     mylite_sql_parse_result_deinit(&result);
     return failures;
 }

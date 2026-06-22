@@ -280,6 +280,7 @@ static int plan_single_source_count_expression_aggregate_source(
     const struct select_predicate_plan_options predicate_options = {
         .allow_exists = false,
         .allow_scalar_subquery_in_literal = true,
+        .allow_sql_auto_is_null_lookup = true,
     };
     int rc = resolve_visible_table_reference(
         database,

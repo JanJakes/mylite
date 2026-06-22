@@ -43,12 +43,15 @@ static int plan_select(
         .allow_scalar_subquery_in_literal = true,
         .allow_same_scope_column_reference_rhs = true,
         .allow_date_format_numeric_predicate = true,
+        .allow_sql_auto_is_null_lookup = true,
     };
+    struct select_predicate_plan_options having_predicate_options = predicate_options;
     bool allow_field_order = allow_order_by_field;
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_select){0};
+    having_predicate_options.allow_sql_auto_is_null_lookup = false;
     out_plan->is_distinct =
         mylite_sql_ast_node_select_modifier(statement) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT;
     if (out_plan->is_distinct) {
@@ -131,7 +134,7 @@ static int plan_select(
             &source_context,
             table_columns,
             table_column_count,
-            &predicate_options,
+            &having_predicate_options,
             &having_predicate
         );
     }
@@ -2856,6 +2859,7 @@ static int plan_row_scalar_select_row_envelope(
         .allow_scalar_subquery_in_literal = true,
         .allow_same_scope_column_reference_rhs = true,
         .allow_date_format_numeric_predicate = true,
+        .allow_sql_auto_is_null_lookup = true,
     };
     int rc = plan_select_predicate_with_options(
         database,

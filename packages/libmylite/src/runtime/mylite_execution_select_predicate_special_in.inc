@@ -90,6 +90,28 @@ static int plan_row_scalar_expression_is_null_predicate(
     return rc;
 }
 
+static bool sql_auto_is_null_lookup_applies(
+    const struct mylite_db *database,
+    const struct select_predicate_plan_options *options,
+    const struct planned_select_predicate_node *node
+) {
+    const char *value = NULL;
+
+    if (database == NULL || options == NULL || node == NULL ||
+        !options->allow_sql_auto_is_null_lookup ||
+        node->operator_kind != MYLITE_SQL_AST_OPERATOR_IS_NULL ||
+        !column_descriptor_is_auto_increment(&node->column) ||
+        database->session.last_insert_id > (uint64_t)INT64_MAX) {
+        return false;
+    }
+
+    value = session_system_variable_override_value(
+        database,
+        MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL
+    );
+    return value != NULL && strcmp(value, "1") == 0;
+}
+
 static int plan_is_null_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
@@ -241,6 +263,15 @@ static int plan_is_null_predicate(
 
     if (rc != MYLITE_OK) {
         return rc;
+    }
+    if (sql_auto_is_null_lookup_applies(database, options, &node)) {
+        node.kind = PLANNED_SELECT_PREDICATE_COMPARISON;
+        node.operator_kind = MYLITE_SQL_AST_OPERATOR_EQUAL;
+        node.value = (struct planned_value){
+            .is_null = false,
+            .is_text = false,
+            .integer = (int64_t)database->session.last_insert_id,
+        };
     }
 
     return append_planned_select_predicate_node(database, predicate, &node, out_node_index);
@@ -1466,6 +1497,7 @@ static int plan_in_subquery_inner_predicate(
     size_t inner_column_count = 0U;
     const struct select_predicate_plan_options options = {
         .allow_column_reference_rhs = true,
+        .allow_sql_auto_is_null_lookup = true,
         .exists_inner_source_index = subquery->inner_source_index,
         .exists_inner_source_count = subquery->source_count == 0U ? 1U : subquery->source_count,
         .outer_source_context = outer_source_context,

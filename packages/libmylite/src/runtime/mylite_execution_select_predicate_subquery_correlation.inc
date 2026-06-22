@@ -404,6 +404,7 @@ static int plan_exists_inner_predicate(
     size_t inner_column_count = 0U;
     const struct select_predicate_plan_options options = {
         .allow_column_reference_rhs = true,
+        .allow_sql_auto_is_null_lookup = true,
         .exists_inner_source_index = subquery->inner_source_index,
         .exists_inner_source_count = subquery->source_count == 0U ? 1U : subquery->source_count,
         .outer_source_context = outer_source_context,

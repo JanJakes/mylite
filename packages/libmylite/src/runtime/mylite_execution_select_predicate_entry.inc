@@ -10,6 +10,7 @@ static int plan_select_predicate(
         .allow_exists = false,
         .allow_scalar_count_subquery_comparison = true,
         .allow_same_scope_column_reference_rhs = true,
+        .allow_sql_auto_is_null_lookup = true,
     };
 
     return plan_select_predicate_with_options(
@@ -36,6 +37,7 @@ static int plan_joined_select_predicate(
         .allow_scalar_count_subquery_comparison = true,
         .allow_same_scope_column_reference_rhs = true,
         .allow_date_format_numeric_predicate = true,
+        .allow_sql_auto_is_null_lookup = true,
     };
 
     return plan_select_predicate_with_options(

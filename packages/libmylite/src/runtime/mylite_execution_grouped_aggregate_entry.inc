@@ -26,6 +26,7 @@ static int plan_grouped_aggregate(
         .allow_in_subquery = true,
         .allow_scalar_subquery_in_literal = true,
         .allow_date_format_numeric_predicate = true,
+        .allow_sql_auto_is_null_lookup = true,
     };
     struct select_source_context source_context = {0};
     size_t table_column_count = 0U;

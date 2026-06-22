@@ -2,21 +2,23 @@
 
 ## Status
 
-This feature specifies a narrow scalar system-variable slice for
-`@@sql_auto_is_null`.
+This feature specifies the baseline session-variable and predicate lookup slice
+for `@@sql_auto_is_null`.
 
 It builds on the existing `SYSTEM_VARIABLE` lexer/parser token, scalar
-`SELECT` execution, diagnostics lifecycle, and descriptor-driven `IS NULL`
-predicate support. MySQL exposes `sql_auto_is_null` as mutable global and
-session state that can make `AUTO_INCREMENT` columns match `IS NULL` after an
-insert that generated an automatic value. MyLite does not implement mutable
-system-variable assignment or `AUTO_INCREMENT` behavior in the baseline yet,
-so this slice exposes only the default disabled scalar value.
+`SELECT` execution, generic Boolean session-variable assignment, diagnostics
+lifecycle, auto-increment tracking, and descriptor-driven `IS NULL` predicate
+support. MySQL exposes `sql_auto_is_null` as mutable global and session state
+that can make `AUTO_INCREMENT` columns match `IS NULL` by using the current
+session `LAST_INSERT_ID()` value.
 
-This is not auto-increment lookup support. It does not implement
-`SET sql_auto_is_null`, mutable global/session state, `AUTO_INCREMENT`
-metadata, `LAST_INSERT_ID()` interaction, or special `IS NULL` predicate
-rewrites.
+This slice implements MyLite's embedded baseline for that behavior: session
+`SET`/readback and `SHOW VARIABLES` state, fixed global default `OFF`, and
+special `WHERE auto_increment_column IS NULL` lookup for supported
+descriptor-backed statement predicates. It does not implement server-global
+mutation, persisted startup state, `SET_VAR` hints, Performance Schema variable
+tables, writable global state, or broader `ISNULL(auto_increment_column)`
+special handling.
 
 ## Sources
 
@@ -76,13 +78,18 @@ records the runtime probes for this feature. Observed behavior:
   the first generated value. When the variable is disabled, the same predicate
   matches no non-NULL auto-increment row.
 
+Additional MySQL 8.4.9 probes confirmed that the special lookup follows the
+current session `LAST_INSERT_ID()` value exactly: `LAST_INSERT_ID(expr)` changes
+the row found by `WHERE auto_increment_col IS NULL`, explicit auto-increment
+inserts do not change the lookup target, and a zero last-insert value can match
+an explicit zero row when MySQL mode permits such a row. The same lookup also
+applies to `UPDATE` and `DELETE` `WHERE` predicates.
+
 The official MySQL system-variable documentation classifies
-`sql_auto_is_null` as a dynamic boolean variable with global and session scope
+`sql_auto_is_null` as a dynamic Boolean variable with global and session scope
 and default value `OFF`. MySQL's comparison-operator documentation describes
-the special `IS NULL` lookup for generated `AUTO_INCREMENT` values and also
-states that the default value is `0`. MyLite returns the fixed default disabled
-value `0`, so this slice does not alter descriptor-backed `IS NULL`
-predicates.
+the special `IS NULL` lookup for `AUTO_INCREMENT` values and states that the
+default value is `0`.
 
 ## Scope
 
@@ -91,10 +98,16 @@ The implementation must add:
 - runtime recognition of `sql_auto_is_null` inside the existing scalar
   `SELECT` subset;
 - support for no scope, `session`, `local`, and `global` scope qualifiers;
+- session `SET sql_auto_is_null = 0|1|ON|OFF|TRUE|FALSE|DEFAULT` handling
+  through the existing Boolean system-variable override path;
+- `SHOW VARIABLES` and `SHOW GLOBAL VARIABLES` values for the session/global
+  baseline;
 - case-insensitive matching for unquoted scope and variable names;
 - backtick-quoted final variable-name components;
 - one-row scalar result sets with existing source-span column labels;
-- fixed value `0` for all supported scopes;
+- fixed global value `0` and session-local values that default to `0`;
+- descriptor-backed `WHERE auto_increment_column IS NULL` lookup when
+  session `sql_auto_is_null` is enabled;
 - MySQL-compatible unknown-variable diagnostics for unsupported names;
 - deterministic rejection of quoted scopes;
 - fast C tests and a MySQL 8.4.9 expectation artifact.
@@ -108,21 +121,24 @@ SELECT @@session.sql_auto_is_null, @@local.sql_auto_is_null
 SELECT @@global.sql_auto_is_null
 SELECT @@session.`sql_auto_is_null`, @@`sql_auto_is_null`
 SELECT @@sql_auto_is_null, @@warning_count, ROW_COUNT()
+SET SESSION sql_auto_is_null = 1
+SELECT id FROM t WHERE id IS NULL
+UPDATE t SET col = 1 WHERE id IS NULL
+DELETE FROM t WHERE id IS NULL
 ```
 
 ## Non-Goals
 
 This feature must not implement:
 
-- `SET`, startup options, persisted variables, `SET_VAR` hints, or mutable
-  global/session `sql_auto_is_null` state;
-- `AUTO_INCREMENT` column metadata, generated value assignment,
-  `LAST_INSERT_ID()`, ODBC auto-is-null behavior, or special `IS NULL`
-  predicate rewriting;
+- startup options, persisted variables, `SET_VAR` hints, or mutable
+  server-global `sql_auto_is_null` state;
+- ODBC driver behavior outside MySQL SQL semantics;
+- `ISNULL(auto_increment_column)` special lookup behavior;
 - variables other than `sql_auto_is_null`;
-- changed descriptor-backed `SELECT`, `WHERE`, `INSERT`, `UPDATE`, or
-  `DELETE` behavior;
-- `SHOW VARIABLES` or Performance Schema variable tables;
+- predicate contexts outside the documented descriptor-backed statement
+  envelope;
+- Performance Schema variable tables;
 - table-backed variable evaluation, aliases, clauses, subqueries, arithmetic,
   functions over variables, parameters, prepared statements, or arbitrary
   SQLite pass-through;
@@ -140,14 +156,13 @@ This feature must not implement:
 - Lexer/parser/AST own syntax admission and source spans for
   `SYSTEM_VARIABLE` expressions. No new grammar is needed beyond the existing
   `expression ::= SYSTEM_VARIABLE` rule.
-- Runtime execution owns system-variable path parsing, scope validation, fixed
-  value selection, and diagnostics for unsupported names.
-- Descriptor-driven predicate execution remains unchanged because the fixed
-  value is disabled and no `AUTO_INCREMENT` metadata or last-insert tracking
-  exists yet.
+- Runtime execution owns system-variable path parsing, scope validation,
+  session/global value selection, and diagnostics for unsupported names.
+- The shared predicate planner owns the `sql_auto_is_null` lookup rewrite for
+  supported descriptor-backed `AUTO_INCREMENT` column `IS NULL` predicates.
 - The catalog remains authoritative for descriptors. This variable slice does
   not create auto-increment descriptors or affect table lifecycle or DML
-  behavior.
+  mutation behavior.
 - Result builder owns scalar result column labels and one-row text values.
 - Storage, VFS, and SQLite physical row storage are not involved. This feature
   must not touch `.mylite` preamble bytes or SQLite schema state.
@@ -197,22 +212,27 @@ Runtime parses the raw token as a `@@` system variable:
   SQLSTATE `HY000`;
 - it preserves the original source text as the scalar result column label.
 
-For this slice, all scopes return the same fixed value. This is a deliberate
-MyLite limitation: no mutable `sql_auto_is_null` state exists yet.
+For this slice, global scope returns the fixed embedded default `0`. Unscoped,
+`session`, and `local` scope read the current session override when one exists,
+and otherwise return `0`.
 
 ## Runtime Semantics
 
 The supported variable returns:
 
-| Variable | Value |
+| Scope | Value |
 | --- | --- |
-| `sql_auto_is_null` | `0` |
+| Global | fixed `0` |
+| Session/local/unscoped default | `0` |
+| Session/local/unscoped after `SET SESSION sql_auto_is_null = 1` | `1` |
 
-The value is independent of selected schema, close/reopen, table DDL, DML, and
-independent handles. It is a compatibility scalar only. Because the fixed
-value is disabled, existing descriptor-backed `IS NULL` and `IS NOT NULL`
-predicates must keep their normal three-valued SQL behavior: they test the
-stored descriptor value and do not consult generated auto-increment state.
+The session value is independent per handle and resets on close/reopen.
+Descriptor-backed non-auto-increment `IS NULL` and all supported `IS NOT NULL`
+predicates keep normal stored-value behavior. When session `sql_auto_is_null`
+is enabled, a supported `WHERE auto_increment_column IS NULL` predicate is
+planned as equality against the current session `LAST_INSERT_ID()` value.
+The lookup uses that value exactly, including `0`, and explicit auto-increment
+inserts do not change the stored session target.
 
 Successful scalar reads:
 
@@ -236,17 +256,17 @@ This slice uses existing diagnostics for:
 - public API misuse through the existing execution/result API behavior;
 - allocation failures through existing MyLite allocation diagnostics.
 
-Supported reads of `@@sql_auto_is_null` do not emit warnings. This slice does
-not implement MySQL's mutable `SET SESSION sql_auto_is_null=...` surface, so
-assignment diagnostics and auto-increment lookup side effects are out of
-scope.
+Supported reads and assignments of `@@sql_auto_is_null` do not emit warnings.
+Unsupported global assignment uses the existing embedded global-variable
+diagnostic path.
 
 ## Tests
 
 Tests must cover:
 
 - unscoped, `global`, `session`, and `local` forms;
-- fixed `0` value for all supported scopes;
+- default `0` values, mutable session values, fixed global `0`, and
+  close/reopen reset behavior;
 - case-insensitive names and scopes;
 - backtick-quoted final variable names;
 - quoted scope rejection;
@@ -260,16 +280,19 @@ Tests must cover:
 - unknown unscoped and scoped variable names;
 - unsupported wider expressions;
 - selected schema, close/reopen, table DDL, DML, and independent handles do not
-  change the fixed value;
-- representative descriptor-backed `IS NULL` statements still return normal
-  result rows without auto-increment lookup behavior;
+  leak session state across handles;
+- representative descriptor-backed non-auto `IS NULL` statements still return
+  normal result rows;
+- generated auto-increment inserts, multi-row generated inserts,
+  `LAST_INSERT_ID(expr)`, explicit auto-increment inserts, disabled mode, and
+  `UPDATE`, `DELETE`, disabled mode, and `IS NOT NULL` behavior for supported
+  predicates;
 - `.mylite` preamble preservation and unchanged catalog/SQLite generation after
   variable reads;
 - existing parser/runtime/system-variable and table lifecycle tests still pass.
 
 The MySQL expectation script verifies the MySQL 8.4.9 reference behavior for
-the supported SQL forms and explicitly records mutable auto-is-null behavior
-that this slice leaves unsupported.
+the supported SQL forms, session mutability, and auto-increment lookup target.
 
 ## Compatibility Documentation
 
@@ -279,6 +302,7 @@ Update:
 - `docs/compatibility/runtime-system-variables.md`;
 - `docs/compatibility/sql-query-expressions.md`.
 
-Do not overclaim mutable system variables, `SET`, `SHOW VARIABLES`,
-`AUTO_INCREMENT`, `LAST_INSERT_ID()`, special `IS NULL` lookup behavior, or
-changed descriptor-backed predicate behavior.
+Do not overclaim server-global mutation, persisted state, Performance Schema
+variable tables, predicate contexts outside the documented statement envelope,
+`ISNULL(auto_increment_column)`, or
+unsupported descriptor-backed predicate contexts.

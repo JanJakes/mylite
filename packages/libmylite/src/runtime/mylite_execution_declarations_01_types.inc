@@ -1153,6 +1153,7 @@ struct select_predicate_plan_options {
     bool allow_column_reference_rhs;
     bool allow_same_scope_column_reference_rhs;
     bool allow_date_format_numeric_predicate;
+    bool allow_sql_auto_is_null_lookup;
     size_t exists_inner_source_index;
     size_t exists_inner_source_count;
     const struct select_source_context *outer_source_context;

@@ -140,6 +140,17 @@ auto_is_null_values=$(run_mysql \
      SELECT id, label FROM t WHERE id IS NULL; \
      INSERT INTO t (label) VALUES (20),(30); \
      SELECT id, label FROM t WHERE id IS NULL ORDER BY id; \
+     SELECT LAST_INSERT_ID(3); \
+     SELECT id, label FROM t WHERE id IS NULL ORDER BY id; \
+     UPDATE t SET label=33 WHERE id IS NULL; \
+     SELECT ROW_COUNT(); \
+     SELECT id, label FROM t WHERE id IS NULL ORDER BY id; \
+     INSERT INTO t (id, label) VALUES (9,90); \
+     SELECT LAST_INSERT_ID(); \
+     SELECT id, label FROM t WHERE id IS NULL ORDER BY id; \
+     DELETE FROM t WHERE id IS NULL; \
+     SELECT ROW_COUNT(); \
+     SELECT COUNT(*) FROM t WHERE id IS NOT NULL; \
      SET SESSION sql_auto_is_null=0; \
      INSERT INTO t (label) VALUES (40); \
      SELECT COUNT(*) FROM t WHERE id IS NULL; \
@@ -147,8 +158,8 @@ auto_is_null_values=$(run_mysql \
      DROP DATABASE mylite_sql_auto_is_null_expectations;" \
     | tr '\n' '|')
 expect_value \
-    "mysql auto-increment IS NULL lookup depends on sql_auto_is_null" \
-    "1	10|2	20|0|0|" \
+    "mysql auto-increment IS NULL lookup follows LAST_INSERT_ID" \
+    "1	10|2	20|3|3	30|1|3	33|3|3	33|1|3|0|0|" \
     "$auto_is_null_values"
 
 warning_values=$(run_mysql \

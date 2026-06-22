@@ -54,6 +54,13 @@ static int expect_query_result(
     const char *sql,
     struct expected_result expected
 );
+static int expect_query_shape(
+    mylite_db *database,
+    const char *sql,
+    size_t column_count,
+    size_t row_count,
+    const char *context
+);
 static int expect_show_count_warnings(
     mylite_db *database,
     const char *expected,
@@ -100,6 +107,7 @@ static int test_sql_auto_is_null_values_and_persistence(void) {
         "ROW_COUNT()",
     };
     static const char *const value_values[] = {"0", "0", "0", "0", "0", "-1"};
+    static const char *const set_value_values[] = {"1", "0", "1", "1", "0", "0"};
     static const char *const label_columns[] = {
         "@@SQL_AUTO_IS_NULL",
         "@@Global.Sql_Auto_Is_Null",
@@ -149,11 +157,23 @@ static int test_sql_auto_is_null_values_and_persistence(void) {
     static const char *const warning_values[] = {"0", "1", "0", "-1"};
     static const char *const error_values[] = {"0", "1", "1", "-1"};
     static const char *const selected_columns[] = {"@@sql_auto_is_null", "DATABASE()"};
-    static const char *const selected_values[] = {"0", "app"};
+    static const char *const selected_values[] = {"1", "app"};
     static const char *const table_columns[] = {"id", "score"};
     static const char *const table_values[] = {"2", "20"};
+    static const char *const auto_row_columns[] = {"id", "score"};
+    static const char *const auto_first_values[] = {"1", "10"};
+    static const char *const auto_multi_values[] = {"2", "20"};
+    static const char *const auto_manual_values[] = {"3", "30"};
+    static const char *const auto_updated_values[] = {"3", "33"};
+    static const char *const last_insert_id_columns[] = {"LAST_INSERT_ID(3)"};
+    static const char *const last_insert_id_values[] = {"3"};
+    static const char *const row_count_columns[] = {"ROW_COUNT()"};
+    static const char *const row_count_one_values[] = {"1"};
     static const char *const null_count_columns[] = {"COUNT(*)"};
     static const char *const null_count_values[] = {"2"};
+    static const char *const auto_count_all_values[] = {"4"};
+    static const char *const auto_count_after_delete_values[] = {"3"};
+    static const char *const auto_count_zero_values[] = {"0"};
     static const char *const null_row_columns[] = {"id"};
     static const char *const null_row_values[] = {"1"};
     char path[test_path_capacity];
@@ -305,6 +325,20 @@ static int test_sql_auto_is_null_values_and_persistence(void) {
         "preamble after sql auto is null reads"
     );
 
+    failures += execute_statement_ok(database, "SET SESSION sql_auto_is_null=1");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_auto_is_null, @@global.sql_auto_is_null, "
+        "@@session.sql_auto_is_null, @@local.sql_auto_is_null, @@warning_count, "
+        "ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = set_value_values,
+            .count = sql_auto_is_null_value_column_count,
+            .context = "set sql auto is null values",
+        }
+    );
+
     failures += execute_statement_ok(database, "CREATE DATABASE app");
     failures += execute_statement_ok(database, "USE app");
     failures += execute_statement_ok(database, "CREATE TABLE child (id INT, score INT)");
@@ -360,6 +394,133 @@ static int test_sql_auto_is_null_values_and_persistence(void) {
             .values = null_row_values,
             .count = sizeof(null_row_columns) / sizeof(null_row_columns[0]),
             .context = "sql auto is null keeps descriptor is null semantics",
+        }
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE auto_child (id INT AUTO_INCREMENT PRIMARY KEY, score INT NULL)"
+    );
+    failures += execute_statement_ok(database, "INSERT INTO auto_child (score) VALUES (10)");
+    failures += expect_query_shape(
+        database,
+        "SELECT id, score FROM auto_child HAVING id IS NULL",
+        sizeof(auto_row_columns) / sizeof(auto_row_columns[0]),
+        0U,
+        "sql auto is null does not alter having"
+    );
+    failures += expect_query_result(
+        database,
+        "SELECT id, score FROM auto_child WHERE id IS NULL ORDER BY id",
+        (struct expected_result){
+            .columns = auto_row_columns,
+            .values = auto_first_values,
+            .count = sizeof(auto_row_columns) / sizeof(auto_row_columns[0]),
+            .context = "sql auto is null generated lookup",
+        }
+    );
+    failures += execute_statement_ok(database, "INSERT INTO auto_child (score) VALUES (20),(30)");
+    failures += expect_query_result(
+        database,
+        "SELECT id, score FROM auto_child WHERE id IS NULL ORDER BY id",
+        (struct expected_result){
+            .columns = auto_row_columns,
+            .values = auto_multi_values,
+            .count = sizeof(auto_row_columns) / sizeof(auto_row_columns[0]),
+            .context = "sql auto is null multi-row generated lookup",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SELECT LAST_INSERT_ID(3)",
+        (struct expected_result){
+            .columns = last_insert_id_columns,
+            .values = last_insert_id_values,
+            .count = sizeof(last_insert_id_columns) / sizeof(last_insert_id_columns[0]),
+            .context = "sql auto is null manual last insert id set",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SELECT id, score FROM auto_child WHERE id IS NULL ORDER BY id",
+        (struct expected_result){
+            .columns = auto_row_columns,
+            .values = auto_manual_values,
+            .count = sizeof(auto_row_columns) / sizeof(auto_row_columns[0]),
+            .context = "sql auto is null manual lookup",
+        }
+    );
+    failures += execute_statement_ok(database, "UPDATE auto_child SET score=33 WHERE id IS NULL");
+    failures += expect_query_result(
+        database,
+        "SELECT ROW_COUNT()",
+        (struct expected_result){
+            .columns = row_count_columns,
+            .values = row_count_one_values,
+            .count = sizeof(row_count_columns) / sizeof(row_count_columns[0]),
+            .context = "sql auto is null update row count",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SELECT id, score FROM auto_child WHERE id IS NULL ORDER BY id",
+        (struct expected_result){
+            .columns = auto_row_columns,
+            .values = auto_updated_values,
+            .count = sizeof(auto_row_columns) / sizeof(auto_row_columns[0]),
+            .context = "sql auto is null update lookup",
+        }
+    );
+    failures += execute_statement_ok(database, "INSERT INTO auto_child (id, score) VALUES (9,90)");
+    failures += expect_query_result(
+        database,
+        "SELECT id, score FROM auto_child WHERE id IS NULL ORDER BY id",
+        (struct expected_result){
+            .columns = auto_row_columns,
+            .values = auto_updated_values,
+            .count = sizeof(auto_row_columns) / sizeof(auto_row_columns[0]),
+            .context = "sql auto is null explicit insert keeps lookup target",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SELECT COUNT(*) FROM auto_child WHERE id IS NOT NULL",
+        (struct expected_result){
+            .columns = null_count_columns,
+            .values = auto_count_all_values,
+            .count = sizeof(null_count_columns) / sizeof(null_count_columns[0]),
+            .context = "sql auto is null does not alter is not null",
+        }
+    );
+    failures += execute_statement_ok(database, "DELETE FROM auto_child WHERE id IS NULL");
+    failures += expect_query_result(
+        database,
+        "SELECT ROW_COUNT()",
+        (struct expected_result){
+            .columns = row_count_columns,
+            .values = row_count_one_values,
+            .count = sizeof(row_count_columns) / sizeof(row_count_columns[0]),
+            .context = "sql auto is null delete row count",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SELECT COUNT(*) FROM auto_child WHERE id IS NOT NULL",
+        (struct expected_result){
+            .columns = null_count_columns,
+            .values = auto_count_after_delete_values,
+            .count = sizeof(null_count_columns) / sizeof(null_count_columns[0]),
+            .context = "sql auto is null delete lookup",
+        }
+    );
+    failures += execute_statement_ok(database, "SET SESSION sql_auto_is_null=0");
+    failures += expect_query_result(
+        database,
+        "SELECT COUNT(*) FROM auto_child WHERE id IS NULL",
+        (struct expected_result){
+            .columns = null_count_columns,
+            .values = auto_count_zero_values,
+            .count = sizeof(null_count_columns) / sizeof(null_count_columns[0]),
+            .context = "sql auto is null disabled lookup",
         }
     );
 
@@ -483,7 +644,7 @@ static int test_independent_sql_auto_is_null_handles(void) {
         "@@warning_count",
         "@@error_count",
     };
-    static const char *const first_values[] = {"0", "1", "0"};
+    static const char *const first_values[] = {"1", "1", "0"};
     static const char *const second_values[] = {"0", "0", "0"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
@@ -494,6 +655,7 @@ static int test_independent_sql_auto_is_null_handles(void) {
         expect_int(mylite_open_memory(&first), MYLITE_OK, "open first sql auto is null handle");
     failures +=
         expect_int(mylite_open_memory(&second), MYLITE_OK, "open second sql auto is null handle");
+    failures += execute_statement_ok(first, "SET SESSION sql_auto_is_null=1");
     failures += execute_statement_ok(first, "SHOW PROCESSLIST");
 
     failures +=
@@ -564,6 +726,25 @@ static int expect_query_result(
     int failures = execute_ok(database, sql, &result);
 
     failures += expect_result(result, expected);
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_query_shape(
+    mylite_db *database,
+    const char *sql,
+    size_t column_count,
+    size_t row_count,
+    const char *context
+) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, sql, &result);
+
+    if (failures == 0) {
+        failures += expect_size(mylite_result_column_count(result), column_count, context);
+        failures += expect_size(mylite_result_row_count(result), row_count, context);
+        failures += expect_size(mylite_result_warning_count(result), 0U, context);
+    }
     mylite_result_free(result);
     return failures;
 }

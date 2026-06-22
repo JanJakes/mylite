@@ -167,6 +167,7 @@ static int plan_single_table_update_predicate(
     const struct select_predicate_plan_options predicate_options = {
         .allow_exists = true,
         .allow_in_subquery = true,
+        .allow_sql_auto_is_null_lookup = true,
     };
     int rc = plan_select_predicate_with_options(
         database,

@@ -303,7 +303,7 @@ static void remove_with_suffix(const char *path, const char *suffix) {
     if (written < 0 || (size_t)written >= sizeof(buffer)) {
         return;
     }
-    (void)unlink(buffer);
+    (void)remove(buffer);
 }
 
 static int expect_int(int actual, int expected, const char *context) {

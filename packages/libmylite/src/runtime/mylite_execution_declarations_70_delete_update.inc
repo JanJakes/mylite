@@ -8,6 +8,12 @@ static int plan_single_table_delete(
     const struct mylite_sql_ast_node *statement,
     struct planned_delete *out_plan
 );
+static int validate_single_table_delete_safe_updates(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct planned_delete *plan
+);
 static int plan_joined_delete(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -120,6 +126,10 @@ static int plan_single_table_update_predicate(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_update *out_plan
+);
+static int validate_single_table_update_safe_updates(
+    struct mylite_db *database,
+    const struct planned_update *plan
 );
 static int validate_update_subquery_predicate_sources(
     struct mylite_db *database,
@@ -246,6 +256,29 @@ static int bind_parent_update_cascade_parameters(
 static int bind_parent_update_set_null_parameters(
     sqlite3_stmt *statement,
     const struct planned_update *plan
+);
+static bool sql_safe_updates_is_enabled(const struct mylite_db *database);
+static int validate_sql_safe_updates_predicate(
+    struct mylite_db *database,
+    const struct planned_select_predicate *predicate,
+    const struct loaded_index_info *indexes,
+    size_t index_count
+);
+static bool sql_safe_updates_predicate_uses_key(
+    const struct planned_select_predicate *predicate,
+    size_t node_index,
+    const struct loaded_index_info *indexes,
+    size_t index_count
+);
+static bool sql_safe_updates_leaf_node_uses_key(
+    const struct planned_select_predicate_node *node,
+    const struct loaded_index_info *indexes,
+    size_t index_count
+);
+static bool sql_safe_updates_column_id_is_keyed(
+    int64_t column_id,
+    const struct loaded_index_info *indexes,
+    size_t index_count
 );
 static int handle_foreign_key_action_set_null_constraint(
     struct mylite_db *database,

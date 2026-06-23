@@ -58,7 +58,9 @@ static int plan_single_table_delete(
             .source = &out_plan->target,
         };
     }
-    if (rc == MYLITE_OK && (where_clause != NULL || order_clause != NULL || limit_clause != NULL)) {
+    if (rc == MYLITE_OK &&
+        (where_clause != NULL || order_clause != NULL || limit_clause != NULL ||
+         sql_safe_updates_is_enabled(database))) {
         rc = mylite_execution_load_table_columns(
             database,
             out_plan->table.table_id,
@@ -111,12 +113,50 @@ static int plan_single_table_delete(
             &out_plan->rowid_alias
         );
     }
+    if (rc == MYLITE_OK) {
+        rc = validate_single_table_delete_safe_updates(
+            database,
+            table_columns,
+            table_column_count,
+            out_plan
+        );
+    }
 
     free(table_columns);
     if (rc != MYLITE_OK) {
         planned_delete_deinit(out_plan);
     }
 
+    return rc;
+}
+
+static int validate_single_table_delete_safe_updates(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct planned_delete *plan
+) {
+    struct loaded_index_info *indexes = NULL;
+    size_t index_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (plan == NULL || !sql_safe_updates_is_enabled(database) || plan->limit.has_limit) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_execution_load_table_index_infos(
+        database,
+        plan->table.table_id,
+        table_columns,
+        table_column_count,
+        &indexes,
+        &index_count
+    );
+    if (rc == MYLITE_OK) {
+        rc = validate_sql_safe_updates_predicate(database, &plan->predicate, indexes, index_count);
+    }
+
+    mylite_execution_loaded_index_infos_deinit(&indexes, &index_count);
     return rc;
 }
 

@@ -186,10 +186,12 @@ diagnostic. Variables that MyLite exposes only as fixed reads and does not
 admit in this write slice are rejected as read-only or unsupported. Global
 assignment is rejected before any mutable state is changed.
 
-## Admitted Assignments
+## Admitted No-Op Assignments
 
 The statement succeeds only for variables and values that preserve the current
-fixed MyLite value.
+fixed MyLite value. Later variable-specific slices may extend individual
+variables with mutable session state; this table remains the no-op assignment
+baseline that those slices build on.
 
 | Variable | Fixed MyLite value | Admitted values |
 | --- | --- | --- |

@@ -49,6 +49,7 @@ void mylite_execution_diagnostics_set_update_table_used_error(
     struct mylite_db *database,
     const char *table_name
 );
+void mylite_execution_diagnostics_set_safe_update_error(struct mylite_db *database);
 void mylite_execution_diagnostics_set_session_variable_only_error(
     struct mylite_db *database,
     const char *variable_name

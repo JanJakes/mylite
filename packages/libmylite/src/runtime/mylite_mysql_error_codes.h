@@ -50,6 +50,7 @@ enum {
     mysql_error_storage_engine_cant_index_column = 1167,
     mysql_error_blob_key_without_length = 1170,
     mysql_error_result_consisted_more_than_one_row = 1172,
+    mysql_error_safe_update = 1175,
     mysql_error_incorrect_arguments = 1210,
     mysql_error_wrong_usage = 1221,
     mysql_error_load_data_row_missing = 1261,

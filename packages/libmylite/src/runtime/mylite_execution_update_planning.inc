@@ -139,6 +139,9 @@ static int plan_single_table_update(
         );
     }
     if (rc == MYLITE_OK) {
+        rc = validate_single_table_update_safe_updates(database, out_plan);
+    }
+    if (rc == MYLITE_OK) {
         out_plan->columns = table_columns;
         out_plan->column_count = table_column_count;
         table_columns = NULL;
@@ -152,6 +155,22 @@ static int plan_single_table_update(
     }
 
     return rc;
+}
+
+static int validate_single_table_update_safe_updates(
+    struct mylite_db *database,
+    const struct planned_update *plan
+) {
+    if (plan == NULL || !sql_safe_updates_is_enabled(database) || plan->limit.has_limit) {
+        return MYLITE_OK;
+    }
+
+    return validate_sql_safe_updates_predicate(
+        database,
+        &plan->predicate,
+        plan->indexes,
+        plan->index_count
+    );
 }
 
 static int plan_single_table_update_predicate(

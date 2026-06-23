@@ -3,6 +3,7 @@
 #include "runtime/mylite_mysql_server_identity.h"
 
 #include "runtime/mylite_connection.h"
+#include "runtime_test_support.h"
 #include "storage/mylite_file_format.h"
 
 #include <stdint.h>
@@ -30,6 +31,7 @@ enum {
     sql_safe_updates_independent_column_count = 3,
     mysql_error_parse = 1064,
     mysql_error_unknown_system_variable = 1193,
+    mysql_error_safe_update = 1175,
 };
 
 struct expected_sql_error {
@@ -47,6 +49,7 @@ struct expected_result {
 
 static int test_sql_safe_updates_values_and_persistence(void);
 static int test_sql_safe_updates_qualifiers_and_errors(void);
+static int test_sql_safe_updates_dml_enforcement(void);
 static int test_independent_sql_safe_updates_handles(void);
 static int expect_result(const mylite_result *result, struct expected_result expected);
 static int expect_query_result(
@@ -85,6 +88,7 @@ int main(void) {
 
     failures += test_sql_safe_updates_values_and_persistence();
     failures += test_sql_safe_updates_qualifiers_and_errors();
+    failures += test_sql_safe_updates_dml_enforcement();
     failures += test_independent_sql_safe_updates_handles();
 
     return failures == 0 ? 0 : 1;
@@ -100,6 +104,8 @@ static int test_sql_safe_updates_values_and_persistence(void) {
         "ROW_COUNT()",
     };
     static const char *const value_values[] = {"0", "0", "0", "0", "0", "-1"};
+    static const char *const enabled_values[] = {"1", "0", "1", "1", "0", "0"};
+    static const char *const disabled_values[] = {"0", "0", "0", "0", "0", "0"};
     static const char *const label_columns[] = {
         "@@SQL_SAFE_UPDATES",
         "@@Global.Sql_Safe_Updates",
@@ -138,6 +144,16 @@ static int test_sql_safe_updates_values_and_persistence(void) {
     };
     static const char *const warning_values[] = {"0", "1", "0", "-1"};
     static const char *const error_values[] = {"0", "1", "1", "-1"};
+    static const char *const show_variable_columns[] = {"Variable_name", "Value"};
+    static const char *const show_session_enabled_values[] = {"sql_safe_updates", "ON"};
+    static const char *const show_session_disabled_values[] = {"sql_safe_updates", "OFF"};
+    static const char *const show_global_disabled_values[] = {"sql_safe_updates", "OFF"};
+    static const char *const expression_columns[] = {
+        "HEX(@@sql_safe_updates)",
+        "HEX(@@global.sql_safe_updates)",
+        "@@sql_safe_updates + 1",
+    };
+    static const char *const expression_values[] = {"1", "0", "2"};
     static const char *const selected_columns[] = {"@@sql_safe_updates", "DATABASE()"};
     static const char *const selected_values[] = {"0", "app"};
     static const char *const table_columns[] = {"id"};
@@ -218,6 +234,102 @@ static int test_sql_safe_updates_values_and_persistence(void) {
     );
     mylite_result_free(result);
     result = NULL;
+
+    failures += execute_statement_ok(database, "SET SESSION sql_safe_updates=1");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_safe_updates, @@global.sql_safe_updates, "
+        "@@session.sql_safe_updates, @@local.sql_safe_updates, @@warning_count, "
+        "ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = enabled_values,
+            .count = sql_safe_updates_value_column_count,
+            .context = "enabled sql safe updates session value",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW VARIABLES LIKE 'sql_safe_updates'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_session_enabled_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show variables enabled sql safe updates",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'sql_safe_updates'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_global_disabled_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show global variables sql safe updates",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SELECT HEX(@@sql_safe_updates), HEX(@@global.sql_safe_updates), "
+        "@@sql_safe_updates + 1",
+        (struct expected_result){
+            .columns = expression_columns,
+            .values = expression_values,
+            .count = sizeof(expression_columns) / sizeof(expression_columns[0]),
+            .context = "enabled sql safe updates expression value",
+        }
+    );
+    failures += execute_statement_ok(database, "SET LOCAL sql_safe_updates=FALSE");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_safe_updates, @@global.sql_safe_updates, "
+        "@@session.sql_safe_updates, @@local.sql_safe_updates, @@warning_count, "
+        "ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = disabled_values,
+            .count = sql_safe_updates_value_column_count,
+            .context = "local disabled sql safe updates value",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW VARIABLES LIKE 'sql_safe_updates'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_session_disabled_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show variables disabled sql safe updates",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @sql_safe_updates_enabled=1");
+    failures +=
+        execute_statement_ok(database, "SET @@session.sql_safe_updates=@sql_safe_updates_enabled");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_safe_updates, @@global.sql_safe_updates, "
+        "@@session.sql_safe_updates, @@local.sql_safe_updates, @@warning_count, "
+        "ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = enabled_values,
+            .count = sql_safe_updates_value_column_count,
+            .context = "enabled sql safe updates user variable assignment",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @@sql_safe_updates=DEFAULT");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_safe_updates, @@global.sql_safe_updates, "
+        "@@session.sql_safe_updates, @@local.sql_safe_updates, @@warning_count, "
+        "ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = disabled_values,
+            .count = sql_safe_updates_value_column_count,
+            .context = "default disabled sql safe updates value",
+        }
+    );
 
     failures += execute_statement_ok(database, "SHOW PROCESSLIST");
     failures += execute_ok(
@@ -423,13 +535,180 @@ static int test_sql_safe_updates_qualifiers_and_errors(void) {
     return failures;
 }
 
+static int test_sql_safe_updates_dml_enforcement(void) {
+    static const char *const score_column[] = {"score"};
+    static const char *const score_10[] = {"10"};
+    static const char *const score_11[] = {"11"};
+    static const char *const count_column[] = {"COUNT(*)"};
+    static const char *const count_0[] = {"0"};
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_int(
+        mylite_test_open_temporary(&database),
+        MYLITE_OK,
+        "open sql safe updates dml handle"
+    );
+    failures += execute_statement_ok(database, "CREATE DATABASE app");
+    failures += execute_statement_ok(database, "USE app");
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE safe_dml ("
+        "id INT PRIMARY KEY, "
+        "score INT, "
+        "category INT, "
+        "suffix INT, "
+        "KEY category_key (category), "
+        "KEY score_suffix_key (score, suffix)"
+        ")"
+    );
+    failures += execute_statement_ok(
+        database,
+        "INSERT INTO safe_dml VALUES (1, 10, 100, 1), (2, 20, 200, 2), (3, 30, 300, 3)"
+    );
+    failures += execute_statement_ok(database, "SET SESSION sql_safe_updates=1");
+
+    failures += execute_error(
+        database,
+        "UPDATE safe_dml SET score = 99",
+        (struct expected_sql_error){
+            .code = mysql_error_safe_update,
+            .sqlstate = "HY000",
+            .message_part = "safe update mode",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SELECT score FROM safe_dml WHERE id = 1",
+        (struct expected_result){
+            .columns = score_column,
+            .values = score_10,
+            .count = sizeof(score_column) / sizeof(score_column[0]),
+            .context = "unsafe update leaves row unchanged",
+        }
+    );
+    failures += execute_error(
+        database,
+        "UPDATE safe_dml SET score = 99 WHERE suffix = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_safe_update,
+            .sqlstate = "HY000",
+            .message_part = "safe update mode",
+        }
+    );
+    failures += execute_statement_ok(database, "UPDATE safe_dml SET score = 11 WHERE id = 1");
+    failures += expect_query_result(
+        database,
+        "SELECT score FROM safe_dml WHERE id = 1",
+        (struct expected_result){
+            .columns = score_column,
+            .values = score_11,
+            .count = sizeof(score_column) / sizeof(score_column[0]),
+            .context = "safe update with primary key predicate",
+        }
+    );
+    failures +=
+        execute_statement_ok(database, "UPDATE safe_dml SET score = 22 WHERE category = 200");
+    failures +=
+        execute_statement_ok(database, "UPDATE safe_dml SET score = 33 WHERE id = 2 OR id = 3");
+    failures += execute_error(
+        database,
+        "UPDATE safe_dml SET score = 44 WHERE id = 1 OR suffix = 3",
+        (struct expected_sql_error){
+            .code = mysql_error_safe_update,
+            .sqlstate = "HY000",
+            .message_part = "safe update mode",
+        }
+    );
+    failures += execute_statement_ok(
+        database,
+        "UPDATE safe_dml SET score = 55 WHERE id > 0 AND suffix > 0"
+    );
+    failures += execute_statement_ok(database, "UPDATE safe_dml SET score = 66 LIMIT 1");
+
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE invisible_dml (id INT, marker INT, KEY marker_key (marker))"
+    );
+    failures += execute_statement_ok(database, "INSERT INTO invisible_dml VALUES (1, 10)");
+    failures += execute_statement_ok(
+        database,
+        "ALTER TABLE invisible_dml ALTER INDEX marker_key INVISIBLE"
+    );
+    failures += execute_error(
+        database,
+        "UPDATE invisible_dml SET id = 2 WHERE marker = 10",
+        (struct expected_sql_error){
+            .code = mysql_error_safe_update,
+            .sqlstate = "HY000",
+            .message_part = "safe update mode",
+        }
+    );
+    failures +=
+        execute_statement_ok(database, "ALTER TABLE invisible_dml ALTER INDEX marker_key VISIBLE");
+    failures += execute_statement_ok(database, "UPDATE invisible_dml SET id = 2 WHERE marker = 10");
+
+    failures += execute_error(
+        database,
+        "DELETE FROM safe_dml",
+        (struct expected_sql_error){
+            .code = mysql_error_safe_update,
+            .sqlstate = "HY000",
+            .message_part = "safe update mode",
+        }
+    );
+    failures += execute_error(
+        database,
+        "DELETE FROM safe_dml WHERE suffix = 1",
+        (struct expected_sql_error){
+            .code = mysql_error_safe_update,
+            .sqlstate = "HY000",
+            .message_part = "safe update mode",
+        }
+    );
+    failures += execute_statement_ok(database, "DELETE FROM safe_dml WHERE id = 1");
+    failures += execute_statement_ok(database, "DELETE FROM safe_dml WHERE category = 200");
+    failures += execute_statement_ok(database, "DELETE FROM safe_dml LIMIT 1");
+    failures += expect_query_result(
+        database,
+        "SELECT COUNT(*) FROM safe_dml",
+        (struct expected_result){
+            .columns = count_column,
+            .values = count_0,
+            .count = sizeof(count_column) / sizeof(count_column[0]),
+            .context = "safe delete removes remaining rows",
+        }
+    );
+
+    failures += execute_statement_ok(
+        database,
+        "INSERT INTO safe_dml VALUES (1, 10, 100, 1), (2, 20, 200, 2)"
+    );
+    failures += execute_statement_ok(database, "SET SESSION sql_safe_updates=0");
+    failures += execute_statement_ok(database, "UPDATE safe_dml SET score = 70");
+    failures += execute_statement_ok(database, "DELETE FROM safe_dml");
+    failures += expect_query_result(
+        database,
+        "SELECT COUNT(*) FROM safe_dml",
+        (struct expected_result){
+            .columns = count_column,
+            .values = count_0,
+            .count = sizeof(count_column) / sizeof(count_column[0]),
+            .context = "disabled safe updates allows full delete",
+        }
+    );
+
+    mylite_close(database);
+    return failures;
+}
+
 static int test_independent_sql_safe_updates_handles(void) {
     static const char *const columns[] = {
         "@@sql_safe_updates",
         "@@warning_count",
         "@@error_count",
     };
-    static const char *const first_values[] = {"0", "1", "0"};
+    static const char *const first_values[] = {"1", "0", "0"};
     static const char *const second_values[] = {"0", "0", "0"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
@@ -440,7 +719,7 @@ static int test_independent_sql_safe_updates_handles(void) {
         expect_int(mylite_open_memory(&first), MYLITE_OK, "open first sql safe updates handle");
     failures +=
         expect_int(mylite_open_memory(&second), MYLITE_OK, "open second sql safe updates handle");
-    failures += execute_statement_ok(first, "SHOW PROCESSLIST");
+    failures += execute_statement_ok(first, "SET SESSION sql_safe_updates=1");
 
     failures +=
         execute_ok(first, "SELECT @@sql_safe_updates, @@warning_count, @@error_count", &result);

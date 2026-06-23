@@ -2,19 +2,22 @@
 
 ## Status
 
-This feature specifies a narrow scalar system-variable slice for
-`@@sql_safe_updates`.
+This feature specifies the embedded baseline for `@@sql_safe_updates`: scalar
+and expression readback, handle-local session assignment, `SHOW VARIABLES`
+reflection, and safe-update checks for supported single-table `UPDATE` and
+`DELETE` statements.
 
 It builds on the existing `SYSTEM_VARIABLE` lexer/parser token, scalar
 `SELECT` execution, diagnostics lifecycle, and MyLite's current descriptor
-DML paths. MySQL exposes `sql_safe_updates` as mutable global and session state
-that can reject selected `UPDATE` and `DELETE` statements when enabled.
-MyLite does not implement mutable system-variable assignment in the baseline
-yet, so this slice exposes only the default disabled scalar value.
+DML paths. MySQL exposes `sql_safe_updates` as dynamic global and session state
+that can reject selected `UPDATE` and `DELETE` statements when enabled. MyLite
+keeps the global value fixed at the embedded default `OFF`, stores session
+overrides on the handle, and applies a descriptor-driven safe-update guard to
+the currently supported single-table DML subset.
 
-This is not safe-updates mode. It does not implement `SET sql_safe_updates`,
-client `--safe-updates` initialization, `max_join_size` or `sql_select_limit`
-interactions, key-aware DML checks, or any `UPDATE`/`DELETE` behavior changes.
+This is not the mysql client `--safe-updates` mode. MyLite does not change
+`sql_select_limit` or `max_join_size`, persist state, mutate a shared server
+global, or emulate complete optimizer key-use decisions.
 
 ## Sources
 
@@ -35,6 +38,8 @@ interactions, key-aware DML checks, or any `UPDATE`/`DELETE` behavior changes.
   https://dev.mysql.com/doc/refman/8.4/en/server-system-variables.html
 - MySQL 8.4 Reference Manual, mysql client safe-updates tips:
   https://dev.mysql.com/doc/refman/8.4/en/mysql-tips.html
+- MySQL 8.4 Reference Manual, range optimization safe-update note:
+  https://dev.mysql.com/doc/refman/8.4/en/range-optimization.html
 
 This specification is independently authored from project documentation,
 official MySQL 8.4 documentation, observed MySQL 8.4.9 runtime behavior,
@@ -66,15 +71,30 @@ records the runtime probes for this feature. Observed behavior:
   items in the same select list, then clears diagnostics for following
   diagnostic statements.
 - MySQL accepts wider expression forms such as `SELECT @@sql_safe_updates + 1`.
-  Those forms remain outside this MyLite slice.
+- `SHOW VARIABLES LIKE 'sql_safe_updates'` reflects the current session value
+  as `ON` or `OFF`; `SHOW GLOBAL VARIABLES` continues to expose the global
+  value.
+- With `sql_safe_updates=1`, MySQL allows supported `UPDATE` and `DELETE`
+  statements that use a key in the `WHERE` clause or include `LIMIT`.
+- Safe-updates rejection uses error `1175`, SQLSTATE `HY000`, with a message
+  about safe update mode and a missing key-column `WHERE`.
+- For composite secondary indexes, predicates on a non-leading key part such
+  as `WHERE b = 1` for `KEY(a,b)` do not satisfy safe updates in the observed
+  runtime.
+- Invisible secondary indexes do not satisfy safe updates in the observed
+  runtime.
+- For `OR`, every branch must be key-constrained in the observed runtime;
+  `key OR nonkey` is rejected, while `key OR key` and `key AND nonkey` are
+  accepted.
 
 The official MySQL system-variable documentation classifies
 `sql_safe_updates` as a dynamic boolean variable with global and session scope
-and default value `OFF`. When enabled, MySQL safe-updates mode rejects
-`UPDATE` and `DELETE` statements that lack a key in the `WHERE` clause or a
-`LIMIT` clause. The mysql client can initialize this and related variables with
-its `--safe-updates` option. MyLite returns the fixed default disabled value
-`0`, so this slice does not alter DML behavior.
+and default value `OFF`. For `UPDATE` and `DELETE`, the optimizer raises an
+error under safe updates when execution would fall back to a full table scan.
+The mysql client can initialize this and related variables with its
+`--safe-updates` option. MyLite implements the handle-local variable and a
+conservative descriptor-predicate equivalent for the supported single-table
+DML subset.
 
 ## Scope
 
@@ -86,9 +106,17 @@ The implementation must add:
 - case-insensitive matching for unquoted scope and variable names;
 - backtick-quoted final variable-name components;
 - one-row scalar result sets with existing source-span column labels;
-- fixed value `0` for all supported scopes;
+- fixed global value `0`/`OFF`;
+- handle-local session value for no-scope, `session`, and `local` reads;
+- Boolean `SET`, `DEFAULT`, and user-variable assignment forms already
+  admitted by the generic session-variable assignment path;
+- `SHOW VARIABLES` session readback and fixed `SHOW GLOBAL VARIABLES`
+  readback;
 - MySQL-compatible unknown-variable diagnostics for unsupported names;
 - deterministic rejection of quoted scopes;
+- safe-update rejection for supported single-table `UPDATE` and `DELETE`
+  statements when no `LIMIT` is present and the supported predicate tree does
+  not use a descriptor key;
 - fast C tests and a MySQL 8.4.9 expectation artifact.
 
 Supported SQL examples:
@@ -100,23 +128,26 @@ SELECT @@session.sql_safe_updates, @@local.sql_safe_updates
 SELECT @@global.sql_safe_updates
 SELECT @@session.`sql_safe_updates`, @@`sql_safe_updates`
 SELECT @@sql_safe_updates, @@warning_count, ROW_COUNT()
+SET SESSION sql_safe_updates = ON
+SHOW VARIABLES LIKE 'sql_safe_updates'
+UPDATE t SET c = 1 WHERE id = 1
+DELETE FROM t LIMIT 1
 ```
 
 ## Non-Goals
 
 This feature must not implement:
 
-- `SET`, startup options, persisted variables, `SET_VAR` hints, mysql client
-  `--safe-updates` initialization, or mutable global/session
+- startup options, persisted variables, `SET_VAR` hints, mysql client
+  `--safe-updates` initialization, or mutable shared global
   `sql_safe_updates` state;
 - variables other than `sql_safe_updates`;
 - `sql_select_limit`, `max_join_size`, or any safe-updates side effects;
-- key descriptors, key-aware DML checks, optimizer checks, or
-  `UPDATE`/`DELETE` rejection changes;
-- `SHOW VARIABLES` or Performance Schema variable tables;
-- table-backed variable evaluation, aliases, clauses, subqueries, arithmetic,
-  functions over variables, parameters, prepared statements, or arbitrary
-  SQLite pass-through;
+- exact optimizer access-path checks, cost estimation, EXPLAIN integration, or
+  all possible MySQL key-use cases;
+- joined or multi-table `UPDATE`/`DELETE` safe-update enforcement;
+- Performance Schema variable tables;
+- arbitrary SQLite pass-through;
 - catalog mutations, storage mutations, SQLite metadata reads, or SQLite fork
   patches.
 
@@ -131,12 +162,16 @@ This feature must not implement:
 - Lexer/parser/AST own syntax admission and source spans for
   `SYSTEM_VARIABLE` expressions. No new grammar is needed beyond the existing
   `expression ::= SYSTEM_VARIABLE` rule.
-- Runtime execution owns system-variable path parsing, scope validation, fixed
-  value selection, and diagnostics for unsupported names.
-- Descriptor-driven `DELETE` and `UPDATE` execution remain unchanged because
-  the fixed value is disabled and no mutable safe-updates state exists.
+- Runtime execution owns system-variable path parsing, scope validation,
+  handle-local session override selection, fixed global value selection, and
+  diagnostics for unsupported names.
+- The generic session-variable assignment path owns `SET` validation and
+  handle-local state storage.
+- Descriptor-driven `DELETE` and `UPDATE` planning owns the safe-update guard.
+  The guard checks the current session value, existing `LIMIT`, and the
+  planned predicate tree against catalog index descriptors.
 - The catalog remains authoritative for descriptors. This variable slice does
-  not create key descriptors or affect table lifecycle or DML behavior.
+  not create key descriptors or affect table lifecycle behavior.
 - Result builder owns scalar result column labels and one-row text values.
 - Storage, VFS, and SQLite physical row storage are not involved. This feature
   must not touch `.mylite` preamble bytes or SQLite schema state.
@@ -158,19 +193,19 @@ The supported runtime variable paths are:
 @@global.sql_safe_updates
 ```
 
-The existing scalar `SELECT` limits continue to apply:
+The existing scalar `SELECT` and session-variable assignment grammar applies:
 
 ```lemon
 select_statement ::= SELECT select_item_list from_dual_opt.
 select_item ::= expression.
 from_dual_opt ::= .
 from_dual_opt ::= FROM DUAL.
+set_statement ::= SET system_variable_assignment_list.
 ```
 
-System variables are admitted only when every selected expression is in the
-existing scalar expression set. Clauses such as `WHERE`, `ORDER BY`, `LIMIT`,
-table-backed `FROM`, aliases, and general expressions remain outside this
-slice.
+System variables are admitted when selected expressions are in the existing
+scalar expression set. The DML guard does not add new `UPDATE` or `DELETE`
+grammar; it uses the already planned single-table statement subset.
 
 ## Variable Resolution
 
@@ -186,8 +221,9 @@ Runtime parses the raw token as a `@@` system variable:
   SQLSTATE `HY000`;
 - it preserves the original source text as the scalar result column label.
 
-For this slice, all scopes return the same fixed value. This is a deliberate
-MyLite limitation: no mutable safe-updates state exists yet.
+For this slice, unscoped, `session`, and `local` reads use the handle-local
+session override when one exists. Global reads always return the fixed embedded
+default.
 
 ## Runtime Semantics
 
@@ -195,12 +231,15 @@ The supported variable returns:
 
 | Variable | Value |
 | --- | --- |
-| `sql_safe_updates` | `0` |
+| `@@global.sql_safe_updates` | `0` / `OFF` |
+| `@@session.sql_safe_updates` | handle-local `0` / `1` |
+| `@@local.sql_safe_updates` | handle-local `0` / `1` |
+| `@@sql_safe_updates` | handle-local `0` / `1` |
 
-The value is independent of selected schema, close/reopen, table DDL, DML, and
-independent handles. It is a compatibility scalar only. Because the fixed value
-is disabled, existing descriptor-driven `UPDATE` and `DELETE` behavior must not
-change.
+The session value is independent of selected schema, table DDL, close/reopen,
+and other handles. It is not persisted. The global value is fixed disabled.
+When the session value is disabled, descriptor-driven `UPDATE` and `DELETE`
+behavior is unchanged.
 
 Successful scalar reads:
 
@@ -213,6 +252,20 @@ Successful scalar reads:
 - follow existing scalar `SELECT` row-count behavior, so `ROW_COUNT()` after a
   successful scalar row result is `-1`.
 
+When the session value is enabled, supported single-table `UPDATE` and
+`DELETE` planning allows the statement when:
+
+- the statement has `LIMIT`; or
+- the planned predicate tree is key-constrained by a descriptor key.
+
+The key predicate check uses visible leading index parts. A primary-key or
+visible secondary-index first part is considered a key column. Invisible
+secondary indexes and non-leading composite secondary parts do not satisfy the
+guard by themselves. For Boolean predicate structure, `AND` is key-constrained
+when either side is key-constrained, while `OR` is key-constrained only when
+both sides are key-constrained. Unsupported predicate node kinds do not satisfy
+safe updates.
+
 ## Diagnostics
 
 This slice uses existing diagnostics for:
@@ -220,20 +273,21 @@ This slice uses existing diagnostics for:
 - syntax errors, including quoted scopes and unsupported scalar-select
   clauses;
 - unknown system variables: error `1193`, SQLSTATE `HY000`;
-- unsupported expressions such as arithmetic over system variables;
+- safe-update DML rejection: error `1175`, SQLSTATE `HY000`;
 - public API misuse through the existing execution/result API behavior;
 - allocation failures through existing MyLite allocation diagnostics.
 
-Supported reads of `@@sql_safe_updates` do not emit warnings. This slice does
-not implement MySQL's mutable `SET SESSION sql_safe_updates=...` surface, so
-assignment diagnostics and safe-updates DML side effects are out of scope.
+Supported reads and assignments of `@@sql_safe_updates` do not emit warnings.
 
 ## Tests
 
 Tests must cover:
 
 - unscoped, `global`, `session`, and `local` forms;
-- fixed `0` value for all supported scopes;
+- default `0` value, fixed global value, and handle-local session values;
+- `SET SESSION`, `SET LOCAL`, `SET @@...`, `DEFAULT`, and user-variable
+  assignment forms;
+- `SHOW VARIABLES` and `SHOW GLOBAL VARIABLES`;
 - case-insensitive names and scopes;
 - backtick-quoted final variable names;
 - quoted scope rejection;
@@ -244,18 +298,23 @@ Tests must cover:
   variables;
 - diagnostics read-and-clear behavior after warnings and errors;
 - unknown unscoped and scoped variable names;
-- unsupported wider expressions;
+- expression reads such as `@@sql_safe_updates + 1`;
 - selected schema, close/reopen, table DDL, and independent handles do not
-  change the fixed value;
+  persist or share the session value;
 - representative existing `UPDATE` and `DELETE` statements still execute under
-  the fixed disabled value;
+  the disabled value;
+- safe-update rejection for UPDATE/DELETE without `LIMIT` or key predicates;
+- allowed UPDATE/DELETE with primary-key, leading secondary-key, `AND`,
+  key-only `OR`, and `LIMIT` forms;
+- rejected UPDATE/DELETE with non-leading composite key predicates, invisible
+  secondary-key predicates, and key-or-nonkey `OR` forms;
 - `.mylite` preamble preservation and unchanged catalog/SQLite generation after
   variable reads;
 - existing parser/runtime/system-variable and table lifecycle tests still pass.
 
 The MySQL expectation script verifies the MySQL 8.4.9 reference behavior for
-the supported SQL forms and explicitly records mutable and wider MySQL
-behavior that this slice leaves unsupported.
+the supported SQL forms, session mutability, expression reads, `SHOW
+VARIABLES`, and representative safe-update DML decisions.
 
 ## Compatibility Documentation
 
@@ -265,6 +324,6 @@ Update:
 - `docs/compatibility/runtime-system-variables.md`;
 - `docs/compatibility/sql-table-dml.md`.
 
-Do not overclaim mutable system variables, `SET`, `SHOW VARIABLES`,
-safe-updates mode, key-aware DML checks, `sql_select_limit`, `max_join_size`,
-or changed `UPDATE`/`DELETE` behavior.
+Do not overclaim mutable shared globals, persisted variables, mysql client
+safe-updates initialization, `sql_select_limit`, `max_join_size`, joined DML,
+or exact optimizer access-path equivalence.

@@ -130,6 +130,17 @@ expect_value \
     "1	0	1	1	0	0	0" \
     "$mutable_values"
 
+show_values=$(run_mysql \
+    "SET SESSION sql_safe_updates=1; \
+     SHOW VARIABLES LIKE 'sql_safe_updates'; \
+     SHOW GLOBAL VARIABLES LIKE 'sql_safe_updates'; \
+     SET SESSION sql_safe_updates=0;" \
+    | tr '\n' '|')
+expect_value \
+    "mysql show variables reflects session sql_safe_updates" \
+    "sql_safe_updates	ON|sql_safe_updates	OFF|" \
+    "$show_values"
+
 warning_values=$(run_mysql \
     "SELECT 1; SHOW PROCESSLIST; \
      SELECT @@sql_safe_updates, @@warning_count, @@error_count, ROW_COUNT(); \
@@ -173,6 +184,137 @@ expect_error \
     "SELECT @@\`session\`.sql_safe_updates;"
 
 expect_output \
-    "mysql accepts expressions outside this mylite slice" \
+    "mysql accepts sql_safe_updates expressions" \
     "1" \
     "SELECT @@sql_safe_updates + 1;"
+
+run_mysql \
+    "DROP DATABASE IF EXISTS mylite_sql_safe_updates_baseline; \
+     CREATE DATABASE mylite_sql_safe_updates_baseline; \
+     USE mylite_sql_safe_updates_baseline; \
+     CREATE TABLE t ( \
+       id INT PRIMARY KEY, \
+       score INT, \
+       category INT, \
+       suffix INT, \
+       KEY category_key (category), \
+       KEY score_suffix_key (score, suffix) \
+     ); \
+     INSERT INTO t VALUES (1, 10, 100, 1), (2, 20, 200, 2), (3, 30, 300, 3);" \
+    >/dev/null
+
+expect_error \
+    "safe updates rejects update without key" \
+    1175 \
+    HY000 \
+    "safe update mode" \
+    "USE mylite_sql_safe_updates_baseline; \
+     SET SESSION sql_safe_updates=1; \
+     UPDATE t SET score = 99;"
+
+expect_error \
+    "safe updates rejects non-leading composite key column" \
+    1175 \
+    HY000 \
+    "safe update mode" \
+    "USE mylite_sql_safe_updates_baseline; \
+     SET SESSION sql_safe_updates=1; \
+     UPDATE t SET score = 99 WHERE suffix = 1;"
+
+expect_output \
+    "safe updates allows key predicates and limit" \
+    "11
+22
+2
+3
+1" \
+    "USE mylite_sql_safe_updates_baseline; \
+     SET SESSION sql_safe_updates=1; \
+     UPDATE t SET score = 11 WHERE id = 1; \
+     SELECT score FROM t WHERE id = 1; \
+     UPDATE t SET score = 22 WHERE category = 200; \
+     SELECT score FROM t WHERE id = 2; \
+     UPDATE t SET score = 33 WHERE id = 2 OR id = 3; \
+     SELECT COUNT(*) FROM t WHERE score = 33; \
+     UPDATE t SET score = 55 WHERE id > 0 AND suffix > 0; \
+     SELECT COUNT(*) FROM t WHERE score = 55; \
+     UPDATE t SET score = 66 LIMIT 1; \
+     SELECT COUNT(*) FROM t WHERE score = 66;"
+
+run_mysql \
+    "USE mylite_sql_safe_updates_baseline; \
+     CREATE TABLE invisible_t (id INT, marker INT, KEY marker_key (marker)); \
+     INSERT INTO invisible_t VALUES (1, 10); \
+     ALTER TABLE invisible_t ALTER INDEX marker_key INVISIBLE;" \
+    >/dev/null
+
+expect_error \
+    "safe updates rejects invisible index predicate" \
+    1175 \
+    HY000 \
+    "safe update mode" \
+    "USE mylite_sql_safe_updates_baseline; \
+     SET SESSION sql_safe_updates=1; \
+     UPDATE invisible_t SET id = 2 WHERE marker = 10;"
+
+expect_output \
+    "safe updates allows visible index predicate" \
+    "2" \
+    "USE mylite_sql_safe_updates_baseline; \
+     ALTER TABLE invisible_t ALTER INDEX marker_key VISIBLE; \
+     SET SESSION sql_safe_updates=1; \
+     UPDATE invisible_t SET id = 2 WHERE marker = 10; \
+     SELECT id FROM invisible_t WHERE marker = 10;"
+
+expect_error \
+    "safe updates rejects key or nonkey predicate" \
+    1175 \
+    HY000 \
+    "safe update mode" \
+    "USE mylite_sql_safe_updates_baseline; \
+     SET SESSION sql_safe_updates=1; \
+     UPDATE t SET score = 44 WHERE id = 1 OR suffix = 3;"
+
+expect_error \
+    "safe updates rejects delete without key" \
+    1175 \
+    HY000 \
+    "safe update mode" \
+    "USE mylite_sql_safe_updates_baseline; \
+     SET SESSION sql_safe_updates=1; \
+     DELETE FROM t;"
+
+expect_error \
+    "safe updates rejects delete by non-leading composite key column" \
+    1175 \
+    HY000 \
+    "safe update mode" \
+    "USE mylite_sql_safe_updates_baseline; \
+     SET SESSION sql_safe_updates=1; \
+     DELETE FROM t WHERE suffix = 1;"
+
+expect_output \
+    "safe updates allows delete key predicates and limit" \
+    "0" \
+    "USE mylite_sql_safe_updates_baseline; \
+     SET SESSION sql_safe_updates=1; \
+     DELETE FROM t WHERE id = 1; \
+     DELETE FROM t WHERE category = 200; \
+     DELETE FROM t LIMIT 1; \
+     SELECT COUNT(*) FROM t;"
+
+expect_output \
+    "disabled safe updates allows full table dml" \
+    "2
+0" \
+    "USE mylite_sql_safe_updates_baseline; \
+     INSERT INTO t VALUES (1, 10, 100, 1), (2, 20, 200, 2); \
+     SET SESSION sql_safe_updates=0; \
+     UPDATE t SET score = 70; \
+     SELECT COUNT(*) FROM t WHERE score = 70; \
+     DELETE FROM t; \
+     SELECT COUNT(*) FROM t;"
+
+run_mysql "DROP DATABASE IF EXISTS mylite_sql_safe_updates_baseline;" >/dev/null
+
+printf '%s\n' "mysql_baseline_sql_safe_updates_system_variable_expectations: ok"

@@ -70,6 +70,16 @@ void mylite_execution_diagnostics_set_update_table_used_error(
     );
 }
 
+void mylite_execution_diagnostics_set_safe_update_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_safe_update,
+        "HY000",
+        "You are using safe update mode and you tried to update a table without a WHERE that "
+        "uses a KEY column."
+    );
+}
+
 void mylite_execution_diagnostics_set_duplicate_table_alias_error(
     struct mylite_db *database,
     const char *table_name

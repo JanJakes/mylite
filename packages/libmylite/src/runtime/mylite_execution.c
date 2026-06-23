@@ -1545,6 +1545,8 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_select_order_planning.inc"
 
+#include "mylite_execution_safe_updates_planning.inc"
+
 #include "mylite_execution_update_planning_helpers.inc"
 
 #include "mylite_execution_show_tables_helpers.inc"

@@ -180,6 +180,7 @@ static int append_information_schema_system_rows(
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_MEMORY_BY_USER_BY_CURRENT_BYTES:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_MEMORY_GLOBAL_BY_CURRENT_BYTES:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_MEMORY_GLOBAL_TOTAL:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_METRICS:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_SCHEMA_INDEX_STATISTICS:
@@ -381,6 +382,10 @@ static int append_information_schema_view_table_usage_system_rows(
          "performance_schema",
          "memory_summary_global_by_event_name"},
         {"memory_global_total", "performance_schema", "memory_summary_global_by_event_name"},
+        {"metrics", "information_schema", "INNODB_METRICS"},
+        {"metrics", "performance_schema", "global_status"},
+        {"metrics", "performance_schema", "memory_summary_global_by_event_name"},
+        {"metrics", "performance_schema", "setup_instruments"},
         {"innodb_lock_waits", "information_schema", "INNODB_TRX"},
         {"innodb_lock_waits", "performance_schema", "data_lock_waits"},
         {"innodb_lock_waits", "performance_schema", "data_locks"},

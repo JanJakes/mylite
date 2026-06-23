@@ -16,6 +16,73 @@ static const char sys_version_show_create_qualified_view_sql[] =
     "`sys`.`version` (`sys_version`,`mysql_version`) AS select '2.1.3' AS "
     "`sys_version`,version() AS `mysql_version`";
 
+#define SYS_METRICS_VIEW_COLUMNS "(`Variable_name`,`Variable_value`,`Type`,`Enabled`)"
+
+#define SYS_METRICS_INNODB_EXCLUDED_NAMES                                                          \
+    "'lock_row_lock_time','lock_row_lock_time_avg','lock_row_lock_time_max',"                      \
+    "'lock_row_lock_waits','buffer_pool_reads','buffer_pool_read_requests',"                       \
+    "'buffer_pool_write_requests','buffer_pool_wait_free','buffer_pool_read_ahead',"               \
+    "'buffer_pool_read_ahead_evicted','buffer_pool_pages_total','buffer_pool_pages_misc',"         \
+    "'buffer_pool_pages_data','buffer_pool_bytes_data','buffer_pool_pages_dirty',"                 \
+    "'buffer_pool_bytes_dirty','buffer_pool_pages_free','buffer_pages_created',"                   \
+    "'buffer_pages_written','buffer_pages_read','buffer_data_reads','buffer_data_written',"        \
+    "'file_num_open_files','os_log_bytes_written','os_log_fsyncs',"                                \
+    "'os_log_pending_fsyncs','os_log_pending_writes','log_waits','log_write_requests',"            \
+    "'log_writes','innodb_dblwr_writes','innodb_dblwr_pages_written','innodb_page_size'"
+
+#define SYS_METRICS_MEMORY_INSTRUMENTS_YES_COUNT                                                   \
+    "(select count(0) from `performance_schema`.`setup_instruments` where (("                      \
+    "`performance_schema`.`setup_instruments`.`NAME` like 'memory/%') and ("                       \
+    "`performance_schema`.`setup_instruments`.`ENABLED` = 'YES')))"
+
+#define SYS_METRICS_MEMORY_INSTRUMENTS_NO_COUNT                                                    \
+    "(select count(0) from `performance_schema`.`setup_instruments` where (("                      \
+    "`performance_schema`.`setup_instruments`.`NAME` like 'memory/%') and ("                       \
+    "`performance_schema`.`setup_instruments`.`ENABLED` = 'NO')))"
+
+#define SYS_METRICS_MEMORY_ENABLED_EXPR                                                            \
+    "if((" SYS_METRICS_MEMORY_INSTRUMENTS_YES_COUNT                                                \
+    " = 0),'NO',if((" SYS_METRICS_MEMORY_INSTRUMENTS_NO_COUNT " = 0),'YES','PARTIAL'))"
+
+#define SYS_METRICS_VIEW_DEFINITION                                                                \
+    "select lower(`performance_schema`.`global_status`.`VARIABLE_NAME`) AS `Variable_name`,"       \
+    "`performance_schema`.`global_status`.`VARIABLE_VALUE` AS `Variable_value`,'Global Status' "   \
+    "AS `Type`,'YES' AS `Enabled` from `performance_schema`.`global_status` union all select "     \
+    "`information_schema`.`INNODB_METRICS`.`NAME` AS `Variable_name`,`information_schema`."        \
+    "`INNODB_METRICS`.`COUNT` AS `Variable_value`,concat('InnoDB Metrics - "                       \
+    "',`information_schema`."                                                                      \
+    "`INNODB_METRICS`.`SUBSYSTEM`) AS `Type`,if((`information_schema`.`INNODB_METRICS`.`STATUS` "  \
+    "= 'enabled'),'YES','NO') AS `Enabled` from `information_schema`.`INNODB_METRICS` where ("     \
+    "`information_schema`.`INNODB_METRICS`.`NAME` not in (" SYS_METRICS_INNODB_EXCLUDED_NAMES      \
+    ")) union all select 'memory_current_allocated' AS `Variable_name`,sum(`performance_schema`."  \
+    "`memory_summary_global_by_event_name`.`CURRENT_NUMBER_OF_BYTES_USED`) AS `Variable_value`,"   \
+    "'Performance Schema' AS `Type`," SYS_METRICS_MEMORY_ENABLED_EXPR " AS `Enabled` from "        \
+    "`performance_schema`.`memory_summary_global_by_event_name` union all select "                 \
+    "'memory_total_allocated' AS `Variable_name`,sum(`performance_schema`."                        \
+    "`memory_summary_global_by_event_name`.`SUM_NUMBER_OF_BYTES_ALLOC`) AS `Variable_value`,"      \
+    "'Performance Schema' AS `Type`," SYS_METRICS_MEMORY_ENABLED_EXPR " AS `Enabled` from "        \
+    "`performance_schema`.`memory_summary_global_by_event_name` union all select 'NOW()' AS "      \
+    "`Variable_name`,now(3) AS `Variable_value`,'System Time' AS `Type`,'YES' AS `Enabled` union " \
+    "all select 'UNIX_TIMESTAMP()' AS `Variable_name`,round(unix_timestamp(now(3)),3) AS "         \
+    "`Variable_value`,'System Time' AS `Type`,'YES' AS `Enabled` order by `Type`,`Variable_name`"
+
+static const char sys_metrics_view_definition[] = SYS_METRICS_VIEW_DEFINITION;
+
+static const char sys_metrics_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`metrics` " SYS_METRICS_VIEW_COLUMNS " AS " SYS_METRICS_VIEW_DEFINITION;
+
+static const char sys_metrics_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`metrics` " SYS_METRICS_VIEW_COLUMNS " AS " SYS_METRICS_VIEW_DEFINITION;
+
+#undef SYS_METRICS_VIEW_COLUMNS
+#undef SYS_METRICS_INNODB_EXCLUDED_NAMES
+#undef SYS_METRICS_MEMORY_INSTRUMENTS_YES_COUNT
+#undef SYS_METRICS_MEMORY_INSTRUMENTS_NO_COUNT
+#undef SYS_METRICS_MEMORY_ENABLED_EXPR
+#undef SYS_METRICS_VIEW_DEFINITION
+
 #define SYS_HOST_SUMMARY_VIEW_COLUMNS                                                              \
     "(`host`,`statements`,`statement_latency`,`statement_avg_latency`,`table_scans`,`file_ios`,"   \
     "`file_io_latency`,`current_connections`,`total_connections`,`unique_users`,`current_memory`," \
@@ -2311,6 +2378,10 @@ static const struct mylite_execution_catalog_builtin_sys_view builtin_sys_view_d
      sys_version_view_definition,
      sys_version_show_create_view_sql,
      sys_version_show_create_qualified_view_sql},
+    {"metrics",
+     sys_metrics_view_definition,
+     sys_metrics_show_create_view_sql,
+     sys_metrics_show_create_qualified_view_sql},
     {"host_summary",
      sys_host_summary_view_definition,
      sys_host_summary_show_create_view_sql,

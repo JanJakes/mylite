@@ -582,6 +582,10 @@ static int append_sys_memory_global_total_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
+static int append_sys_metrics_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
 static int append_sys_x_ps_digest_avg_latency_distribution_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows

@@ -134,6 +134,9 @@ static int append_sys_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "version") == 0) {
         return append_sys_version_system_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "metrics") == 0) {
+        return append_sys_metrics_system_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "innodb_lock_waits") == 0) {
         return append_sys_innodb_lock_waits_system_rows(database, rows);
     }
@@ -589,6 +592,51 @@ static int append_sys_version_system_rows(
     }
 
     return append_information_schema_row(database, rows, values);
+}
+
+static int append_sys_metrics_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != sys_metrics_column_count) {
+        set_runtime_error(database, "invalid sys.metrics columns");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < mylite_execution_show_status_descriptor_count();
+         ++index) {
+        const struct mylite_execution_show_status_descriptor *descriptor =
+            mylite_execution_show_status_descriptor_at(index);
+        char variable_name[sys_metrics_variable_name_capacity];
+        size_t name_length = 0U;
+        const char *values[sys_metrics_column_count] = {
+            variable_name,
+            NULL,
+            "Global Status",
+            "YES",
+        };
+
+        if (descriptor == NULL || !descriptor->show_global) {
+            continue;
+        }
+
+        name_length = strlen(descriptor->name);
+        if (name_length >= sizeof(variable_name)) {
+            set_runtime_error(database, "sys.metrics status variable name too long");
+            return MYLITE_ERROR;
+        }
+        for (size_t offset = 0U; offset < name_length; ++offset) {
+            variable_name[offset] = ascii_lower((unsigned char)descriptor->name[offset]);
+        }
+        variable_name[name_length] = '\0';
+        values[1] = descriptor->value;
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+    return rc;
 }
 
 static int append_sys_innodb_lock_waits_system_rows(

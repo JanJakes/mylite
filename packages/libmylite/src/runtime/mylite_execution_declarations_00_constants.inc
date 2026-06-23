@@ -579,6 +579,8 @@ enum {
     text_max_length = 65535,
     mediumtext_max_length = 16777215,
     utf8_ascii_max = 0x7f,
+    scalar_convert_big5_lead_byte_min = 0x81,
+    scalar_convert_big5_lead_byte_max = 0xfe,
     utf8_continuation_mask = 0xc0,
     utf8_continuation_tag = 0x80,
     utf8_two_byte_min = 0xc2,

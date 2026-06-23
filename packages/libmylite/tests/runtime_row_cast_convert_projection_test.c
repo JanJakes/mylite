@@ -531,6 +531,189 @@ static int test_row_cast_convert_values_metadata_reopen_and_file_safety(void) {
         mylite_result_free(byte_result);
         byte_result = NULL;
     }
+    failures += execute_ok(
+        database,
+        "SELECT CONVERT(LEFT(CONVERT('\375ord\362ress' USING koi8r), 100) USING koi8r) AS k, "
+        "CONVERT(LEFT(CONVERT('\330ord\320ress' USING cp1251), 4) USING cp1251) AS c, "
+        "CONVERT(LEFT(CONVERT('\340abc' USING hebrew), 2) USING hebrew) AS h, "
+        "CONVERT(LEFT(CONVERT('\360abc' USING tis620), 2) USING tis620) AS t",
+        &byte_result
+    );
+    if (byte_result != NULL) {
+        static const unsigned char expected_koi8r_scalar_bytes[] = {
+            0xfd,
+            'o',
+            'r',
+            'd',
+            0xf2,
+            'r',
+            'e',
+            's',
+            's',
+        };
+        static const unsigned char expected_cp1251_scalar_bytes[] = {0xd8, 'o', 'r', 'd'};
+        static const unsigned char expected_hebrew_scalar_bytes[] = {0xe0, 'a'};
+        static const unsigned char expected_tis620_scalar_bytes[] = {0xf0, 'a'};
+
+        failures += expect_result_bytes(
+            byte_result,
+            0U,
+            0U,
+            expected_koi8r_scalar_bytes,
+            sizeof(expected_koi8r_scalar_bytes),
+            "nested scalar Koi8r charset slice preserves invalid bytes"
+        );
+        failures += expect_result_bytes(
+            byte_result,
+            0U,
+            1U,
+            expected_cp1251_scalar_bytes,
+            sizeof(expected_cp1251_scalar_bytes),
+            "nested scalar cp1251 charset slice preserves invalid bytes"
+        );
+        failures += expect_result_bytes(
+            byte_result,
+            0U,
+            2U,
+            expected_hebrew_scalar_bytes,
+            sizeof(expected_hebrew_scalar_bytes),
+            "nested scalar Hebrew charset slice preserves invalid bytes"
+        );
+        failures += expect_result_bytes(
+            byte_result,
+            0U,
+            3U,
+            expected_tis620_scalar_bytes,
+            sizeof(expected_tis620_scalar_bytes),
+            "nested scalar TIS-620 charset slice preserves invalid bytes"
+        );
+        mylite_result_free(byte_result);
+        byte_result = NULL;
+    }
+    failures += execute_ok(
+        database,
+        "SELECT CONVERT(LEFT(CONVERT('a\252@ba\252@ba\252@ba\252@b' USING big5), 10) "
+        "USING big5) AS b",
+        &byte_result
+    );
+    if (byte_result != NULL) {
+        static const unsigned char expected_big5_scalar_char_bytes[] = {
+            'a',
+            0xaa,
+            '@',
+            'b',
+            'a',
+            0xaa,
+            '@',
+            'b',
+            'a',
+            0xaa,
+            '@',
+            'b',
+            'a',
+        };
+
+        failures += expect_result_bytes(
+            byte_result,
+            0U,
+            0U,
+            expected_big5_scalar_char_bytes,
+            sizeof(expected_big5_scalar_char_bytes),
+            "nested scalar Big5 charset conversion truncates by characters"
+        );
+        mylite_result_free(byte_result);
+        byte_result = NULL;
+    }
+    failures += execute_ok(
+        database,
+        "SELECT CONVERT(LEFT(CONVERT('a\252@ba\252@ba\252@ba\252@b' USING binary), 10) "
+        "USING big5) AS b",
+        &byte_result
+    );
+    if (byte_result != NULL) {
+        static const unsigned char expected_big5_scalar_byte_bytes[] = {
+            'a',
+            0xaa,
+            '@',
+            'b',
+            'a',
+            0xaa,
+            '@',
+            'b',
+            'a',
+        };
+
+        failures += expect_result_bytes(
+            byte_result,
+            0U,
+            0U,
+            expected_big5_scalar_byte_bytes,
+            sizeof(expected_big5_scalar_byte_bytes),
+            "nested scalar Big5 charset conversion trims partial byte character"
+        );
+        mylite_result_free(byte_result);
+        byte_result = NULL;
+    }
+    failures += execute_ok(
+        database,
+        "SELECT CONVERT(LEFT(CONVERT('\350\207\252\345\213\225\344\270\213\346\233\270"
+        "\343\201\215' USING ujis), 4) USING utf8) AS u",
+        &byte_result
+    );
+    if (byte_result != NULL) {
+        static const unsigned char expected_ujis_scalar_bytes[] = {
+            0xe8,
+            0x87,
+            0xaa,
+            0xe5,
+            0x8b,
+            0x95,
+            0xe4,
+            0xb8,
+            0x8b,
+            0xe6,
+            0x9b,
+            0xb8,
+        };
+
+        failures += expect_result_bytes(
+            byte_result,
+            0U,
+            0U,
+            expected_ujis_scalar_bytes,
+            sizeof(expected_ujis_scalar_bytes),
+            "nested scalar ujis charset conversion truncates UTF-8 fixture by characters"
+        );
+        mylite_result_free(byte_result);
+        byte_result = NULL;
+    }
+    failures += execute_ok(
+        database,
+        "SELECT CONVERT(LEFT(CONVERT('\350\207\252\345\213\225' USING binary), 6) "
+        "USING utf8) AS u",
+        &byte_result
+    );
+    if (byte_result != NULL) {
+        static const unsigned char expected_utf8_byte_scalar_bytes[] = {
+            0xe8,
+            0x87,
+            0xaa,
+            0xe5,
+            0x8b,
+            0x95,
+        };
+
+        failures += expect_result_bytes(
+            byte_result,
+            0U,
+            0U,
+            expected_utf8_byte_scalar_bytes,
+            sizeof(expected_utf8_byte_scalar_bytes),
+            "nested scalar binary conversion preserves UTF-8 byte slice"
+        );
+        mylite_result_free(byte_result);
+        byte_result = NULL;
+    }
     failures += expect_query(
         database,
         (struct expected_query){

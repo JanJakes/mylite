@@ -359,6 +359,7 @@ static int convert_using_charset_value(
     struct session_scalar_cell *out_cell
 ) {
     struct scalar_convert_charset_info info = {0};
+    const struct mylite_sql_ast_node *value = NULL;
     static const struct scalar_text_conversion_messages messages = {
         .unsupported =
             "CONVERT USING charset supports only string, integer, boolean, and NULL values",
@@ -367,6 +368,7 @@ static int convert_using_charset_value(
         .embedded_nul = "CONVERT USING charset does not support embedded NUL bytes",
     };
     size_t value_length = 0U;
+    bool handled_left_slice = false;
     int rc = MYLITE_OK;
 
     if (out_cell == NULL) {
@@ -378,10 +380,22 @@ static int convert_using_charset_value(
     if (rc != MYLITE_OK) {
         return rc;
     }
+    value = child_at(unwrap_parenthesized_expression(expression), 0U);
+
+    rc = convert_using_charset_left_slice_value(
+        database,
+        value,
+        &info,
+        out_cell,
+        &handled_left_slice
+    );
+    if (rc != MYLITE_OK || handled_left_slice) {
+        return rc;
+    }
 
     rc = scalar_text_conversion_input_value(
         database,
-        child_at(unwrap_parenthesized_expression(expression), 0U),
+        value,
         &messages,
         out_cell
     );
@@ -390,10 +404,266 @@ static int convert_using_charset_value(
     }
 
     value_length = scalar_cell_text_length(out_cell);
-    for (size_t index = 0U; index < value_length; ++index) {
-        if (((const unsigned char *)out_cell->value)[index] > utf8_ascii_max) {
-            session_scalar_cell_deinit(out_cell);
-            *out_cell = (struct session_scalar_cell){0};
+    rc = scalar_convert_charset_enforce_ascii(database, out_cell->value, value_length);
+    if (rc != MYLITE_OK) {
+        session_scalar_cell_deinit(out_cell);
+        *out_cell = (struct session_scalar_cell){0};
+    }
+    return rc;
+}
+
+static int convert_using_charset_left_slice_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct scalar_convert_charset_info *target_info,
+    struct session_scalar_cell *out_cell,
+    bool *out_handled
+) {
+    const struct mylite_sql_ast_node *value = NULL;
+    const struct mylite_sql_ast_node *length_expression = NULL;
+    struct session_scalar_cell source_cell = {0};
+    const char *source_charset = NULL;
+    size_t source_length = 0U;
+    size_t slice_length = 0U;
+    int64_t requested_length = 0;
+    bool length_is_null = false;
+    int rc = MYLITE_OK;
+
+    if (target_info == NULL || out_cell == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_LEFT_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        return MYLITE_OK;
+    }
+
+    value = unwrap_parenthesized_expression(child_at(expression, 0U));
+    if (value == NULL ||
+        (value->kind != MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION &&
+         value->kind != MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION)) {
+        return MYLITE_OK;
+    }
+    *out_handled = true;
+
+    length_expression = child_at(expression, 1U);
+    rc = mylite_execution_string_slice_signed_length_value(
+        database,
+        length_expression,
+        &requested_length,
+        &length_is_null
+    );
+    if (rc != MYLITE_OK || length_is_null) {
+        return rc;
+    }
+    if (requested_length <= 0) {
+        return assign_scalar_cell_text(database, out_cell, "", 0U);
+    }
+
+    rc = convert_using_charset_source_cell_value(
+        database,
+        value,
+        &source_cell,
+        &source_charset
+    );
+    if (rc != MYLITE_OK || source_cell.value == NULL) {
+        session_scalar_cell_deinit(&source_cell);
+        return rc;
+    }
+
+    source_length = scalar_cell_text_length(&source_cell);
+    rc = scalar_convert_charset_left_slice_length(
+        database,
+        source_charset,
+        source_cell.value,
+        source_length,
+        requested_length,
+        &slice_length
+    );
+    if (rc == MYLITE_OK && strcmp(target_info->charset, "big5") == 0 &&
+        strcmp(source_charset, "binary") == 0) {
+        slice_length = scalar_convert_big5_complete_prefix_length(source_cell.value, slice_length);
+    }
+    if (rc == MYLITE_OK && target_info->ascii_only_value) {
+        rc = scalar_convert_charset_enforce_ascii(database, source_cell.value, slice_length);
+    }
+    if (rc == MYLITE_OK) {
+        rc = assign_scalar_cell_text(database, out_cell, source_cell.value, slice_length);
+    }
+
+    session_scalar_cell_deinit(&source_cell);
+    return rc;
+}
+
+static int convert_using_charset_source_cell_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell,
+    const char **out_charset
+) {
+    struct scalar_convert_charset_info info = {0};
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL || out_charset == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    *out_charset = NULL;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (expression->kind == MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION) {
+        *out_charset = "binary";
+        return convert_using_binary_value(database, expression, out_cell);
+    }
+    if (expression->kind != MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = scalar_convert_charset_info_for_expression(database, expression, &info);
+    if (rc == MYLITE_OK) {
+        rc = convert_using_charset_value(database, expression, out_cell);
+    }
+    if (rc == MYLITE_OK) {
+        *out_charset = info.charset;
+    }
+    return rc;
+}
+
+static int scalar_convert_charset_left_slice_length(
+    struct mylite_db *database,
+    const char *charset,
+    const char *text,
+    size_t text_length,
+    int64_t requested_length,
+    size_t *out_slice_length
+) {
+    if (charset == NULL || text == NULL || out_slice_length == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_slice_length = 0U;
+    if (strcmp(charset, "big5") == 0) {
+        *out_slice_length = scalar_convert_big5_left_slice_length(
+            text,
+            text_length,
+            requested_length
+        );
+        return MYLITE_OK;
+    }
+    if (scalar_convert_charset_left_uses_utf8_characters(charset)) {
+        return scalar_convert_utf8_left_slice_length(
+            database,
+            text,
+            text_length,
+            requested_length,
+            out_slice_length
+        );
+    }
+
+    (void)database;
+    if ((uint64_t)requested_length >= (uint64_t)text_length) {
+        *out_slice_length = text_length;
+    } else {
+        *out_slice_length = (size_t)requested_length;
+    }
+    return MYLITE_OK;
+}
+
+static int scalar_convert_utf8_left_slice_length(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    int64_t requested_length,
+    size_t *out_slice_length
+) {
+    size_t index = 0U;
+    int64_t characters = 0;
+
+    if (text == NULL || out_slice_length == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_slice_length = 0U;
+    while (index < text_length && characters < requested_length) {
+        size_t width = 0U;
+        int rc = mylite_execution_utf8_sequence_width(text, text_length, index, &width);
+
+        if (rc != MYLITE_OK) {
+            set_runtime_error(database, "invalid UTF-8 value in string slice function");
+            return MYLITE_ERROR;
+        }
+        index += width;
+        ++characters;
+    }
+    *out_slice_length = index;
+    return MYLITE_OK;
+}
+
+static size_t scalar_convert_big5_left_slice_length(
+    const char *text,
+    size_t text_length,
+    int64_t requested_length
+) {
+    size_t offset = 0U;
+    int64_t characters = 0;
+
+    if (text == NULL || requested_length <= 0) {
+        return 0U;
+    }
+    while (offset < text_length && characters < requested_length) {
+        if (scalar_convert_big5_byte_is_lead((unsigned char)text[offset]) &&
+            offset + 1U < text_length) {
+            offset += 2U;
+        } else {
+            ++offset;
+        }
+        ++characters;
+    }
+    return offset;
+}
+
+static size_t scalar_convert_big5_complete_prefix_length(const char *text, size_t text_length) {
+    size_t offset = 0U;
+
+    if (text == NULL) {
+        return 0U;
+    }
+    while (offset < text_length) {
+        if (scalar_convert_big5_byte_is_lead((unsigned char)text[offset])) {
+            if (offset + 1U >= text_length) {
+                return offset;
+            }
+            offset += 2U;
+        } else {
+            ++offset;
+        }
+    }
+    return offset;
+}
+
+static bool scalar_convert_big5_byte_is_lead(unsigned char byte) {
+    return byte >= scalar_convert_big5_lead_byte_min &&
+           byte <= scalar_convert_big5_lead_byte_max;
+}
+
+static bool scalar_convert_charset_left_uses_utf8_characters(const char *charset) {
+    return charset != NULL &&
+           (strcmp(charset, "utf8mb4") == 0 || strcmp(charset, "utf8mb3") == 0 ||
+            strcmp(charset, "ujis") == 0) != 0;
+}
+
+static int scalar_convert_charset_enforce_ascii(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length
+) {
+    if (text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t index = 0U; index < text_length; ++index) {
+        if (((const unsigned char *)text)[index] > utf8_ascii_max) {
             set_unsupported_error(
                 database,
                 "CONVERT USING latin1 supports only ASCII scalar values"

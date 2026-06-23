@@ -845,6 +845,47 @@ static int convert_using_charset_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int convert_using_charset_left_slice_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct scalar_convert_charset_info *target_info,
+    struct session_scalar_cell *out_cell,
+    bool *out_handled
+);
+static int convert_using_charset_source_cell_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell,
+    const char **out_charset
+);
+static int scalar_convert_charset_left_slice_length(
+    struct mylite_db *database,
+    const char *charset,
+    const char *text,
+    size_t text_length,
+    int64_t requested_length,
+    size_t *out_slice_length
+);
+static int scalar_convert_utf8_left_slice_length(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length,
+    int64_t requested_length,
+    size_t *out_slice_length
+);
+static size_t scalar_convert_big5_left_slice_length(
+    const char *text,
+    size_t text_length,
+    int64_t requested_length
+);
+static size_t scalar_convert_big5_complete_prefix_length(const char *text, size_t text_length);
+static bool scalar_convert_big5_byte_is_lead(unsigned char byte);
+static bool scalar_convert_charset_left_uses_utf8_characters(const char *charset);
+static int scalar_convert_charset_enforce_ascii(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_length
+);
 static int collate_expression_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

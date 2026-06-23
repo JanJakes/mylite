@@ -221,6 +221,11 @@ static int test_diagnostics_count_variable_qualifiers_and_errors(void) {
         "@@`error_count`",
     };
     static const char *const mixed_values[] = {"0", "0", "0", "0", "0", "0"};
+    static const char *const expression_columns[] = {
+        "@@warning_count + 1",
+        "@@error_count + 2",
+    };
+    static const char *const expression_values[] = {"1", "2"};
     mylite_db *database = NULL;
     mylite_result *result = NULL;
     int failures = 0;
@@ -325,7 +330,17 @@ static int test_diagnostics_count_variable_qualifiers_and_errors(void) {
             .message_part = "quoted system variable scope",
         }
     );
-    failures += execute_statement_ok(database, "SELECT @@warning_count + 1");
+    failures += execute_ok(database, "SELECT @@warning_count + 1, @@error_count + 2", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = expression_columns,
+            .values = expression_values,
+            .count = sizeof(expression_columns) / sizeof(expression_columns[0]),
+            .context = "diagnostics count expression reads",
+        }
+    );
+    mylite_result_free(result);
 
     mylite_close(database);
     return failures;

@@ -2,10 +2,11 @@
 
 ## Status
 
-This feature specifies a narrow scalar system-variable slice for
+This feature specifies the baseline system-variable slice for
 `@@warning_count` and `@@error_count`. It builds on the previous diagnostics
 snapshot used by `SHOW WARNINGS`, `SHOW COUNT(*) WARNINGS`, `SHOW ERRORS`,
-and `SHOW COUNT(*) ERRORS`.
+and `SHOW COUNT(*) ERRORS`, and supports the same scalar-expression contexts
+as other implemented numeric system-variable reads.
 
 The feature is intentionally not general system-variable support. MyLite adds
 only read access to the two diagnostics count variables inside the existing
@@ -72,6 +73,9 @@ Observed against the local `mysql:8.4.9` runtime:
   `SHOW COUNT(*) WARNINGS` return `0` after that scalar `SELECT`.
 - Column labels for scalar selects are the original expression source text,
   including qualifiers, case, and parentheses.
+- MySQL accepts simple numeric expressions such as
+  `SELECT @@warning_count + 1, @@error_count + 2`, preserving expression text
+  as column labels.
 
 The local MySQL client can start a session with an initialization warning, so
 expectation scripts first execute a harmless nondiagnostic statement before
@@ -93,6 +97,7 @@ The implementation must add:
   behavior;
 - nondiagnostic statement lifecycle behavior: successful scalar variable
   selects read the previous diagnostics snapshot and then clear it;
+- simple numeric expression reads in supported scalar expression contexts;
 - fast C tests and a MySQL 8.4.9 expectation artifact.
 
 Supported SQL examples:
@@ -102,6 +107,7 @@ SELECT @@warning_count
 SELECT @@error_count
 SELECT @@session.warning_count, @@local.error_count
 SELECT (@@warning_count), @@session.`warning_count`, @@`error_count`
+SELECT @@warning_count + 1, @@error_count + 2
 SELECT @@warning_count, ROW_COUNT() FROM DUAL
 ```
 
@@ -115,8 +121,7 @@ This feature must not implement:
 - `@@version`, `@@max_error_count`, `@@sql_notes`, connection character-set
   variables, SQL mode variables, status variables, user variables, or
   Performance Schema variable tables;
-- general expression evaluation involving system variables, such as
-  `@@warning_count + 1`;
+- unsupported expression evaluation outside MyLite's scalar expression subset;
 - table-backed variable evaluation, aliases, clauses, subqueries, functions
   over variables, parameters, prepared statements, or protocol metadata
   beyond existing result conventions;

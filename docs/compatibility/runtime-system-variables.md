@@ -198,7 +198,7 @@ state through this fallback path.
 | `enterprise_encryption.maximum_rsa_key_size` | ❌ | Value, scope, SET, diagnostics |
 | `enterprise_encryption.rsa_support_legacy_padding` | ❌ | Value, scope, SET, diagnostics |
 | `eq_range_index_dive_limit` | ❌ | Value, scope, SET, diagnostics |
-| `error_count` | 🟡 | Limited read-only scalar `SELECT @@error_count`, `@@session.error_count`, and `@@local.error_count` over the previous diagnostics snapshot, including retained error rows and the current `max_error_count=0` parse-error snapshot suppression behavior; no global scope, `SET`, diagnostics stacks, or broader stored-program diagnostics |
+| `error_count` | ✅ | Read-only session/local/unscoped scalar reads and simple expression reads over the previous diagnostics snapshot are MySQL-runtime verified, including retained error rows, nondiagnostic `SELECT` clearing, and current `max_error_count=0` parse-error snapshot behavior; global scope and `SET` are rejected as in MySQL, with no diagnostics stacks or broader stored-program diagnostics |
 | `event_scheduler` | ❌ | Value, scope, SET, diagnostics |
 | `explain_format` | ❌ | Value, scope, SET, diagnostics |
 | `explain_json_format_version` | ❌ | Value, scope, SET, diagnostics |
@@ -1026,7 +1026,7 @@ state through this fallback path.
 | `version_tokens_session` | ❌ | Value, scope, SET, diagnostics |
 | `version_tokens_session_number` | ❌ | Value, scope, SET, diagnostics |
 | `wait_timeout` | 🟡 | Limited handle-local session scalar reads, `SHOW VARIABLES` rows, and session/local/unqualified `SET` assignment with MySQL-compatible integer range `1..31536000`, `DEFAULT = 28800`, boolean conversion, clamp warnings, and integer user-variable assignment. Global reads expose fixed `28800` and mutable global assignment is limited to exact no-op `DEFAULT`/`28800` forms; no idle timeout enforcement, protocol behavior, startup options, persisted state, privileges, or Performance Schema rows |
-| `warning_count` | 🟡 | Limited read-only scalar `SELECT @@warning_count`, `@@session.warning_count`, and `@@local.warning_count` over the previous diagnostics snapshot; counts total current warning, note, and error conditions even when `@@max_error_count` caps retained `SHOW WARNINGS` rows, and honors `sql_notes=0` for current note producers. Missing-schema `DROP DATABASE IF EXISTS` intentionally exposes only a statement result warning count; no global scope, `SET`, diagnostics stacks, or broader warning producer coverage |
+| `warning_count` | ✅ | Read-only session/local/unscoped scalar reads and simple expression reads over the previous diagnostics snapshot are MySQL-runtime verified; counts current warning, note, and error conditions even when `@@max_error_count` caps retained rows, honors `sql_notes=0`, and clears after nondiagnostic `SELECT`. Global scope and `SET` are rejected as in MySQL; no diagnostics stacks or broader warning-producer coverage |
 | `windowing_use_high_precision` | ❌ | Value, scope, SET, diagnostics |
 | `xa_detach_on_prepare` | ❌ | Value, scope, SET, diagnostics |
 

@@ -82,6 +82,9 @@ expect_value \
 quoted_values=$(run_mysql "SELECT 1; SELECT (@@warning_count), @@session.\`warning_count\`, @@\`error_count\`;" | tail -n 1)
 expect_value "quoted diagnostics count variable values" "0	0	0" "$quoted_values"
 
+expression_values=$(run_mysql "SELECT 1; SELECT @@warning_count + 1, @@error_count + 2;" | tail -n 1)
+expect_value "diagnostics count expression values" "1	2" "$expression_values"
+
 warning_then_scalar=$(run_mysql "SELECT 1; SHOW PROCESSLIST; SELECT @@warning_count, @@error_count, ROW_COUNT(); SHOW COUNT(*) WARNINGS;" | tail -n 2 | tr '\n' '|')
 expect_value "scalar warning_count reads and clears warning diagnostics" "1	0	-1|0|" "$warning_then_scalar"
 

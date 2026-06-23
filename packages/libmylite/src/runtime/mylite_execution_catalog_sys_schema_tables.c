@@ -619,6 +619,61 @@ static const char *const sys_x_ps_schema_table_statistics_io_column_privileges[]
 };
 
 static const struct mylite_execution_catalog_column_definition
+    sys_x_ps_digest_avg_latency_distribution_columns[] = {
+        {"cnt", "0", "NO", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"},
+        {"avg_us", NULL, "YES", "decimal", NULL, NULL, "21", "0", NULL, NULL, NULL, "decimal(21,0)"
+        },
+};
+
+static const char *const sys_x_ps_digest_avg_latency_distribution_column_keys[] = {
+    "",
+    "",
+};
+
+static const char *const sys_x_ps_digest_avg_latency_distribution_column_extras[] = {
+    "",
+    "",
+};
+
+static const char *const sys_x_ps_digest_avg_latency_distribution_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct mylite_execution_catalog_column_definition
+    sys_x_ps_digest_95th_percentile_by_avg_us_columns[] = {
+        {"avg_us", NULL, "YES", "decimal", NULL, NULL, "21", "0", NULL, NULL, NULL, "decimal(21,0)"
+        },
+        {"percentile",
+         "0.0000",
+         "NO",
+         "decimal",
+         NULL,
+         NULL,
+         "46",
+         "4",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(46,4)"},
+};
+
+static const char *const sys_x_ps_digest_95th_percentile_by_avg_us_column_keys[] = {
+    "",
+    "",
+};
+
+static const char *const sys_x_ps_digest_95th_percentile_by_avg_us_column_extras[] = {
+    "",
+    "",
+};
+
+static const char *const sys_x_ps_digest_95th_percentile_by_avg_us_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct mylite_execution_catalog_column_definition
     sys_schema_table_statistics_columns[] = {
         {"table_schema",
          NULL,
@@ -2608,6 +2663,36 @@ static const struct mylite_execution_catalog_mysql_system_table
 
 static const struct mylite_execution_catalog_mysql_system_table
     sys_schema_x_system_table_definitions[] = {
+        {"sys",
+         {MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION,
+          "x$ps_digest_avg_latency_distribution",
+          sys_x_ps_digest_avg_latency_distribution_columns,
+          sizeof(sys_x_ps_digest_avg_latency_distribution_columns) /
+              sizeof(sys_x_ps_digest_avg_latency_distribution_columns[0])},
+         sys_x_ps_digest_avg_latency_distribution_column_keys,
+         sys_x_ps_digest_avg_latency_distribution_column_extras,
+         sys_x_ps_digest_avg_latency_distribution_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         NULL,
+         0U},
+        {"sys",
+         {MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US,
+          "x$ps_digest_95th_percentile_by_avg_us",
+          sys_x_ps_digest_95th_percentile_by_avg_us_columns,
+          sizeof(sys_x_ps_digest_95th_percentile_by_avg_us_columns) /
+              sizeof(sys_x_ps_digest_95th_percentile_by_avg_us_columns[0])},
+         sys_x_ps_digest_95th_percentile_by_avg_us_column_keys,
+         sys_x_ps_digest_95th_percentile_by_avg_us_column_extras,
+         sys_x_ps_digest_95th_percentile_by_avg_us_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         NULL,
+         0U},
         {"sys",
          {MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PS_SCHEMA_TABLE_STATISTICS_IO,
           "x$ps_schema_table_statistics_io",

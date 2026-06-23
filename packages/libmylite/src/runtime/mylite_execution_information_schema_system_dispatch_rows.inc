@@ -211,6 +211,8 @@ static int append_information_schema_system_rows(
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_MEMORY_BY_USER_BY_CURRENT_BYTES:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_MEMORY_GLOBAL_BY_CURRENT_BYTES:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_MEMORY_GLOBAL_TOTAL:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PS_SCHEMA_TABLE_STATISTICS_IO:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_SCHEMA_TABLE_LOCK_WAITS:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_SCHEMA_INDEX_STATISTICS:
@@ -472,6 +474,15 @@ static int append_information_schema_view_table_usage_system_rows(
         {"x$latest_file_io", "information_schema", "PROCESSLIST"},
         {"x$latest_file_io", "performance_schema", "events_waits_history_long"},
         {"x$latest_file_io", "performance_schema", "threads"},
+        {"x$ps_digest_95th_percentile_by_avg_us",
+         "performance_schema",
+         "events_statements_summary_by_digest"},
+        {"x$ps_digest_95th_percentile_by_avg_us",
+         "sys",
+         "x$ps_digest_avg_latency_distribution"},
+        {"x$ps_digest_avg_latency_distribution",
+         "performance_schema",
+         "events_statements_summary_by_digest"},
         {"x$ps_schema_table_statistics_io", "performance_schema", "file_summary_by_instance"},
         {"x$schema_flattened_keys", "information_schema", "STATISTICS"},
         {"x$schema_index_statistics",

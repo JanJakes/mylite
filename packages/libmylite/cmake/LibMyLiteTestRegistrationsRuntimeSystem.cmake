@@ -777,6 +777,10 @@
     COMMAND mylite_runtime_sys_memory_global_total_views_test
   )
   add_test(
+    NAME libmylite.runtime.sys_ps_digest_helper_views
+    COMMAND mylite_runtime_sys_ps_digest_helper_views_test
+  )
+  add_test(
     NAME libmylite.runtime.sys_io_by_thread_by_latency_views
     COMMAND mylite_runtime_sys_io_by_thread_by_latency_views_test
   )

@@ -363,6 +363,8 @@ enum {
     sys_memory_by_user_by_current_bytes_column_count = 6,
     sys_memory_global_by_current_bytes_column_count = 7,
     sys_memory_global_total_column_count = 1,
+    sys_x_ps_digest_avg_latency_distribution_column_count = 2,
+    sys_x_ps_digest_95th_percentile_by_avg_us_column_count = 2,
     sys_ps_check_lost_instrumentation_column_count = 2,
     sys_schema_auto_increment_columns_column_count = 10,
     sys_schema_index_statistics_column_count = 11,

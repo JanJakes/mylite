@@ -288,6 +288,12 @@ static int append_sys_schema_x_system_table_rows(
     if (strcmp(definition->query_definition.name, "x$latest_file_io") == 0) {
         return append_sys_latest_file_io_system_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "x$ps_digest_avg_latency_distribution") == 0) {
+        return append_sys_x_ps_digest_avg_latency_distribution_system_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "x$ps_digest_95th_percentile_by_avg_us") == 0) {
+        return append_sys_x_ps_digest_95th_percentile_by_avg_us_system_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "x$ps_schema_table_statistics_io") == 0) {
         return append_sys_x_ps_schema_table_statistics_io_system_rows(database, rows);
     }
@@ -712,6 +718,28 @@ static int append_sys_memory_global_total_system_rows(
 ) {
     if (rows->definition->column_count != sys_memory_global_total_column_count) {
         set_runtime_error(database, "invalid sys.memory_global_total columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_x_ps_digest_avg_latency_distribution_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_x_ps_digest_avg_latency_distribution_column_count) {
+        set_runtime_error(database, "invalid sys.x$ps_digest_avg_latency_distribution columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_x_ps_digest_95th_percentile_by_avg_us_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_x_ps_digest_95th_percentile_by_avg_us_column_count) {
+        set_runtime_error(database, "invalid sys.x$ps_digest_95th_percentile_by_avg_us columns");
         return MYLITE_ERROR;
     }
     return MYLITE_OK;

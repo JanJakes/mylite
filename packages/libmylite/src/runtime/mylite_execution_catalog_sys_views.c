@@ -1941,6 +1941,69 @@ static const char sys_x_ps_schema_table_statistics_io_show_create_qualified_view
 #undef SYS_X_PS_SCHEMA_TABLE_STATISTICS_IO_VIEW_COLUMNS
 #undef SYS_X_PS_SCHEMA_TABLE_STATISTICS_IO_VIEW_DEFINITION
 
+#define SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION_VIEW_COLUMNS "(`cnt`,`avg_us`)"
+
+#define SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION_VIEW_DEFINITION                                   \
+    "select count(0) AS `cnt`,round((`performance_schema`."                                        \
+    "`events_statements_summary_by_digest`.`AVG_TIMER_WAIT` / 1000000),0) AS `avg_us` from "       \
+    "`performance_schema`.`events_statements_summary_by_digest` group by `avg_us`"
+
+static const char sys_x_ps_digest_avg_latency_distribution_view_definition[] =
+    SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION_VIEW_DEFINITION;
+
+static const char sys_x_ps_digest_avg_latency_distribution_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$ps_digest_avg_latency_distribution` " SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION_VIEW_COLUMNS
+    " AS " SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION_VIEW_DEFINITION;
+
+static const char sys_x_ps_digest_avg_latency_distribution_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$ps_digest_avg_latency_distribution`"
+    " " SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION_VIEW_COLUMNS
+    " AS " SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION_VIEW_DEFINITION;
+
+#undef SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION_VIEW_COLUMNS
+#undef SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION_VIEW_DEFINITION
+
+#define SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US_VIEW_COLUMNS "(`avg_us`,`percentile`)"
+
+#define SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US_VIEW_DEFINITION                                  \
+    "select `sys`.`s2`.`avg_us` AS `avg_us`,ifnull((sum(`sys`.`s1`.`cnt`) / nullif(("              \
+    "select count(0) from `performance_schema`.`events_statements_summary_by_digest`),0)),0) "     \
+    "AS `percentile` from (`sys`.`x$ps_digest_avg_latency_distribution` `s1` join `sys`."          \
+    "`x$ps_digest_avg_latency_distribution` `s2` on((`sys`.`s1`.`avg_us` <= "                      \
+    "`sys`.`s2`.`avg_us`))) group by `sys`.`s2`.`avg_us` having (ifnull((sum("                     \
+    "`sys`.`s1`.`cnt`) / nullif((select count(0) from `performance_schema`."                       \
+    "`events_statements_summary_by_digest`),0)),0) > 0.95) order by `percentile` limit 1"
+
+#define SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US_UNQUALIFIED_VIEW_DEFINITION                      \
+    "select `s2`.`avg_us` AS `avg_us`,ifnull((sum(`s1`.`cnt`) / nullif((select count(0) "          \
+    "from `performance_schema`.`events_statements_summary_by_digest`),0)),0) AS "                  \
+    "`percentile` from (`x$ps_digest_avg_latency_distribution` `s1` join "                         \
+    "`x$ps_digest_avg_latency_distribution` `s2` on((`s1`.`avg_us` <= `s2`.`avg_us`))) group "     \
+    "by `s2`.`avg_us` having (ifnull((sum(`s1`.`cnt`) / nullif((select count(0) from "             \
+    "`performance_schema`.`events_statements_summary_by_digest`),0)),0) > 0.95) order by "         \
+    "`percentile` limit 1"
+
+static const char sys_x_ps_digest_95th_percentile_by_avg_us_view_definition[] =
+    SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US_VIEW_DEFINITION;
+
+static const char sys_x_ps_digest_95th_percentile_by_avg_us_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$ps_digest_95th_percentile_by_avg_us`"
+    " " SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US_VIEW_COLUMNS
+    " AS " SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US_UNQUALIFIED_VIEW_DEFINITION;
+
+static const char sys_x_ps_digest_95th_percentile_by_avg_us_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$ps_digest_95th_percentile_by_avg_us`"
+    " " SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US_VIEW_COLUMNS
+    " AS " SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US_VIEW_DEFINITION;
+
+#undef SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US_VIEW_COLUMNS
+#undef SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US_VIEW_DEFINITION
+#undef SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US_UNQUALIFIED_VIEW_DEFINITION
+
 #define SYS_SCHEMA_TABLE_STATISTICS_VIEW_COLUMNS                                                   \
     "(`table_schema`,`table_name`,`total_latency`,`rows_fetched`,`fetch_latency`,"                 \
     "`rows_inserted`,`insert_latency`,`rows_updated`,`update_latency`,`rows_deleted`,"             \
@@ -2452,6 +2515,14 @@ static const struct mylite_execution_catalog_builtin_sys_view builtin_sys_view_d
      sys_x_memory_global_total_view_definition,
      sys_x_memory_global_total_show_create_view_sql,
      sys_x_memory_global_total_show_create_qualified_view_sql},
+    {"x$ps_digest_95th_percentile_by_avg_us",
+     sys_x_ps_digest_95th_percentile_by_avg_us_view_definition,
+     sys_x_ps_digest_95th_percentile_by_avg_us_show_create_view_sql,
+     sys_x_ps_digest_95th_percentile_by_avg_us_show_create_qualified_view_sql},
+    {"x$ps_digest_avg_latency_distribution",
+     sys_x_ps_digest_avg_latency_distribution_view_definition,
+     sys_x_ps_digest_avg_latency_distribution_show_create_view_sql,
+     sys_x_ps_digest_avg_latency_distribution_show_create_qualified_view_sql},
     {"x$ps_schema_table_statistics_io",
      sys_x_ps_schema_table_statistics_io_view_definition,
      sys_x_ps_schema_table_statistics_io_show_create_view_sql,

@@ -83,6 +83,152 @@ static const char sys_metrics_show_create_qualified_view_sql[] =
 #undef SYS_METRICS_MEMORY_ENABLED_EXPR
 #undef SYS_METRICS_VIEW_DEFINITION
 
+#define SYS_PROCESSLIST_VIEW_COLUMNS                                                               \
+    "(`thd_id`,`conn_id`,`user`,`db`,`command`,`state`,`time`,`current_statement`,"                \
+    "`execution_engine`,`statement_latency`,`progress`,`lock_latency`,`cpu_latency`,"              \
+    "`rows_examined`,`rows_sent`,`rows_affected`,`tmp_tables`,`tmp_disk_tables`,`full_scan`,"      \
+    "`last_statement`,`last_statement_latency`,`current_memory`,`last_wait`,`last_wait_latency`,"  \
+    "`source`,`trx_latency`,`trx_state`,`trx_autocommit`,`pid`,`program_name`)"
+
+#define SYS_PROCESSLIST_SELECT_PREFIX                                                              \
+    "select `pps`.`THREAD_ID` AS `thd_id`,`pps`.`PROCESSLIST_ID` AS `conn_id`,if(("                \
+    "`pps`.`NAME` in ('thread/sql/one_connection','thread/thread_pool/tp_one_connection')),"       \
+    "concat(`pps`.`PROCESSLIST_USER`,'@',convert(`pps`.`PROCESSLIST_HOST` using utf8mb4)),"        \
+    "replace(`pps`.`NAME`,'thread/','')) AS `user`,`pps`.`PROCESSLIST_DB` AS `db`,"                \
+    "`pps`.`PROCESSLIST_COMMAND` AS `command`,`pps`.`PROCESSLIST_STATE` AS `state`,"               \
+    "`pps`.`PROCESSLIST_TIME` AS `time`,"
+
+#define SYS_PROCESSLIST_SELECT_MIDDLE_FORMATTED                                                    \
+    "`sys`.`format_statement`(`pps`.`PROCESSLIST_INFO`) AS `current_statement`,"                   \
+    "`pps`.`EXECUTION_ENGINE` AS `execution_engine`,if((`esc`.`END_EVENT_ID` is null),"            \
+    "format_pico_time(`esc`.`TIMER_WAIT`),NULL) AS `statement_latency`,if(("                       \
+    "`esc`.`END_EVENT_ID` is null),round((100 * (`estc`.`WORK_COMPLETED` / "                       \
+    "`estc`.`WORK_ESTIMATED`)),2),NULL) AS `progress`,format_pico_time(`esc`.`LOCK_TIME`) AS "     \
+    "`lock_latency`,format_pico_time(`esc`.`CPU_TIME`) AS `cpu_latency`,"
+
+#define SYS_PROCESSLIST_SELECT_MIDDLE_RAW                                                          \
+    "`pps`.`PROCESSLIST_INFO` AS `current_statement`,`pps`.`EXECUTION_ENGINE` AS "                 \
+    "`execution_engine`,if((`esc`.`END_EVENT_ID` is null),`esc`.`TIMER_WAIT`,NULL) AS "            \
+    "`statement_latency`,if((`esc`.`END_EVENT_ID` is null),round((100 * ("                         \
+    "`estc`.`WORK_COMPLETED` / `estc`.`WORK_ESTIMATED`)),2),NULL) AS `progress`,"                  \
+    "`esc`.`LOCK_TIME` AS `lock_latency`,`esc`.`CPU_TIME` AS `cpu_latency`,"
+
+#define SYS_PROCESSLIST_SELECT_COUNTERS                                                            \
+    "`esc`.`ROWS_EXAMINED` AS `rows_examined`,`esc`.`ROWS_SENT` AS `rows_sent`,"                   \
+    "`esc`.`ROWS_AFFECTED` AS `rows_affected`,`esc`.`CREATED_TMP_TABLES` AS `tmp_tables`,"         \
+    "`esc`.`CREATED_TMP_DISK_TABLES` AS `tmp_disk_tables`,if((("                                   \
+    "`esc`.`NO_GOOD_INDEX_USED` > 0) or (`esc`.`NO_INDEX_USED` > 0)),'YES','NO') AS "              \
+    "`full_scan`,"
+
+#define SYS_PROCESSLIST_SELECT_SUFFIX_FORMATTED                                                    \
+    "if((`esc`.`END_EVENT_ID` is not null),`sys`.`format_statement`(`esc`.`SQL_TEXT`),NULL) "      \
+    "AS `last_statement`,if((`esc`.`END_EVENT_ID` is not null),format_pico_time("                  \
+    "`esc`.`TIMER_WAIT`),NULL) AS `last_statement_latency`,format_bytes(`sys`.`mem`."              \
+    "`current_allocated`) AS `current_memory`,`ewc`.`EVENT_NAME` AS `last_wait`,if((("             \
+    "`ewc`.`END_EVENT_ID` is null) and (`ewc`.`EVENT_NAME` is not null)),'Still Waiting',convert(" \
+    "format_pico_time(`ewc`.`TIMER_WAIT`) using utf8mb4)) AS `last_wait_latency`,"                 \
+    "`ewc`.`SOURCE` AS `source`,format_pico_time(`etc`.`TIMER_WAIT`) AS `trx_latency`,"            \
+    "`etc`.`STATE` AS `trx_state`,`etc`.`AUTOCOMMIT` AS `trx_autocommit`,"
+
+#define SYS_PROCESSLIST_SELECT_SUFFIX_RAW                                                          \
+    "if((`esc`.`END_EVENT_ID` is not null),`esc`.`SQL_TEXT`,NULL) AS `last_statement`,if(("        \
+    "`esc`.`END_EVENT_ID` is not null),`esc`.`TIMER_WAIT`,NULL) AS "                               \
+    "`last_statement_latency`,`sys`.`mem`.`current_allocated` AS `current_memory`,"                \
+    "`ewc`.`EVENT_NAME` AS `last_wait`,if(((`ewc`.`END_EVENT_ID` is null) and ("                   \
+    "`ewc`.`EVENT_NAME` is not null)),'Still Waiting',`ewc`.`TIMER_WAIT`) AS "                     \
+    "`last_wait_latency`,`ewc`.`SOURCE` AS `source`,`etc`.`TIMER_WAIT` AS `trx_latency`,"          \
+    "`etc`.`STATE` AS `trx_state`,`etc`.`AUTOCOMMIT` AS `trx_autocommit`,"
+
+#define SYS_PROCESSLIST_FROM_QUALIFIED                                                             \
+    "`conattr_pid`.`ATTR_VALUE` AS `pid`,`conattr_progname`.`ATTR_VALUE` AS `program_name` from "  \
+    "(((((((`performance_schema`.`threads` `pps` left join `performance_schema`."                  \
+    "`events_waits_current` `ewc` on((`pps`.`THREAD_ID` = `ewc`.`THREAD_ID`))) left join "         \
+    "`performance_schema`.`events_stages_current` `estc` on((`pps`.`THREAD_ID` = "                 \
+    "`estc`.`THREAD_ID`))) left join `performance_schema`.`events_statements_current` `esc` on(("  \
+    "`pps`.`THREAD_ID` = `esc`.`THREAD_ID`))) left join `performance_schema`."                     \
+    "`events_transactions_current` `etc` on((`pps`.`THREAD_ID` = `etc`.`THREAD_ID`))) left join "  \
+    "`sys`.`x$memory_by_thread_by_current_bytes` `mem` on((`pps`.`THREAD_ID` = `sys`.`mem`."       \
+    "`thread_id`))) left join `performance_schema`.`session_connect_attrs` `conattr_pid` on((("    \
+    "`conattr_pid`.`PROCESSLIST_ID` = `pps`.`PROCESSLIST_ID`) and (`conattr_pid`.`ATTR_NAME` = "   \
+    "'_pid')))) left join `performance_schema`.`session_connect_attrs` `conattr_progname` on((("   \
+    "`conattr_progname`.`PROCESSLIST_ID` = `pps`.`PROCESSLIST_ID`) and ("                          \
+    "`conattr_progname`.`ATTR_NAME` = 'program_name')))) order by `pps`.`PROCESSLIST_TIME` desc,"  \
+    "`last_wait_latency` desc"
+
+#define SYS_PROCESSLIST_FROM_UNQUALIFIED                                                           \
+    "`conattr_pid`.`ATTR_VALUE` AS `pid`,`conattr_progname`.`ATTR_VALUE` AS `program_name` from "  \
+    "(((((((`performance_schema`.`threads` `pps` left join `performance_schema`."                  \
+    "`events_waits_current` `ewc` on((`pps`.`THREAD_ID` = `ewc`.`THREAD_ID`))) left join "         \
+    "`performance_schema`.`events_stages_current` `estc` on((`pps`.`THREAD_ID` = "                 \
+    "`estc`.`THREAD_ID`))) left join `performance_schema`.`events_statements_current` `esc` on(("  \
+    "`pps`.`THREAD_ID` = `esc`.`THREAD_ID`))) left join `performance_schema`."                     \
+    "`events_transactions_current` `etc` on((`pps`.`THREAD_ID` = `etc`.`THREAD_ID`))) left join "  \
+    "`x$memory_by_thread_by_current_bytes` `mem` on((`pps`.`THREAD_ID` = `mem`.`thread_id`))) "    \
+    "left join `performance_schema`.`session_connect_attrs` `conattr_pid` on((("                   \
+    "`conattr_pid`.`PROCESSLIST_ID` = `pps`.`PROCESSLIST_ID`) and (`conattr_pid`.`ATTR_NAME` = "   \
+    "'_pid')))) left join `performance_schema`.`session_connect_attrs` `conattr_progname` on((("   \
+    "`conattr_progname`.`PROCESSLIST_ID` = `pps`.`PROCESSLIST_ID`) and ("                          \
+    "`conattr_progname`.`ATTR_NAME` = 'program_name')))) order by `pps`.`PROCESSLIST_TIME` desc,"  \
+    "`last_wait_latency` desc"
+
+#define SYS_PROCESSLIST_QUALIFIED_VIEW_DEFINITION                                                  \
+    SYS_PROCESSLIST_SELECT_PREFIX SYS_PROCESSLIST_SELECT_MIDDLE_FORMATTED                          \
+        SYS_PROCESSLIST_SELECT_COUNTERS SYS_PROCESSLIST_SELECT_SUFFIX_FORMATTED                    \
+            SYS_PROCESSLIST_FROM_QUALIFIED
+
+#define SYS_PROCESSLIST_UNQUALIFIED_VIEW_DEFINITION                                                \
+    SYS_PROCESSLIST_SELECT_PREFIX SYS_PROCESSLIST_SELECT_MIDDLE_FORMATTED                          \
+        SYS_PROCESSLIST_SELECT_COUNTERS SYS_PROCESSLIST_SELECT_SUFFIX_FORMATTED                    \
+            SYS_PROCESSLIST_FROM_UNQUALIFIED
+
+#define SYS_X_PROCESSLIST_QUALIFIED_VIEW_DEFINITION                                                \
+    SYS_PROCESSLIST_SELECT_PREFIX SYS_PROCESSLIST_SELECT_MIDDLE_RAW                                \
+        SYS_PROCESSLIST_SELECT_COUNTERS SYS_PROCESSLIST_SELECT_SUFFIX_RAW                          \
+            SYS_PROCESSLIST_FROM_QUALIFIED
+
+#define SYS_X_PROCESSLIST_UNQUALIFIED_VIEW_DEFINITION                                              \
+    SYS_PROCESSLIST_SELECT_PREFIX SYS_PROCESSLIST_SELECT_MIDDLE_RAW                                \
+        SYS_PROCESSLIST_SELECT_COUNTERS SYS_PROCESSLIST_SELECT_SUFFIX_RAW                          \
+            SYS_PROCESSLIST_FROM_UNQUALIFIED
+
+static const char sys_processlist_view_definition[] = SYS_PROCESSLIST_QUALIFIED_VIEW_DEFINITION;
+
+static const char sys_processlist_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`processlist` " SYS_PROCESSLIST_VIEW_COLUMNS
+    " AS " SYS_PROCESSLIST_UNQUALIFIED_VIEW_DEFINITION;
+
+static const char sys_processlist_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`processlist` " SYS_PROCESSLIST_VIEW_COLUMNS
+    " AS " SYS_PROCESSLIST_QUALIFIED_VIEW_DEFINITION;
+
+static const char sys_x_processlist_view_definition[] = SYS_X_PROCESSLIST_QUALIFIED_VIEW_DEFINITION;
+
+static const char sys_x_processlist_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$processlist` " SYS_PROCESSLIST_VIEW_COLUMNS
+    " AS " SYS_X_PROCESSLIST_UNQUALIFIED_VIEW_DEFINITION;
+
+static const char sys_x_processlist_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$processlist` " SYS_PROCESSLIST_VIEW_COLUMNS
+    " AS " SYS_X_PROCESSLIST_QUALIFIED_VIEW_DEFINITION;
+
+#undef SYS_PROCESSLIST_VIEW_COLUMNS
+#undef SYS_PROCESSLIST_SELECT_PREFIX
+#undef SYS_PROCESSLIST_SELECT_MIDDLE_FORMATTED
+#undef SYS_PROCESSLIST_SELECT_MIDDLE_RAW
+#undef SYS_PROCESSLIST_SELECT_COUNTERS
+#undef SYS_PROCESSLIST_SELECT_SUFFIX_FORMATTED
+#undef SYS_PROCESSLIST_SELECT_SUFFIX_RAW
+#undef SYS_PROCESSLIST_FROM_QUALIFIED
+#undef SYS_PROCESSLIST_FROM_UNQUALIFIED
+#undef SYS_PROCESSLIST_QUALIFIED_VIEW_DEFINITION
+#undef SYS_PROCESSLIST_UNQUALIFIED_VIEW_DEFINITION
+#undef SYS_X_PROCESSLIST_QUALIFIED_VIEW_DEFINITION
+#undef SYS_X_PROCESSLIST_UNQUALIFIED_VIEW_DEFINITION
+
 #define SYS_HOST_SUMMARY_VIEW_COLUMNS                                                              \
     "(`host`,`statements`,`statement_latency`,`statement_avg_latency`,`table_scans`,`file_ios`,"   \
     "`file_io_latency`,`current_connections`,`total_connections`,`unique_users`,`current_memory`," \
@@ -2382,6 +2528,14 @@ static const struct mylite_execution_catalog_builtin_sys_view builtin_sys_view_d
      sys_metrics_view_definition,
      sys_metrics_show_create_view_sql,
      sys_metrics_show_create_qualified_view_sql},
+    {"processlist",
+     sys_processlist_view_definition,
+     sys_processlist_show_create_view_sql,
+     sys_processlist_show_create_qualified_view_sql},
+    {"x$processlist",
+     sys_x_processlist_view_definition,
+     sys_x_processlist_show_create_view_sql,
+     sys_x_processlist_show_create_qualified_view_sql},
     {"host_summary",
      sys_host_summary_view_definition,
      sys_host_summary_show_create_view_sql,

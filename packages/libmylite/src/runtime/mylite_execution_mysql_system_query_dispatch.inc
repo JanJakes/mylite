@@ -80,8 +80,6 @@ static int append_mysql_system_table_system_rows(
     const struct mylite_execution_catalog_mysql_system_table *definition,
     struct information_schema_row_set *rows
 ) {
-    (void)context;
-
     if (mysql_system_table_definition_has_no_rows(definition)) {
         return MYLITE_OK;
     }
@@ -89,7 +87,7 @@ static int append_mysql_system_table_system_rows(
         return append_mysql_schema_system_table_rows(database, definition, rows);
     }
     if (strcmp(definition->schema_name, "sys") == 0) {
-        return append_sys_schema_system_table_rows(database, definition, rows);
+        return append_sys_schema_system_table_rows(database, context, definition, rows);
     }
 
     set_runtime_error(database, "invalid mysql system table");
@@ -123,6 +121,7 @@ static int append_mysql_schema_system_table_rows(
 
 static int append_sys_schema_system_table_rows(
     struct mylite_db *database,
+    const struct mylite_statement_context *context,
     const struct mylite_execution_catalog_mysql_system_table *definition,
     struct information_schema_row_set *rows
 ) {
@@ -136,6 +135,12 @@ static int append_sys_schema_system_table_rows(
     }
     if (strcmp(definition->query_definition.name, "metrics") == 0) {
         return append_sys_metrics_system_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "processlist") == 0) {
+        return append_sys_processlist_system_rows(database, context, rows);
+    }
+    if (strcmp(definition->query_definition.name, "x$processlist") == 0) {
+        return append_sys_processlist_system_rows(database, context, rows);
     }
     if (strcmp(definition->query_definition.name, "innodb_lock_waits") == 0) {
         return append_sys_innodb_lock_waits_system_rows(database, rows);
@@ -636,6 +641,99 @@ static int append_sys_metrics_system_rows(
 
         rc = append_information_schema_row(database, rows, values);
     }
+    return rc;
+}
+
+static int append_sys_processlist_system_rows(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    struct information_schema_row_set *rows
+) {
+    struct mylite_processlist_session_snapshot *sessions = NULL;
+    size_t session_count = 0U;
+    int rc = mylite_connection_collect_processlist_sessions(database, &sessions, &session_count);
+
+    if (rows->definition->column_count != sys_processlist_column_count) {
+        set_runtime_error(database, "invalid sys.processlist columns");
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "failed to collect sys.processlist sessions");
+        return rc;
+    }
+
+    for (size_t session_index = 0U; rc == MYLITE_OK && session_index < session_count;
+         ++session_index) {
+        const struct mylite_processlist_session_snapshot *session = &sessions[session_index];
+        char thd_id_text[integer_text_capacity];
+        char conn_id_text[integer_text_capacity];
+        char *current_statement = NULL;
+        const char *selected_schema = NULL;
+        const char *values[sys_processlist_column_count] = {
+            thd_id_text,
+            conn_id_text,
+            session->client_user_identity,
+            NULL,
+            session->is_current ? "Query" : "Sleep",
+            session->is_current ? "executing" : NULL,
+            "0",
+            NULL,
+            session->is_current ? "PRIMARY" : NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            "0",
+            "0",
+            "0",
+            "0",
+            "0",
+            "NO",
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+        };
+        int thd_written =
+            snprintf(thd_id_text, sizeof(thd_id_text), "%" PRIu64, session->connection_id);
+        int conn_written =
+            snprintf(conn_id_text, sizeof(conn_id_text), "%" PRIu64, session->connection_id);
+
+        if (thd_written < 0 || (size_t)thd_written >= sizeof(thd_id_text) || conn_written < 0 ||
+            (size_t)conn_written >= sizeof(conn_id_text)) {
+            set_runtime_error(database, "failed to format sys.processlist connection id");
+            rc = MYLITE_ERROR;
+        }
+        if (rc == MYLITE_OK && session->has_selected_schema) {
+            selected_schema = session->selected_schema;
+        }
+        values[sys_processlist_db_column] = selected_schema;
+        if (rc == MYLITE_OK && session->is_current) {
+            rc = copy_information_schema_processlist_info(database, context, &current_statement);
+        }
+        if (rc == MYLITE_OK) {
+            values[sys_processlist_current_statement_column] = current_statement;
+            values[sys_processlist_trx_state_column] =
+                session->is_current || session->user_transaction_active ? "ACTIVE" : NULL;
+            values[sys_processlist_trx_autocommit_column] =
+                session->autocommit_enabled ? "YES" : "NO";
+            rc = append_information_schema_row(database, rows, values);
+        }
+        free(current_statement);
+    }
+
+    free(sessions);
     return rc;
 }
 

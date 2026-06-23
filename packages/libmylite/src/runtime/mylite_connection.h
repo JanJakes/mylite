@@ -236,6 +236,8 @@ struct mylite_processlist_session_snapshot {
     uint64_t connection_id;
     bool has_selected_schema;
     bool is_current;
+    bool autocommit_enabled;
+    bool user_transaction_active;
     char selected_schema[MYLITE_SESSION_SCHEMA_CAPACITY];
     char client_user_identity[MYLITE_SESSION_IDENTIFIER_CAPACITY];
 };

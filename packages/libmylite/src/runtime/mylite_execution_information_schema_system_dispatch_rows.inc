@@ -181,6 +181,7 @@ static int append_information_schema_system_rows(
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_MEMORY_GLOBAL_BY_CURRENT_BYTES:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_MEMORY_GLOBAL_TOTAL:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_METRICS:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_PROCESSLIST:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_SCHEMA_INDEX_STATISTICS:
@@ -212,6 +213,7 @@ static int append_information_schema_system_rows(
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_MEMORY_BY_USER_BY_CURRENT_BYTES:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_MEMORY_GLOBAL_BY_CURRENT_BYTES:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_MEMORY_GLOBAL_TOTAL:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PROCESSLIST:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PS_SCHEMA_TABLE_STATISTICS_IO:
@@ -386,6 +388,14 @@ static int append_information_schema_view_table_usage_system_rows(
         {"metrics", "performance_schema", "global_status"},
         {"metrics", "performance_schema", "memory_summary_global_by_event_name"},
         {"metrics", "performance_schema", "setup_instruments"},
+        {"processlist", "performance_schema", "events_stages_current"},
+        {"processlist", "performance_schema", "events_statements_current"},
+        {"processlist", "performance_schema", "events_transactions_current"},
+        {"processlist", "performance_schema", "events_waits_current"},
+        {"processlist", "performance_schema", "session_connect_attrs"},
+        {"processlist", "performance_schema", "threads"},
+        {"processlist", "sys", "sys_config"},
+        {"processlist", "sys", "x$memory_by_thread_by_current_bytes"},
         {"innodb_lock_waits", "information_schema", "INNODB_TRX"},
         {"innodb_lock_waits", "performance_schema", "data_lock_waits"},
         {"innodb_lock_waits", "performance_schema", "data_locks"},
@@ -479,6 +489,13 @@ static int append_information_schema_view_table_usage_system_rows(
         {"x$latest_file_io", "information_schema", "PROCESSLIST"},
         {"x$latest_file_io", "performance_schema", "events_waits_history_long"},
         {"x$latest_file_io", "performance_schema", "threads"},
+        {"x$processlist", "performance_schema", "events_stages_current"},
+        {"x$processlist", "performance_schema", "events_statements_current"},
+        {"x$processlist", "performance_schema", "events_transactions_current"},
+        {"x$processlist", "performance_schema", "events_waits_current"},
+        {"x$processlist", "performance_schema", "session_connect_attrs"},
+        {"x$processlist", "performance_schema", "threads"},
+        {"x$processlist", "sys", "x$memory_by_thread_by_current_bytes"},
         {"x$ps_digest_95th_percentile_by_avg_us",
          "performance_schema",
          "events_statements_summary_by_digest"},
@@ -546,6 +563,7 @@ static int append_information_schema_view_routine_usage_system_rows(
         {"io_global_by_file_by_bytes", "format_path"},
         {"io_global_by_file_by_latency", "format_path"},
         {"latest_file_io", "format_path"},
+        {"processlist", "format_statement"},
         {"schema_table_lock_waits", "format_statement"},
         {"schema_table_lock_waits", "ps_thread_account"},
         {"x$innodb_lock_waits", "quote_identifier"},

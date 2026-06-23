@@ -182,6 +182,8 @@ int mylite_connection_collect_processlist_sessions(
         sessions[index].connection_id = database->session.connection_id;
         sessions[index].has_selected_schema = database->session.has_selected_schema;
         sessions[index].is_current = database == current;
+        sessions[index].autocommit_enabled = database->session.autocommit_enabled;
+        sessions[index].user_transaction_active = database->session.user_transaction_active;
         copy_session_text(
             sessions[index].selected_schema,
             sizeof(sessions[index].selected_schema),

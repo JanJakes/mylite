@@ -456,6 +456,7 @@ static int append_mysql_schema_system_table_rows(
 );
 static int append_sys_schema_system_table_rows(
     struct mylite_db *database,
+    const struct mylite_statement_context *context,
     const struct mylite_execution_catalog_mysql_system_table *definition,
     struct information_schema_row_set *rows
 );
@@ -584,6 +585,11 @@ static int append_sys_memory_global_total_system_rows(
 );
 static int append_sys_metrics_system_rows(
     struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_processlist_system_rows(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
     struct information_schema_row_set *rows
 );
 static int append_sys_x_ps_digest_avg_latency_distribution_system_rows(

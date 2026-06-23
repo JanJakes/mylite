@@ -173,6 +173,6 @@ expect_error \
     "SELECT @@\`session\`.foreign_key_checks;"
 
 expect_output \
-    "mysql accepts expressions outside this mylite slice" \
+    "foreign_key_checks expression read" \
     "2" \
     "SELECT @@foreign_key_checks + 1;"

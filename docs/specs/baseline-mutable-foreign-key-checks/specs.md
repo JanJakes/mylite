@@ -54,6 +54,8 @@ Observed variable behavior:
 - After a session assignment, unqualified, `@@session`, and `@@local` reads
   report the session value; `@@global.foreign_key_checks` reports the global
   value.
+- Simple numeric expressions such as `@@foreign_key_checks + 1` are accepted
+  in MySQL and preserve expression text as the result label.
 - Accepted boolean values include `0`, `1`, `OFF`, `ON`, `FALSE`, `TRUE`,
   `+0`, and `+1`.
 - `DEFAULT` is accepted by MySQL 8.4.9 and, in the tested runtime, sets the
@@ -111,6 +113,7 @@ SET @@session.foreign_key_checks = FALSE
 SET @@local.`foreign_key_checks` = TRUE
 SET foreign_key_checks = +1
 SELECT @@foreign_key_checks, @@global.foreign_key_checks
+SELECT @@foreign_key_checks + 1
 SHOW VARIABLES WHERE Variable_name = 'foreign_key_checks'
 ```
 

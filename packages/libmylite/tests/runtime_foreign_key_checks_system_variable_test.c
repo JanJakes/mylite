@@ -608,6 +608,8 @@ static int test_foreign_key_checks_qualifiers_and_errors(void) {
         "(@@foreign_key_checks)",
     };
     static const char *const scoped_values[] = {"1", "1", "1", "1", "1"};
+    static const char *const expression_columns[] = {"@@foreign_key_checks + 1"};
+    static const char *const expression_values[] = {"2"};
     mylite_db *database = NULL;
     mylite_result *result = NULL;
     int failures = 0;
@@ -668,7 +670,17 @@ static int test_foreign_key_checks_qualifiers_and_errors(void) {
             .message_part = "quoted system variable scope",
         }
     );
-    failures += execute_statement_ok(database, "SELECT @@foreign_key_checks + 1");
+    failures += execute_ok(database, "SELECT @@foreign_key_checks + 1", &result);
+    failures += expect_result(
+        result,
+        (struct expected_result){
+            .columns = expression_columns,
+            .values = expression_values,
+            .count = sizeof(expression_columns) / sizeof(expression_columns[0]),
+            .context = "foreign key checks expression read",
+        }
+    );
+    mylite_result_free(result);
 
     mylite_close(database);
     return failures;

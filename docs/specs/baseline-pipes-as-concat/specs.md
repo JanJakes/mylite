@@ -7,9 +7,8 @@ session SQL mode includes the flag, `||` is parsed as string concatenation for
 the scalar projection paths that already support `CONCAT()`.
 
 This feature is a parser/planner translation slice. It does not add a general
-expression engine, full SQL-mode behavior, predicate truth evaluation for
-concatenation expressions, DML assignment expressions, expression indexes, or a
-SQLite fork patch.
+expression engine, full SQL-mode behavior, grouped expression support,
+expression indexes, or a SQLite fork patch.
 
 ## Sources
 
@@ -66,6 +65,12 @@ Supported statement forms:
 - single-table row-scalar `SELECT` projection over one descriptor-backed
   persistent or temporary base table, within the existing row-scalar `SELECT`
   envelope;
+- descriptor-backed single-table `SELECT` `WHERE` predicates in the current
+  row-scalar comparison, `IS [NOT] NULL`, and range predicate envelopes;
+- non-grouped single-table `SELECT ORDER BY` expression keys in the current
+  row-scalar ordering envelope;
+- compatible non-key single-table `UPDATE` assignment values in the current
+  row-scalar assignment envelope;
 - `SET sql_mode = 'PIPES_AS_CONCAT'` and `SET sql_mode = 'ANSI'` activation
   through the existing session SQL-mode state.
 
@@ -101,10 +106,9 @@ This slice intentionally does not support:
 
 - `||` concatenation unless `PIPES_AS_CONCAT` is active;
 - scalar `||` logical OR projection when `PIPES_AS_CONCAT` is inactive;
-- concatenation expressions in `WHERE`, `HAVING`, `ORDER BY`, `GROUP BY`,
-  `UPDATE` assignments, `INSERT` / `REPLACE` values, defaults, generated
-  columns, checks, indexes, partitions, triggers, or arbitrary SQLite
-  pass-through;
+- concatenation expressions in `HAVING`, `GROUP BY`, grouped `ORDER BY`,
+  `INSERT` / `REPLACE` values, defaults, generated columns, checks, indexes,
+  partitions, triggers, or arbitrary SQLite pass-through;
 - joined, grouped, distinct, compound, recursive, windowed, or CTE expression
   contexts beyond the current row-scalar projection envelope;
 - binary-string result typing, charset/collation metadata parity, non-ASCII
@@ -143,10 +147,11 @@ Planning:
    Otherwise the existing deprecated logical-OR token remains unchanged.
 4. The parser creates an ordinary binary-expression AST node with a new
    `concat` operator kind.
-5. The row-scalar planner recognizes top-level concat-operator trees, flattens
-   left/right associative chains into the existing planned `CONCAT` expression
-   shape, and plans each leaf through the current non-`CONCAT()` argument
-   planner.
+5. The row-scalar planner recognizes top-level concat-operator trees in
+   projection, supported predicate, supported ordering, and supported `UPDATE`
+   assignment contexts, flattens left/right associative chains into the
+   existing planned `CONCAT` expression shape, and plans each leaf through the
+   current non-`CONCAT()` argument planner.
 6. Unsupported operand forms fail deterministically through the existing
    row-scalar diagnostic surface.
 
@@ -215,8 +220,9 @@ Execution:
   - verifies `PIPES_AS_CONCAT` and `ANSI` activation;
   - records `NULL` propagation, integer operand coercion, left associativity,
     and verified precedence examples;
-  - verifies no-source, `DUAL`, scalar-subquery, table-backed, and `DO`
-    behavior;
+  - verifies no-source, `DUAL`, scalar-subquery, table-backed projection,
+    table-backed predicate, table-backed ordering, table-backed `UPDATE`, and
+    `DO` behavior;
   - records inactive-mode logical-OR behavior and warnings as a scoped
     incompatibility.
 - Parser tests:
@@ -231,6 +237,8 @@ Execution:
   - precedence examples verified against MySQL;
   - `DO` result conventions;
   - table-backed row-scalar projection and reopen persistence;
+  - table-backed row-scalar predicate, ordering, and `UPDATE` assignment
+    contexts;
   - unsupported contexts and operands;
   - inactive-mode scalar syntax remains unchanged;
   - `.mylite` preamble remains unchanged for file-backed tests.

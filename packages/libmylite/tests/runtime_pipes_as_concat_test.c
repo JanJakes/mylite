@@ -215,6 +215,14 @@ static int test_table_backed_concat_and_reopen(void) {
         NULL,
         NULL,
     };
+    static const char *const columns_where[] = {"id"};
+    static const char *const values_where[] = {"1", "3"};
+    static const char *const columns_order[] = {"id"};
+    static const char *const values_order[] = {"2", "1", "3"};
+    static const char *const columns_updated[] = {"id", "nullable"};
+    static const char *const values_updated[] = {"1", "a:12", "2", "b:-3", "3", "z"};
+    static const char *const columns_update_status[] = {"ROW_COUNT()", "@@warning_count"};
+    static const char *const values_update_status[] = {"2", "0"};
     static const char *const columns_reopen[] = {"id", "s||':'||n"};
     static const char *const values_reopen[] = {"3", NULL, "2", "b:-3"};
     char path[test_path_capacity];
@@ -252,6 +260,52 @@ static int test_table_backed_concat_and_reopen(void) {
             .values = values_table,
             .row_count = 3U,
             .context = "table-backed pipes values",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t "
+                   "WHERE s||':'||n = 'a:12' OR s||':'||n IS NULL ORDER BY id",
+            .columns = columns_where,
+            .column_count = sizeof(columns_where) / sizeof(columns_where[0]),
+            .values = values_where,
+            .row_count = 2U,
+            .context = "table-backed pipes predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM t ORDER BY s||':'||n DESC, id",
+            .columns = columns_order,
+            .column_count = sizeof(columns_order) / sizeof(columns_order[0]),
+            .values = values_order,
+            .row_count = 3U,
+            .context = "table-backed pipes order",
+        }
+    );
+    failures += execute_ok(database, "UPDATE t SET nullable = s||':'||n WHERE id IN (1, 2)", NULL);
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ROW_COUNT(), @@warning_count",
+            .columns = columns_update_status,
+            .column_count = sizeof(columns_update_status) / sizeof(columns_update_status[0]),
+            .values = values_update_status,
+            .row_count = 1U,
+            .context = "pipes update status",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, nullable FROM t ORDER BY id",
+            .columns = columns_updated,
+            .column_count = sizeof(columns_updated) / sizeof(columns_updated[0]),
+            .values = values_updated,
+            .row_count = 3U,
+            .context = "pipes update values",
         }
     );
     failures += read_file_at(path, 0L, actual_preamble, sizeof(actual_preamble));

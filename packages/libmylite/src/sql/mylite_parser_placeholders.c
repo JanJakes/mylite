@@ -141,7 +141,8 @@ static bool scan_can_retry_parenthesized_row_constructors(
 static enum mylite_sql_parse_status scan_parenthesized_row_arithmetic_predicate_retries(
     const struct placeholder_statement_scan *scan,
     struct placeholder_row_arithmetic_subject_retries *out_retries,
-    bool *out_can_retry
+    bool *out_can_retry,
+    bool allow_concat_operator
 );
 static enum mylite_sql_parse_status scan_row_constructor_predicate_retries(
     const struct placeholder_statement_scan *scan,
@@ -192,14 +193,16 @@ static bool placeholder_scan_token_is_row_constructor_comparison_operator(
 static enum mylite_sql_parse_status scan_row_bitwise_order_key_retries(
     const struct placeholder_statement_scan *scan,
     struct placeholder_row_arithmetic_subject_retries *retries,
-    bool *inout_can_retry
+    bool *inout_can_retry,
+    bool allow_concat_operator
 );
 static enum mylite_sql_parse_status scan_row_bitwise_order_items(
     const struct placeholder_statement_scan *scan,
     size_t item_start,
     struct placeholder_row_arithmetic_subject_retries *retries,
     bool *inout_can_retry,
-    size_t *out_next_index
+    size_t *out_next_index,
+    bool allow_concat_operator
 );
 static enum mylite_sql_parse_status append_row_bitwise_order_key_retry(
     const struct placeholder_statement_scan *scan,
@@ -237,9 +240,16 @@ static bool placeholder_scan_token_stops_row_bitwise_order_key(
 static bool placeholder_scan_row_bitwise_order_key_can_retry(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
-    size_t end_index
+    size_t end_index,
+    bool allow_concat_operator
 );
 static bool placeholder_scan_row_bitwise_range_has_operator(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    size_t end_index,
+    bool allow_concat_operator
+);
+static bool placeholder_scan_row_concat_range_has_operator(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
     size_t end_index
@@ -247,12 +257,19 @@ static bool placeholder_scan_row_bitwise_range_has_operator(
 static bool placeholder_scan_range_has_top_level_bitwise_operator(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
+    size_t end_index,
+    bool allow_concat_operator
+);
+static bool placeholder_scan_range_has_top_level_concat_operator(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
     size_t end_index
 );
 static bool placeholder_scan_parenthesized_row_arithmetic_predicate_starts_at(
     const struct placeholder_statement_scan *scan,
     size_t left_paren_index,
-    size_t *out_right_paren_index
+    size_t *out_right_paren_index,
+    bool allow_concat_operator
 );
 static bool placeholder_scan_can_retry_row_arithmetic_predicate_values(
     const struct placeholder_statement_scan *scan
@@ -262,26 +279,30 @@ static enum mylite_sql_parse_status scan_row_arithmetic_predicate_retry_at(
     size_t start_index,
     struct placeholder_row_arithmetic_subject_retries *retries,
     bool *inout_can_retry,
-    size_t *out_end_index
+    size_t *out_end_index,
+    bool allow_concat_operator
 );
 static enum mylite_sql_parse_status scan_row_scalar_non_predicate_context_retries(
     const struct placeholder_statement_scan *scan,
     struct placeholder_row_arithmetic_subject_retries *retries,
-    bool *inout_can_retry
+    bool *inout_can_retry,
+    bool allow_concat_operator
 );
 static enum mylite_sql_parse_status scan_row_scalar_predicate_subject_retry(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
     struct placeholder_row_arithmetic_subject_retries *retries,
     bool *inout_can_retry,
-    size_t *out_end_index
+    size_t *out_end_index,
+    bool allow_concat_operator
 );
 static enum mylite_sql_parse_status scan_literal_left_string_predicate_subject_retry(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
     struct placeholder_row_arithmetic_subject_retries *retries,
     bool *inout_can_retry,
-    size_t *out_end_index
+    size_t *out_end_index,
+    bool allow_concat_operator
 );
 static enum mylite_sql_parse_status append_row_scalar_predicate_subject_retry(
     const struct placeholder_statement_scan *scan,
@@ -301,29 +322,34 @@ static bool placeholder_scan_token_is_top_level_where_predicate_context(
 static bool placeholder_scan_row_scalar_predicate_subject_has_valid_suffix(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
-    size_t end_index
+    size_t end_index,
+    bool allow_concat_operator
 );
 static bool placeholder_scan_row_scalar_predicate_subject_uses_truth_placeholder(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
-    size_t end_index
+    size_t end_index,
+    bool allow_concat_operator
 );
 static enum mylite_sql_parse_status scan_row_scalar_update_assignment_retries(
     const struct placeholder_statement_scan *scan,
     struct placeholder_row_arithmetic_subject_retries *retries,
-    bool *inout_can_retry
+    bool *inout_can_retry,
+    bool allow_concat_operator
 );
 static enum mylite_sql_parse_status scan_row_scalar_duplicate_update_assignment_retries(
     const struct placeholder_statement_scan *scan,
     struct placeholder_row_arithmetic_subject_retries *retries,
-    bool *inout_can_retry
+    bool *inout_can_retry,
+    bool allow_concat_operator
 );
 static enum mylite_sql_parse_status scan_row_scalar_assignment_list_retries(
     const struct placeholder_statement_scan *scan,
     size_t index,
     struct placeholder_row_arithmetic_subject_retries *retries,
     bool *inout_can_retry,
-    bool use_literal_placeholder
+    bool use_literal_placeholder,
+    bool allow_concat_operator
 );
 static bool placeholder_scan_top_level_update_set_index(
     const struct placeholder_statement_scan *scan,
@@ -351,7 +377,8 @@ static bool placeholder_scan_update_assignment_value_end(
 static bool placeholder_scan_update_assignment_value_can_retry_as_followup_row_scalar(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
-    size_t end_index
+    size_t end_index,
+    bool allow_concat_operator
 );
 static bool placeholder_scan_token_is_retryable_update_assignment_row_scalar_function(
     const struct placeholder_statement_scan *scan,
@@ -370,38 +397,44 @@ static enum mylite_sql_parse_status scan_row_arithmetic_predicate_value_retries(
     size_t start_index,
     struct placeholder_row_arithmetic_subject_retries *retries,
     bool *inout_can_retry,
-    size_t *out_end_index
+    size_t *out_end_index,
+    bool allow_concat_operator
 );
 static enum mylite_sql_parse_status scan_row_arithmetic_comparison_value_retry(
     const struct placeholder_statement_scan *scan,
     size_t comparison_index,
     struct placeholder_row_arithmetic_subject_retries *retries,
     bool *inout_can_retry,
-    size_t *out_end_index
+    size_t *out_end_index,
+    bool allow_concat_operator
 );
 static enum mylite_sql_parse_status scan_row_arithmetic_between_value_retries(
     const struct placeholder_statement_scan *scan,
     size_t between_index,
     struct placeholder_row_arithmetic_subject_retries *retries,
     bool *inout_can_retry,
-    size_t *out_end_index
+    size_t *out_end_index,
+    bool allow_concat_operator
 );
 static enum mylite_sql_parse_status scan_row_arithmetic_in_value_retries(
     const struct placeholder_statement_scan *scan,
     size_t in_index,
     struct placeholder_row_arithmetic_subject_retries *retries,
     bool *inout_can_retry,
-    size_t *out_end_index
+    size_t *out_end_index,
+    bool allow_concat_operator
 );
 static bool placeholder_scan_literal_left_string_between_has_descriptor_context(
     const struct placeholder_statement_scan *scan,
     size_t between_index,
-    size_t *out_end_index
+    size_t *out_end_index,
+    bool allow_concat_operator
 );
 static bool placeholder_scan_literal_left_string_in_has_descriptor_context(
     const struct placeholder_statement_scan *scan,
     size_t in_index,
-    size_t *out_end_index
+    size_t *out_end_index,
+    bool allow_concat_operator
 );
 static bool placeholder_scan_predicate_value_range_has_descriptor_context(
     const struct placeholder_statement_scan *scan,
@@ -416,7 +449,8 @@ static bool placeholder_scan_predicate_value_end(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
     bool stop_at_comma,
-    size_t *out_end_index
+    size_t *out_end_index,
+    bool allow_concat_operator
 );
 static bool placeholder_scan_between_lower_end(
     const struct placeholder_statement_scan *scan,
@@ -426,12 +460,14 @@ static bool placeholder_scan_between_lower_end(
 static bool placeholder_scan_row_arithmetic_value_has_operator(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
-    size_t end_index
+    size_t end_index,
+    bool allow_concat_operator
 );
 static bool placeholder_scan_predicate_value_can_retry_as_row_scalar(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
-    size_t end_index
+    size_t end_index,
+    bool allow_concat_operator
 );
 static bool placeholder_scan_predicate_value_is_direct_row_scalar_expression(
     const struct placeholder_statement_scan *scan,
@@ -455,13 +491,15 @@ static bool placeholder_scan_token_is_row_arithmetic_value_identifier_operand(
 static bool placeholder_scan_row_arithmetic_value_has_operator_in_range(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
-    size_t end_index
+    size_t end_index,
+    bool allow_concat_operator
 );
 static bool placeholder_scan_row_arithmetic_value_has_operator_at(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
     size_t end_index,
-    size_t index
+    size_t index,
+    bool allow_concat_operator
 );
 static bool placeholder_scan_row_arithmetic_value_has_unsupported_function_call(
     const struct placeholder_statement_scan *scan,
@@ -483,7 +521,8 @@ static bool placeholder_scan_token_is_supported_row_scalar_value_function(
 static bool placeholder_scan_token_stops_predicate_value(
     const struct placeholder_statement_scan *scan,
     size_t index,
-    bool stop_at_comma
+    bool stop_at_comma,
+    bool allow_concat_operator
 );
 static bool placeholder_scan_in_list_is_subquery(
     const struct placeholder_statement_scan *scan,
@@ -499,15 +538,18 @@ static enum mylite_sql_parse_status append_row_arithmetic_predicate_value_retry(
 );
 static bool placeholder_scan_token_starts_row_arithmetic_predicate_subject(
     const struct placeholder_statement_scan *scan,
-    size_t index
+    size_t index,
+    bool allow_concat_operator
 );
 static bool placeholder_scan_token_continues_row_arithmetic_predicate_subject(
     const struct placeholder_statement_scan *scan,
-    size_t index
+    size_t index,
+    bool allow_concat_operator
 );
 static bool placeholder_scan_boolean_connective_is_in_predicate_context(
     const struct placeholder_statement_scan *scan,
-    size_t index
+    size_t index,
+    bool allow_concat_operator
 );
 static bool placeholder_scan_parenthesized_row_arithmetic_has_suffix(
     const struct placeholder_statement_scan *scan,
@@ -516,12 +558,18 @@ static bool placeholder_scan_parenthesized_row_arithmetic_has_suffix(
 static bool placeholder_scan_parenthesized_row_arithmetic_has_operator(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
-    size_t end_index
+    size_t end_index,
+    bool allow_concat_operator
 );
 static bool placeholder_scan_parenthesized_row_arithmetic_has_operator_at(
     const struct placeholder_statement_scan *scan,
     size_t start_index,
     size_t end_index,
+    size_t index,
+    bool allow_concat_operator
+);
+static bool placeholder_scan_token_is_row_concat_operator(
+    const struct placeholder_statement_scan *scan,
     size_t index
 );
 static bool placeholder_scan_token_is_row_bitwise_operator(

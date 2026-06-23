@@ -101,6 +101,25 @@ expect_output \
     "$DATABASE"
 
 expect_output \
+    "table backed predicate order and update concatenation" \
+    "1
+3
+2
+1
+3
+2	0
+1	a:12
+2	b:-3
+3	z" \
+    "SET SESSION sql_mode = 'PIPES_AS_CONCAT';
+     SELECT id FROM t WHERE s||':'||n = 'a:12' OR s||':'||n IS NULL ORDER BY id;
+     SELECT id FROM t ORDER BY s||':'||n DESC, id;
+     UPDATE t SET nullable = s||':'||n WHERE id IN (1, 2);
+     SELECT ROW_COUNT(), @@warning_count;
+     SELECT id, nullable FROM t ORDER BY id;" \
+    "$DATABASE"
+
+expect_output \
     "do statement conventions" \
     "0	0" \
     "SET SESSION sql_mode = 'PIPES_AS_CONCAT';

@@ -769,6 +769,10 @@
     COMMAND mylite_runtime_sys_memory_by_user_by_current_bytes_views_test
   )
   add_test(
+    NAME libmylite.runtime.sys_memory_global_by_current_bytes_views
+    COMMAND mylite_runtime_sys_memory_global_by_current_bytes_views_test
+  )
+  add_test(
     NAME libmylite.runtime.sys_io_by_thread_by_latency_views
     COMMAND mylite_runtime_sys_io_by_thread_by_latency_views_test
   )

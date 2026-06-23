@@ -234,6 +234,10 @@ static bool append_sys_schema_summary_system_table_rows(
         *out_status = append_sys_memory_by_user_by_current_bytes_system_rows(database, rows);
         return true;
     }
+    if (strcmp(definition->query_definition.name, "memory_global_by_current_bytes") == 0) {
+        *out_status = append_sys_memory_global_by_current_bytes_system_rows(database, rows);
+        return true;
+    }
     if (strcmp(definition->query_definition.name, "innodb_buffer_stats_by_schema") == 0) {
         *out_status = append_sys_innodb_buffer_stats_by_schema_system_rows(database, rows);
         return true;
@@ -343,6 +347,10 @@ static bool append_sys_schema_x_summary_system_table_rows(
     }
     if (strcmp(definition->query_definition.name, "x$memory_by_user_by_current_bytes") == 0) {
         *out_status = append_sys_memory_by_user_by_current_bytes_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "x$memory_global_by_current_bytes") == 0) {
+        *out_status = append_sys_memory_global_by_current_bytes_system_rows(database, rows);
         return true;
     }
     if (strcmp(definition->query_definition.name, "x$innodb_buffer_stats_by_schema") == 0) {
@@ -674,6 +682,17 @@ static int append_sys_memory_by_user_by_current_bytes_system_rows(
 ) {
     if (rows->definition->column_count != sys_memory_by_user_by_current_bytes_column_count) {
         set_runtime_error(database, "invalid sys.memory_by_user_by_current_bytes columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_memory_global_by_current_bytes_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_memory_global_by_current_bytes_column_count) {
+        set_runtime_error(database, "invalid sys.memory_global_by_current_bytes columns");
         return MYLITE_ERROR;
     }
     return MYLITE_OK;

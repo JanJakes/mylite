@@ -66,6 +66,9 @@ placeholders, limited read-only empty
 `sys.memory_by_host_by_current_bytes` /
 `sys.x$memory_by_host_by_current_bytes` synthetic host memory-allocation
 placeholders,
+limited read-only empty `sys.memory_global_by_current_bytes` /
+`sys.x$memory_global_by_current_bytes` synthetic global memory-allocation
+placeholders,
 limited read-only empty `sys.io_by_thread_by_latency` /
 `sys.x$io_by_thread_by_latency` synthetic thread file-I/O latency
 placeholders, and a limited read-only `sys.schema_unused_indexes` synthetic
@@ -116,8 +119,8 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.x$memory_by_thread_by_current_bytes` | 🟡 | Limited read-only empty raw thread memory-allocation view with the same metadata and unsupported behavior as `sys.memory_by_thread_by_current_bytes`, except memory byte counters expose raw numeric metadata and `current_avg_alloc` is non-null with default `0.0000` |
 | `sys.memory_by_user_by_current_bytes` | 🟡 | Limited read-only empty formatted user memory-allocation view with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependency on `performance_schema.memory_summary_by_user_by_event_name`, empty `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` and constraint metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no Performance Schema memory-summary collection, live user memory rows, current or cumulative allocation counters, sys helper-function execution, privilege/definer enforcement, physical sys views, or broader sys view execution |
 | `sys.x$memory_by_user_by_current_bytes` | 🟡 | Limited read-only empty raw user memory-allocation view with the same metadata and unsupported behavior as `sys.memory_by_user_by_current_bytes`, except memory byte counters expose raw numeric metadata and `current_avg_alloc` is non-null with default `0.0000` |
-| `sys.memory_global_by_current_bytes` | ❌ | View shape and diagnostics |
-| `sys.x$memory_global_by_current_bytes` | ❌ | View shape and diagnostics |
+| `sys.memory_global_by_current_bytes` | 🟡 | Limited read-only empty formatted global memory-allocation view with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS` with `IS_UPDATABLE = 'YES'`, `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` dependency on `performance_schema.memory_summary_global_by_event_name`, empty `INFORMATION_SCHEMA.VIEW_ROUTINE_USAGE` and constraint metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no Performance Schema global memory-summary collection, live event-name memory rows, current or high allocation counters, sys helper-function execution, true updatable-view writes, privilege/definer enforcement, physical sys views, or broader sys view execution |
+| `sys.x$memory_global_by_current_bytes` | 🟡 | Limited read-only empty raw global memory-allocation view with the same metadata and unsupported behavior as `sys.memory_global_by_current_bytes`, except memory byte counters expose raw `bigint` metadata and average allocation columns expose non-null `decimal(23,4)` defaults of `0.0000` |
 | `sys.memory_global_total` | ❌ | View shape and diagnostics |
 | `sys.x$memory_global_total` | ❌ | View shape and diagnostics |
 | `sys.metrics` | ❌ | View shape and diagnostics |

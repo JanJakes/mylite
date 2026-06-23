@@ -4,6 +4,7 @@ set -eu
 
 MYSQL_CONTAINER="${MYLITE_MYSQL_CONTAINER:-mylite-mysql-849}"
 MYSQL_ARGS="--protocol=TCP -h127.0.0.1 -uroot --batch --raw --default-character-set=utf8mb4"
+DATABASE="mylite_autocommit_expectations_$$"
 
 fail() {
     printf '%s\n' "mysql_baseline_autocommit_system_variable_expectations: $1" >&2
@@ -83,11 +84,20 @@ expect_error() {
     esac
 }
 
+cleanup() {
+    run_mysql "DROP DATABASE IF EXISTS ${DATABASE};" >/dev/null 2>&1 || true
+}
+
+trap cleanup EXIT
+
 version=$(run_mysql 'SELECT VERSION();')
 case "$version" in
     8.4.9*) ;;
     *) fail "expected MySQL 8.4.9 runtime, got [$version]" ;;
 esac
+
+cleanup
+run_mysql "CREATE DATABASE ${DATABASE};" >/dev/null
 
 expected_values="1	1	1	1	0	-1"
 values=$(run_mysql \
@@ -128,6 +138,69 @@ expect_value \
     "mysql session autocommit is mutable upstream" \
     "0	1	0	0	0	0	0" \
     "$mutable_values"
+
+run_mysql "DROP TABLE IF EXISTS ${DATABASE}.autocommit_tx; \
+           CREATE TABLE ${DATABASE}.autocommit_tx (id INT PRIMARY KEY, v INT);" >/dev/null
+
+rollback_count=$(run_mysql \
+    "SET autocommit=0; \
+     INSERT INTO autocommit_tx VALUES (1, 10); \
+     ROLLBACK; \
+     SELECT COUNT(*), @@autocommit, ROW_COUNT() FROM autocommit_tx;" \
+    "$DATABASE")
+expect_value \
+    "autocommit off rollback removes pending write" \
+    "0	0	0" \
+    "$rollback_count"
+
+commit_count=$(run_mysql \
+    "SET autocommit=0; \
+     INSERT INTO autocommit_tx VALUES (2, 20); \
+     COMMIT; \
+     SELECT COUNT(*), @@autocommit, ROW_COUNT() FROM autocommit_tx;" \
+    "$DATABASE")
+expect_value \
+    "autocommit off commit keeps pending write" \
+    "1	0	0" \
+    "$commit_count"
+
+set_on_count=$(run_mysql \
+    "SET autocommit=0; \
+     INSERT INTO autocommit_tx VALUES (3, 30); \
+     SET autocommit=1; \
+     SELECT COUNT(*), @@autocommit, ROW_COUNT() FROM autocommit_tx;" \
+    "$DATABASE")
+expect_value \
+    "enabling autocommit commits pending write" \
+    "2	1	0" \
+    "$set_on_count"
+
+start_transaction_count=$(run_mysql \
+    "SET autocommit=0; \
+     INSERT INTO autocommit_tx VALUES (4, 40); \
+     START TRANSACTION; \
+     INSERT INTO autocommit_tx VALUES (5, 50); \
+     ROLLBACK; \
+     SELECT COUNT(*), @@autocommit, ROW_COUNT() FROM autocommit_tx;" \
+    "$DATABASE")
+expect_value \
+    "start transaction commits previous autocommit off work" \
+    "3	0	0" \
+    "$start_transaction_count"
+
+savepoint_count=$(run_mysql \
+    "SET autocommit=0; \
+     SAVEPOINT keep_before_six; \
+     INSERT INTO autocommit_tx VALUES (6, 60); \
+     ROLLBACK TO SAVEPOINT keep_before_six; \
+     COMMIT; \
+     SELECT COUNT(*), @@autocommit, ROW_COUNT() FROM autocommit_tx; \
+     SET autocommit=1;" \
+    "$DATABASE")
+expect_value \
+    "savepoint works in autocommit off transaction" \
+    "3	0	0" \
+    "$savepoint_count"
 
 warning_values=$(run_mysql \
     "SELECT 1; SHOW PROCESSLIST; \

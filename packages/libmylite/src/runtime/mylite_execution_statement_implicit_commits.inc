@@ -65,6 +65,10 @@ static bool statement_requires_implicit_user_transaction_commit(
 }
 
 static int commit_active_user_transaction_for_ddl(struct mylite_db *database) {
+    return commit_active_user_transaction(database);
+}
+
+static int commit_active_user_transaction(struct mylite_db *database) {
     int rc = MYLITE_OK;
 
     if (!database->session.user_transaction_active) {

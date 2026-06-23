@@ -37,8 +37,8 @@ autocommit baseline: `@@autocommit`.
    - Update `docs/compatibility/runtime-system-variables.md`.
    - Update `docs/compatibility/runtime-session-sql-modes.md`.
    - Update `docs/compatibility/sql-transactions.md`.
-   - Do not claim mutable autocommit state, `SET`, explicit transactions,
-     session-state tracking, protocol status flags, or commit/rollback
+   - Do not claim mutable global autocommit state, session-state tracking,
+     protocol status flags, MVCC snapshots, locks, or full transaction
      semantics.
 
 6. Verification

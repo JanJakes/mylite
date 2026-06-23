@@ -532,6 +532,7 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->interactive_timeout = MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE;
     session->catalog_generation = 0U;
     session->sqlite_schema_generation = 0U;
+    session->autocommit_enabled = true;
     session->user_transaction_active = false;
     session->session_transaction_isolation = MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ;
     session->session_transaction_access_mode = MYLITE_TRANSACTION_ACCESS_READ_WRITE;

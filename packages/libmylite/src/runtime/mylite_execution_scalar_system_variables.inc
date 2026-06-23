@@ -182,6 +182,11 @@ static int system_variable_value(
             out_cell
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTOCOMMIT:
+        return format_session_scalar_uint64_value(
+            database,
+            global_scope || database->session.autocommit_enabled ? 1U : 0U,
+            out_cell
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_NOTES:
@@ -893,6 +898,8 @@ static int show_system_variable_value(
         *out_value = big_tables_system_variable_show_value(database, global_scope);
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTOCOMMIT:
+        *out_value = global_scope || database->session.autocommit_enabled ? "ON" : "OFF";
+        return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_NOTES:

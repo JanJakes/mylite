@@ -330,6 +330,7 @@ static int test_diagnostics_count_variable_qualifiers_and_errors(void) {
             .message_part = "quoted system variable scope",
         }
     );
+    failures += execute_statement_ok(database, "SELECT 1");
     failures += execute_ok(database, "SELECT @@warning_count + 1, @@error_count + 2", &result);
     failures += expect_scalar_result(
         result,

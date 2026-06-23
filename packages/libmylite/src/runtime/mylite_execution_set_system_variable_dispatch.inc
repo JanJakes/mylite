@@ -22,6 +22,9 @@ static int apply_set_system_variable_cell_value(
     if (set_system_variable_is_text_session_state(target->kind)) {
         return apply_set_text_session_system_variable_cell_value(database, target, value);
     }
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTOCOMMIT) {
+        return apply_set_autocommit_cell_value(database, target, value, value_kind);
+    }
     if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT) {
         return apply_set_sql_select_limit_cell_value(database, target, value, value_kind);
     }

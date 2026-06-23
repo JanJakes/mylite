@@ -43,6 +43,7 @@ static int copy_set_session_snapshot(
     out_snapshot->big_tables = session->big_tables;
     out_snapshot->foreign_key_checks_enabled = session->foreign_key_checks_enabled;
     out_snapshot->sql_require_primary_key = session->sql_require_primary_key;
+    out_snapshot->autocommit_enabled = session->autocommit_enabled;
     out_snapshot->has_next_transaction_isolation = session->has_next_transaction_isolation;
     out_snapshot->has_next_transaction_access_mode = session->has_next_transaction_access_mode;
     out_snapshot->next_transaction_isolation_from_system_variable =
@@ -222,6 +223,7 @@ static void restore_set_session_snapshot(
     session->big_tables = snapshot->big_tables;
     session->foreign_key_checks_enabled = snapshot->foreign_key_checks_enabled;
     session->sql_require_primary_key = snapshot->sql_require_primary_key;
+    session->autocommit_enabled = snapshot->autocommit_enabled;
     session->has_next_transaction_isolation = snapshot->has_next_transaction_isolation;
     session->has_next_transaction_access_mode = snapshot->has_next_transaction_access_mode;
     session->next_transaction_isolation_from_system_variable =

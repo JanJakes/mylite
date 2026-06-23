@@ -107,7 +107,8 @@ This feature must not implement:
   user variables as the savepoint name;
 - stored program savepoint-level scoping;
 - protocol transaction status flags;
-- mutable `SET autocommit = 0` transaction behavior;
+- broader autocommit transaction behavior outside the documented
+  `baseline-autocommit-system-variable` subset;
 - isolation levels, `SET TRANSACTION`, consistent snapshots, row locks, gap
   locks, XA, binary logging, replication behavior, or privilege checks;
 - SQLite fork patches.
@@ -208,10 +209,11 @@ the savepoint registry must be updated together with that parser behavior.
 
 ### `SAVEPOINT`
 
-If no user transaction is active, `SAVEPOINT name` succeeds as a no-op under
-MyLite's current fixed autocommit baseline. It returns a non-row result with
-affected rows `0`, warning count `0`, and does not create a later usable
-savepoint.
+If no user transaction is active and session autocommit is enabled,
+`SAVEPOINT name` succeeds as a no-op. It returns a non-row result with affected
+rows `0`, warning count `0`, and does not create a later usable savepoint. If
+session autocommit is disabled, `SAVEPOINT name` starts the current
+autocommit-disabled transaction and creates a usable savepoint.
 
 If a user transaction is active, `SAVEPOINT name` creates a new savepoint. If a
 case-insensitive same-name savepoint already exists, MyLite removes that
@@ -375,8 +377,8 @@ Update:
 - `docs/compatibility/sql-transactions.md`
 
 The docs must say that user-visible savepoints are partially supported for
-current explicit MyLite user transactions, including replacement, partial
+current explicit MyLite user transactions and the documented
+autocommit-disabled transaction subset, including replacement, partial
 rollback, release, and cleanup across current transaction boundaries. They must
-not claim stored-program savepoint scoping, mutable autocommit behavior,
-protocol transaction flags, isolation/access modes, lock semantics, or full
-transaction compatibility.
+not claim stored-program savepoint scoping, protocol transaction flags,
+isolation/access modes, lock semantics, or full transaction compatibility.

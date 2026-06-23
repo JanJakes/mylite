@@ -28,6 +28,8 @@ enum {
     autocommit_diagnostics_column_count = 4,
     autocommit_selected_column_count = 2,
     autocommit_independent_column_count = 3,
+    autocommit_pair_column_count = 2,
+    autocommit_count_column_count = 1,
     mysql_error_parse = 1064,
     mysql_error_unknown_system_variable = 1193,
 };
@@ -47,6 +49,7 @@ struct expected_scalar_result {
 
 static int test_autocommit_system_variable_values_and_persistence(void);
 static int test_autocommit_system_variable_qualifiers_and_errors(void);
+static int test_autocommit_session_assignment_and_transactions(void);
 static int test_independent_autocommit_system_variable_handles(void);
 static int expect_scalar_result(
     const mylite_result *result,
@@ -83,6 +86,7 @@ int main(void) {
 
     failures += test_autocommit_system_variable_values_and_persistence();
     failures += test_autocommit_system_variable_qualifiers_and_errors();
+    failures += test_autocommit_session_assignment_and_transactions();
     failures += test_independent_autocommit_system_variable_handles();
 
     return failures == 0 ? 0 : 1;
@@ -376,6 +380,154 @@ static int test_autocommit_system_variable_qualifiers_and_errors(void) {
     failures += execute_statement_ok(database, "SELECT @@autocommit + 1");
 
     mylite_close(database);
+    return failures;
+}
+
+static int test_autocommit_session_assignment_and_transactions(void) {
+    static const char *const autocommit_columns[] = {"@@autocommit", "@@global.autocommit"};
+    static const char *const autocommit_off_values[] = {"0", "1"};
+    static const char *const autocommit_on_values[] = {"1", "1"};
+    static const char *const show_variable_columns[] = {"Variable_name", "Value"};
+    static const char *const show_variable_off_values[] = {"autocommit", "OFF"};
+    static const char *const count_columns[] = {"COUNT(*)"};
+    static const char *const zero_count[] = {"0"};
+    static const char *const one_count[] = {"1"};
+    static const char *const two_count[] = {"2"};
+    static const char *const three_count[] = {"3"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "mutable") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open mutable autocommit");
+    failures += execute_statement_ok(database, "CREATE DATABASE app");
+    failures += execute_statement_ok(database, "USE app");
+    failures += execute_statement_ok(database, "CREATE TABLE t (id INT PRIMARY KEY, v INT)");
+
+    failures += execute_statement_ok(database, "SET autocommit = 0");
+    failures += execute_ok(database, "SELECT @@autocommit, @@global.autocommit", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = autocommit_columns,
+            .values = autocommit_off_values,
+            .count = autocommit_pair_column_count,
+            .context = "autocommit off readback",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "SHOW VARIABLES LIKE 'autocommit'", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = show_variable_columns,
+            .values = show_variable_off_values,
+            .count = autocommit_pair_column_count,
+            .context = "autocommit off show variables",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "INSERT INTO t VALUES (1, 10)");
+    failures += execute_statement_ok(database, "ROLLBACK");
+    failures += execute_ok(database, "SELECT COUNT(*) FROM t", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = count_columns,
+            .values = zero_count,
+            .count = autocommit_count_column_count,
+            .context = "autocommit off rollback",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "INSERT INTO t VALUES (2, 20)");
+    failures += execute_statement_ok(database, "COMMIT");
+    failures += execute_ok(database, "SELECT COUNT(*) FROM t", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = count_columns,
+            .values = one_count,
+            .count = autocommit_count_column_count,
+            .context = "autocommit off commit",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "INSERT INTO t VALUES (3, 30)");
+    failures += execute_statement_ok(database, "SET autocommit = 1");
+    failures += execute_ok(database, "SELECT COUNT(*) FROM t", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = count_columns,
+            .values = two_count,
+            .count = autocommit_count_column_count,
+            .context = "enabling autocommit commits active transaction",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "SELECT @@autocommit, @@global.autocommit", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = autocommit_columns,
+            .values = autocommit_on_values,
+            .count = autocommit_pair_column_count,
+            .context = "autocommit on readback",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "SET autocommit = 0");
+    failures += execute_statement_ok(database, "INSERT INTO t VALUES (4, 40)");
+    failures += execute_statement_ok(database, "START TRANSACTION");
+    failures += execute_statement_ok(database, "INSERT INTO t VALUES (5, 50)");
+    failures += execute_statement_ok(database, "ROLLBACK");
+    failures += execute_ok(database, "SELECT COUNT(*) FROM t", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = count_columns,
+            .values = three_count,
+            .count = autocommit_count_column_count,
+            .context = "start transaction commits autocommit off work",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "SAVEPOINT keep_before_six");
+    failures += execute_statement_ok(database, "INSERT INTO t VALUES (6, 60)");
+    failures += execute_statement_ok(database, "ROLLBACK TO SAVEPOINT keep_before_six");
+    failures += execute_statement_ok(database, "COMMIT");
+    failures += execute_ok(database, "SELECT COUNT(*) FROM t", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = count_columns,
+            .values = three_count,
+            .count = autocommit_count_column_count,
+            .context = "autocommit off savepoint rollback",
+        }
+    );
+    mylite_result_free(result);
+
+    mylite_close(database);
+    remove_related_files(path);
     return failures;
 }
 

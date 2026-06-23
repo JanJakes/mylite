@@ -312,6 +312,7 @@ static int test_set_fixed_system_variables_success_and_file_safety(void) {
 static int test_set_fixed_system_variables_diagnostics(void) {
     static const char *const diagnostic_values[] = {"1", "1", "-1"};
     static const char *const sql_warnings_on[] = {"1"};
+    static const char *const autocommit_off[] = {"0"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -520,15 +521,18 @@ static int test_set_fixed_system_variables_diagnostics(void) {
             .message_part = "unsupported quoted system variable scope",
         }
     );
-    failures += execute_error(
+    failures += expect_set_ok(database, "SET autocommit = 0");
+    failures += expect_query_values(
         database,
-        "SET autocommit = 0",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SET supports only fixed no-op system variable assignments",
+        (struct expected_query){
+            .sql = "SELECT @@autocommit",
+            .values = autocommit_off,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "mutable autocommit off readback",
         }
     );
+    failures += expect_set_ok(database, "SET autocommit = 1");
     failures += expect_set_ok(database, "SET sql_warnings = 1");
     failures += expect_query_values(
         database,
@@ -571,18 +575,18 @@ static int test_set_fixed_system_variables_diagnostics(void) {
         database,
         "SET autocommit = '1'",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_variable_cant_be_set,
             .sqlstate = "42000",
-            .message_part = "SET supports only fixed no-op system variable assignments",
+            .message_part = "Variable 'autocommit' can't be set to the value of '1'",
         }
     );
     failures += execute_error(
         database,
         "SET autocommit = NULL",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_variable_cant_be_set,
             .sqlstate = "42000",
-            .message_part = "SET supports only fixed no-op system variable assignments",
+            .message_part = "Variable 'autocommit' can't be set to the value of 'NULL'",
         }
     );
     failures += expect_set_ok(database, "SET autocommit = 1, sql_notes = 1");
@@ -622,7 +626,8 @@ static int test_set_fixed_system_variables_diagnostics(void) {
 }
 
 static int test_set_fixed_system_variables_independent_handles(void) {
-    static const char *const values[] = {"0", "0", "0"};
+    static const char *const first_values[] = {"0", "0", "0"};
+    static const char *const second_values[] = {"1", "0", "0"};
     char first_path[test_path_capacity];
     char second_path[test_path_capacity];
     mylite_db *first = NULL;
@@ -638,21 +643,23 @@ static int test_set_fixed_system_variables_independent_handles(void) {
 
     failures += expect_int(mylite_open(first_path, &first), MYLITE_OK, "open first handle");
     failures += expect_int(mylite_open(second_path, &second), MYLITE_OK, "open second handle");
-    failures += execute_error(
+    failures += expect_set_ok(first, "SET autocommit = 0");
+    failures += expect_set_ok(second, "SET autocommit = 1");
+    failures += expect_query_values(
         first,
-        "SET autocommit = 0",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SET supports only fixed no-op system variable assignments",
+        (struct expected_query){
+            .sql = "SELECT @@autocommit, @@warning_count, @@error_count",
+            .values = first_values,
+            .column_count = diagnostics_column_count,
+            .row_count = 1U,
+            .context = "first mutable autocommit handle diagnostics",
         }
     );
-    failures += expect_set_ok(second, "SET autocommit = 1");
     failures += expect_query_values(
         second,
         (struct expected_query){
-            .sql = "SELECT @@warning_count, @@error_count, ROW_COUNT()",
-            .values = values,
+            .sql = "SELECT @@autocommit, @@warning_count, @@error_count",
+            .values = second_values,
             .column_count = diagnostics_column_count,
             .row_count = 1U,
             .context = "second fixed SET handle diagnostics",

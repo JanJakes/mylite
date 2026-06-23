@@ -2,19 +2,23 @@
 
 ## Status
 
-This feature specifies a narrow scalar system-variable slice for
-`@@autocommit`.
+This feature specifies MyLite's baseline `@@autocommit` slice.
 
 It builds on the existing `SYSTEM_VARIABLE` lexer/parser token, scalar
-`SELECT` execution, diagnostics lifecycle, and MyLite's current statement
-atomicity. MySQL exposes `autocommit` as mutable global and session state tied
-to transaction boundaries. MyLite does not implement explicit transactions or
-mutable system-variable assignment in the baseline yet, so this slice exposes
-only the default enabled scalar value.
+`SELECT` execution, `SET` assignment handling, diagnostics lifecycle, explicit
+transaction support, savepoint support, and statement-level write atomicity.
+MySQL exposes `autocommit` as mutable global and session state tied to
+transaction boundaries. MyLite implements the session-local baseline that real
+application setup code depends on while keeping global mutation and protocol
+status flags outside the embedded baseline.
 
-This is not full autocommit or transaction support. It does not implement
-`SET autocommit`, `START TRANSACTION`, `COMMIT`, `ROLLBACK`, transaction
-isolation, implicit commit boundaries, or session-state tracking packets.
+This is not full autocommit or transaction compatibility. It implements
+session/local/unscoped `SET autocommit` assignment, scalar/`SHOW VARIABLES`
+readback, current DML commit/rollback effects, `START TRANSACTION` and DDL
+implicit-commit interaction, and savepoints in an autocommit-disabled
+transaction. It does not implement mutable global autocommit, protocol status
+flags, server session-state tracking packets, MVCC snapshot parity, lock
+semantics, or privilege/persisted variable behavior.
 
 ## Sources
 
@@ -59,6 +63,19 @@ records the runtime probes for this feature. Observed behavior:
   errors.
 - Unknown variables fail with error `1193`, SQLSTATE `HY000`, and an
   `Unknown system variable` message.
+- `SET autocommit=0` starts reporting session/local/unscoped value `0` while
+  `@@global.autocommit` remains `1`.
+- With session autocommit disabled, supported DML remains pending until
+  `COMMIT`, is discarded by `ROLLBACK`, and is committed when
+  `SET autocommit=1` re-enables autocommit.
+- `START TRANSACTION` while autocommit-disabled work is pending commits the
+  previous transaction before opening the requested transaction.
+- User-visible `SAVEPOINT`, `ROLLBACK TO SAVEPOINT`, and `COMMIT` operate
+  inside an autocommit-disabled transaction.
+- Integer and boolean-token assignment values `0`, `1`, `TRUE`, `FALSE`, `ON`,
+  `OFF`, and `DEFAULT` follow the observed MySQL boolean behavior for this
+  variable; string values `'ON'` and `'OFF'` are accepted while string values
+  such as `'1'`, `'0'`, `'TRUE'`, and `'FALSE'` are rejected.
 - A scalar `SELECT` that reads this variable is nondiagnostic. It reads the
   previous diagnostics snapshot for any `@@warning_count` or `@@error_count`
   items in the same select list, then clears diagnostics for following
@@ -81,7 +98,15 @@ The implementation must add:
 - case-insensitive matching for unquoted scope and variable names;
 - backtick-quoted final variable-name components;
 - one-row scalar result sets with existing source-span column labels;
-- fixed value `1` for all supported scopes;
+- session-local readback for no scope, `session`, and `local`, with fixed
+  global readback `1`;
+- `SHOW VARIABLES` readback as `ON` / `OFF` for session scope and fixed `ON`
+  for global scope;
+- `SET autocommit` for no scope, `SESSION`, `LOCAL`, direct `@@autocommit`,
+  `@@session.autocommit`, and `@@local.autocommit`;
+- current DML commit, rollback, `SET autocommit=1`, `START TRANSACTION`, DDL
+  implicit commit, savepoint, and close-time rollback interaction for the
+  supported statement subset;
 - MySQL-compatible unknown-variable diagnostics for unsupported names;
 - deterministic rejection of quoted scopes;
 - fast C tests and a MySQL 8.4.9 expectation artifact.
@@ -95,20 +120,27 @@ SELECT @@session.autocommit, @@local.autocommit
 SELECT @@global.autocommit
 SELECT @@session.`autocommit`, @@`autocommit`
 SELECT @@autocommit, @@warning_count, ROW_COUNT()
+SET autocommit = 0
+SET SESSION autocommit = ON
+SET LOCAL `autocommit` = DEFAULT
+SET @@autocommit = @saved_autocommit
+SET autocommit = 0; INSERT INTO t VALUES (1); ROLLBACK
+SET autocommit = 0; SAVEPOINT s; INSERT INTO t VALUES (2); ROLLBACK TO s
 ```
 
 ## Non-Goals
 
 This feature must not implement:
 
-- `SET`, startup options, persisted variables, `SET_VAR` hints, mutable global
-  or session autocommit state, or session-state tracking;
+- startup options, persisted variables, `SET_VAR` hints, mutable global
+  autocommit state, privileges, or session-state tracking packets;
 - variables other than `autocommit`;
-- explicit transactions, savepoints, isolation levels, access modes, implicit
-  commit rules, rollback behavior, lock release behavior, or transaction error
-  handling;
+- MVCC snapshot parity, lock release behavior, concurrency isolation, XA, or
+  protocol transaction status flags;
+- full always-open transaction semantics for read-only statements while
+  autocommit is disabled;
+- Performance Schema variable tables;
 - protocol OK-packet autocommit status flags;
-- `SHOW VARIABLES` or Performance Schema variable tables;
 - table-backed variable evaluation, aliases, clauses, subqueries, arithmetic,
   functions over variables, parameters, prepared statements, or arbitrary
   SQLite pass-through;
@@ -126,8 +158,14 @@ This feature must not implement:
 - Lexer/parser/AST own syntax admission and source spans for
   `SYSTEM_VARIABLE` expressions. No new grammar is needed beyond the existing
   `expression ::= SYSTEM_VARIABLE` rule.
-- Runtime execution owns system-variable path parsing, scope validation, fixed
-  autocommit value selection, and diagnostics for unsupported names.
+- Runtime execution owns system-variable path parsing, scope validation,
+  session/global value selection, assignment validation, and diagnostics for
+  unsupported names.
+- Session state owns the handle-local autocommit flag. It is internal and not
+  part of the public ABI.
+- Statement transaction helpers own the transition from autocommit-disabled
+  idle state to an active SQLite-backed MyLite transaction for supported
+  writes and savepoints.
 - Result builder owns scalar result column labels and one-row text values.
 - Catalog, storage, VFS, and SQLite physical row storage are not involved.
   This feature must not touch `.mylite` preamble bytes or SQLite schema state.
@@ -177,21 +215,32 @@ Runtime parses the raw token as a `@@` system variable:
   `1193`, SQLSTATE `HY000`;
 - it preserves the original source text as the scalar result column label.
 
-For this slice, all scopes return the same fixed value. This is a deliberate
-MyLite limitation: MyLite currently executes each supported statement
-atomically and does not expose mutable transaction/session variable state.
+Unscoped, `session`, and `local` references read the handle-local session
+value. `global` references read MyLite's fixed embedded global default `1`.
 
 ## Runtime Semantics
 
 The supported variable returns:
 
-| Variable | Value |
+| Variable path | Value |
 | --- | --- |
-| `autocommit` | `1` |
+| `@@autocommit`, `@@session.autocommit`, `@@local.autocommit` | current session value, default `1` |
+| `@@global.autocommit` | fixed global default `1` |
 
-The value is independent of selected schema, close/reopen, and independent
-handles. It reflects MyLite's current baseline behavior that supported
-statements are committed as complete statements unless they fail.
+The session value is independent per handle, defaults to enabled for new and
+reopened handles, and is not stored in the `.mylite` file. Selected schema does
+not affect the value.
+
+When session autocommit is enabled, supported writes continue to use MyLite's
+statement-level transaction wrapper and are committed at successful statement
+completion. When session autocommit is disabled, the first supported write or
+savepoint starts a user transaction if none is active; supported writes then
+use an internal statement savepoint and remain pending until explicit
+completion. `COMMIT` persists pending changes, `ROLLBACK` discards them,
+`SET autocommit=1` commits any active transaction before reporting `1`, and
+`mylite_close()` rolls back an active transaction. `START TRANSACTION` and
+supported implicit-commit statements commit an active autocommit-disabled
+transaction before continuing.
 
 Successful scalar reads:
 
@@ -215,8 +264,9 @@ This slice uses existing diagnostics for:
 - allocation failures through existing MyLite allocation diagnostics.
 
 Supported reads of `@@autocommit` do not emit warnings. This slice does not
-implement MySQL's mutable `SET SESSION autocommit=...` surface, so assignment
-diagnostics and transaction side effects are out of scope.
+emit warnings for successful assignments. Invalid values use MySQL-compatible
+system-variable value diagnostics where the existing MyLite value parser
+supports the observed form.
 
 ## Tests
 
@@ -234,7 +284,10 @@ Tests must cover:
 - unknown unscoped and scoped variable names;
 - unsupported wider expressions;
 - selected schema, close/reopen, and independent handles do not change the
-  fixed value;
+  default value;
+- session-local assignment readback and fixed global readback;
+- rollback, commit, `SET autocommit=1`, `START TRANSACTION`, and savepoint
+  transaction side effects while autocommit is disabled;
 - `.mylite` preamble preservation and unchanged catalog/SQLite generation;
 - existing parser/runtime/system-variable tests still pass.
 
@@ -251,6 +304,6 @@ Update:
 - `docs/compatibility/runtime-session-sql-modes.md`;
 - `docs/compatibility/sql-transactions.md`.
 
-Do not overclaim mutable system variables, `SET`, `SHOW VARIABLES`, explicit
-transactions, protocol status flags, session-state tracking, commit/rollback
-semantics, or savepoints.
+Do not overclaim mutable global variables, persisted variables, protocol status
+flags, session-state tracking, MVCC snapshots, lock semantics, privilege
+semantics, or full transaction compatibility.

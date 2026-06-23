@@ -25,6 +25,20 @@ int mylite_execution_begin_statement_transaction(
         }
         return rc;
     }
+    if (!database->session.autocommit_enabled) {
+        rc = mylite_execution_begin_autocommit_disabled_transaction(database);
+        if (rc == MYLITE_OK) {
+            rc = mylite_execution_normalize_sqlite_control_rc(
+                database,
+                mylite_execution_execute_sqlite_control_sql(database, "SAVEPOINT _mylite_statement")
+            );
+        }
+        if (rc == MYLITE_OK) {
+            transaction->kind = MYLITE_STATEMENT_TRANSACTION_SAVEPOINT;
+            transaction->active = true;
+        }
+        return rc;
+    }
 
     rc = mylite_execution_normalize_sqlite_control_rc(
         database,
@@ -33,6 +47,37 @@ int mylite_execution_begin_statement_transaction(
     if (rc == MYLITE_OK) {
         transaction->kind = MYLITE_STATEMENT_TRANSACTION_DIRECT;
         transaction->active = true;
+    }
+    return rc;
+}
+
+int mylite_execution_begin_autocommit_disabled_transaction(struct mylite_db *database) {
+    int rc = MYLITE_OK;
+
+    if (database->session.user_transaction_active || database->session.autocommit_enabled) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_execution_normalize_sqlite_control_rc(
+        database,
+        mylite_execution_execute_sqlite_control_sql(database, "BEGIN IMMEDIATE")
+    );
+    if (rc == MYLITE_OK) {
+        database->session.user_transaction_active = true;
+        database->session.active_transaction_isolation =
+            database->session.has_next_transaction_isolation
+                ? database->session.next_transaction_isolation
+                : database->session.session_transaction_isolation;
+        database->session.active_transaction_read_only =
+            database->session.has_next_transaction_access_mode
+                ? database->session.next_transaction_access_mode ==
+                      MYLITE_TRANSACTION_ACCESS_READ_ONLY
+                : database->session.session_transaction_access_mode ==
+                      MYLITE_TRANSACTION_ACCESS_READ_ONLY;
+        database->session.has_next_transaction_isolation = false;
+        database->session.has_next_transaction_access_mode = false;
+        database->session.next_transaction_isolation_from_system_variable = false;
+        database->session.next_transaction_access_mode_from_system_variable = false;
     }
     return rc;
 }

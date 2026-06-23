@@ -909,6 +909,11 @@ static int execute_savepoint_statement(
     );
     if (rc == MYLITE_OK && database->session.user_transaction_active) {
         rc = create_or_replace_user_savepoint(database, savepoint_name);
+    } else if (rc == MYLITE_OK && !database->session.autocommit_enabled) {
+        rc = mylite_execution_begin_autocommit_disabled_transaction(database);
+        if (rc == MYLITE_OK) {
+            rc = create_or_replace_user_savepoint(database, savepoint_name);
+        }
     }
     if (rc != MYLITE_OK) {
         mylite_result_free(result);

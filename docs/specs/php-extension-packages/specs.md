@@ -39,11 +39,9 @@ The mysqli package intentionally provides global `mysqli`, `mysqli_result`,
 stock mysqli module. This is required for unmodified WordPress bootstrap code.
 It accepts MyLite file paths through the `mylite:` host prefix, the socket
 argument, path-like database arguments, path-like host arguments, and
-`localhost:/path/to/file.mylite` socket-style host strings. It also treats
-`SET autocommit = 0` as a successful no-result mysqli bridge statement because
-WordPress PHPUnit immediately follows it with `START TRANSACTION`; core MyLite
-still documents mutable autocommit as unsupported outside this PHP integration
-shim.
+`localhost:/path/to/file.mylite` socket-style host strings. `SET autocommit`
+is handled by core MyLite session state; the mysqli bridge only exposes the
+normal no-result statement surface to PHP callers.
 
 The mysqli implementation is organized by extension responsibility rather than
 by PHP symbol order. Module entry/globals, Zend registration metadata, API

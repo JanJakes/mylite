@@ -483,7 +483,6 @@ bool mylite_execution_system_variable_fixed_boolean_value(
     bool *out_value
 ) {
     switch (kind) {
-    case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTOCOMMIT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
@@ -648,6 +647,8 @@ const char *mylite_execution_system_variable_default_value(
         return "STATE";
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_USE_SECONDARY_ENGINE:
         return "FORCED";
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTOCOMMIT:
+        return "1";
     default:
         return NULL;
     }

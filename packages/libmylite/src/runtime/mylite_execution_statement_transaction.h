@@ -20,6 +20,7 @@ int mylite_execution_begin_statement_transaction(
     struct mylite_db *database,
     struct mylite_statement_transaction *transaction
 );
+int mylite_execution_begin_autocommit_disabled_transaction(struct mylite_db *database);
 int mylite_execution_commit_statement_transaction(
     struct mylite_db *database,
     struct mylite_statement_transaction *transaction

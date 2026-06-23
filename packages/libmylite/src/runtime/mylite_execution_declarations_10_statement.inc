@@ -657,6 +657,18 @@ static int apply_set_time_zone_cell_value(
     struct mylite_db *database,
     const struct session_scalar_cell *value
 );
+static int apply_set_autocommit_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int apply_set_autocommit_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int apply_set_autocommit_boolean_value(struct mylite_db *database, bool value);
 static bool reject_invalid_read_only_system_variable_cell_target(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target
@@ -1158,6 +1170,7 @@ static int table_resolution_is_temporary(
 static bool statement_requires_implicit_user_transaction_commit(
     const struct mylite_sql_ast_node *statement
 );
+static int commit_active_user_transaction(struct mylite_db *database);
 static int commit_active_user_transaction_for_ddl(struct mylite_db *database);
 static void clear_user_savepoints(struct mylite_db *database);
 static int create_or_replace_user_savepoint(struct mylite_db *database, const char *name);

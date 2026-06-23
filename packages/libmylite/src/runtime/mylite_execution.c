@@ -400,6 +400,11 @@ int mylite_execution_scalar_hex_numeric_runtime_value(
 
     switch (variable) {
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTOCOMMIT:
+        out_value->integer = system_variable_expression_has_global_scope(expression) ||
+                                     database->session.autocommit_enabled
+                                 ? 1U
+                                 : 0U;
+        return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN:
         out_value->integer = 1U;
         return MYLITE_OK;

@@ -145,7 +145,7 @@ expect_output \
     "$DATABASE"
 
 expect_output \
-    "mysql mutable autocommit deferred by mylite" \
+    "mutable autocommit session assignment" \
     "0	0" \
     "SET autocommit = 0; SELECT @@autocommit, ROW_COUNT(); SET autocommit = 1;" \
     "$DATABASE"
@@ -204,6 +204,14 @@ expect_error \
     42000 \
     "Variable 'autocommit' can't be set to the value of '2'" \
     "SET autocommit = 2;" \
+    "$DATABASE"
+
+expect_error \
+    "invalid autocommit string integer" \
+    1231 \
+    42000 \
+    "Variable 'autocommit' can't be set to the value of '1'" \
+    "SET autocommit = '1';" \
     "$DATABASE"
 
 expect_error \

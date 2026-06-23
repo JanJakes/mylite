@@ -112,8 +112,8 @@ This feature must not implement:
   `READ ONLY`, or multiple characteristics;
 - `COMMIT` / `ROLLBACK` completion modifiers: `AND CHAIN`, `AND NO CHAIN`,
   `RELEASE`, or `NO RELEASE`;
-- mutable `SET autocommit = 0`, `SET autocommit = 1` transaction side effects,
-  or autocommit protocol status flags;
+- autocommit protocol status flags; session-local `SET autocommit` transaction
+  side effects are covered by `baseline-autocommit-system-variable`;
 - user-visible `SAVEPOINT`, `ROLLBACK TO SAVEPOINT`, or `RELEASE SAVEPOINT`
   syntax;
 - `SET TRANSACTION`, isolation levels, access modes, consistent snapshots, lock
@@ -371,6 +371,5 @@ Update:
 - `docs/compatibility/runtime-system-variables.md`
 
 The docs must say that explicit `START`/`COMMIT`/`ROLLBACK` transactions are
-limited but supported, while mutable `SET autocommit = 0`, savepoints,
-isolation/access modes, lock semantics, and protocol transaction flags remain
-unsupported.
+limited but supported, while unsupported savepoint details, isolation/access
+modes, lock semantics, and protocol transaction flags remain unsupported.

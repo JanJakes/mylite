@@ -378,6 +378,80 @@ static void copy_big_tables_value_text(
     buffer[copied] = '\0';
 }
 
+static int apply_set_autocommit_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+) {
+    bool value = true;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        set_runtime_error(database, "invalid autocommit system variable target");
+        return MYLITE_ERROR;
+    }
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_unsupported_error(database, "SET GLOBAL system variable assignment is not supported");
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind != MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        rc = parse_set_big_tables_value(database, target->name, value_node, &value);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return apply_set_autocommit_boolean_value(database, value);
+}
+
+static int apply_set_autocommit_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+) {
+    bool boolean_value = false;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        set_runtime_error(database, "invalid autocommit system variable target");
+        return MYLITE_ERROR;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_unsupported_error(database, "SET GLOBAL system variable assignment is not supported");
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_set_big_tables_cell_value(
+        database,
+        target->name,
+        value,
+        value_kind,
+        &boolean_value
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return apply_set_autocommit_boolean_value(database, boolean_value);
+}
+
+static int apply_set_autocommit_boolean_value(struct mylite_db *database, bool value) {
+    int rc = MYLITE_OK;
+
+    if (value && !database->session.autocommit_enabled) {
+        rc = commit_active_user_transaction(database);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    database->session.autocommit_enabled = value;
+    database->session.system_variables_are_placeholder = false;
+    return MYLITE_OK;
+}
+
 static int apply_set_foreign_key_checks_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,

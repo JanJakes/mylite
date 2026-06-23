@@ -41,10 +41,11 @@ admitted subset:
 - `SET sql_mode = DEFAULT`, `SET SESSION sql_mode = DEFAULT`,
   `SET @@sql_mode = DEFAULT`, and `SET @@session.sql_mode = DEFAULT` restore
   MySQL's default 8.4 SQL mode string;
-- MySQL accepts broader mutable forms such as `SET autocommit = 0`,
-  `SET sql_mode = 'ANSI_QUOTES'`, multi-assignment, `:=`, global assignment
-  when privileges allow it, string coercions, and expression values. MyLite
-  defers those forms in this baseline.
+- MySQL accepts broader mutable forms such as `SET sql_mode = 'ANSI_QUOTES'`,
+  multi-assignment, `:=`, global assignment when privileges allow it, string
+  coercions, and expression values. MyLite defers those forms in this
+  baseline; session-local `SET autocommit = 0` is now covered by the dedicated
+  autocommit baseline.
 
 ## Ownership Boundaries
 

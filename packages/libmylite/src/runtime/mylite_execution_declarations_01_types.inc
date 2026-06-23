@@ -3166,6 +3166,7 @@ struct set_session_snapshot {
     bool big_tables;
     bool foreign_key_checks_enabled;
     bool sql_require_primary_key;
+    bool autocommit_enabled;
     bool has_next_transaction_isolation;
     bool has_next_transaction_access_mode;
     bool next_transaction_isolation_from_system_variable;

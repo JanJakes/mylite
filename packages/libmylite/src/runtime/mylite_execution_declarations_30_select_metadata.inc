@@ -578,6 +578,10 @@ static int append_sys_memory_global_by_current_bytes_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
+static int append_sys_memory_global_total_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
 static int append_sys_ps_check_lost_instrumentation_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows

@@ -832,6 +832,56 @@ static const char sys_x_memory_global_by_current_bytes_show_create_qualified_vie
 #undef SYS_MEMORY_GLOBAL_BY_CURRENT_BYTES_VIEW_DEFINITION
 #undef SYS_X_MEMORY_GLOBAL_BY_CURRENT_BYTES_VIEW_DEFINITION
 
+#define SYS_MEMORY_GLOBAL_TOTAL_VIEW_COLUMNS "(`total_allocated`)"
+
+#define SYS_MEMORY_GLOBAL_TOTAL_SOURCE "`performance_schema`.`memory_summary_global_by_event_name`"
+
+#define SYS_MEMORY_GLOBAL_TOTAL_SUM_EXPR                                                           \
+    "sum(" SYS_MEMORY_GLOBAL_TOTAL_SOURCE ".`CURRENT_NUMBER_OF_BYTES_USED`)"
+
+#define SYS_MEMORY_GLOBAL_TOTAL_FROM_SUFFIX " from " SYS_MEMORY_GLOBAL_TOTAL_SOURCE
+
+#define SYS_MEMORY_GLOBAL_TOTAL_VIEW_DEFINITION                                                    \
+    "select format_bytes(" SYS_MEMORY_GLOBAL_TOTAL_SUM_EXPR                                        \
+    ") AS `total_allocated`" SYS_MEMORY_GLOBAL_TOTAL_FROM_SUFFIX
+
+#define SYS_X_MEMORY_GLOBAL_TOTAL_VIEW_DEFINITION                                                  \
+    "select " SYS_MEMORY_GLOBAL_TOTAL_SUM_EXPR                                                     \
+    " AS `total_allocated`" SYS_MEMORY_GLOBAL_TOTAL_FROM_SUFFIX
+
+static const char sys_memory_global_total_view_definition[] =
+    SYS_MEMORY_GLOBAL_TOTAL_VIEW_DEFINITION;
+
+static const char sys_memory_global_total_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`memory_global_total` " SYS_MEMORY_GLOBAL_TOTAL_VIEW_COLUMNS
+    " AS " SYS_MEMORY_GLOBAL_TOTAL_VIEW_DEFINITION;
+
+static const char sys_memory_global_total_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`memory_global_total` " SYS_MEMORY_GLOBAL_TOTAL_VIEW_COLUMNS
+    " AS " SYS_MEMORY_GLOBAL_TOTAL_VIEW_DEFINITION;
+
+static const char sys_x_memory_global_total_view_definition[] =
+    SYS_X_MEMORY_GLOBAL_TOTAL_VIEW_DEFINITION;
+
+static const char sys_x_memory_global_total_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$memory_global_total` " SYS_MEMORY_GLOBAL_TOTAL_VIEW_COLUMNS
+    " AS " SYS_X_MEMORY_GLOBAL_TOTAL_VIEW_DEFINITION;
+
+static const char sys_x_memory_global_total_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$memory_global_total` " SYS_MEMORY_GLOBAL_TOTAL_VIEW_COLUMNS
+    " AS " SYS_X_MEMORY_GLOBAL_TOTAL_VIEW_DEFINITION;
+
+#undef SYS_MEMORY_GLOBAL_TOTAL_VIEW_COLUMNS
+#undef SYS_MEMORY_GLOBAL_TOTAL_SOURCE
+#undef SYS_MEMORY_GLOBAL_TOTAL_SUM_EXPR
+#undef SYS_MEMORY_GLOBAL_TOTAL_FROM_SUFFIX
+#undef SYS_MEMORY_GLOBAL_TOTAL_VIEW_DEFINITION
+#undef SYS_X_MEMORY_GLOBAL_TOTAL_VIEW_DEFINITION
+
 #define SYS_INNODB_BUFFER_STATS_BY_SCHEMA_VIEW_COLUMNS                                             \
     "(`object_schema`,`allocated`,`data`,`pages`,`pages_hashed`,`pages_old`,`rows_cached`)"
 
@@ -2274,6 +2324,10 @@ static const struct mylite_execution_catalog_builtin_sys_view builtin_sys_view_d
      sys_memory_global_by_current_bytes_view_definition,
      sys_memory_global_by_current_bytes_show_create_view_sql,
      sys_memory_global_by_current_bytes_show_create_qualified_view_sql},
+    {"memory_global_total",
+     sys_memory_global_total_view_definition,
+     sys_memory_global_total_show_create_view_sql,
+     sys_memory_global_total_show_create_qualified_view_sql},
     {"ps_check_lost_instrumentation",
      sys_ps_check_lost_instrumentation_view_definition,
      sys_ps_check_lost_instrumentation_show_create_view_sql,
@@ -2394,6 +2448,10 @@ static const struct mylite_execution_catalog_builtin_sys_view builtin_sys_view_d
      sys_x_memory_global_by_current_bytes_view_definition,
      sys_x_memory_global_by_current_bytes_show_create_view_sql,
      sys_x_memory_global_by_current_bytes_show_create_qualified_view_sql},
+    {"x$memory_global_total",
+     sys_x_memory_global_total_view_definition,
+     sys_x_memory_global_total_show_create_view_sql,
+     sys_x_memory_global_total_show_create_qualified_view_sql},
     {"x$ps_schema_table_statistics_io",
      sys_x_ps_schema_table_statistics_io_view_definition,
      sys_x_ps_schema_table_statistics_io_show_create_view_sql,

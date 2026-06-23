@@ -704,6 +704,49 @@ static const char *const sys_memory_global_by_current_bytes_column_privileges[] 
     "select,insert,update,references",
 };
 
+static const struct mylite_execution_catalog_column_definition sys_memory_global_total_columns[] = {
+    {"total_allocated",
+     NULL,
+     "YES",
+     "varchar",
+     "11",
+     "33",
+     NULL,
+     NULL,
+     NULL,
+     "utf8mb3",
+     "utf8mb3_general_ci",
+     "varchar(11)"},
+};
+
+static const struct mylite_execution_catalog_column_definition sys_x_memory_global_total_columns[] =
+    {
+        {"total_allocated",
+         NULL,
+         "YES",
+         "decimal",
+         NULL,
+         NULL,
+         "41",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "decimal(41,0)"},
+};
+
+static const char *const sys_memory_global_total_column_keys[] = {
+    "",
+};
+
+static const char *const sys_memory_global_total_column_extras[] = {
+    "",
+};
+
+static const char *const sys_memory_global_total_column_privileges[] = {
+    "select,insert,update,references",
+};
+
 static const struct mylite_execution_catalog_mysql_system_table
     sys_summary_memory_system_table_definitions[] = {
         {"sys",
@@ -760,6 +803,20 @@ static const struct mylite_execution_catalog_mysql_system_table
          sys_memory_global_by_current_bytes_column_keys,
          sys_memory_global_by_current_bytes_column_extras,
          sys_memory_global_by_current_bytes_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         NULL,
+         0U},
+        {"sys",
+         {MYLITE_EXECUTION_CATALOG_TABLE_SYS_MEMORY_GLOBAL_TOTAL,
+          "memory_global_total",
+          sys_memory_global_total_columns,
+          sizeof(sys_memory_global_total_columns) / sizeof(sys_memory_global_total_columns[0])},
+         sys_memory_global_total_column_keys,
+         sys_memory_global_total_column_extras,
+         sys_memory_global_total_column_privileges,
          NULL,
          NULL,
          0U,
@@ -838,6 +895,20 @@ static const struct mylite_execution_catalog_mysql_system_table
          sys_memory_global_by_current_bytes_column_keys,
          sys_memory_global_by_current_bytes_column_extras,
          sys_memory_global_by_current_bytes_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         NULL,
+         0U},
+        {"sys",
+         {MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_MEMORY_GLOBAL_TOTAL,
+          "x$memory_global_total",
+          sys_x_memory_global_total_columns,
+          sizeof(sys_x_memory_global_total_columns) / sizeof(sys_x_memory_global_total_columns[0])},
+         sys_memory_global_total_column_keys,
+         sys_memory_global_total_column_extras,
+         sys_memory_global_total_column_privileges,
          NULL,
          NULL,
          0U,

@@ -373,15 +373,7 @@ static int test_autocommit_system_variable_qualifiers_and_errors(void) {
             .message_part = "quoted system variable scope",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT @@autocommit + 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "signed 64-bit +, binary -, and * arithmetic",
-        }
-    );
+    failures += execute_statement_ok(database, "SELECT @@autocommit + 1");
 
     mylite_close(database);
     return failures;

@@ -66,7 +66,7 @@ records the runtime probes for this feature. Observed behavior:
   previous diagnostics snapshot for any `@@warning_count` or `@@error_count`
   items in the same select list, then clears diagnostics for following
   diagnostic statements.
-- MySQL accepts wider expression forms such as `SELECT @@sql_notes + 1`.
+- MySQL accepts expression forms such as `SELECT @@sql_notes + 1`.
   Those forms remain outside this MyLite slice.
 
 The official MySQL system-variable documentation classifies `sql_notes` as a
@@ -79,8 +79,8 @@ handle-local session state; global readback remains the fixed default `1`.
 
 The implementation must support:
 
-- runtime recognition of `sql_notes` inside the existing scalar `SELECT`
-  subset;
+- runtime recognition of `sql_notes` inside scalar `SELECT` and supported
+  expression contexts;
 - `SHOW VARIABLES` readback through the existing system-variable descriptor
   surface;
 - support for no scope, `session`, `local`, and `global` scope qualifiers;
@@ -106,6 +106,7 @@ SELECT @@session.sql_notes, @@local.sql_notes
 SELECT @@global.sql_notes
 SELECT @@session.`sql_notes`, @@`sql_notes`
 SELECT @@sql_notes, @@warning_count, ROW_COUNT()
+SELECT @@sql_notes + 1
 SHOW SESSION VARIABLES LIKE 'sql_notes'
 SET sql_notes = 0
 SET SESSION sql_notes = DEFAULT

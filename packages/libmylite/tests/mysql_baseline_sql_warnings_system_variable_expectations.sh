@@ -130,6 +130,27 @@ expect_value \
     "1	0	1	1	0	0	0" \
     "$mutable_values"
 
+set_show_values=$(run_mysql \
+    "SET SESSION sql_warnings=1; \
+     SHOW VARIABLES LIKE 'sql_warnings'; \
+     SHOW GLOBAL VARIABLES LIKE 'sql_warnings'; \
+     SELECT HEX(@@sql_warnings), HEX(@@global.sql_warnings), @@sql_warnings + 1; \
+     SET LOCAL sql_warnings=FALSE; \
+     SELECT @@sql_warnings, @@global.sql_warnings, @@session.sql_warnings, \
+            @@local.sql_warnings, @@warning_count, @@error_count, ROW_COUNT(); \
+     SET @sql_warnings_enabled=1; \
+     SET @@session.sql_warnings=@sql_warnings_enabled; \
+     SELECT @@sql_warnings, @@global.sql_warnings, @@session.sql_warnings, \
+            @@local.sql_warnings, @@warning_count, @@error_count, ROW_COUNT(); \
+     SET @@sql_warnings=DEFAULT; \
+     SELECT @@sql_warnings, @@global.sql_warnings, @@session.sql_warnings, \
+            @@local.sql_warnings, @@warning_count, @@error_count, ROW_COUNT();" \
+    | tr '\n' '|')
+expect_value \
+    "sql_warnings set forms and show values" \
+    "sql_warnings	ON|sql_warnings	OFF|1	0	2|0	0	0	0	0	0	0|1	0	1	1	0	0	0|0	0	0	0	0	0	0|" \
+    "$set_show_values"
+
 warning_values=$(run_mysql \
     "SELECT 1; SHOW PROCESSLIST; \
      SELECT @@sql_warnings, @@warning_count, @@error_count, ROW_COUNT(); \

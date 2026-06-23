@@ -444,6 +444,8 @@ static int test_sql_notes_qualifiers_and_errors(void) {
         "(@@sql_notes)",
     };
     static const char *const scoped_values[] = {"1", "1", "1", "1", "1"};
+    static const char *const expression_columns[] = {"@@sql_notes + 1"};
+    static const char *const expression_values[] = {"2"};
     mylite_db *database = NULL;
     mylite_result *result = NULL;
     int failures = 0;
@@ -504,13 +506,14 @@ static int test_sql_notes_qualifiers_and_errors(void) {
             .message_part = "quoted system variable scope",
         }
     );
-    failures += execute_error(
+    failures += expect_query_result(
         database,
         "SELECT @@sql_notes + 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "signed 64-bit +, binary -, and * arithmetic",
+        (struct expected_result){
+            .columns = expression_columns,
+            .values = expression_values,
+            .count = sizeof(expression_columns) / sizeof(expression_columns[0]),
+            .context = "sql notes arithmetic expression",
         }
     );
 

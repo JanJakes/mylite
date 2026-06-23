@@ -385,22 +385,25 @@ int mylite_execution_scalar_hex_numeric_runtime_value(
             system_variable_expression_has_global_scope(expression)
         );
         return MYLITE_OK;
+    default:
+        break;
+    }
+
+    if (mylite_execution_system_variable_is_boolean_session_placeholder(variable)) {
+        out_value->integer = boolean_session_placeholder_system_variable_uint64_value(
+            database,
+            variable,
+            system_variable_expression_has_global_scope(expression)
+        );
+        return MYLITE_OK;
+    }
+
+    switch (variable) {
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTOCOMMIT:
-    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_QUOTE_SHOW_CREATE:
-    case MYLITE_EXECUTION_SYSTEM_VARIABLE_UNIQUE_CHECKS:
-    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_NOTES:
-    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_BIG_SELECTS:
-    case MYLITE_EXECUTION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
-    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_LOG_BIN:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN:
         out_value->integer = 1U;
         return MYLITE_OK;
-    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SAFE_UPDATES:
-    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_WARNINGS:
-    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT:
-    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_GENERATE_INVISIBLE_PRIMARY_KEY:
-    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_LOG_OFF:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:

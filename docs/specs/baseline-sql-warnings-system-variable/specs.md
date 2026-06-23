@@ -2,21 +2,20 @@
 
 ## Status
 
-This feature specifies a narrow scalar system-variable slice for
-`@@sql_warnings`.
+This feature specifies the baseline `sql_warnings` system-variable slice.
 
 It builds on the existing `SYSTEM_VARIABLE` lexer/parser token, scalar
 `SELECT` execution, diagnostics lifecycle, and MyLite's current strict
 integer/`NULL` DML behavior. MySQL exposes `sql_warnings` as mutable global and
 session state that controls whether single-row `INSERT` statements produce an
-information string when warnings occur. MyLite does not implement mutable
-system-variable assignment, insert warning demotion, or protocol information
-strings in the baseline yet, so this slice exposes only the default disabled
-scalar value.
+information string when warnings occur. MyLite implements session-local
+readback and SET/SHOW compatibility for application probes, while preserving
+the global default and leaving protocol information strings outside the
+embedded API surface for now.
 
-This is not insert warning reporting support. It does not implement `SET
-sql_warnings`, mutable diagnostics behavior, information strings,
-warning-producing insert conversions, or protocol metadata changes.
+This is not full insert information reporting support. It does not implement
+global mutation, persisted variables, privilege checks, server startup options,
+or protocol metadata changes.
 
 ## Sources
 
@@ -65,26 +64,32 @@ records the runtime probes for this feature. Observed behavior:
   previous diagnostics snapshot for any `@@warning_count` or `@@error_count`
   items in the same select list, then clears diagnostics for following
   diagnostic statements.
-- MySQL accepts wider expression forms such as `SELECT @@sql_warnings + 1`.
-  Those forms remain outside this MyLite slice.
+- `SHOW VARIABLES LIKE 'sql_warnings'` reflects the session value as `ON` or
+  `OFF`; `SHOW GLOBAL VARIABLES LIKE 'sql_warnings'` reflects the global
+  default `OFF`.
+- MySQL accepts expression forms such as `SELECT @@sql_warnings + 1` and
+  `HEX(@@sql_warnings)`.
 
 The official MySQL system-variable documentation classifies `sql_warnings` as
 a dynamic boolean variable with global and session scope and default value
-`OFF`. When enabled, MySQL emits an information string for single-row
-`INSERT` statements that generate warnings. MyLite returns the fixed default
-disabled value `0`, so this slice does not alter DML or diagnostics behavior.
+`OFF`. When enabled, MySQL emits an information string for single-row `INSERT`
+statements that generate warnings. MyLite records the session variable value
+but does not expose protocol information strings.
 
 ## Scope
 
 The implementation must add:
 
-- runtime recognition of `sql_warnings` inside the existing scalar `SELECT`
-  subset;
+- runtime recognition of `sql_warnings` inside scalar `SELECT` and supported
+  expression contexts;
 - support for no scope, `session`, `local`, and `global` scope qualifiers;
 - case-insensitive matching for unquoted scope and variable names;
 - backtick-quoted final variable-name components;
 - one-row scalar result sets with existing source-span column labels;
-- fixed value `0` for all supported scopes;
+- global default value `0`;
+- session-local `SET SESSION`, `SET LOCAL`, unscoped `SET @@sql_warnings`,
+  `DEFAULT`, and user-variable assignment readback;
+- `SHOW VARIABLES` and `SHOW GLOBAL VARIABLES` values;
 - MySQL-compatible unknown-variable diagnostics for unsupported names;
 - deterministic rejection of quoted scopes;
 - fast C tests and a MySQL 8.4.9 expectation artifact.
@@ -97,23 +102,27 @@ SELECT @@sql_warnings FROM DUAL
 SELECT @@session.sql_warnings, @@local.sql_warnings
 SELECT @@global.sql_warnings
 SELECT @@session.`sql_warnings`, @@`sql_warnings`
+SET SESSION sql_warnings = 1
+SET LOCAL sql_warnings = FALSE
+SET @@sql_warnings = DEFAULT
+SHOW VARIABLES LIKE 'sql_warnings'
 SELECT @@sql_warnings, @@warning_count, ROW_COUNT()
+SELECT HEX(@@sql_warnings), @@sql_warnings + 1
 ```
 
 ## Non-Goals
 
 This feature must not implement:
 
-- `SET`, startup options, persisted variables, `SET_VAR` hints, or mutable
-  global/session `sql_warnings` state;
+- startup options, persisted variables, `SET_VAR` hints, privilege checks, or
+  mutable global `sql_warnings` state;
 - variables other than `sql_warnings`;
 - warning-producing DML conversions, `INSERT IGNORE`, strict-mode warning
   demotion, or protocol information strings;
 - changed `INSERT ... VALUES` or `INSERT ... SET` behavior;
-- `SHOW VARIABLES` or Performance Schema variable tables;
-- table-backed variable evaluation, aliases, clauses, subqueries, arithmetic,
-  functions over variables, parameters, prepared statements, or arbitrary
-  SQLite pass-through;
+- Performance Schema variable tables;
+- arbitrary table-backed variable evaluation, parameters, prepared statements,
+  or SQLite pass-through beyond the documented scalar/expression support;
 - catalog mutations, storage mutations, SQLite metadata reads, or SQLite fork
   patches.
 
@@ -128,10 +137,10 @@ This feature must not implement:
 - Lexer/parser/AST own syntax admission and source spans for
   `SYSTEM_VARIABLE` expressions. No new grammar is needed beyond the existing
   `expression ::= SYSTEM_VARIABLE` rule.
-- Runtime execution owns system-variable path parsing, scope validation, fixed
-  value selection, and diagnostics for unsupported names.
-- Descriptor-driven `INSERT` execution remains unchanged because the fixed
-  value is disabled and no mutable `sql_warnings` state exists.
+- Runtime execution owns system-variable path parsing, scope validation,
+  session readback, SET/SHOW formatting, and diagnostics for unsupported names.
+- Descriptor-driven `INSERT` execution remains unchanged because MyLite does
+  not expose MySQL protocol information strings yet.
 - The catalog remains authoritative for descriptors. This variable slice does
   not affect table lifecycle or DML behavior.
 - Result builder owns scalar result column labels and one-row text values.
@@ -166,8 +175,7 @@ from_dual_opt ::= FROM DUAL.
 
 System variables are admitted only when every selected expression is in the
 existing scalar expression set. Clauses such as `WHERE`, `ORDER BY`, `LIMIT`,
-table-backed `FROM`, aliases, and general expressions remain outside this
-slice.
+table-backed `FROM`, and aliases remain outside this slice.
 
 ## Variable Resolution
 
@@ -183,8 +191,9 @@ Runtime parses the raw token as a `@@` system variable:
   SQLSTATE `HY000`;
 - it preserves the original source text as the scalar result column label.
 
-For this slice, all scopes return the same fixed value. This is a deliberate
-MyLite limitation: no mutable `sql_warnings` state exists yet.
+For this slice, `global` always returns the default value. Unscoped, `session`,
+and `local` reads use the session override when one has been set, otherwise
+they return the default.
 
 ## Runtime Semantics
 
@@ -192,11 +201,12 @@ The supported variable returns:
 
 | Variable | Value |
 | --- | --- |
-| `sql_warnings` | `0` |
+| `@@global.sql_warnings` | `0` |
+| `@@sql_warnings`, `@@session.sql_warnings`, `@@local.sql_warnings` | session override or `0` |
 
-The value is independent of selected schema, close/reopen, table DDL, DML, and
-independent handles. It is a compatibility scalar only. Because the fixed value
-is disabled, existing descriptor-driven `INSERT` behavior must not change.
+Session overrides are in-memory handle state. They are independent per handle,
+do not persist across close/reopen, and do not mutate catalog or storage state.
+Existing descriptor-driven `INSERT` behavior must not change.
 
 Successful scalar reads:
 
@@ -209,6 +219,11 @@ Successful scalar reads:
 - follow existing scalar `SELECT` row-count behavior, so `ROW_COUNT()` after a
   successful scalar row result is `-1`.
 
+Supported `SET` statements store only the session readback value. They do not
+change warning conversion, insert execution, or protocol information strings.
+`SHOW VARIABLES LIKE 'sql_warnings'` renders the session value as `ON` or
+`OFF`; `SHOW GLOBAL VARIABLES LIKE 'sql_warnings'` renders `OFF`.
+
 ## Diagnostics
 
 This slice uses existing diagnostics for:
@@ -216,21 +231,23 @@ This slice uses existing diagnostics for:
 - syntax errors, including quoted scopes and unsupported scalar-select
   clauses;
 - unknown system variables: error `1193`, SQLSTATE `HY000`;
-- unsupported expressions such as arithmetic over system variables;
+- unsupported SET values and unsupported global mutation;
 - public API misuse through the existing execution/result API behavior;
 - allocation failures through existing MyLite allocation diagnostics.
 
-Supported reads of `@@sql_warnings` do not emit warnings. This slice does not
-implement MySQL's mutable `SET SESSION sql_warnings=...` surface, so
-assignment diagnostics and insert information-string side effects are out of
-scope.
+Supported reads of `@@sql_warnings` do not emit warnings. Supported
+assignments follow the generic Boolean system-variable diagnostics for invalid
+values. Insert information-string side effects are out of scope.
 
 ## Tests
 
 Tests must cover:
 
 - unscoped, `global`, `session`, and `local` forms;
-- fixed `0` value for all supported scopes;
+- default `0` value for all supported scopes;
+- session mutation with `SET SESSION`, `SET LOCAL`, `SET @@...=DEFAULT`, and
+  user-variable assignment;
+- `SHOW VARIABLES` and `SHOW GLOBAL VARIABLES` values;
 - case-insensitive names and scopes;
 - backtick-quoted final variable names;
 - quoted scope rejection;
@@ -241,9 +258,10 @@ Tests must cover:
   safe-updates, and version variables;
 - diagnostics read-and-clear behavior after warnings and errors;
 - unknown unscoped and scoped variable names;
-- unsupported wider expressions;
+- numeric expression use with `HEX(@@sql_warnings)` and
+  `@@sql_warnings + 1`;
 - selected schema, close/reopen, table DDL, and independent handles do not
-  change the fixed value;
+  change the global default or persist session overrides;
 - representative existing `INSERT ... VALUES` and `INSERT ... SET` statements
   still execute under the fixed disabled value;
 - `.mylite` preamble preservation and unchanged catalog/SQLite generation after
@@ -251,8 +269,8 @@ Tests must cover:
 - existing parser/runtime/system-variable and table lifecycle tests still pass.
 
 The MySQL expectation script verifies the MySQL 8.4.9 reference behavior for
-the supported SQL forms and explicitly records mutable and wider MySQL
-behavior that this slice leaves unsupported.
+the supported SQL forms and explicitly records protocol-side behavior that
+this slice leaves unsupported.
 
 ## Compatibility Documentation
 
@@ -260,9 +278,8 @@ Update:
 
 - `COMPATIBILITY.md`;
 - `docs/compatibility/runtime-system-variables.md`;
-- `docs/compatibility/error-warning-result-semantics.md`;
-- `docs/compatibility/sql-table-dml.md`.
+- `docs/compatibility/error-warning-result-semantics.md`.
 
-Do not overclaim mutable system variables, `SET`, `SHOW VARIABLES`,
-warning-producing DML conversions, `INSERT IGNORE`, strict-mode warning
-demotion, protocol information strings, or changed `INSERT` behavior.
+Do not overclaim global mutation, persisted state, warning-producing DML
+conversions, `INSERT IGNORE`, strict-mode warning demotion, protocol
+information strings, or changed `INSERT` behavior.

@@ -517,13 +517,17 @@ static int test_scalar_logical_overflow_and_unsupported_forms(void) {
             .message_part = "scalar projection",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT @@warning_count AND 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "scalar projection",
+        (struct expected_query){
+            .sql = "SELECT @@warning_count AND 1",
+            .columns = (const char *const[]){"@@warning_count AND 1"},
+            .column_count = 1U,
+            .values = (const char *const[]){"1"},
+            .row_count = 1U,
+            .warning_count = 0U,
+            .affected_rows = 0,
+            .context = "system variable logical operand",
         }
     );
     failures += execute_error(

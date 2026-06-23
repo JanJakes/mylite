@@ -468,15 +468,7 @@ static int test_scalar_bitwise_overflow_and_unsupported_forms(void) {
             .context = "row bitwise projection",
         }
     );
-    failures += execute_error(
-        database,
-        "DO @@warning_count&1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "DO supports",
-        }
-    );
+    failures += execute_ok(database, "DO @@warning_count&1", NULL);
 
     mylite_close(database);
     remove_related_files(path);

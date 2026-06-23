@@ -134,22 +134,14 @@ static int system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET:
         return format_session_scalar_uint64_value(
             database,
-            auto_increment_step_system_variable_value(
-                database,
-                variable,
-                global_scope
-            ),
+            auto_increment_step_system_variable_value(database, variable, global_scope),
             out_cell
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
         return format_session_scalar_uint64_value(
             database,
-            timeout_system_variable_value(
-                database,
-                variable,
-                global_scope
-            ),
+            timeout_system_variable_value(database, variable, global_scope),
             out_cell
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
@@ -162,10 +154,7 @@ static int system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY:
         return format_session_scalar_uint64_value(
             database,
-            information_schema_stats_expiry_system_variable_value(
-                database,
-                global_scope
-            ),
+            information_schema_stats_expiry_system_variable_value(database, global_scope),
             out_cell
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT:
@@ -177,28 +166,19 @@ static int system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS:
         return format_session_scalar_uint64_value(
             database,
-            foreign_key_checks_system_variable_uint64_value(
-                database,
-                global_scope
-            ),
+            foreign_key_checks_system_variable_uint64_value(database, global_scope),
             out_cell
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_REQUIRE_PRIMARY_KEY:
         return format_session_scalar_uint64_value(
             database,
-            sql_require_primary_key_system_variable_uint64_value(
-                database,
-                global_scope
-            ),
+            sql_require_primary_key_system_variable_uint64_value(database, global_scope),
             out_cell
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_BIG_TABLES:
         return format_session_scalar_uint64_value(
             database,
-            big_tables_system_variable_uint64_value(
-                database,
-                global_scope
-            ),
+            big_tables_system_variable_uint64_value(database, global_scope),
             out_cell
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTOCOMMIT:
@@ -256,10 +236,7 @@ static int system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SELECT_LIMIT:
         rc = format_uint64(
             database,
-            sql_select_limit_system_variable_value(
-                database,
-                global_scope
-            ),
+            sql_select_limit_system_variable_value(database, global_scope),
             out_cell->integer_text,
             sizeof(out_cell->integer_text)
         );
@@ -460,6 +437,25 @@ static int format_session_scalar_uint64_value(
     return rc;
 }
 
+static uint64_t boolean_session_placeholder_system_variable_uint64_value(
+    const struct mylite_db *database,
+    enum mylite_execution_system_variable_kind kind,
+    bool global_scope
+) {
+    const char *value = NULL;
+
+    if (!global_scope && database != NULL) {
+        value = session_system_variable_override_value(database, kind);
+    }
+    if (value == NULL) {
+        value = mylite_execution_system_variable_default_value(kind);
+    }
+    if (value != NULL && strcmp(value, "1") == 0) {
+        return 1U;
+    }
+    return 0U;
+}
+
 static uint64_t auto_increment_step_system_variable_value(
     const struct mylite_db *database,
     enum mylite_execution_system_variable_kind kind,
@@ -524,8 +520,7 @@ static const char *transaction_read_only_system_variable_value(
     return transaction_read_only_scalar_text(database->session.session_transaction_access_mode);
 }
 
-static bool system_variable_expression_has_global_scope(
-    const struct mylite_sql_ast_node *expression
+static bool system_variable_expression_has_global_scope(const struct mylite_sql_ast_node *expression
 ) {
     const struct mylite_sql_source_span *span = expression == NULL ? NULL : &expression->span;
     size_t offset = system_variable_body_offset;

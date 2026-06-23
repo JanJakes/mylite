@@ -68,7 +68,7 @@ records the runtime probes for this feature. Observed behavior:
   previous diagnostics snapshot for any `@@warning_count` or `@@error_count`
   items in the same select list, then clears diagnostics for following
   diagnostic statements.
-- MySQL accepts wider expression forms such as `SELECT @@unique_checks + 1`.
+- MySQL accepts expression forms such as `SELECT @@unique_checks + 1`.
   Those forms remain outside this MyLite slice.
 
 The official MySQL system-variable documentation classifies `unique_checks` as
@@ -108,6 +108,7 @@ SELECT @@session.unique_checks, @@local.unique_checks
 SELECT @@global.unique_checks
 SELECT @@session.`unique_checks`, @@`unique_checks`
 SELECT @@unique_checks, @@warning_count, ROW_COUNT()
+SELECT @@unique_checks + 1
 SHOW VARIABLES LIKE 'unique_checks'
 SHOW GLOBAL VARIABLES LIKE 'unique_checks'
 SET SESSION unique_checks = 0

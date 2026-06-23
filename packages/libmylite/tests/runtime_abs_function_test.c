@@ -414,15 +414,7 @@ static int test_abs_errors_and_unsupported_forms(void) {
             .message_part = "SELECT CASE supports",
         }
     );
-    failures += execute_error(
-        database,
-        "DO ABS(@@warning_count)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "ABS() supports",
-        }
-    );
+    failures += execute_ok(database, "DO ABS(@@warning_count)", NULL);
 
     mylite_close(database);
     remove_related_files(path);

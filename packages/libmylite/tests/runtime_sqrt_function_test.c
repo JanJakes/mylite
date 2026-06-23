@@ -562,15 +562,7 @@ static int test_sqrt_errors_and_unsupported_forms(void) {
             .message_part = "SQRT() supports",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT SQRT(@@warning_count)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SQRT() supports",
-        }
-    );
+    failures += execute_ok(database, "SELECT SQRT(@@warning_count)", NULL);
     failures += execute_error(
         database,
         "SELECT SQRT(?)",

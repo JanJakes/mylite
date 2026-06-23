@@ -564,15 +564,7 @@ static int test_round_errors_and_unsupported_forms(void) {
             .message_part = "SELECT CASE supports",
         }
     );
-    failures += execute_error(
-        database,
-        "DO ROUND(@@warning_count)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "CEIL()/CEILING()/FLOOR()/ROUND() support",
-        }
-    );
+    failures += execute_ok(database, "DO ROUND(@@warning_count)", NULL);
 
     mylite_close(database);
     remove_related_files(path);

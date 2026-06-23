@@ -325,15 +325,7 @@ static int test_diagnostics_count_variable_qualifiers_and_errors(void) {
             .message_part = "quoted system variable scope",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT @@warning_count + 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "signed 64-bit +, binary -, and * arithmetic",
-        }
-    );
+    failures += execute_statement_ok(database, "SELECT @@warning_count + 1");
 
     mylite_close(database);
     return failures;

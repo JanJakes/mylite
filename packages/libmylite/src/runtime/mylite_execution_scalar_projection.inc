@@ -1943,6 +1943,9 @@ static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_no
     if (expression->kind == MYLITE_SQL_AST_USER_VARIABLE) {
         return true;
     }
+    if (expression->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
+        return true;
+    }
     return is_scalar_function_expression(expression);
 }
 
@@ -2565,6 +2568,7 @@ static bool is_scalar_value_projection_attempt_expression(
     case MYLITE_SQL_AST_GREATEST_FUNCTION:
     case MYLITE_SQL_AST_LEAST_FUNCTION:
     case MYLITE_SQL_AST_LITERAL:
+    case MYLITE_SQL_AST_SYSTEM_VARIABLE:
     case MYLITE_SQL_AST_SEARCHED_CASE_EXPRESSION:
     case MYLITE_SQL_AST_SIMPLE_CASE_EXPRESSION:
     case MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR:
@@ -2906,6 +2910,9 @@ static bool is_scalar_value_projection_attempt_operand(const struct mylite_sql_a
             return true;
         }
         if (is_session_scalar_expression(expression)) {
+            return true;
+        }
+        if (expression->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
             return true;
         }
         if (is_scalar_function_expression(expression)) {

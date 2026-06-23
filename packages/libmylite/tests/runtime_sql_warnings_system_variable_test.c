@@ -100,6 +100,8 @@ static int test_sql_warnings_values_and_persistence(void) {
         "ROW_COUNT()",
     };
     static const char *const value_values[] = {"0", "0", "0", "0", "0", "-1"};
+    static const char *const disabled_values[] = {"0", "0", "0", "0", "0", "0"};
+    static const char *const enabled_values[] = {"1", "0", "1", "1", "0", "0"};
     static const char *const label_columns[] = {
         "@@SQL_WARNINGS",
         "@@Global.Sql_Warnings",
@@ -114,6 +116,8 @@ static int test_sql_warnings_values_and_persistence(void) {
         "@@unique_checks",
         "@@updatable_views_with_limit",
         "@@sql_safe_updates",
+        "@@sql_select_limit",
+        "@@sql_notes",
         "@@sql_quote_show_create",
         "@@autocommit",
         "@@default_storage_engine",
@@ -126,6 +130,8 @@ static int test_sql_warnings_values_and_persistence(void) {
         "1",
         "YES",
         "0",
+        "18446744073709551615",
+        "1",
         "1",
         "1",
         "InnoDB",
@@ -140,6 +146,16 @@ static int test_sql_warnings_values_and_persistence(void) {
     };
     static const char *const warning_values[] = {"0", "1", "0", "-1"};
     static const char *const error_values[] = {"0", "1", "1", "-1"};
+    static const char *const show_variable_columns[] = {"Variable_name", "Value"};
+    static const char *const show_session_enabled_values[] = {"sql_warnings", "ON"};
+    static const char *const show_session_disabled_values[] = {"sql_warnings", "OFF"};
+    static const char *const show_global_disabled_values[] = {"sql_warnings", "OFF"};
+    static const char *const expression_columns[] = {
+        "HEX(@@sql_warnings)",
+        "HEX(@@global.sql_warnings)",
+        "@@sql_warnings + 1",
+    };
+    static const char *const expression_values[] = {"1", "0", "2"};
     static const char *const selected_columns[] = {"@@sql_warnings", "DATABASE()"};
     static const char *const selected_values[] = {"0", "app"};
     static const char *const table_columns[] = {"id", "score"};
@@ -205,8 +221,9 @@ static int test_sql_warnings_values_and_persistence(void) {
     failures += execute_ok(
         database,
         "SELECT @@sql_warnings, @@foreign_key_checks, @@unique_checks, "
-        "@@updatable_views_with_limit, @@sql_safe_updates, @@sql_quote_show_create, "
-        "@@autocommit, @@default_storage_engine, @@character_set_server, @@version_comment",
+        "@@updatable_views_with_limit, @@sql_safe_updates, @@sql_select_limit, @@sql_notes, "
+        "@@sql_quote_show_create, @@autocommit, @@default_storage_engine, "
+        "@@character_set_server, @@version_comment",
         &result
     );
     failures += expect_result(
@@ -220,6 +237,96 @@ static int test_sql_warnings_values_and_persistence(void) {
     );
     mylite_result_free(result);
     result = NULL;
+
+    failures += execute_statement_ok(database, "SET SESSION sql_warnings=1");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_warnings, @@global.sql_warnings, "
+        "@@session.sql_warnings, @@local.sql_warnings, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = enabled_values,
+            .count = sql_warnings_value_column_count,
+            .context = "enabled sql warnings session value",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW VARIABLES LIKE 'sql_warnings'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_session_enabled_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show variables enabled sql warnings",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'sql_warnings'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_global_disabled_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show global variables sql warnings",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SELECT HEX(@@sql_warnings), HEX(@@global.sql_warnings), @@sql_warnings + 1",
+        (struct expected_result){
+            .columns = expression_columns,
+            .values = expression_values,
+            .count = sizeof(expression_columns) / sizeof(expression_columns[0]),
+            .context = "enabled sql warnings expression value",
+        }
+    );
+    failures += execute_statement_ok(database, "SET LOCAL sql_warnings=FALSE");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_warnings, @@global.sql_warnings, "
+        "@@session.sql_warnings, @@local.sql_warnings, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = disabled_values,
+            .count = sql_warnings_value_column_count,
+            .context = "local disabled sql warnings value",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SHOW VARIABLES LIKE 'sql_warnings'",
+        (struct expected_result){
+            .columns = show_variable_columns,
+            .values = show_session_disabled_values,
+            .count = sizeof(show_variable_columns) / sizeof(show_variable_columns[0]),
+            .context = "show variables disabled sql warnings",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @sql_warnings_enabled=1");
+    failures += execute_statement_ok(database, "SET @@session.sql_warnings=@sql_warnings_enabled");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_warnings, @@global.sql_warnings, "
+        "@@session.sql_warnings, @@local.sql_warnings, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = enabled_values,
+            .count = sql_warnings_value_column_count,
+            .context = "enabled sql warnings user variable assignment",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @@sql_warnings=DEFAULT");
+    failures += expect_query_result(
+        database,
+        "SELECT @@sql_warnings, @@global.sql_warnings, "
+        "@@session.sql_warnings, @@local.sql_warnings, @@warning_count, ROW_COUNT()",
+        (struct expected_result){
+            .columns = value_columns,
+            .values = disabled_values,
+            .count = sql_warnings_value_column_count,
+            .context = "default disabled sql warnings value",
+        }
+    );
 
     failures += execute_statement_ok(database, "SHOW PROCESSLIST");
     failures += execute_ok(
@@ -357,6 +464,8 @@ static int test_sql_warnings_qualifiers_and_errors(void) {
         "(@@sql_warnings)",
     };
     static const char *const scoped_values[] = {"0", "0", "0", "0", "0"};
+    static const char *const expression_columns[] = {"@@sql_warnings + 1"};
+    static const char *const expression_values[] = {"1"};
     mylite_db *database = NULL;
     mylite_result *result = NULL;
     int failures = 0;
@@ -417,13 +526,14 @@ static int test_sql_warnings_qualifiers_and_errors(void) {
             .message_part = "quoted system variable scope",
         }
     );
-    failures += execute_error(
+    failures += expect_query_result(
         database,
         "SELECT @@sql_warnings + 1",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "signed 64-bit +, binary -, and * arithmetic",
+        (struct expected_result){
+            .columns = expression_columns,
+            .values = expression_values,
+            .count = sizeof(expression_columns) / sizeof(expression_columns[0]),
+            .context = "sql warnings arithmetic expression",
         }
     );
 
@@ -437,7 +547,7 @@ static int test_independent_sql_warnings_handles(void) {
         "@@warning_count",
         "@@error_count",
     };
-    static const char *const first_values[] = {"0", "1", "0"};
+    static const char *const first_values[] = {"1", "1", "0"};
     static const char *const second_values[] = {"0", "0", "0"};
     mylite_db *first = NULL;
     mylite_db *second = NULL;
@@ -447,6 +557,7 @@ static int test_independent_sql_warnings_handles(void) {
     failures += expect_int(mylite_open_memory(&first), MYLITE_OK, "open first sql warnings handle");
     failures +=
         expect_int(mylite_open_memory(&second), MYLITE_OK, "open second sql warnings handle");
+    failures += execute_statement_ok(first, "SET SESSION sql_warnings=1");
     failures += execute_statement_ok(first, "SHOW PROCESSLIST");
 
     failures += execute_ok(first, "SELECT @@sql_warnings, @@warning_count, @@error_count", &result);

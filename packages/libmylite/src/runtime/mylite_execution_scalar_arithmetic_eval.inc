@@ -522,6 +522,13 @@ static int evaluate_scalar_arithmetic_operand(
         }
         return rc;
     }
+    if (expression->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
+        rc = system_variable_value(database, expression, &cell);
+        if (rc == MYLITE_OK) {
+            rc = parse_scalar_arithmetic_operand(database, &cell, out_value);
+        }
+        return rc;
+    }
 
     switch (expression->kind) {
     case MYLITE_SQL_AST_LITERAL:

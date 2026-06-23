@@ -203,7 +203,7 @@ expect_error \
     "SELECT @@\`session\`.sql_notes;"
 
 expect_output \
-    "mysql accepts expressions outside this mylite slice" \
+    "mysql accepts sql_notes arithmetic expression" \
     "2" \
     "SELECT @@sql_notes + 1;"
 

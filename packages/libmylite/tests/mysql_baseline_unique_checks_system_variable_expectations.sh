@@ -215,6 +215,6 @@ expect_error \
     "SELECT @@\`session\`.unique_checks;"
 
 expect_output \
-    "mysql accepts expressions outside this mylite slice" \
+    "mysql accepts unique_checks arithmetic expression" \
     "2" \
     "SELECT @@unique_checks + 1;"

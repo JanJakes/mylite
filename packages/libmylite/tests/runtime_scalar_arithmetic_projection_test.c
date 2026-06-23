@@ -286,6 +286,8 @@ static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
     static const char *const values_count_arithmetic[] = {"6"};
     static const char *const columns_unsigned_table_arithmetic[] = {"age*3"};
     static const char *const values_unsigned_table_arithmetic[] = {"81"};
+    static const char *const columns_system_variable_arithmetic[] = {"1 + @@warning_count"};
+    static const char *const values_system_variable_arithmetic[] = {"2"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -411,13 +413,15 @@ static int test_scalar_arithmetic_overflow_and_unsupported_forms(void) {
             .message_part = "signed 64-bit +, binary -, and * arithmetic",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT 1 + @@warning_count",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "signed 64-bit +, binary -, and * arithmetic",
+        (struct expected_query){
+            .sql = "SELECT 1 + @@warning_count",
+            .columns = columns_system_variable_arithmetic,
+            .column_count = 1U,
+            .values = values_system_variable_arithmetic,
+            .row_count = 1U,
+            .context = "system variable arithmetic operand",
         }
     );
     failures += execute_error(

@@ -1584,6 +1584,11 @@ static int format_session_scalar_uint64_value(
     uint64_t value,
     struct session_scalar_cell *out_cell
 );
+static uint64_t boolean_session_placeholder_system_variable_uint64_value(
+    const struct mylite_db *database,
+    enum mylite_execution_system_variable_kind kind,
+    bool global_scope
+);
 static uint64_t auto_increment_step_system_variable_value(
     const struct mylite_db *database,
     enum mylite_execution_system_variable_kind kind,

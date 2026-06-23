@@ -755,15 +755,7 @@ static int test_trigonometric_errors_and_unsupported_forms(void) {
             .message_part = "SIN()/COS()/TAN()/COT() support",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT COS(@@warning_count)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "SIN()/COS()/TAN()/COT() support",
-        }
-    );
+    failures += execute_ok(database, "SELECT COS(@@warning_count)", NULL);
     failures += execute_error(
         database,
         "SELECT TAN(?)",

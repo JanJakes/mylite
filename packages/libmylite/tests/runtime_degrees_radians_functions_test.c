@@ -728,15 +728,7 @@ static int test_angle_errors_and_unsupported_forms(void) {
             .message_part = "DEGREES()/RADIANS() support",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT RADIANS(@@warning_count)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "DEGREES()/RADIANS() support",
-        }
-    );
+    failures += execute_ok(database, "SELECT RADIANS(@@warning_count)", NULL);
     failures += execute_error(
         database,
         "SELECT DEGREES(?)",

@@ -80,7 +80,10 @@ case "$version" in
 esac
 
 cleanup
-run_mysql "CREATE DATABASE ${DATABASE}; USE ${DATABASE}; SET SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION';" >/dev/null
+run_mysql \
+    "CREATE DATABASE ${DATABASE}; USE ${DATABASE}; "\
+"SET SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION'; "\
+"SET time_zone = '+00:00'; SET timestamp = 1700000000;" >/dev/null
 
 run_mysql \
     "CREATE TABLE t ("\
@@ -92,6 +95,12 @@ run_mysql \
 "e VARCHAR(10) DEFAULT '', "\
 "d DATE DEFAULT '2001-02-03', "\
 "dt DATETIME DEFAULT '2001-02-03 04:05:06', "\
+"ct DATETIME DEFAULT CURRENT_TIMESTAMP, "\
+"ctn DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "\
+"ts TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP, "\
+"tsn TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, "\
+"cd DATE DEFAULT (CURDATE()), "\
+"cti TIME DEFAULT (CURTIME()), "\
 "ex INT DEFAULT (1 + 2)"\
 "); "\
 "INSERT INTO t(id, n, nul, nn, s, e, d, dt) "\
@@ -100,10 +109,11 @@ run_mysql \
 
 expect_output \
     "select default function values and qualifiers" \
-    "7	8	NULL	abc		2001-02-03	2001-02-03 04:05:06	8	8	0
+    "7	8	NULL	abc		2001-02-03	2001-02-03 04:05:06	NULL	0000-00-00 00:00:00	NULL	0000-00-00 00:00:00	8	8	0
 8" \
     "DO 0; SELECT DEFAULT(id), DEFAULT(n), IFNULL(DEFAULT(nul), 'NULL'), DEFAULT(s), DEFAULT(e), "\
-"DEFAULT(d), DEFAULT(dt), DEFAULT(t.n), DEFAULT(${DATABASE}.t.n), @@warning_count FROM t; "\
+"DEFAULT(d), DEFAULT(dt), IFNULL(DEFAULT(ct), 'NULL'), DEFAULT(ctn), IFNULL(DEFAULT(ts), 'NULL'), "\
+"DEFAULT(tsn), DEFAULT(t.n), DEFAULT(${DATABASE}.t.n), @@warning_count FROM t; "\
 "SELECT DEFAULT(q.n) FROM t AS q;" \
     "$DATABASE"
 
@@ -145,10 +155,10 @@ expect_output \
 
 expect_output \
     "update default function changed and no match" \
-    "1	0	1	7	abc
+    "1	0	1	7	abc	NULL	NULL
 0	0" \
-    "UPDATE t SET n = DEFAULT(id), s = DEFAULT(s) WHERE id = 1; "\
-"SELECT ROW_COUNT(), @@warning_count, id, n, s FROM t WHERE id = 1; "\
+    "UPDATE t SET n = DEFAULT(id), s = DEFAULT(s), ct = DEFAULT(ct), ts = DEFAULT(ts) WHERE id = 1; "\
+"SELECT ROW_COUNT(), @@warning_count, id, n, s, IFNULL(ct, 'NULL'), IFNULL(ts, 'NULL') FROM t WHERE id = 1; "\
 "UPDATE t SET n = DEFAULT(id) WHERE id = 999; "\
 "SELECT ROW_COUNT(), @@warning_count;" \
     "$DATABASE"
@@ -173,6 +183,22 @@ expect_error \
     HY000 \
     "DEFAULT function cannot be used with default value expressions" \
     "SELECT DEFAULT(ex) FROM t;" \
+    "$DATABASE"
+
+expect_error \
+    "select generated date default" \
+    3773 \
+    HY000 \
+    "DEFAULT function cannot be used with default value expressions" \
+    "SELECT DEFAULT(cd) FROM t;" \
+    "$DATABASE"
+
+expect_error \
+    "select generated time default" \
+    3773 \
+    HY000 \
+    "DEFAULT function cannot be used with default value expressions" \
+    "SELECT DEFAULT(cti) FROM t;" \
     "$DATABASE"
 
 expect_error \

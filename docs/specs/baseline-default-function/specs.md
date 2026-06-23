@@ -115,7 +115,11 @@ descriptor logic:
   by the current descriptor default helper;
 - implicit `NULL` for nullable columns with no explicit default;
 - `0` for `AUTO_INCREMENT` source columns, matching MySQL 8.4.9
-  `DEFAULT(auto_increment_column)` function behavior.
+  `DEFAULT(auto_increment_column)` function behavior;
+- `CURRENT_TIMESTAMP` descriptor defaults on `DATETIME` and `TIMESTAMP`
+  columns, using MySQL's implicit `DEFAULT(column)` value rather than the
+  ordinary DML `DEFAULT` value: nullable source columns materialize as `NULL`,
+  and non-null source columns materialize as `0000-00-00 00:00:00`.
 
 The current descriptor expression defaults (`DEFAULT (1 + 2)` and
 `DEFAULT (NULL)`) are intentionally rejected for `DEFAULT(column)`, even though
@@ -123,11 +127,11 @@ the existing DML `DEFAULT` keyword can still materialize them for the target
 column. This follows MySQL's rule that `DEFAULT(column)` is for literal default
 values, not expression defaults.
 
-Current date/time defaults (`CURRENT_TIMESTAMP`, `NOW()`, `CURRENT_DATE`,
-`CURRENT_TIME`) remain outside this slice for `DEFAULT(column)`. MySQL has
-special result rules for these defaults that differ from ordinary DML
-`DEFAULT`, so MyLite returns a deterministic unsupported-feature diagnostic
-until that behavior is implemented exactly.
+Generated current date/time defaults such as `DATE DEFAULT (CURDATE())` and
+`TIME DEFAULT (CURTIME())` remain rejected for `DEFAULT(column)` with MySQL's
+`3773 / HY000` diagnostic. MySQL treats those defaults as default value
+expressions, even though the ordinary DML `DEFAULT` keyword can materialize
+them for the target column.
 
 ## DML Assignment Semantics
 
@@ -177,8 +181,7 @@ Supported diagnostics include:
   existing `1364 / HY000`;
 - source column backed by a descriptor expression default:
   new MySQL-compatible `3773 / HY000`;
-- current date/time default sources: existing MyLite unsupported-feature
-  diagnostic;
+- generated current date/time default sources: `3773 / HY000`;
 - target `NULL` into `NOT NULL`: existing `1048 / 23000`;
 - unsupported source/target descriptor conversion: existing MyLite
   unsupported-feature diagnostic;
@@ -210,6 +213,10 @@ records representative MySQL 8.4.9 observations:
 - no-source `DEFAULT(c)`, unknown source columns, and invalid argument shapes
   produce MySQL diagnostics;
 - `DEFAULT(column_with_expression_default)` returns `3773 / HY000`;
+- `DEFAULT(nullable_current_timestamp_default)` returns `NULL`;
+- `DEFAULT(non_nullable_current_timestamp_default)` returns
+  `0000-00-00 00:00:00`;
+- `DEFAULT(generated_current_date_or_time_default)` returns `3773 / HY000`;
 - `DEFAULT(non_nullable_column_without_default)` returns `1364 / HY000`;
 - source default validation happens even for no-match `UPDATE`;
 - target `NULL` conversion errors happen only when the update matches rows;

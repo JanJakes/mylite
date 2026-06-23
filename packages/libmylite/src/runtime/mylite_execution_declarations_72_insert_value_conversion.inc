@@ -621,6 +621,11 @@ static int materialize_default_function_source_value(
     const struct mylite_catalog_column_descriptor *source_column,
     struct planned_value *out_value
 );
+static int materialize_default_function_current_timestamp_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *source_column,
+    struct planned_value *out_value
+);
 static bool default_function_source_target_types_are_compatible(
     const struct mylite_catalog_column_descriptor *source_column,
     const struct mylite_catalog_column_descriptor *target_column

@@ -637,17 +637,39 @@ static int materialize_default_function_source_value(
         set_default_function_expression_error(database);
         return MYLITE_ERROR;
     }
-    if (source_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP ||
-        source_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_DATE ||
-        source_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIME) {
-        set_unsupported_error(
+    if (source_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIMESTAMP) {
+        return materialize_default_function_current_timestamp_value(
             database,
-            "DEFAULT() does not yet support current date/time column defaults"
+            source_column,
+            out_value
         );
+    }
+    if (source_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_DATE ||
+        source_column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_CURRENT_TIME) {
+        set_default_function_expression_error(database);
         return MYLITE_ERROR;
     }
 
     return materialize_dml_default_value(database, source_column, false, out_value);
+}
+
+static int materialize_default_function_current_timestamp_value(
+    struct mylite_db *database,
+    const struct mylite_catalog_column_descriptor *source_column,
+    struct planned_value *out_value
+) {
+    if (source_column->is_nullable) {
+        *out_value = (struct planned_value){.is_null = true, .is_text = false, .integer = 0};
+        return MYLITE_OK;
+    }
+    if (column_descriptor_is_timestamp(source_column)) {
+        return make_zero_timestamp_value(database, out_value);
+    }
+    if (column_descriptor_is_datetime(source_column)) {
+        return make_zero_datetime_value(database, out_value);
+    }
+    set_default_function_expression_error(database);
+    return MYLITE_ERROR;
 }
 
 static bool default_function_source_target_types_are_compatible(

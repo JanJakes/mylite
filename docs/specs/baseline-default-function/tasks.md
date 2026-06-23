@@ -6,7 +6,7 @@
 - [x] Add parser and AST support for `DEFAULT(column_name)`.
 - [x] Resolve source columns through MyLite descriptors in row-scalar SELECT and supported DML value positions.
 - [x] Materialize supported literal descriptor defaults without consulting SQLite schema text.
-- [x] Reject expression defaults, missing defaults, unknown columns, unsupported current date/time defaults, and unsupported target conversions deterministically.
+- [x] Reject expression defaults, missing defaults, unknown columns, generated current date/time defaults, and unsupported target conversions deterministically.
 - [x] Add parser and runtime C coverage for SELECT, INSERT, REPLACE, UPDATE, duplicate-key update, diagnostics, persistence, and cleanup paths.
 - [x] Update compatibility documentation for the exact supported subset.
 - [x] Run the MySQL expectation script, targeted CTest entries, `cmake --build --preset dev`, and `cmake --workflow --preset check`.

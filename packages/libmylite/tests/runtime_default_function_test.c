@@ -102,6 +102,10 @@ static int test_default_function_select_dml_and_persistence(void) {
         "",
         "2001-02-03",
         "2001-02-03 04:05:06",
+        NULL,
+        "0000-00-00 00:00:00",
+        NULL,
+        "0000-00-00 00:00:00",
         "8",
         "8",
     };
@@ -110,7 +114,7 @@ static int test_default_function_select_dml_and_persistence(void) {
     static const char *const inserted_set_row[] = {"7", "8", NULL, "10", "abc"};
     static const char *const replaced_values_row[] = {"7", "8", NULL, "11", "abc"};
     static const char *const replaced_set_row[] = {"7", "8", NULL, "12", "abc"};
-    static const char *const updated_row[] = {"1", "7", "abc"};
+    static const char *const updated_row[] = {"1", "7", "abc", NULL, NULL};
     static const char *const duplicate_row[] = {"1", "8", "abc"};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -127,7 +131,8 @@ static int test_default_function_select_dml_and_persistence(void) {
         database,
         (struct expected_query){
             .sql = "SELECT DEFAULT(id), DEFAULT(n), DEFAULT(nul), DEFAULT(s), DEFAULT(e), "
-                   "DEFAULT(d), DEFAULT(dt), DEFAULT(t.n), DEFAULT(app.t.n) FROM t",
+                   "DEFAULT(d), DEFAULT(dt), DEFAULT(ct), DEFAULT(ctn), DEFAULT(ts), "
+                   "DEFAULT(tsn), DEFAULT(t.n), DEFAULT(app.t.n) FROM t",
             .values = defaults_row,
             .column_count = sizeof(defaults_row) / sizeof(defaults_row[0]),
             .row_count = 1U,
@@ -220,7 +225,8 @@ static int test_default_function_select_dml_and_persistence(void) {
     );
     failures += expect_statement_ok(
         database,
-        "UPDATE t SET n = DEFAULT(id), s = DEFAULT(s) WHERE id = 1",
+        "UPDATE t SET n = DEFAULT(id), s = DEFAULT(s), ct = DEFAULT(ct), ts = DEFAULT(ts) "
+        "WHERE id = 1",
         (struct expected_statement){.affected_rows = 1, .warning_count = 0U},
         "update default function"
     );
@@ -233,7 +239,7 @@ static int test_default_function_select_dml_and_persistence(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, n, s FROM t WHERE id = 1",
+            .sql = "SELECT id, n, s, ct, ts FROM t WHERE id = 1",
             .values = updated_row,
             .column_count = sizeof(updated_row) / sizeof(updated_row[0]),
             .row_count = 1U,
@@ -289,9 +295,9 @@ static int test_default_function_select_dml_and_persistence(void) {
     failures += expect_query_values(
         database,
         (struct expected_query){
-            .sql = "SELECT id, n, s FROM t WHERE id = 1",
+            .sql = "SELECT id, n, s, ct, ts FROM t WHERE id = 1",
             .values = updated_row,
-            .column_count = 3U,
+            .column_count = sizeof(updated_row) / sizeof(updated_row[0]),
             .row_count = 1U,
             .warning_count = 0U,
             .context = "reopened updated default row",
@@ -378,11 +384,20 @@ static int test_default_function_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT DEFAULT(ct) FROM t",
+        "SELECT DEFAULT(cd) FROM t",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "current date/time column defaults",
+            .code = mysql_error_default_val_generated,
+            .sqlstate = "HY000",
+            .message_part = "DEFAULT function cannot be used with default value expressions",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DEFAULT(cti) FROM t",
+        (struct expected_sql_error){
+            .code = mysql_error_default_val_generated,
+            .sqlstate = "HY000",
+            .message_part = "DEFAULT function cannot be used with default value expressions",
         }
     );
     failures += execute_error(
@@ -437,6 +452,11 @@ static int seed_default_table(mylite_db *database) {
         "d DATE DEFAULT '2001-02-03', "
         "dt DATETIME DEFAULT '2001-02-03 04:05:06', "
         "ct DATETIME DEFAULT CURRENT_TIMESTAMP, "
+        "ctn DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+        "ts TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP, "
+        "tsn TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+        "cd DATE DEFAULT (CURDATE()), "
+        "cti TIME DEFAULT (CURTIME()), "
         "ex INT DEFAULT (1 + 2))",
         NULL
     );

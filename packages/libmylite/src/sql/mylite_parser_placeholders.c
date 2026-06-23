@@ -296,6 +296,21 @@ static enum mylite_sql_parse_status scan_row_scalar_predicate_subject_retry(
     size_t *out_end_index,
     bool allow_concat_operator
 );
+static enum mylite_sql_parse_status scan_direct_row_scalar_predicate_subject_retry(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry,
+    size_t *out_end_index,
+    bool allow_concat_operator,
+    bool *out_handled
+);
+static bool placeholder_scan_find_row_scalar_predicate_subject_end(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    bool allow_concat_operator,
+    size_t *out_end_index
+);
 static enum mylite_sql_parse_status scan_literal_left_string_predicate_subject_retry(
     const struct placeholder_statement_scan *scan,
     size_t start_index,

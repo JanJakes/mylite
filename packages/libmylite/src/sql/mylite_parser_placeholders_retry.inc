@@ -974,9 +974,8 @@ static enum mylite_sql_parse_status scan_row_scalar_predicate_subject_retry(
     size_t *out_end_index,
     bool allow_concat_operator
 ) {
-    size_t right_paren_index = 0U;
-    size_t subject_end_index = SIZE_MAX;
-    int paren_depth = 0;
+    enum mylite_sql_parse_status status = MYLITE_SQL_PARSE_OK;
+    bool handled = false;
 
     if (out_end_index != NULL) {
         *out_end_index = start_index;
@@ -987,42 +986,80 @@ static enum mylite_sql_parse_status scan_row_scalar_predicate_subject_retry(
         return MYLITE_SQL_PARSE_OK;
     }
 
-    if (placeholder_scan_token_is_retryable_row_scalar_context_function(scan, start_index) &&
-        placeholder_scan_token_is_supported_row_scalar_value_function(scan, start_index) &&
-        mylite_sql_parser_token_is_left_paren(&scan->tokens[start_index + 1U]) &&
-        placeholder_scan_find_matching_right_paren(scan, start_index + 1U, &right_paren_index) &&
-        placeholder_scan_predicate_value_is_direct_row_scalar_expression(
+    status = scan_direct_row_scalar_predicate_subject_retry(
+        scan,
+        start_index,
+        retries,
+        inout_can_retry,
+        out_end_index,
+        allow_concat_operator,
+        &handled
+    );
+    if (status != MYLITE_SQL_PARSE_OK || handled) {
+        return status;
+    }
+
+    if (!placeholder_scan_find_row_scalar_predicate_subject_end(
+            scan,
+            start_index,
+            allow_concat_operator,
+            out_end_index
+        )) {
+        return MYLITE_SQL_PARSE_OK;
+    }
+    return append_row_scalar_predicate_subject_retry(
+        scan,
+        start_index,
+        *out_end_index,
+        retries,
+        inout_can_retry
+    );
+}
+
+static enum mylite_sql_parse_status scan_direct_row_scalar_predicate_subject_retry(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    struct placeholder_row_arithmetic_subject_retries *retries,
+    bool *inout_can_retry,
+    size_t *out_end_index,
+    bool allow_concat_operator,
+    bool *out_handled
+) {
+    size_t right_paren_index = 0U;
+
+    *out_handled = false;
+    if (!placeholder_scan_token_is_retryable_row_scalar_context_function(scan, start_index) ||
+        !placeholder_scan_token_is_supported_row_scalar_value_function(scan, start_index) ||
+        !mylite_sql_parser_token_is_left_paren(&scan->tokens[start_index + 1U]) ||
+        !placeholder_scan_find_matching_right_paren(scan, start_index + 1U, &right_paren_index) ||
+        !placeholder_scan_predicate_value_is_direct_row_scalar_expression(
             scan,
             start_index,
             right_paren_index
-        ) &&
-        placeholder_scan_row_arithmetic_value_has_row_operand(
+        ) ||
+        !placeholder_scan_row_arithmetic_value_has_row_operand(
             scan,
             start_index,
             right_paren_index
-        ) &&
-        placeholder_scan_row_scalar_predicate_subject_has_valid_suffix(
+        ) ||
+        !placeholder_scan_row_scalar_predicate_subject_has_valid_suffix(
             scan,
             start_index,
             right_paren_index,
             allow_concat_operator
         )) {
-        *out_end_index = right_paren_index;
-        if (placeholder_scan_row_scalar_predicate_subject_uses_truth_placeholder(
-                scan,
-                start_index,
-                right_paren_index,
-                allow_concat_operator
-            )) {
-            return append_row_arithmetic_predicate_value_retry(
-                scan,
-                start_index,
-                right_paren_index,
-                retries,
-                inout_can_retry
-            );
-        }
-        return append_row_scalar_predicate_subject_retry(
+        return MYLITE_SQL_PARSE_OK;
+    }
+
+    *out_handled = true;
+    *out_end_index = right_paren_index;
+    if (placeholder_scan_row_scalar_predicate_subject_uses_truth_placeholder(
+            scan,
+            start_index,
+            right_paren_index,
+            allow_concat_operator
+        )) {
+        return append_row_arithmetic_predicate_value_retry(
             scan,
             start_index,
             right_paren_index,
@@ -1030,6 +1067,23 @@ static enum mylite_sql_parse_status scan_row_scalar_predicate_subject_retry(
             inout_can_retry
         );
     }
+    return append_row_scalar_predicate_subject_retry(
+        scan,
+        start_index,
+        right_paren_index,
+        retries,
+        inout_can_retry
+    );
+}
+
+static bool placeholder_scan_find_row_scalar_predicate_subject_end(
+    const struct placeholder_statement_scan *scan,
+    size_t start_index,
+    bool allow_concat_operator,
+    size_t *out_end_index
+) {
+    size_t subject_end_index = SIZE_MAX;
+    int paren_depth = 0;
 
     for (size_t index = start_index; index < scan->token_count; ++index) {
         if (mylite_sql_parser_token_is_left_paren(&scan->tokens[index])) {
@@ -1052,7 +1106,7 @@ static enum mylite_sql_parse_status scan_row_scalar_predicate_subject_retry(
             (placeholder_scan_token_text_equals(scan, index, "NOT") &&
              placeholder_scan_token_text_equals(scan, index + 1U, "BETWEEN"))) {
             if (index == start_index) {
-                return MYLITE_SQL_PARSE_OK;
+                return false;
             }
             subject_end_index = index - 1U;
             break;
@@ -1082,16 +1136,10 @@ static enum mylite_sql_parse_status scan_row_scalar_predicate_subject_retry(
             subject_end_index,
             allow_concat_operator
         )) {
-        return MYLITE_SQL_PARSE_OK;
+        return false;
     }
     *out_end_index = subject_end_index;
-    return append_row_scalar_predicate_subject_retry(
-        scan,
-        start_index,
-        subject_end_index,
-        retries,
-        inout_can_retry
-    );
+    return true;
 }
 
 static enum mylite_sql_parse_status scan_literal_left_string_predicate_subject_retry(

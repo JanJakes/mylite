@@ -63,11 +63,13 @@ static const char sql_calc_found_rows_warning_message[] =
 static int test_found_rows_scalar_warnings(void);
 static int test_found_rows_select_limit_envelope(void);
 static int test_sql_calc_found_rows_selects(void);
+static int test_sql_calc_found_rows_wordpress_include_query(void);
 static int test_sql_calc_found_rows_joined_selects(void);
 static int test_found_rows_file_state_and_independent_handles(void);
 static int test_found_rows_unsupported_forms(void);
 static int prepare_fixture(mylite_db *database);
 static int prepare_join_fixture(mylite_db *database);
+static int prepare_wordpress_user_post_fixture(mylite_db *database);
 static int expect_found_rows_value(mylite_db *database, struct expected_found_rows_value expected);
 static int expect_found_rows_state(mylite_db *database, struct expected_found_rows_state expected);
 static int expect_warning_rows(
@@ -139,6 +141,7 @@ int main(void) {
     failures += test_found_rows_scalar_warnings();
     failures += test_found_rows_select_limit_envelope();
     failures += test_sql_calc_found_rows_selects();
+    failures += test_sql_calc_found_rows_wordpress_include_query();
     failures += test_sql_calc_found_rows_joined_selects();
     failures += test_found_rows_file_state_and_independent_handles();
     failures += test_found_rows_unsupported_forms();
@@ -468,6 +471,58 @@ static int test_sql_calc_found_rows_selects(void) {
         (struct expected_found_rows_value){
             .expected = "4",
             .context = "row-scalar wildcard sql calc found rows",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_sql_calc_found_rows_wordpress_include_query(void) {
+    static const char *const include_rows[] = {"333", "332"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "wp_include") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open wp include found rows");
+    failures += prepare_wordpress_user_post_fixture(database);
+
+    failures += execute_ok(
+        database,
+        "SELECT SQL_CALC_FOUND_ROWS wptests_users.ID "
+        "FROM wptests_users "
+        "WHERE 1 = 1 "
+        "AND wptests_users.ID IN ("
+        "SELECT DISTINCT wptests_posts.post_author FROM wptests_posts "
+        "WHERE wptests_posts.post_status = 'publish' "
+        "AND wptests_posts.post_type IN ('post', 'page', 'attachment')"
+        ") "
+        "AND wptests_users.ID IN (333,332) "
+        "ORDER BY FIELD(wptests_users.ID, 333,332) ASC "
+        "LIMIT 0, 10",
+        &result
+    );
+    failures += expect_single_column_rows(
+        result,
+        include_rows,
+        2U,
+        1U,
+        "wordpress include query sql calc rows"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_found_rows_value(
+        database,
+        (struct expected_found_rows_value){
+            .expected = "2",
+            .context = "wordpress include query found rows",
         }
     );
 
@@ -1013,6 +1068,36 @@ static int prepare_join_fixture(mylite_db *database) {
     failures += execute_statement_ok(
         database,
         "INSERT INTO extras VALUES (30, 700), (31, 800), (32, NULL)"
+    );
+    return failures;
+}
+
+static int prepare_wordpress_user_post_fixture(mylite_db *database) {
+    int failures = 0;
+
+    failures += execute_statement_ok(database, "CREATE DATABASE app");
+    failures += execute_statement_ok(database, "USE app");
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE wptests_users (ID BIGINT UNSIGNED NOT NULL PRIMARY KEY)"
+    );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE wptests_posts ("
+        "ID BIGINT UNSIGNED NOT NULL PRIMARY KEY, "
+        "post_author BIGINT UNSIGNED NOT NULL, "
+        "post_status VARCHAR(20) NOT NULL, "
+        "post_type VARCHAR(20) NOT NULL"
+        ")"
+    );
+    failures += execute_statement_ok(database, "INSERT INTO wptests_users VALUES (332), (333)");
+    failures += execute_statement_ok(
+        database,
+        "INSERT INTO wptests_posts VALUES "
+        "(10, 333, 'publish', 'post'), "
+        "(11, 332, 'publish', 'page'), "
+        "(12, 333, 'draft', 'post'), "
+        "(13, 331, 'publish', 'post')"
     );
     return failures;
 }

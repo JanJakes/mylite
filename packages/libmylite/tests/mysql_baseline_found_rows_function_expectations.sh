@@ -188,6 +188,42 @@ expect_value "sql calc wildcard row 2" "2	20	1" \
 expect_value "sql calc wildcard found rows" "4" \
     "$(printf '%s\n' "$calc_row_scalar" | sed -n '5p')"
 
+wordpress_include_query=$(run_mysql \
+    "USE ${DATABASE};
+     CREATE TABLE wptests_users (ID BIGINT UNSIGNED NOT NULL PRIMARY KEY);
+     CREATE TABLE wptests_posts (
+         ID BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+         post_author BIGINT UNSIGNED NOT NULL,
+         post_status VARCHAR(20) NOT NULL,
+         post_type VARCHAR(20) NOT NULL
+     );
+     INSERT INTO wptests_users VALUES (332), (333);
+     INSERT INTO wptests_posts VALUES
+         (10, 333, 'publish', 'post'),
+         (11, 332, 'publish', 'page'),
+         (12, 333, 'draft', 'post'),
+         (13, 331, 'publish', 'post');
+     SELECT SQL_CALC_FOUND_ROWS wptests_users.ID
+       FROM wptests_users
+      WHERE 1 = 1
+        AND wptests_users.ID IN (
+            SELECT DISTINCT wptests_posts.post_author
+              FROM wptests_posts
+             WHERE wptests_posts.post_status = 'publish'
+               AND wptests_posts.post_type IN ('post', 'page', 'attachment')
+        )
+        AND wptests_users.ID IN (333,332)
+      ORDER BY FIELD(wptests_users.ID, 333, 332) ASC
+      LIMIT 0, 10;
+     SELECT FOUND_ROWS(), @@warning_count, ROW_COUNT();"
+)
+expect_value "sql calc wordpress include row 1" "333" \
+    "$(printf '%s\n' "$wordpress_include_query" | sed -n '1p')"
+expect_value "sql calc wordpress include row 2" "332" \
+    "$(printf '%s\n' "$wordpress_include_query" | sed -n '2p')"
+expect_value "sql calc wordpress include found rows" "2	1	-1" \
+    "$(printf '%s\n' "$wordpress_include_query" | sed -n '3p')"
+
 ordinary_limit=$(run_mysql \
     "USE ${DATABASE};
      SELECT id FROM t ORDER BY id LIMIT 2;

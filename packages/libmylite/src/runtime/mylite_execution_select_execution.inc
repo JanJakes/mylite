@@ -2702,6 +2702,7 @@ static int set_row_scalar_select_found_row_count(
     count_plan.join_count = plan->join_count;
     count_plan.predicate = plan->predicate;
     count_plan.limit = plan->limit;
+    count_plan.requires_source_alias = plan->predicate.qualify_column_references;
     if (plan->calc_found_rows) {
         int64_t count = 0;
 

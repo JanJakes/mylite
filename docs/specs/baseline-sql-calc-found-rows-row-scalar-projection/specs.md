@@ -50,6 +50,8 @@ Supported:
 - descriptor columns, qualified wildcard expansion, and supported scalar
   literal projection items;
 - optional existing row-scalar `WHERE`, `ORDER BY`, and `LIMIT` / `OFFSET`;
+- supported qualified predicates, including `IN (SELECT DISTINCT ...)`
+  subquery filters, with `FIELD()` order keys;
 - joined row-scalar sources already admitted by the row-scalar planner;
 - MySQL deprecation warning `1287` for successful statements;
 - `FOUND_ROWS()` state updated to the matching pre-limit source row count.
@@ -71,7 +73,10 @@ Execution runs the normal visible row-scalar query. When `SQL_CALC_FOUND_ROWS`
 is present, MyLite runs the existing descriptor-built found-row `COUNT(*)`
 query over the same source and predicate, without `ORDER BY`, `LIMIT`, or
 `OFFSET`. The result object's found-row count is set from that count before
-statement completion publishes it to connection-local `FOUND_ROWS()` state.
+statement completion publishes it to connection-local `FOUND_ROWS()` state. The
+companion count query must preserve the source aliasing required by qualified
+row-scalar predicates so the count and visible statements resolve the same
+column references.
 
 Successful `SQL_CALC_FOUND_ROWS` row-scalar statements append the same
 deprecation warning as descriptor-backed SELECT statements. Failed statements
@@ -84,5 +89,7 @@ Coverage must include:
 - a descriptor column plus integer literal projection with `WHERE`, `ORDER BY`,
   and `LIMIT`;
 - qualified wildcard expansion plus integer literal projection with `LIMIT`;
+- qualified outer-column predicates with `IN (SELECT DISTINCT ...)`, `FIELD()`
+  ordering, and `LIMIT`;
 - visible rows, warning count, and subsequent `FOUND_ROWS()` state;
 - MySQL 8.4.9 expectation coverage for the same query shapes.

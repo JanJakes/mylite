@@ -370,6 +370,7 @@ enum {
     sys_processlist_current_statement_column = 7,
     sys_processlist_trx_state_column = 26,
     sys_processlist_trx_autocommit_column = 27,
+    sys_session_ssl_status_column_count = 4,
     sys_x_ps_digest_avg_latency_distribution_column_count = 2,
     sys_x_ps_digest_95th_percentile_by_avg_us_column_count = 2,
     sys_ps_check_lost_instrumentation_column_count = 2,

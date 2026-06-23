@@ -182,6 +182,8 @@ static int append_information_schema_system_rows(
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_MEMORY_GLOBAL_TOTAL:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_METRICS:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_PROCESSLIST:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_SESSION:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_SESSION_SSL_STATUS:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_SCHEMA_INDEX_STATISTICS:
@@ -214,6 +216,7 @@ static int append_information_schema_system_rows(
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_MEMORY_GLOBAL_BY_CURRENT_BYTES:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_MEMORY_GLOBAL_TOTAL:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PROCESSLIST:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_SESSION:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PS_SCHEMA_TABLE_STATISTICS_IO:
@@ -396,6 +399,9 @@ static int append_information_schema_view_table_usage_system_rows(
         {"processlist", "performance_schema", "threads"},
         {"processlist", "sys", "sys_config"},
         {"processlist", "sys", "x$memory_by_thread_by_current_bytes"},
+        {"session", "sys", "processlist"},
+        {"session", "sys", "sys_config"},
+        {"session_ssl_status", "performance_schema", "status_by_thread"},
         {"innodb_lock_waits", "information_schema", "INNODB_TRX"},
         {"innodb_lock_waits", "performance_schema", "data_lock_waits"},
         {"innodb_lock_waits", "performance_schema", "data_locks"},
@@ -496,6 +502,7 @@ static int append_information_schema_view_table_usage_system_rows(
         {"x$processlist", "performance_schema", "session_connect_attrs"},
         {"x$processlist", "performance_schema", "threads"},
         {"x$processlist", "sys", "x$memory_by_thread_by_current_bytes"},
+        {"x$session", "sys", "x$processlist"},
         {"x$ps_digest_95th_percentile_by_avg_us",
          "performance_schema",
          "events_statements_summary_by_digest"},

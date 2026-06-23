@@ -2195,6 +2195,17 @@
   )
   mylite_configure_c_target(mylite_runtime_sys_processlist_views_test)
 
+  add_executable(mylite_runtime_sys_session_views_test
+    tests/runtime_sys_session_views_test.c
+  )
+  target_link_libraries(mylite_runtime_sys_session_views_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_sys_session_views_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_sys_session_views_test)
+
   add_executable(mylite_runtime_sys_ps_digest_helper_views_test
     tests/runtime_sys_ps_digest_helper_views_test.c
   )

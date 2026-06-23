@@ -215,6 +215,75 @@ static const char sys_x_processlist_show_create_qualified_view_sql[] =
     "`sys`.`x$processlist` " SYS_PROCESSLIST_VIEW_COLUMNS
     " AS " SYS_X_PROCESSLIST_QUALIFIED_VIEW_DEFINITION;
 
+#define SYS_SESSION_SELECT(source)                                                                 \
+    "select `" source "`.`thd_id` AS `thd_id`,`" source "`.`conn_id` AS `conn_id`,`" source        \
+    "`.`user` AS `user`,`" source "`.`db` AS `db`,`" source "`.`command` AS `command`,`" source    \
+    "`.`state` AS `state`,`" source "`.`time` AS `time`,`" source                                  \
+    "`.`current_statement` AS `current_statement`,`" source                                        \
+    "`.`execution_engine` AS `execution_engine`,`" source                                          \
+    "`.`statement_latency` AS `statement_latency`,`" source "`.`progress` AS `progress`,`" source  \
+    "`.`lock_latency` AS `lock_latency`,`" source "`.`cpu_latency` AS `cpu_latency`,`" source      \
+    "`.`rows_examined` AS `rows_examined`,`" source "`.`rows_sent` AS `rows_sent`,`" source        \
+    "`.`rows_affected` AS `rows_affected`,`" source "`.`tmp_tables` AS `tmp_tables`,`" source      \
+    "`.`tmp_disk_tables` AS `tmp_disk_tables`,`" source "`.`full_scan` AS `full_scan`,`" source    \
+    "`.`last_statement` AS `last_statement`,`" source                                              \
+    "`.`last_statement_latency` AS `last_statement_latency`,`" source                              \
+    "`.`current_memory` AS `current_memory`,`" source "`.`last_wait` AS `last_wait`,`" source      \
+    "`.`last_wait_latency` AS `last_wait_latency`,`" source "`.`source` AS `source`,`" source      \
+    "`.`trx_latency` AS `trx_latency`,`" source "`.`trx_state` AS `trx_state`,`" source            \
+    "`.`trx_autocommit` AS `trx_autocommit`,`" source "`.`pid` AS `pid`,`" source                  \
+    "`.`program_name` AS `program_name` from `" source "` where ((`" source                        \
+    "`.`conn_id` is not null) and (`" source "`.`command` <> 'Daemon'))"
+
+static const char sys_session_view_definition[] = SYS_SESSION_SELECT("sys`.`processlist");
+
+static const char sys_session_show_create_view_sql[] =
+    "CREATE ALGORITHM=UNDEFINED DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`session` AS " SYS_SESSION_SELECT("processlist");
+
+static const char sys_session_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=UNDEFINED DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`session` AS " SYS_SESSION_SELECT("sys`.`processlist");
+
+static const char sys_x_session_view_definition[] = SYS_SESSION_SELECT("sys`.`x$processlist");
+
+static const char sys_x_session_show_create_view_sql[] =
+    "CREATE ALGORITHM=UNDEFINED DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$session` AS " SYS_SESSION_SELECT("x$processlist");
+
+static const char sys_x_session_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=UNDEFINED DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$session` AS " SYS_SESSION_SELECT("sys`.`x$processlist");
+
+#define SYS_SESSION_SSL_STATUS_VIEW_COLUMNS                                                        \
+    "(`thread_id`,`ssl_version`,`ssl_cipher`,`ssl_sessions_reused`)"
+
+#define SYS_SESSION_SSL_STATUS_VIEW_DEFINITION                                                     \
+    "select `sslver`.`THREAD_ID` AS `thread_id`,`sslver`.`VARIABLE_VALUE` AS `ssl_version`,"       \
+    "`sslcip`.`VARIABLE_VALUE` AS `ssl_cipher`,`sslreuse`.`VARIABLE_VALUE` AS "                    \
+    "`ssl_sessions_reused` from ((`performance_schema`.`status_by_thread` `sslver` left join "     \
+    "`performance_schema`.`status_by_thread` `sslcip` on(((`sslcip`.`THREAD_ID` = "                \
+    "`sslver`.`THREAD_ID`) and (`sslcip`.`VARIABLE_NAME` = 'Ssl_cipher')))) left join "            \
+    "`performance_schema`.`status_by_thread` `sslreuse` on(((`sslreuse`.`THREAD_ID` = "            \
+    "`sslver`.`THREAD_ID`) and (`sslreuse`.`VARIABLE_NAME` = 'Ssl_sessions_reused')))) where "     \
+    "(`sslver`.`VARIABLE_NAME` = 'Ssl_version')"
+
+static const char sys_session_ssl_status_view_definition[] = SYS_SESSION_SSL_STATUS_VIEW_DEFINITION;
+
+static const char sys_session_ssl_status_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`session_ssl_status` " SYS_SESSION_SSL_STATUS_VIEW_COLUMNS
+    " AS " SYS_SESSION_SSL_STATUS_VIEW_DEFINITION;
+
+static const char sys_session_ssl_status_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`session_ssl_status` " SYS_SESSION_SSL_STATUS_VIEW_COLUMNS
+    " AS " SYS_SESSION_SSL_STATUS_VIEW_DEFINITION;
+
+#undef SYS_SESSION_SELECT
+#undef SYS_SESSION_SSL_STATUS_VIEW_COLUMNS
+#undef SYS_SESSION_SSL_STATUS_VIEW_DEFINITION
+
 #undef SYS_PROCESSLIST_VIEW_COLUMNS
 #undef SYS_PROCESSLIST_SELECT_PREFIX
 #undef SYS_PROCESSLIST_SELECT_MIDDLE_FORMATTED
@@ -2536,6 +2605,18 @@ static const struct mylite_execution_catalog_builtin_sys_view builtin_sys_view_d
      sys_x_processlist_view_definition,
      sys_x_processlist_show_create_view_sql,
      sys_x_processlist_show_create_qualified_view_sql},
+    {"session",
+     sys_session_view_definition,
+     sys_session_show_create_view_sql,
+     sys_session_show_create_qualified_view_sql},
+    {"x$session",
+     sys_x_session_view_definition,
+     sys_x_session_show_create_view_sql,
+     sys_x_session_show_create_qualified_view_sql},
+    {"session_ssl_status",
+     sys_session_ssl_status_view_definition,
+     sys_session_ssl_status_show_create_view_sql,
+     sys_session_ssl_status_show_create_qualified_view_sql},
     {"host_summary",
      sys_host_summary_view_definition,
      sys_host_summary_show_create_view_sql,

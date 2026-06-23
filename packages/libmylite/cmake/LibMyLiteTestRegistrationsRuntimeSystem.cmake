@@ -785,6 +785,10 @@
     COMMAND mylite_runtime_sys_processlist_views_test
   )
   add_test(
+    NAME libmylite.runtime.sys_session_views
+    COMMAND mylite_runtime_sys_session_views_test
+  )
+  add_test(
     NAME libmylite.runtime.sys_ps_digest_helper_views
     COMMAND mylite_runtime_sys_ps_digest_helper_views_test
   )

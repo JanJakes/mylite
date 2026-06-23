@@ -142,6 +142,15 @@ static int append_sys_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "x$processlist") == 0) {
         return append_sys_processlist_system_rows(database, context, rows);
     }
+    if (strcmp(definition->query_definition.name, "session") == 0) {
+        return append_sys_processlist_system_rows(database, context, rows);
+    }
+    if (strcmp(definition->query_definition.name, "x$session") == 0) {
+        return append_sys_processlist_system_rows(database, context, rows);
+    }
+    if (strcmp(definition->query_definition.name, "session_ssl_status") == 0) {
+        return append_sys_session_ssl_status_system_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "innodb_lock_waits") == 0) {
         return append_sys_innodb_lock_waits_system_rows(database, rows);
     }
@@ -731,6 +740,55 @@ static int append_sys_processlist_system_rows(
             rc = append_information_schema_row(database, rows, values);
         }
         free(current_statement);
+    }
+
+    free(sessions);
+    return rc;
+}
+
+static int append_sys_session_ssl_status_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    struct mylite_processlist_session_snapshot *sessions = NULL;
+    size_t session_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != sys_session_ssl_status_column_count) {
+        set_runtime_error(database, "invalid sys.session_ssl_status columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_connection_collect_processlist_sessions(database, &sessions, &session_count);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "failed to collect sys.session_ssl_status sessions");
+        return rc;
+    }
+
+    for (size_t session_index = 0U; rc == MYLITE_OK && session_index < session_count;
+         ++session_index) {
+        const struct mylite_processlist_session_snapshot *session = &sessions[session_index];
+        char thread_id_text[integer_text_capacity];
+        const char *values[sys_session_ssl_status_column_count] = {
+            thread_id_text,
+            "",
+            "",
+            "0",
+        };
+        int written =
+            snprintf(thread_id_text, sizeof(thread_id_text), "%" PRIu64, session->connection_id);
+
+        if (written < 0 || (size_t)written >= sizeof(thread_id_text)) {
+            set_runtime_error(database, "failed to format sys.session_ssl_status thread id");
+            rc = MYLITE_ERROR;
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_information_schema_row(database, rows, values);
+        }
     }
 
     free(sessions);

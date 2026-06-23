@@ -592,6 +592,10 @@ static int append_sys_processlist_system_rows(
     const struct mylite_statement_context *context,
     struct information_schema_row_set *rows
 );
+static int append_sys_session_ssl_status_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
 static int append_sys_x_ps_digest_avg_latency_distribution_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows

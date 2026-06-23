@@ -2280,6 +2280,16 @@ static int plan_row_scalar_non_control_flow_expression(
     bool allow_scalar_subquery,
     struct planned_row_scalar_expression *out_expression
 );
+static bool row_scalar_expression_is_insert_values_reference(
+    const struct mylite_sql_ast_node *expression
+);
+static int plan_row_scalar_insert_values_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
 static bool row_scalar_expression_is_nested_value_argument(
     const struct mylite_sql_ast_node *expression
 );
@@ -3394,16 +3404,25 @@ static bool row_scalar_column_descriptor_is_supported(
 static bool row_scalar_expression_contains_row_function(const struct mylite_sql_ast_node *expression
 );
 static bool row_scalar_expression_contains_context_expression_attempt(
+    const struct mylite_sql_ast_node *expression,
+    bool allow_insert_values_reference
+);
+static bool row_scalar_expression_contains_insert_values_reference(
     const struct mylite_sql_ast_node *expression
+);
+static size_t planned_row_scalar_expression_insert_values_reference_count(
+    const struct planned_row_scalar_expression *expression
 );
 static bool row_scalar_expression_contains_statement_context_function(
     const struct mylite_sql_ast_node *expression
 );
 static bool row_scalar_expression_is_context_expression_attempt(
-    const struct mylite_sql_ast_node *expression
+    const struct mylite_sql_ast_node *expression,
+    bool allow_insert_values_reference
 );
 static bool row_scalar_expression_is_dml_assignment_context_attempt(
-    const struct mylite_sql_ast_node *expression
+    const struct mylite_sql_ast_node *expression,
+    bool allow_insert_values_reference
 );
 static bool row_scalar_expression_is_predicate_value_context_attempt(
     const struct mylite_sql_ast_node *expression

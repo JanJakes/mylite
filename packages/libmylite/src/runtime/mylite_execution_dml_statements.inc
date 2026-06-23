@@ -280,20 +280,22 @@ static int append_insert_duplicate_update_warnings_if_needed(
 
     for (size_t index = 0U; rc == MYLITE_OK && index < plan->duplicate_update.assignment_count;
          ++index) {
-        if (plan->duplicate_update.assignments[index].value_kind !=
-            PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_VALUES_REFERENCE) {
-            continue;
-        }
-        rc = mylite_diagnostics_append_warning(
-            mylite_connection_diagnostics(database),
-            mysql_warning_values_function_deprecated,
-            "HY000",
-            "'VALUES function' is deprecated and will be removed in a future release. "
-            "Please use an alias (INSERT INTO ... VALUES (...) AS alias) and replace "
-            "VALUES(col) in the ON DUPLICATE KEY UPDATE clause with alias.col instead"
-        );
-        if (rc == MYLITE_NOMEM) {
-            set_nomem_error(database);
+        const size_t warning_count =
+            plan->duplicate_update.assignments[index].values_reference_count;
+
+        for (size_t warning_index = 0U; rc == MYLITE_OK && warning_index < warning_count;
+             ++warning_index) {
+            rc = mylite_diagnostics_append_warning(
+                mylite_connection_diagnostics(database),
+                mysql_warning_values_function_deprecated,
+                "HY000",
+                "'VALUES function' is deprecated and will be removed in a future release. "
+                "Please use an alias (INSERT INTO ... VALUES (...) AS alias) and replace "
+                "VALUES(col) in the ON DUPLICATE KEY UPDATE clause with alias.col instead"
+            );
+            if (rc == MYLITE_NOMEM) {
+                set_nomem_error(database);
+            }
         }
     }
     return rc;

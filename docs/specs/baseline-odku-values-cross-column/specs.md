@@ -25,6 +25,9 @@ This slice expands the existing duplicate-key update baseline:
 
 ```sql
 insert_duplicate_assignment ::= target_column EQ VALUES LPAREN source_column RPAREN
+insert_duplicate_assignment ::= target_column EQ row_scalar_expression
+row_scalar_expression ::= supported_row_scalar_function_with_values_reference
+supported_row_scalar_function_with_values_reference ::= function_name LPAREN ... VALUES LPAREN source_column RPAREN ... RPAREN
 ```
 
 `target_column` and `source_column` are unqualified target-table column
@@ -32,6 +35,13 @@ identifiers. The source column may differ from the assignment target when the
 inserted source value has the same logical and physical storage descriptor as
 the target descriptor. Character-string descriptors must also have the same
 character set and collation.
+
+`VALUES(source_column)` may also appear inside the currently supported
+duplicate-update row-scalar function and integer-arithmetic subset, including
+the verified `CONCAT(VALUES(col), ...)` and
+`GREATEST(VALUES(col) + integer, ...)` forms. These references are scoped only
+to `ON DUPLICATE KEY UPDATE` planning and are materialized from the would-be
+inserted row before the expression is bound for SQLite execution.
 
 Supported statement envelopes are the current `INSERT ... VALUES`,
 `INSERT ... SET`, and `INSERT ... SELECT` duplicate-key-update subsets.
@@ -48,6 +58,12 @@ auto-increment assignment-target detection and duplicate-key bookkeeping.
 Cross-column references are treated as ordinary assignments to the target
 column.
 
+Nested row-scalar expressions evaluate with `VALUES(source_column)` replaced by
+the would-be inserted source value for the row currently taking the duplicate
+update branch. The replacement is made for both the assignment value and the
+changed-row predicate, so affected-row accounting uses the same inserted value
+that is assigned.
+
 ## Errors
 
 - Qualified `VALUES(table.column)` references remain rejected in this baseline.
@@ -55,6 +71,9 @@ column.
 - Source/target descriptors that require target-side implicit conversion,
   truncation, or range handling return the existing MyLite unsupported
   diagnostic rather than silently applying incomplete conversion behavior.
+- `VALUES(source_column)` outside the currently supported duplicate-update
+  row-scalar expression subset remains rejected or falls through to existing
+  unsupported-expression diagnostics.
 - General non-ODKU `VALUES(column)` scalar use remains outside this slice.
 
 ## Tests
@@ -64,5 +83,7 @@ The runtime tests cover:
 - `INSERT ... VALUES ... ON DUPLICATE KEY UPDATE c = VALUES(a)`;
 - multiple cross-column references in one duplicate-key tail, proving values
   come from the inserted row and are not affected by assignment order;
-- the same cross-column behavior for `INSERT ... SELECT`;
+- nested duplicate-update row-scalar arithmetic and string expressions using
+  `VALUES(column)`;
+- the same direct and nested behavior for `INSERT ... SELECT`;
 - continued warnings and unknown-column diagnostics.

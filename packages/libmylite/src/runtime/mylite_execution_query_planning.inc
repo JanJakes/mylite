@@ -2399,6 +2399,16 @@ static int plan_row_scalar_integer_arithmetic_frame(
         current->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
         return plan_row_scalar_integer_arithmetic_literal(database, current, frame->out_expression);
     }
+    if (source_context != NULL && source_context->allow_insert_values_reference &&
+        row_scalar_expression_is_insert_values_reference(current)) {
+        return plan_row_scalar_insert_values_reference(
+            database,
+            current,
+            table_columns,
+            table_column_count,
+            frame->out_expression
+        );
+    }
     if (current->kind == MYLITE_SQL_AST_IDENTIFIER ||
         current->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         return plan_row_scalar_integer_arithmetic_column(

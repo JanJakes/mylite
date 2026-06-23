@@ -607,29 +607,14 @@ static int plan_insert_duplicate_values_reference(
     struct planned_insert_duplicate_update_assignment *duplicate_assignment
 ) {
     const struct mylite_sql_ast_node *column = child_at(value_node, 0U);
-    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     int rc = MYLITE_OK;
 
-    if (column == NULL || column->kind != MYLITE_SQL_AST_IDENTIFIER) {
-        set_unsupported_error(
-            database,
-            "VALUES() in ON DUPLICATE KEY UPDATE supports only unqualified columns"
-        );
-        return MYLITE_ERROR;
-    }
-    rc = copy_identifier_text(column, column_name, sizeof(column_name), database);
-    if (rc == MYLITE_OK) {
-        rc = find_column_index(
-            plan->columns,
-            plan->column_count,
-            column_name,
-            &duplicate_assignment->values_column_index
-        );
-        if (rc != MYLITE_OK) {
-            set_unknown_column_error(database, column_name);
-            return MYLITE_ERROR;
-        }
-    }
+    rc = plan_insert_duplicate_values_reference_column(
+        database,
+        column,
+        plan,
+        &duplicate_assignment->values_column_index
+    );
     if (rc == MYLITE_OK && !insert_duplicate_values_reference_columns_are_copy_compatible(
                                &plan->columns[duplicate_assignment->values_column_index],
                                &plan->columns[duplicate_assignment->assignment_column_index]
@@ -643,7 +628,40 @@ static int plan_insert_duplicate_values_reference(
 
     duplicate_assignment->assignment_value_node = value_node;
     duplicate_assignment->value_kind = PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_VALUES_REFERENCE;
+    duplicate_assignment->values_reference_count = 1U;
     return rc;
+}
+
+static int plan_insert_duplicate_values_reference_column(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *column,
+    struct planned_insert *plan,
+    size_t *out_column_index
+) {
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = MYLITE_OK;
+
+    if (out_column_index == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_column_index = 0U;
+    if (column == NULL || column->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_unsupported_error(
+            database,
+            "VALUES() in ON DUPLICATE KEY UPDATE supports only unqualified columns"
+        );
+        return MYLITE_ERROR;
+    }
+    rc = copy_identifier_text(column, column_name, sizeof(column_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = find_column_index(plan->columns, plan->column_count, column_name, out_column_index);
+    if (rc != MYLITE_OK) {
+        set_unknown_column_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
 }
 
 static bool insert_duplicate_values_reference_columns_are_copy_compatible(
@@ -751,7 +769,7 @@ static int plan_insert_duplicate_row_scalar_assignment(
         return MYLITE_OK;
     }
     arithmetic_attempt = row_scalar_expression_contains_integer_arithmetic_attempt(value_node);
-    if (!row_scalar_expression_is_dml_assignment_context_attempt(value_node)) {
+    if (!row_scalar_expression_is_dml_assignment_context_attempt(value_node, true)) {
         return MYLITE_OK;
     }
 
@@ -796,6 +814,7 @@ static int plan_insert_duplicate_row_scalar_assignment(
         return MYLITE_NOMEM;
     }
     source_context.source = &plan->target;
+    source_context.allow_insert_values_reference = true;
     rc = plan_row_scalar_expression(
         database,
         value_node,
@@ -813,6 +832,8 @@ static int plan_insert_duplicate_row_scalar_assignment(
     }
 
     duplicate_assignment->row_scalar_expression = expression;
+    duplicate_assignment->values_reference_count =
+        planned_row_scalar_expression_insert_values_reference_count(expression);
     *out_planned = true;
     return MYLITE_OK;
 }

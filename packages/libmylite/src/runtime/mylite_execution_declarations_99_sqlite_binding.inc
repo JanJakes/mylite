@@ -241,6 +241,13 @@ static int copy_planned_value(
     const struct planned_value *source,
     struct planned_value *out_value
 );
+static int materialize_insert_duplicate_row_scalar_expression(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct planned_row_scalar_expression *source,
+    struct planned_row_scalar_expression *out_expression
+);
 static int build_insert_duplicate_update_sql(
     const struct planned_insert *plan,
     const struct loaded_index_info *conflicting_index,
@@ -270,6 +277,7 @@ static int append_insert_duplicate_changed_condition_sql(
     size_t *next_parameter
 );
 static int bind_insert_duplicate_update_parameters(
+    struct mylite_db *database,
     sqlite3_stmt *statement,
     const struct planned_insert *plan,
     size_t row_index,
@@ -277,15 +285,19 @@ static int bind_insert_duplicate_update_parameters(
     const struct planned_value *assignment_values
 );
 static int bind_insert_duplicate_assignment_parameters(
+    struct mylite_db *database,
     sqlite3_stmt *statement,
     int *parameter_index,
     const struct planned_insert *plan,
+    size_t row_index,
     const struct planned_value *assignment_values
 );
 static int bind_insert_duplicate_changed_condition_parameters(
+    struct mylite_db *database,
     sqlite3_stmt *statement,
     int *parameter_index,
     const struct planned_insert *plan,
+    size_t row_index,
     const struct planned_value *assignment_values
 );
 static int handle_update_unique_key_conflict(

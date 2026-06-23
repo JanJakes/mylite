@@ -163,7 +163,8 @@ static bool select_statement_is_row_scalar_projection_attempt(
         if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
             ((expression != NULL && expression->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION) ||
              row_scalar_expression_is_window_function(expression) ||
-             (has_row_source && row_scalar_expression_is_context_expression_attempt(expression)) ||
+             (has_row_source &&
+              row_scalar_expression_is_context_expression_attempt(expression, false)) ||
              (has_row_source && row_scalar_expression_contains_bitwise_attempt(expression)) ||
              (expression != NULL && expression->kind == MYLITE_SQL_AST_EXISTS_PREDICATE) ||
              (has_row_source && expression_is_supported_row_scalar_system_function(expression)) ||
@@ -270,7 +271,7 @@ static bool select_where_clause_contains_row_scalar_context_attempt(
             MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE) {
         return false;
     }
-    return row_scalar_expression_contains_context_expression_attempt(predicate);
+    return row_scalar_expression_contains_context_expression_attempt(predicate, false);
 }
 
 static int execute_row_scalar_select_statement(

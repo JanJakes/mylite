@@ -239,7 +239,7 @@ static int plan_update_assignment_row_scalar_expression(
         return MYLITE_OK;
     }
     arithmetic_attempt = row_scalar_expression_contains_integer_arithmetic_attempt(value_node);
-    if (!row_scalar_expression_is_dml_assignment_context_attempt(value_node)) {
+    if (!row_scalar_expression_is_dml_assignment_context_attempt(value_node, false)) {
         return MYLITE_OK;
     }
     if (arithmetic_attempt) {

@@ -47,6 +47,7 @@ struct select_source_context {
     const struct table_name_resolution *source;
     char alias[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     bool has_alias;
+    bool allow_insert_values_reference;
     const struct planned_select_source *sources;
     size_t source_count;
 };
@@ -988,6 +989,7 @@ struct planned_insert_duplicate_update_assignment {
     const struct mylite_sql_ast_node *assignment_value_node;
     enum planned_insert_duplicate_update_value_kind value_kind;
     size_t values_column_index;
+    size_t values_reference_count;
     enum mylite_sql_ast_operator arithmetic_operator;
     const struct mylite_sql_ast_node *arithmetic_delta_node;
     struct planned_row_scalar_expression *row_scalar_expression;
@@ -1769,6 +1771,8 @@ struct planned_row_scalar_expression {
     enum mylite_sql_ast_operator operator_kind;
     enum mylite_sql_ast_operator arithmetic_operator;
     struct planned_value value;
+    bool value_is_insert_values_reference;
+    size_t value_source_index;
     enum mylite_json_sql_value_kind json_value_kind;
     enum planned_json_mutation_kind json_mutation_kind;
     bool regexp_case_sensitive;

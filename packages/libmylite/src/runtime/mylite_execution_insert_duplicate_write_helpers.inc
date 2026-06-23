@@ -133,6 +133,7 @@ static int apply_insert_duplicate_key_update(
     }
     if (rc == MYLITE_OK) {
         rc = bind_insert_duplicate_update_parameters(
+            database,
             statement,
             plan,
             row_index,
@@ -1000,6 +1001,80 @@ static int copy_planned_value(
     return MYLITE_OK;
 }
 
+static int materialize_insert_duplicate_row_scalar_expression(
+    struct mylite_db *database,
+    const struct planned_insert *plan,
+    size_t row_index,
+    const struct planned_row_scalar_expression *source,
+    struct planned_row_scalar_expression *out_expression
+) {
+    int rc = MYLITE_OK;
+
+    if (database == NULL || plan == NULL || source == NULL || out_expression == NULL ||
+        row_index >= plan->row_count) {
+        return MYLITE_MISUSE;
+    }
+    planned_row_scalar_expression_deinit(out_expression);
+    *out_expression = *source;
+    out_expression->arguments = NULL;
+    out_expression->argument_count = 0U;
+    out_expression->value = (struct planned_value){0};
+
+    if (source->kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE &&
+        source->value_is_insert_values_reference) {
+        if (source->value_source_index >= plan->column_count) {
+            set_runtime_error(database, "invalid INSERT VALUES() row-scalar reference");
+            return MYLITE_ERROR;
+        }
+        rc = copy_planned_value(
+            database,
+            &plan->rows[row_index].values[source->value_source_index],
+            &out_expression->value
+        );
+        out_expression->value_is_insert_values_reference = false;
+        out_expression->value_source_index = 0U;
+    } else {
+        rc = copy_planned_value(database, &source->value, &out_expression->value);
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(out_expression);
+        return rc;
+    }
+
+    if (source->argument_count == 0U) {
+        return MYLITE_OK;
+    }
+    if (source->argument_count > SIZE_MAX / sizeof(*out_expression->arguments)) {
+        set_nomem_error(database);
+        planned_row_scalar_expression_deinit(out_expression);
+        return MYLITE_NOMEM;
+    }
+    out_expression->arguments = (struct planned_row_scalar_expression *)calloc(
+        source->argument_count,
+        sizeof(*out_expression->arguments)
+    );
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        planned_row_scalar_expression_deinit(out_expression);
+        return MYLITE_NOMEM;
+    }
+    out_expression->argument_count = source->argument_count;
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < source->argument_count;
+         ++argument_index) {
+        rc = materialize_insert_duplicate_row_scalar_expression(
+            database,
+            plan,
+            row_index,
+            &source->arguments[argument_index],
+            &out_expression->arguments[argument_index]
+        );
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(out_expression);
+    }
+    return rc;
+}
+
 static int build_insert_duplicate_update_sql(
     const struct planned_insert *plan,
     const struct loaded_index_info *conflicting_index,
@@ -1247,6 +1322,7 @@ static int append_insert_duplicate_changed_condition_sql(
 }
 
 static int bind_insert_duplicate_update_parameters(
+    struct mylite_db *database,
     sqlite3_stmt *statement,
     const struct planned_insert *plan,
     size_t row_index,
@@ -1255,9 +1331,11 @@ static int bind_insert_duplicate_update_parameters(
 ) {
     int parameter_index = 1;
     int rc = bind_insert_duplicate_assignment_parameters(
+        database,
         statement,
         &parameter_index,
         plan,
+        row_index,
         assignment_values
     );
 
@@ -1279,9 +1357,11 @@ static int bind_insert_duplicate_update_parameters(
     }
     if (rc == MYLITE_OK) {
         rc = bind_insert_duplicate_changed_condition_parameters(
+            database,
             statement,
             &parameter_index,
             plan,
+            row_index,
             assignment_values
         );
     }
@@ -1290,9 +1370,11 @@ static int bind_insert_duplicate_update_parameters(
 }
 
 static int bind_insert_duplicate_assignment_parameters(
+    struct mylite_db *database,
     sqlite3_stmt *statement,
     int *parameter_index,
     const struct planned_insert *plan,
+    size_t row_index,
     const struct planned_value *assignment_values
 ) {
     int rc = MYLITE_OK;
@@ -1304,11 +1386,19 @@ static int bind_insert_duplicate_assignment_parameters(
         }
         if (plan->duplicate_update.assignments[index].value_kind ==
             PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_ROW_SCALAR) {
-            rc = bind_row_scalar_expression_parameters(
-                statement,
+            struct planned_row_scalar_expression expression = {0};
+
+            rc = materialize_insert_duplicate_row_scalar_expression(
+                database,
+                plan,
+                row_index,
                 plan->duplicate_update.assignments[index].row_scalar_expression,
-                parameter_index
+                &expression
             );
+            if (rc == MYLITE_OK) {
+                rc = bind_row_scalar_expression_parameters(statement, &expression, parameter_index);
+            }
+            planned_row_scalar_expression_deinit(&expression);
             continue;
         }
         rc = bind_planned_value_parameter(statement, *parameter_index, &assignment_values[index]);
@@ -1345,9 +1435,11 @@ static int bind_insert_duplicate_key_tuple_parameters(
 }
 
 static int bind_insert_duplicate_changed_condition_parameters(
+    struct mylite_db *database,
     sqlite3_stmt *statement,
     int *parameter_index,
     const struct planned_insert *plan,
+    size_t row_index,
     const struct planned_value *assignment_values
 ) {
     int rc = MYLITE_OK;
@@ -1359,11 +1451,23 @@ static int bind_insert_duplicate_changed_condition_parameters(
         }
         if (plan->duplicate_update.assignments[index].value_kind ==
             PLANNED_INSERT_DUPLICATE_UPDATE_VALUE_ROW_SCALAR) {
-            rc = bind_update_row_scalar_changed_condition_parameters(
-                statement,
-                parameter_index,
-                plan->duplicate_update.assignments[index].row_scalar_expression
+            struct planned_row_scalar_expression expression = {0};
+
+            rc = materialize_insert_duplicate_row_scalar_expression(
+                database,
+                plan,
+                row_index,
+                plan->duplicate_update.assignments[index].row_scalar_expression,
+                &expression
             );
+            if (rc == MYLITE_OK) {
+                rc = bind_update_row_scalar_changed_condition_parameters(
+                    statement,
+                    parameter_index,
+                    &expression
+                );
+            }
+            planned_row_scalar_expression_deinit(&expression);
             continue;
         }
         if (assignment_values[index].is_null) {

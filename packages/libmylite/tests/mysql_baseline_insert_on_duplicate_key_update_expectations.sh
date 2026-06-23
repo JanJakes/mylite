@@ -121,6 +121,38 @@ expect_output \
 run_mysql "DROP TABLE t;" "$DATABASE" >/dev/null
 
 expect_output \
+    "values function row-scalar arithmetic duplicate update" \
+    "2	2	0
+0	2	0
+1	20	21" \
+"CREATE TABLE t(id INT PRIMARY KEY, n INT, out_n INT); "\
+"INSERT INTO t VALUES (1,10,0); "\
+"INSERT INTO t VALUES (1,19,0) ON DUPLICATE KEY UPDATE "\
+"n=GREATEST(VALUES(n)+1,0), out_n=GREATEST(VALUES(n)+2,0); "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"INSERT INTO t VALUES (1,19,0) ON DUPLICATE KEY UPDATE "\
+"n=GREATEST(VALUES(n)+1,0), out_n=GREATEST(VALUES(n)+2,0); "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT id,n,out_n FROM t;" \
+    "$DATABASE"
+run_mysql "DROP TABLE t;" "$DATABASE" >/dev/null
+
+expect_output \
+    "values function row-scalar string duplicate update" \
+    "2	1	0
+0	1	0
+1	base	new:base" \
+    "CREATE TABLE s(id INT PRIMARY KEY, txt VARCHAR(32), out_txt VARCHAR(32)); "\
+"INSERT INTO s VALUES (1,'base',''); "\
+"INSERT INTO s VALUES (1,'new','') ON DUPLICATE KEY UPDATE out_txt=CONCAT(VALUES(txt),':',txt); "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"INSERT INTO s VALUES (1,'new','') ON DUPLICATE KEY UPDATE out_txt=CONCAT(VALUES(txt),':',txt); "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT id,txt,out_txt FROM s;" \
+    "$DATABASE"
+run_mysql "DROP TABLE s;" "$DATABASE" >/dev/null
+
+expect_output \
     "row-scalar string duplicate update assignment" \
     "2	0	0
 0	0	0

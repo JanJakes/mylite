@@ -54,6 +54,16 @@ static int plan_row_scalar_non_control_flow_expression(
         return MYLITE_ERROR;
     }
 
+    if (source_context != NULL && source_context->allow_insert_values_reference &&
+        row_scalar_expression_is_insert_values_reference(expression)) {
+        return plan_row_scalar_insert_values_reference(
+            database,
+            expression,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (expression->kind == MYLITE_SQL_AST_LITERAL) {
         return plan_row_scalar_literal_value(database, expression, out_expression);
     }
@@ -486,6 +496,75 @@ static int plan_row_scalar_non_control_flow_expression(
         "literals, DATABASE(), and system variables"
     );
     return MYLITE_ERROR;
+}
+
+static bool row_scalar_expression_is_insert_values_reference(
+    const struct mylite_sql_ast_node *expression
+) {
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    return expression->kind == MYLITE_SQL_AST_INSERT_VALUES_REFERENCE ||
+           generic_function_name_equals(expression, "VALUES");
+}
+
+static int plan_row_scalar_insert_values_reference(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *column = NULL;
+    char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_INSERT_VALUES_REFERENCE) {
+        column = child_at(expression, 0U);
+    } else if (generic_function_name_equals(expression, "VALUES")) {
+        const struct mylite_sql_ast_node *arguments = child_at(expression, 1U);
+
+        if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 1U) {
+            set_unsupported_error(
+                database,
+                "VALUES() in ON DUPLICATE KEY UPDATE supports only unqualified columns"
+            );
+            return MYLITE_ERROR;
+        }
+        column = child_at(arguments, 0U);
+    }
+    if (column == NULL || column->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        set_unsupported_error(
+            database,
+            "VALUES() in ON DUPLICATE KEY UPDATE supports only unqualified columns"
+        );
+        return MYLITE_ERROR;
+    }
+    rc = copy_identifier_text(column, column_name, sizeof(column_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = find_column_index(
+        table_columns,
+        table_column_count,
+        column_name,
+        &out_expression->value_source_index
+    );
+    if (rc != MYLITE_OK) {
+        set_unknown_column_error(database, column_name);
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
+    out_expression->value = (struct planned_value){.is_null = true};
+    out_expression->value_is_insert_values_reference = true;
+    return MYLITE_OK;
 }
 
 static bool row_scalar_expression_is_nested_value_argument(

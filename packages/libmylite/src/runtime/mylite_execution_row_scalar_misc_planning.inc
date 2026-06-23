@@ -1485,7 +1485,8 @@ static bool row_scalar_expression_contains_row_function(
 }
 
 static bool row_scalar_expression_is_context_expression_attempt(
-    const struct mylite_sql_ast_node *expression
+    const struct mylite_sql_ast_node *expression,
+    bool allow_insert_values_reference
 ) {
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL || expression->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
@@ -1494,7 +1495,10 @@ static bool row_scalar_expression_is_context_expression_attempt(
     if (row_scalar_expression_root_is_context_expression_attempt(expression)) {
         return true;
     }
-    if (row_scalar_expression_contains_context_expression_attempt(expression)) {
+    if (row_scalar_expression_contains_context_expression_attempt(
+            expression,
+            allow_insert_values_reference
+        )) {
         return true;
     }
     return row_scalar_control_flow_condition_operator(expression) ==
@@ -1503,10 +1507,13 @@ static bool row_scalar_expression_is_context_expression_attempt(
 }
 
 static bool row_scalar_expression_contains_context_expression_attempt(
-    const struct mylite_sql_ast_node *expression
+    const struct mylite_sql_ast_node *expression,
+    bool allow_insert_values_reference
 ) {
     return row_scalar_expression_contains_row_function(expression) ||
            row_scalar_expression_contains_statement_context_function(expression) ||
+           (allow_insert_values_reference &&
+            row_scalar_expression_contains_insert_values_reference(expression)) ||
            row_scalar_expression_contains_numeric_function(expression) ||
            row_scalar_expression_contains_base_conversion_function(expression) ||
            row_scalar_expression_contains_numeric_extra_function(expression) ||
@@ -1519,6 +1526,63 @@ static bool row_scalar_expression_contains_context_expression_attempt(
            row_scalar_expression_contains_bitwise_attempt(expression) ||
            row_scalar_expression_contains_integer_arithmetic_attempt(expression) ||
            row_scalar_expression_is_concat_operator(expression);
+}
+
+static bool row_scalar_expression_contains_insert_values_reference(
+    const struct mylite_sql_ast_node *expression
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    bool found = false;
+
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        return false;
+    }
+    while (stack.count != 0U && !found) {
+        const struct mylite_sql_ast_node *current =
+            unwrap_parenthesized_expression(stack.items[--stack.count]);
+        size_t child_count = 0U;
+
+        if (current == NULL) {
+            continue;
+        }
+        if (row_scalar_expression_is_insert_values_reference(current)) {
+            found = true;
+            break;
+        }
+        if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
+            continue;
+        }
+        child_count = mylite_sql_ast_node_child_count(current);
+        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
+                scalar_arithmetic_node_stack_deinit(&stack);
+                return false;
+            }
+        }
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return found;
+}
+
+static size_t planned_row_scalar_expression_insert_values_reference_count(
+    const struct planned_row_scalar_expression *expression
+) {
+    size_t count = 0U;
+
+    if (expression == NULL) {
+        return 0U;
+    }
+    if (expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE &&
+        expression->value_is_insert_values_reference) {
+        ++count;
+    }
+    for (size_t argument_index = 0U; argument_index < expression->argument_count;
+         ++argument_index) {
+        count += planned_row_scalar_expression_insert_values_reference_count(
+            &expression->arguments[argument_index]
+        );
+    }
+    return count;
 }
 
 static bool row_scalar_expression_contains_statement_context_function(
@@ -1570,18 +1634,28 @@ static bool row_scalar_expression_contains_statement_context_function(
 }
 
 static bool row_scalar_expression_is_dml_assignment_context_attempt(
-    const struct mylite_sql_ast_node *expression
+    const struct mylite_sql_ast_node *expression,
+    bool allow_insert_values_reference
 ) {
+    bool contains_insert_values_reference = false;
+
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL || expression->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
         return false;
     }
+    contains_insert_values_reference =
+        allow_insert_values_reference &&
+        row_scalar_expression_contains_insert_values_reference(expression);
     if (row_scalar_expression_contains_default_function(expression) ||
         row_scalar_expression_contains_statement_time_function(expression) ||
-        !row_scalar_expression_references_descriptor_column(expression)) {
+        (!row_scalar_expression_references_descriptor_column(expression) &&
+         !contains_insert_values_reference)) {
         return false;
     }
-    return row_scalar_expression_is_context_expression_attempt(expression);
+    return row_scalar_expression_is_context_expression_attempt(
+        expression,
+        allow_insert_values_reference
+    );
 }
 
 static bool row_scalar_expression_is_predicate_value_context_attempt(

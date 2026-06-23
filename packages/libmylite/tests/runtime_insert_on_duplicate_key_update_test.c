@@ -251,7 +251,9 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
     static const char *const arithmetic_multi_rows[] = {"1", "12", "2", "20"};
     static const char *const arithmetic_mixed_rows[] = {"1", "12", "88", "5"};
     static const char *const arithmetic_row_scalar_rows[] = {"1", "1", "5"};
+    static const char *const arithmetic_values_row_scalar_rows[] = {"1", "20", "21"};
     static const char *const string_row_scalar_rows[] = {"1", "Alpha Beta", "2", "lp"};
+    static const char *const string_values_row_scalar_rows[] = {"1", "base", "new:base"};
     static const char *const temporal_row_scalar_rows[] = {"1", "12", "12:34:56"};
     static const char *const arithmetic_unsigned_row_scalar_rows[] = {"1", "1"};
     char path[test_path_capacity];
@@ -1433,6 +1435,36 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
     );
     failures += expect_statement_ok(
         database,
+        "CREATE TABLE arithmetic_values_row_scalar(id INT PRIMARY KEY, n INT, out_n INT)"
+    );
+    failures +=
+        expect_statement_ok(database, "INSERT INTO arithmetic_values_row_scalar VALUES (1, 10, 0)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO arithmetic_values_row_scalar VALUES (1, 19, 0) "
+        "ON DUPLICATE KEY UPDATE n = GREATEST(VALUES(n) + 1, 0), "
+        "out_n = GREATEST(VALUES(n) + 2, 0)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 2U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO arithmetic_values_row_scalar VALUES (1, 19, 0) "
+        "ON DUPLICATE KEY UPDATE n = GREATEST(VALUES(n) + 1, 0), "
+        "out_n = GREATEST(VALUES(n) + 2, 0)",
+        (struct expected_dml){.affected_rows = 0, .warning_count = 2U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, n, out_n FROM arithmetic_values_row_scalar",
+            .values = arithmetic_values_row_scalar_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "row-scalar arithmetic VALUES duplicate assignment",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
         "CREATE TABLE string_row_scalar(id INT PRIMARY KEY, s VARCHAR(32), n INT, out_s "
         "VARCHAR(32))"
     );
@@ -1460,6 +1492,37 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
             .column_count = 4U,
             .row_count = 1U,
             .context = "row-scalar string duplicate assignment",
+        }
+    );
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE string_values_row_scalar(id INT PRIMARY KEY, s VARCHAR(32), out_s "
+        "VARCHAR(32))"
+    );
+    failures += expect_statement_ok(
+        database,
+        "INSERT INTO string_values_row_scalar VALUES (1, 'base', '')"
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO string_values_row_scalar VALUES (1, 'new', '') "
+        "ON DUPLICATE KEY UPDATE out_s = CONCAT(VALUES(s), ':', s)",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO string_values_row_scalar VALUES (1, 'new', '') "
+        "ON DUPLICATE KEY UPDATE out_s = CONCAT(VALUES(s), ':', s)",
+        (struct expected_dml){.affected_rows = 0, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, s, out_s FROM string_values_row_scalar",
+            .values = string_values_row_scalar_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "row-scalar string VALUES duplicate assignment",
         }
     );
     failures += expect_statement_ok(
@@ -1716,6 +1779,15 @@ static int test_duplicate_update_diagnostics(void) {
     failures += execute_error(
         database,
         "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = VALUES(t.v)",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "VALUES() in ON DUPLICATE KEY UPDATE supports only unqualified columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "INSERT INTO t VALUES (1, 20) ON DUPLICATE KEY UPDATE v = CONCAT(VALUES(t.v), '')",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",

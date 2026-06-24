@@ -314,11 +314,12 @@ The MySQL expectation script must verify:
 ## Compatibility Documentation
 
 `COMPATIBILITY.md` and `docs/compatibility/sql-show-statements.md` must mark
-`SHOW OPEN TABLES` as limited support for embedded empty open-table
-introspection with MySQL 8.4.9 column labels and `LIKE` filters. They must
-explicitly say that table-cache rows, lock counts, name-lock state, temporary
-tables, `HANDLER`, `LOCK TABLES`, `WHERE`, privileges, and performance-schema
-metadata remain unsupported.
+`SHOW OPEN TABLES` as MySQL-runtime-verified embedded empty open-table
+introspection with MySQL 8.4.9 column labels, `LIKE` filters, and documented
+empty-result `WHERE` predicates. They must explicitly say that table-cache rows,
+lock counts, name-lock state, temporary tables, `HANDLER`, `LOCK TABLES`,
+non-empty row predicate evaluation, privileges, and performance-schema metadata
+remain unsupported.
 
 ## Review Checklist
 

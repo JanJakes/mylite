@@ -331,10 +331,12 @@ The MySQL expectation script must verify:
 ## Compatibility Documentation
 
 `COMPATIBILITY.md` and `docs/compatibility/sql-show-statements.md` must mark
-`SHOW EVENTS` as limited support for empty event introspection with MySQL 8.4.9
-column labels and `LIKE` filters. They must explicitly say that event
-descriptors, event rows, event DDL, `SHOW CREATE EVENT`, `WHERE`, privileges,
-the Event Scheduler, and `INFORMATION_SCHEMA.EVENTS` remain unsupported.
+`SHOW EVENTS` as MySQL-runtime-verified empty event introspection with MySQL
+8.4.9 column labels, `LIKE` filters, documented empty-result `WHERE`
+predicates, and queryable empty `INFORMATION_SCHEMA.EVENTS` metadata. They must
+explicitly say that event descriptors, event rows, event DDL, `SHOW CREATE
+EVENT`, non-empty row predicate evaluation, privileges, and the Event Scheduler
+remain unsupported.
 
 ## Review Checklist
 

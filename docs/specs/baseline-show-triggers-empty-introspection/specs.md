@@ -323,11 +323,12 @@ The MySQL expectation script must verify:
 ## Compatibility Documentation
 
 `COMPATIBILITY.md` and `docs/compatibility/sql-show-statements.md` must mark
-`SHOW TRIGGERS` as limited support for schema-resolved empty trigger
-introspection with MySQL 8.4.9 column labels, optional `FULL`, and `LIKE`
-filters. They must explicitly say that trigger descriptors, trigger rows,
-trigger DDL, `SHOW CREATE TRIGGER`, `WHERE`, privileges, and
-`INFORMATION_SCHEMA.TRIGGERS` remain unsupported.
+`SHOW TRIGGERS` as MySQL-runtime-verified schema-resolved trigger introspection
+with MySQL 8.4.9 column labels, optional `FULL`, `LIKE` filters over table
+names, empty user rows, and the separately specified metadata-only
+`sys.sys_config` trigger rows. They must explicitly say that user trigger
+descriptors, user trigger rows, trigger execution, trigger DDL, `SHOW CREATE
+TRIGGER`, evaluated `WHERE` predicates, and privileges remain unsupported.
 
 ## Review Checklist
 

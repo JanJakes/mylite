@@ -314,9 +314,10 @@ foundation, schema/table lifecycle, row values, update, delete, and existing
 ## Compatibility Documentation
 
 `COMPATIBILITY.md` and `docs/compatibility/sql-show-statements.md` must mark
-`SHOW PROCEDURE STATUS` and `SHOW FUNCTION STATUS` as limited empty routine
-introspection only. They must not claim stored routine support, routine rows,
-`WHERE`, privileges, routine DDL, `SHOW CREATE`, code listings,
-definers, security metadata, or full filter support. A later
-`INFORMATION_SCHEMA.ROUTINES` metadata-only surface may be documented
-separately without changing this feature's empty `SHOW` behavior.
+`SHOW PROCEDURE STATUS` and `SHOW FUNCTION STATUS` as MySQL-runtime-verified
+empty routine introspection with documented `LIKE` and empty-result `WHERE`
+filters. They must not claim stored routine support, routine rows, privileges,
+routine DDL, `SHOW CREATE`, code listings, definers, security metadata, or
+non-empty row predicate evaluation. The related `INFORMATION_SCHEMA.ROUTINES`
+metadata-only surface is documented separately without changing this feature's
+empty `SHOW` behavior.

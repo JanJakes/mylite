@@ -298,8 +298,8 @@ The following diagnostics are required:
 
 - public API misuse remains under existing `mylite_execute()` validation;
 - parser syntax errors are reported for unsupported grammar, including plural
-  forms, `WHERE`, non-string `LIKE` patterns, national-string patterns, charset
-  introducer patterns, expressions, and trailing tokens;
+  forms, non-string `LIKE` patterns, national-string patterns, charset
+  introducer patterns, unsupported expressions, and trailing tokens;
 - invalid `SHOW LIKE` strings, including NUL-producing escapes, use the
   existing deterministic `SHOW LIKE` diagnostic;
 - allocation failures preserve the existing `HY001` out-of-memory diagnostic;

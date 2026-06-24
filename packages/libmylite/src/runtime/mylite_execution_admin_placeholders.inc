@@ -23,7 +23,7 @@ static int execute_admin_noop_statement(struct mylite_db *database, mylite_resul
 }
 
 static int execute_unsupported_stored_program_statement(struct mylite_db *database) {
-    set_unsupported_error(database, "stored program statement is not supported");
+    set_unsupported_error(database, "stored program or loadable function statement is not supported");
     return MYLITE_ERROR;
 }
 

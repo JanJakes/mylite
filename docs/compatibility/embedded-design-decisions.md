@@ -25,7 +25,7 @@ Some MySQL server features do not naturally map to an in-process single-file dat
 | Performance Schema | ❌ | Embedded metrics policy |
 | sys schema | ❌ | Useful views vs placeholders |
 | File import/export | ❌ | Secure embedded file I/O policy |
-| User-defined/loadable functions | ❌ | Extension registration policy |
+| User-defined/loadable functions | ⚪ | Loadable UDF DDL is parsed and rejected with an explicit unsupported diagnostic; no native shared-library loading, extension registration, or `mysql.func` mutation |
 | X Protocol and Document Store | ❌ | X Protocol scope decision |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

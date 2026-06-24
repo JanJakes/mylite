@@ -167,6 +167,18 @@ static int test_unsupported_stored_program_statement_forms(void) {
             .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,
         },
         {
+            .sql = "CREATE FUNCTION udf_i RETURNS INTEGER SONAME 'missing_udf.so'",
+            .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,
+        },
+        {
+            .sql = "CREATE FUNCTION IF NOT EXISTS udf_s RETURNS STRING SONAME 'missing_udf.so'",
+            .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,
+        },
+        {
+            .sql = "CREATE AGGREGATE FUNCTION udf_r RETURNS REAL SONAME 'missing_udf.so'",
+            .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,
+        },
+        {
             .sql = "CREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW SET NEW.id = 1",
             .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,
         },
@@ -197,6 +209,7 @@ static int test_unsupported_stored_program_statement_forms(void) {
             .sql = "DROP FUNCTION IF EXISTS f",
             .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,
         },
+        {.sql = "DROP FUNCTION udf_i", .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT},
         {
             .sql = "DROP TRIGGER IF EXISTS tr",
             .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,

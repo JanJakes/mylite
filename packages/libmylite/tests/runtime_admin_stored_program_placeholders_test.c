@@ -172,6 +172,9 @@ static int test_admin_noop_preserves_user_transaction(void) {
 static int test_stored_program_placeholder_errors(void) {
     static const char *const stored_program_statements[] = {
         "CREATE FUNCTION f() RETURNS INT RETURN 1",
+        "CREATE FUNCTION udf_i RETURNS INTEGER SONAME 'missing_udf.so'",
+        "CREATE FUNCTION IF NOT EXISTS udf_s RETURNS STRING SONAME 'missing_udf.so'",
+        "CREATE AGGREGATE FUNCTION udf_r RETURNS REAL SONAME 'missing_udf.so'",
         "CREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW SET NEW.id = 1",
         "CREATE EVENT e ON SCHEDULE EVERY 1 DAY DO SELECT 1",
         "SET sql_mode = default; CREATE PROCEDURE p() BEGIN DECLARE y INT; END",
@@ -179,6 +182,7 @@ static int test_stored_program_placeholder_errors(void) {
         "SIGNAL SQLSTATE '01000'",
         "RESIGNAL",
         "DROP FUNCTION IF EXISTS f",
+        "DROP FUNCTION udf_i",
         "CALL missing_proc('x')",
         "CALL mtr.p(OUT @arg)",
     };

@@ -7,10 +7,10 @@ Stored procedure and function DDL, loadable-function declarations, and procedure
 | `ALTER FUNCTION` | ⚪ | Broad syntax is parsed and rejected at runtime with a stored-program unsupported diagnostic; no stored-function descriptors or metadata changes |
 | `ALTER PROCEDURE` | ⚪ | Broad syntax is parsed and rejected at runtime with a stored-program unsupported diagnostic; no stored-procedure descriptors or metadata changes |
 | `CREATE FUNCTION` (stored) | ⚪ | Broad syntax is parsed and rejected at runtime with a stored-program unsupported diagnostic; no stored-function descriptors, body execution, or metadata |
-| `CREATE FUNCTION` (loadable) | ❌ | Loadable-function diagnostics |
+| `CREATE FUNCTION` (loadable) | ⚪ | Parsed and rejected at runtime with an unsupported diagnostic; no native shared-library loading, UDF registry, `mysql.func` mutation, or privilege handling |
 | `CREATE PROCEDURE` | 🟡 | Limited session-local no-argument procedure descriptors with one `SELECT` body inside `BEGIN ... END`; broader procedure syntax is parsed and rejected as unsupported; no persistence, parameters, characteristics, variables, handlers, privileges, or routine catalog rows |
 | `DROP FUNCTION` (stored) | ⚪ | Broad syntax is parsed and rejected at runtime with a stored-program unsupported diagnostic; no stored-function deletion or routine metadata cleanup |
-| `DROP FUNCTION` (loadable) | ❌ | Loadable-function deregistration syntax |
+| `DROP FUNCTION` (loadable) | ⚪ | Parsed and rejected at runtime with an unsupported diagnostic; no loadable-function registry lookup, shared-library lifecycle, `mysql.func` mutation, or missing-UDF note behavior |
 | `DROP PROCEDURE` | 🟡 | Limited session-local descriptor removal for the current no-argument single-`SELECT` procedure subset, including `IF EXISTS` note warning behavior; no persistent metadata cleanup |
 | `CALL` | 🟡 | Limited invocation of session-local no-argument single-`SELECT` procedures, returning the body result set and `ROW_COUNT() = 0`; argument-bearing and unsupported-parameter forms parse and fail with unsupported diagnostics; no parameters, multiple result sets, OUT values, or stored-program control flow |
 | `SHOW CREATE PROCEDURE` | 🟡 | Limited MySQL-shaped six-column metadata for session-local no-argument single-`SELECT` procedures; no persistent routine catalog, privilege filtering, or full body formatting support |

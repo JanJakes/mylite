@@ -119,9 +119,10 @@ placeholder model:
 | `End_log_pos` | `127` |
 | `Info` | `Server ver: 8.4.9, Binlog ver: 4` |
 
-`SHOW BINLOG EVENTS` accepts no `IN`, `FROM`, or `LIMIT` modifiers in this
-slice. Unsupported modifiers stay syntax errors until their result semantics
-are specified. `SHOW RELAYLOG EVENTS` remains unsupported.
+`SHOW BINLOG EVENTS` was introduced here as a base placeholder. The
+`baseline-show-binlog-events-options` slice extends it with `IN`, `FROM`, and
+`LIMIT` filtering over the synthetic row. `SHOW RELAYLOG EVENTS` is tracked by
+the separate relay-log placeholder slice.
 
 ### Removed Legacy Aliases
 
@@ -156,7 +157,9 @@ show_schema_object_filter_opt ::= .
 show_schema_object_filter_opt ::= LIKE STRING.
 show_schema_object_filter_opt ::= WHERE predicate.
 
-show_binlog_events_statement ::= SHOW BINLOG EVENTS.
+show_binlog_events_statement ::=
+    SHOW BINLOG EVENTS show_binlog_events_in_opt
+    show_binlog_events_from_opt show_binlog_events_limit_opt.
 ```
 
 ## Runtime Behavior
@@ -191,5 +194,5 @@ Focused tests cover:
 
 This slice improves limited `SHOW` metadata compatibility. It does not add live
 status counters, event descriptors, event DDL, table-cache tracking, binary log
-files, binlog event streaming, privileges, `SHOW BINLOG EVENTS` modifiers, or
-legacy removed `SHOW MASTER` / `SHOW SLAVE` aliases.
+files, binlog event streaming, privileges, full `SHOW BINLOG EVENTS` event
+streams, or legacy removed `SHOW MASTER` / `SHOW SLAVE` aliases.

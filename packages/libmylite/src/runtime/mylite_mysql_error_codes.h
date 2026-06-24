@@ -52,6 +52,7 @@ enum {
     mysql_error_result_consisted_more_than_one_row = 1172,
     mysql_error_safe_update = 1175,
     mysql_error_incorrect_arguments = 1210,
+    mysql_error_binlog_command_failed = 1220,
     mysql_error_wrong_usage = 1221,
     mysql_error_load_data_row_missing = 1261,
     mysql_error_load_data_row_truncated = 1262,

@@ -1156,16 +1156,118 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_binary_logs_statement(
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_binlog_events_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,
-    struct mylite_sql_token events_token
+    struct mylite_sql_token events_token,
+    struct mylite_sql_ast_node *in_option,
+    struct mylite_sql_ast_node *from_option,
+    struct mylite_sql_ast_node *limit_option
 ) {
-    return mylite_sql_parser_make_node(
+    struct mylite_sql_source_span span = mylite_sql_parser_span_join(
+        mylite_sql_parser_span_from_token(&show_token),
+        mylite_sql_parser_span_from_token(&events_token)
+    );
+    struct mylite_sql_ast_node *statement = NULL;
+
+    if (in_option != NULL) {
+        span = mylite_sql_parser_span_join(span, in_option->span);
+    }
+    if (from_option != NULL) {
+        span = mylite_sql_parser_span_join(span, from_option->span);
+    }
+    if (limit_option != NULL) {
+        span = mylite_sql_parser_span_join(span, limit_option->span);
+    }
+
+    statement =
+        mylite_sql_parser_make_node(state, MYLITE_SQL_AST_SHOW_BINLOG_EVENTS_STATEMENT, span);
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    if (in_option != NULL) {
+        mylite_sql_ast_node_append_child(statement, in_option);
+    }
+    if (from_option != NULL) {
+        mylite_sql_ast_node_append_child(statement, from_option);
+    }
+    if (limit_option != NULL) {
+        mylite_sql_ast_node_append_child(statement, limit_option);
+    }
+    return statement;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_log_events_in_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token in_token,
+    struct mylite_sql_token log_name
+) {
+    struct mylite_sql_ast_node *option = mylite_sql_parser_make_node(
         state,
-        MYLITE_SQL_AST_SHOW_BINLOG_EVENTS_STATEMENT,
+        MYLITE_SQL_AST_SHOW_LOG_EVENTS_IN_OPTION,
         mylite_sql_parser_span_join(
-            mylite_sql_parser_span_from_token(&show_token),
-            mylite_sql_parser_span_from_token(&events_token)
+            mylite_sql_parser_span_from_token(&in_token),
+            mylite_sql_parser_span_from_token(&log_name)
         )
     );
+    struct mylite_sql_ast_node *literal = NULL;
+
+    if (option == NULL) {
+        return NULL;
+    }
+    literal = mylite_sql_parser_make_literal(state, log_name, MYLITE_SQL_AST_LITERAL_STRING);
+    mylite_sql_ast_node_append_child(option, literal);
+    return option;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_log_events_from_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token from_token,
+    struct mylite_sql_token position
+) {
+    struct mylite_sql_ast_node *option = mylite_sql_parser_make_node(
+        state,
+        MYLITE_SQL_AST_SHOW_LOG_EVENTS_FROM_OPTION,
+        mylite_sql_parser_span_join(
+            mylite_sql_parser_span_from_token(&from_token),
+            mylite_sql_parser_span_from_token(&position)
+        )
+    );
+    struct mylite_sql_ast_node *literal = NULL;
+
+    if (option == NULL) {
+        return NULL;
+    }
+    literal = mylite_sql_parser_make_literal(state, position, MYLITE_SQL_AST_LITERAL_INTEGER);
+    mylite_sql_ast_node_append_child(option, literal);
+    return option;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_log_events_limit_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_show_log_events_limit_tokens tokens
+) {
+    struct mylite_sql_source_span span = mylite_sql_parser_span_join(
+        mylite_sql_parser_span_from_token(&tokens.limit_token),
+        mylite_sql_parser_span_from_token(&tokens.row_count)
+    );
+    struct mylite_sql_ast_node *option = NULL;
+    struct mylite_sql_ast_node *row_count_literal = NULL;
+
+    if (tokens.offset.text != NULL) {
+        span = mylite_sql_parser_span_join(span, mylite_sql_parser_span_from_token(&tokens.offset));
+    }
+    option = mylite_sql_parser_make_node(state, MYLITE_SQL_AST_SHOW_LOG_EVENTS_LIMIT_OPTION, span);
+    if (option == NULL) {
+        return NULL;
+    }
+    if (tokens.offset.text != NULL) {
+        struct mylite_sql_ast_node *offset_literal =
+            mylite_sql_parser_make_literal(state, tokens.offset, MYLITE_SQL_AST_LITERAL_INTEGER);
+        mylite_sql_ast_node_append_child(option, offset_literal);
+    }
+    row_count_literal =
+        mylite_sql_parser_make_literal(state, tokens.row_count, MYLITE_SQL_AST_LITERAL_INTEGER);
+    mylite_sql_ast_node_append_child(option, row_count_literal);
+    return option;
 }
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_relaylog_events_statement(

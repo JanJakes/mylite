@@ -107,6 +107,9 @@
 %type show_relaylog_events_from_opt { struct mylite_sql_token }
 %type show_relaylog_events_limit_opt { struct mylite_sql_token }
 %type show_relaylog_events_channel_opt { struct mylite_sql_ast_node * }
+%type show_binlog_events_in_opt { struct mylite_sql_ast_node * }
+%type show_binlog_events_from_opt { struct mylite_sql_ast_node * }
+%type show_binlog_events_limit_opt { struct mylite_sql_ast_node * }
 %type merge_insert_method { struct mylite_sql_ast_node * }
 %type transaction_completion { struct mylite_sql_transaction_completion }
 %type transaction_chain_completion { struct mylite_sql_transaction_completion }
@@ -2306,8 +2309,57 @@ show_binary_logs_statement(A) ::= SHOW(S) BINARY LOGS(L). {
     A = mylite_sql_parser_make_show_binary_logs_statement(state, S, L);
 }
 
-show_binlog_events_statement(A) ::= SHOW(S) BINLOG EVENTS(E). {
-    A = mylite_sql_parser_make_show_binlog_events_statement(state, S, E);
+show_binlog_events_statement(A) ::= SHOW(S) BINLOG EVENTS(E) show_binlog_events_in_opt(I)
+    show_binlog_events_from_opt(F) show_binlog_events_limit_opt(L). {
+    A = mylite_sql_parser_make_show_binlog_events_statement(state, S, E, I, F, L);
+}
+
+show_binlog_events_in_opt(A) ::= . {
+    A = NULL;
+}
+show_binlog_events_in_opt(A) ::= IN(I) STRING(N). {
+    A = mylite_sql_parser_make_show_log_events_in_option(state, I, N);
+}
+
+show_binlog_events_from_opt(A) ::= . {
+    A = NULL;
+}
+show_binlog_events_from_opt(A) ::= FROM(F) INTEGER(P). {
+    A = mylite_sql_parser_make_show_log_events_from_option(state, F, P);
+}
+
+show_binlog_events_limit_opt(A) ::= . {
+    A = NULL;
+}
+show_binlog_events_limit_opt(A) ::= LIMIT(L) INTEGER(C). {
+    A = mylite_sql_parser_make_show_log_events_limit_option(
+        state,
+        (struct mylite_sql_show_log_events_limit_tokens){
+            .limit_token = L,
+            .offset = (struct mylite_sql_token){0},
+            .row_count = C,
+        }
+    );
+}
+show_binlog_events_limit_opt(A) ::= LIMIT(L) INTEGER(O) COMMA INTEGER(C). {
+    A = mylite_sql_parser_make_show_log_events_limit_option(
+        state,
+        (struct mylite_sql_show_log_events_limit_tokens){
+            .limit_token = L,
+            .offset = O,
+            .row_count = C,
+        }
+    );
+}
+show_binlog_events_limit_opt(A) ::= LIMIT(L) INTEGER(C) OFFSET INTEGER(O). {
+    A = mylite_sql_parser_make_show_log_events_limit_option(
+        state,
+        (struct mylite_sql_show_log_events_limit_tokens){
+            .limit_token = L,
+            .offset = O,
+            .row_count = C,
+        }
+    );
 }
 
 show_relaylog_events_statement(A) ::= SHOW(S) RELAYLOG EVENTS(E)

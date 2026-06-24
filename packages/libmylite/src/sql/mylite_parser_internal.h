@@ -1147,7 +1147,31 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_binary_logs_statement(
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_binlog_events_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,
-    struct mylite_sql_token events_token
+    struct mylite_sql_token events_token,
+    struct mylite_sql_ast_node *in_option,
+    struct mylite_sql_ast_node *from_option,
+    struct mylite_sql_ast_node *limit_option
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_log_events_in_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token in_token,
+    struct mylite_sql_token log_name
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_log_events_from_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token from_token,
+    struct mylite_sql_token position
+);
+
+struct mylite_sql_show_log_events_limit_tokens {
+    struct mylite_sql_token limit_token;
+    struct mylite_sql_token offset;
+    struct mylite_sql_token row_count;
+};
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_log_events_limit_option(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_show_log_events_limit_tokens tokens
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_relaylog_events_statement(
     struct mylite_sql_parser_state *state,

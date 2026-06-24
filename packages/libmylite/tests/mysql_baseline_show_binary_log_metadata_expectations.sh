@@ -99,6 +99,20 @@ expect_value \
     "$(printf '%b' 'binlog.000001\t4\tFormat_desc\t1\t127\tServer ver: 8.4.9, Binlog ver: 4')" \
     "$first_event"
 
+qualified_first_event=$(
+    run_mysql "SHOW BINLOG EVENTS IN 'binlog.000001' FROM 4 LIMIT 0, 1;"
+)
+expect_value \
+    "SHOW BINLOG EVENTS qualified first event" \
+    "$(printf '%b' 'binlog.000001\t4\tFormat_desc\t1\t127\tServer ver: 8.4.9, Binlog ver: 4')" \
+    "$qualified_first_event"
+
+offset_empty_count=$(
+    run_mysql_with_headers 'SHOW BINLOG EVENTS LIMIT 0 OFFSET 1;' \
+        | awk 'NR > 1 { count++ } END { print count + 0 }'
+)
+expect_value "SHOW BINLOG EVENTS skipped by offset" "0" "$offset_empty_count"
+
 status_diagnostics=$(run_mysql 'SHOW BINARY LOG STATUS; SELECT ROW_COUNT(), @@warning_count, @@error_count;' | tail -n 1)
 expect_value \
     "SHOW BINARY LOG STATUS diagnostics" \
@@ -116,6 +130,13 @@ expect_value \
     "SHOW BINLOG EVENTS diagnostics" \
     "$(printf '%b' '-1\t0\t0')" \
     "$events_diagnostics"
+
+expect_error \
+    "SHOW BINLOG EVENTS missing log" \
+    1220 \
+    HY000 \
+    "Could not find target log" \
+    "SHOW BINLOG EVENTS IN 'missing' LIMIT 1;"
 
 expect_error \
     "SHOW BINARY LOG STATUS LIKE syntax" \
@@ -158,6 +179,41 @@ expect_error \
     42000 \
     "near 'LIMIT 1'" \
     "SHOW BINARY LOGS LIMIT 1;"
+
+expect_error \
+    "SHOW BINLOG EVENTS WHERE syntax" \
+    1064 \
+    42000 \
+    "near 'WHERE Log_name IS NOT NULL'" \
+    "SHOW BINLOG EVENTS WHERE Log_name IS NOT NULL;"
+
+expect_error \
+    "SHOW BINLOG EVENTS channel syntax" \
+    1064 \
+    42000 \
+    "near 'FOR CHANNEL '''" \
+    "SHOW BINLOG EVENTS FOR CHANNEL '';"
+
+expect_error \
+    "SHOW BINLOG EVENTS string FROM syntax" \
+    1064 \
+    42000 \
+    "near ''4''" \
+    "SHOW BINLOG EVENTS FROM '4';"
+
+expect_error \
+    "SHOW BINLOG EVENTS string LIMIT syntax" \
+    1064 \
+    42000 \
+    "near ''1''" \
+    "SHOW BINLOG EVENTS LIMIT '1';"
+
+expect_error \
+    "SHOW BINLOG EVENTS option order syntax" \
+    1064 \
+    42000 \
+    "near 'IN 'binlog.000001' LIMIT 1'" \
+    "SHOW BINLOG EVENTS FROM 4 IN 'binlog.000001' LIMIT 1;"
 
 expect_error \
     "SHOW FULL BINARY LOG STATUS syntax" \

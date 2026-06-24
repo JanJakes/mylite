@@ -2374,6 +2374,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "checksum_table_quick_option";
     case MYLITE_SQL_AST_CHECKSUM_TABLE_EXTENDED_OPTION:
         return "checksum_table_extended_option";
+    case MYLITE_SQL_AST_SHOW_LOG_EVENTS_IN_OPTION:
+        return "show_log_events_in_option";
+    case MYLITE_SQL_AST_SHOW_LOG_EVENTS_FROM_OPTION:
+        return "show_log_events_from_option";
+    case MYLITE_SQL_AST_SHOW_LOG_EVENTS_LIMIT_OPTION:
+        return "show_log_events_limit_option";
     case MYLITE_SQL_AST_EXPLAIN_STATEMENT:
         return "explain_statement";
     case MYLITE_SQL_AST_EXPLAIN_FORMAT:

@@ -179,6 +179,9 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_AGGREGATE_DISTINCT_MODIFIER:
     case MYLITE_SQL_AST_CHECKSUM_TABLE_QUICK_OPTION:
     case MYLITE_SQL_AST_CHECKSUM_TABLE_EXTENDED_OPTION:
+    case MYLITE_SQL_AST_SHOW_LOG_EVENTS_IN_OPTION:
+    case MYLITE_SQL_AST_SHOW_LOG_EVENTS_FROM_OPTION:
+    case MYLITE_SQL_AST_SHOW_LOG_EVENTS_LIMIT_OPTION:
         break;
     default:
         return execute_non_prepared_statement(database, context, statement, out_result);
@@ -278,6 +281,9 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_AGGREGATE_DISTINCT_MODIFIER:
     case MYLITE_SQL_AST_CHECKSUM_TABLE_QUICK_OPTION:
     case MYLITE_SQL_AST_CHECKSUM_TABLE_EXTENDED_OPTION:
+    case MYLITE_SQL_AST_SHOW_LOG_EVENTS_IN_OPTION:
+    case MYLITE_SQL_AST_SHOW_LOG_EVENTS_FROM_OPTION:
+    case MYLITE_SQL_AST_SHOW_LOG_EVENTS_LIMIT_OPTION:
         break;
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
         return execute_drop_index_statement(database, statement, out_result);
@@ -445,7 +451,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_SHOW_BINARY_LOGS_STATEMENT:
         return execute_show_binary_logs_statement(database, out_result);
     case MYLITE_SQL_AST_SHOW_BINLOG_EVENTS_STATEMENT:
-        return execute_show_binlog_events_statement(database, out_result);
+        return execute_show_binlog_events_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_RELAYLOG_EVENTS_STATEMENT:
         return execute_show_relaylog_events_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_REPLICA_STATUS_STATEMENT:

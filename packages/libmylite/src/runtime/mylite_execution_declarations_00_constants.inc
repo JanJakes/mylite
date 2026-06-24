@@ -163,6 +163,7 @@ enum {
     show_binary_log_status_result_column_count = 5,
     show_binary_logs_result_column_count = 3,
     show_binlog_events_result_column_count = 6,
+    show_binlog_events_placeholder_position_value = 4,
     show_relaylog_events_result_column_count = 6,
     show_replica_status_result_column_count = 60,
     show_replicas_result_column_count = 5,

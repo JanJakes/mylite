@@ -11,6 +11,10 @@ enum checksum_table_option {
     CHECKSUM_TABLE_OPTION_EXTENDED = 2,
 };
 
+struct show_binlog_events_options {
+    bool include_placeholder_row;
+};
+
 struct planned_lock_tables {
     struct mylite_session_table_lock *locks;
     size_t lock_count;

@@ -1710,8 +1710,11 @@ static int test_show_binary_log_metadata_statements(void) {
         "SHOW BINARY LOGS LIKE '%';",
         "SHOW BINARY LOGS WHERE Log_name IS NOT NULL;",
         "SHOW BINARY LOGS LIMIT 1;",
-        "SHOW BINLOG EVENTS LIMIT 1;",
-        "SHOW BINLOG EVENTS IN 'binlog.000001';",
+        "SHOW BINLOG EVENTS WHERE Log_name IS NOT NULL;",
+        "SHOW BINLOG EVENTS FOR CHANNEL '';",
+        "SHOW BINLOG EVENTS FROM '4';",
+        "SHOW BINLOG EVENTS LIMIT '1';",
+        "SHOW BINLOG EVENTS FROM 4 IN 'binlog.000001';",
         "SHOW FULL BINARY LOG STATUS;",
         "SHOW FULL BINARY LOGS;",
         "SHOW MASTER STATUS;",
@@ -1804,6 +1807,100 @@ static int test_show_binary_log_metadata_statements(void) {
         statement,
         "show binlog events",
         "lowercase show binlog events"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("SHOW BINLOG EVENTS LIMIT 1;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_BINLOG_EVENTS_STATEMENT,
+        "show binlog events limit"
+    );
+    failures += parser_test_expect_child_count(statement, 1U, "binlog events limit child count");
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 0U),
+        MYLITE_SQL_AST_SHOW_LOG_EVENTS_LIMIT_OPTION,
+        "binlog events limit option"
+    );
+    failures += parser_test_expect_child_count(
+        parser_test_child_at(statement, 0U),
+        1U,
+        "binlog events limit value count"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(parser_test_child_at(statement, 0U), 0U),
+        "1",
+        "binlog events limit value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SHOW BINLOG EVENTS IN 'binlog.000001' FROM 4 LIMIT 0, 1;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_BINLOG_EVENTS_STATEMENT,
+        "show binlog events options"
+    );
+    failures += parser_test_expect_child_count(statement, 3U, "binlog events option count");
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 0U),
+        MYLITE_SQL_AST_SHOW_LOG_EVENTS_IN_OPTION,
+        "binlog events in option"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(parser_test_child_at(statement, 0U), 0U),
+        "'binlog.000001'",
+        "binlog events in value"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 1U),
+        MYLITE_SQL_AST_SHOW_LOG_EVENTS_FROM_OPTION,
+        "binlog events from option"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(parser_test_child_at(statement, 1U), 0U),
+        "4",
+        "binlog events from value"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 2U),
+        MYLITE_SQL_AST_SHOW_LOG_EVENTS_LIMIT_OPTION,
+        "binlog events offset limit option"
+    );
+    failures += parser_test_expect_child_count(
+        parser_test_child_at(statement, 2U),
+        2U,
+        "binlog events offset limit child count"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(parser_test_child_at(statement, 2U), 0U),
+        "0",
+        "binlog events offset value"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(parser_test_child_at(statement, 2U), 1U),
+        "1",
+        "binlog events row-count value"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parser_test_parse_sql("SHOW BINLOG EVENTS LIMIT 1 OFFSET 0;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_child_count(
+        parser_test_child_at(statement, 0U),
+        2U,
+        "binlog events offset syntax child count"
+    );
+    failures += parser_test_expect_span_text(
+        statement,
+        "SHOW BINLOG EVENTS LIMIT 1 OFFSET 0",
+        "binlog events offset syntax span"
     );
     mylite_sql_parse_result_deinit(&result);
 

@@ -1954,8 +1954,35 @@ static int execute_show_binary_logs_statement(
 );
 static int execute_show_binlog_events_statement(
     struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int resolve_show_binlog_events_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    struct show_binlog_events_options *out_options
+);
+static int apply_show_binlog_events_log_name_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *option
+);
+static int apply_show_binlog_events_from_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *option,
+    struct show_binlog_events_options *inout_options
+);
+static int apply_show_binlog_events_limit_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *option,
+    struct show_binlog_events_options *inout_options
+);
+static int read_show_log_events_unsigned_option(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *option,
+    const char *context,
+    uint64_t *out_value
+);
+static void set_binlog_events_target_log_error(struct mylite_db *database);
 static int execute_show_relaylog_events_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,

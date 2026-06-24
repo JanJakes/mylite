@@ -27,6 +27,7 @@ struct expected_show_result {
     const char *const *columns;
     const char *const *values;
     size_t column_count;
+    size_t row_count;
 };
 
 struct expected_sql_error {
@@ -87,6 +88,7 @@ static const struct expected_show_result show_binary_log_status = {
     .columns = show_binary_log_status_columns,
     .values = show_binary_log_status_values,
     .column_count = show_binary_log_status_column_count,
+    .row_count = 1U,
 };
 
 static const struct expected_show_result show_binary_logs = {
@@ -94,6 +96,7 @@ static const struct expected_show_result show_binary_logs = {
     .columns = show_binary_logs_columns,
     .values = show_binary_logs_values,
     .column_count = show_binary_logs_column_count,
+    .row_count = 1U,
 };
 
 static const struct expected_show_result show_binlog_events = {
@@ -101,6 +104,47 @@ static const struct expected_show_result show_binlog_events = {
     .columns = show_binlog_events_columns,
     .values = show_binlog_events_values,
     .column_count = show_binlog_events_column_count,
+    .row_count = 1U,
+};
+
+static const struct expected_show_result show_binlog_events_limit_one = {
+    .sql = "SHOW BINLOG EVENTS LIMIT 1",
+    .columns = show_binlog_events_columns,
+    .values = show_binlog_events_values,
+    .column_count = show_binlog_events_column_count,
+    .row_count = 1U,
+};
+
+static const struct expected_show_result show_binlog_events_qualified_first = {
+    .sql = "SHOW BINLOG EVENTS IN 'binlog.000001' FROM 4 LIMIT 0, 1",
+    .columns = show_binlog_events_columns,
+    .values = show_binlog_events_values,
+    .column_count = show_binlog_events_column_count,
+    .row_count = 1U,
+};
+
+static const struct expected_show_result show_binlog_events_offset_skip = {
+    .sql = "SHOW BINLOG EVENTS LIMIT 1, 2",
+    .columns = show_binlog_events_columns,
+    .values = NULL,
+    .column_count = show_binlog_events_column_count,
+    .row_count = 0U,
+};
+
+static const struct expected_show_result show_binlog_events_from_skip = {
+    .sql = "SHOW BINLOG EVENTS FROM 5 LIMIT 1",
+    .columns = show_binlog_events_columns,
+    .values = NULL,
+    .column_count = show_binlog_events_column_count,
+    .row_count = 0U,
+};
+
+static const struct expected_show_result show_binlog_events_limit_zero = {
+    .sql = "SHOW BINLOG EVENTS LIMIT 0",
+    .columns = show_binlog_events_columns,
+    .values = show_binlog_events_values,
+    .column_count = show_binlog_events_column_count,
+    .row_count = 1U,
 };
 
 static int test_show_binary_log_metadata_results(void);
@@ -156,6 +200,11 @@ static int test_show_binary_log_metadata_results(void) {
     failures += expect_show_binary_log_metadata(database, show_binary_log_status);
     failures += expect_show_binary_log_metadata(database, show_binary_logs);
     failures += expect_show_binary_log_metadata(database, show_binlog_events);
+    failures += expect_show_binary_log_metadata(database, show_binlog_events_limit_one);
+    failures += expect_show_binary_log_metadata(database, show_binlog_events_qualified_first);
+    failures += expect_show_binary_log_metadata(database, show_binlog_events_offset_skip);
+    failures += expect_show_binary_log_metadata(database, show_binlog_events_from_skip);
+    failures += expect_show_binary_log_metadata(database, show_binlog_events_limit_zero);
 
     mylite_close(database);
     return failures;
@@ -289,13 +338,37 @@ static int test_show_binary_log_metadata_unsupported_diagnostics(void) {
             .message_part = "You have an error in your SQL syntax",
         },
         {
-            .sql = "SHOW BINLOG EVENTS LIMIT 1",
+            .sql = "SHOW BINLOG EVENTS IN 'missing' LIMIT 1",
+            .code = 1220,
+            .sqlstate = "HY000",
+            .message_part = "Could not find target log",
+        },
+        {
+            .sql = "SHOW BINLOG EVENTS WHERE Log_name IS NOT NULL",
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "You have an error in your SQL syntax",
         },
         {
-            .sql = "SHOW BINLOG EVENTS IN 'binlog.000001'",
+            .sql = "SHOW BINLOG EVENTS FOR CHANNEL ''",
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        },
+        {
+            .sql = "SHOW BINLOG EVENTS FROM '4'",
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        },
+        {
+            .sql = "SHOW BINLOG EVENTS LIMIT '1'",
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        },
+        {
+            .sql = "SHOW BINLOG EVENTS FROM 4 IN 'binlog.000001'",
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "You have an error in your SQL syntax",
@@ -344,11 +417,17 @@ static int expect_show_binary_log_metadata(
         expected.column_count,
         "binary log metadata column count"
     );
-    failures += expect_size(mylite_result_row_count(result), 1U, "binary log metadata row count");
+    failures += expect_size(
+        mylite_result_row_count(result),
+        expected.row_count,
+        "binary log metadata row count"
+    );
     failures += expect_int64(mylite_result_affected_rows(result), 0, "binary log affected rows");
     failures += expect_size(mylite_result_warning_count(result), 0U, "binary log warning count");
     failures += expect_show_result_columns(result, expected);
-    failures += expect_show_result_row(result, expected);
+    if (expected.row_count > 0U) {
+        failures += expect_show_result_row(result, expected);
+    }
 
     mylite_result_free(result);
     failures += expect_row_count_status(database, expected.sql);

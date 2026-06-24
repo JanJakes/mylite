@@ -4845,6 +4845,7 @@ static int test_table_maintenance_statements(void) {
         MYLITE_SQL_AST_CHECKSUM_TABLE_STATEMENT,
         "checksum extended"
     );
+    failures += parser_test_expect_child_count(statement, 2U, "checksum extended child count");
     failures += parser_test_expect_child_count(table_names, 2U, "checksum extended target count");
     failures += parser_test_expect_span_text(
         parser_test_child_at(table_names, 0U),
@@ -4855,6 +4856,11 @@ static int test_table_maintenance_statements(void) {
         parser_test_child_at(table_names, 1U),
         "other",
         "checksum second target"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 1U),
+        MYLITE_SQL_AST_CHECKSUM_TABLE_EXTENDED_OPTION,
+        "checksum extended option"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -4872,6 +4878,12 @@ static int test_table_maintenance_statements(void) {
         statement,
         MYLITE_SQL_AST_CHECKSUM_TABLE_STATEMENT,
         "checksum quick"
+    );
+    failures += parser_test_expect_child_count(statement, 2U, "checksum quick child count");
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 1U),
+        MYLITE_SQL_AST_CHECKSUM_TABLE_QUICK_OPTION,
+        "checksum quick option"
     );
     mylite_sql_parse_result_deinit(&result);
 

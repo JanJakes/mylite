@@ -146,7 +146,9 @@ DML count; `ROW_COUNT()` reports `-1`.
 For every admitted target, MyLite returns exactly one row:
 
 - `Table`: the schema-qualified logical display name.
-- `Checksum`: `NULL` in this baseline.
+- `Checksum`: a deterministic unsigned decimal MyLite checksum for normal and
+  `EXTENDED` resolved base-table targets, `0` for empty base tables, and `NULL`
+  for `QUICK`, unavailable targets, and unsupported object kinds.
 
 The result metadata follows the observed MySQL 8.4.9 metadata surface:
 
@@ -155,13 +157,11 @@ The result metadata follows the observed MySQL 8.4.9 metadata surface:
 - `Checksum`: `LONGLONG`, binary collation, display length `22`, decimals `0`,
   `BINARY NUM` flags, nullable.
 
-Returning `NULL` for resolved base tables is an explicit compatibility limit,
-not a computed checksum. MySQL checksum values depend on storage-engine and row
-format details that MyLite does not yet reproduce on SQLite physical storage.
-This slice therefore implements result shape, name resolution, warning behavior,
-and transaction behavior first. A later checksum-value slice may replace the
-`NULL` base-table value once MyLite owns a MySQL-compatible row serialization
-for checksum calculation.
+The MyLite checksum is deliberately not a MySQL storage-engine checksum.
+MySQL checksum values depend on storage-engine and row-format details that
+MyLite does not reproduce on SQLite physical storage. This slice implements a
+stable MyLite-owned row scan so applications get useful non-`NULL` base-table
+metadata while exact MySQL checksum parity remains deferred.
 
 For unknown schemas, unknown tables, reserved targets, and unsupported object
 kinds, MyLite also returns one row with `Checksum = NULL` and appends one
@@ -226,7 +226,9 @@ invariants.
 - Catalog: remains authoritative for schemas, table descriptors, object kind,
   and logical names. It is read-only for this feature.
 - Result builder: owns the two-column result metadata and text/NULL row storage.
-- Storage/VFS/SQLite: unchanged for this slice.
+- Storage/VFS/SQLite: physical table rows are scanned read-only for normal and
+  `EXTENDED` checksum values; the `.mylite` file format and SQLite fork remain
+  unchanged.
 
 ## Tests
 

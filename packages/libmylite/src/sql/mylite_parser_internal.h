@@ -417,7 +417,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_table_maintenance_statement(
     struct mylite_sql_parser_state *state,
     enum mylite_sql_ast_node_kind statement_kind,
     struct mylite_sql_token first_token,
-    struct mylite_sql_ast_node *table_names
+    struct mylite_sql_ast_node *table_names,
+    struct mylite_sql_ast_node *option
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_table_maintenance_option(
+    struct mylite_sql_parser_state *state,
+    enum mylite_sql_ast_node_kind option_kind,
+    struct mylite_sql_token option_token
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_lock_tables_statement(
     struct mylite_sql_parser_state *state,

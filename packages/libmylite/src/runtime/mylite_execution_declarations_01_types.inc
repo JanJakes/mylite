@@ -5,6 +5,12 @@ enum table_maintenance_operation {
     TABLE_MAINTENANCE_REPAIR = 3,
 };
 
+enum checksum_table_option {
+    CHECKSUM_TABLE_OPTION_DEFAULT = 0,
+    CHECKSUM_TABLE_OPTION_QUICK = 1,
+    CHECKSUM_TABLE_OPTION_EXTENDED = 2,
+};
+
 struct planned_lock_tables {
     struct mylite_session_table_lock *locks;
     size_t lock_count;
@@ -14,9 +20,11 @@ struct table_maintenance_target {
     char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char display_name[(MYLITE_CATALOG_IDENTIFIER_CAPACITY * 2) + 2];
+    struct mylite_catalog_table_descriptor table;
     bool missing_schema;
     bool missing_table;
     bool unsupported_kind;
+    bool has_table;
 };
 
 struct transaction_characteristics {

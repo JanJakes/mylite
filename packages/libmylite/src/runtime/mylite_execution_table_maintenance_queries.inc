@@ -8,6 +8,7 @@ static int execute_checksum_table_statement(
         table_names == NULL ? 0U : mylite_sql_ast_node_child_count(table_names);
     struct table_maintenance_target *targets = NULL;
     mylite_result *result = NULL;
+    const enum checksum_table_option option = checksum_table_option_for_statement(statement);
     int rc = MYLITE_OK;
 
     if (table_count == 0U) {
@@ -46,7 +47,7 @@ static int execute_checksum_table_statement(
         rc = append_checksum_table_result_columns(database, result);
     }
     for (size_t target_index = 0U; rc == MYLITE_OK && target_index < table_count; ++target_index) {
-        rc = append_checksum_table_target_row(database, result, &targets[target_index]);
+        rc = append_checksum_table_target_row(database, result, &targets[target_index], option);
     }
 
     free(targets);
@@ -108,19 +109,261 @@ static int append_checksum_table_result_columns(struct mylite_db *database, myli
 static int append_checksum_table_target_row(
     struct mylite_db *database,
     mylite_result *result,
-    const struct table_maintenance_target *target
+    const struct table_maintenance_target *target,
+    enum checksum_table_option option
 ) {
+    char checksum_value_buffer[checksum_table_checksum_display_length + 1U];
+    const char *checksum_value = NULL;
+    int rc = checksum_table_target_value(
+        database,
+        target,
+        option,
+        checksum_value_buffer,
+        sizeof(checksum_value_buffer),
+        &checksum_value
+    );
     const char *const values[checksum_table_result_column_count] = {
         target == NULL ? NULL : target->display_name,
-        NULL,
+        checksum_value,
     };
-    int rc = mylite_result_append_text_row(result, values);
 
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = mylite_result_append_text_row(result, values);
     if (rc != MYLITE_OK) {
         set_nomem_error(database);
         return rc;
     }
     return append_checksum_table_target_warning(database, target);
+}
+
+static enum checksum_table_option checksum_table_option_for_statement(
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *option = child_at(statement, 1U);
+
+    if (option == NULL) {
+        return CHECKSUM_TABLE_OPTION_DEFAULT;
+    }
+    if (option->kind == MYLITE_SQL_AST_CHECKSUM_TABLE_QUICK_OPTION) {
+        return CHECKSUM_TABLE_OPTION_QUICK;
+    }
+    if (option->kind == MYLITE_SQL_AST_CHECKSUM_TABLE_EXTENDED_OPTION) {
+        return CHECKSUM_TABLE_OPTION_EXTENDED;
+    }
+    return CHECKSUM_TABLE_OPTION_DEFAULT;
+}
+
+static int checksum_table_target_value(
+    struct mylite_db *database,
+    const struct table_maintenance_target *target,
+    enum checksum_table_option option,
+    char *value_buffer,
+    size_t value_buffer_size,
+    const char **out_value
+) {
+    if (out_value == NULL) {
+        set_runtime_error(database, "invalid checksum output");
+        return MYLITE_ERROR;
+    }
+    *out_value = NULL;
+    if (target == NULL || target->missing_schema || target->missing_table || target->unsupported_kind ||
+        !target->has_table || option == CHECKSUM_TABLE_OPTION_QUICK) {
+        return MYLITE_OK;
+    }
+    return compute_checksum_table_target_value(
+        database,
+        target,
+        value_buffer,
+        value_buffer_size,
+        out_value
+    );
+}
+
+static int compute_checksum_table_target_value(
+    struct mylite_db *database,
+    const struct table_maintenance_target *target,
+    char *value_buffer,
+    size_t value_buffer_size,
+    const char **out_value
+) {
+    char *sql = NULL;
+    sqlite3_stmt *statement = NULL;
+    uint64_t checksum = 0xcbf29ce484222325ULL;
+    bool has_rows = false;
+    bool prepare_attempted = false;
+    bool scan_attempted = false;
+    int rc = build_checksum_table_scan_sql(database, target, &sql);
+    int written = 0;
+
+    if (rc == MYLITE_OK) {
+        prepare_attempted = true;
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        scan_attempted = true;
+        rc = scan_checksum_table_rows(database, statement, &checksum, &has_rows);
+    }
+    const int statement_rc = rc;
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+    if (rc != MYLITE_OK) {
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        } else if (statement_rc == MYLITE_OK || (prepare_attempted && !scan_attempted)) {
+            set_physical_sqlite_error(database);
+        }
+        return rc;
+    }
+    if (!has_rows) {
+        checksum = 0U;
+    }
+    written = snprintf(value_buffer, value_buffer_size, "%" PRIu64, checksum);
+    if (written < 0 || (size_t)written >= value_buffer_size) {
+        set_runtime_error(database, "failed to format checksum value");
+        return MYLITE_ERROR;
+    }
+    *out_value = value_buffer;
+    return MYLITE_OK;
+}
+
+static int build_checksum_table_scan_sql(
+    struct mylite_db *database,
+    const struct table_maintenance_target *target,
+    char **out_sql
+) {
+    struct mylite_dynamic_string string;
+    int rc = MYLITE_OK;
+
+    if (target == NULL || out_sql == NULL) {
+        set_runtime_error(database, "invalid checksum scan request");
+        return MYLITE_ERROR;
+    }
+    *out_sql = NULL;
+    mylite_dynamic_string_init(&string);
+    rc = mylite_dynamic_string_append(&string, "SELECT * FROM ");
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_quoted_identifier(&string, target->table.physical_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(&string, " ORDER BY rowid");
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = mylite_dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+    mylite_dynamic_string_deinit(&string);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int scan_checksum_table_rows(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    uint64_t *out_checksum,
+    bool *out_has_rows
+) {
+    int sqlite_rc = SQLITE_OK;
+    int column_count = 0;
+
+    if (statement == NULL || out_checksum == NULL || out_has_rows == NULL) {
+        set_runtime_error(database, "invalid checksum scan state");
+        return MYLITE_ERROR;
+    }
+    column_count = sqlite3_column_count(statement);
+    while ((sqlite_rc = sqlite3_step(statement)) == SQLITE_ROW) {
+        *out_has_rows = true;
+        checksum_table_update_byte(out_checksum, (unsigned char)'R');
+        for (int column_index = 0; column_index < column_count; ++column_index) {
+            const int column_type = sqlite3_column_type(statement, column_index);
+
+            checksum_table_update_byte(out_checksum, (unsigned char)'C');
+            checksum_table_update_byte(out_checksum, (unsigned char)column_type);
+            switch (column_type) {
+            case SQLITE_NULL:
+                break;
+            case SQLITE_INTEGER:
+                checksum_table_update_u64(
+                    out_checksum,
+                    (uint64_t)sqlite3_column_int64(statement, column_index)
+                );
+                break;
+            case SQLITE_FLOAT: {
+                double value = sqlite3_column_double(statement, column_index);
+                uint64_t bits = 0U;
+
+                memcpy(&bits, &value, sizeof(bits));
+                checksum_table_update_u64(out_checksum, bits);
+                break;
+            }
+            case SQLITE_TEXT: {
+                const unsigned char *text = sqlite3_column_text(statement, column_index);
+                const int byte_count = sqlite3_column_bytes(statement, column_index);
+
+                if (text == NULL && byte_count > 0) {
+                    set_physical_sqlite_row_error(database);
+                    return MYLITE_ERROR;
+                }
+                checksum_table_update_u64(out_checksum, (uint64_t)byte_count);
+                checksum_table_update_bytes(out_checksum, text, (size_t)byte_count);
+                break;
+            }
+            case SQLITE_BLOB: {
+                const unsigned char *blob =
+                    (const unsigned char *)sqlite3_column_blob(statement, column_index);
+                const int byte_count = sqlite3_column_bytes(statement, column_index);
+
+                if (blob == NULL && byte_count > 0) {
+                    set_physical_sqlite_row_error(database);
+                    return MYLITE_ERROR;
+                }
+                checksum_table_update_u64(out_checksum, (uint64_t)byte_count);
+                checksum_table_update_bytes(out_checksum, blob, (size_t)byte_count);
+                break;
+            }
+            default:
+                set_physical_sqlite_row_error(database);
+                return MYLITE_ERROR;
+            }
+        }
+    }
+    if (sqlite_rc != SQLITE_DONE) {
+        const int rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        } else {
+            set_physical_sqlite_row_error(database);
+        }
+        return rc;
+    }
+    return MYLITE_OK;
+}
+
+static void checksum_table_update_bytes(
+    uint64_t *checksum,
+    const unsigned char *bytes,
+    size_t byte_count
+) {
+    for (size_t byte_index = 0U; byte_index < byte_count; ++byte_index) {
+        checksum_table_update_byte(checksum, bytes[byte_index]);
+    }
+}
+
+static void checksum_table_update_u64(uint64_t *checksum, uint64_t value) {
+    for (size_t byte_index = 0U; byte_index < sizeof(value); ++byte_index) {
+        checksum_table_update_byte(checksum, (unsigned char)((value >> (byte_index * 8U)) & 0xffU));
+    }
+}
+
+static void checksum_table_update_byte(uint64_t *checksum, unsigned char byte) {
+    *checksum ^= (uint64_t)byte;
+    *checksum *= 0x100000001b3ULL;
 }
 
 static int append_checksum_table_target_warning(
@@ -555,7 +798,10 @@ static int resolve_table_maintenance_target(
     if (table.kind != MYLITE_CATALOG_TABLE_KIND_BASE &&
         table.kind != MYLITE_CATALOG_TABLE_KIND_TEMPORARY) {
         out_target->unsupported_kind = true;
+        return MYLITE_OK;
     }
+    out_target->table = table;
+    out_target->has_table = true;
     return MYLITE_OK;
 }
 

@@ -790,32 +790,32 @@ flush_admin_noop_statement(A) ::= FLUSH(F) TABLES WITH READ LOCK(L). {
 table_maintenance_statement(A) ::=
     ANALYZE(T) maintenance_binlog_opt TABLE table_name_list(N). {
     A = mylite_sql_parser_make_table_maintenance_statement(
-        state, MYLITE_SQL_AST_ANALYZE_TABLE_STATEMENT, T, N);
+        state, MYLITE_SQL_AST_ANALYZE_TABLE_STATEMENT, T, N, NULL);
 }
 table_maintenance_statement(A) ::=
     CHECK(T) TABLE table_name_list(N) check_table_option_list_opt. {
     A = mylite_sql_parser_make_table_maintenance_statement(
-        state, MYLITE_SQL_AST_CHECK_TABLE_STATEMENT, T, N);
+        state, MYLITE_SQL_AST_CHECK_TABLE_STATEMENT, T, N, NULL);
 }
 table_maintenance_statement(A) ::=
     CHECK(T) TABLES table_name_list(N) check_table_option_list_opt. {
     A = mylite_sql_parser_make_table_maintenance_statement(
-        state, MYLITE_SQL_AST_CHECK_TABLE_STATEMENT, T, N);
+        state, MYLITE_SQL_AST_CHECK_TABLE_STATEMENT, T, N, NULL);
 }
 table_maintenance_statement(A) ::=
-    CHECKSUM(T) TABLE table_name_list(N) checksum_table_option_opt. {
+    CHECKSUM(T) TABLE table_name_list(N) checksum_table_option_opt(O). {
     A = mylite_sql_parser_make_table_maintenance_statement(
-        state, MYLITE_SQL_AST_CHECKSUM_TABLE_STATEMENT, T, N);
+        state, MYLITE_SQL_AST_CHECKSUM_TABLE_STATEMENT, T, N, O);
 }
 table_maintenance_statement(A) ::=
     OPTIMIZE(T) maintenance_binlog_opt TABLE table_name_list(N). {
     A = mylite_sql_parser_make_table_maintenance_statement(
-        state, MYLITE_SQL_AST_OPTIMIZE_TABLE_STATEMENT, T, N);
+        state, MYLITE_SQL_AST_OPTIMIZE_TABLE_STATEMENT, T, N, NULL);
 }
 table_maintenance_statement(A) ::=
     REPAIR(T) maintenance_binlog_opt TABLE table_name_list(N) repair_table_option_list_opt. {
     A = mylite_sql_parser_make_table_maintenance_statement(
-        state, MYLITE_SQL_AST_REPAIR_TABLE_STATEMENT, T, N);
+        state, MYLITE_SQL_AST_REPAIR_TABLE_STATEMENT, T, N, NULL);
 }
 
 maintenance_binlog_opt ::= .
@@ -835,9 +835,17 @@ check_table_option ::= MEDIUM.
 check_table_option ::= EXTENDED.
 check_table_option ::= CHANGED.
 
-checksum_table_option_opt ::= .
-checksum_table_option_opt ::= QUICK.
-checksum_table_option_opt ::= EXTENDED.
+checksum_table_option_opt(A) ::= . {
+    A = NULL;
+}
+checksum_table_option_opt(A) ::= QUICK(T). {
+    A = mylite_sql_parser_make_table_maintenance_option(
+        state, MYLITE_SQL_AST_CHECKSUM_TABLE_QUICK_OPTION, T);
+}
+checksum_table_option_opt(A) ::= EXTENDED(T). {
+    A = mylite_sql_parser_make_table_maintenance_option(
+        state, MYLITE_SQL_AST_CHECKSUM_TABLE_EXTENDED_OPTION, T);
+}
 
 repair_table_option_list_opt ::= .
 repair_table_option_list_opt ::= repair_table_option_list.

@@ -2218,8 +2218,45 @@ static int append_checksum_table_result_columns(struct mylite_db *database, myli
 static int append_checksum_table_target_row(
     struct mylite_db *database,
     mylite_result *result,
-    const struct table_maintenance_target *target
+    const struct table_maintenance_target *target,
+    enum checksum_table_option option
 );
+static enum checksum_table_option checksum_table_option_for_statement(
+    const struct mylite_sql_ast_node *statement
+);
+static int checksum_table_target_value(
+    struct mylite_db *database,
+    const struct table_maintenance_target *target,
+    enum checksum_table_option option,
+    char *value_buffer,
+    size_t value_buffer_size,
+    const char **out_value
+);
+static int compute_checksum_table_target_value(
+    struct mylite_db *database,
+    const struct table_maintenance_target *target,
+    char *value_buffer,
+    size_t value_buffer_size,
+    const char **out_value
+);
+static int build_checksum_table_scan_sql(
+    struct mylite_db *database,
+    const struct table_maintenance_target *target,
+    char **out_sql
+);
+static int scan_checksum_table_rows(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    uint64_t *out_checksum,
+    bool *out_has_rows
+);
+static void checksum_table_update_byte(uint64_t *checksum, unsigned char byte);
+static void checksum_table_update_bytes(
+    uint64_t *checksum,
+    const unsigned char *bytes,
+    size_t byte_count
+);
+static void checksum_table_update_u64(uint64_t *checksum, uint64_t value);
 static int append_checksum_table_target_warning(
     struct mylite_db *database,
     const struct table_maintenance_target *target

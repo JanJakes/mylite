@@ -28,6 +28,8 @@ enum {
     checksum_table_decimals = 31,
 };
 
+static const char expected_checksum_numeric[] = "<numeric checksum>";
+
 struct expected_query {
     const char *sql;
     const char *const *values;
@@ -73,6 +75,12 @@ static int expect_result_value(
     size_t row,
     size_t column,
     const char *expected,
+    const char *context
+);
+static int expect_decimal_result_value(
+    const mylite_result *result,
+    size_t row,
+    size_t column,
     const char *context
 );
 static int make_test_path(char *path, size_t path_size, const char *name);
@@ -213,9 +221,15 @@ static int test_table_maintenance_result_rows(void) {
 }
 
 static int test_checksum_table_result_rows_and_diagnostics(void) {
-    static const char *const checksum_rows[] = {"app.a", NULL};
-    static const char *const multi_rows[] = {"app.b", NULL, "app.a", NULL};
-    static const char *const temp_rows[] = {"app.temp_only", NULL};
+    static const char *const checksum_rows[] = {"app.a", expected_checksum_numeric};
+    static const char *const quick_checksum_rows[] = {"app.a", NULL};
+    static const char *const multi_rows[] = {
+        "app.b",
+        "0",
+        "app.a",
+        expected_checksum_numeric,
+    };
+    static const char *const temp_rows[] = {"app.temp_only", "0"};
     static const char *const status_rows[] = {"-1", "0", "0"};
     static const char *const diagnostic_status_rows[] = {"-1", "1", "1"};
     char path[test_path_capacity];
@@ -230,6 +244,7 @@ static int test_checksum_table_result_rows_and_diagnostics(void) {
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open checksum file");
     failures += create_schema_with_table(database);
     failures += expect_statement_ok(database, "CREATE TABLE b (id INT)");
+    failures += expect_statement_ok(database, "CREATE TABLE empty_t (id INT)");
     failures += expect_statement_ok(database, "CREATE VIEW v AS SELECT id FROM a");
 
     failures +=
@@ -247,7 +262,7 @@ static int test_checksum_table_result_rows_and_diagnostics(void) {
     failures += expect_checksum_rows(
         database,
         "CHECKSUM TABLE a QUICK",
-        checksum_rows,
+        quick_checksum_rows,
         1U,
         0U,
         "checksum quick"
@@ -259,6 +274,14 @@ static int test_checksum_table_result_rows_and_diagnostics(void) {
         1U,
         0U,
         "checksum extended"
+    );
+    failures += expect_checksum_rows(
+        database,
+        "CHECKSUM TABLE empty_t",
+        (const char *const[]){"app.empty_t", "0"},
+        1U,
+        0U,
+        "checksum empty table"
     );
     failures += expect_checksum_rows(
         database,
@@ -397,7 +420,7 @@ static int test_checksum_table_result_rows_and_diagnostics(void) {
     failures += expect_checksum_rows(
         database,
         "CHECKSUM TABLE app.renamed",
-        (const char *const[]){"app.renamed", NULL},
+        (const char *const[]){"app.renamed", "0"},
         1U,
         0U,
         "checksum renamed target"
@@ -910,6 +933,10 @@ static int expect_result_value(
 ) {
     const char *actual = mylite_result_value_text(result, row, column);
 
+    if (expected == expected_checksum_numeric ||
+        (expected != NULL && strcmp(expected, expected_checksum_numeric) == 0)) {
+        return expect_decimal_result_value(result, row, column, context);
+    }
     if (expected == NULL) {
         if (actual != NULL) {
             fprintf(
@@ -925,6 +952,40 @@ static int expect_result_value(
         return 0;
     }
     return expect_text(actual, expected, context);
+}
+
+static int expect_decimal_result_value(
+    const mylite_result *result,
+    size_t row,
+    size_t column,
+    const char *context
+) {
+    const char *actual = mylite_result_value_text(result, row, column);
+
+    if (actual == NULL || actual[0] == '\0') {
+        fprintf(
+            stderr,
+            "%s: expected decimal value at (%zu,%zu), got NULL/empty\n",
+            context,
+            row,
+            column
+        );
+        return 1;
+    }
+    for (size_t index = 0U; actual[index] != '\0'; ++index) {
+        if (actual[index] < '0' || actual[index] > '9') {
+            fprintf(
+                stderr,
+                "%s: expected decimal value at (%zu,%zu), got %s\n",
+                context,
+                row,
+                column,
+                actual
+            );
+            return 1;
+        }
+    }
+    return 0;
 }
 
 static int make_test_path(char *path, size_t path_size, const char *name) {

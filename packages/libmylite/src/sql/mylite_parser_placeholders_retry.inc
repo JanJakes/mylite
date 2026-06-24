@@ -4890,7 +4890,8 @@ static enum mylite_sql_parse_status try_parse_plural_table_maintenance_statement
         &state,
         statement_kind,
         scan->tokens[0],
-        table_names
+        table_names,
+        NULL
     );
     *out_handled = true;
     return finish_scanned_statement_parse(result, &state, statement);

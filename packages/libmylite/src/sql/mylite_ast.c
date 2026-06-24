@@ -2370,6 +2370,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "utility_noop_statement";
     case MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT:
         return "unsupported_utility_statement";
+    case MYLITE_SQL_AST_CHECKSUM_TABLE_QUICK_OPTION:
+        return "checksum_table_quick_option";
+    case MYLITE_SQL_AST_CHECKSUM_TABLE_EXTENDED_OPTION:
+        return "checksum_table_extended_option";
     case MYLITE_SQL_AST_EXPLAIN_STATEMENT:
         return "explain_statement";
     case MYLITE_SQL_AST_EXPLAIN_FORMAT:

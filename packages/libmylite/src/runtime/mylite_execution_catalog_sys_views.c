@@ -326,6 +326,15 @@ static const char sys_session_ssl_status_show_create_qualified_view_sql[] =
     "`max_latency`,`avg_latency`,`rows_sent`,`rows_sent_avg`,`rows_examined`,"                     \
     "`rows_examined_avg`,`first_seen`,`last_seen`,`digest`)"
 
+#define SYS_STATEMENTS_WITH_SORTING_VIEW_COLUMNS                                                   \
+    "(`query`,`db`,`exec_count`,`total_latency`,`sort_merge_passes`,`avg_sort_merges`,"            \
+    "`sorts_using_scans`,`sort_using_range`,`rows_sorted`,`avg_rows_sorted`,`first_seen`,"         \
+    "`last_seen`,`digest`)"
+
+#define SYS_STATEMENTS_WITH_TEMP_TABLES_VIEW_COLUMNS                                               \
+    "(`query`,`db`,`exec_count`,`total_latency`,`memory_tmp_tables`,`disk_tmp_tables`,"            \
+    "`avg_tmp_tables_per_query`,`tmp_tables_to_disk_pct`,`first_seen`,`last_seen`,`digest`)"
+
 #define SYS_STATEMENT_DIGEST_FULL_SCAN_EXPR(source)                                                \
     "if(((`" source "`.`SUM_NO_GOOD_INDEX_USED` > 0) or (`" source                                 \
     "`.`SUM_NO_INDEX_USED` > 0)),'*','') AS `full_scan`,"
@@ -628,11 +637,124 @@ static const char
         " " SYS_STATEMENTS_WITH_RUNTIMES_IN_95TH_PERCENTILE_VIEW_COLUMNS
         " AS " SYS_STATEMENTS_RUNTIME_PERCENTILE_RAW_DEFINITION;
 
+#define SYS_STATEMENTS_SORTING_DEFINITION(query_expression, latency_expression)                    \
+    "select " query_expression                                                                     \
+    " AS `query`,`stmts`.`SCHEMA_NAME` AS `db`,`stmts`.`COUNT_STAR` AS "                           \
+    "`exec_count`," latency_expression " AS `total_latency`,`stmts`.`SUM_SORT_MERGE_PASSES` "      \
+    "AS `sort_merge_passes`," SYS_STATEMENT_DIGEST_AVG_EXPR(                                       \
+        "stmts",                                                                                   \
+        "SUM_SORT_MERGE_PASSES",                                                                   \
+        "avg_sort_merges"                                                                          \
+    ) "`stmts`.`SUM_SORT_SCAN` AS `sorts_using_scans`,`stmts`.`SUM_SORT_RANGE` AS "                \
+      "`sort_using_range`,`stmts`.`SUM_SORT_ROWS` AS "                                             \
+      "`rows_sorted`," SYS_STATEMENT_DIGEST_AVG_EXPR(                                              \
+          "stmts",                                                                                 \
+          "SUM_SORT_ROWS",                                                                         \
+          "avg_rows_sorted"                                                                        \
+      ) "`stmts`.`FIRST_SEEN` AS `first_seen`,`stmts`.`LAST_SEEN` AS `last_seen`,"                 \
+        "`stmts`.`DIGEST` AS `digest` from "                                                       \
+        "`performance_schema`.`events_statements_summary_by_digest` `stmts` where "                \
+        "(`stmts`.`SUM_SORT_ROWS` > 0) order by `stmts`.`SUM_TIMER_WAIT` desc"
+
+static const char sys_statements_with_sorting_view_definition[] = SYS_STATEMENTS_SORTING_DEFINITION(
+    "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)",
+    "format_pico_time(`stmts`.`SUM_TIMER_WAIT`)"
+);
+
+static const char sys_statements_with_sorting_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`statements_with_sorting` " SYS_STATEMENTS_WITH_SORTING_VIEW_COLUMNS
+    " AS " SYS_STATEMENTS_SORTING_DEFINITION(
+        "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)",
+        "format_pico_time(`stmts`.`SUM_TIMER_WAIT`)"
+    );
+
+static const char sys_statements_with_sorting_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`statements_with_sorting` " SYS_STATEMENTS_WITH_SORTING_VIEW_COLUMNS
+    " AS " SYS_STATEMENTS_SORTING_DEFINITION(
+        "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)",
+        "format_pico_time(`stmts`.`SUM_TIMER_WAIT`)"
+    );
+
+static const char sys_x_statements_with_sorting_view_definition[] =
+    SYS_STATEMENTS_SORTING_DEFINITION("`stmts`.`DIGEST_TEXT`", "`stmts`.`SUM_TIMER_WAIT`");
+
+static const char sys_x_statements_with_sorting_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$statements_with_sorting` " SYS_STATEMENTS_WITH_SORTING_VIEW_COLUMNS
+    " AS " SYS_STATEMENTS_SORTING_DEFINITION("`stmts`.`DIGEST_TEXT`", "`stmts`.`SUM_TIMER_WAIT`");
+
+static const char sys_x_statements_with_sorting_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$statements_with_sorting` " SYS_STATEMENTS_WITH_SORTING_VIEW_COLUMNS
+    " AS " SYS_STATEMENTS_SORTING_DEFINITION("`stmts`.`DIGEST_TEXT`", "`stmts`.`SUM_TIMER_WAIT`");
+
+#define SYS_STATEMENTS_TEMP_TABLES_DEFINITION(query_expression, latency_expression)                \
+    "select " query_expression                                                                     \
+    " AS `query`,`stmts`.`SCHEMA_NAME` AS `db`,`stmts`.`COUNT_STAR` AS "                           \
+    "`exec_count`," latency_expression " AS `total_latency`,`stmts`.`SUM_CREATED_TMP_TABLES` "     \
+    "AS `memory_tmp_tables`,`stmts`.`SUM_CREATED_TMP_DISK_TABLES` AS "                             \
+    "`disk_tmp_tables`," SYS_STATEMENT_DIGEST_AVG_EXPR(                                            \
+        "stmts",                                                                                   \
+        "SUM_CREATED_TMP_TABLES",                                                                  \
+        "avg_tmp_tables_per_query"                                                                 \
+    ) "round((ifnull((`stmts`.`SUM_CREATED_TMP_DISK_TABLES` / nullif("                             \
+      "`stmts`.`SUM_CREATED_TMP_TABLES`,0)),0) * 100),0) AS `tmp_tables_to_disk_pct`,"             \
+      "`stmts`.`FIRST_SEEN` AS `first_seen`,`stmts`.`LAST_SEEN` AS `last_seen`,"                   \
+      "`stmts`.`DIGEST` AS `digest` from "                                                         \
+      "`performance_schema`.`events_statements_summary_by_digest` `stmts` where "                  \
+      "(`stmts`.`SUM_CREATED_TMP_TABLES` > 0) order by "                                           \
+      "`stmts`.`SUM_CREATED_TMP_DISK_TABLES` desc,`stmts`.`SUM_CREATED_TMP_TABLES` desc"
+
+static const char sys_statements_with_temp_tables_view_definition[] =
+    SYS_STATEMENTS_TEMP_TABLES_DEFINITION(
+        "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)",
+        "format_pico_time(`stmts`.`SUM_TIMER_WAIT`)"
+    );
+
+static const char sys_statements_with_temp_tables_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`statements_with_temp_tables` " SYS_STATEMENTS_WITH_TEMP_TABLES_VIEW_COLUMNS
+    " AS " SYS_STATEMENTS_TEMP_TABLES_DEFINITION(
+        "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)",
+        "format_pico_time(`stmts`.`SUM_TIMER_WAIT`)"
+    );
+
+static const char sys_statements_with_temp_tables_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`statements_with_temp_tables` " SYS_STATEMENTS_WITH_TEMP_TABLES_VIEW_COLUMNS
+    " AS " SYS_STATEMENTS_TEMP_TABLES_DEFINITION(
+        "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)",
+        "format_pico_time(`stmts`.`SUM_TIMER_WAIT`)"
+    );
+
+static const char sys_x_statements_with_temp_tables_view_definition[] =
+    SYS_STATEMENTS_TEMP_TABLES_DEFINITION("`stmts`.`DIGEST_TEXT`", "`stmts`.`SUM_TIMER_WAIT`");
+
+static const char sys_x_statements_with_temp_tables_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$statements_with_temp_tables` " SYS_STATEMENTS_WITH_TEMP_TABLES_VIEW_COLUMNS
+    " AS " SYS_STATEMENTS_TEMP_TABLES_DEFINITION(
+        "`stmts`.`DIGEST_TEXT`",
+        "`stmts`.`SUM_TIMER_WAIT`"
+    );
+
+static const char sys_x_statements_with_temp_tables_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$statements_with_temp_tables` " SYS_STATEMENTS_WITH_TEMP_TABLES_VIEW_COLUMNS
+    " AS " SYS_STATEMENTS_TEMP_TABLES_DEFINITION(
+        "`stmts`.`DIGEST_TEXT`",
+        "`stmts`.`SUM_TIMER_WAIT`"
+    );
+
 #undef SYS_STATEMENT_ANALYSIS_VIEW_COLUMNS
 #undef SYS_X_STATEMENT_ANALYSIS_VIEW_COLUMNS
 #undef SYS_STATEMENTS_WITH_ERRORS_OR_WARNINGS_VIEW_COLUMNS
 #undef SYS_STATEMENTS_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS
 #undef SYS_STATEMENTS_WITH_RUNTIMES_IN_95TH_PERCENTILE_VIEW_COLUMNS
+#undef SYS_STATEMENTS_WITH_SORTING_VIEW_COLUMNS
+#undef SYS_STATEMENTS_WITH_TEMP_TABLES_VIEW_COLUMNS
 #undef SYS_STATEMENT_DIGEST_FULL_SCAN_EXPR
 #undef SYS_STATEMENT_DIGEST_AVG_EXPR
 #undef SYS_STATEMENT_ANALYSIS_PREFIX
@@ -646,6 +768,8 @@ static const char
 #undef SYS_STATEMENTS_FULL_SCAN_DEFINITION
 #undef SYS_STATEMENTS_RUNTIME_PERCENTILE_DEFINITION
 #undef SYS_STATEMENTS_RUNTIME_PERCENTILE_RAW_DEFINITION
+#undef SYS_STATEMENTS_SORTING_DEFINITION
+#undef SYS_STATEMENTS_TEMP_TABLES_DEFINITION
 
 #define SYS_HOST_SUMMARY_VIEW_COLUMNS                                                              \
     "(`host`,`statements`,`statement_latency`,`statement_avg_latency`,`table_scans`,`file_ios`,"   \
@@ -2982,6 +3106,14 @@ static const struct mylite_execution_catalog_builtin_sys_view builtin_sys_view_d
      sys_statements_with_runtimes_in_95th_percentile_view_definition,
      sys_statements_with_runtimes_in_95th_percentile_show_create_view_sql,
      sys_statements_with_runtimes_in_95th_percentile_show_create_qualified_view_sql},
+    {"statements_with_sorting",
+     sys_statements_with_sorting_view_definition,
+     sys_statements_with_sorting_show_create_view_sql,
+     sys_statements_with_sorting_show_create_qualified_view_sql},
+    {"statements_with_temp_tables",
+     sys_statements_with_temp_tables_view_definition,
+     sys_statements_with_temp_tables_show_create_view_sql,
+     sys_statements_with_temp_tables_show_create_qualified_view_sql},
     {"host_summary",
      sys_host_summary_view_definition,
      sys_host_summary_show_create_view_sql,
@@ -3234,6 +3366,14 @@ static const struct mylite_execution_catalog_builtin_sys_view builtin_sys_view_d
      sys_x_statements_with_runtimes_in_95th_percentile_view_definition,
      sys_x_statements_with_runtimes_in_95th_percentile_show_create_view_sql,
      sys_x_statements_with_runtimes_in_95th_percentile_show_create_qualified_view_sql},
+    {"x$statements_with_sorting",
+     sys_x_statements_with_sorting_view_definition,
+     sys_x_statements_with_sorting_show_create_view_sql,
+     sys_x_statements_with_sorting_show_create_qualified_view_sql},
+    {"x$statements_with_temp_tables",
+     sys_x_statements_with_temp_tables_view_definition,
+     sys_x_statements_with_temp_tables_show_create_view_sql,
+     sys_x_statements_with_temp_tables_show_create_qualified_view_sql},
 };
 
 size_t mylite_execution_catalog_builtin_sys_view_definition_count(void) {

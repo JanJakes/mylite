@@ -797,6 +797,10 @@
     COMMAND mylite_runtime_sys_statement_digest_views_test
   )
   add_test(
+    NAME libmylite.runtime.sys_statement_sort_temp_views
+    COMMAND mylite_runtime_sys_statement_sort_temp_views_test
+  )
+  add_test(
     NAME libmylite.runtime.sys_io_by_thread_by_latency_views
     COMMAND mylite_runtime_sys_io_by_thread_by_latency_views_test
   )

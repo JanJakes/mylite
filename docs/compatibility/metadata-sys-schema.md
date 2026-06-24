@@ -167,10 +167,10 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.x$statements_with_full_table_scans` | 🟡 | Limited read-only empty raw full-table-scan digest view with the same metadata surface as the formatted view, except raw latency metadata and no `format_statement` routine dependency |
 | `sys.statements_with_runtimes_in_95th_percentile` | 🟡 | Limited read-only empty formatted 95th-percentile runtime digest view with MySQL-shaped metadata and dependency on `sys.x$ps_digest_95th_percentile_by_avg_us`; no Performance Schema digest collection or live percentile filtering |
 | `sys.x$statements_with_runtimes_in_95th_percentile` | 🟡 | Limited read-only empty raw 95th-percentile runtime digest view with the same metadata surface as the formatted view, except raw latency metadata and no `format_statement` routine dependency |
-| `sys.statements_with_sorting` | ❌ | View shape and diagnostics |
-| `sys.x$statements_with_sorting` | ❌ | View shape and diagnostics |
-| `sys.statements_with_temp_tables` | ❌ | View shape and diagnostics |
-| `sys.x$statements_with_temp_tables` | ❌ | View shape and diagnostics |
+| `sys.statements_with_sorting` | 🟡 | Limited read-only empty formatted statement sorting digest view with MySQL-shaped metadata; no Performance Schema digest collection or live sort counters |
+| `sys.x$statements_with_sorting` | 🟡 | Limited read-only empty raw statement sorting digest view with the same metadata surface as the formatted view, except raw latency metadata and no `format_statement` routine dependency |
+| `sys.statements_with_temp_tables` | 🟡 | Limited read-only empty formatted statement temporary-table digest view with MySQL-shaped metadata; no Performance Schema digest collection or live temporary-table counters |
+| `sys.x$statements_with_temp_tables` | 🟡 | Limited read-only empty raw statement temporary-table digest view with the same metadata surface as the formatted view, except raw latency metadata and no `format_statement` routine dependency |
 | `sys.user_summary` | ❌ | View shape and diagnostics |
 | `sys.x$user_summary` | ❌ | View shape and diagnostics |
 | `sys.user_summary_by_file_io` | ❌ | View shape and diagnostics |

@@ -157,7 +157,9 @@ static int append_sys_schema_system_table_rows(
         strcmp(
             definition->query_definition.name,
             "statements_with_runtimes_in_95th_percentile"
-        ) == 0) {
+        ) == 0 ||
+        strcmp(definition->query_definition.name, "statements_with_sorting") == 0 ||
+        strcmp(definition->query_definition.name, "statements_with_temp_tables") == 0) {
         return append_sys_statement_digest_system_rows(
             database,
             rows,
@@ -330,7 +332,9 @@ static int append_sys_schema_x_system_table_rows(
         strcmp(
             definition->query_definition.name,
             "x$statements_with_runtimes_in_95th_percentile"
-        ) == 0) {
+        ) == 0 ||
+        strcmp(definition->query_definition.name, "x$statements_with_sorting") == 0 ||
+        strcmp(definition->query_definition.name, "x$statements_with_temp_tables") == 0) {
         return append_sys_statement_digest_system_rows(
             database,
             rows,
@@ -995,6 +999,12 @@ static int append_sys_statement_digest_system_rows(
     } else if (strcmp(view_name, "statements_with_runtimes_in_95th_percentile") == 0 ||
                strcmp(view_name, "x$statements_with_runtimes_in_95th_percentile") == 0) {
         expected_column_count = sys_statements_with_runtimes_in_95th_percentile_column_count;
+    } else if (strcmp(view_name, "statements_with_sorting") == 0 ||
+               strcmp(view_name, "x$statements_with_sorting") == 0) {
+        expected_column_count = sys_statements_with_sorting_column_count;
+    } else if (strcmp(view_name, "statements_with_temp_tables") == 0 ||
+               strcmp(view_name, "x$statements_with_temp_tables") == 0) {
+        expected_column_count = sys_statements_with_temp_tables_column_count;
     }
 
     if (rows->definition->column_count != expected_column_count) {

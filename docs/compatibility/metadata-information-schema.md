@@ -124,6 +124,14 @@ remain blocked by MyLite's built-in schema guard. It does not add Performance
 Schema statement digest collection, live latency/error/full-scan rows, sys
 helper-function execution, privilege filtering, or broader sys view execution.
 
+The `baseline-sys-statement-sort-temp-views` slice extends the same metadata
+surface for `sys.statements_with_sorting`,
+`sys.x$statements_with_sorting`, `sys.statements_with_temp_tables`, and
+`sys.x$statements_with_temp_tables`. These views expose MySQL-shaped empty
+statement digest placeholders and MySQL-observed dependency metadata, while
+leaving live sort and temporary-table counters unsupported until MyLite has
+Performance Schema digest collection.
+
 The `baseline-sys-innodb-buffer-stats-by-schema-views` slice extends
 `INFORMATION_SCHEMA.COLUMNS`, `TABLES`, `VIEWS`, and `VIEW_TABLE_USAGE` with
 MySQL-shaped metadata for the supported empty synthetic

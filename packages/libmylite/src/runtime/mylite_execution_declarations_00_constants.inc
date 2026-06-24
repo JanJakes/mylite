@@ -376,6 +376,8 @@ enum {
     sys_statements_with_errors_or_warnings_column_count = 10,
     sys_statements_with_full_table_scans_column_count = 14,
     sys_statements_with_runtimes_in_95th_percentile_column_count = 16,
+    sys_statements_with_sorting_column_count = 13,
+    sys_statements_with_temp_tables_column_count = 11,
     sys_x_ps_digest_avg_latency_distribution_column_count = 2,
     sys_x_ps_digest_95th_percentile_by_avg_us_column_count = 2,
     sys_ps_check_lost_instrumentation_column_count = 2,

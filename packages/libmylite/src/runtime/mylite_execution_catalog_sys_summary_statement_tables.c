@@ -4,6 +4,8 @@
 #define REPEAT_4(value) REPEAT_2(value), REPEAT_2(value)
 #define REPEAT_8(value) REPEAT_4(value), REPEAT_4(value)
 #define REPEAT_10(value) REPEAT_8(value), REPEAT_2(value)
+#define REPEAT_11(value) REPEAT_10(value), value
+#define REPEAT_13(value) REPEAT_10(value), REPEAT_2(value), value
 #define REPEAT_14(value) REPEAT_10(value), REPEAT_4(value)
 #define REPEAT_16(value) REPEAT_8(value), REPEAT_8(value)
 #define REPEAT_26(value) REPEAT_16(value), REPEAT_10(value)
@@ -249,6 +251,70 @@ static const struct mylite_execution_catalog_column_definition
         SYS_STATEMENT_DIGEST_COLUMN,
 };
 
+static const struct mylite_execution_catalog_column_definition
+    sys_statements_with_sorting_columns[] = {
+        SYS_STATEMENT_QUERY_COLUMN,
+        SYS_STATEMENT_DB_COLUMN,
+        SYS_STATEMENT_UNSIGNED_BIGINT_COLUMN("exec_count"),
+        SYS_STATEMENT_FORMATTED_TIME_COLUMN("total_latency"),
+        SYS_STATEMENT_UNSIGNED_BIGINT_COLUMN("sort_merge_passes"),
+        SYS_STATEMENT_DECIMAL_21_NOT_NULL("avg_sort_merges"),
+        SYS_STATEMENT_UNSIGNED_BIGINT_COLUMN("sorts_using_scans"),
+        SYS_STATEMENT_UNSIGNED_BIGINT_COLUMN("sort_using_range"),
+        SYS_STATEMENT_UNSIGNED_BIGINT_COLUMN("rows_sorted"),
+        SYS_STATEMENT_DECIMAL_21_NOT_NULL("avg_rows_sorted"),
+        SYS_STATEMENT_TIMESTAMP_6_COLUMN("first_seen"),
+        SYS_STATEMENT_TIMESTAMP_6_COLUMN("last_seen"),
+        SYS_STATEMENT_DIGEST_COLUMN,
+};
+
+static const struct mylite_execution_catalog_column_definition
+    sys_x_statements_with_sorting_columns[] = {
+        SYS_STATEMENT_QUERY_COLUMN,
+        SYS_STATEMENT_DB_COLUMN,
+        SYS_STATEMENT_UNSIGNED_BIGINT_COLUMN("exec_count"),
+        SYS_STATEMENT_UNSIGNED_BIGINT_COLUMN("total_latency"),
+        SYS_STATEMENT_UNSIGNED_BIGINT_COLUMN("sort_merge_passes"),
+        SYS_STATEMENT_DECIMAL_21_NOT_NULL("avg_sort_merges"),
+        SYS_STATEMENT_UNSIGNED_BIGINT_COLUMN("sorts_using_scans"),
+        SYS_STATEMENT_UNSIGNED_BIGINT_COLUMN("sort_using_range"),
+        SYS_STATEMENT_UNSIGNED_BIGINT_COLUMN("rows_sorted"),
+        SYS_STATEMENT_DECIMAL_21_NOT_NULL("avg_rows_sorted"),
+        SYS_STATEMENT_TIMESTAMP_6_COLUMN("first_seen"),
+        SYS_STATEMENT_TIMESTAMP_6_COLUMN("last_seen"),
+        SYS_STATEMENT_DIGEST_COLUMN,
+};
+
+static const struct mylite_execution_catalog_column_definition
+    sys_statements_with_temp_tables_columns[] = {
+        SYS_STATEMENT_QUERY_COLUMN,
+        SYS_STATEMENT_DB_COLUMN,
+        SYS_STATEMENT_UNSIGNED_BIGINT_COLUMN("exec_count"),
+        SYS_STATEMENT_FORMATTED_TIME_COLUMN("total_latency"),
+        SYS_STATEMENT_UNSIGNED_BIGINT_COLUMN("memory_tmp_tables"),
+        SYS_STATEMENT_UNSIGNED_BIGINT_COLUMN("disk_tmp_tables"),
+        SYS_STATEMENT_DECIMAL_21_NOT_NULL("avg_tmp_tables_per_query"),
+        SYS_STATEMENT_DECIMAL_24_NOT_NULL("tmp_tables_to_disk_pct"),
+        SYS_STATEMENT_TIMESTAMP_6_COLUMN("first_seen"),
+        SYS_STATEMENT_TIMESTAMP_6_COLUMN("last_seen"),
+        SYS_STATEMENT_DIGEST_COLUMN,
+};
+
+static const struct mylite_execution_catalog_column_definition
+    sys_x_statements_with_temp_tables_columns[] = {
+        SYS_STATEMENT_QUERY_COLUMN,
+        SYS_STATEMENT_DB_COLUMN,
+        SYS_STATEMENT_UNSIGNED_BIGINT_COLUMN("exec_count"),
+        SYS_STATEMENT_UNSIGNED_BIGINT_COLUMN("total_latency"),
+        SYS_STATEMENT_UNSIGNED_BIGINT_COLUMN("memory_tmp_tables"),
+        SYS_STATEMENT_UNSIGNED_BIGINT_COLUMN("disk_tmp_tables"),
+        SYS_STATEMENT_DECIMAL_21_NOT_NULL("avg_tmp_tables_per_query"),
+        SYS_STATEMENT_DECIMAL_24_NOT_NULL("tmp_tables_to_disk_pct"),
+        SYS_STATEMENT_TIMESTAMP_6_COLUMN("first_seen"),
+        SYS_STATEMENT_TIMESTAMP_6_COLUMN("last_seen"),
+        SYS_STATEMENT_DIGEST_COLUMN,
+};
+
 #undef SYS_STATEMENT_QUERY_COLUMN
 #undef SYS_STATEMENT_DB_COLUMN
 #undef SYS_STATEMENT_FULL_SCAN_COLUMN
@@ -294,6 +360,18 @@ static const char *const sys_statements_with_runtimes_in_95th_percentile_column_
 };
 static const char *const sys_statements_with_runtimes_in_95th_percentile_column_privileges[] = {
     REPEAT_16("select,insert,update,references")
+};
+
+static const char *const sys_statements_with_sorting_column_keys[] = {REPEAT_13("")};
+static const char *const sys_statements_with_sorting_column_extras[] = {REPEAT_13("")};
+static const char *const sys_statements_with_sorting_column_privileges[] = {
+    REPEAT_13("select,insert,update,references")
+};
+
+static const char *const sys_statements_with_temp_tables_column_keys[] = {REPEAT_11("")};
+static const char *const sys_statements_with_temp_tables_column_extras[] = {REPEAT_11("")};
+static const char *const sys_statements_with_temp_tables_column_privileges[] = {
+    REPEAT_11("select,insert,update,references")
 };
 
 static const struct mylite_execution_catalog_mysql_system_table
@@ -351,6 +429,36 @@ static const struct mylite_execution_catalog_mysql_system_table
          sys_statements_with_runtimes_in_95th_percentile_column_keys,
          sys_statements_with_runtimes_in_95th_percentile_column_extras,
          sys_statements_with_runtimes_in_95th_percentile_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         NULL,
+         0U},
+        {"sys",
+         {MYLITE_EXECUTION_CATALOG_TABLE_SYS_STATEMENTS_WITH_SORTING,
+          "statements_with_sorting",
+          sys_statements_with_sorting_columns,
+          sizeof(sys_statements_with_sorting_columns) /
+              sizeof(sys_statements_with_sorting_columns[0])},
+         sys_statements_with_sorting_column_keys,
+         sys_statements_with_sorting_column_extras,
+         sys_statements_with_sorting_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         NULL,
+         0U},
+        {"sys",
+         {MYLITE_EXECUTION_CATALOG_TABLE_SYS_STATEMENTS_WITH_TEMP_TABLES,
+          "statements_with_temp_tables",
+          sys_statements_with_temp_tables_columns,
+          sizeof(sys_statements_with_temp_tables_columns) /
+              sizeof(sys_statements_with_temp_tables_columns[0])},
+         sys_statements_with_temp_tables_column_keys,
+         sys_statements_with_temp_tables_column_extras,
+         sys_statements_with_temp_tables_column_privileges,
          NULL,
          NULL,
          0U,
@@ -420,12 +528,44 @@ static const struct mylite_execution_catalog_mysql_system_table
          NULL,
          NULL,
          0U},
+        {"sys",
+         {MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_STATEMENTS_WITH_SORTING,
+          "x$statements_with_sorting",
+          sys_x_statements_with_sorting_columns,
+          sizeof(sys_x_statements_with_sorting_columns) /
+              sizeof(sys_x_statements_with_sorting_columns[0])},
+         sys_statements_with_sorting_column_keys,
+         sys_statements_with_sorting_column_extras,
+         sys_statements_with_sorting_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         NULL,
+         0U},
+        {"sys",
+         {MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_STATEMENTS_WITH_TEMP_TABLES,
+          "x$statements_with_temp_tables",
+          sys_x_statements_with_temp_tables_columns,
+          sizeof(sys_x_statements_with_temp_tables_columns) /
+              sizeof(sys_x_statements_with_temp_tables_columns[0])},
+         sys_statements_with_temp_tables_column_keys,
+         sys_statements_with_temp_tables_column_extras,
+         sys_statements_with_temp_tables_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         NULL,
+         0U},
 };
 
 #undef REPEAT_2
 #undef REPEAT_4
 #undef REPEAT_8
 #undef REPEAT_10
+#undef REPEAT_11
+#undef REPEAT_13
 #undef REPEAT_14
 #undef REPEAT_16
 #undef REPEAT_26

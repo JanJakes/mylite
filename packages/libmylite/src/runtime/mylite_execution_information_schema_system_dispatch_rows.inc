@@ -188,6 +188,8 @@ static int append_information_schema_system_rows(
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_STATEMENTS_WITH_ERRORS_OR_WARNINGS:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_STATEMENTS_WITH_FULL_TABLE_SCANS:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_STATEMENTS_WITH_RUNTIMES_IN_95TH_PERCENTILE:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_STATEMENTS_WITH_SORTING:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_STATEMENTS_WITH_TEMP_TABLES:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_SCHEMA_INDEX_STATISTICS:
@@ -225,6 +227,8 @@ static int append_information_schema_system_rows(
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_STATEMENTS_WITH_ERRORS_OR_WARNINGS:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_STATEMENTS_WITH_FULL_TABLE_SCANS:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_STATEMENTS_WITH_RUNTIMES_IN_95TH_PERCENTILE:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_STATEMENTS_WITH_SORTING:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_STATEMENTS_WITH_TEMP_TABLES:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PS_SCHEMA_TABLE_STATISTICS_IO:
@@ -337,6 +341,10 @@ static int append_information_schema_views_system_rows(
                     strcmp(view->name, "x$statements_with_full_table_scans") == 0 ||
                     strcmp(view->name, "statements_with_runtimes_in_95th_percentile") == 0 ||
                     strcmp(view->name, "x$statements_with_runtimes_in_95th_percentile") == 0 ||
+                    strcmp(view->name, "statements_with_sorting") == 0 ||
+                    strcmp(view->name, "x$statements_with_sorting") == 0 ||
+                    strcmp(view->name, "statements_with_temp_tables") == 0 ||
+                    strcmp(view->name, "x$statements_with_temp_tables") == 0 ||
                     strcmp(view->name, "schema_unused_indexes") == 0
                 ? "YES"
                 : "NO";
@@ -435,6 +443,14 @@ static int append_information_schema_view_table_usage_system_rows(
         {"statements_with_runtimes_in_95th_percentile",
          "sys",
          "x$ps_digest_95th_percentile_by_avg_us"},
+        {"statements_with_sorting",
+         "performance_schema",
+         "events_statements_summary_by_digest"},
+        {"statements_with_sorting", "sys", "sys_config"},
+        {"statements_with_temp_tables",
+         "performance_schema",
+         "events_statements_summary_by_digest"},
+        {"statements_with_temp_tables", "sys", "sys_config"},
         {"innodb_lock_waits", "information_schema", "INNODB_TRX"},
         {"innodb_lock_waits", "performance_schema", "data_lock_waits"},
         {"innodb_lock_waits", "performance_schema", "data_locks"},
@@ -549,6 +565,12 @@ static int append_information_schema_view_table_usage_system_rows(
         {"x$statements_with_runtimes_in_95th_percentile",
          "sys",
          "x$ps_digest_95th_percentile_by_avg_us"},
+        {"x$statements_with_sorting",
+         "performance_schema",
+         "events_statements_summary_by_digest"},
+        {"x$statements_with_temp_tables",
+         "performance_schema",
+         "events_statements_summary_by_digest"},
         {"x$ps_digest_95th_percentile_by_avg_us",
          "performance_schema",
          "events_statements_summary_by_digest"},
@@ -623,6 +645,8 @@ static int append_information_schema_view_routine_usage_system_rows(
         {"statements_with_errors_or_warnings", "format_statement"},
         {"statements_with_full_table_scans", "format_statement"},
         {"statements_with_runtimes_in_95th_percentile", "format_statement"},
+        {"statements_with_sorting", "format_statement"},
+        {"statements_with_temp_tables", "format_statement"},
         {"x$innodb_lock_waits", "quote_identifier"},
         {"x$ps_schema_table_statistics_io", "extract_schema_from_file_name"},
         {"x$ps_schema_table_statistics_io", "extract_table_from_file_name"},

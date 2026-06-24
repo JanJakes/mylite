@@ -144,13 +144,18 @@ not MySQL's full grammar.
 
 This phase exposes a limited common registry. Values are deterministic embedded
 placeholders unless listed otherwise. All numeric values are returned as
-decimal text. The `Com_%` rows mirror the MySQL 8.4.9 command-counter names and
-order, but their values are fixed `0` placeholders rather than live counters.
+decimal text. The `Binlog_%`, `Com_%`, and `Handler_%` rows mirror the MySQL
+8.4.9 counter names and order, but their values are fixed `0` placeholders
+rather than live counters.
 
 | Variable | Default/session/LOCAL visibility | GLOBAL visibility | MyLite value |
 | --- | --- | --- | --- |
 | `Aborted_clients` | yes | yes | `0` |
 | `Aborted_connects` | yes | yes | `0` |
+| `Binlog_cache_disk_use` | yes | yes | `0` |
+| `Binlog_cache_use` | yes | yes | `0` |
+| `Binlog_stmt_cache_disk_use` | yes | yes | `0` |
+| `Binlog_stmt_cache_use` | yes | yes | `0` |
 | `Bytes_received` | yes | yes | `0` |
 | `Bytes_sent` | yes | yes | `0` |
 | `Com_admin_commands` | yes | yes | `0` |

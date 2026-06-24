@@ -147,6 +147,19 @@ expect_value "local compression" "Compression|OFF" "$local_compression"
 global_compression=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Compression';" | normalize_tsv)
 expect_value "global omits compression" "" "$global_compression"
 
+binlog_row_names=$(run_mysql "SHOW STATUS LIKE 'Binlog\\_%';" | cut -f1)
+expected_binlog_row_names="Binlog_cache_disk_use
+Binlog_cache_use
+Binlog_stmt_cache_disk_use
+Binlog_stmt_cache_use"
+expect_value "binlog counter row names" "$expected_binlog_row_names" "$binlog_row_names"
+
+session_binlog_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Binlog\\_%';" | cut -f1)
+expect_value "session binlog counter row names" "$expected_binlog_row_names" "$session_binlog_row_names"
+
+global_binlog_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Binlog\\_%';" | cut -f1)
+expect_value "global binlog counter row names" "$expected_binlog_row_names" "$global_binlog_row_names"
+
 connection_row_names=$(run_mysql "SHOW STATUS LIKE 'Connection\\_%';" | cut -f1)
 expect_value "connection diagnostic row names" "Connection_control_delay_generated
 Connection_control_exempted_unknown_users

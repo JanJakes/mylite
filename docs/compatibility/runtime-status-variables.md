@@ -17,10 +17,10 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Audit_log_total_size` | ❌ | Counter value or embedded zero/empty |
 | `Audit_log_write_waits` | ❌ | Counter value or embedded zero/empty |
 | `Authentication_ldap_sasl_supported_methods` | ❌ | Counter value or embedded zero/empty |
-| `Binlog_cache_disk_use` | ❌ | Counter value or embedded zero/empty |
-| `Binlog_cache_use` | ❌ | Counter value or embedded zero/empty |
-| `Binlog_stmt_cache_disk_use` | ❌ | Counter value or embedded zero/empty |
-| `Binlog_stmt_cache_use` | ❌ | Counter value or embedded zero/empty |
+| `Binlog_cache_disk_use` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Binlog_cache_use` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Binlog_stmt_cache_disk_use` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Binlog_stmt_cache_use` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Bytes_received` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Bytes_sent` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Caching_sha2_password_rsa_public_key` | ❌ | Counter value or embedded zero/empty |

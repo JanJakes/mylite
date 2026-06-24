@@ -186,6 +186,10 @@ static const struct mylite_execution_system_variable_descriptor system_variable_
 static const struct mylite_execution_show_status_descriptor show_status_descriptors[] = {
     {"Aborted_clients", "0", true, true},
     {"Aborted_connects", "0", true, true},
+    {"Binlog_cache_disk_use", "0", true, true},
+    {"Binlog_cache_use", "0", true, true},
+    {"Binlog_stmt_cache_disk_use", "0", true, true},
+    {"Binlog_stmt_cache_use", "0", true, true},
     {"Bytes_received", "0", true, true},
     {"Bytes_sent", "0", true, true},
     {"Com_admin_commands", "0", true, true},

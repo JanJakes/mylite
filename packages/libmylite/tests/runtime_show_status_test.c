@@ -51,6 +51,10 @@ static const char *const diagnostics_columns[diagnostics_column_count] = {
 static const struct expected_status_row expected_session_rows[] = {
     {"Aborted_clients", "0"},
     {"Aborted_connects", "0"},
+    {"Binlog_cache_disk_use", "0"},
+    {"Binlog_cache_use", "0"},
+    {"Binlog_stmt_cache_disk_use", "0"},
+    {"Binlog_stmt_cache_use", "0"},
     {"Bytes_received", "0"},
     {"Bytes_sent", "0"},
     {"Com_admin_commands", "0"},
@@ -345,6 +349,12 @@ static int test_show_status_values_scopes_and_filters(void) {
         {"Ssl_cipher", ""},
         {"Ssl_version", ""},
     };
+    static const struct expected_status_row expected_binlog_rows[] = {
+        {"Binlog_cache_disk_use", "0"},
+        {"Binlog_cache_use", "0"},
+        {"Binlog_stmt_cache_disk_use", "0"},
+        {"Binlog_stmt_cache_use", "0"},
+    };
     static const struct expected_status_row expected_connection_rows[] = {
         {"Connection_control_delay_generated", "0"},
         {"Connection_control_exempted_unknown_users", "0"},
@@ -442,6 +452,20 @@ static int test_show_status_values_scopes_and_filters(void) {
         expected_ssl_rows,
         sizeof(expected_ssl_rows) / sizeof(expected_ssl_rows[0]),
         "show status empty string values"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS LIKE 'Binlog\\_%'",
+        expected_binlog_rows,
+        sizeof(expected_binlog_rows) / sizeof(expected_binlog_rows[0]),
+        "show status binlog counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Binlog\\_%'",
+        expected_binlog_rows,
+        sizeof(expected_binlog_rows) / sizeof(expected_binlog_rows[0]),
+        "show global status binlog counters"
     );
     failures += expect_status_rows(
         database,

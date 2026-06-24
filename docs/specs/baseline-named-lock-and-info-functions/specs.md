@@ -41,10 +41,10 @@ current session and returns the number of released instances.
 
 MySQL rejects empty, `NULL`, or too-long lock names. Baseline MyLite supports
 ASCII lock names with byte length 1..64 and reports deterministic diagnostics
-for invalid names. The timeout argument supports integer-compatible values. A
-negative timeout is treated as wait-forever by MySQL; MyLite maps any contended
-wait request to an immediate timeout because embedded blocking across handles is
-not yet implemented.
+for invalid names. The timeout argument supports integer-compatible values.
+Timeout `0` attempts immediate acquisition, positive integer timeouts wait up
+to that many seconds for another MyLite handle in the current process to release
+the name, and negative integer timeouts wait indefinitely.
 
 `ICU_VERSION()` returns the ICU version used by the target MySQL build. The
 current MySQL 8.4.9 comparison runtime returns `77.1`, so MyLite returns that
@@ -70,7 +70,9 @@ static application mutex. Each entry records the lock name, owning connection
 id, and recursive hold count.
 
 This is a public SQLite extension API fit: MyLite uses SQLite mutex APIs and
-registered scalar functions. No SQLite fork hook is needed.
+registered scalar functions. Contended waits release the registry mutex, sleep
+briefly through `sqlite3_sleep()`, and retry until the integer timeout expires.
+No SQLite fork hook is needed.
 
 Locks are released when a MyLite connection closes. They are not attached to
 transactions and are not released by commit or rollback.
@@ -99,8 +101,10 @@ existing unsupported-expression diagnostics.
 
 ## Compatibility Boundaries
 
-- Blocking waits across connections are not implemented. Contended
-  `GET_LOCK(..., timeout)` returns `0` immediately.
+- Named locks are process-local. Separate MyLite processes do not share the
+  registry.
+- Timeout coercion is currently integer-compatible; fractional timeout seconds
+  are not preserved.
 - Lock names are byte-counted ASCII in this baseline. Full character-set
   expression conversion and multibyte character counting remain out of scope.
 - Performance Schema `metadata_locks` rows for user-level locks are not

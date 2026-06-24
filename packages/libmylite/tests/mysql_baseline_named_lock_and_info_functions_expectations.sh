@@ -92,4 +92,37 @@ if [ "$row_values" != "$expected_row_values" ]; then
     exit 1
 fi
 
+wait_lock="mylite_wait_lock_$$"
+holder_log="/tmp/mylite_named_lock_holder_$$.log"
+(
+    printf '%s\n' "SELECT GET_LOCK('${wait_lock}', 0); SELECT SLEEP(2);"
+) | docker exec -i "$MYSQL_CONTAINER" mysql $MYSQL_ARGS >"$holder_log" &
+holder_pid=$!
+ready=0
+attempts=0
+while [ "$attempts" -lt 50 ]; do
+    if [ "$(run_mysql "SELECT IS_USED_LOCK('${wait_lock}') IS NOT NULL;")" = "1" ]; then
+        ready=1
+        break
+    fi
+    attempts=$((attempts + 1))
+    sleep 0.1
+done
+if [ "$ready" != "1" ]; then
+    echo "timed out waiting for MySQL lock holder:" >&2
+    cat "$holder_log" >&2 || true
+    wait "$holder_pid" || true
+    rm -f "$holder_log"
+    exit 1
+fi
+wait_timeout=$(run_mysql "SELECT GET_LOCK('${wait_lock}', 1);")
+if [ "$wait_timeout" != "0" ]; then
+    echo "unexpected GET_LOCK timeout value: $wait_timeout" >&2
+    wait "$holder_pid" || true
+    rm -f "$holder_log"
+    exit 1
+fi
+wait "$holder_pid"
+rm -f "$holder_log"
+
 echo "mysql_baseline_named_lock_and_info_functions_expectations: ok"

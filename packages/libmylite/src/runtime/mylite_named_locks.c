@@ -17,6 +17,8 @@ enum {
     named_lock_name_max_bytes = 64,
     named_lock_name_capacity = named_lock_name_max_bytes + 1,
     named_lock_initial_entry_capacity = 8,
+    named_lock_wait_milliseconds_per_second = 1000,
+    named_lock_wait_slice_milliseconds = 10,
     named_lock_uint64_text_capacity = 32,
 };
 
@@ -25,6 +27,11 @@ struct named_lock_entry {
     size_t name_size;
     uint64_t owner_connection_id;
     uint64_t hold_count;
+};
+
+struct named_lock_wait {
+    int64_t waited_milliseconds;
+    int64_t timeout_seconds;
 };
 
 static void get_lock_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
@@ -47,6 +54,14 @@ static int sqlite_named_lock_argument(
 static void sqlite_named_lock_error(sqlite3_context *context, int rc, struct mylite_db *database);
 static sqlite3_mutex *named_lock_registry_mutex(void);
 static int named_lock_validate(struct mylite_db *database, struct mylite_named_lock_name name);
+static int try_get_named_lock(
+    struct mylite_db *database,
+    struct mylite_named_lock_name name,
+    uint64_t connection_id,
+    int64_t *out_value
+);
+static int named_lock_timeout_milliseconds(int64_t timeout);
+static int named_lock_sleep_milliseconds(struct named_lock_wait wait);
 static void set_wrong_name_error(struct mylite_db *database);
 static void set_name_too_long_error(struct mylite_db *database);
 static struct named_lock_entry *find_named_lock_entry(struct mylite_named_lock_name name);
@@ -71,11 +86,10 @@ int mylite_named_lock_get(
     int64_t *out_value
 ) {
     sqlite3_mutex *mutex = NULL;
-    struct named_lock_entry *entry = NULL;
     uint64_t connection_id = 0U;
+    int64_t waited_milliseconds = 0;
     int rc = MYLITE_OK;
 
-    (void)timeout;
     if (database == NULL || out_value == NULL) {
         return MYLITE_MISUSE;
     }
@@ -91,37 +105,38 @@ int mylite_named_lock_get(
         sqlite3_mutex_enter(mutex);
     }
 
-    entry = find_named_lock_entry(name);
-    if (entry == NULL) {
-        entry = append_named_lock_entry(database, name, connection_id);
-        if (entry == NULL) {
-            if (mutex != NULL) {
-                sqlite3_mutex_leave(mutex);
-            }
-            return MYLITE_NOMEM;
-        }
-        *out_value = 1;
-    } else if (entry->owner_connection_id == connection_id) {
-        if (entry->hold_count == UINT64_MAX) {
-            if (mutex != NULL) {
-                sqlite3_mutex_leave(mutex);
-            }
-            mylite_diagnostics_set_error(
-                &database->diagnostics,
-                MYLITE_NOMEM,
-                "HY001",
-                "too many recursive named lock holds"
-            );
-            return MYLITE_NOMEM;
-        }
-        ++entry->hold_count;
-        *out_value = 1;
-    } else {
-        *out_value = 0;
-    }
+    for (;;) {
+        int sleep_milliseconds = 0;
 
+        rc = try_get_named_lock(database, name, connection_id, out_value);
+        if (rc != MYLITE_OK || *out_value != 0 || timeout == 0) {
+            break;
+        }
+
+        sleep_milliseconds = named_lock_sleep_milliseconds((struct named_lock_wait){
+            .waited_milliseconds = waited_milliseconds,
+            .timeout_seconds = timeout,
+        });
+        if (sleep_milliseconds <= 0) {
+            break;
+        }
+        if (mutex != NULL) {
+            sqlite3_mutex_leave(mutex);
+        }
+        {
+            int slept_milliseconds = sqlite3_sleep(sleep_milliseconds);
+
+            waited_milliseconds += slept_milliseconds > 0 ? slept_milliseconds : sleep_milliseconds;
+        }
+        if (mutex != NULL) {
+            sqlite3_mutex_enter(mutex);
+        }
+    }
     if (mutex != NULL) {
         sqlite3_mutex_leave(mutex);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
     }
     return MYLITE_OK;
 }
@@ -628,6 +643,69 @@ static int named_lock_validate(struct mylite_db *database, struct mylite_named_l
         return MYLITE_ERROR;
     }
     return MYLITE_OK;
+}
+
+static int try_get_named_lock(
+    struct mylite_db *database,
+    struct mylite_named_lock_name name,
+    uint64_t connection_id,
+    int64_t *out_value
+) {
+    struct named_lock_entry *entry = find_named_lock_entry(name);
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = 0;
+    if (entry == NULL) {
+        entry = append_named_lock_entry(database, name, connection_id);
+        if (entry == NULL) {
+            return MYLITE_NOMEM;
+        }
+        *out_value = 1;
+        return MYLITE_OK;
+    }
+    if (entry->owner_connection_id != connection_id) {
+        return MYLITE_OK;
+    }
+    if (entry->hold_count == UINT64_MAX) {
+        mylite_diagnostics_set_error(
+            &database->diagnostics,
+            MYLITE_NOMEM,
+            "HY001",
+            "too many recursive named lock holds"
+        );
+        return MYLITE_NOMEM;
+    }
+    ++entry->hold_count;
+    *out_value = 1;
+    return MYLITE_OK;
+}
+
+static int named_lock_timeout_milliseconds(int64_t timeout) {
+    if (timeout < 0) {
+        return INT32_MAX;
+    }
+    if (timeout > INT32_MAX / named_lock_wait_milliseconds_per_second) {
+        return INT32_MAX;
+    }
+    return (int)(timeout * named_lock_wait_milliseconds_per_second);
+}
+
+static int named_lock_sleep_milliseconds(struct named_lock_wait wait) {
+    int timeout_milliseconds = named_lock_timeout_milliseconds(wait.timeout_seconds);
+    int64_t remaining_milliseconds = (int64_t)timeout_milliseconds - wait.waited_milliseconds;
+
+    if (wait.timeout_seconds < 0) {
+        return named_lock_wait_slice_milliseconds;
+    }
+    if (remaining_milliseconds <= 0) {
+        return 0;
+    }
+    if (remaining_milliseconds < named_lock_wait_slice_milliseconds) {
+        return (int)remaining_milliseconds;
+    }
+    return named_lock_wait_slice_milliseconds;
 }
 
 static void set_wrong_name_error(struct mylite_db *database) {

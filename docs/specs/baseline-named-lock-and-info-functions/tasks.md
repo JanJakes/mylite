@@ -12,3 +12,6 @@
 - [x] Follow up with repeated scalar `BENCHMARK()` operand evaluation and split
   the row-scalar timing-fidelity residual from the green scalar compatibility
   row.
+- [x] Implement process-local integer timeout waits for contended `GET_LOCK()`
+  calls and split server-wide named-lock instrumentation gaps from the green
+  embedded registry row.

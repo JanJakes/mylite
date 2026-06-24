@@ -6,8 +6,11 @@
 #include <string.h>
 
 #ifdef _WIN32
+#  define WIN32_LEAN_AND_MEAN
 #  include <process.h>
+#  include <windows.h>
 #else
+#  include <time.h>
 #  include <unistd.h>
 #endif
 
@@ -15,6 +18,9 @@ enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
     connection_id_text_capacity = 32,
+    timeout_wait_minimum_milliseconds = 750,
+    milliseconds_per_second = 1000,
+    nanoseconds_per_millisecond = 1000000,
     mysql_error_native_function_parameter_count = 1582,
     mysql_error_user_lock_wrong_name = 3057,
     mysql_error_user_lock_name_too_long = 4163,
@@ -67,10 +73,12 @@ static int expect_warning_rows(
 );
 static int make_test_path(char *path, size_t path_size, const char *name);
 static int current_process_id(void);
+static int64_t monotonic_milliseconds(void);
 static void remove_related_files(const char *path);
 static void remove_with_suffix(const char *path, const char *suffix);
 static int expect_int(int actual, int expected, const char *context);
 static int expect_int64(int64_t actual, int64_t expected, const char *context);
+static int expect_int64_at_least(int64_t actual, int64_t minimum, const char *context);
 static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_text_or_null(const char *actual, const char *expected, const char *context);
 static int expect_text_contains(const char *actual, const char *needle, const char *context);
@@ -234,11 +242,14 @@ static int test_same_session_named_locks(void) {
 static int test_cross_connection_named_locks(void) {
     static const char *const first_lock_values[] = {"1"};
     static const char *const second_owner_template[] = {NULL, "0"};
+    static const char *const second_timeout_values[] = {"0"};
     static const char *const second_get_values[] = {"1", "1"};
     char first_connection_id[connection_id_text_capacity];
     const char *second_owner_values[2];
     mylite_db *first = NULL;
     mylite_db *second = NULL;
+    int64_t timeout_started = 0;
+    int64_t timeout_elapsed = 0;
     int failures = 0;
 
     failures += expect_int(mylite_open_memory(&first), MYLITE_OK, "open first db");
@@ -273,6 +284,24 @@ static int test_cross_connection_named_locks(void) {
             .warning_count = 0U,
             .context = "second connection sees cross lock owner",
         }
+    );
+    timeout_started = monotonic_milliseconds();
+    failures += expect_query_result(
+        second,
+        "SELECT GET_LOCK('mylite_cross', 1)",
+        (struct expected_result){
+            .values = second_timeout_values,
+            .column_count = 1U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .context = "second connection waits for contended named lock timeout",
+        }
+    );
+    timeout_elapsed = monotonic_milliseconds() - timeout_started;
+    failures += expect_int64_at_least(
+        timeout_elapsed,
+        timeout_wait_minimum_milliseconds,
+        "contended named lock timeout waits before returning"
     );
 
     mylite_close(first);
@@ -588,6 +617,20 @@ static int current_process_id(void) {
 #endif
 }
 
+static int64_t monotonic_milliseconds(void) {
+#ifdef _WIN32
+    return (int64_t)GetTickCount64();
+#else
+    struct timespec timestamp;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &timestamp) != 0) {
+        return 0;
+    }
+    return ((int64_t)timestamp.tv_sec * milliseconds_per_second) +
+           ((int64_t)timestamp.tv_nsec / nanoseconds_per_millisecond);
+#endif
+}
+
 static void remove_related_files(const char *path) {
     remove_with_suffix(path, "");
     remove_with_suffix(path, "-journal");
@@ -615,6 +658,20 @@ static int expect_int(int actual, int expected, const char *context) {
 static int expect_int64(int64_t actual, int64_t expected, const char *context) {
     if (actual != expected) {
         fprintf(stderr, "%s: expected %" PRId64 ", got %" PRId64 "\n", context, expected, actual);
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_int64_at_least(int64_t actual, int64_t minimum, const char *context) {
+    if (actual < minimum) {
+        fprintf(
+            stderr,
+            "%s: expected at least %" PRId64 ", got %" PRId64 "\n",
+            context,
+            minimum,
+            actual
+        );
         return 1;
     }
     return 0;

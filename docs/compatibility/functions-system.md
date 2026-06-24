@@ -13,17 +13,18 @@ miscellaneous system helpers.
 | `DATABASE()` | ✅ | MySQL-runtime-verified selected-schema readback in no-source and `DUAL` scalar selects, limited `DO` expression execution, and source-backed row-scalar SELECT projection, `WHERE`, and `ORDER BY`; returns `NULL` when no schema is selected; stored-routine schema binding waits for stored-program support |
 | `ExtractValue()` | 🟡 | Simple XML element fragments with absolute/descendant element-name XPath in scalar and row-scalar contexts; malformed XML warning and invalid XPath error are MySQL-shaped; full XPath/XML behavior is not implemented |
 | `FOUND_ROWS()` | ✅ | MySQL-runtime-verified zero-argument readback in no-source and `DUAL` scalar selects, limited `DO`, `SET @user_variable`, source-free DML value positions, source-backed row-scalar projection, `WHERE`, and `ORDER BY`; records MySQL deprecation warning 1287 per supported invocation and works with the limited `SQL_CALC_FOUND_ROWS` subset; protocol metadata, `CLIENT_FOUND_ROWS`, replication semantics, and full diagnostics-area behavior are tracked separately |
-| `GET_LOCK()` | 🟡 | Process-local recursive named-lock registry; invalid-name diagnostics and cross-handle ownership are verified, but blocking waits and Performance Schema lock rows are not implemented |
+| `GET_LOCK()` embedded registry | ✅ | Process-local recursive named-lock registry with invalid-name diagnostics, cross-handle ownership, immediate timeout, and positive integer timeout waits inside the current process |
+| Named-lock server scope and instrumentation | 🟡 | Named locks are not shared across MyLite processes and do not populate Performance Schema metadata-lock rows or replication warnings |
 | `ICU_VERSION()` | ✅ | Returns the MySQL 8.4.9 target ICU version identity string |
 | `INET_ATON()` | ✅ | MySQL-runtime-verified IPv4 dotted-address to unsigned-integer conversion in scalar and row-scalar expression contexts; IPv6 helpers remain separate gaps |
 | `INET_NTOA()` | ✅ | MySQL-runtime-verified unsigned-integer to IPv4 dotted-address conversion in scalar and row-scalar expression contexts; IPv6 helpers remain separate gaps |
-| `IS_FREE_LOCK()` | 🟡 | Supported against MyLite's process-local named-lock registry |
-| `IS_USED_LOCK()` | 🟡 | Supported against MyLite's process-local named-lock registry |
+| `IS_FREE_LOCK()` | ✅ | Supported against MyLite's process-local named-lock registry |
+| `IS_USED_LOCK()` | ✅ | Supported against MyLite's process-local named-lock registry |
 | `LAST_INSERT_ID()` | ✅ | MySQL-runtime-verified zero-argument readback plus supported `LAST_INSERT_ID(expr)` state-setting forms in scalar and row-scalar expression contexts, including sequence-style single-table `UPDATE`; warning-producing string/decimal/float conversion, wire-protocol insert-id packets, mixed-mode allocation parity, and stored-program behavior are tracked separately |
 | `LOAD_FILE()` | 🟡 | Embedded placeholder evaluates the argument and returns `NULL`, matching unavailable-file behavior without enabling arbitrary server-side file reads |
 | `NAME_CONST()` | ✅ | MySQL-runtime-verified literal-value forms with decoded result labels in scalar and row-scalar contexts; dynamic names, boolean literals, and computed values return MySQL-shaped `1210` errors |
 | `RELEASE_ALL_LOCKS()` | 🟡 | Releases all recursive named-lock holds owned by the current MyLite connection |
-| `RELEASE_LOCK()` | 🟡 | Releases one recursive hold for the named lock owned by the current MyLite connection |
+| `RELEASE_LOCK()` | ✅ | Releases one recursive hold for the named lock owned by the current MyLite connection |
 | `ROW_COUNT()` | ✅ | MySQL-runtime-verified zero-argument readback in no-source and `DUAL` scalar selects, limited `DO`, `SET @user_variable`, source-free DML value positions, and source-backed row-scalar projection, `WHERE`, and `ORDER BY`; returns connection-local row-count state for supported baseline statements; protocol OK-packet parity, `CLIENT_FOUND_ROWS`, and full diagnostics-area behavior are tracked separately |
 | `SCHEMA()` | ✅ | MySQL-runtime-verified synonym for `DATABASE()` in the documented scalar and row-scalar contexts |
 | `SESSION_USER()` | ✅ | MySQL-runtime-verified no-whitespace embedded client identity `root@%` readback in no-source and `DUAL` scalar selects, limited `DO` expression execution, and source-backed row-scalar SELECT projection, `WHERE`, and `ORDER BY`; `IGNORE_SPACE`, stored-function resolution, authentication, host matching, and privilege enforcement are tracked outside this function row |

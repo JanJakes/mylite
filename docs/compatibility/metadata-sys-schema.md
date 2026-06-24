@@ -232,15 +232,15 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.format_time()` | ✅ | MySQL-runtime-verified picosecond formatter and coercion behavior |
 | `sys.list_add()` | ✅ | MySQL-runtime-verified comma-list append and invalid-`NULL` diagnostics |
 | `sys.list_drop()` | ✅ | MySQL-runtime-verified comma-list removal and invalid-`NULL` diagnostics |
-| `sys.ps_is_account_enabled()` | ❌ | Function behavior and diagnostics |
-| `sys.ps_is_consumer_enabled()` | ❌ | Function behavior and diagnostics |
-| `sys.ps_is_instrument_default_enabled()` | ❌ | Function behavior and diagnostics |
-| `sys.ps_is_instrument_default_timed()` | ❌ | Function behavior and diagnostics |
-| `sys.ps_is_thread_instrumented()` | ❌ | Function behavior and diagnostics |
-| `sys.ps_thread_account()` | ❌ | Function behavior and diagnostics |
-| `sys.ps_thread_id()` | ❌ | Function behavior and diagnostics |
-| `sys.ps_thread_stack()` | ❌ | Function behavior and diagnostics |
-| `sys.ps_thread_trx_info()` | ❌ | Function behavior and diagnostics |
+| `sys.ps_is_account_enabled()` | 🟡 | Executable embedded default account-instrumentation helper returning `YES`; no writable Performance Schema account setup state |
+| `sys.ps_is_consumer_enabled()` | 🟡 | Executable helper for MySQL 8.4.9 default `setup_consumers` values, `NULL` input, and invalid-consumer diagnostics; no live consumer configuration changes |
+| `sys.ps_is_instrument_default_enabled()` | 🟡 | Executable helper for selected MySQL 8.4.9 default instrument enabled values; no full `setup_instruments` inventory or mutable setup table |
+| `sys.ps_is_instrument_default_timed()` | 🟡 | Executable helper for selected MySQL 8.4.9 default instrument timing values, including memory and disabled internal mutex instruments; no full setup inventory or mutable setup table |
+| `sys.ps_is_thread_instrumented()` | 🟡 | Executable current MyLite processlist-session helper returning `YES`, `UNKNOWN`, or `NULL`; no background-thread or mutable Performance Schema instrumentation state |
+| `sys.ps_thread_account()` | 🟡 | Executable current MyLite processlist-session thread-account helper; no background-thread inventory |
+| `sys.ps_thread_id()` | 🟡 | Executable current MyLite connection-id to synthetic thread-id helper; no MySQL deprecated-name warning or native Performance Schema thread id allocation |
+| `sys.ps_thread_stack()` | 🟡 | Executable empty JSON stack placeholder with argument diagnostics; no live statement, stage, wait, or stack event collection |
+| `sys.ps_thread_trx_info()` | 🟡 | Executable empty transaction-info placeholder for known MyLite sessions and `NULL` for missing sessions; no Performance Schema transaction/statement history collection |
 | `sys.quote_identifier()` | ✅ | MySQL-runtime-verified identifier quoting and embedded-backtick escaping |
 | `sys.sys_get_config()` | ✅ | MySQL-runtime-verified built-in sys defaults plus caller fallback |
 | `sys.version_major()` | ✅ | MySQL-runtime-verified server-version component helper |

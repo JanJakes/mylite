@@ -44,6 +44,10 @@
     COMMAND mylite_runtime_sys_helper_functions_test
   )
   add_test(
+    NAME libmylite.runtime.sys_performance_schema_helper_functions
+    COMMAND mylite_runtime_sys_performance_schema_helper_functions_test
+  )
+  add_test(
     NAME libmylite.runtime.if_function
     COMMAND mylite_runtime_if_function_test
   )

@@ -11,6 +11,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -20,6 +21,8 @@
 enum {
     statement_truncate_len_default = 64,
     sys_function_number_buffer_size = 96,
+    sys_function_json_buffer_size = 256,
+    sys_function_uint64_buffer_size = 32,
     sys_config_decimal_parse_base = 10,
 };
 
@@ -36,6 +39,11 @@ struct sys_function_descriptor {
 struct sys_config_value {
     const char *name;
     const char *value;
+};
+
+struct sys_consumer_default {
+    const char *name;
+    const char *enabled;
 };
 
 struct path_prefix_rewrite {
@@ -63,6 +71,38 @@ static const struct sys_function_descriptor sys_function_descriptors[] = {
     {"version_major", "_mylite_sys_version_major", MYLITE_SYS_FUNCTION_VERSION_MAJOR, 0U},
     {"version_minor", "_mylite_sys_version_minor", MYLITE_SYS_FUNCTION_VERSION_MINOR, 0U},
     {"version_patch", "_mylite_sys_version_patch", MYLITE_SYS_FUNCTION_VERSION_PATCH, 0U},
+    {"ps_is_account_enabled",
+     "_mylite_sys_ps_is_account_enabled",
+     MYLITE_SYS_FUNCTION_PS_IS_ACCOUNT_ENABLED,
+     2U},
+    {"ps_is_consumer_enabled",
+     "_mylite_sys_ps_is_consumer_enabled",
+     MYLITE_SYS_FUNCTION_PS_IS_CONSUMER_ENABLED,
+     1U},
+    {"ps_is_instrument_default_enabled",
+     "_mylite_sys_ps_is_instrument_default_enabled",
+     MYLITE_SYS_FUNCTION_PS_IS_INSTRUMENT_DEFAULT_ENABLED,
+     1U},
+    {"ps_is_instrument_default_timed",
+     "_mylite_sys_ps_is_instrument_default_timed",
+     MYLITE_SYS_FUNCTION_PS_IS_INSTRUMENT_DEFAULT_TIMED,
+     1U},
+    {"ps_is_thread_instrumented",
+     "_mylite_sys_ps_is_thread_instrumented",
+     MYLITE_SYS_FUNCTION_PS_IS_THREAD_INSTRUMENTED,
+     1U},
+    {
+        "ps_thread_account",
+        "_mylite_sys_ps_thread_account",
+        MYLITE_SYS_FUNCTION_PS_THREAD_ACCOUNT,
+        1U,
+    },
+    {"ps_thread_id", "_mylite_sys_ps_thread_id", MYLITE_SYS_FUNCTION_PS_THREAD_ID, 1U},
+    {"ps_thread_stack", "_mylite_sys_ps_thread_stack", MYLITE_SYS_FUNCTION_PS_THREAD_STACK, 2U},
+    {"ps_thread_trx_info",
+     "_mylite_sys_ps_thread_trx_info",
+     MYLITE_SYS_FUNCTION_PS_THREAD_TRX_INFO,
+     1U},
 };
 
 enum {
@@ -77,6 +117,25 @@ static const struct sys_config_value sys_config_values[] = {
     {"statement_performance_analyzer.limit", "100"},
     {"statement_performance_analyzer.view", NULL},
     {"statement_truncate_len", "64"},
+};
+
+static const struct sys_consumer_default sys_consumer_defaults[] = {
+    {"events_stages_current", "NO"},
+    {"events_stages_history", "NO"},
+    {"events_stages_history_long", "NO"},
+    {"events_statements_cpu", "NO"},
+    {"events_statements_current", "YES"},
+    {"events_statements_history", "YES"},
+    {"events_statements_history_long", "NO"},
+    {"events_transactions_current", "YES"},
+    {"events_transactions_history", "YES"},
+    {"events_transactions_history_long", "NO"},
+    {"events_waits_current", "NO"},
+    {"events_waits_history", "NO"},
+    {"events_waits_history_long", "NO"},
+    {"global_instrumentation", "YES"},
+    {"statements_digest", "YES"},
+    {"thread_instrumentation", "YES"},
 };
 
 static const struct path_prefix_rewrite path_prefix_rewrites[] = {
@@ -153,13 +212,62 @@ static int sys_version_component(
     enum mylite_sys_function_kind kind,
     struct mylite_sys_function_result *out_result
 );
+static int sys_ps_is_account_enabled(struct mylite_sys_function_result *out_result);
+static int sys_ps_is_consumer_enabled(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+);
+static int sys_ps_is_instrument_default_enabled(
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+);
+static int sys_ps_is_instrument_default_timed(
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+);
+static int sys_ps_is_thread_instrumented(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+);
+static int sys_ps_thread_account(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+);
+static int sys_ps_thread_id(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+);
+static int sys_ps_thread_stack(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+);
+static int sys_ps_thread_trx_info(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+);
 static size_t last_slash_before(const char *text, size_t end);
 static size_t last_dot_between(const char *text, size_t start, size_t end);
 static int copy_argument_text(const struct mylite_sys_function_argument *argument, char **out_text);
+static bool argument_text_starts_with_case_insensitive(
+    const struct mylite_sys_function_argument *argument,
+    const char *prefix
+);
 static bool parse_argument_number(
     const struct mylite_sys_function_argument *argument,
     long double *out_value,
     bool *out_valid
+);
+static int parse_unsigned_argument(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *argument,
+    const char *column_name,
+    uint64_t *out_value
 );
 static int format_fixed_unit_result(
     struct mylite_sys_function_result *out_result,
@@ -186,6 +294,38 @@ static const char *sys_config_user_variable_value(
     size_t name_size,
     size_t *out_value_size,
     bool *out_is_null
+);
+static const char *sys_consumer_default_value(const char *name, size_t name_size);
+static bool sys_instrument_default_disabled(const struct mylite_sys_function_argument *argument);
+static bool sys_instrument_default_not_timed(const struct mylite_sys_function_argument *argument);
+static int sys_processlist_contains_connection_id(
+    struct mylite_db *database,
+    uint64_t id,
+    bool *out_found
+);
+static int sys_processlist_account_for_thread_id(
+    struct mylite_db *database,
+    uint64_t id,
+    struct mylite_sys_function_result *out_result
+);
+static int sys_current_connection_id_result(
+    struct mylite_db *database,
+    struct mylite_sys_function_result *out_result
+);
+static int sys_thread_stack_empty_json_result(
+    struct mylite_db *database,
+    struct mylite_sys_function_result *out_result
+);
+static void set_sys_invalid_consumer_error(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *argument
+);
+static void set_sys_unsigned_argument_error(
+    struct mylite_db *database,
+    int code,
+    const char *sqlstate,
+    const char *column_name,
+    const struct mylite_sys_function_argument *argument
 );
 static void remove_list_drop_pattern(
     struct mylite_dynamic_string *string,
@@ -310,6 +450,24 @@ int mylite_sys_function_evaluate(
     case MYLITE_SYS_FUNCTION_VERSION_MINOR:
     case MYLITE_SYS_FUNCTION_VERSION_PATCH:
         return sys_version_component(kind, out_result);
+    case MYLITE_SYS_FUNCTION_PS_IS_ACCOUNT_ENABLED:
+        return sys_ps_is_account_enabled(out_result);
+    case MYLITE_SYS_FUNCTION_PS_IS_CONSUMER_ENABLED:
+        return sys_ps_is_consumer_enabled(database, arguments, out_result);
+    case MYLITE_SYS_FUNCTION_PS_IS_INSTRUMENT_DEFAULT_ENABLED:
+        return sys_ps_is_instrument_default_enabled(arguments, out_result);
+    case MYLITE_SYS_FUNCTION_PS_IS_INSTRUMENT_DEFAULT_TIMED:
+        return sys_ps_is_instrument_default_timed(arguments, out_result);
+    case MYLITE_SYS_FUNCTION_PS_IS_THREAD_INSTRUMENTED:
+        return sys_ps_is_thread_instrumented(database, arguments, out_result);
+    case MYLITE_SYS_FUNCTION_PS_THREAD_ACCOUNT:
+        return sys_ps_thread_account(database, arguments, out_result);
+    case MYLITE_SYS_FUNCTION_PS_THREAD_ID:
+        return sys_ps_thread_id(database, arguments, out_result);
+    case MYLITE_SYS_FUNCTION_PS_THREAD_STACK:
+        return sys_ps_thread_stack(database, arguments, out_result);
+    case MYLITE_SYS_FUNCTION_PS_THREAD_TRX_INFO:
+        return sys_ps_thread_trx_info(database, arguments, out_result);
     case MYLITE_SYS_FUNCTION_NONE:
         break;
     }
@@ -891,6 +1049,161 @@ static int sys_version_component(
     );
 }
 
+static int sys_ps_is_account_enabled(struct mylite_sys_function_result *out_result) {
+    return sys_function_copy_result(out_result, "YES", sizeof("YES") - 1U);
+}
+
+static int sys_ps_is_consumer_enabled(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+) {
+    const char *value = NULL;
+
+    if (arguments[0].is_null) {
+        return sys_function_null_result(out_result);
+    }
+    value = sys_consumer_default_value(arguments[0].text, arguments[0].text_size);
+    if (value == NULL) {
+        set_sys_invalid_consumer_error(database, &arguments[0]);
+        return MYLITE_ERROR;
+    }
+    return sys_function_copy_result(out_result, value, strlen(value));
+}
+
+static int sys_ps_is_instrument_default_enabled(
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+) {
+    const char *value = sys_instrument_default_disabled(&arguments[0]) ? "NO" : "YES";
+
+    return sys_function_copy_result(out_result, value, strlen(value));
+}
+
+static int sys_ps_is_instrument_default_timed(
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+) {
+    const char *value = sys_instrument_default_not_timed(&arguments[0]) ? "NO" : "YES";
+
+    return sys_function_copy_result(out_result, value, strlen(value));
+}
+
+static int sys_ps_is_thread_instrumented(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+) {
+    uint64_t connection_id = 0U;
+    bool found = false;
+    int rc = MYLITE_OK;
+
+    if (arguments[0].is_null) {
+        return sys_function_null_result(out_result);
+    }
+    rc = parse_unsigned_argument(database, &arguments[0], "in_connection_id", &connection_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = sys_processlist_contains_connection_id(database, connection_id, &found);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!found) {
+        return sys_function_copy_result(out_result, "UNKNOWN", sizeof("UNKNOWN") - 1U);
+    }
+    return sys_function_copy_result(out_result, "YES", sizeof("YES") - 1U);
+}
+
+static int sys_ps_thread_account(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+) {
+    uint64_t thread_id = 0U;
+    int rc = MYLITE_OK;
+
+    if (arguments[0].is_null) {
+        return sys_function_null_result(out_result);
+    }
+    rc = parse_unsigned_argument(database, &arguments[0], "in_thread_id", &thread_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return sys_processlist_account_for_thread_id(database, thread_id, out_result);
+}
+
+static int sys_ps_thread_id(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+) {
+    uint64_t connection_id = 0U;
+    bool found = false;
+    int rc = MYLITE_OK;
+
+    if (arguments[0].is_null) {
+        return sys_current_connection_id_result(database, out_result);
+    }
+    rc = parse_unsigned_argument(database, &arguments[0], "in_connection_id", &connection_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = sys_processlist_contains_connection_id(database, connection_id, &found);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!found) {
+        return sys_function_null_result(out_result);
+    }
+    return sys_function_format_result(out_result, "%" PRIu64, connection_id);
+}
+
+static int sys_ps_thread_stack(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+) {
+    uint64_t ignored_thread_id = 0U;
+    int rc = MYLITE_OK;
+
+    if (!arguments[0].is_null) {
+        rc = parse_unsigned_argument(database, &arguments[0], "thd_id", &ignored_thread_id);
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    (void)ignored_thread_id;
+    (void)arguments;
+    return sys_thread_stack_empty_json_result(database, out_result);
+}
+
+static int sys_ps_thread_trx_info(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+) {
+    uint64_t thread_id = 0U;
+    bool found = false;
+    int rc = MYLITE_OK;
+
+    if (arguments[0].is_null) {
+        return sys_function_null_result(out_result);
+    }
+    rc = parse_unsigned_argument(database, &arguments[0], "in_thread_id", &thread_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = sys_processlist_contains_connection_id(database, thread_id, &found);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!found) {
+        return sys_function_null_result(out_result);
+    }
+    return sys_function_copy_result(out_result, "[]", sizeof("[]") - 1U);
+}
+
 static size_t last_slash_before(const char *text, size_t end) {
     while (end > 0U) {
         --end;
@@ -937,6 +1250,25 @@ static int copy_argument_text(
     return MYLITE_OK;
 }
 
+static bool argument_text_starts_with_case_insensitive(
+    const struct mylite_sys_function_argument *argument,
+    const char *prefix
+) {
+    size_t prefix_size = prefix == NULL ? 0U : strlen(prefix);
+
+    if (argument == NULL || argument->is_null || argument->text == NULL || prefix == NULL ||
+        argument->text_size < prefix_size) {
+        return false;
+    }
+    for (size_t index = 0U; index < prefix_size; ++index) {
+        if (tolower((unsigned char)argument->text[index]) !=
+            tolower((unsigned char)prefix[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool parse_argument_number(
     const struct mylite_sys_function_argument *argument,
     long double *out_value,
@@ -968,6 +1300,76 @@ static bool parse_argument_number(
     *out_valid = errno != ERANGE && end != start;
     free(copy);
     return true;
+}
+
+static int parse_unsigned_argument(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *argument,
+    const char *column_name,
+    uint64_t *out_value
+) {
+    char *copy = NULL;
+    char *start = NULL;
+    char *end = NULL;
+    unsigned long long parsed = 0ULL;
+    int rc = MYLITE_OK;
+
+    if (argument == NULL || column_name == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = 0U;
+    rc = copy_argument_text(argument, &copy);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (copy == NULL) {
+        return MYLITE_MISUSE;
+    }
+    start = copy;
+    while (*start != '\0' && isspace((unsigned char)*start)) {
+        ++start;
+    }
+    if (*start == '-') {
+        set_sys_unsigned_argument_error(
+            database,
+            mysql_error_data_out_of_range,
+            "22003",
+            column_name,
+            argument
+        );
+        free(copy);
+        return MYLITE_ERROR;
+    }
+    errno = 0;
+    parsed = strtoull(start, &end, sys_config_decimal_parse_base);
+    while (end != NULL && *end != '\0' && isspace((unsigned char)*end)) {
+        ++end;
+    }
+    if (errno == ERANGE) {
+        set_sys_unsigned_argument_error(
+            database,
+            mysql_error_data_out_of_range,
+            "22003",
+            column_name,
+            argument
+        );
+        free(copy);
+        return MYLITE_ERROR;
+    }
+    if (end == start || (end != NULL && *end != '\0')) {
+        set_sys_unsigned_argument_error(
+            database,
+            mysql_error_truncated_wrong_value_for_field,
+            "HY000",
+            column_name,
+            argument
+        );
+        free(copy);
+        return MYLITE_ERROR;
+    }
+    *out_value = (uint64_t)parsed;
+    free(copy);
+    return MYLITE_OK;
 }
 
 static int format_fixed_unit_result(
@@ -1107,6 +1509,214 @@ static const char *sys_config_user_variable_value(
         return variable->value;
     }
     return NULL;
+}
+
+static const char *sys_consumer_default_value(const char *name, size_t name_size) {
+    for (size_t index = 0U;
+         index < sizeof(sys_consumer_defaults) / sizeof(sys_consumer_defaults[0]);
+         ++index) {
+        if (ascii_equals_case_insensitive(name, name_size, sys_consumer_defaults[index].name)) {
+            return sys_consumer_defaults[index].enabled;
+        }
+    }
+    return NULL;
+}
+
+static bool sys_instrument_default_disabled(const struct mylite_sys_function_argument *argument) {
+    if (argument == NULL || argument->is_null) {
+        return false;
+    }
+    return argument_text_starts_with_case_insensitive(argument, "wait/synch/mutex/pfs/") ||
+           argument_text_starts_with_case_insensitive(
+               argument,
+               "wait/synch/mutex/sql/MYSQL_BIN_LOG::"
+           ) ||
+           ascii_equals_case_insensitive(
+               argument->text,
+               argument->text_size,
+               "wait/synch/mutex/sql/TC_LOG_MMAP::LOCK_tc"
+           );
+}
+
+static bool sys_instrument_default_not_timed(const struct mylite_sys_function_argument *argument) {
+    if (argument == NULL || argument->is_null) {
+        return false;
+    }
+    return sys_instrument_default_disabled(argument) ||
+           argument_text_starts_with_case_insensitive(argument, "memory/");
+}
+
+static int sys_processlist_contains_connection_id(
+    struct mylite_db *database,
+    uint64_t id,
+    bool *out_found
+) {
+    struct mylite_processlist_session_snapshot *sessions = NULL;
+    size_t session_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_found == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_found = false;
+    if (database == NULL) {
+        return MYLITE_OK;
+    }
+    rc = mylite_connection_collect_processlist_sessions(database, &sessions, &session_count);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    for (size_t index = 0U; index < session_count && !*out_found; ++index) {
+        *out_found = sessions[index].connection_id == id;
+    }
+    free(sessions);
+    return MYLITE_OK;
+}
+
+static int sys_processlist_account_for_thread_id(
+    struct mylite_db *database,
+    uint64_t id,
+    struct mylite_sys_function_result *out_result
+) {
+    struct mylite_processlist_session_snapshot *sessions = NULL;
+    size_t session_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (database == NULL) {
+        return sys_function_null_result(out_result);
+    }
+    rc = mylite_connection_collect_processlist_sessions(database, &sessions, &session_count);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    for (size_t index = 0U; index < session_count; ++index) {
+        if (sessions[index].connection_id == id) {
+            rc = sys_function_copy_result(
+                out_result,
+                sessions[index].client_user_identity,
+                strlen(sessions[index].client_user_identity)
+            );
+            free(sessions);
+            return rc;
+        }
+    }
+    free(sessions);
+    return sys_function_null_result(out_result);
+}
+
+static int sys_current_connection_id_result(
+    struct mylite_db *database,
+    struct mylite_sys_function_result *out_result
+) {
+    const struct mylite_session_state *session = mylite_connection_session_state(database);
+    char buffer[sys_function_uint64_buffer_size];
+    int written = 0;
+
+    if (session == NULL) {
+        return sys_function_null_result(out_result);
+    }
+    written = snprintf(buffer, sizeof(buffer), "%" PRIu64, session->connection_id);
+    if (written < 0 || (size_t)written >= sizeof(buffer)) {
+        return MYLITE_NOMEM;
+    }
+    return sys_function_copy_result(out_result, buffer, (size_t)written);
+}
+
+static int sys_thread_stack_empty_json_result(
+    struct mylite_db *database,
+    struct mylite_sys_function_result *out_result
+) {
+    const struct mylite_session_state *session = mylite_connection_session_state(database);
+    const char *user = session == NULL ? "root@%" : session->current_user_identity;
+    char buffer[sys_function_json_buffer_size];
+    int written = snprintf(
+        buffer,
+        sizeof(buffer),
+        "{\"rankdir\": \"LR\",\"nodesep\": \"0.10\",\"stack_created\": "
+        "\"1970-01-01 00:00:00\",\"mysql_version\": \"%s\",\"mysql_user\": \"%s\","
+        "\"events\": []}",
+        MYLITE_MYSQL_SERVER_VERSION_STRING,
+        user
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(buffer)) {
+        return MYLITE_NOMEM;
+    }
+    return sys_function_copy_result(out_result, buffer, (size_t)written);
+}
+
+static void set_sys_invalid_consumer_error(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *argument
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = 0;
+
+    if (database == NULL || argument == NULL) {
+        return;
+    }
+    written = snprintf(
+        message,
+        sizeof(message),
+        "Invalid argument error: %.*s in function sys.ps_is_consumer_enabled.",
+        (int)argument->text_size,
+        argument->text == NULL ? "" : argument->text
+    );
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        mylite_diagnostics_set_error(
+            &database->diagnostics,
+            mysql_error_unknown,
+            "HY000",
+            "invalid sys consumer"
+        );
+        return;
+    }
+    mylite_diagnostics_set_error(
+        &database->diagnostics,
+        mysql_error_invalid_argument_for_function,
+        "HY000",
+        message
+    );
+}
+
+static void set_sys_unsigned_argument_error(
+    struct mylite_db *database,
+    int code,
+    const char *sqlstate,
+    const char *column_name,
+    const struct mylite_sys_function_argument *argument
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    const char *format = code == mysql_error_data_out_of_range
+                             ? "Out of range value for column '%s' at row 1"
+                             : "Incorrect integer value: '%.*s' for column '%s' at row 1";
+    int written = 0;
+
+    if (database == NULL || sqlstate == NULL || column_name == NULL || argument == NULL) {
+        return;
+    }
+    if (code == mysql_error_data_out_of_range) {
+        written = snprintf(message, sizeof(message), format, column_name);
+    } else {
+        written = snprintf(
+            message,
+            sizeof(message),
+            format,
+            (int)argument->text_size,
+            argument->text == NULL ? "" : argument->text,
+            column_name
+        );
+    }
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        mylite_diagnostics_set_error(
+            &database->diagnostics,
+            mysql_error_unknown,
+            "HY000",
+            "invalid sys unsigned argument"
+        );
+        return;
+    }
+    mylite_diagnostics_set_error(&database->diagnostics, code, sqlstate, message);
 }
 
 static void remove_list_drop_pattern(

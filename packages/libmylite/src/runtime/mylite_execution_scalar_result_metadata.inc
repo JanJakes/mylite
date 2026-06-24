@@ -157,7 +157,8 @@ static int populate_scalar_function_result_column_descriptor(
         if (generic_sys_function_kind(expression, &sys_function_kind)) {
             if (sys_function_kind == MYLITE_SYS_FUNCTION_VERSION_MAJOR ||
                 sys_function_kind == MYLITE_SYS_FUNCTION_VERSION_MINOR ||
-                sys_function_kind == MYLITE_SYS_FUNCTION_VERSION_PATCH) {
+                sys_function_kind == MYLITE_SYS_FUNCTION_VERSION_PATCH ||
+                sys_function_kind == MYLITE_SYS_FUNCTION_PS_THREAD_ID) {
                 populate_scalar_binary_numeric_result_column_descriptor(
                     descriptor,
                     (struct scalar_binary_numeric_result_column_shape){

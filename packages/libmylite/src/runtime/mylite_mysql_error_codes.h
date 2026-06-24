@@ -94,6 +94,7 @@ enum {
     mysql_error_data_truncated = 1265,
     mysql_error_unknown_collation = 1273,
     mysql_error_truncated_wrong_value_for_field = 1366,
+    mysql_error_invalid_argument_for_function = 3047,
     mysql_error_trigger_does_not_exist = 1360,
     mysql_error_operation_failed = 1396,
     mysql_error_check_option_on_non_updatable_view = 1368,

@@ -142,6 +142,8 @@ errors, and source-backed row-scalar projections.
   interruption during sleep remains outside the current execution model.
 - `NAME_CONST()` is green for the literal forms MySQL accepts in the verified
   probes.
-- `LOAD_FILE()` remains yellow as a deliberate embedded placeholder.
-- `ExtractValue()` and `UpdateXML()` remain yellow because the XML/XPath engine
-  is intentionally a subset.
+- `LOAD_FILE()` is green for the unavailable-file embedded placeholder behavior.
+  Server-side file reads remain a separate yellow compatibility boundary.
+- `ExtractValue()` and `UpdateXML()` are green for the verified simple XML
+  subset. Full XML and XPath behavior remains a separate yellow compatibility
+  boundary.

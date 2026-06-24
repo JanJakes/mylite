@@ -485,6 +485,90 @@ expect_value "handler counter row names" "$expected_handler_row_names" "$handler
 global_handler_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Handler\\_%';" | cut -f1)
 expect_value "global handler counter row names" "$expected_handler_row_names" "$global_handler_row_names"
 
+innodb_row_names=$(run_mysql "SHOW STATUS LIKE 'Innodb%';" | cut -f1)
+expected_innodb_row_names="Innodb_buffer_pool_dump_status
+Innodb_buffer_pool_load_status
+Innodb_buffer_pool_resize_status
+Innodb_buffer_pool_resize_status_code
+Innodb_buffer_pool_resize_status_progress
+Innodb_buffer_pool_pages_data
+Innodb_buffer_pool_bytes_data
+Innodb_buffer_pool_pages_dirty
+Innodb_buffer_pool_bytes_dirty
+Innodb_buffer_pool_pages_flushed
+Innodb_buffer_pool_pages_free
+Innodb_buffer_pool_pages_misc
+Innodb_buffer_pool_pages_total
+Innodb_buffer_pool_read_ahead_rnd
+Innodb_buffer_pool_read_ahead
+Innodb_buffer_pool_read_ahead_evicted
+Innodb_buffer_pool_read_requests
+Innodb_buffer_pool_reads
+Innodb_buffer_pool_wait_free
+Innodb_buffer_pool_write_requests
+Innodb_data_fsyncs
+Innodb_data_pending_fsyncs
+Innodb_data_pending_reads
+Innodb_data_pending_writes
+Innodb_data_read
+Innodb_data_reads
+Innodb_data_writes
+Innodb_data_written
+Innodb_dblwr_pages_written
+Innodb_dblwr_writes
+Innodb_redo_log_read_only
+Innodb_redo_log_uuid
+Innodb_redo_log_checkpoint_lsn
+Innodb_redo_log_current_lsn
+Innodb_redo_log_flushed_to_disk_lsn
+Innodb_redo_log_logical_size
+Innodb_redo_log_physical_size
+Innodb_redo_log_capacity_resized
+Innodb_redo_log_resize_status
+Innodb_log_waits
+Innodb_log_write_requests
+Innodb_log_writes
+Innodb_os_log_fsyncs
+Innodb_os_log_pending_fsyncs
+Innodb_os_log_pending_writes
+Innodb_os_log_written
+Innodb_page_size
+Innodb_pages_created
+Innodb_pages_read
+Innodb_pages_written
+Innodb_redo_log_enabled
+Innodb_row_lock_current_waits
+Innodb_row_lock_time
+Innodb_row_lock_time_avg
+Innodb_row_lock_time_max
+Innodb_row_lock_waits
+Innodb_rows_deleted
+Innodb_rows_inserted
+Innodb_rows_read
+Innodb_rows_updated
+Innodb_system_rows_deleted
+Innodb_system_rows_inserted
+Innodb_system_rows_read
+Innodb_system_rows_updated
+Innodb_sampled_pages_read
+Innodb_sampled_pages_skipped
+Innodb_num_open_files
+Innodb_truncated_status_writes
+Innodb_undo_tablespaces_total
+Innodb_undo_tablespaces_implicit
+Innodb_undo_tablespaces_explicit
+Innodb_undo_tablespaces_active"
+expect_value "innodb row names" "$expected_innodb_row_names" "$innodb_row_names"
+
+session_innodb_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Innodb%';" | cut -f1)
+expect_value "session innodb row names" "$expected_innodb_row_names" "$session_innodb_row_names"
+
+local_innodb_row_names=$(run_mysql "SHOW LOCAL STATUS LIKE 'Innodb%';" | cut -f1)
+expect_value "local innodb row names" "$expected_innodb_row_names" "$local_innodb_row_names"
+
+global_innodb_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Innodb%';" | cut -f1)
+expect_value "global innodb row names" "$expected_innodb_row_names" "$global_innodb_row_names"
+
 open_row_names=$(run_mysql "SHOW STATUS LIKE 'Open%';" | cut -f1)
 expected_open_row_names="Open_files
 Open_streams

@@ -281,78 +281,78 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Handler_savepoint_rollback` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Handler_update` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Handler_write` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Innodb_buffer_pool_bytes_data` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_bytes_dirty` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_dump_status` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_load_status` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_pages_data` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_pages_dirty` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_pages_flushed` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_pages_free` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_pages_latched` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_pages_misc` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_pages_total` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_read_ahead` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_read_ahead_evicted` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_read_ahead_rnd` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_read_requests` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_reads` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_resize_status` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_resize_status_code` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_resize_status_progress` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_wait_free` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_buffer_pool_write_requests` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_data_fsyncs` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_data_pending_fsyncs` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_data_pending_reads` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_data_pending_writes` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_data_read` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_data_reads` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_data_writes` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_data_written` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_dblwr_pages_written` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_dblwr_writes` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_have_atomic_builtins` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_log_waits` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_log_write_requests` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_log_writes` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_num_open_files` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_os_log_fsyncs` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_os_log_pending_fsyncs` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_os_log_pending_writes` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_os_log_written` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_page_size` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_pages_created` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_pages_read` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_pages_written` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_redo_log_capacity_resized` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_redo_log_checkpoint_lsn` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_redo_log_current_lsn` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_redo_log_enabled` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_redo_log_flushed_to_disk_lsn` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_redo_log_logical_size` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_redo_log_physical_size` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_redo_log_read_only` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_redo_log_resize_status` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_redo_log_uuid` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_row_lock_current_waits` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_row_lock_time` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_row_lock_time_avg` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_row_lock_time_max` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_row_lock_waits` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_rows_deleted` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_rows_inserted` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_rows_read` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_rows_updated` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_system_rows_deleted` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_system_rows_inserted` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_system_rows_read` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_system_rows_updated` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_truncated_status_writes` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_undo_tablespaces_active` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_undo_tablespaces_explicit` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_undo_tablespaces_implicit` | ❌ | Counter value or embedded zero/empty |
-| `Innodb_undo_tablespaces_total` | ❌ | Counter value or embedded zero/empty |
+| `Innodb_buffer_pool_dump_status` | 🟡 | Limited `SHOW STATUS` embedded placeholder; no live InnoDB buffer-pool dump state |
+| `Innodb_buffer_pool_load_status` | 🟡 | Limited `SHOW STATUS` embedded placeholder; no live InnoDB buffer-pool load state |
+| `Innodb_buffer_pool_resize_status` | 🟡 | Limited `SHOW STATUS` embedded placeholder; no live InnoDB buffer-pool resize state |
+| `Innodb_buffer_pool_resize_status_code` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB buffer-pool resize state |
+| `Innodb_buffer_pool_resize_status_progress` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB buffer-pool resize state |
+| `Innodb_buffer_pool_pages_data` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB buffer-pool accounting |
+| `Innodb_buffer_pool_bytes_data` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB buffer-pool accounting |
+| `Innodb_buffer_pool_pages_dirty` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB buffer-pool accounting |
+| `Innodb_buffer_pool_bytes_dirty` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB buffer-pool accounting |
+| `Innodb_buffer_pool_pages_flushed` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB buffer-pool accounting |
+| `Innodb_buffer_pool_pages_free` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB buffer-pool accounting |
+| `Innodb_buffer_pool_pages_misc` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB buffer-pool accounting |
+| `Innodb_buffer_pool_pages_total` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB buffer-pool accounting |
+| `Innodb_buffer_pool_read_ahead_rnd` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB read-ahead accounting |
+| `Innodb_buffer_pool_read_ahead` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB read-ahead accounting |
+| `Innodb_buffer_pool_read_ahead_evicted` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB read-ahead accounting |
+| `Innodb_buffer_pool_read_requests` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB buffer-pool accounting |
+| `Innodb_buffer_pool_reads` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB buffer-pool accounting |
+| `Innodb_buffer_pool_wait_free` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB buffer-pool accounting |
+| `Innodb_buffer_pool_write_requests` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB buffer-pool accounting |
+| `Innodb_data_fsyncs` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB I/O accounting |
+| `Innodb_data_pending_fsyncs` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB I/O accounting |
+| `Innodb_data_pending_reads` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB I/O accounting |
+| `Innodb_data_pending_writes` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB I/O accounting |
+| `Innodb_data_read` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB I/O accounting |
+| `Innodb_data_reads` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB I/O accounting |
+| `Innodb_data_writes` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB I/O accounting |
+| `Innodb_data_written` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB I/O accounting |
+| `Innodb_dblwr_pages_written` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB doublewrite accounting |
+| `Innodb_dblwr_writes` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB doublewrite accounting |
+| `Innodb_redo_log_read_only` | 🟡 | Limited `SHOW STATUS` embedded value `OFF`; no live InnoDB redo-log state |
+| `Innodb_redo_log_uuid` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB redo-log state |
+| `Innodb_redo_log_checkpoint_lsn` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB redo-log state |
+| `Innodb_redo_log_current_lsn` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB redo-log state |
+| `Innodb_redo_log_flushed_to_disk_lsn` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB redo-log state |
+| `Innodb_redo_log_logical_size` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB redo-log state |
+| `Innodb_redo_log_physical_size` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB redo-log state |
+| `Innodb_redo_log_capacity_resized` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB redo-log state |
+| `Innodb_redo_log_resize_status` | 🟡 | Limited `SHOW STATUS` embedded value `OK`; no live InnoDB redo-log resize state |
+| `Innodb_log_waits` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB log accounting |
+| `Innodb_log_write_requests` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB log accounting |
+| `Innodb_log_writes` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB log accounting |
+| `Innodb_os_log_fsyncs` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB log accounting |
+| `Innodb_os_log_pending_fsyncs` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB log accounting |
+| `Innodb_os_log_pending_writes` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB log accounting |
+| `Innodb_os_log_written` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB log accounting |
+| `Innodb_page_size` | 🟡 | Limited `SHOW STATUS` embedded value `16384`; no physical InnoDB pages |
+| `Innodb_pages_created` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB page accounting |
+| `Innodb_pages_read` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB page accounting |
+| `Innodb_pages_written` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB page accounting |
+| `Innodb_redo_log_enabled` | 🟡 | Limited `SHOW STATUS` embedded value `ON`; no live InnoDB redo-log state |
+| `Innodb_row_lock_current_waits` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB row-lock accounting |
+| `Innodb_row_lock_time` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB row-lock accounting |
+| `Innodb_row_lock_time_avg` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB row-lock accounting |
+| `Innodb_row_lock_time_max` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB row-lock accounting |
+| `Innodb_row_lock_waits` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB row-lock accounting |
+| `Innodb_rows_deleted` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB row-operation accounting |
+| `Innodb_rows_inserted` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB row-operation accounting |
+| `Innodb_rows_read` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB row-operation accounting |
+| `Innodb_rows_updated` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB row-operation accounting |
+| `Innodb_system_rows_deleted` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB system-row accounting |
+| `Innodb_system_rows_inserted` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB system-row accounting |
+| `Innodb_system_rows_read` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB system-row accounting |
+| `Innodb_system_rows_updated` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB system-row accounting |
+| `Innodb_sampled_pages_read` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB sampling accounting |
+| `Innodb_sampled_pages_skipped` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB sampling accounting |
+| `Innodb_num_open_files` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB file accounting |
+| `Innodb_truncated_status_writes` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB status-write accounting |
+| `Innodb_undo_tablespaces_total` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB undo tablespaces |
+| `Innodb_undo_tablespaces_implicit` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB undo tablespaces |
+| `Innodb_undo_tablespaces_explicit` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB undo tablespaces |
+| `Innodb_undo_tablespaces_active` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live InnoDB undo tablespaces |
 | `Key_blocks_not_flushed` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live key-cache lifecycle |
 | `Key_blocks_unused` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live key-cache lifecycle |
 | `Key_blocks_used` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live key-cache lifecycle |

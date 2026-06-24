@@ -147,7 +147,7 @@ placeholders unless listed otherwise. All numeric values are returned as
 decimal text. The core lifecycle rows (`Bytes_%`, `Connections`, `Compression`,
 `Prepared_stmt_count`, `Queries`, `Questions`, `Threads_%`, and `Uptime%`) and
 the `Binlog_%`, `Com_%`, `Compression%`, `Current_tls%`, `Deprecated%`,
-`Error_log%`, `Handler_%`, `Key_%`, `Last_query_%`, `Max_%`,
+`Error_log%`, `Handler_%`, `Innodb%`, `Key_%`, `Last_query_%`, `Max_%`,
 `Performance_schema_%`, `Select_%`, `Slow_%`, `Sort_%`, `Ssl_%`,
 `Table_locks_%`, `Table_open_cache_%`, `Tc_log_%`, `Telemetry_%`, and `Tls%`
 rows mirror the MySQL 8.4.9
@@ -391,6 +391,78 @@ values are fixed placeholders rather than live counters.
 | `Handler_savepoint_rollback` | yes | yes | `0` |
 | `Handler_update` | yes | yes | `0` |
 | `Handler_write` | yes | yes | `0` |
+| `Innodb_buffer_pool_dump_status` | yes | yes | `Dumping of buffer pool not started` |
+| `Innodb_buffer_pool_load_status` | yes | yes | empty string |
+| `Innodb_buffer_pool_resize_status` | yes | yes | empty string |
+| `Innodb_buffer_pool_resize_status_code` | yes | yes | `0` |
+| `Innodb_buffer_pool_resize_status_progress` | yes | yes | `0` |
+| `Innodb_buffer_pool_pages_data` | yes | yes | `0` |
+| `Innodb_buffer_pool_bytes_data` | yes | yes | `0` |
+| `Innodb_buffer_pool_pages_dirty` | yes | yes | `0` |
+| `Innodb_buffer_pool_bytes_dirty` | yes | yes | `0` |
+| `Innodb_buffer_pool_pages_flushed` | yes | yes | `0` |
+| `Innodb_buffer_pool_pages_free` | yes | yes | `0` |
+| `Innodb_buffer_pool_pages_misc` | yes | yes | `0` |
+| `Innodb_buffer_pool_pages_total` | yes | yes | `0` |
+| `Innodb_buffer_pool_read_ahead_rnd` | yes | yes | `0` |
+| `Innodb_buffer_pool_read_ahead` | yes | yes | `0` |
+| `Innodb_buffer_pool_read_ahead_evicted` | yes | yes | `0` |
+| `Innodb_buffer_pool_read_requests` | yes | yes | `0` |
+| `Innodb_buffer_pool_reads` | yes | yes | `0` |
+| `Innodb_buffer_pool_wait_free` | yes | yes | `0` |
+| `Innodb_buffer_pool_write_requests` | yes | yes | `0` |
+| `Innodb_data_fsyncs` | yes | yes | `0` |
+| `Innodb_data_pending_fsyncs` | yes | yes | `0` |
+| `Innodb_data_pending_reads` | yes | yes | `0` |
+| `Innodb_data_pending_writes` | yes | yes | `0` |
+| `Innodb_data_read` | yes | yes | `0` |
+| `Innodb_data_reads` | yes | yes | `0` |
+| `Innodb_data_writes` | yes | yes | `0` |
+| `Innodb_data_written` | yes | yes | `0` |
+| `Innodb_dblwr_pages_written` | yes | yes | `0` |
+| `Innodb_dblwr_writes` | yes | yes | `0` |
+| `Innodb_redo_log_read_only` | yes | yes | `OFF` |
+| `Innodb_redo_log_uuid` | yes | yes | `0` |
+| `Innodb_redo_log_checkpoint_lsn` | yes | yes | `0` |
+| `Innodb_redo_log_current_lsn` | yes | yes | `0` |
+| `Innodb_redo_log_flushed_to_disk_lsn` | yes | yes | `0` |
+| `Innodb_redo_log_logical_size` | yes | yes | `0` |
+| `Innodb_redo_log_physical_size` | yes | yes | `0` |
+| `Innodb_redo_log_capacity_resized` | yes | yes | `0` |
+| `Innodb_redo_log_resize_status` | yes | yes | `OK` |
+| `Innodb_log_waits` | yes | yes | `0` |
+| `Innodb_log_write_requests` | yes | yes | `0` |
+| `Innodb_log_writes` | yes | yes | `0` |
+| `Innodb_os_log_fsyncs` | yes | yes | `0` |
+| `Innodb_os_log_pending_fsyncs` | yes | yes | `0` |
+| `Innodb_os_log_pending_writes` | yes | yes | `0` |
+| `Innodb_os_log_written` | yes | yes | `0` |
+| `Innodb_page_size` | yes | yes | `16384` |
+| `Innodb_pages_created` | yes | yes | `0` |
+| `Innodb_pages_read` | yes | yes | `0` |
+| `Innodb_pages_written` | yes | yes | `0` |
+| `Innodb_redo_log_enabled` | yes | yes | `ON` |
+| `Innodb_row_lock_current_waits` | yes | yes | `0` |
+| `Innodb_row_lock_time` | yes | yes | `0` |
+| `Innodb_row_lock_time_avg` | yes | yes | `0` |
+| `Innodb_row_lock_time_max` | yes | yes | `0` |
+| `Innodb_row_lock_waits` | yes | yes | `0` |
+| `Innodb_rows_deleted` | yes | yes | `0` |
+| `Innodb_rows_inserted` | yes | yes | `0` |
+| `Innodb_rows_read` | yes | yes | `0` |
+| `Innodb_rows_updated` | yes | yes | `0` |
+| `Innodb_system_rows_deleted` | yes | yes | `0` |
+| `Innodb_system_rows_inserted` | yes | yes | `0` |
+| `Innodb_system_rows_read` | yes | yes | `0` |
+| `Innodb_system_rows_updated` | yes | yes | `0` |
+| `Innodb_sampled_pages_read` | yes | yes | `0` |
+| `Innodb_sampled_pages_skipped` | yes | yes | `0` |
+| `Innodb_num_open_files` | yes | yes | `0` |
+| `Innodb_truncated_status_writes` | yes | yes | `0` |
+| `Innodb_undo_tablespaces_total` | yes | yes | `0` |
+| `Innodb_undo_tablespaces_implicit` | yes | yes | `0` |
+| `Innodb_undo_tablespaces_explicit` | yes | yes | `0` |
+| `Innodb_undo_tablespaces_active` | yes | yes | `0` |
 | `Key_blocks_not_flushed` | yes | yes | `0` |
 | `Key_blocks_unused` | yes | yes | `0` |
 | `Key_blocks_used` | yes | yes | `0` |

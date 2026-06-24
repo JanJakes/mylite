@@ -188,12 +188,12 @@ int main(void) {
 
 static int test_sys_metrics_view(void) {
     enum {
-        metrics_row_count = 351,
+        metrics_row_count = 423,
     };
 
     static const char *const count_column[] = {"COUNT(*)"};
     static const char *const count_zero[] = {"0"};
-    static const char *const metrics_row_count_value[] = {"351"};
+    static const char *const metrics_row_count_value[] = {"423"};
     static const char *const row_count_minus_one[] = {"-1"};
     static const char *const aborted_clients_row[] = {
         "aborted_clients",
@@ -252,6 +252,18 @@ static int test_sys_metrics_view(void) {
     static const char *const handler_commit_row[] = {
         "handler_commit",
         "0",
+        "Global Status",
+        "YES",
+    };
+    static const char *const innodb_page_size_row[] = {
+        "innodb_page_size",
+        "16384",
+        "Global Status",
+        "YES",
+    };
+    static const char *const innodb_redo_log_enabled_row[] = {
+        "innodb_redo_log_enabled",
+        "ON",
         "Global Status",
         "YES",
     };
@@ -606,6 +618,30 @@ static int test_sys_metrics_view(void) {
             .values = handler_commit_row,
             .row_count = 1U,
             .context = "sys.metrics handler counter row",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
+                   "WHERE Variable_name = 'innodb_page_size'",
+            .column_names = metrics_columns,
+            .column_count = metrics_column_count,
+            .values = innodb_page_size_row,
+            .row_count = 1U,
+            .context = "sys.metrics innodb page size row",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
+                   "WHERE Variable_name = 'innodb_redo_log_enabled'",
+            .column_names = metrics_columns,
+            .column_count = metrics_column_count,
+            .values = innodb_redo_log_enabled_row,
+            .row_count = 1U,
+            .context = "sys.metrics innodb redo row",
         }
     );
     failures += expect_query(

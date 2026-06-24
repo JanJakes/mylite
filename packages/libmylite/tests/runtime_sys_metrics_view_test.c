@@ -188,12 +188,12 @@ int main(void) {
 
 static int test_sys_metrics_view(void) {
     enum {
-        metrics_row_count = 232,
+        metrics_row_count = 256,
     };
 
     static const char *const count_column[] = {"COUNT(*)"};
     static const char *const count_zero[] = {"0"};
-    static const char *const metrics_row_count_value[] = {"232"};
+    static const char *const metrics_row_count_value[] = {"256"};
     static const char *const row_count_minus_one[] = {"-1"};
     static const char *const aborted_clients_row[] = {
         "aborted_clients",
@@ -252,6 +252,12 @@ static int test_sys_metrics_view(void) {
     static const char *const table_locks_waited_row[] = {
         "table_locks_waited",
         "0",
+        "Global Status",
+        "YES",
+    };
+    static const char *const ssl_version_row[] = {
+        "ssl_version",
+        "",
         "Global Status",
         "YES",
     };
@@ -534,6 +540,18 @@ static int test_sys_metrics_view(void) {
             .values = table_locks_waited_row,
             .row_count = 1U,
             .context = "sys.metrics table lock counter row",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
+                   "WHERE Variable_name = 'ssl_version'",
+            .column_names = metrics_columns,
+            .column_count = metrics_column_count,
+            .values = ssl_version_row,
+            .row_count = 1U,
+            .context = "sys.metrics ssl status row",
         }
     );
     failures += expect_query(

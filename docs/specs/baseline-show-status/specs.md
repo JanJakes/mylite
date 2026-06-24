@@ -144,10 +144,10 @@ not MySQL's full grammar.
 
 This phase exposes a limited common registry. Values are deterministic embedded
 placeholders unless listed otherwise. All numeric values are returned as
-decimal text. The `Binlog_%`, `Com_%`, `Handler_%`, `Select_%`, and
+decimal text. The `Binlog_%`, `Com_%`, `Handler_%`, `Select_%`, `Ssl_%`, and
 `Table_locks_%` rows mirror the MySQL 8.4.9 counter names and order. The
 `Created_%` and `Open%` resource rows also mirror the MySQL 8.4.9 names and
-order. These values are fixed `0` placeholders rather than live counters.
+order. These values are fixed no-TLS placeholders rather than live counters.
 
 | Variable | Default/session/LOCAL visibility | GLOBAL visibility | MyLite value |
 | --- | --- | --- | --- |
@@ -374,7 +374,31 @@ order. These values are fixed `0` placeholders rather than live counters.
 | `Select_range_check` | yes | yes | `0` |
 | `Select_scan` | yes | yes | `0` |
 | `Slow_queries` | yes | yes | `0` |
+| `Ssl_accept_renegotiates` | yes | yes | `0` |
+| `Ssl_accepts` | yes | yes | `0` |
+| `Ssl_callback_cache_hits` | yes | yes | `0` |
 | `Ssl_cipher` | yes | yes | empty string |
+| `Ssl_cipher_list` | yes | yes | empty string |
+| `Ssl_client_connects` | yes | yes | `0` |
+| `Ssl_connect_renegotiates` | yes | yes | `0` |
+| `Ssl_ctx_verify_depth` | yes | yes | `0` |
+| `Ssl_ctx_verify_mode` | yes | yes | `0` |
+| `Ssl_default_timeout` | yes | yes | `0` |
+| `Ssl_finished_accepts` | yes | yes | `0` |
+| `Ssl_finished_connects` | yes | yes | `0` |
+| `Ssl_server_not_after` | yes | yes | empty string |
+| `Ssl_server_not_before` | yes | yes | empty string |
+| `Ssl_session_cache_hits` | yes | yes | `0` |
+| `Ssl_session_cache_misses` | yes | yes | `0` |
+| `Ssl_session_cache_mode` | yes | yes | empty string |
+| `Ssl_session_cache_overflows` | yes | yes | `0` |
+| `Ssl_session_cache_size` | yes | yes | `0` |
+| `Ssl_session_cache_timeout` | yes | yes | `0` |
+| `Ssl_session_cache_timeouts` | yes | yes | `0` |
+| `Ssl_sessions_reused` | yes | yes | `0` |
+| `Ssl_used_session_cache_entries` | yes | yes | `0` |
+| `Ssl_verify_depth` | yes | yes | `0` |
+| `Ssl_verify_mode` | yes | yes | `0` |
 | `Ssl_version` | yes | yes | empty string |
 | `Table_locks_immediate` | yes | yes | `0` |
 | `Table_locks_waited` | yes | yes | `0` |

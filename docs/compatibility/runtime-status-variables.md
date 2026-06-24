@@ -674,31 +674,31 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Sort_range` | ❌ | Counter value or embedded zero/empty |
 | `Sort_rows` | ❌ | Counter value or embedded zero/empty |
 | `Sort_scan` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_accept_renegotiates` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_accepts` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_callback_cache_hits` | ❌ | Counter value or embedded zero/empty |
+| `Ssl_accept_renegotiates` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
+| `Ssl_accepts` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
+| `Ssl_callback_cache_hits` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
 | `Ssl_cipher` | 🟡 | Limited `SHOW STATUS` embedded empty string; no TLS state |
-| `Ssl_cipher_list` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_client_connects` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_connect_renegotiates` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_ctx_verify_depth` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_ctx_verify_mode` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_default_timeout` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_finished_accepts` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_finished_connects` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_server_not_after` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_server_not_before` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_session_cache_hits` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_session_cache_misses` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_session_cache_mode` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_session_cache_overflows` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_session_cache_size` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_session_cache_timeout` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_session_cache_timeouts` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_sessions_reused` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_used_session_cache_entries` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_verify_depth` | ❌ | Counter value or embedded zero/empty |
-| `Ssl_verify_mode` | ❌ | Counter value or embedded zero/empty |
+| `Ssl_cipher_list` | 🟡 | Limited `SHOW STATUS` embedded empty string; no TLS state |
+| `Ssl_client_connects` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
+| `Ssl_connect_renegotiates` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
+| `Ssl_ctx_verify_depth` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
+| `Ssl_ctx_verify_mode` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
+| `Ssl_default_timeout` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
+| `Ssl_finished_accepts` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
+| `Ssl_finished_connects` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
+| `Ssl_server_not_after` | 🟡 | Limited `SHOW STATUS` embedded empty string; no TLS state |
+| `Ssl_server_not_before` | 🟡 | Limited `SHOW STATUS` embedded empty string; no TLS state |
+| `Ssl_session_cache_hits` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
+| `Ssl_session_cache_misses` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
+| `Ssl_session_cache_mode` | 🟡 | Limited `SHOW STATUS` embedded empty string; no TLS state |
+| `Ssl_session_cache_overflows` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
+| `Ssl_session_cache_size` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
+| `Ssl_session_cache_timeout` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
+| `Ssl_session_cache_timeouts` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
+| `Ssl_sessions_reused` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
+| `Ssl_used_session_cache_entries` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
+| `Ssl_verify_depth` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
+| `Ssl_verify_mode` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
 | `Ssl_version` | 🟡 | Limited `SHOW STATUS` embedded empty string; no TLS state |
 | `Table_locks_immediate` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Table_locks_waited` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |

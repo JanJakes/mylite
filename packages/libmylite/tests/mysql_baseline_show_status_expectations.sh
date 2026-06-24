@@ -287,6 +287,44 @@ expect_value \
     "$expected_table_lock_row_names" \
     "$global_table_lock_row_names"
 
+ssl_row_names=$(run_mysql "SHOW STATUS LIKE 'Ssl\\_%';" | cut -f1)
+expected_ssl_row_names="Ssl_accept_renegotiates
+Ssl_accepts
+Ssl_callback_cache_hits
+Ssl_cipher
+Ssl_cipher_list
+Ssl_client_connects
+Ssl_connect_renegotiates
+Ssl_ctx_verify_depth
+Ssl_ctx_verify_mode
+Ssl_default_timeout
+Ssl_finished_accepts
+Ssl_finished_connects
+Ssl_server_not_after
+Ssl_server_not_before
+Ssl_session_cache_hits
+Ssl_session_cache_misses
+Ssl_session_cache_mode
+Ssl_session_cache_overflows
+Ssl_session_cache_size
+Ssl_session_cache_timeout
+Ssl_session_cache_timeouts
+Ssl_sessions_reused
+Ssl_used_session_cache_entries
+Ssl_verify_depth
+Ssl_verify_mode
+Ssl_version"
+expect_value "ssl status row names" "$expected_ssl_row_names" "$ssl_row_names"
+
+session_ssl_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Ssl\\_%';" | cut -f1)
+expect_value "session ssl status row names" "$expected_ssl_row_names" "$session_ssl_row_names"
+
+local_ssl_row_names=$(run_mysql "SHOW LOCAL STATUS LIKE 'Ssl\\_%';" | cut -f1)
+expect_value "local ssl status row names" "$expected_ssl_row_names" "$local_ssl_row_names"
+
+global_ssl_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Ssl\\_%';" | cut -f1)
+expect_value "global ssl status row names" "$expected_ssl_row_names" "$global_ssl_row_names"
+
 thread_row_names=$(run_mysql "SHOW STATUS LIKE 'Threads\\_%';" | cut -f1)
 expect_value "threads like row names" "Threads_cached
 Threads_connected

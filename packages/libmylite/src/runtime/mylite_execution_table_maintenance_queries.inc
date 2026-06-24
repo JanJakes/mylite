@@ -1,3 +1,6 @@
+static const uint64_t checksum_table_fnv_offset_basis = UINT64_C(0xcbf29ce484222325);
+static const uint64_t checksum_table_fnv_prime = UINT64_C(0x100000001b3);
+
 static int execute_checksum_table_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -168,8 +171,8 @@ static int checksum_table_target_value(
         return MYLITE_ERROR;
     }
     *out_value = NULL;
-    if (target == NULL || target->missing_schema || target->missing_table || target->unsupported_kind ||
-        !target->has_table || option == CHECKSUM_TABLE_OPTION_QUICK) {
+    if (target == NULL || target->missing_schema || target->missing_table ||
+        target->unsupported_kind || !target->has_table || option == CHECKSUM_TABLE_OPTION_QUICK) {
         return MYLITE_OK;
     }
     return compute_checksum_table_target_value(
@@ -190,7 +193,7 @@ static int compute_checksum_table_target_value(
 ) {
     char *sql = NULL;
     sqlite3_stmt *statement = NULL;
-    uint64_t checksum = 0xcbf29ce484222325ULL;
+    uint64_t checksum = checksum_table_fnv_offset_basis;
     bool has_rows = false;
     bool prepare_attempted = false;
     bool scan_attempted = false;
@@ -357,13 +360,16 @@ static void checksum_table_update_bytes(
 
 static void checksum_table_update_u64(uint64_t *checksum, uint64_t value) {
     for (size_t byte_index = 0U; byte_index < sizeof(value); ++byte_index) {
-        checksum_table_update_byte(checksum, (unsigned char)((value >> (byte_index * 8U)) & 0xffU));
+        checksum_table_update_byte(
+            checksum,
+            (unsigned char)((value >> (byte_index * CHAR_BIT)) & UCHAR_MAX)
+        );
     }
 }
 
 static void checksum_table_update_byte(uint64_t *checksum, unsigned char byte) {
     *checksum ^= (uint64_t)byte;
-    *checksum *= 0x100000001b3ULL;
+    *checksum *= checksum_table_fnv_prime;
 }
 
 static int append_checksum_table_target_warning(

@@ -531,6 +531,30 @@ static int append_sys_host_summary_by_statement_type_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
+static int append_sys_user_summary_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_user_summary_by_file_io_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_user_summary_by_file_io_type_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_user_summary_by_stages_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_user_summary_by_statement_latency_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_user_summary_by_statement_type_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
 static int append_sys_innodb_buffer_stats_by_schema_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows

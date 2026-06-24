@@ -171,18 +171,18 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.x$statements_with_sorting` | 🟡 | Limited read-only empty raw statement sorting digest view with the same metadata surface as the formatted view, except raw latency metadata and no `format_statement` routine dependency |
 | `sys.statements_with_temp_tables` | 🟡 | Limited read-only empty formatted statement temporary-table digest view with MySQL-shaped metadata; no Performance Schema digest collection or live temporary-table counters |
 | `sys.x$statements_with_temp_tables` | 🟡 | Limited read-only empty raw statement temporary-table digest view with the same metadata surface as the formatted view, except raw latency metadata and no `format_statement` routine dependency |
-| `sys.user_summary` | ❌ | View shape and diagnostics |
-| `sys.x$user_summary` | ❌ | View shape and diagnostics |
-| `sys.user_summary_by_file_io` | ❌ | View shape and diagnostics |
-| `sys.x$user_summary_by_file_io` | ❌ | View shape and diagnostics |
-| `sys.user_summary_by_file_io_type` | ❌ | View shape and diagnostics |
-| `sys.x$user_summary_by_file_io_type` | ❌ | View shape and diagnostics |
-| `sys.user_summary_by_stages` | ❌ | View shape and diagnostics |
-| `sys.x$user_summary_by_stages` | ❌ | View shape and diagnostics |
-| `sys.user_summary_by_statement_latency` | ❌ | View shape and diagnostics |
-| `sys.x$user_summary_by_statement_latency` | ❌ | View shape and diagnostics |
-| `sys.user_summary_by_statement_type` | ❌ | View shape and diagnostics |
-| `sys.x$user_summary_by_statement_type` | ❌ | View shape and diagnostics |
+| `sys.user_summary` | 🟡 | Limited read-only empty formatted user summary view with MySQL-shaped metadata; no Performance Schema user aggregation |
+| `sys.x$user_summary` | 🟡 | Limited read-only empty raw user summary view with the same metadata surface as the formatted view |
+| `sys.user_summary_by_file_io` | 🟡 | Limited read-only empty formatted user file-I/O summary view with MySQL-shaped metadata; no live file-I/O rows |
+| `sys.x$user_summary_by_file_io` | 🟡 | Limited read-only empty raw user file-I/O summary view with the same metadata surface as the formatted view |
+| `sys.user_summary_by_file_io_type` | 🟡 | Limited read-only empty formatted user file-I/O type view with MySQL-shaped metadata; no live file-I/O type rows |
+| `sys.x$user_summary_by_file_io_type` | 🟡 | Limited read-only empty raw user file-I/O type view with the same metadata surface as the formatted view |
+| `sys.user_summary_by_stages` | 🟡 | Limited read-only empty formatted user stage summary view with MySQL-shaped metadata; no live stage rows |
+| `sys.x$user_summary_by_stages` | 🟡 | Limited read-only empty raw user stage summary view with the same metadata surface as the formatted view |
+| `sys.user_summary_by_statement_latency` | 🟡 | Limited read-only empty formatted user statement-latency view with MySQL-shaped metadata; no live statement rows |
+| `sys.x$user_summary_by_statement_latency` | 🟡 | Limited read-only empty raw user statement-latency view with the same metadata surface as the formatted view |
+| `sys.user_summary_by_statement_type` | 🟡 | Limited read-only empty formatted user statement-type view with MySQL-shaped metadata; no live statement-type rows |
+| `sys.x$user_summary_by_statement_type` | 🟡 | Limited read-only empty raw user statement-type view with the same metadata surface as the formatted view |
 | `sys.version` | 🟡 | Limited read-only synthetic version view returning `sys_version = '2.1.3'` and MyLite's MySQL-compatible server version, with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, empty index/constraint/dependency metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no persisted view descriptor, privilege/definer enforcement, broader sys views, or sys helper functions |
 | `sys.wait_classes_global_by_avg_latency` | ❌ | View shape and diagnostics |
 | `sys.x$wait_classes_global_by_avg_latency` | ❌ | View shape and diagnostics |

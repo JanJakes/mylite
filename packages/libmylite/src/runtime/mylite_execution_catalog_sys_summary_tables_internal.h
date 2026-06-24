@@ -14,6 +14,15 @@ const struct mylite_execution_catalog_mysql_system_table *mylite_execution_catal
     size_t index
 );
 
+size_t mylite_execution_catalog_sys_summary_user_system_table_definition_count(void);
+const struct mylite_execution_catalog_mysql_system_table *mylite_execution_catalog_sys_summary_user_system_table_definition_at(
+    size_t index
+);
+size_t mylite_execution_catalog_sys_summary_user_x_system_table_definition_count(void);
+const struct mylite_execution_catalog_mysql_system_table *mylite_execution_catalog_sys_summary_user_x_system_table_definition_at(
+    size_t index
+);
+
 size_t mylite_execution_catalog_sys_summary_innodb_system_table_definition_count(void);
 const struct mylite_execution_catalog_mysql_system_table *mylite_execution_catalog_sys_summary_innodb_system_table_definition_at(
     size_t index

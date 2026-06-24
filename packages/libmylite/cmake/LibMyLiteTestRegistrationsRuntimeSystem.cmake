@@ -741,6 +741,10 @@
     COMMAND mylite_runtime_sys_host_summary_by_statement_type_views_test
   )
   add_test(
+    NAME libmylite.runtime.sys_user_summary_views
+    COMMAND mylite_runtime_sys_user_summary_views_test
+  )
+  add_test(
     NAME libmylite.runtime.sys_innodb_buffer_stats_by_schema_views
     COMMAND mylite_runtime_sys_innodb_buffer_stats_by_schema_views_test
   )

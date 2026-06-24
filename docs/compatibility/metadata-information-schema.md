@@ -108,6 +108,12 @@ add Performance Schema host statement-summary collection, live statement-type
 rows, latency or row counters, sys helper-function execution, privilege
 filtering, or broader sys view execution.
 
+The `baseline-sys-user-summary-views` slice extends the same metadata surface
+for the supported empty synthetic `sys.user_summary*` and
+`sys.x$user_summary*` view family. It preserves MySQL-observed updatability,
+dependency, `SHOW CREATE`, and empty `VIEW_ROUTINE_USAGE` metadata while
+leaving live Performance Schema per-user aggregation unsupported.
+
 The `baseline-sys-statement-digest-views` slice extends
 `INFORMATION_SCHEMA.COLUMNS`, `TABLES`, `VIEWS`, `VIEW_TABLE_USAGE`, and
 `VIEW_ROUTINE_USAGE` with MySQL-shaped metadata for the supported empty

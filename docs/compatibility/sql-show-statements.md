@@ -124,6 +124,13 @@ metadata. It does not add Performance Schema host statement-summary
 collection, live statement-type rows, latency or row counters, sys
 helper-function execution, privilege checks, or broader sys view execution.
 
+The `baseline-sys-user-summary-views` slice adds the same SHOW metadata surface
+for the supported empty synthetic `sys.user_summary*` and
+`sys.x$user_summary*` view family, including selected-schema access, empty view
+index metadata, view status rows, and MySQL-shaped `SHOW CREATE` metadata. It
+does not add live Performance Schema per-user aggregation or broader sys view
+execution.
+
 The `baseline-sys-innodb-buffer-stats-by-schema-views` slice adds the same
 SHOW metadata surface for the supported empty synthetic
 `sys.innodb_buffer_stats_by_schema` and

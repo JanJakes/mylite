@@ -25,6 +25,8 @@ static const struct mylite_execution_catalog_sys_summary_system_table_provider
     sys_summary_system_table_providers[] = {
         {mylite_execution_catalog_sys_summary_host_system_table_definition_count,
          mylite_execution_catalog_sys_summary_host_system_table_definition_at},
+        {mylite_execution_catalog_sys_summary_user_system_table_definition_count,
+         mylite_execution_catalog_sys_summary_user_system_table_definition_at},
         {mylite_execution_catalog_sys_summary_innodb_system_table_definition_count,
          mylite_execution_catalog_sys_summary_innodb_system_table_definition_at},
         {mylite_execution_catalog_sys_summary_io_system_table_definition_count,
@@ -41,6 +43,8 @@ static const struct mylite_execution_catalog_sys_summary_system_table_provider
     sys_summary_x_system_table_providers[] = {
         {mylite_execution_catalog_sys_summary_host_x_system_table_definition_count,
          mylite_execution_catalog_sys_summary_host_x_system_table_definition_at},
+        {mylite_execution_catalog_sys_summary_user_x_system_table_definition_count,
+         mylite_execution_catalog_sys_summary_user_x_system_table_definition_at},
         {mylite_execution_catalog_sys_summary_innodb_x_system_table_definition_count,
          mylite_execution_catalog_sys_summary_innodb_x_system_table_definition_at},
         {mylite_execution_catalog_sys_summary_io_x_system_table_definition_count,

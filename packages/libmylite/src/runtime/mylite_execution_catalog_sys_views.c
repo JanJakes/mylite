@@ -1232,6 +1232,484 @@ static const char sys_x_host_summary_by_statement_type_show_create_qualified_vie
 #undef SYS_HOST_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION
 #undef SYS_X_HOST_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION
 
+#define SYS_USER_SUMMARY_VIEW_COLUMNS                                                              \
+    "(`user`,`statements`,`statement_latency`,`statement_avg_latency`,`table_scans`,`file_ios`,"   \
+    "`file_io_latency`,`current_connections`,`total_connections`,`unique_hosts`,`current_memory`," \
+    "`total_memory_allocated`)"
+
+#define SYS_USER_SUMMARY_QUALIFIED_USER_EXPR                                                       \
+    "if((`performance_schema`.`accounts`.`USER` is null),'background',"                            \
+    "`performance_schema`.`accounts`.`USER`)"
+
+#define SYS_USER_SUMMARY_QUALIFIED_SELECT_SUFFIX                                                   \
+    "sum(`performance_schema`.`accounts`.`CURRENT_CONNECTIONS`) AS `current_connections`,"         \
+    "sum(`performance_schema`.`accounts`.`TOTAL_CONNECTIONS`) AS `total_connections`,count("       \
+    "distinct `performance_schema`.`accounts`.`HOST`) AS `unique_hosts`,"
+
+#define SYS_USER_SUMMARY_QUALIFIED_FROM                                                            \
+    " from (((`performance_schema`.`accounts` left join `sys`."                                    \
+    "`x$user_summary_by_statement_latency` `stmt` on((" SYS_USER_SUMMARY_QUALIFIED_USER_EXPR       \
+    " = `sys`.`stmt`.`user`))) left join `sys`.`x$user_summary_by_file_io` `io` "                  \
+    "on((" SYS_USER_SUMMARY_QUALIFIED_USER_EXPR " = `sys`.`io`.`user`))) left join `sys`."         \
+    "`x$memory_by_user_by_current_bytes` `mem` on((" SYS_USER_SUMMARY_QUALIFIED_USER_EXPR          \
+    " = `sys`.`mem`.`user`))) group by " SYS_USER_SUMMARY_QUALIFIED_USER_EXPR                      \
+    " order by sum(`sys`.`stmt`.`total_latency`) desc"
+
+#define SYS_USER_SUMMARY_UNQUALIFIED_SELECT_SUFFIX                                                 \
+    "sum(`performance_schema`.`accounts`.`CURRENT_CONNECTIONS`) AS `current_connections`,"         \
+    "sum(`performance_schema`.`accounts`.`TOTAL_CONNECTIONS`) AS `total_connections`,count("       \
+    "distinct `performance_schema`.`accounts`.`HOST`) AS `unique_hosts`,"
+
+#define SYS_USER_SUMMARY_UNQUALIFIED_FROM                                                          \
+    " from (((`performance_schema`.`accounts` left join `x$user_summary_by_statement_latency` "    \
+    "`stmt` on((" SYS_USER_SUMMARY_QUALIFIED_USER_EXPR                                             \
+    " = `stmt`.`user`))) left join `x$user_summary_by_file_io` `io` "                              \
+    "on((" SYS_USER_SUMMARY_QUALIFIED_USER_EXPR                                                    \
+    " = `io`.`user`))) left join `x$memory_by_user_by_current_bytes` `mem` "                       \
+    "on((" SYS_USER_SUMMARY_QUALIFIED_USER_EXPR                                                    \
+    " = `mem`.`user`))) group by " SYS_USER_SUMMARY_QUALIFIED_USER_EXPR                            \
+    " order by sum(`stmt`.`total_latency`) desc"
+
+#define SYS_USER_SUMMARY_QUALIFIED_VIEW_DEFINITION                                                 \
+    "select " SYS_USER_SUMMARY_QUALIFIED_USER_EXPR                                                 \
+    " AS `user`,sum(`sys`.`stmt`.`total`) AS `statements`,format_pico_time(sum("                   \
+    "`sys`.`stmt`.`total_latency`)) AS `statement_latency`,format_pico_time(ifnull((sum("          \
+    "`sys`.`stmt`.`total_latency`) / nullif(sum(`sys`.`stmt`.`total`),0)),0)) AS "                 \
+    "`statement_avg_latency`,sum(`sys`.`stmt`.`full_scans`) AS `table_scans`,sum("                 \
+    "`sys`.`io`.`ios`) AS `file_ios`,format_pico_time(sum(`sys`.`io`.`io_latency`)) AS "           \
+    "`file_io_latency`," SYS_USER_SUMMARY_QUALIFIED_SELECT_SUFFIX                                  \
+    "format_bytes(sum(`sys`.`mem`.`current_allocated`)) AS `current_memory`,format_bytes("         \
+    "sum(`sys`.`mem`.`total_allocated`)) AS "                                                      \
+    "`total_memory_allocated`" SYS_USER_SUMMARY_QUALIFIED_FROM
+
+#define SYS_X_USER_SUMMARY_QUALIFIED_VIEW_DEFINITION                                               \
+    "select " SYS_USER_SUMMARY_QUALIFIED_USER_EXPR                                                 \
+    " AS `user`,sum(`sys`.`stmt`.`total`) AS `statements`,sum(`sys`.`stmt`.`total_latency`) AS "   \
+    "`statement_latency`,ifnull((sum(`sys`.`stmt`.`total_latency`) / nullif(sum("                  \
+    "`sys`.`stmt`.`total`),0)),0) AS `statement_avg_latency`,sum(`sys`.`stmt`.`full_scans`) AS "   \
+    "`table_scans`,sum(`sys`.`io`.`ios`) AS `file_ios`,sum(`sys`.`io`.`io_latency`) AS "           \
+    "`file_io_latency`," SYS_USER_SUMMARY_QUALIFIED_SELECT_SUFFIX                                  \
+    "sum(`sys`.`mem`.`current_allocated`) AS `current_memory`,sum("                                \
+    "`sys`.`mem`.`total_allocated`) AS `total_memory_allocated`" SYS_USER_SUMMARY_QUALIFIED_FROM
+
+#define SYS_USER_SUMMARY_UNQUALIFIED_VIEW_DEFINITION                                               \
+    "select " SYS_USER_SUMMARY_QUALIFIED_USER_EXPR                                                 \
+    " AS `user`,sum(`stmt`.`total`) AS `statements`,format_pico_time(sum("                         \
+    "`stmt`.`total_latency`)) AS `statement_latency`,format_pico_time(ifnull((sum("                \
+    "`stmt`.`total_latency`) / nullif(sum(`stmt`.`total`),0)),0)) AS "                             \
+    "`statement_avg_latency`,sum(`stmt`.`full_scans`) AS `table_scans`,sum(`io`.`ios`) AS "        \
+    "`file_ios`,format_pico_time(sum(`io`.`io_latency`)) AS "                                      \
+    "`file_io_latency`," SYS_USER_SUMMARY_UNQUALIFIED_SELECT_SUFFIX                                \
+    "format_bytes(sum(`mem`.`current_allocated`)) AS `current_memory`,format_bytes(sum("           \
+    "`mem`.`total_allocated`)) AS `total_memory_allocated`" SYS_USER_SUMMARY_UNQUALIFIED_FROM
+
+#define SYS_X_USER_SUMMARY_UNQUALIFIED_VIEW_DEFINITION                                             \
+    "select " SYS_USER_SUMMARY_QUALIFIED_USER_EXPR                                                 \
+    " AS `user`,sum(`stmt`.`total`) AS `statements`,sum(`stmt`.`total_latency`) AS "               \
+    "`statement_latency`,ifnull((sum(`stmt`.`total_latency`) / nullif(sum(`stmt`.`total`),0)),0) " \
+    "AS `statement_avg_latency`,sum(`stmt`.`full_scans`) AS `table_scans`,sum(`io`.`ios`) AS "     \
+    "`file_ios`,sum(`io`.`io_latency`) AS "                                                        \
+    "`file_io_latency`," SYS_USER_SUMMARY_UNQUALIFIED_SELECT_SUFFIX                                \
+    "sum(`mem`.`current_allocated`) AS `current_memory`,sum(`mem`.`total_allocated`) AS "          \
+    "`total_memory_allocated`" SYS_USER_SUMMARY_UNQUALIFIED_FROM
+
+static const char sys_user_summary_view_definition[] = SYS_USER_SUMMARY_QUALIFIED_VIEW_DEFINITION;
+
+static const char sys_user_summary_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`user_summary` " SYS_USER_SUMMARY_VIEW_COLUMNS
+    " AS " SYS_USER_SUMMARY_UNQUALIFIED_VIEW_DEFINITION;
+
+static const char sys_user_summary_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`user_summary` " SYS_USER_SUMMARY_VIEW_COLUMNS
+    " AS " SYS_USER_SUMMARY_QUALIFIED_VIEW_DEFINITION;
+
+static const char sys_x_user_summary_view_definition[] =
+    SYS_X_USER_SUMMARY_QUALIFIED_VIEW_DEFINITION;
+
+static const char sys_x_user_summary_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$user_summary` " SYS_USER_SUMMARY_VIEW_COLUMNS
+    " AS " SYS_X_USER_SUMMARY_UNQUALIFIED_VIEW_DEFINITION;
+
+static const char sys_x_user_summary_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$user_summary` " SYS_USER_SUMMARY_VIEW_COLUMNS
+    " AS " SYS_X_USER_SUMMARY_QUALIFIED_VIEW_DEFINITION;
+
+#undef SYS_USER_SUMMARY_VIEW_COLUMNS
+#undef SYS_USER_SUMMARY_QUALIFIED_USER_EXPR
+#undef SYS_USER_SUMMARY_QUALIFIED_SELECT_SUFFIX
+#undef SYS_USER_SUMMARY_QUALIFIED_FROM
+#undef SYS_USER_SUMMARY_UNQUALIFIED_SELECT_SUFFIX
+#undef SYS_USER_SUMMARY_UNQUALIFIED_FROM
+#undef SYS_USER_SUMMARY_QUALIFIED_VIEW_DEFINITION
+#undef SYS_X_USER_SUMMARY_QUALIFIED_VIEW_DEFINITION
+#undef SYS_USER_SUMMARY_UNQUALIFIED_VIEW_DEFINITION
+#undef SYS_X_USER_SUMMARY_UNQUALIFIED_VIEW_DEFINITION
+
+#define SYS_USER_SUMMARY_BY_FILE_IO_VIEW_COLUMNS "(`user`,`ios`,`io_latency`)"
+
+#define SYS_USER_SUMMARY_BY_FILE_IO_SOURCE                                                         \
+    "`performance_schema`.`events_waits_summary_by_user_by_event_name`"
+
+#define SYS_USER_SUMMARY_BY_FILE_IO_USER_EXPR                                                      \
+    "if((" SYS_USER_SUMMARY_BY_FILE_IO_SOURCE                                                      \
+    ".`USER` is null),'background'," SYS_USER_SUMMARY_BY_FILE_IO_SOURCE ".`USER`)"
+
+#define SYS_USER_SUMMARY_BY_FILE_IO_SELECT_PREFIX                                                  \
+    "select " SYS_USER_SUMMARY_BY_FILE_IO_USER_EXPR                                                \
+    " AS `user`,sum(" SYS_USER_SUMMARY_BY_FILE_IO_SOURCE ".`COUNT_STAR`) AS `ios`,"
+
+#define SYS_USER_SUMMARY_BY_FILE_IO_SELECT_SUFFIX                                                  \
+    " from " SYS_USER_SUMMARY_BY_FILE_IO_SOURCE " where (" SYS_USER_SUMMARY_BY_FILE_IO_SOURCE      \
+    ".`EVENT_NAME` like 'wait/io/file/%') group by " SYS_USER_SUMMARY_BY_FILE_IO_USER_EXPR         \
+    " order by sum(" SYS_USER_SUMMARY_BY_FILE_IO_SOURCE ".`SUM_TIMER_WAIT`) desc"
+
+#define SYS_USER_SUMMARY_BY_FILE_IO_VIEW_DEFINITION                                                \
+    SYS_USER_SUMMARY_BY_FILE_IO_SELECT_PREFIX                                                      \
+    "format_pico_time(sum(" SYS_USER_SUMMARY_BY_FILE_IO_SOURCE ".`SUM_TIMER_WAIT`)) AS "           \
+    "`io_latency`" SYS_USER_SUMMARY_BY_FILE_IO_SELECT_SUFFIX
+
+#define SYS_X_USER_SUMMARY_BY_FILE_IO_VIEW_DEFINITION                                              \
+    SYS_USER_SUMMARY_BY_FILE_IO_SELECT_PREFIX                                                      \
+    "sum(" SYS_USER_SUMMARY_BY_FILE_IO_SOURCE ".`SUM_TIMER_WAIT`) AS "                             \
+    "`io_latency`" SYS_USER_SUMMARY_BY_FILE_IO_SELECT_SUFFIX
+
+static const char sys_user_summary_by_file_io_view_definition[] =
+    SYS_USER_SUMMARY_BY_FILE_IO_VIEW_DEFINITION;
+
+static const char sys_user_summary_by_file_io_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`user_summary_by_file_io` " SYS_USER_SUMMARY_BY_FILE_IO_VIEW_COLUMNS
+    " AS " SYS_USER_SUMMARY_BY_FILE_IO_VIEW_DEFINITION;
+
+static const char sys_user_summary_by_file_io_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`user_summary_by_file_io` " SYS_USER_SUMMARY_BY_FILE_IO_VIEW_COLUMNS
+    " AS " SYS_USER_SUMMARY_BY_FILE_IO_VIEW_DEFINITION;
+
+static const char sys_x_user_summary_by_file_io_view_definition[] =
+    SYS_X_USER_SUMMARY_BY_FILE_IO_VIEW_DEFINITION;
+
+static const char sys_x_user_summary_by_file_io_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$user_summary_by_file_io` " SYS_USER_SUMMARY_BY_FILE_IO_VIEW_COLUMNS
+    " AS " SYS_X_USER_SUMMARY_BY_FILE_IO_VIEW_DEFINITION;
+
+static const char sys_x_user_summary_by_file_io_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$user_summary_by_file_io` " SYS_USER_SUMMARY_BY_FILE_IO_VIEW_COLUMNS
+    " AS " SYS_X_USER_SUMMARY_BY_FILE_IO_VIEW_DEFINITION;
+
+#undef SYS_USER_SUMMARY_BY_FILE_IO_VIEW_COLUMNS
+#undef SYS_USER_SUMMARY_BY_FILE_IO_SOURCE
+#undef SYS_USER_SUMMARY_BY_FILE_IO_USER_EXPR
+#undef SYS_USER_SUMMARY_BY_FILE_IO_SELECT_PREFIX
+#undef SYS_USER_SUMMARY_BY_FILE_IO_SELECT_SUFFIX
+#undef SYS_USER_SUMMARY_BY_FILE_IO_VIEW_DEFINITION
+#undef SYS_X_USER_SUMMARY_BY_FILE_IO_VIEW_DEFINITION
+
+#define SYS_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS                                              \
+    "(`user`,`event_name`,`total`,`latency`,`max_latency`)"
+
+#define SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SOURCE                                                    \
+    "`performance_schema`.`events_waits_summary_by_user_by_event_name`"
+
+#define SYS_USER_SUMMARY_BY_FILE_IO_TYPE_USER_EXPR                                                 \
+    "if((" SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SOURCE                                                 \
+    ".`USER` is null),'background'," SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SOURCE ".`USER`)"
+
+#define SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SELECT_PREFIX                                             \
+    "select " SYS_USER_SUMMARY_BY_FILE_IO_TYPE_USER_EXPR                                           \
+    " AS `user`," SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SOURCE                                          \
+    ".`EVENT_NAME` AS `event_name`," SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SOURCE                       \
+    ".`COUNT_STAR` AS `total`,"
+
+#define SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SELECT_SUFFIX                                             \
+    " from " SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SOURCE                                               \
+    " where ((" SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SOURCE                                            \
+    ".`EVENT_NAME` like 'wait/io/file%') and (" SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SOURCE            \
+    ".`COUNT_STAR` > 0)) order by " SYS_USER_SUMMARY_BY_FILE_IO_TYPE_USER_EXPR                     \
+    "," SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SOURCE ".`SUM_TIMER_WAIT` desc"
+
+#define SYS_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION                                           \
+    SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SELECT_PREFIX                                                 \
+    "format_pico_time(" SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SOURCE ".`SUM_TIMER_WAIT`) AS "           \
+    "`latency`,format_pico_time(" SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SOURCE                          \
+    ".`MAX_TIMER_WAIT`) AS `max_latency`" SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SELECT_SUFFIX
+
+#define SYS_X_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION                                         \
+    SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SELECT_PREFIX                                                 \
+    SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SOURCE                                                        \
+    ".`SUM_TIMER_WAIT` AS `latency`," SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SOURCE                      \
+    ".`MAX_TIMER_WAIT` AS "                                                                        \
+    "`max_latency`" SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SELECT_SUFFIX
+
+static const char sys_user_summary_by_file_io_type_view_definition[] =
+    SYS_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
+
+static const char sys_user_summary_by_file_io_type_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`user_summary_by_file_io_type` " SYS_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
+    " AS " SYS_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
+
+static const char sys_user_summary_by_file_io_type_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`user_summary_by_file_io_type` " SYS_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
+    " AS " SYS_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
+
+static const char sys_x_user_summary_by_file_io_type_view_definition[] =
+    SYS_X_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
+
+static const char sys_x_user_summary_by_file_io_type_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$user_summary_by_file_io_type` " SYS_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
+    " AS " SYS_X_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
+
+static const char sys_x_user_summary_by_file_io_type_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$user_summary_by_file_io_type` " SYS_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
+    " AS " SYS_X_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION;
+
+#undef SYS_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_COLUMNS
+#undef SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SOURCE
+#undef SYS_USER_SUMMARY_BY_FILE_IO_TYPE_USER_EXPR
+#undef SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SELECT_PREFIX
+#undef SYS_USER_SUMMARY_BY_FILE_IO_TYPE_SELECT_SUFFIX
+#undef SYS_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION
+#undef SYS_X_USER_SUMMARY_BY_FILE_IO_TYPE_VIEW_DEFINITION
+
+#define SYS_USER_SUMMARY_BY_STAGES_VIEW_COLUMNS                                                    \
+    "(`user`,`event_name`,`total`,`total_latency`,`avg_latency`)"
+
+#define SYS_USER_SUMMARY_BY_STAGES_SOURCE                                                          \
+    "`performance_schema`.`events_stages_summary_by_user_by_event_name`"
+
+#define SYS_USER_SUMMARY_BY_STAGES_USER_EXPR                                                       \
+    "if((" SYS_USER_SUMMARY_BY_STAGES_SOURCE                                                       \
+    ".`USER` is null),'background'," SYS_USER_SUMMARY_BY_STAGES_SOURCE ".`USER`)"
+
+#define SYS_USER_SUMMARY_BY_STAGES_SELECT_PREFIX                                                   \
+    "select " SYS_USER_SUMMARY_BY_STAGES_USER_EXPR " AS `user`," SYS_USER_SUMMARY_BY_STAGES_SOURCE \
+    ".`EVENT_NAME` AS `event_name`," SYS_USER_SUMMARY_BY_STAGES_SOURCE ".`COUNT_STAR` AS `total`,"
+
+#define SYS_USER_SUMMARY_BY_STAGES_SELECT_SUFFIX                                                   \
+    " from " SYS_USER_SUMMARY_BY_STAGES_SOURCE " where (" SYS_USER_SUMMARY_BY_STAGES_SOURCE        \
+    ".`SUM_TIMER_WAIT` <> 0) order by " SYS_USER_SUMMARY_BY_STAGES_USER_EXPR                       \
+    "," SYS_USER_SUMMARY_BY_STAGES_SOURCE ".`SUM_TIMER_WAIT` desc"
+
+#define SYS_USER_SUMMARY_BY_STAGES_VIEW_DEFINITION                                                 \
+    SYS_USER_SUMMARY_BY_STAGES_SELECT_PREFIX                                                       \
+    "format_pico_time(" SYS_USER_SUMMARY_BY_STAGES_SOURCE ".`SUM_TIMER_WAIT`) AS "                 \
+    "`total_latency`,format_pico_time(" SYS_USER_SUMMARY_BY_STAGES_SOURCE                          \
+    ".`AVG_TIMER_WAIT`) AS `avg_latency`" SYS_USER_SUMMARY_BY_STAGES_SELECT_SUFFIX
+
+#define SYS_X_USER_SUMMARY_BY_STAGES_VIEW_DEFINITION                                               \
+    SYS_USER_SUMMARY_BY_STAGES_SELECT_PREFIX                                                       \
+    SYS_USER_SUMMARY_BY_STAGES_SOURCE                                                              \
+    ".`SUM_TIMER_WAIT` AS `total_latency`," SYS_USER_SUMMARY_BY_STAGES_SOURCE                      \
+    ".`AVG_TIMER_WAIT` AS "                                                                        \
+    "`avg_latency`" SYS_USER_SUMMARY_BY_STAGES_SELECT_SUFFIX
+
+static const char sys_user_summary_by_stages_view_definition[] =
+    SYS_USER_SUMMARY_BY_STAGES_VIEW_DEFINITION;
+
+static const char sys_user_summary_by_stages_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`user_summary_by_stages` " SYS_USER_SUMMARY_BY_STAGES_VIEW_COLUMNS
+    " AS " SYS_USER_SUMMARY_BY_STAGES_VIEW_DEFINITION;
+
+static const char sys_user_summary_by_stages_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`user_summary_by_stages` " SYS_USER_SUMMARY_BY_STAGES_VIEW_COLUMNS
+    " AS " SYS_USER_SUMMARY_BY_STAGES_VIEW_DEFINITION;
+
+static const char sys_x_user_summary_by_stages_view_definition[] =
+    SYS_X_USER_SUMMARY_BY_STAGES_VIEW_DEFINITION;
+
+static const char sys_x_user_summary_by_stages_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$user_summary_by_stages` " SYS_USER_SUMMARY_BY_STAGES_VIEW_COLUMNS
+    " AS " SYS_X_USER_SUMMARY_BY_STAGES_VIEW_DEFINITION;
+
+static const char sys_x_user_summary_by_stages_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$user_summary_by_stages` " SYS_USER_SUMMARY_BY_STAGES_VIEW_COLUMNS
+    " AS " SYS_X_USER_SUMMARY_BY_STAGES_VIEW_DEFINITION;
+
+#undef SYS_USER_SUMMARY_BY_STAGES_VIEW_COLUMNS
+#undef SYS_USER_SUMMARY_BY_STAGES_SOURCE
+#undef SYS_USER_SUMMARY_BY_STAGES_USER_EXPR
+#undef SYS_USER_SUMMARY_BY_STAGES_SELECT_PREFIX
+#undef SYS_USER_SUMMARY_BY_STAGES_SELECT_SUFFIX
+#undef SYS_USER_SUMMARY_BY_STAGES_VIEW_DEFINITION
+#undef SYS_X_USER_SUMMARY_BY_STAGES_VIEW_DEFINITION
+
+#define SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_COLUMNS                                         \
+    "(`user`,`total`,`total_latency`,`max_latency`,`lock_latency`,`cpu_latency`,`rows_sent`,"      \
+    "`rows_examined`,`rows_affected`,`full_scans`)"
+
+#define SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE                                               \
+    "`performance_schema`.`events_statements_summary_by_user_by_event_name`"
+
+#define SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_USER_EXPR                                            \
+    "if((" SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE                                            \
+    ".`USER` is null),'background'," SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE ".`USER`)"
+
+#define SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SELECT_PREFIX                                        \
+    "select " SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_USER_EXPR                                      \
+    " AS `user`,sum(" SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE ".`COUNT_STAR`) AS `total`,"
+
+#define SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SELECT_SUFFIX                                        \
+    "sum(" SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE ".`SUM_ROWS_SENT`) AS `rows_sent`,"        \
+    "sum(" SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE ".`SUM_ROWS_EXAMINED`) AS "                \
+    "`rows_examined`,sum(" SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE                            \
+    ".`SUM_ROWS_AFFECTED`) AS `rows_affected`,(sum(" SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE  \
+    ".`SUM_NO_INDEX_USED`) + sum(" SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE                    \
+    ".`SUM_NO_GOOD_INDEX_USED`)) AS `full_scans` "                                                 \
+    "from " SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE                                           \
+    " group by " SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_USER_EXPR                                   \
+    " order by sum(" SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE ".`SUM_TIMER_WAIT`) desc"
+
+#define SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION                                      \
+    SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SELECT_PREFIX                                            \
+    "format_pico_time(sum(" SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE ".`SUM_TIMER_WAIT`)) AS " \
+    "`total_latency`,format_pico_time(sum(" SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE           \
+    ".`MAX_TIMER_WAIT`)) AS "                                                                      \
+    "`max_latency`,format_pico_time(sum(" SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE             \
+    ".`SUM_LOCK_TIME`)) AS "                                                                       \
+    "`lock_latency`,format_pico_time(sum(" SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE            \
+    ".`SUM_CPU_TIME`)) AS `cpu_latency`," SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SELECT_SUFFIX
+
+#define SYS_X_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION                                    \
+    SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SELECT_PREFIX                                            \
+    "sum(" SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE                                            \
+    ".`SUM_TIMER_WAIT`) AS `total_latency`,sum(" SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE      \
+    ".`MAX_TIMER_WAIT`) AS `max_latency`,sum(" SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE        \
+    ".`SUM_LOCK_TIME`) AS `lock_latency`,sum(" SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE        \
+    ".`SUM_CPU_TIME`) AS `cpu_latency`," SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SELECT_SUFFIX
+
+static const char sys_user_summary_by_statement_latency_view_definition[] =
+    SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION;
+
+static const char sys_user_summary_by_statement_latency_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`user_summary_by_statement_latency` " SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_COLUMNS
+    " AS " SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION;
+
+static const char sys_user_summary_by_statement_latency_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`user_summary_by_statement_latency` " SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_COLUMNS
+    " AS " SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_user_summary_by_statement_latency_view_definition[] =
+    SYS_X_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_user_summary_by_statement_latency_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$user_summary_by_statement_latency` " SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_COLUMNS
+    " AS " SYS_X_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_user_summary_by_statement_latency_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$user_summary_by_statement_latency`"
+    " " SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_COLUMNS
+    " AS " SYS_X_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION;
+
+#undef SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_COLUMNS
+#undef SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SOURCE
+#undef SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_USER_EXPR
+#undef SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SELECT_PREFIX
+#undef SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_SELECT_SUFFIX
+#undef SYS_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION
+#undef SYS_X_USER_SUMMARY_BY_STATEMENT_LATENCY_VIEW_DEFINITION
+
+#define SYS_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_COLUMNS                                            \
+    "(`user`,`statement`,`total`,`total_latency`,`max_latency`,`lock_latency`,`cpu_latency`,"      \
+    "`rows_sent`,`rows_examined`,`rows_affected`,`full_scans`)"
+
+#define SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE                                                  \
+    "`performance_schema`.`events_statements_summary_by_user_by_event_name`"
+
+#define SYS_USER_SUMMARY_BY_STATEMENT_TYPE_USER_EXPR                                               \
+    "if((" SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE                                               \
+    ".`USER` is null),'background'," SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE ".`USER`)"
+
+#define SYS_USER_SUMMARY_BY_STATEMENT_TYPE_STATEMENT_EXPR                                          \
+    "substring_index(" SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE ".`EVENT_NAME`,'/',-(1))"
+
+#define SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SELECT_PREFIX                                           \
+    "select " SYS_USER_SUMMARY_BY_STATEMENT_TYPE_USER_EXPR                                         \
+    " AS `user`," SYS_USER_SUMMARY_BY_STATEMENT_TYPE_STATEMENT_EXPR                                \
+    " AS `statement`," SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE ".`COUNT_STAR` AS `total`,"
+
+#define SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SELECT_SUFFIX                                           \
+    SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE                                                      \
+    ".`SUM_ROWS_SENT` AS `rows_sent`," SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE                   \
+    ".`SUM_ROWS_EXAMINED` AS `rows_examined`," SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE           \
+    ".`SUM_ROWS_AFFECTED` AS `rows_affected`,(" SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE          \
+    ".`SUM_NO_INDEX_USED` + " SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE                            \
+    ".`SUM_NO_GOOD_INDEX_USED`) AS `full_scans` "                                                  \
+    "from " SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE                                              \
+    " where (" SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE                                           \
+    ".`SUM_TIMER_WAIT` <> 0) order by " SYS_USER_SUMMARY_BY_STATEMENT_TYPE_USER_EXPR               \
+    "," SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE ".`SUM_TIMER_WAIT` desc"
+
+#define SYS_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION                                         \
+    SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SELECT_PREFIX                                               \
+    "format_pico_time(" SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE ".`SUM_TIMER_WAIT`) AS "         \
+    "`total_latency`,format_pico_time(" SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE                  \
+    ".`MAX_TIMER_WAIT`) AS "                                                                       \
+    "`max_latency`,format_pico_time(" SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE                    \
+    ".`SUM_LOCK_TIME`) AS `lock_latency`,"                                                         \
+    "format_pico_time(" SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE                                  \
+    ".`SUM_CPU_TIME`) AS `cpu_latency`," SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SELECT_SUFFIX
+
+#define SYS_X_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION                                       \
+    SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SELECT_PREFIX                                               \
+    SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE                                                      \
+    ".`SUM_TIMER_WAIT` AS `total_latency`," SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE              \
+    ".`MAX_TIMER_WAIT` AS `max_latency`," SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE                \
+    ".`SUM_LOCK_TIME` AS `lock_latency`," SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE                \
+    ".`SUM_CPU_TIME` AS `cpu_latency`," SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SELECT_SUFFIX
+
+static const char sys_user_summary_by_statement_type_view_definition[] =
+    SYS_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION;
+
+static const char sys_user_summary_by_statement_type_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`user_summary_by_statement_type` " SYS_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_COLUMNS
+    " AS " SYS_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION;
+
+static const char sys_user_summary_by_statement_type_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`user_summary_by_statement_type` " SYS_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_COLUMNS
+    " AS " SYS_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION;
+
+static const char sys_x_user_summary_by_statement_type_view_definition[] =
+    SYS_X_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION;
+
+static const char sys_x_user_summary_by_statement_type_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$user_summary_by_statement_type` " SYS_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_COLUMNS
+    " AS " SYS_X_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION;
+
+static const char sys_x_user_summary_by_statement_type_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$user_summary_by_statement_type` " SYS_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_COLUMNS
+    " AS " SYS_X_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION;
+
+#undef SYS_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_COLUMNS
+#undef SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SOURCE
+#undef SYS_USER_SUMMARY_BY_STATEMENT_TYPE_USER_EXPR
+#undef SYS_USER_SUMMARY_BY_STATEMENT_TYPE_STATEMENT_EXPR
+#undef SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SELECT_PREFIX
+#undef SYS_USER_SUMMARY_BY_STATEMENT_TYPE_SELECT_SUFFIX
+#undef SYS_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION
+#undef SYS_X_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION
+
 #define SYS_MEMORY_BY_HOST_BY_CURRENT_BYTES_VIEW_COLUMNS                                           \
     "(`host`,`current_count_used`,`current_allocated`,`current_avg_alloc`,`current_max_alloc`,"    \
     "`total_allocated`)"
@@ -3138,6 +3616,30 @@ static const struct mylite_execution_catalog_builtin_sys_view builtin_sys_view_d
      sys_host_summary_by_statement_type_view_definition,
      sys_host_summary_by_statement_type_show_create_view_sql,
      sys_host_summary_by_statement_type_show_create_qualified_view_sql},
+    {"user_summary",
+     sys_user_summary_view_definition,
+     sys_user_summary_show_create_view_sql,
+     sys_user_summary_show_create_qualified_view_sql},
+    {"user_summary_by_file_io",
+     sys_user_summary_by_file_io_view_definition,
+     sys_user_summary_by_file_io_show_create_view_sql,
+     sys_user_summary_by_file_io_show_create_qualified_view_sql},
+    {"user_summary_by_file_io_type",
+     sys_user_summary_by_file_io_type_view_definition,
+     sys_user_summary_by_file_io_type_show_create_view_sql,
+     sys_user_summary_by_file_io_type_show_create_qualified_view_sql},
+    {"user_summary_by_stages",
+     sys_user_summary_by_stages_view_definition,
+     sys_user_summary_by_stages_show_create_view_sql,
+     sys_user_summary_by_stages_show_create_qualified_view_sql},
+    {"user_summary_by_statement_latency",
+     sys_user_summary_by_statement_latency_view_definition,
+     sys_user_summary_by_statement_latency_show_create_view_sql,
+     sys_user_summary_by_statement_latency_show_create_qualified_view_sql},
+    {"user_summary_by_statement_type",
+     sys_user_summary_by_statement_type_view_definition,
+     sys_user_summary_by_statement_type_show_create_view_sql,
+     sys_user_summary_by_statement_type_show_create_qualified_view_sql},
     {"innodb_buffer_stats_by_schema",
      sys_innodb_buffer_stats_by_schema_view_definition,
      sys_innodb_buffer_stats_by_schema_show_create_view_sql,
@@ -3262,6 +3764,30 @@ static const struct mylite_execution_catalog_builtin_sys_view builtin_sys_view_d
      sys_x_host_summary_by_statement_type_view_definition,
      sys_x_host_summary_by_statement_type_show_create_view_sql,
      sys_x_host_summary_by_statement_type_show_create_qualified_view_sql},
+    {"x$user_summary",
+     sys_x_user_summary_view_definition,
+     sys_x_user_summary_show_create_view_sql,
+     sys_x_user_summary_show_create_qualified_view_sql},
+    {"x$user_summary_by_file_io",
+     sys_x_user_summary_by_file_io_view_definition,
+     sys_x_user_summary_by_file_io_show_create_view_sql,
+     sys_x_user_summary_by_file_io_show_create_qualified_view_sql},
+    {"x$user_summary_by_file_io_type",
+     sys_x_user_summary_by_file_io_type_view_definition,
+     sys_x_user_summary_by_file_io_type_show_create_view_sql,
+     sys_x_user_summary_by_file_io_type_show_create_qualified_view_sql},
+    {"x$user_summary_by_stages",
+     sys_x_user_summary_by_stages_view_definition,
+     sys_x_user_summary_by_stages_show_create_view_sql,
+     sys_x_user_summary_by_stages_show_create_qualified_view_sql},
+    {"x$user_summary_by_statement_latency",
+     sys_x_user_summary_by_statement_latency_view_definition,
+     sys_x_user_summary_by_statement_latency_show_create_view_sql,
+     sys_x_user_summary_by_statement_latency_show_create_qualified_view_sql},
+    {"x$user_summary_by_statement_type",
+     sys_x_user_summary_by_statement_type_view_definition,
+     sys_x_user_summary_by_statement_type_show_create_view_sql,
+     sys_x_user_summary_by_statement_type_show_create_qualified_view_sql},
     {"x$innodb_buffer_stats_by_schema",
      sys_x_innodb_buffer_stats_by_schema_view_definition,
      sys_x_innodb_buffer_stats_by_schema_show_create_view_sql,

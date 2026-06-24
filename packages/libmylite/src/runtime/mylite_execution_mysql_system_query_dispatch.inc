@@ -254,6 +254,30 @@ static bool append_sys_schema_summary_system_table_rows(
         *out_status = append_sys_host_summary_by_statement_type_system_rows(database, rows);
         return true;
     }
+    if (strcmp(definition->query_definition.name, "user_summary") == 0) {
+        *out_status = append_sys_user_summary_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "user_summary_by_file_io") == 0) {
+        *out_status = append_sys_user_summary_by_file_io_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "user_summary_by_file_io_type") == 0) {
+        *out_status = append_sys_user_summary_by_file_io_type_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "user_summary_by_stages") == 0) {
+        *out_status = append_sys_user_summary_by_stages_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "user_summary_by_statement_latency") == 0) {
+        *out_status = append_sys_user_summary_by_statement_latency_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "user_summary_by_statement_type") == 0) {
+        *out_status = append_sys_user_summary_by_statement_type_system_rows(database, rows);
+        return true;
+    }
     if (strcmp(definition->query_definition.name, "memory_by_host_by_current_bytes") == 0) {
         *out_status = append_sys_memory_by_host_by_current_bytes_system_rows(database, rows);
         return true;
@@ -392,6 +416,30 @@ static bool append_sys_schema_x_summary_system_table_rows(
     }
     if (strcmp(definition->query_definition.name, "x$host_summary_by_statement_type") == 0) {
         *out_status = append_sys_host_summary_by_statement_type_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "x$user_summary") == 0) {
+        *out_status = append_sys_user_summary_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "x$user_summary_by_file_io") == 0) {
+        *out_status = append_sys_user_summary_by_file_io_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "x$user_summary_by_file_io_type") == 0) {
+        *out_status = append_sys_user_summary_by_file_io_type_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "x$user_summary_by_stages") == 0) {
+        *out_status = append_sys_user_summary_by_stages_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "x$user_summary_by_statement_latency") == 0) {
+        *out_status = append_sys_user_summary_by_statement_latency_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "x$user_summary_by_statement_type") == 0) {
+        *out_status = append_sys_user_summary_by_statement_type_system_rows(database, rows);
         return true;
     }
     if (strcmp(definition->query_definition.name, "x$memory_by_host_by_current_bytes") == 0) {
@@ -897,6 +945,72 @@ static int append_sys_host_summary_by_statement_type_system_rows(
 ) {
     if (rows->definition->column_count != sys_host_summary_by_statement_type_column_count) {
         set_runtime_error(database, "invalid sys.host_summary_by_statement_type columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_user_summary_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_user_summary_column_count) {
+        set_runtime_error(database, "invalid sys.user_summary columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_user_summary_by_file_io_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_user_summary_by_file_io_column_count) {
+        set_runtime_error(database, "invalid sys.user_summary_by_file_io columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_user_summary_by_file_io_type_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_user_summary_by_file_io_type_column_count) {
+        set_runtime_error(database, "invalid sys.user_summary_by_file_io_type columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_user_summary_by_stages_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_user_summary_by_stages_column_count) {
+        set_runtime_error(database, "invalid sys.user_summary_by_stages columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_user_summary_by_statement_latency_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_user_summary_by_statement_latency_column_count) {
+        set_runtime_error(database, "invalid sys.user_summary_by_statement_latency columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_user_summary_by_statement_type_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_user_summary_by_statement_type_column_count) {
+        set_runtime_error(database, "invalid sys.user_summary_by_statement_type columns");
         return MYLITE_ERROR;
     }
     return MYLITE_OK;

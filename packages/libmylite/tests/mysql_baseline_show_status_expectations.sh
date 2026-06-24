@@ -247,6 +247,46 @@ expect_value "local open resource row names" "$expected_open_row_names" "$local_
 global_open_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Open%';" | cut -f1)
 expect_value "global open resource row names" "$expected_open_row_names" "$global_open_row_names"
 
+select_row_names=$(run_mysql "SHOW STATUS LIKE 'Select\\_%';" | cut -f1)
+expected_select_row_names="Select_full_join
+Select_full_range_join
+Select_range
+Select_range_check
+Select_scan"
+expect_value "select counter row names" "$expected_select_row_names" "$select_row_names"
+
+session_select_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Select\\_%';" | cut -f1)
+expect_value "session select counter row names" "$expected_select_row_names" "$session_select_row_names"
+
+local_select_row_names=$(run_mysql "SHOW LOCAL STATUS LIKE 'Select\\_%';" | cut -f1)
+expect_value "local select counter row names" "$expected_select_row_names" "$local_select_row_names"
+
+global_select_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Select\\_%';" | cut -f1)
+expect_value "global select counter row names" "$expected_select_row_names" "$global_select_row_names"
+
+table_lock_row_names=$(run_mysql "SHOW STATUS LIKE 'Table_locks\\_%';" | cut -f1)
+expected_table_lock_row_names="Table_locks_immediate
+Table_locks_waited"
+expect_value "table lock counter row names" "$expected_table_lock_row_names" "$table_lock_row_names"
+
+session_table_lock_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Table_locks\\_%';" | cut -f1)
+expect_value \
+    "session table lock counter row names" \
+    "$expected_table_lock_row_names" \
+    "$session_table_lock_row_names"
+
+local_table_lock_row_names=$(run_mysql "SHOW LOCAL STATUS LIKE 'Table_locks\\_%';" | cut -f1)
+expect_value \
+    "local table lock counter row names" \
+    "$expected_table_lock_row_names" \
+    "$local_table_lock_row_names"
+
+global_table_lock_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Table_locks\\_%';" | cut -f1)
+expect_value \
+    "global table lock counter row names" \
+    "$expected_table_lock_row_names" \
+    "$global_table_lock_row_names"
+
 thread_row_names=$(run_mysql "SHOW STATUS LIKE 'Threads\\_%';" | cut -f1)
 expect_value "threads like row names" "Threads_cached
 Threads_connected

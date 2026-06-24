@@ -404,6 +404,7 @@ static const struct mylite_execution_show_status_descriptor show_status_descript
     {"Select_full_join", "0", true, true},
     {"Select_full_range_join", "0", true, true},
     {"Select_range", "0", true, true},
+    {"Select_range_check", "0", true, true},
     {"Select_scan", "0", true, true},
     {"Slow_queries", "0", true, true},
     {"Ssl_cipher", "", true, true},

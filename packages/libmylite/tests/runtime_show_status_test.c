@@ -269,6 +269,7 @@ static const struct expected_status_row expected_session_rows[] = {
     {"Select_full_join", "0"},
     {"Select_full_range_join", "0"},
     {"Select_range", "0"},
+    {"Select_range_check", "0"},
     {"Select_scan", "0"},
     {"Slow_queries", "0"},
     {"Ssl_cipher", ""},
@@ -398,6 +399,17 @@ static int test_show_status_values_scopes_and_filters(void) {
         {"Opened_files", "0"},
         {"Opened_table_definitions", "0"},
         {"Opened_tables", "0"},
+    };
+    static const struct expected_status_row expected_select_rows[] = {
+        {"Select_full_join", "0"},
+        {"Select_full_range_join", "0"},
+        {"Select_range", "0"},
+        {"Select_range_check", "0"},
+        {"Select_scan", "0"},
+    };
+    static const struct expected_status_row expected_table_lock_rows[] = {
+        {"Table_locks_immediate", "0"},
+        {"Table_locks_waited", "0"},
     };
     mylite_db *database = NULL;
     int failures = 0;
@@ -550,6 +562,48 @@ static int test_show_status_values_scopes_and_filters(void) {
         expected_open_rows,
         sizeof(expected_open_rows) / sizeof(expected_open_rows[0]),
         "show local status open counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS LIKE 'Select\\_%'",
+        expected_select_rows,
+        sizeof(expected_select_rows) / sizeof(expected_select_rows[0]),
+        "show status select counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Select\\_%'",
+        expected_select_rows,
+        sizeof(expected_select_rows) / sizeof(expected_select_rows[0]),
+        "show global status select counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW LOCAL STATUS LIKE 'Select\\_%'",
+        expected_select_rows,
+        sizeof(expected_select_rows) / sizeof(expected_select_rows[0]),
+        "show local status select counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS LIKE 'Table_locks\\_%'",
+        expected_table_lock_rows,
+        sizeof(expected_table_lock_rows) / sizeof(expected_table_lock_rows[0]),
+        "show status table lock counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Table_locks\\_%'",
+        expected_table_lock_rows,
+        sizeof(expected_table_lock_rows) / sizeof(expected_table_lock_rows[0]),
+        "show global status table lock counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW LOCAL STATUS LIKE 'Table_locks\\_%'",
+        expected_table_lock_rows,
+        sizeof(expected_table_lock_rows) / sizeof(expected_table_lock_rows[0]),
+        "show local status table lock counters"
     );
     failures += expect_status_rows(
         database,

@@ -664,7 +664,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Select_full_join` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Select_full_range_join` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Select_range` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Select_range_check` | ❌ | Counter value or embedded zero/empty |
+| `Select_range_check` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Select_scan` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Slave_open_temp_tables` | ❌ | Counter value or embedded zero/empty |
 | `Slave_rows_last_search_algorithm_used` | ❌ | Counter value or embedded zero/empty |

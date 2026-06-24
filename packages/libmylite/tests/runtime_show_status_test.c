@@ -271,7 +271,12 @@ static const struct expected_status_row expected_session_rows[] = {
     {"Select_range", "0"},
     {"Select_range_check", "0"},
     {"Select_scan", "0"},
+    {"Slow_launch_threads", "0"},
     {"Slow_queries", "0"},
+    {"Sort_merge_passes", "0"},
+    {"Sort_range", "0"},
+    {"Sort_rows", "0"},
+    {"Sort_scan", "0"},
     {"Ssl_accept_renegotiates", "0"},
     {"Ssl_accepts", "0"},
     {"Ssl_callback_cache_hits", "0"},
@@ -300,6 +305,12 @@ static const struct expected_status_row expected_session_rows[] = {
     {"Ssl_version", ""},
     {"Table_locks_immediate", "0"},
     {"Table_locks_waited", "0"},
+    {"Table_open_cache_hits", "0"},
+    {"Table_open_cache_misses", "0"},
+    {"Table_open_cache_overflows", "0"},
+    {"Tc_log_max_pages_used", "0"},
+    {"Tc_log_page_size", "0"},
+    {"Tc_log_page_waits", "0"},
     {"Threads_cached", "0"},
     {"Threads_connected", "1"},
     {"Threads_created", "1"},
@@ -458,6 +469,26 @@ static int test_show_status_values_scopes_and_filters(void) {
     static const struct expected_status_row expected_table_lock_rows[] = {
         {"Table_locks_immediate", "0"},
         {"Table_locks_waited", "0"},
+    };
+    static const struct expected_status_row expected_sort_rows[] = {
+        {"Sort_merge_passes", "0"},
+        {"Sort_range", "0"},
+        {"Sort_rows", "0"},
+        {"Sort_scan", "0"},
+    };
+    static const struct expected_status_row expected_table_open_cache_rows[] = {
+        {"Table_open_cache_hits", "0"},
+        {"Table_open_cache_misses", "0"},
+        {"Table_open_cache_overflows", "0"},
+    };
+    static const struct expected_status_row expected_tc_log_rows[] = {
+        {"Tc_log_max_pages_used", "0"},
+        {"Tc_log_page_size", "0"},
+        {"Tc_log_page_waits", "0"},
+    };
+    static const struct expected_status_row expected_slow_rows[] = {
+        {"Slow_launch_threads", "0"},
+        {"Slow_queries", "0"},
     };
     mylite_db *database = NULL;
     int failures = 0;
@@ -666,6 +697,62 @@ static int test_show_status_values_scopes_and_filters(void) {
         expected_table_lock_rows,
         sizeof(expected_table_lock_rows) / sizeof(expected_table_lock_rows[0]),
         "show local status table lock counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS LIKE 'Sort\\_%'",
+        expected_sort_rows,
+        sizeof(expected_sort_rows) / sizeof(expected_sort_rows[0]),
+        "show status sort counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Sort\\_%'",
+        expected_sort_rows,
+        sizeof(expected_sort_rows) / sizeof(expected_sort_rows[0]),
+        "show global status sort counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS LIKE 'Table_open_cache\\_%'",
+        expected_table_open_cache_rows,
+        sizeof(expected_table_open_cache_rows) / sizeof(expected_table_open_cache_rows[0]),
+        "show status table open cache counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Table_open_cache\\_%'",
+        expected_table_open_cache_rows,
+        sizeof(expected_table_open_cache_rows) / sizeof(expected_table_open_cache_rows[0]),
+        "show global status table open cache counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS LIKE 'Tc_log\\_%'",
+        expected_tc_log_rows,
+        sizeof(expected_tc_log_rows) / sizeof(expected_tc_log_rows[0]),
+        "show status tc log counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Tc_log\\_%'",
+        expected_tc_log_rows,
+        sizeof(expected_tc_log_rows) / sizeof(expected_tc_log_rows[0]),
+        "show global status tc log counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS LIKE 'Slow\\_%'",
+        expected_slow_rows,
+        sizeof(expected_slow_rows) / sizeof(expected_slow_rows[0]),
+        "show status slow counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Slow\\_%'",
+        expected_slow_rows,
+        sizeof(expected_slow_rows) / sizeof(expected_slow_rows[0]),
+        "show global status slow counters"
     );
     failures += expect_status_rows(
         database,

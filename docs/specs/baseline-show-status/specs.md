@@ -144,10 +144,11 @@ not MySQL's full grammar.
 
 This phase exposes a limited common registry. Values are deterministic embedded
 placeholders unless listed otherwise. All numeric values are returned as
-decimal text. The `Binlog_%`, `Com_%`, `Handler_%`, `Select_%`, `Ssl_%`, and
-`Table_locks_%` rows mirror the MySQL 8.4.9 counter names and order. The
-`Created_%` and `Open%` resource rows also mirror the MySQL 8.4.9 names and
-order. These values are fixed no-TLS placeholders rather than live counters.
+decimal text. The `Binlog_%`, `Com_%`, `Handler_%`, `Select_%`, `Slow_%`,
+`Sort_%`, `Ssl_%`, `Table_locks_%`, `Table_open_cache_%`, and `Tc_log_%` rows
+mirror the MySQL 8.4.9 counter names and order. The `Created_%` and `Open%`
+resource rows also mirror the MySQL 8.4.9 names and order. These values are
+fixed placeholders rather than live counters.
 
 | Variable | Default/session/LOCAL visibility | GLOBAL visibility | MyLite value |
 | --- | --- | --- | --- |
@@ -373,7 +374,12 @@ order. These values are fixed no-TLS placeholders rather than live counters.
 | `Select_range` | yes | yes | `0` |
 | `Select_range_check` | yes | yes | `0` |
 | `Select_scan` | yes | yes | `0` |
+| `Slow_launch_threads` | yes | yes | `0` |
 | `Slow_queries` | yes | yes | `0` |
+| `Sort_merge_passes` | yes | yes | `0` |
+| `Sort_range` | yes | yes | `0` |
+| `Sort_rows` | yes | yes | `0` |
+| `Sort_scan` | yes | yes | `0` |
 | `Ssl_accept_renegotiates` | yes | yes | `0` |
 | `Ssl_accepts` | yes | yes | `0` |
 | `Ssl_callback_cache_hits` | yes | yes | `0` |
@@ -402,6 +408,12 @@ order. These values are fixed no-TLS placeholders rather than live counters.
 | `Ssl_version` | yes | yes | empty string |
 | `Table_locks_immediate` | yes | yes | `0` |
 | `Table_locks_waited` | yes | yes | `0` |
+| `Table_open_cache_hits` | yes | yes | `0` |
+| `Table_open_cache_misses` | yes | yes | `0` |
+| `Table_open_cache_overflows` | yes | yes | `0` |
+| `Tc_log_max_pages_used` | yes | yes | `0` |
+| `Tc_log_page_size` | yes | yes | `0` |
+| `Tc_log_page_waits` | yes | yes | `0` |
 | `Threads_cached` | yes | yes | `0` |
 | `Threads_connected` | yes | yes | `1` |
 | `Threads_created` | yes | yes | `1` |

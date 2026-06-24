@@ -668,12 +668,12 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Select_scan` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Slave_open_temp_tables` | ❌ | Counter value or embedded zero/empty |
 | `Slave_rows_last_search_algorithm_used` | ❌ | Counter value or embedded zero/empty |
-| `Slow_launch_threads` | ❌ | Counter value or embedded zero/empty |
+| `Slow_launch_threads` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Slow_queries` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Sort_merge_passes` | ❌ | Counter value or embedded zero/empty |
-| `Sort_range` | ❌ | Counter value or embedded zero/empty |
-| `Sort_rows` | ❌ | Counter value or embedded zero/empty |
-| `Sort_scan` | ❌ | Counter value or embedded zero/empty |
+| `Sort_merge_passes` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Sort_range` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Sort_rows` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Sort_scan` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Ssl_accept_renegotiates` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
 | `Ssl_accepts` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
 | `Ssl_callback_cache_hits` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no TLS state |
@@ -702,12 +702,12 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Ssl_version` | 🟡 | Limited `SHOW STATUS` embedded empty string; no TLS state |
 | `Table_locks_immediate` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Table_locks_waited` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Table_open_cache_hits` | ❌ | Counter value or embedded zero/empty |
-| `Table_open_cache_misses` | ❌ | Counter value or embedded zero/empty |
-| `Table_open_cache_overflows` | ❌ | Counter value or embedded zero/empty |
-| `Tc_log_max_pages_used` | ❌ | Counter value or embedded zero/empty |
-| `Tc_log_page_size` | ❌ | Counter value or embedded zero/empty |
-| `Tc_log_page_waits` | ❌ | Counter value or embedded zero/empty |
+| `Table_open_cache_hits` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Table_open_cache_misses` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Table_open_cache_overflows` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Tc_log_max_pages_used` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Tc_log_page_size` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Tc_log_page_waits` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Telemetry_metrics_supported` | ❌ | Counter value or embedded zero/empty |
 | `Telemetry_traces_supported` | ❌ | Counter value or embedded zero/empty |
 | `telemetry.live_sessions` | ❌ | Counter value or embedded zero/empty |

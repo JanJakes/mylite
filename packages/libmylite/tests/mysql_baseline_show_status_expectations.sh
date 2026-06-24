@@ -325,6 +325,65 @@ expect_value "local ssl status row names" "$expected_ssl_row_names" "$local_ssl_
 global_ssl_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Ssl\\_%';" | cut -f1)
 expect_value "global ssl status row names" "$expected_ssl_row_names" "$global_ssl_row_names"
 
+slow_row_names=$(run_mysql "SHOW STATUS LIKE 'Slow\\_%';" | cut -f1)
+expected_slow_row_names="Slow_launch_threads
+Slow_queries"
+expect_value "slow counter row names" "$expected_slow_row_names" "$slow_row_names"
+
+session_slow_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Slow\\_%';" | cut -f1)
+expect_value "session slow counter row names" "$expected_slow_row_names" "$session_slow_row_names"
+
+global_slow_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Slow\\_%';" | cut -f1)
+expect_value "global slow counter row names" "$expected_slow_row_names" "$global_slow_row_names"
+
+sort_row_names=$(run_mysql "SHOW STATUS LIKE 'Sort\\_%';" | cut -f1)
+expected_sort_row_names="Sort_merge_passes
+Sort_range
+Sort_rows
+Sort_scan"
+expect_value "sort counter row names" "$expected_sort_row_names" "$sort_row_names"
+
+session_sort_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Sort\\_%';" | cut -f1)
+expect_value "session sort counter row names" "$expected_sort_row_names" "$session_sort_row_names"
+
+global_sort_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Sort\\_%';" | cut -f1)
+expect_value "global sort counter row names" "$expected_sort_row_names" "$global_sort_row_names"
+
+table_open_cache_row_names=$(run_mysql "SHOW STATUS LIKE 'Table_open_cache\\_%';" | cut -f1)
+expected_table_open_cache_row_names="Table_open_cache_hits
+Table_open_cache_misses
+Table_open_cache_overflows"
+expect_value \
+    "table open cache counter row names" \
+    "$expected_table_open_cache_row_names" \
+    "$table_open_cache_row_names"
+
+session_table_open_cache_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Table_open_cache\\_%';" \
+    | cut -f1)
+expect_value \
+    "session table open cache counter row names" \
+    "$expected_table_open_cache_row_names" \
+    "$session_table_open_cache_row_names"
+
+global_table_open_cache_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Table_open_cache\\_%';" \
+    | cut -f1)
+expect_value \
+    "global table open cache counter row names" \
+    "$expected_table_open_cache_row_names" \
+    "$global_table_open_cache_row_names"
+
+tc_log_row_names=$(run_mysql "SHOW STATUS LIKE 'Tc_log\\_%';" | cut -f1)
+expected_tc_log_row_names="Tc_log_max_pages_used
+Tc_log_page_size
+Tc_log_page_waits"
+expect_value "tc log counter row names" "$expected_tc_log_row_names" "$tc_log_row_names"
+
+session_tc_log_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Tc_log\\_%';" | cut -f1)
+expect_value "session tc log counter row names" "$expected_tc_log_row_names" "$session_tc_log_row_names"
+
+global_tc_log_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Tc_log\\_%';" | cut -f1)
+expect_value "global tc log counter row names" "$expected_tc_log_row_names" "$global_tc_log_row_names"
+
 thread_row_names=$(run_mysql "SHOW STATUS LIKE 'Threads\\_%';" | cut -f1)
 expect_value "threads like row names" "Threads_cached
 Threads_connected

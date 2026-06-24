@@ -188,12 +188,12 @@ int main(void) {
 
 static int test_sys_metrics_view(void) {
     enum {
-        metrics_row_count = 256,
+        metrics_row_count = 267,
     };
 
     static const char *const count_column[] = {"COUNT(*)"};
     static const char *const count_zero[] = {"0"};
-    static const char *const metrics_row_count_value[] = {"256"};
+    static const char *const metrics_row_count_value[] = {"267"};
     static const char *const row_count_minus_one[] = {"-1"};
     static const char *const aborted_clients_row[] = {
         "aborted_clients",
@@ -258,6 +258,24 @@ static int test_sys_metrics_view(void) {
     static const char *const ssl_version_row[] = {
         "ssl_version",
         "",
+        "Global Status",
+        "YES",
+    };
+    static const char *const sort_rows_row[] = {
+        "sort_rows",
+        "0",
+        "Global Status",
+        "YES",
+    };
+    static const char *const table_open_cache_hits_row[] = {
+        "table_open_cache_hits",
+        "0",
+        "Global Status",
+        "YES",
+    };
+    static const char *const tc_log_page_waits_row[] = {
+        "tc_log_page_waits",
+        "0",
         "Global Status",
         "YES",
     };
@@ -552,6 +570,42 @@ static int test_sys_metrics_view(void) {
             .values = ssl_version_row,
             .row_count = 1U,
             .context = "sys.metrics ssl status row",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
+                   "WHERE Variable_name = 'sort_rows'",
+            .column_names = metrics_columns,
+            .column_count = metrics_column_count,
+            .values = sort_rows_row,
+            .row_count = 1U,
+            .context = "sys.metrics sort counter row",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
+                   "WHERE Variable_name = 'table_open_cache_hits'",
+            .column_names = metrics_columns,
+            .column_count = metrics_column_count,
+            .values = table_open_cache_hits_row,
+            .row_count = 1U,
+            .context = "sys.metrics table open cache counter row",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
+                   "WHERE Variable_name = 'tc_log_page_waits'",
+            .column_names = metrics_columns,
+            .column_count = metrics_column_count,
+            .values = tc_log_page_waits_row,
+            .row_count = 1U,
+            .context = "sys.metrics tc log counter row",
         }
     );
     failures += expect_query(

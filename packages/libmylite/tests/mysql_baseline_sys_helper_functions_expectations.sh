@@ -128,6 +128,44 @@ expect_output \
         sys.extract_schema_from_file_name(NULL),
         sys.quote_identifier(NULL);"
 
+native_format_values_expected=$(
+    printf '%b' \
+        'NULL\t 512 bytes\t1.00 KiB\tNULL\t  0 ps\t999 ps\t1.00 ns\t3.50 ns\t1.00 min\t3.15 min'
+)
+expect_output \
+    "native format helper values" \
+    "$native_format_values_expected" \
+    "SELECT
+        FORMAT_BYTES(NULL),
+        FORMAT_BYTES(512),
+        FORMAT_BYTES(1024),
+        FORMAT_PICO_TIME(NULL),
+        FORMAT_PICO_TIME(0),
+        FORMAT_PICO_TIME(999),
+        FORMAT_PICO_TIME(1000),
+        FORMAT_PICO_TIME(3501),
+        FORMAT_PICO_TIME(60000000000000),
+        FORMAT_PICO_TIME(188732396662000);"
+
+native_format_warnings_expected=$(
+    printf '%b' \
+        "   0 bytes\t  0 ps\nWarning\t1292\tTruncated incorrect DOUBLE value: 'abc'\nWarning\t1292\tTruncated incorrect DOUBLE value: 'abc'"
+)
+expect_output \
+    "native format helper warnings" \
+    "$native_format_warnings_expected" \
+    "SELECT FORMAT_BYTES('abc'), FORMAT_PICO_TIME('abc');
+     SHOW WARNINGS;"
+
+expect_error \
+    "native FORMAT_BYTES arity diagnostic" \
+    "SELECT FORMAT_BYTES();" \
+    "ERROR 1582 (42000)"
+expect_error \
+    "native FORMAT_PICO_TIME arity diagnostic" \
+    "SELECT FORMAT_PICO_TIME();" \
+    "ERROR 1582 (42000)"
+
 expect_error \
     "sys.list_add NULL value diagnostic" \
     "SELECT sys.list_add('a,b', NULL);" \

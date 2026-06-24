@@ -55,7 +55,7 @@ esac
 
 expect_output \
     "sys ps consumer defaults" \
-    "$(printf '%b' 'YES\tYES\tNO\tNO\tNULL')" \
+    "$(printf '%b' 'YES\tNO\tNO\tNO\tNULL')" \
     "SELECT
         sys.ps_is_consumer_enabled('thread_instrumentation'),
         sys.ps_is_consumer_enabled('events_statements_history'),
@@ -101,6 +101,49 @@ expect_output \
         JSON_VALID(sys.ps_thread_stack(NULL, 0)),
         sys.ps_thread_trx_info(NULL),
         sys.ps_thread_trx_info(999999);"
+
+expect_output \
+    "native ps helper values" \
+    "$(printf '%b' '0\t1\tNULL\tNULL\tNULL\t0\t1')" \
+    "SELECT
+        PS_CURRENT_THREAD_ID() IS NULL,
+        PS_THREAD_ID(CONNECTION_ID()) = PS_CURRENT_THREAD_ID(),
+        PS_THREAD_ID(NULL),
+        PS_THREAD_ID(999999),
+        PS_THREAD_ID(-1),
+        sys.ps_thread_id(NULL) IS NULL,
+        sys.ps_thread_id(CONNECTION_ID()) = PS_CURRENT_THREAD_ID();"
+
+native_ps_warnings_expected=$(
+    printf '%b' \
+        "NULL\tNULL\nWarning\t1292\tTruncated incorrect INTEGER value: 'abc'\nWarning\t1292\tTruncated incorrect INTEGER value: '1abc'"
+)
+expect_output \
+    "native ps helper warnings" \
+    "$native_ps_warnings_expected" \
+    "SELECT PS_THREAD_ID('abc'), PS_THREAD_ID('1abc');
+     SHOW WARNINGS;"
+
+expect_error \
+    "native PS_CURRENT_THREAD_ID arity diagnostic" \
+    "SELECT PS_CURRENT_THREAD_ID(1);" \
+    "ERROR 1582 (42000)"
+expect_error \
+    "native PS_THREAD_ID zero-arity diagnostic" \
+    "SELECT PS_THREAD_ID();" \
+    "ERROR 1582 (42000)"
+expect_error \
+    "native PS_THREAD_ID two-arity diagnostic" \
+    "SELECT PS_THREAD_ID(1,2);" \
+    "ERROR 1582 (42000)"
+expect_error \
+    "native PS_CURRENT_THREAD_ID qualified diagnostic" \
+    "SELECT sys.PS_CURRENT_THREAD_ID();" \
+    "ERROR 1305 (42000)"
+expect_error \
+    "native FORMAT_PICO_TIME qualified diagnostic" \
+    "SELECT sys.FORMAT_PICO_TIME(1);" \
+    "ERROR 1305 (42000)"
 
 expect_error \
     "sys ps invalid consumer diagnostic" \

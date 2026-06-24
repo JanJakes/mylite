@@ -10,8 +10,8 @@ functions.
 | `CAN_ACCESS_TABLE()` | ❌ | Internal helper |
 | `CAN_ACCESS_USER()` | ❌ | Internal helper |
 | `CAN_ACCESS_VIEW()` | ❌ | Internal helper |
-| `FORMAT_BYTES()` | ❌ | Convert byte count to value with units |
-| `FORMAT_PICO_TIME()` | ❌ | Convert time in picoseconds to value with units |
+| `FORMAT_BYTES()` | ✅ | MySQL-runtime-verified native byte formatter in scalar and row-backed contexts |
+| `FORMAT_PICO_TIME()` | ✅ | MySQL-runtime-verified native picosecond formatter in scalar and row-backed contexts |
 | `GET_DD_COLUMN_PRIVILEGES()` | ❌ | Internal helper |
 | `GET_DD_CREATE_OPTIONS()` | ❌ | Internal helper |
 | `GET_DD_INDEX_SUB_PART_LENGTH()` | ❌ | Internal helper |
@@ -35,8 +35,8 @@ functions.
 | `INTERNAL_MAX_DATA_LENGTH()` | ❌ | Internal helper |
 | `INTERNAL_TABLE_ROWS()` | ❌ | Internal helper |
 | `INTERNAL_UPDATE_TIME()` | ❌ | Internal helper |
-| `PS_CURRENT_THREAD_ID()` | ❌ | Performance Schema thread ID for current thread |
-| `PS_THREAD_ID()` | ❌ | Performance Schema thread ID for given thread |
+| `PS_CURRENT_THREAD_ID()` | ✅ | MySQL-runtime-verified current synthetic Performance Schema thread id |
+| `PS_THREAD_ID()` | ✅ | MySQL-runtime-verified connection-id to synthetic thread-id mapping |
 | `ROLES_GRAPHML()` | ❌ | Return a GraphML document representing memory role subgraphs |
 | `STATEMENT_DIGEST()` | ❌ | Compute statement digest hash value |
 | `STATEMENT_DIGEST_TEXT()` | ❌ | Compute normalized statement digest |

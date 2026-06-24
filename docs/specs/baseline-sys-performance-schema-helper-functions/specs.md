@@ -53,7 +53,7 @@ Relevant documentation:
 Observed MySQL 8.4.9 target behavior:
 
 - Default consumer values include `thread_instrumentation = YES`,
-  `events_statements_history = YES`, `events_waits_current = NO`, and
+  `events_statements_history = NO`, `events_waits_current = NO`, and
   `events_transactions_history_long = NO`.
 - Invalid consumer names raise `ERROR 3047 (HY000)`.
 - Default instrument helpers return `NO` for disabled internal mutex

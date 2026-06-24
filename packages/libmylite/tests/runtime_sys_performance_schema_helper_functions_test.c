@@ -15,7 +15,9 @@ enum {
     path_suffix_capacity = 16,
     connection_id_text_capacity = 32,
     insert_sql_capacity = 512,
+    native_ps_sys_null_thread_value_index = 5,
     mysql_error_data_out_of_range = 1264,
+    mysql_error_incorrect_parameter_count = 1582,
     mysql_error_truncated_wrong_value_for_field = 1366,
     mysql_error_invalid_argument_for_function = 3047,
 };
@@ -38,6 +40,9 @@ struct expected_query {
 static int test_sys_ps_helper_no_source_and_dual(void);
 static int test_sys_ps_helper_table_backed_contexts(void);
 static int test_sys_ps_helper_diagnostics(void);
+static int test_native_ps_helper_no_source_and_dual(void);
+static int test_native_ps_helper_table_backed_contexts(void);
+static int test_native_ps_helper_diagnostics(void);
 static int open_app_database(
     mylite_db **out_database,
     const char *name,
@@ -53,6 +58,11 @@ static int capture_connection_id(
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_query(mylite_db *database, struct expected_query expected);
+static int expect_query_with_warning_count(
+    mylite_db *database,
+    struct expected_query expected,
+    size_t expected_warning_count
+);
 static int make_test_path(char *path, size_t path_size, const char *name);
 static int current_process_id(void);
 static void remove_related_files(const char *path);
@@ -76,6 +86,9 @@ int main(void) {
     failures += test_sys_ps_helper_no_source_and_dual();
     failures += test_sys_ps_helper_table_backed_contexts();
     failures += test_sys_ps_helper_diagnostics();
+    failures += test_native_ps_helper_no_source_and_dual();
+    failures += test_native_ps_helper_table_backed_contexts();
+    failures += test_native_ps_helper_diagnostics();
 
     return failures == 0 ? 0 : 1;
 }
@@ -185,7 +198,7 @@ static int test_sys_ps_helper_table_backed_contexts(void) {
         NULL,
         "YES",
         "root@%",
-        "YES",
+        "NO",
         "NO",
         "2",
         NULL,
@@ -292,6 +305,195 @@ static int test_sys_ps_helper_diagnostics(void) {
     return failures;
 }
 
+static int test_native_ps_helper_no_source_and_dual(void) {
+    static const char *const columns[] = {
+        "current_thread",
+        "mapped_thread",
+        "null_thread",
+        "missing_thread",
+        "negative_thread",
+        "sys_null_thread",
+    };
+    const char *values[] = {NULL, NULL, NULL, NULL, NULL, NULL};
+    char path[test_path_capacity];
+    char connection_id[connection_id_text_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += open_app_database(&database, "native-no-source", path, sizeof(path));
+    failures += capture_connection_id(
+        database,
+        connection_id,
+        sizeof(connection_id),
+        "native no-source id"
+    );
+    values[0] = connection_id;
+    values[1] = connection_id;
+    values[native_ps_sys_null_thread_value_index] = connection_id;
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT "
+                   "PS_CURRENT_THREAD_ID() AS current_thread,"
+                   "PS_THREAD_ID(CONNECTION_ID()) AS mapped_thread,"
+                   "PS_THREAD_ID(NULL) AS null_thread,"
+                   "PS_THREAD_ID(999999) AS missing_thread,"
+                   "PS_THREAD_ID(-1) AS negative_thread,"
+                   "sys.ps_thread_id(NULL) AS sys_null_thread "
+                   "FROM DUAL",
+            .columns = columns,
+            .column_count = sizeof(columns) / sizeof(columns[0]),
+            .values = values,
+            .row_count = 1U,
+            .context = "native ps helper direct values",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_native_ps_helper_table_backed_contexts(void) {
+    static const char *const columns[] = {"id", "mapped_thread", "missing_thread"};
+    const char *values[] = {
+        "1",
+        NULL,
+        NULL,
+        "2",
+        NULL,
+        NULL,
+    };
+    char path[test_path_capacity];
+    char connection_id[connection_id_text_capacity];
+    char insert_sql[insert_sql_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+    int written = 0;
+
+    failures += open_app_database(&database, "native-table", path, sizeof(path));
+    failures +=
+        capture_connection_id(database, connection_id, sizeof(connection_id), "native table id");
+    values[1] = connection_id;
+    written = snprintf(
+        insert_sql,
+        sizeof(insert_sql),
+        "INSERT INTO ps_native_samples VALUES (1,%s,999999),(2,999999,0)",
+        connection_id
+    );
+    if (written < 0 || (size_t)written >= sizeof(insert_sql)) {
+        fprintf(stderr, "native insert SQL truncated\n");
+        ++failures;
+    }
+    failures += execute_ok(
+        database,
+        "CREATE TABLE ps_native_samples("
+        "id INT,"
+        "connection_value BIGINT,"
+        "missing_value BIGINT"
+        ")",
+        NULL
+    );
+    if (failures == 0) {
+        failures += execute_ok(database, insert_sql, NULL);
+    }
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id,"
+                   "PS_THREAD_ID(connection_value) AS mapped_thread,"
+                   "PS_THREAD_ID(missing_value) AS missing_thread "
+                   "FROM ps_native_samples ORDER BY id",
+            .columns = columns,
+            .column_count = sizeof(columns) / sizeof(columns[0]),
+            .values = values,
+            .row_count = 2U,
+            .context = "native ps helper row values",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_native_ps_helper_diagnostics(void) {
+    static const char *const invalid_columns[] = {"abc_thread", "prefix_thread"};
+    static const char *const invalid_values[] = {NULL, NULL};
+    static const char *const warning_columns[] = {"Level", "Code", "Message"};
+    static const char *const warning_values[] = {
+        "Warning",
+        "1292",
+        "Truncated incorrect INTEGER value: 'abc'",
+        "Warning",
+        "1292",
+        "Truncated incorrect INTEGER value: '1abc'",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += open_app_database(&database, "native-diagnostics", path, sizeof(path));
+    failures += expect_query_with_warning_count(
+        database,
+        (struct expected_query){
+            .sql = "SELECT PS_THREAD_ID('abc') AS abc_thread, "
+                   "PS_THREAD_ID('1abc') AS prefix_thread",
+            .columns = invalid_columns,
+            .column_count = sizeof(invalid_columns) / sizeof(invalid_columns[0]),
+            .values = invalid_values,
+            .row_count = 1U,
+            .context = "native ps invalid values",
+        },
+        2U
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = warning_columns,
+            .column_count = sizeof(warning_columns) / sizeof(warning_columns[0]),
+            .values = warning_values,
+            .row_count = 2U,
+            .context = "native ps warnings",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT PS_CURRENT_THREAD_ID(1)",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_parameter_count,
+            .sqlstate = "42000",
+            .message_part = "Incorrect parameter count in the call to native function "
+                            "'PS_CURRENT_THREAD_ID'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT PS_THREAD_ID()",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_parameter_count,
+            .sqlstate = "42000",
+            .message_part = "Incorrect parameter count in the call to native function "
+                            "'PS_THREAD_ID'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT PS_THREAD_ID(1,2)",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_parameter_count,
+            .sqlstate = "42000",
+            .message_part = "Incorrect parameter count in the call to native function "
+                            "'PS_THREAD_ID'",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int open_app_database(
     mylite_db **out_database,
     const char *name,
@@ -375,6 +577,14 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
 }
 
 static int expect_query(mylite_db *database, struct expected_query expected) {
+    return expect_query_with_warning_count(database, expected, 0U);
+}
+
+static int expect_query_with_warning_count(
+    mylite_db *database,
+    struct expected_query expected,
+    size_t expected_warning_count
+) {
     mylite_result *result = NULL;
     int failures = execute_ok(database, expected.sql, &result);
 
@@ -385,7 +595,8 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
     failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
     failures += expect_int64(mylite_result_affected_rows(result), 0, expected.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures +=
+        expect_size(mylite_result_warning_count(result), expected_warning_count, expected.context);
 
     for (size_t column = 0U; column < expected.column_count; ++column) {
         failures += expect_text(

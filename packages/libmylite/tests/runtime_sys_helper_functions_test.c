@@ -13,6 +13,7 @@
 enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
+    mysql_error_incorrect_parameter_count = 1582,
     mysql_error_invalid_use_of_null = 1138,
 };
 
@@ -34,6 +35,7 @@ struct expected_query {
 static int test_sys_helper_no_source_and_dual(void);
 static int test_sys_helper_table_backed_contexts(void);
 static int test_sys_helper_diagnostics(void);
+static int test_native_format_helpers(void);
 static int open_app_database(
     mylite_db **out_database,
     const char *name,
@@ -43,6 +45,11 @@ static int open_app_database(
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_query(mylite_db *database, struct expected_query expected);
+static int expect_query_with_warning_count(
+    mylite_db *database,
+    struct expected_query expected,
+    size_t expected_warning_count
+);
 static int make_test_path(char *path, size_t path_size, const char *name);
 static int current_process_id(void);
 static void remove_related_files(const char *path);
@@ -66,6 +73,7 @@ int main(void) {
     failures += test_sys_helper_no_source_and_dual();
     failures += test_sys_helper_table_backed_contexts();
     failures += test_sys_helper_diagnostics();
+    failures += test_native_format_helpers();
 
     return failures == 0 ? 0 : 1;
 }
@@ -341,6 +349,150 @@ static int test_sys_helper_diagnostics(void) {
     return failures;
 }
 
+static int test_native_format_helpers(void) {
+    static const char *const columns[] = {
+        "null_bytes",
+        "small_bytes",
+        "kib_bytes",
+        "null_time",
+        "zero_time",
+        "ps_time",
+        "ns_time",
+        "fractional_time",
+        "minute_time",
+        "fractional_minute_time",
+    };
+    static const char *const values[] = {
+        NULL,
+        " 512 bytes",
+        "1.00 KiB",
+        NULL,
+        "  0 ps",
+        "999 ps",
+        "1.00 ns",
+        "3.50 ns",
+        "1.00 min",
+        "3.15 min",
+    };
+    static const char *const row_columns[] = {"id", "bytes_text", "time_text"};
+    static const char *const row_values[] = {
+        "1",
+        "1.00 KiB",
+        "1.00 ns",
+        "2",
+        "1.50 KiB",
+        "1.00 ms",
+    };
+    static const char *const invalid_columns[] = {"bad_bytes", "bad_time"};
+    static const char *const invalid_values[] = {"   0 bytes", "  0 ps"};
+    static const char *const warning_columns[] = {"Level", "Code", "Message"};
+    static const char *const warning_values[] = {
+        "Warning",
+        "1292",
+        "Truncated incorrect DOUBLE value: 'abc'",
+        "Warning",
+        "1292",
+        "Truncated incorrect DOUBLE value: 'abc'",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += open_app_database(&database, "native-format", path, sizeof(path));
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT "
+                   "FORMAT_BYTES(NULL) AS null_bytes,"
+                   "FORMAT_BYTES(512) AS small_bytes,"
+                   "FORMAT_BYTES(1024) AS kib_bytes,"
+                   "FORMAT_PICO_TIME(NULL) AS null_time,"
+                   "FORMAT_PICO_TIME(0) AS zero_time,"
+                   "FORMAT_PICO_TIME(999) AS ps_time,"
+                   "FORMAT_PICO_TIME(1000) AS ns_time,"
+                   "FORMAT_PICO_TIME(3501) AS fractional_time,"
+                   "FORMAT_PICO_TIME(60000000000000) AS minute_time,"
+                   "FORMAT_PICO_TIME(188732396662000) AS fractional_minute_time",
+            .columns = columns,
+            .column_count = sizeof(columns) / sizeof(columns[0]),
+            .values = values,
+            .row_count = 1U,
+            .context = "native format direct values",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE format_samples(id INT, bytes_value BIGINT, time_value BIGINT)",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO format_samples VALUES (1,1024,1000),(2,1536,1000000000)",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, FORMAT_BYTES(bytes_value) AS bytes_text, "
+                   "FORMAT_PICO_TIME(time_value) AS time_text "
+                   "FROM format_samples ORDER BY id",
+            .columns = row_columns,
+            .column_count = sizeof(row_columns) / sizeof(row_columns[0]),
+            .values = row_values,
+            .row_count = 2U,
+            .context = "native format row values",
+        }
+    );
+    failures += expect_query_with_warning_count(
+        database,
+        (struct expected_query){
+            .sql = "SELECT FORMAT_BYTES('abc') AS bad_bytes, "
+                   "FORMAT_PICO_TIME('abc') AS bad_time",
+            .columns = invalid_columns,
+            .column_count = sizeof(invalid_columns) / sizeof(invalid_columns[0]),
+            .values = invalid_values,
+            .row_count = 1U,
+            .context = "native format invalid values",
+        },
+        2U
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW WARNINGS",
+            .columns = warning_columns,
+            .column_count = sizeof(warning_columns) / sizeof(warning_columns[0]),
+            .values = warning_values,
+            .row_count = 2U,
+            .context = "native format warnings",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT FORMAT_BYTES()",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_parameter_count,
+            .sqlstate = "42000",
+            .message_part = "Incorrect parameter count in the call to native function "
+                            "'FORMAT_BYTES'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT FORMAT_PICO_TIME()",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_parameter_count,
+            .sqlstate = "42000",
+            .message_part = "Incorrect parameter count in the call to native function "
+                            "'FORMAT_PICO_TIME'",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int open_app_database(
     mylite_db **out_database,
     const char *name,
@@ -397,6 +549,14 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
 }
 
 static int expect_query(mylite_db *database, struct expected_query expected) {
+    return expect_query_with_warning_count(database, expected, 0U);
+}
+
+static int expect_query_with_warning_count(
+    mylite_db *database,
+    struct expected_query expected,
+    size_t expected_warning_count
+) {
     mylite_result *result = NULL;
     int failures = execute_ok(database, expected.sql, &result);
 
@@ -407,7 +567,8 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         expect_size(mylite_result_column_count(result), expected.column_count, expected.context);
     failures += expect_size(mylite_result_row_count(result), expected.row_count, expected.context);
     failures += expect_int64(mylite_result_affected_rows(result), 0, expected.context);
-    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    failures +=
+        expect_size(mylite_result_warning_count(result), expected_warning_count, expected.context);
 
     for (size_t column = 0U; column < expected.column_count; ++column) {
         failures += expect_text(

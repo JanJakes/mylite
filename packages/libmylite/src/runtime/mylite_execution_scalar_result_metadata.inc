@@ -158,7 +158,7 @@ static int populate_scalar_function_result_column_descriptor(
             if (sys_function_kind == MYLITE_SYS_FUNCTION_VERSION_MAJOR ||
                 sys_function_kind == MYLITE_SYS_FUNCTION_VERSION_MINOR ||
                 sys_function_kind == MYLITE_SYS_FUNCTION_VERSION_PATCH ||
-                sys_function_kind == MYLITE_SYS_FUNCTION_PS_THREAD_ID) {
+                sys_function_kind == MYLITE_SYS_FUNCTION_NATIVE_PS_CURRENT_THREAD_ID) {
                 populate_scalar_binary_numeric_result_column_descriptor(
                     descriptor,
                     (struct scalar_binary_numeric_result_column_shape){
@@ -167,6 +167,20 @@ static int populate_scalar_function_result_column_descriptor(
                         .decimals = 0U,
                         .extra_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED,
                         .nullable = false,
+                    }
+                );
+                return MYLITE_OK;
+            }
+            if (sys_function_kind == MYLITE_SYS_FUNCTION_PS_THREAD_ID ||
+                sys_function_kind == MYLITE_SYS_FUNCTION_NATIVE_PS_THREAD_ID) {
+                populate_scalar_binary_numeric_result_column_descriptor(
+                    descriptor,
+                    (struct scalar_binary_numeric_result_column_shape){
+                        .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                        .display_length = mysql_scalar_bigint_display_length,
+                        .decimals = 0U,
+                        .extra_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED,
+                        .nullable = true,
                     }
                 );
                 return MYLITE_OK;

@@ -32,8 +32,10 @@ static const long double sys_format_time_unit_size = 1000.0L;
 struct sys_function_descriptor {
     const char *name;
     const char *sqlite_name;
-    enum mylite_sys_function_kind kind;
     size_t argument_count;
+    enum mylite_sys_function_kind kind;
+    bool allow_unqualified;
+    bool allow_sys_schema;
 };
 
 struct sys_config_value {
@@ -52,57 +54,196 @@ struct path_prefix_rewrite {
 };
 
 static const struct sys_function_descriptor sys_function_descriptors[] = {
+    {
+        "FORMAT_BYTES",
+        "_mylite_native_format_bytes",
+        1U,
+        MYLITE_SYS_FUNCTION_NATIVE_FORMAT_BYTES,
+        true,
+        false,
+    },
+    {
+        "FORMAT_PICO_TIME",
+        "_mylite_native_format_pico_time",
+        1U,
+        MYLITE_SYS_FUNCTION_NATIVE_FORMAT_PICO_TIME,
+        true,
+        false,
+    },
+    {
+        "PS_CURRENT_THREAD_ID",
+        "_mylite_native_ps_current_thread_id",
+        0U,
+        MYLITE_SYS_FUNCTION_NATIVE_PS_CURRENT_THREAD_ID,
+        true,
+        false,
+    },
+    {
+        "PS_THREAD_ID",
+        "_mylite_native_ps_thread_id",
+        1U,
+        MYLITE_SYS_FUNCTION_NATIVE_PS_THREAD_ID,
+        true,
+        false,
+    },
     {"extract_schema_from_file_name",
      "_mylite_sys_extract_schema_from_file_name",
+     1U,
      MYLITE_SYS_FUNCTION_EXTRACT_SCHEMA_FROM_FILE_NAME,
-     1U},
+     true,
+     true},
     {"extract_table_from_file_name",
      "_mylite_sys_extract_table_from_file_name",
+     1U,
      MYLITE_SYS_FUNCTION_EXTRACT_TABLE_FROM_FILE_NAME,
-     1U},
-    {"format_bytes", "_mylite_sys_format_bytes", MYLITE_SYS_FUNCTION_FORMAT_BYTES, 1U},
-    {"format_path", "_mylite_sys_format_path", MYLITE_SYS_FUNCTION_FORMAT_PATH, 1U},
-    {"format_statement", "_mylite_sys_format_statement", MYLITE_SYS_FUNCTION_FORMAT_STATEMENT, 1U},
-    {"format_time", "_mylite_sys_format_time", MYLITE_SYS_FUNCTION_FORMAT_TIME, 1U},
-    {"list_add", "_mylite_sys_list_add", MYLITE_SYS_FUNCTION_LIST_ADD, 2U},
-    {"list_drop", "_mylite_sys_list_drop", MYLITE_SYS_FUNCTION_LIST_DROP, 2U},
-    {"quote_identifier", "_mylite_sys_quote_identifier", MYLITE_SYS_FUNCTION_QUOTE_IDENTIFIER, 1U},
-    {"sys_get_config", "_mylite_sys_sys_get_config", MYLITE_SYS_FUNCTION_SYS_GET_CONFIG, 2U},
-    {"version_major", "_mylite_sys_version_major", MYLITE_SYS_FUNCTION_VERSION_MAJOR, 0U},
-    {"version_minor", "_mylite_sys_version_minor", MYLITE_SYS_FUNCTION_VERSION_MINOR, 0U},
-    {"version_patch", "_mylite_sys_version_patch", MYLITE_SYS_FUNCTION_VERSION_PATCH, 0U},
+     true,
+     true},
+    /*
+     * Internal post-normalization spellings keep schema-qualified sys helpers
+     * distinct from native functions with the same unqualified MySQL name.
+     */
+    {
+        "_mylite_sys_format_bytes",
+        "_mylite_sys_format_bytes_alias",
+        1U,
+        MYLITE_SYS_FUNCTION_FORMAT_BYTES,
+        true,
+        false,
+    },
+    {
+        "format_bytes",
+        "_mylite_sys_format_bytes",
+        1U,
+        MYLITE_SYS_FUNCTION_FORMAT_BYTES,
+        true,
+        true,
+    },
+    {
+        "format_path",
+        "_mylite_sys_format_path",
+        1U,
+        MYLITE_SYS_FUNCTION_FORMAT_PATH,
+        true,
+        true,
+    },
+    {"format_statement",
+     "_mylite_sys_format_statement",
+     1U,
+     MYLITE_SYS_FUNCTION_FORMAT_STATEMENT,
+     true,
+     true},
+    {
+        "format_time",
+        "_mylite_sys_format_time",
+        1U,
+        MYLITE_SYS_FUNCTION_FORMAT_TIME,
+        true,
+        true,
+    },
+    {"list_add", "_mylite_sys_list_add", 2U, MYLITE_SYS_FUNCTION_LIST_ADD, true, true},
+    {"list_drop", "_mylite_sys_list_drop", 2U, MYLITE_SYS_FUNCTION_LIST_DROP, true, true},
+    {"quote_identifier",
+     "_mylite_sys_quote_identifier",
+     1U,
+     MYLITE_SYS_FUNCTION_QUOTE_IDENTIFIER,
+     true,
+     true},
+    {"sys_get_config",
+     "_mylite_sys_sys_get_config",
+     2U,
+     MYLITE_SYS_FUNCTION_SYS_GET_CONFIG,
+     true,
+     true},
+    {
+        "version_major",
+        "_mylite_sys_version_major",
+        0U,
+        MYLITE_SYS_FUNCTION_VERSION_MAJOR,
+        true,
+        true,
+    },
+    {
+        "version_minor",
+        "_mylite_sys_version_minor",
+        0U,
+        MYLITE_SYS_FUNCTION_VERSION_MINOR,
+        true,
+        true,
+    },
+    {
+        "version_patch",
+        "_mylite_sys_version_patch",
+        0U,
+        MYLITE_SYS_FUNCTION_VERSION_PATCH,
+        true,
+        true,
+    },
     {"ps_is_account_enabled",
      "_mylite_sys_ps_is_account_enabled",
+     2U,
      MYLITE_SYS_FUNCTION_PS_IS_ACCOUNT_ENABLED,
-     2U},
+     true,
+     true},
     {"ps_is_consumer_enabled",
      "_mylite_sys_ps_is_consumer_enabled",
+     1U,
      MYLITE_SYS_FUNCTION_PS_IS_CONSUMER_ENABLED,
-     1U},
+     true,
+     true},
     {"ps_is_instrument_default_enabled",
      "_mylite_sys_ps_is_instrument_default_enabled",
+     1U,
      MYLITE_SYS_FUNCTION_PS_IS_INSTRUMENT_DEFAULT_ENABLED,
-     1U},
+     true,
+     true},
     {"ps_is_instrument_default_timed",
      "_mylite_sys_ps_is_instrument_default_timed",
+     1U,
      MYLITE_SYS_FUNCTION_PS_IS_INSTRUMENT_DEFAULT_TIMED,
-     1U},
+     true,
+     true},
     {"ps_is_thread_instrumented",
      "_mylite_sys_ps_is_thread_instrumented",
+     1U,
      MYLITE_SYS_FUNCTION_PS_IS_THREAD_INSTRUMENTED,
-     1U},
+     true,
+     true},
     {
         "ps_thread_account",
         "_mylite_sys_ps_thread_account",
-        MYLITE_SYS_FUNCTION_PS_THREAD_ACCOUNT,
         1U,
+        MYLITE_SYS_FUNCTION_PS_THREAD_ACCOUNT,
+        true,
+        true,
     },
-    {"ps_thread_id", "_mylite_sys_ps_thread_id", MYLITE_SYS_FUNCTION_PS_THREAD_ID, 1U},
-    {"ps_thread_stack", "_mylite_sys_ps_thread_stack", MYLITE_SYS_FUNCTION_PS_THREAD_STACK, 2U},
+    {
+        "_mylite_sys_ps_thread_id",
+        "_mylite_sys_ps_thread_id_alias",
+        1U,
+        MYLITE_SYS_FUNCTION_PS_THREAD_ID,
+        true,
+        false,
+    },
+    {
+        "ps_thread_id",
+        "_mylite_sys_ps_thread_id",
+        1U,
+        MYLITE_SYS_FUNCTION_PS_THREAD_ID,
+        true,
+        true,
+    },
+    {"ps_thread_stack",
+     "_mylite_sys_ps_thread_stack",
+     2U,
+     MYLITE_SYS_FUNCTION_PS_THREAD_STACK,
+     true,
+     true},
     {"ps_thread_trx_info",
      "_mylite_sys_ps_thread_trx_info",
+     1U,
      MYLITE_SYS_FUNCTION_PS_THREAD_TRX_INFO,
-     1U},
+     true,
+     true},
 };
 
 enum {
@@ -125,7 +266,7 @@ static const struct sys_consumer_default sys_consumer_defaults[] = {
     {"events_stages_history_long", "NO"},
     {"events_statements_cpu", "NO"},
     {"events_statements_current", "YES"},
-    {"events_statements_history", "YES"},
+    {"events_statements_history", "NO"},
     {"events_statements_history_long", "NO"},
     {"events_transactions_current", "YES"},
     {"events_transactions_history", "YES"},
@@ -150,7 +291,8 @@ static const struct sys_function_descriptor *sys_function_descriptor_by_kind(
 );
 static const struct sys_function_descriptor *sys_function_descriptor_by_name(
     const char *name,
-    size_t name_size
+    size_t name_size,
+    bool schema_qualified
 );
 static bool ascii_equals_case_insensitive(const char *left, size_t left_size, const char *right);
 static int sys_function_null_result(struct mylite_sys_function_result *out_result);
@@ -176,6 +318,11 @@ static int sys_format_bytes(
     const struct mylite_sys_function_argument *arguments,
     struct mylite_sys_function_result *out_result
 );
+static int sys_format_bytes_with_native_warnings(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+);
 static int sys_format_path(
     const struct mylite_sys_function_argument *arguments,
     struct mylite_sys_function_result *out_result
@@ -186,6 +333,11 @@ static int sys_format_statement(
     struct mylite_sys_function_result *out_result
 );
 static int sys_format_time(
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+);
+static int sys_format_pico_time(
+    struct mylite_db *database,
     const struct mylite_sys_function_argument *arguments,
     struct mylite_sys_function_result *out_result
 );
@@ -241,6 +393,15 @@ static int sys_ps_thread_id(
     const struct mylite_sys_function_argument *arguments,
     struct mylite_sys_function_result *out_result
 );
+static int sys_ps_current_thread_id(
+    struct mylite_db *database,
+    struct mylite_sys_function_result *out_result
+);
+static int sys_ps_thread_id_native(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+);
 static int sys_ps_thread_stack(
     struct mylite_db *database,
     const struct mylite_sys_function_argument *arguments,
@@ -263,11 +424,18 @@ static bool parse_argument_number(
     long double *out_value,
     bool *out_valid
 );
+static bool argument_number_has_trailing_text(const struct mylite_sys_function_argument *argument);
 static int parse_unsigned_argument(
     struct mylite_db *database,
     const struct mylite_sys_function_argument *argument,
     const char *column_name,
     uint64_t *out_value
+);
+static int parse_native_thread_id_argument(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *argument,
+    uint64_t *out_value,
+    bool *out_valid
 );
 static int format_fixed_unit_result(
     struct mylite_sys_function_result *out_result,
@@ -311,6 +479,19 @@ static int sys_processlist_account_for_thread_id(
 static int sys_current_connection_id_result(
     struct mylite_db *database,
     struct mylite_sys_function_result *out_result
+);
+static int append_truncated_native_double_warning(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *argument
+);
+static int append_truncated_native_integer_warning(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *argument
+);
+static int append_truncated_native_warning(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *argument,
+    const char *type_name
 );
 static int sys_thread_stack_empty_json_result(
     struct mylite_db *database,
@@ -362,7 +543,7 @@ bool mylite_sys_function_lookup(
         return false;
     }
 
-    descriptor = sys_function_descriptor_by_name(name, name_size);
+    descriptor = sys_function_descriptor_by_name(name, name_size, schema != NULL);
     if (descriptor == NULL) {
         return false;
     }
@@ -426,6 +607,14 @@ int mylite_sys_function_evaluate(
     }
 
     switch (kind) {
+    case MYLITE_SYS_FUNCTION_NATIVE_FORMAT_BYTES:
+        return sys_format_bytes_with_native_warnings(database, arguments, out_result);
+    case MYLITE_SYS_FUNCTION_NATIVE_FORMAT_PICO_TIME:
+        return sys_format_pico_time(database, arguments, out_result);
+    case MYLITE_SYS_FUNCTION_NATIVE_PS_CURRENT_THREAD_ID:
+        return sys_ps_current_thread_id(database, out_result);
+    case MYLITE_SYS_FUNCTION_NATIVE_PS_THREAD_ID:
+        return sys_ps_thread_id_native(database, arguments, out_result);
     case MYLITE_SYS_FUNCTION_EXTRACT_SCHEMA_FROM_FILE_NAME:
         return sys_extract_schema_from_file_name(arguments, out_result);
     case MYLITE_SYS_FUNCTION_EXTRACT_TABLE_FROM_FILE_NAME:
@@ -553,13 +742,18 @@ static const struct sys_function_descriptor *sys_function_descriptor_by_kind(
 
 static const struct sys_function_descriptor *sys_function_descriptor_by_name(
     const char *name,
-    size_t name_size
+    size_t name_size,
+    bool schema_qualified
 ) {
     for (size_t index = 0U;
          index < sizeof(sys_function_descriptors) / sizeof(sys_function_descriptors[0]);
          ++index) {
-        if (ascii_equals_case_insensitive(name, name_size, sys_function_descriptors[index].name)) {
-            return &sys_function_descriptors[index];
+        const struct sys_function_descriptor *descriptor = &sys_function_descriptors[index];
+        const bool exposed =
+            schema_qualified ? descriptor->allow_sys_schema : descriptor->allow_unqualified;
+
+        if (exposed && ascii_equals_case_insensitive(name, name_size, descriptor->name)) {
+            return descriptor;
         }
     }
     return NULL;
@@ -711,6 +905,30 @@ static int sys_format_bytes(
         }
     }
     return MYLITE_ERROR;
+}
+
+static int sys_format_bytes_with_native_warnings(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+) {
+    long double ignored = 0.0L;
+    bool valid = false;
+    int rc = MYLITE_OK;
+
+    if (arguments[0].is_null) {
+        return sys_function_null_result(out_result);
+    }
+    if (!parse_argument_number(&arguments[0], &ignored, &valid)) {
+        return MYLITE_NOMEM;
+    }
+    if (!valid || argument_number_has_trailing_text(&arguments[0])) {
+        rc = append_truncated_native_double_warning(database, &arguments[0]);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    return sys_format_bytes(arguments, out_result);
 }
 
 static int sys_format_path(
@@ -875,6 +1093,62 @@ static int sys_format_time(
     for (size_t index = 0U; index < sizeof(units) / sizeof(units[0]); ++index) {
         if (units[index].limit == 0.0L || absolute_value < units[index].limit) {
             return format_trimmed_unit_result(
+                out_result,
+                value / units[index].divisor,
+                units[index].unit
+            );
+        }
+    }
+    return MYLITE_ERROR;
+}
+
+static int sys_format_pico_time(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+) {
+    static const struct {
+        long double divisor;
+        long double limit;
+        const char *unit;
+    } units[] = {
+        {1000.0L, 1000000.0L, "ns"},
+        {1000000.0L, 1000000000.0L, "us"},
+        {1000000000.0L, 1000000000000.0L, "ms"},
+        {1000000000000.0L, 60000000000000.0L, "s"},
+        {60000000000000.0L, 3600000000000000.0L, "min"},
+        {3600000000000000.0L, 86400000000000000.0L, "h"},
+        {86400000000000000.0L, 0.0L, "d"},
+    };
+
+    long double value = 0.0L;
+    long double absolute_value = 0.0L;
+    bool valid = false;
+    int rc = MYLITE_OK;
+
+    if (arguments[0].is_null) {
+        return sys_function_null_result(out_result);
+    }
+    if (!parse_argument_number(&arguments[0], &value, &valid)) {
+        return MYLITE_NOMEM;
+    }
+    if (!valid || argument_number_has_trailing_text(&arguments[0])) {
+        rc = append_truncated_native_double_warning(database, &arguments[0]);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    if (!valid) {
+        value = 0.0L;
+    }
+
+    absolute_value = fabsl(value);
+    if (absolute_value < sys_format_time_unit_size) {
+        return sys_function_format_result(out_result, "%3.0Lf ps", value);
+    }
+    for (size_t index = 0U; index < sizeof(units) / sizeof(units[0]); ++index) {
+        if (units[index].limit == 0.0L || absolute_value < units[index].limit) {
+            return format_fixed_unit_result(
                 out_result,
                 value / units[index].divisor,
                 units[index].unit
@@ -1159,6 +1433,43 @@ static int sys_ps_thread_id(
     return sys_function_format_result(out_result, "%" PRIu64, connection_id);
 }
 
+static int sys_ps_current_thread_id(
+    struct mylite_db *database,
+    struct mylite_sys_function_result *out_result
+) {
+    return sys_current_connection_id_result(database, out_result);
+}
+
+static int sys_ps_thread_id_native(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+) {
+    uint64_t connection_id = 0U;
+    bool argument_valid = false;
+    bool found = false;
+    int rc = MYLITE_OK;
+
+    if (arguments[0].is_null) {
+        return sys_function_null_result(out_result);
+    }
+    rc = parse_native_thread_id_argument(database, &arguments[0], &connection_id, &argument_valid);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!argument_valid) {
+        return sys_function_null_result(out_result);
+    }
+    rc = sys_processlist_contains_connection_id(database, connection_id, &found);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!found) {
+        return sys_function_null_result(out_result);
+    }
+    return sys_function_format_result(out_result, "%" PRIu64, connection_id);
+}
+
 static int sys_ps_thread_stack(
     struct mylite_db *database,
     const struct mylite_sys_function_argument *arguments,
@@ -1302,6 +1613,36 @@ static bool parse_argument_number(
     return true;
 }
 
+static bool argument_number_has_trailing_text(const struct mylite_sys_function_argument *argument) {
+    char *copy = NULL;
+    char *start = NULL;
+    char *end = NULL;
+    bool has_trailing_text = false;
+    int rc = MYLITE_OK;
+
+    if (argument == NULL || argument->is_null) {
+        return false;
+    }
+    rc = copy_argument_text(argument, &copy);
+    if (rc != MYLITE_OK || copy == NULL) {
+        return false;
+    }
+    start = copy;
+    while (*start != '\0' && isspace((unsigned char)*start)) {
+        ++start;
+    }
+    errno = 0;
+    (void)strtold(start, &end);
+    if (errno != ERANGE && end != start) {
+        while (end != NULL && *end != '\0' && isspace((unsigned char)*end)) {
+            ++end;
+        }
+        has_trailing_text = end != NULL && *end != '\0';
+    }
+    free(copy);
+    return has_trailing_text;
+}
+
 static int parse_unsigned_argument(
     struct mylite_db *database,
     const struct mylite_sys_function_argument *argument,
@@ -1368,6 +1709,59 @@ static int parse_unsigned_argument(
         return MYLITE_ERROR;
     }
     *out_value = (uint64_t)parsed;
+    free(copy);
+    return MYLITE_OK;
+}
+
+static int parse_native_thread_id_argument(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *argument,
+    uint64_t *out_value,
+    bool *out_valid
+) {
+    char *copy = NULL;
+    char *start = NULL;
+    char *end = NULL;
+    long double parsed = 0.0L;
+    int rc = MYLITE_OK;
+
+    if (argument == NULL || out_value == NULL || out_valid == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = 0U;
+    *out_valid = false;
+    rc = copy_argument_text(argument, &copy);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (copy == NULL) {
+        return MYLITE_MISUSE;
+    }
+    start = copy;
+    while (*start != '\0' && isspace((unsigned char)*start)) {
+        ++start;
+    }
+    if (*start == '-') {
+        free(copy);
+        return MYLITE_OK;
+    }
+
+    errno = 0;
+    parsed = strtold(start, &end);
+    while (end != NULL && *end != '\0' && isspace((unsigned char)*end)) {
+        ++end;
+    }
+    if (errno == ERANGE || end == start || (end != NULL && *end != '\0')) {
+        rc = append_truncated_native_integer_warning(database, argument);
+        free(copy);
+        return rc;
+    }
+    if (parsed < 0.0L || parsed > (long double)UINT64_MAX) {
+        free(copy);
+        return MYLITE_OK;
+    }
+    *out_value = (uint64_t)parsed;
+    *out_valid = true;
     free(copy);
     return MYLITE_OK;
 }
@@ -1620,6 +2014,59 @@ static int sys_current_connection_id_result(
         return MYLITE_NOMEM;
     }
     return sys_function_copy_result(out_result, buffer, (size_t)written);
+}
+
+static int append_truncated_native_double_warning(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *argument
+) {
+    return append_truncated_native_warning(database, argument, "DOUBLE");
+}
+
+static int append_truncated_native_integer_warning(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *argument
+) {
+    return append_truncated_native_warning(database, argument, "INTEGER");
+}
+
+static int append_truncated_native_warning(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *argument,
+    const char *type_name
+) {
+    enum { warning_value_preview_length = 160 };
+
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    size_t value_size = 0U;
+    int written = 0;
+
+    if (database == NULL) {
+        return MYLITE_OK;
+    }
+    if (argument == NULL || type_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    value_size = argument->text_size > warning_value_preview_length ? warning_value_preview_length
+                                                                    : argument->text_size;
+    written = snprintf(
+        message,
+        sizeof(message),
+        "Truncated incorrect %s value: '%.*s'",
+        type_name,
+        (int)value_size,
+        argument->text == NULL ? "" : argument->text
+    );
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        return MYLITE_ERROR;
+    }
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        strcmp(type_name, "INTEGER") == 0 ? mysql_warning_truncated_incorrect_integer
+                                          : mysql_warning_truncated_incorrect_double,
+        "22007",
+        message
+    );
 }
 
 static int sys_thread_stack_empty_json_result(

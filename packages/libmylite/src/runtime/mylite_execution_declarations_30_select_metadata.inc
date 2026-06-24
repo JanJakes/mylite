@@ -555,6 +555,26 @@ static int append_sys_user_summary_by_statement_type_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
+static int append_sys_wait_classes_global_by_avg_latency_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_wait_classes_global_by_latency_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_waits_by_host_by_latency_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_waits_by_user_by_latency_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_sys_waits_global_by_latency_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
 static int append_sys_innodb_buffer_stats_by_schema_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows

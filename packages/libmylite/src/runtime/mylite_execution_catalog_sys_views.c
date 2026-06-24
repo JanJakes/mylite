@@ -1710,6 +1710,333 @@ static const char sys_x_user_summary_by_statement_type_show_create_qualified_vie
 #undef SYS_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION
 #undef SYS_X_USER_SUMMARY_BY_STATEMENT_TYPE_VIEW_DEFINITION
 
+#define SYS_WAIT_CLASS_VIEW_COLUMNS                                                                \
+    "(`event_class`,`total`,`total_latency`,`min_latency`,`avg_latency`,`max_latency`)"
+
+#define SYS_WAIT_CLASS_SOURCE "`performance_schema`.`events_waits_summary_global_by_event_name`"
+
+#define SYS_WAIT_CLASS_EVENT_CLASS_EXPR                                                            \
+    "substring_index(" SYS_WAIT_CLASS_SOURCE ".`EVENT_NAME`,'/',3)"
+
+#define SYS_WAIT_CLASS_AVG_EXPR                                                                    \
+    "ifnull((sum(" SYS_WAIT_CLASS_SOURCE ".`SUM_TIMER_WAIT`) / nullif(sum(" SYS_WAIT_CLASS_SOURCE  \
+    ".`COUNT_STAR`),0)),0)"
+
+#define SYS_WAIT_CLASS_WHERE                                                                       \
+    " from " SYS_WAIT_CLASS_SOURCE " where ((" SYS_WAIT_CLASS_SOURCE                               \
+    ".`SUM_TIMER_WAIT` > 0) and (" SYS_WAIT_CLASS_SOURCE ".`EVENT_NAME` <> 'idle'))"
+
+#define SYS_WAIT_CLASS_SELECT_PREFIX                                                               \
+    "select " SYS_WAIT_CLASS_EVENT_CLASS_EXPR " AS `event_class`,sum(" SYS_WAIT_CLASS_SOURCE       \
+    ".`COUNT_STAR`) AS `total`,"
+
+#define SYS_WAIT_CLASS_BY_AVG_GROUP_ORDER                                                          \
+    SYS_WAIT_CLASS_WHERE " group by `event_class` order by " SYS_WAIT_CLASS_AVG_EXPR " desc"
+
+#define SYS_WAIT_CLASS_BY_LATENCY_GROUP_ORDER                                                      \
+    SYS_WAIT_CLASS_WHERE " group by " SYS_WAIT_CLASS_EVENT_CLASS_EXPR                              \
+                         " order by sum(" SYS_WAIT_CLASS_SOURCE ".`SUM_TIMER_WAIT`) desc"
+
+#define SYS_WAIT_CLASSES_GLOBAL_BY_AVG_LATENCY_VIEW_DEFINITION                                     \
+    SYS_WAIT_CLASS_SELECT_PREFIX                                                                   \
+    "format_pico_time(cast(sum(" SYS_WAIT_CLASS_SOURCE ".`SUM_TIMER_WAIT`) as unsigned)) AS "      \
+    "`total_latency`,format_pico_time(min(" SYS_WAIT_CLASS_SOURCE                                  \
+    ".`MIN_TIMER_WAIT`)) AS `min_latency`,format_pico_time(" SYS_WAIT_CLASS_AVG_EXPR               \
+    ") AS `avg_latency`,format_pico_time(cast("                                                    \
+    "max(" SYS_WAIT_CLASS_SOURCE                                                                   \
+    ".`MAX_TIMER_WAIT`) as unsigned)) AS `max_latency`" SYS_WAIT_CLASS_BY_AVG_GROUP_ORDER
+
+#define SYS_X_WAIT_CLASSES_GLOBAL_BY_AVG_LATENCY_VIEW_DEFINITION                                   \
+    SYS_WAIT_CLASS_SELECT_PREFIX                                                                   \
+    "sum(" SYS_WAIT_CLASS_SOURCE                                                                   \
+    ".`SUM_TIMER_WAIT`) AS `total_latency`,min(" SYS_WAIT_CLASS_SOURCE                             \
+    ".`MIN_TIMER_WAIT`) AS `min_latency`," SYS_WAIT_CLASS_AVG_EXPR                                 \
+    " AS `avg_latency`,max(" SYS_WAIT_CLASS_SOURCE                                                 \
+    ".`MAX_TIMER_WAIT`) AS `max_latency`" SYS_WAIT_CLASS_BY_AVG_GROUP_ORDER
+
+#define SYS_WAIT_CLASSES_GLOBAL_BY_LATENCY_VIEW_DEFINITION                                         \
+    SYS_WAIT_CLASS_SELECT_PREFIX                                                                   \
+    "format_pico_time(sum(" SYS_WAIT_CLASS_SOURCE                                                  \
+    ".`SUM_TIMER_WAIT`)) AS `total_latency`,format_pico_time(min(" SYS_WAIT_CLASS_SOURCE           \
+    ".`MIN_TIMER_WAIT`)) AS `min_latency`,format_pico_time(" SYS_WAIT_CLASS_AVG_EXPR               \
+    ") AS `avg_latency`,format_pico_time(max(" SYS_WAIT_CLASS_SOURCE                               \
+    ".`MAX_TIMER_WAIT`)) AS `max_latency`" SYS_WAIT_CLASS_BY_LATENCY_GROUP_ORDER
+
+#define SYS_X_WAIT_CLASSES_GLOBAL_BY_LATENCY_VIEW_DEFINITION                                       \
+    SYS_WAIT_CLASS_SELECT_PREFIX                                                                   \
+    "sum(" SYS_WAIT_CLASS_SOURCE                                                                   \
+    ".`SUM_TIMER_WAIT`) AS `total_latency`,min(" SYS_WAIT_CLASS_SOURCE                             \
+    ".`MIN_TIMER_WAIT`) AS `min_latency`," SYS_WAIT_CLASS_AVG_EXPR                                 \
+    " AS `avg_latency`,max(" SYS_WAIT_CLASS_SOURCE                                                 \
+    ".`MAX_TIMER_WAIT`) AS `max_latency`" SYS_WAIT_CLASS_BY_LATENCY_GROUP_ORDER
+
+static const char sys_wait_classes_global_by_avg_latency_view_definition[] =
+    SYS_WAIT_CLASSES_GLOBAL_BY_AVG_LATENCY_VIEW_DEFINITION;
+
+static const char sys_wait_classes_global_by_avg_latency_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`wait_classes_global_by_avg_latency` " SYS_WAIT_CLASS_VIEW_COLUMNS
+    " AS " SYS_WAIT_CLASSES_GLOBAL_BY_AVG_LATENCY_VIEW_DEFINITION;
+
+static const char sys_wait_classes_global_by_avg_latency_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`wait_classes_global_by_avg_latency` " SYS_WAIT_CLASS_VIEW_COLUMNS
+    " AS " SYS_WAIT_CLASSES_GLOBAL_BY_AVG_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_wait_classes_global_by_avg_latency_view_definition[] =
+    SYS_X_WAIT_CLASSES_GLOBAL_BY_AVG_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_wait_classes_global_by_avg_latency_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$wait_classes_global_by_avg_latency` " SYS_WAIT_CLASS_VIEW_COLUMNS
+    " AS " SYS_X_WAIT_CLASSES_GLOBAL_BY_AVG_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_wait_classes_global_by_avg_latency_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$wait_classes_global_by_avg_latency` " SYS_WAIT_CLASS_VIEW_COLUMNS
+    " AS " SYS_X_WAIT_CLASSES_GLOBAL_BY_AVG_LATENCY_VIEW_DEFINITION;
+
+static const char sys_wait_classes_global_by_latency_view_definition[] =
+    SYS_WAIT_CLASSES_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_wait_classes_global_by_latency_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`wait_classes_global_by_latency` " SYS_WAIT_CLASS_VIEW_COLUMNS
+    " AS " SYS_WAIT_CLASSES_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_wait_classes_global_by_latency_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`wait_classes_global_by_latency` " SYS_WAIT_CLASS_VIEW_COLUMNS
+    " AS " SYS_WAIT_CLASSES_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_wait_classes_global_by_latency_view_definition[] =
+    SYS_X_WAIT_CLASSES_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_wait_classes_global_by_latency_show_create_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$wait_classes_global_by_latency` " SYS_WAIT_CLASS_VIEW_COLUMNS
+    " AS " SYS_X_WAIT_CLASSES_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_wait_classes_global_by_latency_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=TEMPTABLE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$wait_classes_global_by_latency` " SYS_WAIT_CLASS_VIEW_COLUMNS
+    " AS " SYS_X_WAIT_CLASSES_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
+
+#undef SYS_WAIT_CLASS_VIEW_COLUMNS
+#undef SYS_WAIT_CLASS_SOURCE
+#undef SYS_WAIT_CLASS_EVENT_CLASS_EXPR
+#undef SYS_WAIT_CLASS_AVG_EXPR
+#undef SYS_WAIT_CLASS_WHERE
+#undef SYS_WAIT_CLASS_SELECT_PREFIX
+#undef SYS_WAIT_CLASS_BY_AVG_GROUP_ORDER
+#undef SYS_WAIT_CLASS_BY_LATENCY_GROUP_ORDER
+#undef SYS_WAIT_CLASSES_GLOBAL_BY_AVG_LATENCY_VIEW_DEFINITION
+#undef SYS_X_WAIT_CLASSES_GLOBAL_BY_AVG_LATENCY_VIEW_DEFINITION
+#undef SYS_WAIT_CLASSES_GLOBAL_BY_LATENCY_VIEW_DEFINITION
+#undef SYS_X_WAIT_CLASSES_GLOBAL_BY_LATENCY_VIEW_DEFINITION
+
+#define SYS_WAITS_BY_HOST_BY_LATENCY_VIEW_COLUMNS                                                  \
+    "(`host`,`event`,`total`,`total_latency`,`avg_latency`,`max_latency`)"
+
+#define SYS_WAITS_BY_HOST_BY_LATENCY_SOURCE                                                        \
+    "`performance_schema`.`events_waits_summary_by_host_by_event_name`"
+
+#define SYS_WAITS_BY_HOST_BY_LATENCY_HOST_EXPR                                                     \
+    "if((" SYS_WAITS_BY_HOST_BY_LATENCY_SOURCE                                                     \
+    ".`HOST` is null),'background'," SYS_WAITS_BY_HOST_BY_LATENCY_SOURCE ".`HOST`)"
+
+#define SYS_WAITS_BY_HOST_BY_LATENCY_SELECT_PREFIX                                                 \
+    "select " SYS_WAITS_BY_HOST_BY_LATENCY_HOST_EXPR                                               \
+    " AS `host`," SYS_WAITS_BY_HOST_BY_LATENCY_SOURCE                                              \
+    ".`EVENT_NAME` AS `event`," SYS_WAITS_BY_HOST_BY_LATENCY_SOURCE ".`COUNT_STAR` AS `total`,"
+
+#define SYS_WAITS_BY_HOST_BY_LATENCY_SELECT_SUFFIX                                                 \
+    " from " SYS_WAITS_BY_HOST_BY_LATENCY_SOURCE " where ((" SYS_WAITS_BY_HOST_BY_LATENCY_SOURCE   \
+    ".`EVENT_NAME` <> 'idle') and (" SYS_WAITS_BY_HOST_BY_LATENCY_SOURCE                           \
+    ".`SUM_TIMER_WAIT` > 0)) order by " SYS_WAITS_BY_HOST_BY_LATENCY_HOST_EXPR                     \
+    "," SYS_WAITS_BY_HOST_BY_LATENCY_SOURCE ".`SUM_TIMER_WAIT` desc"
+
+#define SYS_WAITS_BY_HOST_BY_LATENCY_VIEW_DEFINITION                                               \
+    SYS_WAITS_BY_HOST_BY_LATENCY_SELECT_PREFIX                                                     \
+    "format_pico_time(" SYS_WAITS_BY_HOST_BY_LATENCY_SOURCE                                        \
+    ".`SUM_TIMER_WAIT`) AS `total_latency`,format_pico_time(" SYS_WAITS_BY_HOST_BY_LATENCY_SOURCE  \
+    ".`AVG_TIMER_WAIT`) AS `avg_latency`,"                                                         \
+    "format_pico_time(" SYS_WAITS_BY_HOST_BY_LATENCY_SOURCE                                        \
+    ".`MAX_TIMER_WAIT`) AS `max_latency`" SYS_WAITS_BY_HOST_BY_LATENCY_SELECT_SUFFIX
+
+#define SYS_X_WAITS_BY_HOST_BY_LATENCY_VIEW_DEFINITION                                             \
+    SYS_WAITS_BY_HOST_BY_LATENCY_SELECT_PREFIX SYS_WAITS_BY_HOST_BY_LATENCY_SOURCE                 \
+        ".`SUM_TIMER_WAIT` AS `total_latency`," SYS_WAITS_BY_HOST_BY_LATENCY_SOURCE                \
+        ".`AVG_TIMER_WAIT` AS `avg_latency`," SYS_WAITS_BY_HOST_BY_LATENCY_SOURCE                  \
+        ".`MAX_TIMER_WAIT` AS `max_latency`" SYS_WAITS_BY_HOST_BY_LATENCY_SELECT_SUFFIX
+
+static const char sys_waits_by_host_by_latency_view_definition[] =
+    SYS_WAITS_BY_HOST_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_waits_by_host_by_latency_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`waits_by_host_by_latency` " SYS_WAITS_BY_HOST_BY_LATENCY_VIEW_COLUMNS
+    " AS " SYS_WAITS_BY_HOST_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_waits_by_host_by_latency_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`waits_by_host_by_latency` " SYS_WAITS_BY_HOST_BY_LATENCY_VIEW_COLUMNS
+    " AS " SYS_WAITS_BY_HOST_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_waits_by_host_by_latency_view_definition[] =
+    SYS_X_WAITS_BY_HOST_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_waits_by_host_by_latency_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$waits_by_host_by_latency` " SYS_WAITS_BY_HOST_BY_LATENCY_VIEW_COLUMNS
+    " AS " SYS_X_WAITS_BY_HOST_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_waits_by_host_by_latency_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$waits_by_host_by_latency` " SYS_WAITS_BY_HOST_BY_LATENCY_VIEW_COLUMNS
+    " AS " SYS_X_WAITS_BY_HOST_BY_LATENCY_VIEW_DEFINITION;
+
+#undef SYS_WAITS_BY_HOST_BY_LATENCY_VIEW_COLUMNS
+#undef SYS_WAITS_BY_HOST_BY_LATENCY_SOURCE
+#undef SYS_WAITS_BY_HOST_BY_LATENCY_HOST_EXPR
+#undef SYS_WAITS_BY_HOST_BY_LATENCY_SELECT_PREFIX
+#undef SYS_WAITS_BY_HOST_BY_LATENCY_SELECT_SUFFIX
+#undef SYS_WAITS_BY_HOST_BY_LATENCY_VIEW_DEFINITION
+#undef SYS_X_WAITS_BY_HOST_BY_LATENCY_VIEW_DEFINITION
+
+#define SYS_WAITS_BY_USER_BY_LATENCY_VIEW_COLUMNS                                                  \
+    "(`user`,`event`,`total`,`total_latency`,`avg_latency`,`max_latency`)"
+
+#define SYS_WAITS_BY_USER_BY_LATENCY_SOURCE                                                        \
+    "`performance_schema`.`events_waits_summary_by_user_by_event_name`"
+
+#define SYS_WAITS_BY_USER_BY_LATENCY_USER_EXPR                                                     \
+    "if((" SYS_WAITS_BY_USER_BY_LATENCY_SOURCE                                                     \
+    ".`USER` is null),'background'," SYS_WAITS_BY_USER_BY_LATENCY_SOURCE ".`USER`)"
+
+#define SYS_WAITS_BY_USER_BY_LATENCY_SELECT_PREFIX                                                 \
+    "select " SYS_WAITS_BY_USER_BY_LATENCY_USER_EXPR                                               \
+    " AS `user`," SYS_WAITS_BY_USER_BY_LATENCY_SOURCE                                              \
+    ".`EVENT_NAME` AS `event`," SYS_WAITS_BY_USER_BY_LATENCY_SOURCE ".`COUNT_STAR` AS `total`,"
+
+#define SYS_WAITS_BY_USER_BY_LATENCY_SELECT_SUFFIX                                                 \
+    " from " SYS_WAITS_BY_USER_BY_LATENCY_SOURCE " where ((" SYS_WAITS_BY_USER_BY_LATENCY_SOURCE   \
+    ".`EVENT_NAME` <> 'idle') and (" SYS_WAITS_BY_USER_BY_LATENCY_SOURCE                           \
+    ".`USER` is not null) and (" SYS_WAITS_BY_USER_BY_LATENCY_SOURCE                               \
+    ".`SUM_TIMER_WAIT` > 0)) order by " SYS_WAITS_BY_USER_BY_LATENCY_USER_EXPR                     \
+    "," SYS_WAITS_BY_USER_BY_LATENCY_SOURCE ".`SUM_TIMER_WAIT` desc"
+
+#define SYS_WAITS_BY_USER_BY_LATENCY_VIEW_DEFINITION                                               \
+    SYS_WAITS_BY_USER_BY_LATENCY_SELECT_PREFIX                                                     \
+    "format_pico_time(" SYS_WAITS_BY_USER_BY_LATENCY_SOURCE                                        \
+    ".`SUM_TIMER_WAIT`) AS `total_latency`,format_pico_time(" SYS_WAITS_BY_USER_BY_LATENCY_SOURCE  \
+    ".`AVG_TIMER_WAIT`) AS `avg_latency`,"                                                         \
+    "format_pico_time(" SYS_WAITS_BY_USER_BY_LATENCY_SOURCE                                        \
+    ".`MAX_TIMER_WAIT`) AS `max_latency`" SYS_WAITS_BY_USER_BY_LATENCY_SELECT_SUFFIX
+
+#define SYS_X_WAITS_BY_USER_BY_LATENCY_VIEW_DEFINITION                                             \
+    SYS_WAITS_BY_USER_BY_LATENCY_SELECT_PREFIX SYS_WAITS_BY_USER_BY_LATENCY_SOURCE                 \
+        ".`SUM_TIMER_WAIT` AS `total_latency`," SYS_WAITS_BY_USER_BY_LATENCY_SOURCE                \
+        ".`AVG_TIMER_WAIT` AS `avg_latency`," SYS_WAITS_BY_USER_BY_LATENCY_SOURCE                  \
+        ".`MAX_TIMER_WAIT` AS `max_latency`" SYS_WAITS_BY_USER_BY_LATENCY_SELECT_SUFFIX
+
+static const char sys_waits_by_user_by_latency_view_definition[] =
+    SYS_WAITS_BY_USER_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_waits_by_user_by_latency_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`waits_by_user_by_latency` " SYS_WAITS_BY_USER_BY_LATENCY_VIEW_COLUMNS
+    " AS " SYS_WAITS_BY_USER_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_waits_by_user_by_latency_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`waits_by_user_by_latency` " SYS_WAITS_BY_USER_BY_LATENCY_VIEW_COLUMNS
+    " AS " SYS_WAITS_BY_USER_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_waits_by_user_by_latency_view_definition[] =
+    SYS_X_WAITS_BY_USER_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_waits_by_user_by_latency_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$waits_by_user_by_latency` " SYS_WAITS_BY_USER_BY_LATENCY_VIEW_COLUMNS
+    " AS " SYS_X_WAITS_BY_USER_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_waits_by_user_by_latency_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$waits_by_user_by_latency` " SYS_WAITS_BY_USER_BY_LATENCY_VIEW_COLUMNS
+    " AS " SYS_X_WAITS_BY_USER_BY_LATENCY_VIEW_DEFINITION;
+
+#undef SYS_WAITS_BY_USER_BY_LATENCY_VIEW_COLUMNS
+#undef SYS_WAITS_BY_USER_BY_LATENCY_SOURCE
+#undef SYS_WAITS_BY_USER_BY_LATENCY_USER_EXPR
+#undef SYS_WAITS_BY_USER_BY_LATENCY_SELECT_PREFIX
+#undef SYS_WAITS_BY_USER_BY_LATENCY_SELECT_SUFFIX
+#undef SYS_WAITS_BY_USER_BY_LATENCY_VIEW_DEFINITION
+#undef SYS_X_WAITS_BY_USER_BY_LATENCY_VIEW_DEFINITION
+
+#define SYS_WAITS_GLOBAL_BY_LATENCY_VIEW_COLUMNS                                                   \
+    "(`events`,`total`,`total_latency`,`avg_latency`,`max_latency`)"
+
+#define SYS_WAITS_GLOBAL_BY_LATENCY_SOURCE                                                         \
+    "`performance_schema`.`events_waits_summary_global_by_event_name`"
+
+#define SYS_WAITS_GLOBAL_BY_LATENCY_SELECT_PREFIX                                                  \
+    "select " SYS_WAITS_GLOBAL_BY_LATENCY_SOURCE                                                   \
+    ".`EVENT_NAME` AS `event`," SYS_WAITS_GLOBAL_BY_LATENCY_SOURCE ".`COUNT_STAR` AS `total`,"
+
+#define SYS_WAITS_GLOBAL_BY_LATENCY_SELECT_SUFFIX                                                  \
+    " from " SYS_WAITS_GLOBAL_BY_LATENCY_SOURCE " where ((" SYS_WAITS_GLOBAL_BY_LATENCY_SOURCE     \
+    ".`EVENT_NAME` <> 'idle') and (" SYS_WAITS_GLOBAL_BY_LATENCY_SOURCE                            \
+    ".`SUM_TIMER_WAIT` > 0)) order by " SYS_WAITS_GLOBAL_BY_LATENCY_SOURCE                         \
+    ".`SUM_TIMER_WAIT` desc"
+
+#define SYS_WAITS_GLOBAL_BY_LATENCY_VIEW_DEFINITION                                                \
+    SYS_WAITS_GLOBAL_BY_LATENCY_SELECT_PREFIX                                                      \
+    "format_pico_time(" SYS_WAITS_GLOBAL_BY_LATENCY_SOURCE                                         \
+    ".`SUM_TIMER_WAIT`) AS `total_latency`,format_pico_time(" SYS_WAITS_GLOBAL_BY_LATENCY_SOURCE   \
+    ".`AVG_TIMER_WAIT`) AS `avg_latency`,"                                                         \
+    "format_pico_time(" SYS_WAITS_GLOBAL_BY_LATENCY_SOURCE                                         \
+    ".`MAX_TIMER_WAIT`) AS `max_latency`" SYS_WAITS_GLOBAL_BY_LATENCY_SELECT_SUFFIX
+
+#define SYS_X_WAITS_GLOBAL_BY_LATENCY_VIEW_DEFINITION                                              \
+    SYS_WAITS_GLOBAL_BY_LATENCY_SELECT_PREFIX SYS_WAITS_GLOBAL_BY_LATENCY_SOURCE                   \
+        ".`SUM_TIMER_WAIT` AS `total_latency`," SYS_WAITS_GLOBAL_BY_LATENCY_SOURCE                 \
+        ".`AVG_TIMER_WAIT` AS `avg_latency`," SYS_WAITS_GLOBAL_BY_LATENCY_SOURCE                   \
+        ".`MAX_TIMER_WAIT` AS `max_latency`" SYS_WAITS_GLOBAL_BY_LATENCY_SELECT_SUFFIX
+
+static const char sys_waits_global_by_latency_view_definition[] =
+    SYS_WAITS_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_waits_global_by_latency_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`waits_global_by_latency` " SYS_WAITS_GLOBAL_BY_LATENCY_VIEW_COLUMNS
+    " AS " SYS_WAITS_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_waits_global_by_latency_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`waits_global_by_latency` " SYS_WAITS_GLOBAL_BY_LATENCY_VIEW_COLUMNS
+    " AS " SYS_WAITS_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_waits_global_by_latency_view_definition[] =
+    SYS_X_WAITS_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_waits_global_by_latency_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$waits_global_by_latency` " SYS_WAITS_GLOBAL_BY_LATENCY_VIEW_COLUMNS
+    " AS " SYS_X_WAITS_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
+
+static const char sys_x_waits_global_by_latency_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$waits_global_by_latency` " SYS_WAITS_GLOBAL_BY_LATENCY_VIEW_COLUMNS
+    " AS " SYS_X_WAITS_GLOBAL_BY_LATENCY_VIEW_DEFINITION;
+
+#undef SYS_WAITS_GLOBAL_BY_LATENCY_VIEW_COLUMNS
+#undef SYS_WAITS_GLOBAL_BY_LATENCY_SOURCE
+#undef SYS_WAITS_GLOBAL_BY_LATENCY_SELECT_PREFIX
+#undef SYS_WAITS_GLOBAL_BY_LATENCY_SELECT_SUFFIX
+#undef SYS_WAITS_GLOBAL_BY_LATENCY_VIEW_DEFINITION
+#undef SYS_X_WAITS_GLOBAL_BY_LATENCY_VIEW_DEFINITION
+
 #define SYS_MEMORY_BY_HOST_BY_CURRENT_BYTES_VIEW_COLUMNS                                           \
     "(`host`,`current_count_used`,`current_allocated`,`current_avg_alloc`,`current_max_alloc`,"    \
     "`total_allocated`)"
@@ -3640,6 +3967,26 @@ static const struct mylite_execution_catalog_builtin_sys_view builtin_sys_view_d
      sys_user_summary_by_statement_type_view_definition,
      sys_user_summary_by_statement_type_show_create_view_sql,
      sys_user_summary_by_statement_type_show_create_qualified_view_sql},
+    {"wait_classes_global_by_avg_latency",
+     sys_wait_classes_global_by_avg_latency_view_definition,
+     sys_wait_classes_global_by_avg_latency_show_create_view_sql,
+     sys_wait_classes_global_by_avg_latency_show_create_qualified_view_sql},
+    {"wait_classes_global_by_latency",
+     sys_wait_classes_global_by_latency_view_definition,
+     sys_wait_classes_global_by_latency_show_create_view_sql,
+     sys_wait_classes_global_by_latency_show_create_qualified_view_sql},
+    {"waits_by_host_by_latency",
+     sys_waits_by_host_by_latency_view_definition,
+     sys_waits_by_host_by_latency_show_create_view_sql,
+     sys_waits_by_host_by_latency_show_create_qualified_view_sql},
+    {"waits_by_user_by_latency",
+     sys_waits_by_user_by_latency_view_definition,
+     sys_waits_by_user_by_latency_show_create_view_sql,
+     sys_waits_by_user_by_latency_show_create_qualified_view_sql},
+    {"waits_global_by_latency",
+     sys_waits_global_by_latency_view_definition,
+     sys_waits_global_by_latency_show_create_view_sql,
+     sys_waits_global_by_latency_show_create_qualified_view_sql},
     {"innodb_buffer_stats_by_schema",
      sys_innodb_buffer_stats_by_schema_view_definition,
      sys_innodb_buffer_stats_by_schema_show_create_view_sql,
@@ -3788,6 +4135,26 @@ static const struct mylite_execution_catalog_builtin_sys_view builtin_sys_view_d
      sys_x_user_summary_by_statement_type_view_definition,
      sys_x_user_summary_by_statement_type_show_create_view_sql,
      sys_x_user_summary_by_statement_type_show_create_qualified_view_sql},
+    {"x$wait_classes_global_by_avg_latency",
+     sys_x_wait_classes_global_by_avg_latency_view_definition,
+     sys_x_wait_classes_global_by_avg_latency_show_create_view_sql,
+     sys_x_wait_classes_global_by_avg_latency_show_create_qualified_view_sql},
+    {"x$wait_classes_global_by_latency",
+     sys_x_wait_classes_global_by_latency_view_definition,
+     sys_x_wait_classes_global_by_latency_show_create_view_sql,
+     sys_x_wait_classes_global_by_latency_show_create_qualified_view_sql},
+    {"x$waits_by_host_by_latency",
+     sys_x_waits_by_host_by_latency_view_definition,
+     sys_x_waits_by_host_by_latency_show_create_view_sql,
+     sys_x_waits_by_host_by_latency_show_create_qualified_view_sql},
+    {"x$waits_by_user_by_latency",
+     sys_x_waits_by_user_by_latency_view_definition,
+     sys_x_waits_by_user_by_latency_show_create_view_sql,
+     sys_x_waits_by_user_by_latency_show_create_qualified_view_sql},
+    {"x$waits_global_by_latency",
+     sys_x_waits_global_by_latency_view_definition,
+     sys_x_waits_global_by_latency_show_create_view_sql,
+     sys_x_waits_global_by_latency_show_create_qualified_view_sql},
     {"x$innodb_buffer_stats_by_schema",
      sys_x_innodb_buffer_stats_by_schema_view_definition,
      sys_x_innodb_buffer_stats_by_schema_show_create_view_sql,

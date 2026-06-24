@@ -131,6 +131,12 @@ index metadata, view status rows, and MySQL-shaped `SHOW CREATE` metadata. It
 does not add live Performance Schema per-user aggregation or broader sys view
 execution.
 
+The `baseline-sys-wait-views` slice adds the same SHOW metadata surface for the
+supported empty synthetic wait class, host, user, and global wait-latency
+views, including selected-schema access, empty view index metadata, view status
+rows, and MySQL-shaped `SHOW CREATE` metadata. It does not add live Performance
+Schema wait aggregation or broader sys view execution.
+
 The `baseline-sys-innodb-buffer-stats-by-schema-views` slice adds the same
 SHOW metadata surface for the supported empty synthetic
 `sys.innodb_buffer_stats_by_schema` and

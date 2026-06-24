@@ -92,6 +92,7 @@ add_library(mylite STATIC
   src/runtime/mylite_execution_catalog_sys_summary_statement_tables.c
   src/runtime/mylite_execution_catalog_sys_summary_tables.c
   src/runtime/mylite_execution_catalog_sys_summary_user_tables.c
+  src/runtime/mylite_execution_catalog_sys_summary_wait_tables.c
   src/runtime/mylite_execution_catalog_sys_schema_tables.c
   src/runtime/mylite_execution_catalog_sys_views.c
   src/runtime/mylite_execution_catalog_system_tables.c

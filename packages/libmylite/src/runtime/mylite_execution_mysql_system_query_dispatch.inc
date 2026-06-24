@@ -278,6 +278,26 @@ static bool append_sys_schema_summary_system_table_rows(
         *out_status = append_sys_user_summary_by_statement_type_system_rows(database, rows);
         return true;
     }
+    if (strcmp(definition->query_definition.name, "wait_classes_global_by_avg_latency") == 0) {
+        *out_status = append_sys_wait_classes_global_by_avg_latency_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "wait_classes_global_by_latency") == 0) {
+        *out_status = append_sys_wait_classes_global_by_latency_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "waits_by_host_by_latency") == 0) {
+        *out_status = append_sys_waits_by_host_by_latency_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "waits_by_user_by_latency") == 0) {
+        *out_status = append_sys_waits_by_user_by_latency_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "waits_global_by_latency") == 0) {
+        *out_status = append_sys_waits_global_by_latency_system_rows(database, rows);
+        return true;
+    }
     if (strcmp(definition->query_definition.name, "memory_by_host_by_current_bytes") == 0) {
         *out_status = append_sys_memory_by_host_by_current_bytes_system_rows(database, rows);
         return true;
@@ -440,6 +460,26 @@ static bool append_sys_schema_x_summary_system_table_rows(
     }
     if (strcmp(definition->query_definition.name, "x$user_summary_by_statement_type") == 0) {
         *out_status = append_sys_user_summary_by_statement_type_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "x$wait_classes_global_by_avg_latency") == 0) {
+        *out_status = append_sys_wait_classes_global_by_avg_latency_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "x$wait_classes_global_by_latency") == 0) {
+        *out_status = append_sys_wait_classes_global_by_latency_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "x$waits_by_host_by_latency") == 0) {
+        *out_status = append_sys_waits_by_host_by_latency_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "x$waits_by_user_by_latency") == 0) {
+        *out_status = append_sys_waits_by_user_by_latency_system_rows(database, rows);
+        return true;
+    }
+    if (strcmp(definition->query_definition.name, "x$waits_global_by_latency") == 0) {
+        *out_status = append_sys_waits_global_by_latency_system_rows(database, rows);
         return true;
     }
     if (strcmp(definition->query_definition.name, "x$memory_by_host_by_current_bytes") == 0) {
@@ -1011,6 +1051,61 @@ static int append_sys_user_summary_by_statement_type_system_rows(
 ) {
     if (rows->definition->column_count != sys_user_summary_by_statement_type_column_count) {
         set_runtime_error(database, "invalid sys.user_summary_by_statement_type columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_wait_classes_global_by_avg_latency_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_wait_classes_global_by_avg_latency_column_count) {
+        set_runtime_error(database, "invalid sys.wait_classes_global_by_avg_latency columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_wait_classes_global_by_latency_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_wait_classes_global_by_latency_column_count) {
+        set_runtime_error(database, "invalid sys.wait_classes_global_by_latency columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_waits_by_host_by_latency_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_waits_by_host_by_latency_column_count) {
+        set_runtime_error(database, "invalid sys.waits_by_host_by_latency columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_waits_by_user_by_latency_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_waits_by_user_by_latency_column_count) {
+        set_runtime_error(database, "invalid sys.waits_by_user_by_latency columns");
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int append_sys_waits_global_by_latency_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    if (rows->definition->column_count != sys_waits_global_by_latency_column_count) {
+        set_runtime_error(database, "invalid sys.waits_global_by_latency columns");
         return MYLITE_ERROR;
     }
     return MYLITE_OK;

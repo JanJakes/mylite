@@ -172,6 +172,11 @@ static int append_information_schema_system_rows(
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_USER_SUMMARY_BY_STAGES:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_USER_SUMMARY_BY_STATEMENT_LATENCY:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_USER_SUMMARY_BY_STATEMENT_TYPE:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_WAIT_CLASSES_GLOBAL_BY_AVG_LATENCY:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_WAIT_CLASSES_GLOBAL_BY_LATENCY:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_WAITS_BY_HOST_BY_LATENCY:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_WAITS_BY_USER_BY_LATENCY:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_WAITS_GLOBAL_BY_LATENCY:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_INNODB_BUFFER_STATS_BY_SCHEMA:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_INNODB_BUFFER_STATS_BY_TABLE:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_INNODB_LOCK_WAITS:
@@ -219,6 +224,11 @@ static int append_information_schema_system_rows(
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_USER_SUMMARY_BY_STAGES:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_USER_SUMMARY_BY_STATEMENT_LATENCY:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_USER_SUMMARY_BY_STATEMENT_TYPE:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_WAIT_CLASSES_GLOBAL_BY_AVG_LATENCY:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_WAIT_CLASSES_GLOBAL_BY_LATENCY:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_WAITS_BY_HOST_BY_LATENCY:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_WAITS_BY_USER_BY_LATENCY:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_WAITS_GLOBAL_BY_LATENCY:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_INNODB_BUFFER_STATS_BY_SCHEMA:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_INNODB_BUFFER_STATS_BY_TABLE:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_INNODB_LOCK_WAITS:
@@ -341,6 +351,12 @@ static int append_information_schema_views_system_rows(
                     strcmp(view->name, "x$user_summary_by_stages") == 0 ||
                     strcmp(view->name, "user_summary_by_statement_type") == 0 ||
                     strcmp(view->name, "x$user_summary_by_statement_type") == 0 ||
+                    strcmp(view->name, "waits_by_host_by_latency") == 0 ||
+                    strcmp(view->name, "x$waits_by_host_by_latency") == 0 ||
+                    strcmp(view->name, "waits_by_user_by_latency") == 0 ||
+                    strcmp(view->name, "x$waits_by_user_by_latency") == 0 ||
+                    strcmp(view->name, "waits_global_by_latency") == 0 ||
+                    strcmp(view->name, "x$waits_global_by_latency") == 0 ||
                     strcmp(view->name, "x$io_global_by_file_by_bytes") == 0 ||
                     strcmp(view->name, "x$io_global_by_file_by_latency") == 0 ||
                     strcmp(view->name, "x$io_global_by_wait_by_bytes") == 0 ||
@@ -432,6 +448,21 @@ static int append_information_schema_view_table_usage_system_rows(
         {"user_summary_by_statement_type",
          "performance_schema",
          "events_statements_summary_by_user_by_event_name"},
+        {"wait_classes_global_by_avg_latency",
+         "performance_schema",
+         "events_waits_summary_global_by_event_name"},
+        {"wait_classes_global_by_latency",
+         "performance_schema",
+         "events_waits_summary_global_by_event_name"},
+        {"waits_by_host_by_latency",
+         "performance_schema",
+         "events_waits_summary_by_host_by_event_name"},
+        {"waits_by_user_by_latency",
+         "performance_schema",
+         "events_waits_summary_by_user_by_event_name"},
+        {"waits_global_by_latency",
+         "performance_schema",
+         "events_waits_summary_global_by_event_name"},
         {"innodb_buffer_stats_by_schema", "information_schema", "INNODB_BUFFER_PAGE"},
         {"innodb_buffer_stats_by_table", "information_schema", "INNODB_BUFFER_PAGE"},
         {"memory_by_host_by_current_bytes",
@@ -570,6 +601,21 @@ static int append_information_schema_view_table_usage_system_rows(
         {"x$user_summary_by_statement_type",
          "performance_schema",
          "events_statements_summary_by_user_by_event_name"},
+        {"x$wait_classes_global_by_avg_latency",
+         "performance_schema",
+         "events_waits_summary_global_by_event_name"},
+        {"x$wait_classes_global_by_latency",
+         "performance_schema",
+         "events_waits_summary_global_by_event_name"},
+        {"x$waits_by_host_by_latency",
+         "performance_schema",
+         "events_waits_summary_by_host_by_event_name"},
+        {"x$waits_by_user_by_latency",
+         "performance_schema",
+         "events_waits_summary_by_user_by_event_name"},
+        {"x$waits_global_by_latency",
+         "performance_schema",
+         "events_waits_summary_global_by_event_name"},
         {"x$innodb_buffer_stats_by_schema", "information_schema", "INNODB_BUFFER_PAGE"},
         {"x$innodb_buffer_stats_by_table", "information_schema", "INNODB_BUFFER_PAGE"},
         {"x$memory_by_host_by_current_bytes",

@@ -57,7 +57,8 @@ limited read-only empty `sys.host_summary_by_statement_latency` /
 `sys.x$host_summary_by_statement_latency` synthetic host statement-latency
 placeholders, limited read-only empty `sys.host_summary_by_statement_type` /
 `sys.x$host_summary_by_statement_type` synthetic host statement-type
-placeholders, limited read-only empty
+placeholders, limited read-only empty `sys.wait*` / `sys.x$wait*` synthetic
+wait-summary latency placeholders, limited read-only empty
 `sys.innodb_buffer_stats_by_schema` /
 `sys.x$innodb_buffer_stats_by_schema` synthetic InnoDB buffer-stats-by-schema
 placeholders, limited read-only empty `sys.innodb_buffer_stats_by_table` /
@@ -184,16 +185,16 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.user_summary_by_statement_type` | 🟡 | Limited read-only empty formatted user statement-type view with MySQL-shaped metadata; no live statement-type rows |
 | `sys.x$user_summary_by_statement_type` | 🟡 | Limited read-only empty raw user statement-type view with the same metadata surface as the formatted view |
 | `sys.version` | 🟡 | Limited read-only synthetic version view returning `sys_version = '2.1.3'` and MyLite's MySQL-compatible server version, with MySQL-shaped `SHOW COLUMNS` / `SHOW FULL COLUMNS` / `DESCRIBE`, empty `SHOW INDEX`, `INFORMATION_SCHEMA.COLUMNS`, `INFORMATION_SCHEMA.VIEWS`, empty index/constraint/dependency metadata, `INFORMATION_SCHEMA.TABLES`, `SHOW CREATE VIEW` / `SHOW CREATE TABLE`, and `SHOW TABLE STATUS`; no persisted view descriptor, privilege/definer enforcement, broader sys views, or sys helper functions |
-| `sys.wait_classes_global_by_avg_latency` | ❌ | View shape and diagnostics |
-| `sys.x$wait_classes_global_by_avg_latency` | ❌ | View shape and diagnostics |
-| `sys.wait_classes_global_by_latency` | ❌ | View shape and diagnostics |
-| `sys.x$wait_classes_global_by_latency` | ❌ | View shape and diagnostics |
-| `sys.waits_by_host_by_latency` | ❌ | View shape and diagnostics |
-| `sys.x$waits_by_host_by_latency` | ❌ | View shape and diagnostics |
-| `sys.waits_by_user_by_latency` | ❌ | View shape and diagnostics |
-| `sys.x$waits_by_user_by_latency` | ❌ | View shape and diagnostics |
-| `sys.waits_global_by_latency` | ❌ | View shape and diagnostics |
-| `sys.x$waits_global_by_latency` | ❌ | View shape and diagnostics |
+| `sys.wait_classes_global_by_avg_latency` | 🟡 | Limited read-only empty formatted wait-class average-latency view with MySQL-shaped metadata; no live wait rows |
+| `sys.x$wait_classes_global_by_avg_latency` | 🟡 | Limited read-only empty raw wait-class average-latency view with the same metadata surface as the formatted view |
+| `sys.wait_classes_global_by_latency` | 🟡 | Limited read-only empty formatted wait-class total-latency view with MySQL-shaped metadata; no live wait rows |
+| `sys.x$wait_classes_global_by_latency` | 🟡 | Limited read-only empty raw wait-class total-latency view with the same metadata surface as the formatted view |
+| `sys.waits_by_host_by_latency` | 🟡 | Limited read-only empty formatted host wait-latency view with MySQL-shaped metadata; no live wait rows |
+| `sys.x$waits_by_host_by_latency` | 🟡 | Limited read-only empty raw host wait-latency view with the same metadata surface as the formatted view |
+| `sys.waits_by_user_by_latency` | 🟡 | Limited read-only empty formatted user wait-latency view with MySQL-shaped metadata; no live wait rows |
+| `sys.x$waits_by_user_by_latency` | 🟡 | Limited read-only empty raw user wait-latency view with the same metadata surface as the formatted view |
+| `sys.waits_global_by_latency` | 🟡 | Limited read-only empty formatted global wait-latency view with MySQL-shaped metadata; no live wait rows |
+| `sys.x$waits_global_by_latency` | 🟡 | Limited read-only empty raw global wait-latency view with the same metadata surface as the formatted view |
 | `sys.create_synonym_db()` | ❌ | Procedure behavior and diagnostics |
 | `sys.diagnostics()` | ❌ | Procedure behavior and diagnostics |
 | `sys.execute_prepared_stmt()` | ❌ | Procedure behavior and diagnostics |

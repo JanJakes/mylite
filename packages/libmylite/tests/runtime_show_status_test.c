@@ -375,6 +375,10 @@ int main(void) {
 }
 
 static int test_show_status_values_scopes_and_filters(void) {
+    static const struct expected_status_row expected_byte_rows[] = {
+        {"Bytes_received", "0"},
+        {"Bytes_sent", "0"},
+    };
     static const struct expected_status_row expected_thread_rows[] = {
         {"Threads_cached", "0"},
         {"Threads_connected", "1"},
@@ -490,6 +494,10 @@ static int test_show_status_values_scopes_and_filters(void) {
         {"Slow_launch_threads", "0"},
         {"Slow_queries", "0"},
     };
+    static const struct expected_status_row expected_uptime_rows[] = {
+        {"Uptime", "0"},
+        {"Uptime_since_flush_status", "0"},
+    };
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -530,12 +538,107 @@ static int test_show_status_values_scopes_and_filters(void) {
         },
         "show status compression"
     );
+    failures += expect_single_status_row(
+        database,
+        "SHOW LOCAL STATUS LIKE 'Compression'",
+        (struct expected_status_row){
+            .name = "Compression",
+            .value = "OFF",
+        },
+        "show local status compression"
+    );
     failures += expect_status_rows(
         database,
         "SHOW GLOBAL STATUS LIKE 'Compression'",
         NULL,
         0U,
         "show global status omits compression"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS LIKE 'Bytes\\_%'",
+        expected_byte_rows,
+        sizeof(expected_byte_rows) / sizeof(expected_byte_rows[0]),
+        "show status byte counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Bytes\\_%'",
+        expected_byte_rows,
+        sizeof(expected_byte_rows) / sizeof(expected_byte_rows[0]),
+        "show global status byte counters"
+    );
+    failures += expect_single_status_row(
+        database,
+        "SHOW STATUS LIKE 'Connections'",
+        (struct expected_status_row){
+            .name = "Connections",
+            .value = "1",
+        },
+        "show status connections"
+    );
+    failures += expect_single_status_row(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Connections'",
+        (struct expected_status_row){
+            .name = "Connections",
+            .value = "1",
+        },
+        "show global status connections"
+    );
+    failures += expect_single_status_row(
+        database,
+        "SHOW STATUS LIKE 'Prepared_stmt_count'",
+        (struct expected_status_row){
+            .name = "Prepared_stmt_count",
+            .value = "0",
+        },
+        "show status prepared stmt count"
+    );
+    failures += expect_single_status_row(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Prepared_stmt_count'",
+        (struct expected_status_row){
+            .name = "Prepared_stmt_count",
+            .value = "0",
+        },
+        "show global status prepared stmt count"
+    );
+    failures += expect_single_status_row(
+        database,
+        "SHOW STATUS LIKE 'Queries'",
+        (struct expected_status_row){
+            .name = "Queries",
+            .value = "0",
+        },
+        "show status queries"
+    );
+    failures += expect_single_status_row(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Queries'",
+        (struct expected_status_row){
+            .name = "Queries",
+            .value = "0",
+        },
+        "show global status queries"
+    );
+    failures += expect_single_status_row(
+        database,
+        "SHOW STATUS LIKE 'Questions'",
+        (struct expected_status_row){
+            .name = "Questions",
+            .value = "0",
+        },
+        "show status questions"
+    );
+    failures += expect_single_status_row(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Questions'",
+        (struct expected_status_row){
+            .name = "Questions",
+            .value = "0",
+        },
+        "show global status questions"
     );
     failures += expect_status_rows(
         database,
@@ -546,10 +649,38 @@ static int test_show_status_values_scopes_and_filters(void) {
     );
     failures += expect_status_rows(
         database,
+        "SHOW LOCAL STATUS LIKE 'Threads\\_%'",
+        expected_thread_rows,
+        sizeof(expected_thread_rows) / sizeof(expected_thread_rows[0]),
+        "show local status threads pattern"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Threads\\_%'",
+        expected_thread_rows,
+        sizeof(expected_thread_rows) / sizeof(expected_thread_rows[0]),
+        "show global status threads pattern"
+    );
+    failures += expect_status_rows(
+        database,
         "SHOW STATUS LIKE 'THREADS\\_%'",
         expected_thread_rows,
         sizeof(expected_thread_rows) / sizeof(expected_thread_rows[0]),
         "show status uppercase threads pattern"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS LIKE 'Uptime%'",
+        expected_uptime_rows,
+        sizeof(expected_uptime_rows) / sizeof(expected_uptime_rows[0]),
+        "show status uptime counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Uptime%'",
+        expected_uptime_rows,
+        sizeof(expected_uptime_rows) / sizeof(expected_uptime_rows[0]),
+        "show global status uptime counters"
     );
     failures += expect_status_rows(
         database,

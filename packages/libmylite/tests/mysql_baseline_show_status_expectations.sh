@@ -111,6 +111,20 @@ expect_positive_numeric_status_row() {
     fail "$label: expected numeric value, got [$actual]"
 }
 
+expect_numeric_status_row() {
+    label=$1
+    variable_name=$2
+    actual=$3
+
+    case "$actual" in
+        "$variable_name"\|*[!0-9]* | "$variable_name"\|) ;;
+        "$variable_name"\|*) return 0 ;;
+        *) fail "$label: row shape mismatch: [$actual]" ;;
+    esac
+
+    fail "$label: expected numeric value, got [$actual]"
+}
+
 version=$(run_mysql 'SELECT VERSION();')
 case "$version" in
     8.4.9*) ;;
@@ -146,6 +160,55 @@ expect_value "local compression" "Compression|OFF" "$local_compression"
 
 global_compression=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Compression';" | normalize_tsv)
 expect_value "global omits compression" "" "$global_compression"
+
+bytes_row_names=$(run_mysql "SHOW STATUS LIKE 'Bytes\\_%';" | cut -f1)
+expected_bytes_row_names="Bytes_received
+Bytes_sent"
+expect_value "byte counter row names" "$expected_bytes_row_names" "$bytes_row_names"
+
+session_bytes_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Bytes\\_%';" | cut -f1)
+expect_value "session byte counter row names" "$expected_bytes_row_names" "$session_bytes_row_names"
+
+local_bytes_row_names=$(run_mysql "SHOW LOCAL STATUS LIKE 'Bytes\\_%';" | cut -f1)
+expect_value "local byte counter row names" "$expected_bytes_row_names" "$local_bytes_row_names"
+
+global_bytes_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Bytes\\_%';" | cut -f1)
+expect_value "global byte counter row names" "$expected_bytes_row_names" "$global_bytes_row_names"
+
+prepared_stmt_count=$(run_mysql "SHOW STATUS LIKE 'Prepared_stmt_count';" | normalize_tsv)
+expect_numeric_status_row "prepared statement count" "Prepared_stmt_count" "$prepared_stmt_count"
+
+global_prepared_stmt_count=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Prepared_stmt_count';" | normalize_tsv)
+expect_numeric_status_row \
+    "global prepared statement count" \
+    "Prepared_stmt_count" \
+    "$global_prepared_stmt_count"
+
+queries=$(run_mysql "SHOW STATUS LIKE 'Queries';" | normalize_tsv)
+expect_numeric_status_row "queries" "Queries" "$queries"
+
+global_queries=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Queries';" | normalize_tsv)
+expect_numeric_status_row "global queries" "Queries" "$global_queries"
+
+questions=$(run_mysql "SHOW STATUS LIKE 'Questions';" | normalize_tsv)
+expect_numeric_status_row "questions" "Questions" "$questions"
+
+global_questions=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Questions';" | normalize_tsv)
+expect_numeric_status_row "global questions" "Questions" "$global_questions"
+
+uptime_row_names=$(run_mysql "SHOW STATUS LIKE 'Uptime%';" | cut -f1)
+expected_uptime_row_names="Uptime
+Uptime_since_flush_status"
+expect_value "uptime row names" "$expected_uptime_row_names" "$uptime_row_names"
+
+session_uptime_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Uptime%';" | cut -f1)
+expect_value "session uptime row names" "$expected_uptime_row_names" "$session_uptime_row_names"
+
+local_uptime_row_names=$(run_mysql "SHOW LOCAL STATUS LIKE 'Uptime%';" | cut -f1)
+expect_value "local uptime row names" "$expected_uptime_row_names" "$local_uptime_row_names"
+
+global_uptime_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Uptime%';" | cut -f1)
+expect_value "global uptime row names" "$expected_uptime_row_names" "$global_uptime_row_names"
 
 binlog_row_names=$(run_mysql "SHOW STATUS LIKE 'Binlog\\_%';" | cut -f1)
 expected_binlog_row_names="Binlog_cache_disk_use
@@ -389,6 +452,24 @@ expect_value "threads like row names" "Threads_cached
 Threads_connected
 Threads_created
 Threads_running" "$thread_row_names"
+
+session_thread_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Threads\\_%';" | cut -f1)
+expect_value "session threads like row names" "Threads_cached
+Threads_connected
+Threads_created
+Threads_running" "$session_thread_row_names"
+
+local_thread_row_names=$(run_mysql "SHOW LOCAL STATUS LIKE 'Threads\\_%';" | cut -f1)
+expect_value "local threads like row names" "Threads_cached
+Threads_connected
+Threads_created
+Threads_running" "$local_thread_row_names"
+
+global_thread_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Threads\\_%';" | cut -f1)
+expect_value "global threads like row names" "Threads_cached
+Threads_connected
+Threads_created
+Threads_running" "$global_thread_row_names"
 
 thread_row_names_upper=$(run_mysql "SHOW STATUS LIKE 'THREADS\\_%';" | cut -f1)
 expect_value "threads uppercase like row names" "Threads_cached

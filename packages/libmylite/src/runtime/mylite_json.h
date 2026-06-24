@@ -57,6 +57,19 @@ int mylite_json_type(
     const char **out_type,
     struct mylite_json_normalize_result *out_result
 );
+int mylite_json_depth(
+    const char *text,
+    size_t text_length,
+    int64_t *out_depth,
+    struct mylite_json_normalize_result *out_result
+);
+int mylite_json_pretty(
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+);
 int mylite_json_length(
     const char *text,
     size_t text_length,

@@ -3142,13 +3142,16 @@ static int test_json_introspection_functions(void) {
     const struct mylite_sql_ast_node *first_expression = NULL;
     const struct mylite_sql_ast_node *second_expression = NULL;
     const struct mylite_sql_ast_node *third_expression = NULL;
+    const struct mylite_sql_ast_node *fourth_expression = NULL;
+    const struct mylite_sql_ast_node *fifth_expression = NULL;
     const struct mylite_sql_ast_node *statement = NULL;
     const struct mylite_sql_ast_node *expression_list = NULL;
     int failures = 0;
 
     failures += parser_test_parse_sql(
         "SELECT JSON_TYPE('{\"a\":1}'), JSON_LENGTH('{\"a\":[1,2]}'), "
-        "JSON_LENGTH(j, '$.a') FROM t;",
+        "JSON_LENGTH(j, '$.a'), JSON_DEPTH('{\"a\":[1]}'), "
+        "JSON_PRETTY('{\"b\":1,\"a\":2}') FROM t;",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -3157,6 +3160,8 @@ static int test_json_introspection_functions(void) {
     first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
     second_expression = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
     third_expression = parser_test_child_at(parser_test_child_at(select_list, 2U), 0U);
+    fourth_expression = parser_test_child_at(parser_test_child_at(select_list, 3U), 0U);
+    fifth_expression = parser_test_child_at(parser_test_child_at(select_list, 4U), 0U);
     failures += parser_test_expect_node(
         first_expression,
         MYLITE_SQL_AST_JSON_TYPE_FUNCTION,
@@ -3198,6 +3203,18 @@ static int test_json_introspection_functions(void) {
         MYLITE_SQL_AST_LITERAL_STRING,
         "json path"
     );
+    failures += parser_test_expect_node(
+        fourth_expression,
+        MYLITE_SQL_AST_JSON_DEPTH_FUNCTION,
+        "json_depth function"
+    );
+    failures += parser_test_expect_child_count(fourth_expression, 1U, "json_depth argument count");
+    failures += parser_test_expect_node(
+        fifth_expression,
+        MYLITE_SQL_AST_JSON_PRETTY_FUNCTION,
+        "json_pretty function"
+    );
+    failures += parser_test_expect_child_count(fifth_expression, 1U, "json_pretty argument count");
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
@@ -3223,7 +3240,8 @@ static int test_json_introspection_functions(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
-        "DO JSON_TYPE('{\"a\":1}'), JSON_LENGTH('[1,2]');",
+        "DO JSON_TYPE('{\"a\":1}'), JSON_LENGTH('[1,2]'), JSON_DEPTH('[1,[2]]'), "
+        "JSON_PRETTY('{\"a\":1}');",
         MYLITE_SQL_PARSE_OK,
         &result
     );
@@ -3240,6 +3258,16 @@ static int test_json_introspection_functions(void) {
         parser_test_child_at(expression_list, 1U),
         MYLITE_SQL_AST_JSON_LENGTH_FUNCTION,
         "do json_length"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression_list, 2U),
+        MYLITE_SQL_AST_JSON_DEPTH_FUNCTION,
+        "do json_depth"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression_list, 3U),
+        MYLITE_SQL_AST_JSON_PRETTY_FUNCTION,
+        "do json_pretty"
     );
     mylite_sql_parse_result_deinit(&result);
 
@@ -3295,8 +3323,59 @@ static int test_json_introspection_functions(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql("SELECT JSON_DEPTH();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = parser_test_child_at(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),
+        0U
+    );
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_DEPTH_ARGUMENT_COUNT_ERROR,
+        "json_depth zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parser_test_parse_sql("SELECT JSON_DEPTH('{}', '$');", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = parser_test_child_at(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),
+        0U
+    );
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_DEPTH_ARGUMENT_COUNT_ERROR,
+        "json_depth many argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("SELECT JSON_PRETTY();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = parser_test_child_at(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),
+        0U
+    );
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_PRETTY_ARGUMENT_COUNT_ERROR,
+        "json_pretty zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parser_test_parse_sql("SELECT JSON_PRETTY('{}', '$');", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = parser_test_child_at(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),
+        0U
+    );
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_PRETTY_ARGUMENT_COUNT_ERROR,
+        "json_pretty many argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parser_test_parse_sql(
-        "CREATE TABLE json_type (json_length INT); SELECT json_length FROM json_type;",
+        "CREATE TABLE json_type (json_length INT, json_depth INT, json_pretty TEXT); "
+        "SELECT json_length, json_depth, json_pretty FROM json_type;",
         MYLITE_SQL_PARSE_OK,
         &result
     );

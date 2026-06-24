@@ -1862,12 +1862,16 @@ static bool is_json_introspection_projection_expression(const struct mylite_sql_
 
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL || (expression->kind != MYLITE_SQL_AST_JSON_LENGTH_FUNCTION &&
+                               expression->kind != MYLITE_SQL_AST_JSON_DEPTH_FUNCTION &&
                                expression->kind != MYLITE_SQL_AST_JSON_KEYS_FUNCTION &&
-                               expression->kind != MYLITE_SQL_AST_JSON_TYPE_FUNCTION)) {
+                               expression->kind != MYLITE_SQL_AST_JSON_TYPE_FUNCTION &&
+                               expression->kind != MYLITE_SQL_AST_JSON_PRETTY_FUNCTION)) {
         return false;
     }
     child_count = mylite_sql_ast_node_child_count(expression);
-    if (expression->kind == MYLITE_SQL_AST_JSON_TYPE_FUNCTION) {
+    if (expression->kind == MYLITE_SQL_AST_JSON_TYPE_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_DEPTH_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_PRETTY_FUNCTION) {
         return (child_count == 1U && child_at(expression, 0U) != NULL) != 0;
     }
     return ((child_count == 1U || child_count == 2U) && child_at(expression, 0U) != NULL &&
@@ -2731,8 +2735,10 @@ static bool is_scalar_projection_known_function_attempt(enum mylite_sql_ast_node
     case MYLITE_SQL_AST_JSON_CONTAINS_FUNCTION:
     case MYLITE_SQL_AST_JSON_CONTAINS_PATH_FUNCTION:
     case MYLITE_SQL_AST_JSON_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_JSON_DEPTH_FUNCTION:
     case MYLITE_SQL_AST_JSON_KEYS_FUNCTION:
     case MYLITE_SQL_AST_JSON_TYPE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_PRETTY_FUNCTION:
     case MYLITE_SQL_AST_JSON_SET_FUNCTION:
     case MYLITE_SQL_AST_JSON_INSERT_FUNCTION:
     case MYLITE_SQL_AST_JSON_REPLACE_FUNCTION:
@@ -2807,8 +2813,10 @@ static bool is_scalar_projection_known_function_attempt(enum mylite_sql_ast_node
     case MYLITE_SQL_AST_JSON_CONTAINS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_CONTAINS_PATH_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_LENGTH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_DEPTH_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_KEYS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_PRETTY_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_SET_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_INSERT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_REPLACE_ARGUMENT_COUNT_ERROR:

@@ -37,6 +37,23 @@ static int emit_value_start(
     const struct json_value *value,
     struct json_emit_stack *stack
 );
+static int emit_pretty_value(
+    struct json_writer *writer,
+    const struct json_value *value,
+    size_t depth
+);
+static int emit_pretty_scalar_value(struct json_writer *writer, const struct json_value *value);
+static int emit_pretty_array_value(
+    struct json_writer *writer,
+    const struct json_value *value,
+    size_t depth
+);
+static int emit_pretty_object_value(
+    struct json_writer *writer,
+    const struct json_value *value,
+    size_t depth
+);
+static int emit_pretty_indent(struct json_writer *writer, size_t depth);
 static int emit_array_next_value(
     struct json_writer *writer,
     struct json_emit_stack *stack,
@@ -98,6 +115,52 @@ int mylite_json_internal_value_shallow_length(const struct json_value *value, in
     }
 
     *out_length = (int64_t)length;
+    return MYLITE_OK;
+}
+
+int mylite_json_internal_value_depth(const struct json_value *value, int64_t *out_depth) {
+    int64_t maximum_child_depth = 0;
+
+    if (value == NULL || out_depth == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    if (value->kind == JSON_VALUE_ARRAY) {
+        for (size_t index = 0U; index < value->payload.array.count; ++index) {
+            int64_t child_depth = 0;
+            int rc =
+                mylite_json_internal_value_depth(&value->payload.array.values[index], &child_depth);
+
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            if (child_depth > maximum_child_depth) {
+                maximum_child_depth = child_depth;
+            }
+        }
+        *out_depth = maximum_child_depth + 1;
+        return MYLITE_OK;
+    }
+    if (value->kind == JSON_VALUE_OBJECT) {
+        for (size_t index = 0U; index < value->payload.object.count; ++index) {
+            int64_t child_depth = 0;
+            int rc = mylite_json_internal_value_depth(
+                value->payload.object.members[index].value,
+                &child_depth
+            );
+
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            if (child_depth > maximum_child_depth) {
+                maximum_child_depth = child_depth;
+            }
+        }
+        *out_depth = maximum_child_depth + 1;
+        return MYLITE_OK;
+    }
+
+    *out_depth = 1;
     return MYLITE_OK;
 }
 
@@ -333,6 +396,123 @@ int mylite_json_internal_emit_value(struct json_writer *writer, const struct jso
         }
     }
     return rc;
+}
+
+int mylite_json_internal_emit_pretty_value(
+    struct json_writer *writer,
+    const struct json_value *value
+) {
+    if (writer == NULL || value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    return emit_pretty_value(writer, value, 0U);
+}
+
+static int emit_pretty_value(
+    struct json_writer *writer,
+    const struct json_value *value,
+    size_t depth
+) {
+    if (value->kind == JSON_VALUE_ARRAY) {
+        return emit_pretty_array_value(writer, value, depth);
+    }
+    if (value->kind == JSON_VALUE_OBJECT) {
+        return emit_pretty_object_value(writer, value, depth);
+    }
+    return emit_pretty_scalar_value(writer, value);
+}
+
+static int emit_pretty_scalar_value(struct json_writer *writer, const struct json_value *value) {
+    struct json_emit_stack stack = {0};
+
+    return emit_value_start(writer, value, &stack);
+}
+
+static int emit_pretty_array_value(
+    struct json_writer *writer,
+    const struct json_value *value,
+    size_t depth
+) {
+    int rc = mylite_json_internal_writer_append_char(writer, '[');
+
+    if (rc != MYLITE_OK || value->payload.array.count == 0U) {
+        return rc == MYLITE_OK ? mylite_json_internal_writer_append_char(writer, ']') : rc;
+    }
+    rc = mylite_json_internal_writer_append_char(writer, '\n');
+    for (size_t index = 0U; rc == MYLITE_OK && index < value->payload.array.count; ++index) {
+        rc = emit_pretty_indent(writer, depth + 1U);
+        if (rc == MYLITE_OK) {
+            rc = emit_pretty_value(writer, &value->payload.array.values[index], depth + 1U);
+        }
+        if (rc == MYLITE_OK && index + 1U < value->payload.array.count) {
+            rc = mylite_json_internal_writer_append_char(writer, ',');
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_json_internal_writer_append_char(writer, '\n');
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = emit_pretty_indent(writer, depth);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_json_internal_writer_append_char(writer, ']');
+    }
+    return rc;
+}
+
+static int emit_pretty_object_value(
+    struct json_writer *writer,
+    const struct json_value *value,
+    size_t depth
+) {
+    int rc = mylite_json_internal_writer_append_char(writer, '{');
+
+    if (rc != MYLITE_OK || value->payload.object.count == 0U) {
+        return rc == MYLITE_OK ? mylite_json_internal_writer_append_char(writer, '}') : rc;
+    }
+    rc = mylite_json_internal_writer_append_char(writer, '\n');
+    for (size_t index = 0U; rc == MYLITE_OK && index < value->payload.object.count; ++index) {
+        const struct json_member *member = &value->payload.object.members[index];
+
+        rc = emit_pretty_indent(writer, depth + 1U);
+        if (rc == MYLITE_OK) {
+            rc = mylite_json_internal_emit_string(writer, member->key, member->key_length);
+        }
+        if (rc == MYLITE_OK) {
+            rc =
+                mylite_json_internal_writer_append_text(writer, ": ", json_member_separator_length);
+        }
+        if (rc == MYLITE_OK) {
+            rc = emit_pretty_value(writer, member->value, depth + 1U);
+        }
+        if (rc == MYLITE_OK && index + 1U < value->payload.object.count) {
+            rc = mylite_json_internal_writer_append_char(writer, ',');
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_json_internal_writer_append_char(writer, '\n');
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = emit_pretty_indent(writer, depth);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_json_internal_writer_append_char(writer, '}');
+    }
+    return rc;
+}
+
+static int emit_pretty_indent(struct json_writer *writer, size_t depth) {
+    if (depth > SIZE_MAX / json_pretty_indent_width) {
+        return MYLITE_NOMEM;
+    }
+    for (size_t index = 0U; index < depth * json_pretty_indent_width; ++index) {
+        int rc = mylite_json_internal_writer_append_char(writer, ' ');
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    return MYLITE_OK;
 }
 
 static int emit_value_start(

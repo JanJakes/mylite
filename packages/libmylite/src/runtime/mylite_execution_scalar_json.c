@@ -137,12 +137,22 @@ static int finish_json_length_scalar_result(
     int rc,
     const struct mylite_json_normalize_result *result
 );
+static int finish_json_depth_scalar_result(
+    struct mylite_db *database,
+    int rc,
+    const struct mylite_json_normalize_result *result
+);
 static int finish_json_keys_scalar_result(
     struct mylite_db *database,
     int rc,
     const struct mylite_json_normalize_result *result
 );
 static int finish_json_type_scalar_result(
+    struct mylite_db *database,
+    int rc,
+    const struct mylite_json_normalize_result *result
+);
+static int finish_json_pretty_scalar_result(
     struct mylite_db *database,
     int rc,
     const struct mylite_json_normalize_result *result
@@ -951,6 +961,64 @@ int mylite_execution_scalar_json_length_function_value(
     return rc;
 }
 
+int mylite_execution_scalar_json_depth_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct session_scalar_cell document_cell = {0};
+    char *owned_document = NULL;
+    const char *document = NULL;
+    size_t document_length = 0U;
+    int64_t depth = 0;
+    bool document_is_null = false;
+    struct mylite_json_normalize_result result = {0};
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_JSON_DEPTH_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        mylite_execution_set_native_function_parameter_count_error(database, "JSON_DEPTH");
+        return MYLITE_ERROR;
+    }
+
+    rc = json_introspection_scalar_argument(
+        database,
+        mylite_execution_child_at(expression, 0U),
+        &document_cell,
+        "JSON_DEPTH",
+        &owned_document,
+        &document,
+        &document_length,
+        &document_is_null
+    );
+    if (rc == MYLITE_OK && document_is_null) {
+        out_cell->value = NULL;
+    } else if (rc == MYLITE_OK) {
+        rc = mylite_json_depth(document, document_length, &depth, &result);
+        rc = finish_json_depth_scalar_result(database, rc, &result);
+        if (rc == MYLITE_OK) {
+            int written =
+                snprintf(out_cell->integer_text, sizeof(out_cell->integer_text), "%" PRId64, depth);
+
+            if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+                mylite_execution_set_runtime_error(database, "failed to format JSON_DEPTH() value");
+                rc = MYLITE_ERROR;
+            } else {
+                out_cell->value = out_cell->integer_text;
+            }
+        }
+    }
+
+    free(owned_document);
+    mylite_execution_session_scalar_cell_deinit(&document_cell);
+    return rc;
+}
+
 int mylite_execution_scalar_json_keys_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -1087,6 +1155,67 @@ int mylite_execution_scalar_json_type_function_value(
         }
     }
 
+    free(owned_document);
+    mylite_execution_session_scalar_cell_deinit(&document_cell);
+    return rc;
+}
+
+int mylite_execution_scalar_json_pretty_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct session_scalar_cell document_cell = {0};
+    char *owned_document = NULL;
+    char *result_text = NULL;
+    const char *document = NULL;
+    size_t document_length = 0U;
+    size_t result_text_length = 0U;
+    bool document_is_null = false;
+    struct mylite_json_normalize_result result = {0};
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_JSON_PRETTY_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        mylite_execution_set_native_function_parameter_count_error(database, "JSON_PRETTY");
+        return MYLITE_ERROR;
+    }
+
+    rc = json_introspection_scalar_argument(
+        database,
+        mylite_execution_child_at(expression, 0U),
+        &document_cell,
+        "JSON_PRETTY",
+        &owned_document,
+        &document,
+        &document_length,
+        &document_is_null
+    );
+    if (rc == MYLITE_OK && document_is_null) {
+        out_cell->value = NULL;
+    } else if (rc == MYLITE_OK) {
+        rc = mylite_json_pretty(
+            document,
+            document_length,
+            &result_text,
+            &result_text_length,
+            &result
+        );
+        rc = finish_json_pretty_scalar_result(database, rc, &result);
+        if (rc == MYLITE_OK) {
+            (void)result_text_length;
+            out_cell->owned_text = result_text;
+            out_cell->value = out_cell->owned_text;
+            result_text = NULL;
+        }
+    }
+
+    free(result_text);
     free(owned_document);
     mylite_execution_session_scalar_cell_deinit(&document_cell);
     return rc;
@@ -1983,6 +2112,32 @@ static int finish_json_length_scalar_result(
     return MYLITE_ERROR;
 }
 
+static int finish_json_depth_scalar_result(
+    struct mylite_db *database,
+    int rc,
+    const struct mylite_json_normalize_result *result
+) {
+    if (rc == MYLITE_OK) {
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_NOMEM) {
+        mylite_execution_set_nomem_error(database);
+        return rc;
+    }
+    if (result != NULL && result->status == MYLITE_JSON_NORMALIZE_UNSUPPORTED) {
+        mylite_execution_set_unsupported_error(
+            database,
+            "JSON_DEPTH() document shape is not supported"
+        );
+        return MYLITE_ERROR;
+    }
+    mylite_execution_set_invalid_json_function_text_error(
+        database,
+        result == NULL ? 0U : result->position
+    );
+    return MYLITE_ERROR;
+}
+
 static int finish_json_keys_scalar_result(
     struct mylite_db *database,
     int rc,
@@ -2025,6 +2180,32 @@ static int finish_json_type_scalar_result(
         mylite_execution_set_unsupported_error(
             database,
             "JSON_TYPE() document shape is not supported"
+        );
+        return MYLITE_ERROR;
+    }
+    mylite_execution_set_invalid_json_function_text_error(
+        database,
+        result == NULL ? 0U : result->position
+    );
+    return MYLITE_ERROR;
+}
+
+static int finish_json_pretty_scalar_result(
+    struct mylite_db *database,
+    int rc,
+    const struct mylite_json_normalize_result *result
+) {
+    if (rc == MYLITE_OK) {
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_NOMEM) {
+        mylite_execution_set_nomem_error(database);
+        return rc;
+    }
+    if (result != NULL && result->status == MYLITE_JSON_NORMALIZE_UNSUPPORTED) {
+        mylite_execution_set_unsupported_error(
+            database,
+            "JSON_PRETTY() document shape is not supported"
         );
         return MYLITE_ERROR;
     }

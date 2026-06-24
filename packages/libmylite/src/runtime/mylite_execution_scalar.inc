@@ -299,6 +299,11 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_JSON_LENGTH_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "JSON_LENGTH");
         return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_DEPTH_FUNCTION:
+        return mylite_execution_scalar_json_depth_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_JSON_DEPTH_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_DEPTH");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_JSON_KEYS_FUNCTION:
         return mylite_execution_scalar_json_keys_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_JSON_KEYS_ARGUMENT_COUNT_ERROR:
@@ -308,6 +313,11 @@ static int session_scalar_value(
         return mylite_execution_scalar_json_type_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "JSON_TYPE");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_PRETTY_FUNCTION:
+        return mylite_execution_scalar_json_pretty_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_JSON_PRETTY_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_PRETTY");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_JSON_SET_FUNCTION:
         return mylite_execution_scalar_json_set_function_value(database, expression, out_cell);

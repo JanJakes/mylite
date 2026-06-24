@@ -780,11 +780,13 @@ static bool map_keyword_token(
         {"JSON_ARRAY", MYLITE_SQL_PARSE_JSON_ARRAY},
         {"JSON_CONTAINS", MYLITE_SQL_PARSE_JSON_CONTAINS},
         {"JSON_CONTAINS_PATH", MYLITE_SQL_PARSE_JSON_CONTAINS_PATH},
+        {"JSON_DEPTH", MYLITE_SQL_PARSE_JSON_DEPTH},
         {"JSON_EXTRACT", MYLITE_SQL_PARSE_JSON_EXTRACT},
         {"JSON_INSERT", MYLITE_SQL_PARSE_JSON_INSERT},
         {"JSON_KEYS", MYLITE_SQL_PARSE_JSON_KEYS},
         {"JSON_LENGTH", MYLITE_SQL_PARSE_JSON_LENGTH},
         {"JSON_OBJECT", MYLITE_SQL_PARSE_JSON_OBJECT},
+        {"JSON_PRETTY", MYLITE_SQL_PARSE_JSON_PRETTY},
         {"JSON_QUOTE", MYLITE_SQL_PARSE_JSON_QUOTE},
         {"JSON_REMOVE", MYLITE_SQL_PARSE_JSON_REMOVE},
         {"JSON_REPLACE", MYLITE_SQL_PARSE_JSON_REPLACE},
@@ -1535,6 +1537,8 @@ static bool map_keyword_index(unsigned int keyword_index, int *out_parser_token)
         [888U] = MYLITE_SQL_PARSE_YEAR,                /* YEAR */
         [889U] = MYLITE_SQL_PARSE_YEARWEEK,            /* YEARWEEK */
         [890U] = MYLITE_SQL_PARSE_YEAR_MONTH,          /* YEAR_MONTH */
+        [894U] = MYLITE_SQL_PARSE_JSON_DEPTH,          /* JSON_DEPTH */
+        [895U] = MYLITE_SQL_PARSE_JSON_PRETTY,         /* JSON_PRETTY */
     };
     if (keyword_index < sizeof(keyword_parser_tokens) / sizeof(keyword_parser_tokens[0]) &&
         keyword_parser_tokens[keyword_index] != 0) {

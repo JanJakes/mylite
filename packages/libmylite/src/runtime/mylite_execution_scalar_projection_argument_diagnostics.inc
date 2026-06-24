@@ -188,10 +188,14 @@ static const char *argument_count_error_node_function_name(
         return "JSON_CONTAINS_PATH";
     case MYLITE_SQL_AST_JSON_LENGTH_ARGUMENT_COUNT_ERROR:
         return "JSON_LENGTH";
+    case MYLITE_SQL_AST_JSON_DEPTH_ARGUMENT_COUNT_ERROR:
+        return "JSON_DEPTH";
     case MYLITE_SQL_AST_JSON_KEYS_ARGUMENT_COUNT_ERROR:
         return "JSON_KEYS";
     case MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR:
         return "JSON_TYPE";
+    case MYLITE_SQL_AST_JSON_PRETTY_ARGUMENT_COUNT_ERROR:
+        return "JSON_PRETTY";
     case MYLITE_SQL_AST_JSON_SET_ARGUMENT_COUNT_ERROR:
         return "JSON_SET";
     case MYLITE_SQL_AST_JSON_REPLACE_ARGUMENT_COUNT_ERROR:

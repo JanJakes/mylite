@@ -117,9 +117,34 @@ expect_output \
 "JSON_LENGTH(NULL, 'bad');" \
     "$DATABASE"
 
+depth_expected=$(cat <<EXPECTED
+NULL	1	1	1	1	1	2	2	3	4
+EXPECTED
+)
+expect_output \
+    "literal JSON_DEPTH values" \
+    "$depth_expected" \
+    "SELECT JSON_DEPTH(NULL), JSON_DEPTH('{}'), JSON_DEPTH('[]'), JSON_DEPTH('true'), "\
+"JSON_DEPTH('123'), JSON_DEPTH('\"x\"'), JSON_DEPTH('[10,20]'), "\
+"JSON_DEPTH('[[],{}]'), JSON_DEPTH('[10,{\"a\":20}]'), "\
+"JSON_DEPTH('{\"a\":{\"b\":[1]}}');" \
+    "$DATABASE"
+
+pretty_expected=$(cat <<EXPECTED
+313233	7B0A20202261223A20322C0A20202262223A20310A7D	5B0A2020312C0A20207B0A202020202261223A205B0A202020202020747275652C0A20202020202066616C73652C0A2020202020206E756C6C2C0A2020202020202278220A202020205D0A20207D0A5D	7B7D	NULL
+EXPECTED
+)
+expect_output \
+    "literal JSON_PRETTY values" \
+    "$pretty_expected" \
+    "SELECT HEX(JSON_PRETTY('123')), HEX(JSON_PRETTY('{\"b\":1,\"a\":2}')), "\
+"HEX(JSON_PRETTY('[1,{\"a\":[true,false,null,\"x\"]}]')), "\
+"HEX(JSON_PRETTY('{}')), HEX(JSON_PRETTY(NULL));" \
+    "$DATABASE"
+
 table_expected=$(cat <<EXPECTED
-1	OBJECT	2	ARRAY	2	2	NULL
-2	NULL	NULL	NULL	NULL	NULL	NULL
+1	OBJECT	2	3	7B0A20202263223A20330A7D	ARRAY	2	2	NULL
+2	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
 EXPECTED
 )
 expect_output \
@@ -128,20 +153,24 @@ expect_output \
     "CREATE TABLE t(id INT, j JSON, v VARCHAR(100)); "\
 "INSERT INTO t VALUES (1, '{\"a\":[10,true],\"b\":null}', '{\"x\":[1,2]}'), "\
 "(2, NULL, NULL); "\
-"SELECT id, JSON_TYPE(j), JSON_LENGTH(j), JSON_TYPE(JSON_EXTRACT(j,'$.a')), "\
-"JSON_LENGTH(JSON_EXTRACT(j,'$.a')), JSON_LENGTH(v, '$.x'), JSON_LENGTH(j, NULL) "\
+"UPDATE t SET j = '{\"a\":[10,true],\"b\":{\"c\":3}}' WHERE id = 1; "\
+"SELECT id, JSON_TYPE(j), JSON_LENGTH(j), JSON_DEPTH(j), "\
+"HEX(JSON_PRETTY(JSON_EXTRACT(j,'$.b'))), JSON_TYPE(JSON_EXTRACT(j,'$.a')), "\
+"JSON_LENGTH(JSON_EXTRACT(j,'$.a')), JSON_DEPTH(JSON_EXTRACT(j,'$.a')), "\
+"JSON_DEPTH(NULL) "\
 "FROM t ORDER BY id;" \
     "$DATABASE"
 
 labels_expected=$(cat <<EXPECTED
-jt	jl
-OBJECT	2
+jt	jl	jd	jp
+OBJECT	2	3	7B0A20202261223A20310A7D
 EXPECTED
 )
 expect_output_with_headers \
     "labels and aliases" \
     "$labels_expected" \
     "SELECT JSON_TYPE('{\"a\":1}') AS jt, JSON_LENGTH('{\"a\":1,\"b\":2}') AS jl "\
+" , JSON_DEPTH('[1,[2]]') AS jd, HEX(JSON_PRETTY('{\"a\":1}')) AS jp "\
 "FROM DUAL;" \
     "$DATABASE"
 
@@ -189,6 +218,38 @@ expect_error \
     "$DATABASE"
 
 expect_error \
+    "JSON_DEPTH zero arguments" \
+    1582 \
+    "42000" \
+    "Incorrect parameter count" \
+    "SELECT JSON_DEPTH();" \
+    "$DATABASE"
+
+expect_error \
+    "JSON_DEPTH many arguments" \
+    1582 \
+    "42000" \
+    "Incorrect parameter count" \
+    "SELECT JSON_DEPTH('{}', '$');" \
+    "$DATABASE"
+
+expect_error \
+    "JSON_PRETTY zero arguments" \
+    1582 \
+    "42000" \
+    "Incorrect parameter count" \
+    "SELECT JSON_PRETTY();" \
+    "$DATABASE"
+
+expect_error \
+    "JSON_PRETTY many arguments" \
+    1582 \
+    "42000" \
+    "Incorrect parameter count" \
+    "SELECT JSON_PRETTY('{}', '$');" \
+    "$DATABASE"
+
+expect_error \
     "JSON_TYPE non-json scalar" \
     3146 \
     "22032" \
@@ -205,6 +266,22 @@ expect_error \
     "$DATABASE"
 
 expect_error \
+    "JSON_DEPTH non-json scalar" \
+    3146 \
+    "22032" \
+    "Invalid data type for JSON data" \
+    "SELECT JSON_DEPTH(1);" \
+    "$DATABASE"
+
+expect_error \
+    "JSON_PRETTY non-json scalar" \
+    3146 \
+    "22032" \
+    "Invalid data type for JSON data" \
+    "SELECT JSON_PRETTY(1);" \
+    "$DATABASE"
+
+expect_error \
     "JSON_TYPE invalid text" \
     3141 \
     "22032" \
@@ -218,6 +295,22 @@ expect_error \
     "22032" \
     "Invalid JSON text" \
     "SELECT JSON_LENGTH('bad');" \
+    "$DATABASE"
+
+expect_error \
+    "JSON_DEPTH invalid text" \
+    3141 \
+    "22032" \
+    "Invalid JSON text" \
+    "SELECT JSON_DEPTH('bad');" \
+    "$DATABASE"
+
+expect_error \
+    "JSON_PRETTY invalid text" \
+    3141 \
+    "22032" \
+    "Invalid JSON text" \
+    "SELECT JSON_PRETTY('bad');" \
     "$DATABASE"
 
 expect_error \
@@ -242,6 +335,22 @@ expect_error \
     "22032" \
     "Cannot create a JSON value from a string with CHARACTER SET 'binary'" \
     "SELECT JSON_LENGTH(CAST('{\"a\":1}' AS BINARY));" \
+    "$DATABASE"
+
+expect_error \
+    "JSON_DEPTH binary input" \
+    3144 \
+    "22032" \
+    "Cannot create a JSON value from a string with CHARACTER SET 'binary'" \
+    "SELECT JSON_DEPTH(CAST('{\"a\":1}' AS BINARY));" \
+    "$DATABASE"
+
+expect_error \
+    "JSON_PRETTY binary input" \
+    3144 \
+    "22032" \
+    "Cannot create a JSON value from a string with CHARACTER SET 'binary'" \
+    "SELECT JSON_PRETTY(CAST('{\"a\":1}' AS BINARY));" \
     "$DATABASE"
 
 expect_error \

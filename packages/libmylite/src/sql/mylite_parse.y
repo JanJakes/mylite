@@ -8562,6 +8562,10 @@ row_scalar_json_predicate_expression(A) ::= JSON_LENGTH(T) LPAREN expression(B) 
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_JSON_LENGTH_FUNCTION, B, C, R);
 }
+row_scalar_json_predicate_expression(A) ::= JSON_DEPTH(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_DEPTH_FUNCTION, B, R);
+}
 row_scalar_json_predicate_expression(A) ::= JSON_TYPE(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_JSON_TYPE_FUNCTION, B, R);
@@ -10412,6 +10416,10 @@ expression(A) ::= JSON_LENGTH(T) LPAREN expression(B) COMMA expression(C) RPAREN
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_JSON_LENGTH_FUNCTION, B, C, R);
 }
+expression(A) ::= JSON_DEPTH(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_DEPTH_FUNCTION, B, R);
+}
 expression(A) ::= JSON_KEYS(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_JSON_KEYS_FUNCTION, B, R);
@@ -10423,6 +10431,10 @@ expression(A) ::= JSON_KEYS(T) LPAREN expression(B) COMMA expression(C) RPAREN(R
 expression(A) ::= JSON_TYPE(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_JSON_TYPE_FUNCTION, B, R);
+}
+expression(A) ::= JSON_PRETTY(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_PRETTY_FUNCTION, B, R);
 }
 expression(A) ::= JSON_QUOTE(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
@@ -11465,6 +11477,15 @@ expression(A) ::= JSON_LENGTH(T) LPAREN expression(B) COMMA expression(C) COMMA
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_JSON_LENGTH_ARGUMENT_COUNT_ERROR, D, R);
 }
+expression(A) ::= JSON_DEPTH(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_DEPTH_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= JSON_DEPTH(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_DEPTH_ARGUMENT_COUNT_ERROR, C, R);
+}
 expression(A) ::= JSON_KEYS(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_JSON_KEYS_ARGUMENT_COUNT_ERROR, NULL, R);
@@ -11484,6 +11505,15 @@ expression(A) ::= JSON_TYPE(T) LPAREN expression(B) COMMA function_argument_list
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= JSON_PRETTY(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_PRETTY_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= JSON_PRETTY(T) LPAREN expression(B) COMMA function_argument_list(C) RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_PRETTY_ARGUMENT_COUNT_ERROR, C, R);
 }
 expression(A) ::= JSON_QUOTE(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -13171,10 +13201,16 @@ identifier(A) ::= JSON_VALUE(T). {
 identifier(A) ::= JSON_LENGTH(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= JSON_DEPTH(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= JSON_KEYS(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_TYPE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= JSON_PRETTY(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_QUOTE(T). {

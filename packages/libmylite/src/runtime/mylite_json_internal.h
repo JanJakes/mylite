@@ -22,6 +22,7 @@ enum {
     json_initial_container_capacity = 4,
     json_writer_initial_capacity = 32,
     json_unicode_escape_digit_count = 4,
+    json_pretty_indent_width = 2,
     json_signed_int64_digit_count = 19,
     json_max_nesting_depth = 100,
     json_true_literal_length = 4,
@@ -114,6 +115,7 @@ enum json_mutation_mode {
 
 const char *mylite_json_internal_value_type_name(const struct json_value *value);
 int mylite_json_internal_value_shallow_length(const struct json_value *value, int64_t *out_length);
+int mylite_json_internal_value_depth(const struct json_value *value, int64_t *out_depth);
 int mylite_json_internal_object_append_member(
     struct json_object *object,
     char *key,
@@ -147,6 +149,10 @@ struct json_value *mylite_json_internal_array_index_value_mutable(
     size_t index
 );
 int mylite_json_internal_emit_value(struct json_writer *writer, const struct json_value *value);
+int mylite_json_internal_emit_pretty_value(
+    struct json_writer *writer,
+    const struct json_value *value
+);
 int mylite_json_internal_emit_object_keys(
     struct json_writer *writer,
     const struct json_object *object

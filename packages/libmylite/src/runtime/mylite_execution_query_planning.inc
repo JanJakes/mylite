@@ -596,6 +596,7 @@ static int row_scalar_collate_base_charset(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_PRETTY:
     case PLANNED_ROW_SCALAR_EXPRESSION_ICU_VERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE:
     case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
@@ -638,6 +639,7 @@ static int row_scalar_collate_base_charset(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_DEPTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
@@ -3483,10 +3485,14 @@ static bool is_row_scalar_json_expression(const struct mylite_sql_ast_node *expr
     case MYLITE_SQL_AST_JSON_VALUE_FUNCTION:
     case MYLITE_SQL_AST_JSON_LENGTH_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_JSON_DEPTH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_DEPTH_FUNCTION:
     case MYLITE_SQL_AST_JSON_KEYS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_KEYS_FUNCTION:
     case MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_TYPE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_PRETTY_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_PRETTY_FUNCTION:
     case MYLITE_SQL_AST_JSON_SET_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_SET_FUNCTION:
     case MYLITE_SQL_AST_JSON_INSERT_ARGUMENT_COUNT_ERROR:
@@ -3610,6 +3616,20 @@ static int plan_row_scalar_json_expression(
             column_diagnostic_context,
             out_expression
         );
+    case MYLITE_SQL_AST_JSON_DEPTH_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_DEPTH");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_DEPTH_FUNCTION:
+        return plan_row_scalar_json_depth_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            column_diagnostic_context,
+            out_expression
+        );
     case MYLITE_SQL_AST_JSON_KEYS_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "JSON_KEYS");
         return MYLITE_ERROR;
@@ -3629,6 +3649,20 @@ static int plan_row_scalar_json_expression(
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_JSON_TYPE_FUNCTION:
         return plan_row_scalar_json_type_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            column_diagnostic_context,
+            out_expression
+        );
+    case MYLITE_SQL_AST_JSON_PRETTY_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_PRETTY");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_PRETTY_FUNCTION:
+        return plan_row_scalar_json_pretty_expression(
             database,
             expression,
             has_source,

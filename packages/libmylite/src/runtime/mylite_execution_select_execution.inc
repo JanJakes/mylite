@@ -538,6 +538,18 @@ static bool map_json_extract_row_scalar_step_error(
         set_unsupported_error(database, "JSON_LENGTH() path or document shape is not supported");
         return true;
     }
+    if (strcmp(message, "Invalid data type for JSON data in JSON_DEPTH()") == 0) {
+        set_invalid_json_data_type_error(database, "JSON_DEPTH");
+        return true;
+    }
+    if (strcmp(message, "Invalid JSON text in JSON_DEPTH()") == 0) {
+        set_invalid_json_function_text_error(database, 0U);
+        return true;
+    }
+    if (strcmp(message, "Unsupported JSON document in JSON_DEPTH()") == 0) {
+        set_unsupported_error(database, "JSON_DEPTH() document shape is not supported");
+        return true;
+    }
     if (strcmp(message, "Invalid data type for JSON data in JSON_KEYS()") == 0) {
         set_invalid_json_data_type_error(database, "JSON_KEYS");
         return true;
@@ -686,6 +698,18 @@ static bool map_json_type_row_scalar_step_error(struct mylite_db *database, cons
     }
     if (strcmp(message, "Unsupported JSON document in JSON_TYPE()") == 0) {
         set_unsupported_error(database, "JSON_TYPE() document shape is not supported");
+        return true;
+    }
+    if (strcmp(message, "Invalid data type for JSON data in JSON_PRETTY()") == 0) {
+        set_invalid_json_data_type_error(database, "JSON_PRETTY");
+        return true;
+    }
+    if (strcmp(message, "Invalid JSON text in JSON_PRETTY()") == 0) {
+        set_invalid_json_function_text_error(database, 0U);
+        return true;
+    }
+    if (strcmp(message, "Unsupported JSON document in JSON_PRETTY()") == 0) {
+        set_unsupported_error(database, "JSON_PRETTY() document shape is not supported");
         return true;
     }
     if (strcmp(message, "Incorrect type for argument to JSON_UNQUOTE()") == 0) {
@@ -1870,6 +1894,7 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_DEPTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_INSTR:
@@ -2175,6 +2200,7 @@ static int populate_row_scalar_expression_result_column_descriptor(
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_KEYS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_PRETTY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SET:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:

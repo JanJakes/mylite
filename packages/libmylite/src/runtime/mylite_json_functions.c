@@ -127,8 +127,10 @@ static int append_json_value_invalid_document_warning(
     sqlite3_context *context,
     const struct mylite_json_normalize_result *result
 );
+static void json_depth_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_keys_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_length_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void json_pretty_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_quote_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_set_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_insert_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
@@ -349,12 +351,40 @@ int mylite_sqlite_register_json_functions(sqlite3 *sqlite) {
         },
         {
             .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_json_depth",
+            .argument_count = 1,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = NULL,
+            .scalar_callback = json_depth_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
             .name = "_mylite_json_keys",
             .argument_count = -1,
             .text_representation =
                 SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
             .application_data = NULL,
             .scalar_callback = json_keys_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_json_pretty",
+            .argument_count = 1,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = NULL,
+            .scalar_callback = json_pretty_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
             .value_callback = NULL,
@@ -1044,6 +1074,56 @@ static void json_length_sqlite_callback(sqlite3_context *context, int argc, sqli
     sqlite3_result_int64(context, (sqlite3_int64)length);
 }
 
+static void json_depth_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    const unsigned char *document = NULL;
+    int document_length = 0;
+    int64_t depth = 0;
+    struct mylite_json_normalize_result normalize_result = {0};
+    int rc = MYLITE_OK;
+
+    if (context == NULL || argc != 1 || argv == NULL || argv[0] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite JSON_DEPTH callback", -1);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) != SQLITE_TEXT) {
+        sqlite3_result_error(context, "Invalid data type for JSON data in JSON_DEPTH()", -1);
+        return;
+    }
+
+    document = sqlite3_value_text(argv[0]);
+    document_length = sqlite3_value_bytes(argv[0]);
+    if (document == NULL || document_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+
+    rc = mylite_json_depth(
+        (const char *)document,
+        (size_t)document_length,
+        &depth,
+        &normalize_result
+    );
+    if (rc == MYLITE_NOMEM) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    if (rc != MYLITE_OK) {
+        if (normalize_result.status == MYLITE_JSON_NORMALIZE_UNSUPPORTED) {
+            sqlite3_result_error(context, "Unsupported JSON document in JSON_DEPTH()", -1);
+        } else if (normalize_result.status == MYLITE_JSON_NORMALIZE_INVALID) {
+            sqlite3_result_error(context, "Invalid JSON text in JSON_DEPTH()", -1);
+        } else {
+            sqlite3_result_error(context, "MyLite JSON_DEPTH failed", -1);
+        }
+        return;
+    }
+    sqlite3_result_int64(context, (sqlite3_int64)depth);
+}
+
 static void json_keys_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
     struct json_keys_sqlite_arguments arguments = {0};
     char *result = NULL;
@@ -1204,6 +1284,64 @@ static void json_type_sqlite_callback(sqlite3_context *context, int argc, sqlite
         return;
     }
     sqlite3_result_text(context, type, -1, SQLITE_TRANSIENT);
+}
+
+static void json_pretty_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    const unsigned char *document = NULL;
+    char *result = NULL;
+    int document_length = 0;
+    size_t result_length = 0U;
+    struct mylite_json_normalize_result normalize_result = {0};
+    int rc = MYLITE_OK;
+
+    if (context == NULL || argc != 1 || argv == NULL || argv[0] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite JSON_PRETTY callback", -1);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) != SQLITE_TEXT) {
+        sqlite3_result_error(context, "Invalid data type for JSON data in JSON_PRETTY()", -1);
+        return;
+    }
+
+    document = sqlite3_value_text(argv[0]);
+    document_length = sqlite3_value_bytes(argv[0]);
+    if (document == NULL || document_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+
+    rc = mylite_json_pretty(
+        (const char *)document,
+        (size_t)document_length,
+        &result,
+        &result_length,
+        &normalize_result
+    );
+    if (rc == MYLITE_NOMEM) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    if (rc != MYLITE_OK || result == NULL) {
+        free(result);
+        if (normalize_result.status == MYLITE_JSON_NORMALIZE_UNSUPPORTED) {
+            sqlite3_result_error(context, "Unsupported JSON document in JSON_PRETTY()", -1);
+        } else if (normalize_result.status == MYLITE_JSON_NORMALIZE_INVALID) {
+            sqlite3_result_error(context, "Invalid JSON text in JSON_PRETTY()", -1);
+        } else {
+            sqlite3_result_error(context, "MyLite JSON_PRETTY failed", -1);
+        }
+        return;
+    }
+    if (result_length > (size_t)INT_MAX) {
+        free(result);
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    sqlite3_result_text(context, result, (int)result_length, free);
 }
 
 static void json_quote_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {

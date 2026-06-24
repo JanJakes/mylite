@@ -144,6 +144,91 @@ int mylite_json_type(
     return rc;
 }
 
+int mylite_json_depth(
+    const char *text,
+    size_t text_length,
+    int64_t *out_depth,
+    struct mylite_json_normalize_result *out_result
+) {
+    struct json_parser parser = {
+        .text = text,
+        .length = text_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_value value = {0};
+    int rc = MYLITE_OK;
+
+    if (out_depth == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_depth = 0;
+    *out_result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_INVALID,
+        .position = 0U,
+    };
+    if (text == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_json_internal_parse_document(&parser, &value);
+    *out_result = parser.result;
+    if (rc == MYLITE_OK) {
+        rc = mylite_json_internal_value_depth(&value, out_depth);
+    }
+
+    mylite_json_internal_value_deinit(&value);
+    return rc;
+}
+
+int mylite_json_pretty(
+    const char *text,
+    size_t text_length,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+) {
+    struct json_parser parser = {
+        .text = text,
+        .length = text_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_value value = {0};
+    struct json_writer writer = {0};
+    int rc = MYLITE_OK;
+
+    if (out_text == NULL || out_text_length == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_INVALID,
+        .position = 0U,
+    };
+    if (text == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_json_internal_parse_document(&parser, &value);
+    if (rc == MYLITE_OK) {
+        rc = mylite_json_internal_emit_pretty_value(&writer, &value);
+    }
+    if (rc == MYLITE_OK) {
+        *out_text_length = writer.length;
+        *out_text = mylite_json_internal_writer_take(&writer);
+        if (*out_text == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    *out_result = parser.result;
+    mylite_json_internal_value_deinit(&value);
+    mylite_json_internal_writer_deinit(&writer);
+    return rc;
+}
+
 int mylite_json_length(
     const char *text,
     size_t text_length,

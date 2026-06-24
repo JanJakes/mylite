@@ -315,6 +315,12 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_DEPTH:
+        return bind_row_scalar_json_depth_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_KEYS:
         return bind_row_scalar_json_keys_expression_parameters(
             statement,
@@ -323,6 +329,12 @@ static int bind_row_scalar_expression_parameters(
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
         return bind_row_scalar_json_type_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_PRETTY:
+        return bind_row_scalar_json_pretty_expression_parameters(
             statement,
             expression,
             parameter_index

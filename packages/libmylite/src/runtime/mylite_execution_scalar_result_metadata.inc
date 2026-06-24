@@ -334,6 +334,7 @@ static int populate_scalar_function_result_column_descriptor(
         return MYLITE_OK;
     case MYLITE_SQL_AST_JSON_VALID_FUNCTION:
     case MYLITE_SQL_AST_JSON_LENGTH_FUNCTION:
+    case MYLITE_SQL_AST_JSON_DEPTH_FUNCTION:
     case MYLITE_SQL_AST_JSON_CONTAINS_FUNCTION:
     case MYLITE_SQL_AST_JSON_CONTAINS_PATH_FUNCTION:
     case MYLITE_SQL_AST_IS_UUID_FUNCTION:
@@ -492,6 +493,7 @@ static int populate_scalar_function_result_column_descriptor(
         return MYLITE_OK;
     case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
     case MYLITE_SQL_AST_JSON_KEYS_FUNCTION:
+    case MYLITE_SQL_AST_JSON_PRETTY_FUNCTION:
     case MYLITE_SQL_AST_JSON_SET_FUNCTION:
     case MYLITE_SQL_AST_JSON_INSERT_FUNCTION:
     case MYLITE_SQL_AST_JSON_REPLACE_FUNCTION:

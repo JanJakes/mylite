@@ -1233,7 +1233,9 @@ bool mylite_sql_keyword_lookup(
         {"YEAR_MONTH", MYLITE_SQL_KEYWORD_RESERVED},
         {"ZEROFILL", MYLITE_SQL_KEYWORD_RESERVED},
         {"ZONE", 0U},
-        {"_FILENAME", MYLITE_SQL_KEYWORD_RESERVED}
+        {"_FILENAME", MYLITE_SQL_KEYWORD_RESERVED},
+        {"JSON_DEPTH", 0U},
+        {"JSON_PRETTY", 0U}
     };
 
     if (out_result != NULL) {
@@ -3083,6 +3085,11 @@ static unsigned int lookup_hot_keyword_index(const char *text, size_t length, un
         break;
     case 10U:
         switch (first) {
+        case 'J':
+            if (compare_keyword_text(text, length, "JSON_DEPTH") == 0) {
+                return 894U;
+            }
+            break;
         case 'T':
             if (compare_keyword_text(text, length, "TABLE_NAME") == 0) {
                 return 785U;
@@ -3094,6 +3101,11 @@ static unsigned int lookup_hot_keyword_index(const char *text, size_t length, un
         break;
     case 11U:
         switch (first) {
+        case 'J':
+            if (compare_keyword_text(text, length, "JSON_PRETTY") == 0) {
+                return 895U;
+            }
+            break;
         case 'R':
             if (compare_keyword_text(text, length, "REGEXP_LIKE") == 0) {
                 return 584U;

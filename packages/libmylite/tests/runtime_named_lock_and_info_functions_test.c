@@ -92,6 +92,7 @@ static int test_info_and_benchmark_functions(void) {
     static const char *const info_values[] = {"77.1", "0", "0", NULL};
     static const char *const negative_benchmark_values[] = {NULL};
     static const char *const zero_benchmark_side_effect_values[] = {"0", NULL};
+    static const char *const repeat_benchmark_side_effect_values[] = {"0", "0", "3"};
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -138,6 +139,19 @@ static int test_info_and_benchmark_functions(void) {
             .row_count = 1U,
             .warning_count = 0U,
             .context = "zero-count BENCHMARK skips expression side effects",
+        }
+    );
+    failures += expect_query_result(
+        database,
+        "SELECT RELEASE_ALL_LOCKS(), "
+        "BENCHMARK(3, GET_LOCK('mylite_benchmark_repeat_side_effect', 0)), "
+        "RELEASE_ALL_LOCKS()",
+        (struct expected_result){
+            .values = repeat_benchmark_side_effect_values,
+            .column_count = 3U,
+            .row_count = 1U,
+            .warning_count = 0U,
+            .context = "positive-count BENCHMARK repeats expression side effects",
         }
     );
 

@@ -55,8 +55,11 @@ target identity string without linking ICU into the embedded runtime.
 does not evaluate `expr` when `count` is zero; positive counts evaluate it.
 MyLite supports scalar no-source, `DUAL`, and `DO` use where the expression is
 already admitted by the scalar evaluator. It evaluates positive-count
-expressions once for validation and side effects, then returns the MySQL-shaped
-result. It does not attempt to loop the expression for timing fidelity.
+expressions `count` times in those scalar contexts, preserving observable side
+effects and warnings for admitted expressions, then returns the MySQL-shaped
+result. Source-backed row-scalar `BENCHMARK()` remains a SQLite-callback
+compatibility surface where SQLite evaluates the operand once before calling
+MyLite's `_mylite_benchmark` callback.
 
 ## MyLite Design
 
@@ -103,5 +106,6 @@ existing unsupported-expression diagnostics.
 - Performance Schema `metadata_locks` rows for user-level locks are not
   implemented.
 - Statement-based replication warnings for locking functions are not emitted.
-- `BENCHMARK()` does not repeatedly evaluate the argument; it is a compatibility
-  acceptance and result-shape surface, not a timing harness.
+- Source-backed row-scalar `BENCHMARK()` does not repeatedly evaluate the
+  argument; it is a compatibility acceptance and result-shape surface, not a
+  timing harness.

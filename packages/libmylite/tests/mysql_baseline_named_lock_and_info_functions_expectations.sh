@@ -54,6 +54,14 @@ if [ "$benchmark_zero_side_effects" != "$expected_benchmark_zero_side_effects" ]
     exit 1
 fi
 
+benchmark_repeat_side_effects=$(run_mysql "SELECT RELEASE_ALL_LOCKS(), BENCHMARK(3, GET_LOCK('mylite_benchmark_repeat_side_effect', 0)), RELEASE_ALL_LOCKS();")
+expected_benchmark_repeat_side_effects="0	0	3"
+if [ "$benchmark_repeat_side_effects" != "$expected_benchmark_repeat_side_effects" ]; then
+    echo "unexpected BENCHMARK repeated side effects:" >&2
+    printf '%s\n' "$benchmark_repeat_side_effects" >&2
+    exit 1
+fi
+
 lock_values=$(run_mysql "SELECT CONNECTION_ID(); SELECT GET_LOCK('mylite_probe_lock', 0); SELECT GET_LOCK('mylite_probe_lock', 0); SELECT IS_FREE_LOCK('mylite_probe_lock'); SELECT IS_USED_LOCK('mylite_probe_lock'); SELECT RELEASE_LOCK('mylite_probe_lock'); SELECT IS_FREE_LOCK('mylite_probe_lock'); SELECT IS_USED_LOCK('mylite_probe_lock'); SELECT RELEASE_LOCK('mylite_probe_lock'); SELECT RELEASE_LOCK('mylite_probe_lock'); SELECT RELEASE_ALL_LOCKS();")
 connection_id=$(printf '%s\n' "$lock_values" | sed -n '1p')
 expected_lock_values="${connection_id}

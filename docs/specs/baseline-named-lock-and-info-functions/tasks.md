@@ -9,3 +9,6 @@
 - [x] Add runtime and MySQL expectation tests.
 - [x] Update compatibility docs.
 - [x] Run focused tests, full checks, review, commit, and push.
+- [x] Follow up with repeated scalar `BENCHMARK()` operand evaluation and split
+  the row-scalar timing-fidelity residual from the green scalar compatibility
+  row.

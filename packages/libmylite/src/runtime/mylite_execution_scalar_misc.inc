@@ -543,9 +543,10 @@ static int generic_benchmark_value(
         }
         return rc;
     }
-    if (count > 0) {
+    for (int64_t iteration = 0; iteration < count; ++iteration) {
         rc = session_scalar_value(database, child_at(arguments, 1U), &expression_cell);
         mylite_execution_session_scalar_cell_deinit(&expression_cell);
+        expression_cell = (struct session_scalar_cell){0};
         if (rc != MYLITE_OK) {
             return rc;
         }

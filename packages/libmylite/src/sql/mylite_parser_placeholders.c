@@ -1825,6 +1825,12 @@ static bool unlock_instance_placeholder_statement_is_supported(
 static bool change_replication_source_placeholder_statement_is_supported(
     const struct placeholder_statement_scan *scan
 );
+static bool change_replication_filter_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
+static bool replication_control_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
 static enum placeholder_statement_kind classify_drop_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );

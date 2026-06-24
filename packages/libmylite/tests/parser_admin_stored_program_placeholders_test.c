@@ -59,6 +59,8 @@ static int test_admin_noop_statement_forms(void) {
             .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT,
         },
         {.sql = "RESET MASTER", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {.sql = "RESET BINARY LOGS AND GTIDS", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {.sql = "RESET REPLICA ALL FOR CHANNEL ''", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
         {.sql = "RESET PERSIST max_connections", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
         {.sql = "FLUSH PRIVILEGES", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
         {.sql = "FLUSH STATUS", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
@@ -85,6 +87,34 @@ static int test_admin_noop_statement_forms(void) {
             .sql = "PURGE BINARY LOGS TO 'bin.000001'",
             .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT,
         },
+        {
+            .sql = "PURGE BINARY LOGS BEFORE '2000-01-01 00:00:00'",
+            .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT,
+        },
+        {.sql = "BINLOG 'AAAA'", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
+        {
+            .sql = "CHANGE REPLICATION FILTER REPLICATE_DO_DB = (wp)",
+            .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT,
+        },
+        {
+            .sql = "CHANGE REPLICATION FILTER REPLICATE_WILD_DO_TABLE = ('wp.%') "
+                   "FOR CHANNEL ''",
+            .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT,
+        },
+        {
+            .sql = "START REPLICA IO_THREAD, SQL_THREAD FOR CHANNEL ''",
+            .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT,
+        },
+        {
+            .sql = "STOP REPLICA SQL_THREAD FOR CHANNEL ''",
+            .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT,
+        },
+        {
+            .sql = "START GROUP_REPLICATION USER='u', PASSWORD='p', "
+                   "DEFAULT_AUTH='mysql_native_password'",
+            .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT,
+        },
+        {.sql = "STOP GROUP_REPLICATION", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
         {.sql = "KILL QUERY @thread_id", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
         {.sql = "CACHE INDEX t USE key_cache", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
         {.sql = "LOAD INDEX INTO CACHE t", .kind = MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT},
@@ -105,6 +135,15 @@ static int test_admin_noop_statement_forms(void) {
         "GRANT USAGE ON *.* TO 'u'@'%'; SELECT 1",
         MYLITE_SQL_PARSE_SYNTAX_ERROR,
         "admin placeholder rejects multiple statements"
+    );
+    failures +=
+        expect_parse_status("START SLAVE", MYLITE_SQL_PARSE_SYNTAX_ERROR, "removed START SLAVE");
+    failures +=
+        expect_parse_status("STOP SLAVE", MYLITE_SQL_PARSE_SYNTAX_ERROR, "removed STOP SLAVE");
+    failures += expect_parse_status(
+        "CHANGE MASTER TO MASTER_HOST='h'",
+        MYLITE_SQL_PARSE_SYNTAX_ERROR,
+        "removed CHANGE MASTER"
     );
     return failures;
 }

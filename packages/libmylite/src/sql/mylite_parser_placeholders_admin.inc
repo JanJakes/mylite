@@ -243,7 +243,9 @@ static enum placeholder_statement_kind classify_admin_noop_placeholder_statement
 ) {
     if (lock_instance_placeholder_statement_is_supported(scan) ||
         unlock_instance_placeholder_statement_is_supported(scan) ||
-        change_replication_source_placeholder_statement_is_supported(scan)) {
+        change_replication_source_placeholder_statement_is_supported(scan) ||
+        change_replication_filter_placeholder_statement_is_supported(scan) ||
+        replication_control_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
     }
     if (flush_placeholder_statement_is_supported(scan)) {

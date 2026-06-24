@@ -1003,6 +1003,31 @@ static bool change_replication_source_placeholder_statement_is_supported(
            placeholder_scan_parentheses_are_balanced(scan, 0U);
 }
 
+static bool change_replication_filter_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    return scan != NULL && !scan->has_non_trailing_semicolon && scan->token_count > 3U &&
+           placeholder_scan_token_text_equals(scan, 0U, "CHANGE") &&
+           placeholder_scan_token_text_equals(scan, 1U, "REPLICATION") &&
+           placeholder_scan_token_text_equals(scan, 2U, "FILTER") &&
+           !placeholder_scan_statement_tail_is_obviously_incomplete(scan) &&
+           placeholder_scan_parentheses_are_balanced(scan, 0U);
+}
+
+static bool replication_control_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    if (scan == NULL || scan->has_non_trailing_semicolon || scan->token_count < 2U ||
+        placeholder_scan_statement_tail_is_obviously_incomplete(scan) ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U) ||
+        (!placeholder_scan_token_text_equals(scan, 0U, "START") &&
+         !placeholder_scan_token_text_equals(scan, 0U, "STOP"))) {
+        return false;
+    }
+    return placeholder_scan_token_text_equals(scan, 1U, "REPLICA") ||
+           placeholder_scan_token_text_equals(scan, 1U, "GROUP_REPLICATION");
+}
+
 static enum placeholder_statement_kind classify_drop_placeholder_statement(
     const struct placeholder_statement_scan *scan
 ) {

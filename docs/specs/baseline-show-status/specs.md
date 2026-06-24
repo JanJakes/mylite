@@ -146,16 +146,19 @@ This phase exposes a limited common registry. Values are deterministic embedded
 placeholders unless listed otherwise. All numeric values are returned as
 decimal text. The core lifecycle rows (`Bytes_%`, `Connections`, `Compression`,
 `Prepared_stmt_count`, `Queries`, `Questions`, `Threads_%`, and `Uptime%`) and
-the `Binlog_%`, `Com_%`, `Handler_%`, `Select_%`, `Slow_%`, `Sort_%`, `Ssl_%`,
-`Table_locks_%`, `Table_open_cache_%`, and `Tc_log_%` rows mirror the MySQL
-8.4.9 row names and scope visibility for the documented placeholder subset. The
-`Created_%` and `Open%` resource rows also mirror the MySQL 8.4.9 names and
-order. These values are fixed placeholders rather than live counters.
+the `Binlog_%`, `Com_%`, `Handler_%`, `Key_%`, `Last_query_%`, `Max_%`,
+`Select_%`, `Slow_%`, `Sort_%`, `Ssl_%`, `Table_locks_%`,
+`Table_open_cache_%`, `Tc_log_%`, and `Telemetry_%` rows mirror the MySQL 8.4.9
+row names and scope visibility for the documented placeholder subset. The
+`Created_%`, `Delayed_%`, `Open%`, and other documented server/legacy scalar
+rows also mirror the MySQL 8.4.9 names and order. These values are fixed
+placeholders rather than live counters.
 
 | Variable | Default/session/LOCAL visibility | GLOBAL visibility | MyLite value |
 | --- | --- | --- | --- |
 | `Aborted_clients` | yes | yes | `0` |
 | `Aborted_connects` | yes | yes | `0` |
+| `Acl_cache_items_count` | yes | yes | `0` |
 | `Binlog_cache_disk_use` | yes | yes | `0` |
 | `Binlog_cache_use` | yes | yes | `0` |
 | `Binlog_stmt_cache_disk_use` | yes | yes | `0` |
@@ -343,6 +346,11 @@ order. These values are fixed placeholders rather than live counters.
 | `Created_tmp_disk_tables` | yes | yes | `0` |
 | `Created_tmp_files` | yes | yes | `0` |
 | `Created_tmp_tables` | yes | yes | `0` |
+| `Delayed_errors` | yes | yes | `0` |
+| `Delayed_insert_threads` | yes | yes | `0` |
+| `Delayed_writes` | yes | yes | `0` |
+| `Flush_commands` | yes | yes | `0` |
+| `Global_connection_memory` | yes | yes | `0` |
 | `Handler_commit` | yes | yes | `0` |
 | `Handler_delete` | yes | yes | `0` |
 | `Handler_discover` | yes | yes | `0` |
@@ -361,6 +369,23 @@ order. These values are fixed placeholders rather than live counters.
 | `Handler_savepoint_rollback` | yes | yes | `0` |
 | `Handler_update` | yes | yes | `0` |
 | `Handler_write` | yes | yes | `0` |
+| `Key_blocks_not_flushed` | yes | yes | `0` |
+| `Key_blocks_unused` | yes | yes | `0` |
+| `Key_blocks_used` | yes | yes | `0` |
+| `Key_read_requests` | yes | yes | `0` |
+| `Key_reads` | yes | yes | `0` |
+| `Key_write_requests` | yes | yes | `0` |
+| `Key_writes` | yes | yes | `0` |
+| `Last_query_cost` | yes | yes | `0.000000` |
+| `Last_query_partial_plans` | yes | yes | `0` |
+| `Locked_connects` | yes | yes | `0` |
+| `Max_execution_time_exceeded` | yes | yes | `0` |
+| `Max_execution_time_set` | yes | yes | `0` |
+| `Max_execution_time_set_failed` | yes | yes | `0` |
+| `Max_used_connections` | yes | yes | `1` |
+| `Max_used_connections_time` | yes | yes | `1970-01-01 00:00:00` |
+| `Not_flushed_delayed_rows` | yes | yes | `0` |
+| `Ongoing_anonymous_transaction_count` | yes | yes | `0` |
 | `Open_files` | yes | yes | `0` |
 | `Open_streams` | yes | yes | `0` |
 | `Open_table_definitions` | yes | yes | `0` |
@@ -371,11 +396,15 @@ order. These values are fixed placeholders rather than live counters.
 | `Prepared_stmt_count` | yes | yes | `0` |
 | `Queries` | yes | yes | `0` |
 | `Questions` | yes | yes | `0` |
+| `Replica_open_temp_tables` | yes | yes | `0` |
+| `Resource_group_supported` | yes | yes | `OFF` |
+| `Secondary_engine_execution_count` | yes | yes | `0` |
 | `Select_full_join` | yes | yes | `0` |
 | `Select_full_range_join` | yes | yes | `0` |
 | `Select_range` | yes | yes | `0` |
 | `Select_range_check` | yes | yes | `0` |
 | `Select_scan` | yes | yes | `0` |
+| `Slave_open_temp_tables` | yes | yes | `0` |
 | `Slow_launch_threads` | yes | yes | `0` |
 | `Slow_queries` | yes | yes | `0` |
 | `Sort_merge_passes` | yes | yes | `0` |
@@ -416,6 +445,9 @@ order. These values are fixed placeholders rather than live counters.
 | `Tc_log_max_pages_used` | yes | yes | `0` |
 | `Tc_log_page_size` | yes | yes | `0` |
 | `Tc_log_page_waits` | yes | yes | `0` |
+| `Telemetry_logs_supported` | yes | yes | `OFF` |
+| `Telemetry_metrics_supported` | yes | yes | `OFF` |
+| `Telemetry_traces_supported` | yes | yes | `OFF` |
 | `Threads_cached` | yes | yes | `0` |
 | `Threads_connected` | yes | yes | `1` |
 | `Threads_created` | yes | yes | `1` |

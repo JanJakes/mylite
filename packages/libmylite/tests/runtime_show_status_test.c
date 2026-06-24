@@ -51,6 +51,7 @@ static const char *const diagnostics_columns[diagnostics_column_count] = {
 static const struct expected_status_row expected_session_rows[] = {
     {"Aborted_clients", "0"},
     {"Aborted_connects", "0"},
+    {"Acl_cache_items_count", "0"},
     {"Binlog_cache_disk_use", "0"},
     {"Binlog_cache_use", "0"},
     {"Binlog_stmt_cache_disk_use", "0"},
@@ -238,6 +239,11 @@ static const struct expected_status_row expected_session_rows[] = {
     {"Created_tmp_disk_tables", "0"},
     {"Created_tmp_files", "0"},
     {"Created_tmp_tables", "0"},
+    {"Delayed_errors", "0"},
+    {"Delayed_insert_threads", "0"},
+    {"Delayed_writes", "0"},
+    {"Flush_commands", "0"},
+    {"Global_connection_memory", "0"},
     {"Handler_commit", "0"},
     {"Handler_delete", "0"},
     {"Handler_discover", "0"},
@@ -256,6 +262,23 @@ static const struct expected_status_row expected_session_rows[] = {
     {"Handler_savepoint_rollback", "0"},
     {"Handler_update", "0"},
     {"Handler_write", "0"},
+    {"Key_blocks_not_flushed", "0"},
+    {"Key_blocks_unused", "0"},
+    {"Key_blocks_used", "0"},
+    {"Key_read_requests", "0"},
+    {"Key_reads", "0"},
+    {"Key_write_requests", "0"},
+    {"Key_writes", "0"},
+    {"Last_query_cost", "0.000000"},
+    {"Last_query_partial_plans", "0"},
+    {"Locked_connects", "0"},
+    {"Max_execution_time_exceeded", "0"},
+    {"Max_execution_time_set", "0"},
+    {"Max_execution_time_set_failed", "0"},
+    {"Max_used_connections", "1"},
+    {"Max_used_connections_time", "1970-01-01 00:00:00"},
+    {"Not_flushed_delayed_rows", "0"},
+    {"Ongoing_anonymous_transaction_count", "0"},
     {"Open_files", "0"},
     {"Open_streams", "0"},
     {"Open_table_definitions", "0"},
@@ -266,11 +289,15 @@ static const struct expected_status_row expected_session_rows[] = {
     {"Prepared_stmt_count", "0"},
     {"Queries", "0"},
     {"Questions", "0"},
+    {"Replica_open_temp_tables", "0"},
+    {"Resource_group_supported", "OFF"},
+    {"Secondary_engine_execution_count", "0"},
     {"Select_full_join", "0"},
     {"Select_full_range_join", "0"},
     {"Select_range", "0"},
     {"Select_range_check", "0"},
     {"Select_scan", "0"},
+    {"Slave_open_temp_tables", "0"},
     {"Slow_launch_threads", "0"},
     {"Slow_queries", "0"},
     {"Sort_merge_passes", "0"},
@@ -311,6 +338,9 @@ static const struct expected_status_row expected_session_rows[] = {
     {"Tc_log_max_pages_used", "0"},
     {"Tc_log_page_size", "0"},
     {"Tc_log_page_waits", "0"},
+    {"Telemetry_logs_supported", "OFF"},
+    {"Telemetry_metrics_supported", "OFF"},
+    {"Telemetry_traces_supported", "OFF"},
     {"Threads_cached", "0"},
     {"Threads_connected", "1"},
     {"Threads_created", "1"},
@@ -434,6 +464,11 @@ static int test_show_status_values_scopes_and_filters(void) {
         {"Created_tmp_files", "0"},
         {"Created_tmp_tables", "0"},
     };
+    static const struct expected_status_row expected_delayed_rows[] = {
+        {"Delayed_errors", "0"},
+        {"Delayed_insert_threads", "0"},
+        {"Delayed_writes", "0"},
+    };
     static const struct expected_status_row expected_handler_rows[] = {
         {"Handler_commit", "0"},
         {"Handler_delete", "0"},
@@ -454,6 +489,26 @@ static int test_show_status_values_scopes_and_filters(void) {
         {"Handler_update", "0"},
         {"Handler_write", "0"},
     };
+    static const struct expected_status_row expected_key_rows[] = {
+        {"Key_blocks_not_flushed", "0"},
+        {"Key_blocks_unused", "0"},
+        {"Key_blocks_used", "0"},
+        {"Key_read_requests", "0"},
+        {"Key_reads", "0"},
+        {"Key_write_requests", "0"},
+        {"Key_writes", "0"},
+    };
+    static const struct expected_status_row expected_last_query_rows[] = {
+        {"Last_query_cost", "0.000000"},
+        {"Last_query_partial_plans", "0"},
+    };
+    static const struct expected_status_row expected_max_rows[] = {
+        {"Max_execution_time_exceeded", "0"},
+        {"Max_execution_time_set", "0"},
+        {"Max_execution_time_set_failed", "0"},
+        {"Max_used_connections", "1"},
+        {"Max_used_connections_time", "1970-01-01 00:00:00"},
+    };
     static const struct expected_status_row expected_open_rows[] = {
         {"Open_files", "0"},
         {"Open_streams", "0"},
@@ -462,6 +517,13 @@ static int test_show_status_values_scopes_and_filters(void) {
         {"Opened_files", "0"},
         {"Opened_table_definitions", "0"},
         {"Opened_tables", "0"},
+    };
+    static const struct expected_status_row expected_off_rows[] = {
+        {"Compression", "OFF"},
+        {"Resource_group_supported", "OFF"},
+        {"Telemetry_logs_supported", "OFF"},
+        {"Telemetry_metrics_supported", "OFF"},
+        {"Telemetry_traces_supported", "OFF"},
     };
     static const struct expected_status_row expected_select_rows[] = {
         {"Select_full_join", "0"},
@@ -489,6 +551,11 @@ static int test_show_status_values_scopes_and_filters(void) {
         {"Tc_log_max_pages_used", "0"},
         {"Tc_log_page_size", "0"},
         {"Tc_log_page_waits", "0"},
+    };
+    static const struct expected_status_row expected_telemetry_rows[] = {
+        {"Telemetry_logs_supported", "OFF"},
+        {"Telemetry_metrics_supported", "OFF"},
+        {"Telemetry_traces_supported", "OFF"},
     };
     static const struct expected_status_row expected_slow_rows[] = {
         {"Slow_launch_threads", "0"},
@@ -640,6 +707,33 @@ static int test_show_status_values_scopes_and_filters(void) {
         },
         "show global status questions"
     );
+    failures += expect_single_status_row(
+        database,
+        "SHOW STATUS LIKE 'Replica_open_temp_tables'",
+        (struct expected_status_row){
+            .name = "Replica_open_temp_tables",
+            .value = "0",
+        },
+        "show status replica open temp tables"
+    );
+    failures += expect_single_status_row(
+        database,
+        "SHOW STATUS LIKE 'Resource_group_supported'",
+        (struct expected_status_row){
+            .name = "Resource_group_supported",
+            .value = "OFF",
+        },
+        "show status resource group supported"
+    );
+    failures += expect_single_status_row(
+        database,
+        "SHOW STATUS LIKE 'Secondary_engine_execution_count'",
+        (struct expected_status_row){
+            .name = "Secondary_engine_execution_count",
+            .value = "0",
+        },
+        "show status secondary engine execution count"
+    );
     failures += expect_status_rows(
         database,
         "SHOW STATUS LIKE 'Threads\\_%'",
@@ -752,6 +846,47 @@ static int test_show_status_values_scopes_and_filters(void) {
         sizeof(expected_created_rows) / sizeof(expected_created_rows[0]),
         "show local status created counters"
     );
+    failures += expect_single_status_row(
+        database,
+        "SHOW STATUS LIKE 'Acl_cache_items_count'",
+        (struct expected_status_row){
+            .name = "Acl_cache_items_count",
+            .value = "0",
+        },
+        "show status acl cache items count"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS LIKE 'Delayed\\_%'",
+        expected_delayed_rows,
+        sizeof(expected_delayed_rows) / sizeof(expected_delayed_rows[0]),
+        "show status delayed counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Delayed\\_%'",
+        expected_delayed_rows,
+        sizeof(expected_delayed_rows) / sizeof(expected_delayed_rows[0]),
+        "show global status delayed counters"
+    );
+    failures += expect_single_status_row(
+        database,
+        "SHOW STATUS LIKE 'Flush_commands'",
+        (struct expected_status_row){
+            .name = "Flush_commands",
+            .value = "0",
+        },
+        "show status flush commands"
+    );
+    failures += expect_single_status_row(
+        database,
+        "SHOW STATUS LIKE 'Global_connection_memory'",
+        (struct expected_status_row){
+            .name = "Global_connection_memory",
+            .value = "0",
+        },
+        "show status global connection memory"
+    );
     failures += expect_status_rows(
         database,
         "SHOW STATUS LIKE 'Handler\\_%'",
@@ -765,6 +900,68 @@ static int test_show_status_values_scopes_and_filters(void) {
         expected_handler_rows,
         sizeof(expected_handler_rows) / sizeof(expected_handler_rows[0]),
         "show global status handler counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS LIKE 'Key\\_%'",
+        expected_key_rows,
+        sizeof(expected_key_rows) / sizeof(expected_key_rows[0]),
+        "show status key counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Key\\_%'",
+        expected_key_rows,
+        sizeof(expected_key_rows) / sizeof(expected_key_rows[0]),
+        "show global status key counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS LIKE 'Last_query\\_%'",
+        expected_last_query_rows,
+        sizeof(expected_last_query_rows) / sizeof(expected_last_query_rows[0]),
+        "show status last query counters"
+    );
+    failures += expect_single_status_row(
+        database,
+        "SHOW STATUS LIKE 'Locked_connects'",
+        (struct expected_status_row){
+            .name = "Locked_connects",
+            .value = "0",
+        },
+        "show status locked connects"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS LIKE 'Max\\_%'",
+        expected_max_rows,
+        sizeof(expected_max_rows) / sizeof(expected_max_rows[0]),
+        "show status max counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Max\\_%'",
+        expected_max_rows,
+        sizeof(expected_max_rows) / sizeof(expected_max_rows[0]),
+        "show global status max counters"
+    );
+    failures += expect_single_status_row(
+        database,
+        "SHOW STATUS LIKE 'Not_flushed_delayed_rows'",
+        (struct expected_status_row){
+            .name = "Not_flushed_delayed_rows",
+            .value = "0",
+        },
+        "show status not flushed delayed rows"
+    );
+    failures += expect_single_status_row(
+        database,
+        "SHOW STATUS LIKE 'Ongoing_anonymous_transaction_count'",
+        (struct expected_status_row){
+            .name = "Ongoing_anonymous_transaction_count",
+            .value = "0",
+        },
+        "show status ongoing anonymous transaction count"
     );
     failures += expect_status_rows(
         database,
@@ -807,6 +1004,15 @@ static int test_show_status_values_scopes_and_filters(void) {
         expected_select_rows,
         sizeof(expected_select_rows) / sizeof(expected_select_rows[0]),
         "show local status select counters"
+    );
+    failures += expect_single_status_row(
+        database,
+        "SHOW STATUS LIKE 'Slave_open_temp_tables'",
+        (struct expected_status_row){
+            .name = "Slave_open_temp_tables",
+            .value = "0",
+        },
+        "show status slave open temp tables"
     );
     failures += expect_status_rows(
         database,
@@ -873,6 +1079,20 @@ static int test_show_status_values_scopes_and_filters(void) {
     );
     failures += expect_status_rows(
         database,
+        "SHOW STATUS LIKE 'Telemetry\\_%'",
+        expected_telemetry_rows,
+        sizeof(expected_telemetry_rows) / sizeof(expected_telemetry_rows[0]),
+        "show status telemetry flags"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Telemetry\\_%'",
+        expected_telemetry_rows,
+        sizeof(expected_telemetry_rows) / sizeof(expected_telemetry_rows[0]),
+        "show global status telemetry flags"
+    );
+    failures += expect_status_rows(
+        database,
         "SHOW STATUS LIKE 'Slow\\_%'",
         expected_slow_rows,
         sizeof(expected_slow_rows) / sizeof(expected_slow_rows[0]),
@@ -908,13 +1128,11 @@ static int test_show_status_values_scopes_and_filters(void) {
         sizeof(expected_thread_rows) / sizeof(expected_thread_rows[0]),
         "show status where name like"
     );
-    failures += expect_single_status_row(
+    failures += expect_status_rows(
         database,
         "SHOW STATUS WHERE Value = 'OFF'",
-        (struct expected_status_row){
-            .name = "Compression",
-            .value = "OFF",
-        },
+        expected_off_rows,
+        sizeof(expected_off_rows) / sizeof(expected_off_rows[0]),
         "show status where value"
     );
     failures += expect_single_status_row(

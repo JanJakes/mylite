@@ -188,12 +188,12 @@ int main(void) {
 
 static int test_sys_metrics_view(void) {
     enum {
-        metrics_row_count = 267,
+        metrics_row_count = 297,
     };
 
     static const char *const count_column[] = {"COUNT(*)"};
     static const char *const count_zero[] = {"0"};
-    static const char *const metrics_row_count_value[] = {"267"};
+    static const char *const metrics_row_count_value[] = {"297"};
     static const char *const row_count_minus_one[] = {"-1"};
     static const char *const aborted_clients_row[] = {
         "aborted_clients",
@@ -237,6 +237,18 @@ static int test_sys_metrics_view(void) {
         "Global Status",
         "YES",
     };
+    static const char *const key_reads_row[] = {
+        "key_reads",
+        "0",
+        "Global Status",
+        "YES",
+    };
+    static const char *const max_used_connections_row[] = {
+        "max_used_connections",
+        "1",
+        "Global Status",
+        "YES",
+    };
     static const char *const open_tables_row[] = {
         "open_tables",
         "0",
@@ -276,6 +288,12 @@ static int test_sys_metrics_view(void) {
     static const char *const tc_log_page_waits_row[] = {
         "tc_log_page_waits",
         "0",
+        "Global Status",
+        "YES",
+    };
+    static const char *const telemetry_metrics_supported_row[] = {
+        "telemetry_metrics_supported",
+        "OFF",
         "Global Status",
         "YES",
     };
@@ -528,6 +546,30 @@ static int test_sys_metrics_view(void) {
         database,
         (struct expected_query){
             .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
+                   "WHERE Variable_name = 'key_reads'",
+            .column_names = metrics_columns,
+            .column_count = metrics_column_count,
+            .values = key_reads_row,
+            .row_count = 1U,
+            .context = "sys.metrics key counter row",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
+                   "WHERE Variable_name = 'max_used_connections'",
+            .column_names = metrics_columns,
+            .column_count = metrics_column_count,
+            .values = max_used_connections_row,
+            .row_count = 1U,
+            .context = "sys.metrics max connection row",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
                    "WHERE Variable_name = 'open_tables'",
             .column_names = metrics_columns,
             .column_count = metrics_column_count,
@@ -606,6 +648,18 @@ static int test_sys_metrics_view(void) {
             .values = tc_log_page_waits_row,
             .row_count = 1U,
             .context = "sys.metrics tc log counter row",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
+                   "WHERE Variable_name = 'telemetry_metrics_supported'",
+            .column_names = metrics_columns,
+            .column_count = metrics_column_count,
+            .values = telemetry_metrics_supported_row,
+            .row_count = 1U,
+            .context = "sys.metrics telemetry support row",
         }
     );
     failures += expect_query(

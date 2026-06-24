@@ -6,7 +6,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | --- | --- | --- |
 | `Aborted_clients` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Aborted_connects` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Acl_cache_items_count` | ❌ | Counter value or embedded zero/empty |
+| `Acl_cache_items_count` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Audit_log_current_size` | ❌ | Counter value or embedded zero/empty |
 | `Audit_log_direct_writes` | ❌ | Counter value or embedded zero/empty |
 | `Audit_log_event_max_drop_size` | ❌ | Counter value or embedded zero/empty |
@@ -219,9 +219,9 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Current_tls_crlpath` | ❌ | Counter value or embedded zero/empty |
 | `Current_tls_key` | ❌ | Counter value or embedded zero/empty |
 | `Current_tls_version` | ❌ | Counter value or embedded zero/empty |
-| `Delayed_errors` | ❌ | Counter value or embedded zero/empty |
-| `Delayed_insert_threads` | ❌ | Counter value or embedded zero/empty |
-| `Delayed_writes` | ❌ | Counter value or embedded zero/empty |
+| `Delayed_errors` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live delayed-insert lifecycle |
+| `Delayed_insert_threads` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live delayed-insert lifecycle |
+| `Delayed_writes` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live delayed-insert lifecycle |
 | `Deprecated_use_i_s_processlist_count` | ❌ | Counter value or embedded zero/empty |
 | `Deprecated_use_i_s_processlist_last_timestamp` | ❌ | Counter value or embedded zero/empty |
 | `dragnet.Status` | ❌ | Counter value or embedded zero/empty |
@@ -233,8 +233,8 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Firewall_access_granted` | ❌ | Counter value or embedded zero/empty |
 | `Firewall_access_suspicious` | ❌ | Counter value or embedded zero/empty |
 | `Firewall_cached_entries` | ❌ | Counter value or embedded zero/empty |
-| `Flush_commands` | ❌ | Counter value or embedded zero/empty |
-| `Global_connection_memory` | ❌ | Counter value or embedded zero/empty |
+| `Flush_commands` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Global_connection_memory` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live memory accounting |
 | `Gr_all_consensus_proposals_count` | ❌ | Counter value or embedded zero/empty |
 | `Gr_all_consensus_time_sum` | ❌ | Counter value or embedded zero/empty |
 | `Gr_certification_garbage_collector_count` | ❌ | Counter value or embedded zero/empty |
@@ -351,21 +351,21 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Innodb_undo_tablespaces_explicit` | ❌ | Counter value or embedded zero/empty |
 | `Innodb_undo_tablespaces_implicit` | ❌ | Counter value or embedded zero/empty |
 | `Innodb_undo_tablespaces_total` | ❌ | Counter value or embedded zero/empty |
-| `Key_blocks_not_flushed` | ❌ | Counter value or embedded zero/empty |
-| `Key_blocks_unused` | ❌ | Counter value or embedded zero/empty |
-| `Key_blocks_used` | ❌ | Counter value or embedded zero/empty |
-| `Key_read_requests` | ❌ | Counter value or embedded zero/empty |
-| `Key_reads` | ❌ | Counter value or embedded zero/empty |
-| `Key_write_requests` | ❌ | Counter value or embedded zero/empty |
-| `Key_writes` | ❌ | Counter value or embedded zero/empty |
-| `Last_query_cost` | ❌ | Counter value or embedded zero/empty |
-| `Last_query_partial_plans` | ❌ | Counter value or embedded zero/empty |
-| `Locked_connects` | ❌ | Counter value or embedded zero/empty |
-| `Max_execution_time_exceeded` | ❌ | Counter value or embedded zero/empty |
-| `Max_execution_time_set` | ❌ | Counter value or embedded zero/empty |
-| `Max_execution_time_set_failed` | ❌ | Counter value or embedded zero/empty |
-| `Max_used_connections` | ❌ | Counter value or embedded zero/empty |
-| `Max_used_connections_time` | ❌ | Counter value or embedded zero/empty |
+| `Key_blocks_not_flushed` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live key-cache lifecycle |
+| `Key_blocks_unused` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live key-cache lifecycle |
+| `Key_blocks_used` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live key-cache lifecycle |
+| `Key_read_requests` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live key-cache lifecycle |
+| `Key_reads` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live key-cache lifecycle |
+| `Key_write_requests` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live key-cache lifecycle |
+| `Key_writes` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live key-cache lifecycle |
+| `Last_query_cost` | 🟡 | Limited `SHOW STATUS` embedded value `0.000000`; no live optimizer-cost tracking |
+| `Last_query_partial_plans` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live optimizer-cost tracking |
+| `Locked_connects` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live locked-connection accounting |
+| `Max_execution_time_exceeded` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live execution-time counter lifecycle |
+| `Max_execution_time_set` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live execution-time counter lifecycle |
+| `Max_execution_time_set_failed` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live execution-time counter lifecycle |
+| `Max_used_connections` | 🟡 | Limited `SHOW STATUS` embedded value `1`; no live connection high-water accounting |
+| `Max_used_connections_time` | 🟡 | Limited `SHOW STATUS` embedded value `1970-01-01 00:00:00`; no live connection high-water accounting |
 | `mecab_charset` | ❌ | Counter value or embedded zero/empty |
 | `Mysqlx_aborted_clients` | ❌ | Counter value or embedded zero/empty |
 | `Mysqlx_address` | ❌ | Counter value or embedded zero/empty |
@@ -576,9 +576,9 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Ndb_scan_count` | ❌ | Counter value or embedded zero/empty |
 | `Ndb_slave_max_replicated_epoch` | ❌ | Counter value or embedded zero/empty |
 | `Ndb_trans_hint_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Not_flushed_delayed_rows` | ❌ | Counter value or embedded zero/empty |
+| `Not_flushed_delayed_rows` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live delayed-insert lifecycle |
 | `Ongoing_anonymous_gtid_violating_transaction_count` | ❌ | Counter value or embedded zero/empty |
-| `Ongoing_anonymous_transaction_count` | ❌ | Counter value or embedded zero/empty |
+| `Ongoing_anonymous_transaction_count` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live replication transaction lifecycle |
 | `Ongoing_automatic_gtid_violating_transaction_count` | ❌ | Counter value or embedded zero/empty |
 | `Open_files` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Open_streams` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
@@ -623,8 +623,8 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Prepared_stmt_count` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Queries` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Questions` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Replica_open_temp_tables` | ❌ | Counter value or embedded zero/empty |
-| `Resource_group_supported` | ❌ | Counter value or embedded zero/empty |
+| `Replica_open_temp_tables` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live replication temp-table lifecycle |
+| `Resource_group_supported` | 🟡 | Limited `SHOW STATUS` embedded value `OFF`; no resource group subsystem |
 | `Rewriter_number_loaded_rules` | ❌ | Counter value or embedded zero/empty |
 | `Rewriter_number_reloads` | ❌ | Counter value or embedded zero/empty |
 | `Rewriter_number_rewritten_queries` | ❌ | Counter value or embedded zero/empty |
@@ -660,13 +660,13 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Rpl_semi_sync_source_wait_sessions` | ❌ | Counter value or embedded zero/empty |
 | `Rpl_semi_sync_source_yes_tx` | ❌ | Counter value or embedded zero/empty |
 | `Rsa_public_key` | ❌ | Counter value or embedded zero/empty |
-| `Secondary_engine_execution_count` | ❌ | Counter value or embedded zero/empty |
+| `Secondary_engine_execution_count` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no secondary-engine execution lifecycle |
 | `Select_full_join` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Select_full_range_join` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Select_range` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Select_range_check` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Select_scan` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Slave_open_temp_tables` | ❌ | Counter value or embedded zero/empty |
+| `Slave_open_temp_tables` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live replication temp-table lifecycle |
 | `Slave_rows_last_search_algorithm_used` | ❌ | Counter value or embedded zero/empty |
 | `Slow_launch_threads` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Slow_queries` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
@@ -708,8 +708,9 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Tc_log_max_pages_used` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Tc_log_page_size` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Tc_log_page_waits` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Telemetry_metrics_supported` | ❌ | Counter value or embedded zero/empty |
-| `Telemetry_traces_supported` | ❌ | Counter value or embedded zero/empty |
+| `Telemetry_logs_supported` | 🟡 | Limited `SHOW STATUS` embedded value `OFF`; no telemetry subsystem |
+| `Telemetry_metrics_supported` | 🟡 | Limited `SHOW STATUS` embedded value `OFF`; no telemetry subsystem |
+| `Telemetry_traces_supported` | 🟡 | Limited `SHOW STATUS` embedded value `OFF`; no telemetry subsystem |
 | `telemetry.live_sessions` | ❌ | Counter value or embedded zero/empty |
 | `Threads_cached` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no server thread cache |
 | `Threads_connected` | 🟡 | Limited `SHOW STATUS` embedded value `1`; current embedded handle only |

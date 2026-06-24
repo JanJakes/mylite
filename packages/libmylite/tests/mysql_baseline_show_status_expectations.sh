@@ -210,6 +210,74 @@ expect_value "local uptime row names" "$expected_uptime_row_names" "$local_uptim
 global_uptime_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Uptime%';" | cut -f1)
 expect_value "global uptime row names" "$expected_uptime_row_names" "$global_uptime_row_names"
 
+server_scalar_row_names=$(run_mysql \
+    "SHOW STATUS WHERE Variable_name IN (
+        'Acl_cache_items_count',
+        'Delayed_errors','Delayed_insert_threads','Delayed_writes',
+        'Flush_commands','Global_connection_memory',
+        'Last_query_cost','Last_query_partial_plans','Locked_connects',
+        'Not_flushed_delayed_rows','Ongoing_anonymous_transaction_count',
+        'Replica_open_temp_tables','Resource_group_supported',
+        'Secondary_engine_execution_count','Slave_open_temp_tables'
+    );" \
+    | cut -f1)
+expect_value "server scalar row names" "Acl_cache_items_count
+Delayed_errors
+Delayed_insert_threads
+Delayed_writes
+Flush_commands
+Global_connection_memory
+Last_query_cost
+Last_query_partial_plans
+Locked_connects
+Not_flushed_delayed_rows
+Ongoing_anonymous_transaction_count
+Replica_open_temp_tables
+Resource_group_supported
+Secondary_engine_execution_count
+Slave_open_temp_tables" "$server_scalar_row_names"
+
+key_row_names=$(run_mysql "SHOW STATUS LIKE 'Key\\_%';" | cut -f1)
+expected_key_row_names="Key_blocks_not_flushed
+Key_blocks_unused
+Key_blocks_used
+Key_read_requests
+Key_reads
+Key_write_requests
+Key_writes"
+expect_value "key row names" "$expected_key_row_names" "$key_row_names"
+
+session_key_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Key\\_%';" | cut -f1)
+expect_value "session key row names" "$expected_key_row_names" "$session_key_row_names"
+
+global_key_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Key\\_%';" | cut -f1)
+expect_value "global key row names" "$expected_key_row_names" "$global_key_row_names"
+
+max_row_names=$(run_mysql "SHOW STATUS LIKE 'Max\\_%';" | cut -f1)
+expected_max_row_names="Max_execution_time_exceeded
+Max_execution_time_set
+Max_execution_time_set_failed
+Max_used_connections
+Max_used_connections_time"
+expect_value "max row names" "$expected_max_row_names" "$max_row_names"
+
+session_max_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Max\\_%';" | cut -f1)
+expect_value "session max row names" "$expected_max_row_names" "$session_max_row_names"
+
+global_max_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Max\\_%';" | cut -f1)
+expect_value "global max row names" "$expected_max_row_names" "$global_max_row_names"
+
+telemetry_row_names=$(run_mysql "SHOW STATUS LIKE 'Telemetry\\_%';" | cut -f1)
+expected_telemetry_row_names="Telemetry_logs_supported
+Telemetry_metrics_supported
+Telemetry_traces_supported"
+expect_value "telemetry row names" "$expected_telemetry_row_names" "$telemetry_row_names"
+
+global_telemetry_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Telemetry\\_%';" | cut -f1)
+expect_value "global telemetry row names" \
+    "$expected_telemetry_row_names" \
+    "$global_telemetry_row_names"
+
 binlog_row_names=$(run_mysql "SHOW STATUS LIKE 'Binlog\\_%';" | cut -f1)
 expected_binlog_row_names="Binlog_cache_disk_use
 Binlog_cache_use

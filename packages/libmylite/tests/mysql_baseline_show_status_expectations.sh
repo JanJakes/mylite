@@ -147,6 +147,26 @@ expect_value "local compression" "Compression|OFF" "$local_compression"
 global_compression=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Compression';" | normalize_tsv)
 expect_value "global omits compression" "" "$global_compression"
 
+connection_row_names=$(run_mysql "SHOW STATUS LIKE 'Connection\\_%';" | cut -f1)
+expect_value "connection diagnostic row names" "Connection_control_delay_generated
+Connection_control_exempted_unknown_users
+Connection_errors_accept
+Connection_errors_internal
+Connection_errors_max_connections
+Connection_errors_peer_address
+Connection_errors_select
+Connection_errors_tcpwrap" "$connection_row_names"
+
+global_connection_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Connection\\_%';" | cut -f1)
+expect_value "global connection diagnostic row names" "Connection_control_delay_generated
+Connection_control_exempted_unknown_users
+Connection_errors_accept
+Connection_errors_internal
+Connection_errors_max_connections
+Connection_errors_peer_address
+Connection_errors_select
+Connection_errors_tcpwrap" "$global_connection_row_names"
+
 thread_row_names=$(run_mysql "SHOW STATUS LIKE 'Threads\\_%';" | cut -f1)
 expect_value "threads like row names" "Threads_cached
 Threads_connected

@@ -322,6 +322,14 @@ order, but their values are fixed `0` placeholders rather than live counters.
 | `Com_xa_start` | yes | yes | `0` |
 | `Com_stmt_reprepare` | yes | yes | `0` |
 | `Compression` | yes | no | `OFF` |
+| `Connection_control_delay_generated` | yes | yes | `0` |
+| `Connection_control_exempted_unknown_users` | yes | yes | `0` |
+| `Connection_errors_accept` | yes | yes | `0` |
+| `Connection_errors_internal` | yes | yes | `0` |
+| `Connection_errors_max_connections` | yes | yes | `0` |
+| `Connection_errors_peer_address` | yes | yes | `0` |
+| `Connection_errors_select` | yes | yes | `0` |
+| `Connection_errors_tcpwrap` | yes | yes | `0` |
 | `Connections` | yes | yes | `1` |
 | `Created_tmp_disk_tables` | yes | yes | `0` |
 | `Created_tmp_files` | yes | yes | `0` |

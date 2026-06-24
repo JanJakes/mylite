@@ -222,6 +222,14 @@ static const struct expected_status_row expected_session_rows[] = {
     {"Com_xa_start", "0"},
     {"Com_stmt_reprepare", "0"},
     {"Compression", "OFF"},
+    {"Connection_control_delay_generated", "0"},
+    {"Connection_control_exempted_unknown_users", "0"},
+    {"Connection_errors_accept", "0"},
+    {"Connection_errors_internal", "0"},
+    {"Connection_errors_max_connections", "0"},
+    {"Connection_errors_peer_address", "0"},
+    {"Connection_errors_select", "0"},
+    {"Connection_errors_tcpwrap", "0"},
     {"Connections", "1"},
     {"Created_tmp_disk_tables", "0"},
     {"Created_tmp_files", "0"},
@@ -327,6 +335,16 @@ static int test_show_status_values_scopes_and_filters(void) {
         {"Ssl_cipher", ""},
         {"Ssl_version", ""},
     };
+    static const struct expected_status_row expected_connection_rows[] = {
+        {"Connection_control_delay_generated", "0"},
+        {"Connection_control_exempted_unknown_users", "0"},
+        {"Connection_errors_accept", "0"},
+        {"Connection_errors_internal", "0"},
+        {"Connection_errors_max_connections", "0"},
+        {"Connection_errors_peer_address", "0"},
+        {"Connection_errors_select", "0"},
+        {"Connection_errors_tcpwrap", "0"},
+    };
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -394,6 +412,20 @@ static int test_show_status_values_scopes_and_filters(void) {
         expected_ssl_rows,
         sizeof(expected_ssl_rows) / sizeof(expected_ssl_rows[0]),
         "show status empty string values"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS LIKE 'Connection\\_%'",
+        expected_connection_rows,
+        sizeof(expected_connection_rows) / sizeof(expected_connection_rows[0]),
+        "show status connection diagnostics"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Connection\\_%'",
+        expected_connection_rows,
+        sizeof(expected_connection_rows) / sizeof(expected_connection_rows[0]),
+        "show global status connection diagnostics"
     );
     failures += expect_status_rows(
         database,

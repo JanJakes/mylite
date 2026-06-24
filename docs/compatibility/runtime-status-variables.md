@@ -198,13 +198,14 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Compression` | 🟡 | Limited `SHOW STATUS` session/`LOCAL` value `OFF`; omitted from `GLOBAL`; no compression protocol state |
 | `Compression_algorithm` | ❌ | Counter value or embedded zero/empty |
 | `Compression_level` | ❌ | Counter value or embedded zero/empty |
-| `Connection_control_delay_generated` | ❌ | Counter value or embedded zero/empty |
-| `Connection_errors_accept` | ❌ | Counter value or embedded zero/empty |
-| `Connection_errors_internal` | ❌ | Counter value or embedded zero/empty |
-| `Connection_errors_max_connections` | ❌ | Counter value or embedded zero/empty |
-| `Connection_errors_peer_address` | ❌ | Counter value or embedded zero/empty |
-| `Connection_errors_select` | ❌ | Counter value or embedded zero/empty |
-| `Connection_errors_tcpwrap` | ❌ | Counter value or embedded zero/empty |
+| `Connection_control_delay_generated` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live connection-control delay lifecycle |
+| `Connection_control_exempted_unknown_users` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live connection-control exemption lifecycle |
+| `Connection_errors_accept` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live connection error lifecycle |
+| `Connection_errors_internal` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live connection error lifecycle |
+| `Connection_errors_max_connections` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live connection error lifecycle |
+| `Connection_errors_peer_address` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live connection error lifecycle |
+| `Connection_errors_select` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live connection error lifecycle |
+| `Connection_errors_tcpwrap` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live connection error lifecycle |
 | `Connections` | 🟡 | Limited `SHOW STATUS` embedded value `1`; no live counter lifecycle |
 | `Created_tmp_disk_tables` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Created_tmp_files` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |

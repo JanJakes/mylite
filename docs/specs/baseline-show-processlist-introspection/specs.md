@@ -297,7 +297,7 @@ warning code in the default process-list implementation, row-count behavior,
 ## Compatibility Documentation
 
 Update `COMPATIBILITY.md` and `docs/compatibility/sql-show-statements.md` to
-mark only the limited current-handle `SHOW [FULL] PROCESSLIST` subset as
-partial. Do not change `INFORMATION_SCHEMA.PROCESSLIST`,
-Performance Schema, sys-schema, process-list status-variable, privilege, or
-server-management compatibility rows.
+mark the verified current-handle `SHOW [FULL] PROCESSLIST` subset green and
+keep server-wide process-list instrumentation, `INFORMATION_SCHEMA.PROCESSLIST`,
+Performance Schema, sys-schema, process-list status-variable, privilege, and
+server-management gaps separate.

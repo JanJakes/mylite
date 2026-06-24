@@ -587,39 +587,40 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Opened_files` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Opened_table_definitions` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Opened_tables` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Performance_schema_accounts_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_cond_classes_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_cond_instances_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_digest_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_file_classes_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_file_handles_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_file_instances_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_hosts_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_index_stat_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_locker_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_memory_classes_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_metadata_lock_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_meter_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_metric_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_mutex_classes_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_mutex_instances_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_nested_statement_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_prepared_statements_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_program_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_rwlock_classes_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_rwlock_instances_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_session_connect_attrs_longest_seen` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_session_connect_attrs_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_socket_classes_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_socket_instances_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_stage_classes_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_statement_classes_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_table_handles_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_table_instances_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_table_lock_stat_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_thread_classes_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_thread_instances_lost` | ❌ | Counter value or embedded zero/empty |
-| `Performance_schema_users_lost` | ❌ | Counter value or embedded zero/empty |
+| `Performance_schema_accounts_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_cond_classes_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_cond_instances_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_digest_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_file_classes_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_file_handles_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_file_instances_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_hosts_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_index_stat_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_locker_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_logger_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_memory_classes_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_metadata_lock_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_meter_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_metric_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_mutex_classes_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_mutex_instances_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_nested_statement_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_prepared_statements_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_program_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_rwlock_classes_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_rwlock_instances_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_session_connect_attrs_longest_seen` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live connection-attribute tracking |
+| `Performance_schema_session_connect_attrs_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_socket_classes_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_socket_instances_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_stage_classes_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_statement_classes_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_table_handles_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_table_instances_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_table_lock_stat_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_thread_classes_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_thread_instances_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
+| `Performance_schema_users_lost` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live Performance Schema loss accounting |
 | `Prepared_stmt_count` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Queries` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Questions` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |

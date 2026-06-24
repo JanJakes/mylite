@@ -378,6 +378,67 @@ expect_value "local open resource row names" "$expected_open_row_names" "$local_
 global_open_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Open%';" | cut -f1)
 expect_value "global open resource row names" "$expected_open_row_names" "$global_open_row_names"
 
+performance_schema_row_names=$(run_mysql "SHOW STATUS LIKE 'Performance_schema\\_%';" | cut -f1)
+expected_performance_schema_row_names="Performance_schema_accounts_lost
+Performance_schema_cond_classes_lost
+Performance_schema_cond_instances_lost
+Performance_schema_digest_lost
+Performance_schema_file_classes_lost
+Performance_schema_file_handles_lost
+Performance_schema_file_instances_lost
+Performance_schema_hosts_lost
+Performance_schema_index_stat_lost
+Performance_schema_locker_lost
+Performance_schema_logger_lost
+Performance_schema_memory_classes_lost
+Performance_schema_metadata_lock_lost
+Performance_schema_meter_lost
+Performance_schema_metric_lost
+Performance_schema_mutex_classes_lost
+Performance_schema_mutex_instances_lost
+Performance_schema_nested_statement_lost
+Performance_schema_prepared_statements_lost
+Performance_schema_program_lost
+Performance_schema_rwlock_classes_lost
+Performance_schema_rwlock_instances_lost
+Performance_schema_session_connect_attrs_longest_seen
+Performance_schema_session_connect_attrs_lost
+Performance_schema_socket_classes_lost
+Performance_schema_socket_instances_lost
+Performance_schema_stage_classes_lost
+Performance_schema_statement_classes_lost
+Performance_schema_table_handles_lost
+Performance_schema_table_instances_lost
+Performance_schema_table_lock_stat_lost
+Performance_schema_thread_classes_lost
+Performance_schema_thread_instances_lost
+Performance_schema_users_lost"
+expect_value \
+    "performance schema loss counter row names" \
+    "$expected_performance_schema_row_names" \
+    "$performance_schema_row_names"
+
+session_performance_schema_row_names=$(run_mysql \
+    "SHOW SESSION STATUS LIKE 'Performance_schema\\_%';" | cut -f1)
+expect_value \
+    "session performance schema loss counter row names" \
+    "$expected_performance_schema_row_names" \
+    "$session_performance_schema_row_names"
+
+local_performance_schema_row_names=$(run_mysql \
+    "SHOW LOCAL STATUS LIKE 'Performance_schema\\_%';" | cut -f1)
+expect_value \
+    "local performance schema loss counter row names" \
+    "$expected_performance_schema_row_names" \
+    "$local_performance_schema_row_names"
+
+global_performance_schema_row_names=$(run_mysql \
+    "SHOW GLOBAL STATUS LIKE 'Performance_schema\\_%';" | cut -f1)
+expect_value \
+    "global performance schema loss counter row names" \
+    "$expected_performance_schema_row_names" \
+    "$global_performance_schema_row_names"
+
 select_row_names=$(run_mysql "SHOW STATUS LIKE 'Select\\_%';" | cut -f1)
 expected_select_row_names="Select_full_join
 Select_full_range_join

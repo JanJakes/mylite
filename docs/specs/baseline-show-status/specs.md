@@ -147,7 +147,7 @@ placeholders unless listed otherwise. All numeric values are returned as
 decimal text. The core lifecycle rows (`Bytes_%`, `Connections`, `Compression`,
 `Prepared_stmt_count`, `Queries`, `Questions`, `Threads_%`, and `Uptime%`) and
 the `Binlog_%`, `Com_%`, `Handler_%`, `Key_%`, `Last_query_%`, `Max_%`,
-`Select_%`, `Slow_%`, `Sort_%`, `Ssl_%`, `Table_locks_%`,
+`Performance_schema_%`, `Select_%`, `Slow_%`, `Sort_%`, `Ssl_%`, `Table_locks_%`,
 `Table_open_cache_%`, `Tc_log_%`, and `Telemetry_%` rows mirror the MySQL 8.4.9
 row names and scope visibility for the documented placeholder subset. The
 `Created_%`, `Delayed_%`, `Open%`, and other documented server/legacy scalar
@@ -393,6 +393,40 @@ placeholders rather than live counters.
 | `Opened_files` | yes | yes | `0` |
 | `Opened_table_definitions` | yes | yes | `0` |
 | `Opened_tables` | yes | yes | `0` |
+| `Performance_schema_accounts_lost` | yes | yes | `0` |
+| `Performance_schema_cond_classes_lost` | yes | yes | `0` |
+| `Performance_schema_cond_instances_lost` | yes | yes | `0` |
+| `Performance_schema_digest_lost` | yes | yes | `0` |
+| `Performance_schema_file_classes_lost` | yes | yes | `0` |
+| `Performance_schema_file_handles_lost` | yes | yes | `0` |
+| `Performance_schema_file_instances_lost` | yes | yes | `0` |
+| `Performance_schema_hosts_lost` | yes | yes | `0` |
+| `Performance_schema_index_stat_lost` | yes | yes | `0` |
+| `Performance_schema_locker_lost` | yes | yes | `0` |
+| `Performance_schema_logger_lost` | yes | yes | `0` |
+| `Performance_schema_memory_classes_lost` | yes | yes | `0` |
+| `Performance_schema_metadata_lock_lost` | yes | yes | `0` |
+| `Performance_schema_meter_lost` | yes | yes | `0` |
+| `Performance_schema_metric_lost` | yes | yes | `0` |
+| `Performance_schema_mutex_classes_lost` | yes | yes | `0` |
+| `Performance_schema_mutex_instances_lost` | yes | yes | `0` |
+| `Performance_schema_nested_statement_lost` | yes | yes | `0` |
+| `Performance_schema_prepared_statements_lost` | yes | yes | `0` |
+| `Performance_schema_program_lost` | yes | yes | `0` |
+| `Performance_schema_rwlock_classes_lost` | yes | yes | `0` |
+| `Performance_schema_rwlock_instances_lost` | yes | yes | `0` |
+| `Performance_schema_session_connect_attrs_longest_seen` | yes | yes | `0` |
+| `Performance_schema_session_connect_attrs_lost` | yes | yes | `0` |
+| `Performance_schema_socket_classes_lost` | yes | yes | `0` |
+| `Performance_schema_socket_instances_lost` | yes | yes | `0` |
+| `Performance_schema_stage_classes_lost` | yes | yes | `0` |
+| `Performance_schema_statement_classes_lost` | yes | yes | `0` |
+| `Performance_schema_table_handles_lost` | yes | yes | `0` |
+| `Performance_schema_table_instances_lost` | yes | yes | `0` |
+| `Performance_schema_table_lock_stat_lost` | yes | yes | `0` |
+| `Performance_schema_thread_classes_lost` | yes | yes | `0` |
+| `Performance_schema_thread_instances_lost` | yes | yes | `0` |
+| `Performance_schema_users_lost` | yes | yes | `0` |
 | `Prepared_stmt_count` | yes | yes | `0` |
 | `Queries` | yes | yes | `0` |
 | `Questions` | yes | yes | `0` |

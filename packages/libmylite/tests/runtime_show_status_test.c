@@ -234,12 +234,22 @@ static const struct expected_status_row expected_session_rows[] = {
     {"Created_tmp_disk_tables", "0"},
     {"Created_tmp_files", "0"},
     {"Created_tmp_tables", "0"},
+    {"Handler_commit", "0"},
     {"Handler_delete", "0"},
+    {"Handler_discover", "0"},
+    {"Handler_external_lock", "0"},
+    {"Handler_mrr_init", "0"},
+    {"Handler_prepare", "0"},
     {"Handler_read_first", "0"},
     {"Handler_read_key", "0"},
+    {"Handler_read_last", "0"},
     {"Handler_read_next", "0"},
+    {"Handler_read_prev", "0"},
     {"Handler_read_rnd", "0"},
     {"Handler_read_rnd_next", "0"},
+    {"Handler_rollback", "0"},
+    {"Handler_savepoint", "0"},
+    {"Handler_savepoint_rollback", "0"},
     {"Handler_update", "0"},
     {"Handler_write", "0"},
     {"Open_files", "0"},
@@ -345,6 +355,26 @@ static int test_show_status_values_scopes_and_filters(void) {
         {"Connection_errors_select", "0"},
         {"Connection_errors_tcpwrap", "0"},
     };
+    static const struct expected_status_row expected_handler_rows[] = {
+        {"Handler_commit", "0"},
+        {"Handler_delete", "0"},
+        {"Handler_discover", "0"},
+        {"Handler_external_lock", "0"},
+        {"Handler_mrr_init", "0"},
+        {"Handler_prepare", "0"},
+        {"Handler_read_first", "0"},
+        {"Handler_read_key", "0"},
+        {"Handler_read_last", "0"},
+        {"Handler_read_next", "0"},
+        {"Handler_read_prev", "0"},
+        {"Handler_read_rnd", "0"},
+        {"Handler_read_rnd_next", "0"},
+        {"Handler_rollback", "0"},
+        {"Handler_savepoint", "0"},
+        {"Handler_savepoint_rollback", "0"},
+        {"Handler_update", "0"},
+        {"Handler_write", "0"},
+    };
     mylite_db *database = NULL;
     int failures = 0;
 
@@ -426,6 +456,20 @@ static int test_show_status_values_scopes_and_filters(void) {
         expected_connection_rows,
         sizeof(expected_connection_rows) / sizeof(expected_connection_rows[0]),
         "show global status connection diagnostics"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS LIKE 'Handler\\_%'",
+        expected_handler_rows,
+        sizeof(expected_handler_rows) / sizeof(expected_handler_rows[0]),
+        "show status handler counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Handler\\_%'",
+        expected_handler_rows,
+        sizeof(expected_handler_rows) / sizeof(expected_handler_rows[0]),
+        "show global status handler counters"
     );
     failures += expect_status_rows(
         database,

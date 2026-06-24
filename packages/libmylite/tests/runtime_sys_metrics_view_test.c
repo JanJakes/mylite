@@ -188,12 +188,12 @@ int main(void) {
 
 static int test_sys_metrics_view(void) {
     enum {
-        metrics_row_count = 217,
+        metrics_row_count = 227,
     };
 
     static const char *const count_column[] = {"COUNT(*)"};
     static const char *const count_zero[] = {"0"};
-    static const char *const metrics_row_count_value[] = {"217"};
+    static const char *const metrics_row_count_value[] = {"227"};
     static const char *const row_count_minus_one[] = {"-1"};
     static const char *const aborted_clients_row[] = {
         "aborted_clients",
@@ -215,6 +215,12 @@ static int test_sys_metrics_view(void) {
     };
     static const char *const connection_errors_internal_row[] = {
         "connection_errors_internal",
+        "0",
+        "Global Status",
+        "YES",
+    };
+    static const char *const handler_commit_row[] = {
+        "handler_commit",
         "0",
         "Global Status",
         "YES",
@@ -426,6 +432,18 @@ static int test_sys_metrics_view(void) {
             .values = connection_errors_internal_row,
             .row_count = 1U,
             .context = "sys.metrics connection diagnostics row",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
+                   "WHERE Variable_name = 'handler_commit'",
+            .column_names = metrics_columns,
+            .column_count = metrics_column_count,
+            .values = handler_commit_row,
+            .row_count = 1U,
+            .context = "sys.metrics handler counter row",
         }
     );
     failures += expect_query(

@@ -261,22 +261,22 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Gr_transactions_consistency_after_termination_time_sum` | ❌ | Counter value or embedded zero/empty |
 | `Gr_transactions_consistency_before_begin_count` | ❌ | Counter value or embedded zero/empty |
 | `Gr_transactions_consistency_before_begin_time_sum` | ❌ | Counter value or embedded zero/empty |
-| `Handler_commit` | ❌ | Counter value or embedded zero/empty |
+| `Handler_commit` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Handler_delete` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Handler_discover` | ❌ | Counter value or embedded zero/empty |
-| `Handler_external_lock` | ❌ | Counter value or embedded zero/empty |
-| `Handler_mrr_init` | ❌ | Counter value or embedded zero/empty |
-| `Handler_prepare` | ❌ | Counter value or embedded zero/empty |
+| `Handler_discover` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Handler_external_lock` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Handler_mrr_init` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Handler_prepare` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Handler_read_first` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Handler_read_key` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Handler_read_last` | ❌ | Counter value or embedded zero/empty |
+| `Handler_read_last` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Handler_read_next` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Handler_read_prev` | ❌ | Counter value or embedded zero/empty |
+| `Handler_read_prev` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Handler_read_rnd` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Handler_read_rnd_next` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Handler_rollback` | ❌ | Counter value or embedded zero/empty |
-| `Handler_savepoint` | ❌ | Counter value or embedded zero/empty |
-| `Handler_savepoint_rollback` | ❌ | Counter value or embedded zero/empty |
+| `Handler_rollback` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Handler_savepoint` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Handler_savepoint_rollback` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Handler_update` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Handler_write` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Innodb_buffer_pool_bytes_data` | ❌ | Counter value or embedded zero/empty |

@@ -167,6 +167,30 @@ Connection_errors_peer_address
 Connection_errors_select
 Connection_errors_tcpwrap" "$global_connection_row_names"
 
+handler_row_names=$(run_mysql "SHOW STATUS LIKE 'Handler\\_%';" | cut -f1)
+expected_handler_row_names="Handler_commit
+Handler_delete
+Handler_discover
+Handler_external_lock
+Handler_mrr_init
+Handler_prepare
+Handler_read_first
+Handler_read_key
+Handler_read_last
+Handler_read_next
+Handler_read_prev
+Handler_read_rnd
+Handler_read_rnd_next
+Handler_rollback
+Handler_savepoint
+Handler_savepoint_rollback
+Handler_update
+Handler_write"
+expect_value "handler counter row names" "$expected_handler_row_names" "$handler_row_names"
+
+global_handler_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Handler\\_%';" | cut -f1)
+expect_value "global handler counter row names" "$expected_handler_row_names" "$global_handler_row_names"
+
 thread_row_names=$(run_mysql "SHOW STATUS LIKE 'Threads\\_%';" | cut -f1)
 expect_value "threads like row names" "Threads_cached
 Threads_connected

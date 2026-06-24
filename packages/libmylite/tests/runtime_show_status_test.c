@@ -254,6 +254,14 @@ static const struct expected_status_row expected_session_rows[] = {
     {"Delayed_errors", "0"},
     {"Delayed_insert_threads", "0"},
     {"Delayed_writes", "0"},
+    {"Deprecated_use_fk_on_non_standard_key_count", "0"},
+    {"Deprecated_use_fk_on_non_standard_key_last_timestamp", "0"},
+    {"Deprecated_use_i_s_processlist_count", "0"},
+    {"Deprecated_use_i_s_processlist_last_timestamp", "0"},
+    {"Error_log_buffered_bytes", "0"},
+    {"Error_log_buffered_events", "0"},
+    {"Error_log_expired_events", "0"},
+    {"Error_log_latest_write", "0"},
     {"Flush_commands", "0"},
     {"Global_connection_memory", "0"},
     {"Handler_commit", "0"},
@@ -477,6 +485,18 @@ static int test_show_status_values_scopes_and_filters(void) {
         {"Current_tls_crlpath", ""},
         {"Current_tls_key", ""},
         {"Current_tls_version", ""},
+    };
+    static const struct expected_status_row expected_deprecated_rows[] = {
+        {"Deprecated_use_fk_on_non_standard_key_count", "0"},
+        {"Deprecated_use_fk_on_non_standard_key_last_timestamp", "0"},
+        {"Deprecated_use_i_s_processlist_count", "0"},
+        {"Deprecated_use_i_s_processlist_last_timestamp", "0"},
+    };
+    static const struct expected_status_row expected_error_log_rows[] = {
+        {"Error_log_buffered_bytes", "0"},
+        {"Error_log_buffered_events", "0"},
+        {"Error_log_expired_events", "0"},
+        {"Error_log_latest_write", "0"},
     };
     static const struct expected_status_row expected_tls_rows[] = {
         {"Tls_library_version", ""},
@@ -1058,6 +1078,27 @@ static int test_show_status_values_scopes_and_filters(void) {
         sizeof(expected_current_tls_rows) / sizeof(expected_current_tls_rows[0]),
         "show global status current tls rows"
     );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS LIKE 'Deprecated%'",
+        expected_deprecated_rows,
+        sizeof(expected_deprecated_rows) / sizeof(expected_deprecated_rows[0]),
+        "show status deprecated counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Deprecated%'",
+        expected_deprecated_rows,
+        sizeof(expected_deprecated_rows) / sizeof(expected_deprecated_rows[0]),
+        "show global status deprecated counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW LOCAL STATUS LIKE 'Deprecated%'",
+        expected_deprecated_rows,
+        sizeof(expected_deprecated_rows) / sizeof(expected_deprecated_rows[0]),
+        "show local status deprecated counters"
+    );
     failures += expect_single_status_row(
         database,
         "SHOW STATUS LIKE 'Acl_cache_items_count'",
@@ -1080,6 +1121,27 @@ static int test_show_status_values_scopes_and_filters(void) {
         expected_delayed_rows,
         sizeof(expected_delayed_rows) / sizeof(expected_delayed_rows[0]),
         "show global status delayed counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS LIKE 'Error_log%'",
+        expected_error_log_rows,
+        sizeof(expected_error_log_rows) / sizeof(expected_error_log_rows[0]),
+        "show status error log counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Error_log%'",
+        expected_error_log_rows,
+        sizeof(expected_error_log_rows) / sizeof(expected_error_log_rows[0]),
+        "show global status error log counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW LOCAL STATUS LIKE 'Error_log%'",
+        expected_error_log_rows,
+        sizeof(expected_error_log_rows) / sizeof(expected_error_log_rows[0]),
+        "show local status error log counters"
     );
     failures += expect_single_status_row(
         database,

@@ -146,10 +146,11 @@ This phase exposes a limited common registry. Values are deterministic embedded
 placeholders unless listed otherwise. All numeric values are returned as
 decimal text. The core lifecycle rows (`Bytes_%`, `Connections`, `Compression`,
 `Prepared_stmt_count`, `Queries`, `Questions`, `Threads_%`, and `Uptime%`) and
-the `Binlog_%`, `Com_%`, `Compression%`, `Current_tls%`, `Handler_%`, `Key_%`,
-`Last_query_%`, `Max_%`, `Performance_schema_%`, `Select_%`, `Slow_%`, `Sort_%`,
-`Ssl_%`, `Table_locks_%`, `Table_open_cache_%`, `Tc_log_%`, `Telemetry_%`, and
-`Tls%` rows mirror the MySQL 8.4.9
+the `Binlog_%`, `Com_%`, `Compression%`, `Current_tls%`, `Deprecated%`,
+`Error_log%`, `Handler_%`, `Key_%`, `Last_query_%`, `Max_%`,
+`Performance_schema_%`, `Select_%`, `Slow_%`, `Sort_%`, `Ssl_%`,
+`Table_locks_%`, `Table_open_cache_%`, `Tc_log_%`, `Telemetry_%`, and `Tls%`
+rows mirror the MySQL 8.4.9
 row names and scope visibility for the documented placeholder subset. The
 `Created_%`, `Delayed_%`, `Open%`, RSA public-key, and other documented
 server/legacy scalar rows also mirror the MySQL 8.4.9 names and order. These
@@ -362,6 +363,14 @@ values are fixed placeholders rather than live counters.
 | `Delayed_errors` | yes | yes | `0` |
 | `Delayed_insert_threads` | yes | yes | `0` |
 | `Delayed_writes` | yes | yes | `0` |
+| `Deprecated_use_fk_on_non_standard_key_count` | yes | yes | `0` |
+| `Deprecated_use_fk_on_non_standard_key_last_timestamp` | yes | yes | `0` |
+| `Deprecated_use_i_s_processlist_count` | yes | yes | `0` |
+| `Deprecated_use_i_s_processlist_last_timestamp` | yes | yes | `0` |
+| `Error_log_buffered_bytes` | yes | yes | `0` |
+| `Error_log_buffered_events` | yes | yes | `0` |
+| `Error_log_expired_events` | yes | yes | `0` |
+| `Error_log_latest_write` | yes | yes | `0` |
 | `Flush_commands` | yes | yes | `0` |
 | `Global_connection_memory` | yes | yes | `0` |
 | `Handler_commit` | yes | yes | `0` |

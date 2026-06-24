@@ -222,13 +222,15 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Delayed_errors` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live delayed-insert lifecycle |
 | `Delayed_insert_threads` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live delayed-insert lifecycle |
 | `Delayed_writes` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live delayed-insert lifecycle |
-| `Deprecated_use_i_s_processlist_count` | ❌ | Counter value or embedded zero/empty |
-| `Deprecated_use_i_s_processlist_last_timestamp` | ❌ | Counter value or embedded zero/empty |
+| `Deprecated_use_fk_on_non_standard_key_count` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no deprecated foreign-key usage tracking |
+| `Deprecated_use_fk_on_non_standard_key_last_timestamp` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no deprecated foreign-key usage timestamp |
+| `Deprecated_use_i_s_processlist_count` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no deprecated `INFORMATION_SCHEMA.PROCESSLIST` usage tracking |
+| `Deprecated_use_i_s_processlist_last_timestamp` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no deprecated `INFORMATION_SCHEMA.PROCESSLIST` usage timestamp |
 | `dragnet.Status` | ❌ | Counter value or embedded zero/empty |
-| `Error_log_buffered_bytes` | ❌ | Counter value or embedded zero/empty |
-| `Error_log_buffered_events` | ❌ | Counter value or embedded zero/empty |
-| `Error_log_expired_events` | ❌ | Counter value or embedded zero/empty |
-| `Error_log_latest_write` | ❌ | Counter value or embedded zero/empty |
+| `Error_log_buffered_bytes` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no server error-log buffer |
+| `Error_log_buffered_events` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no server error-log buffer |
+| `Error_log_expired_events` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no server error-log expiration lifecycle |
+| `Error_log_latest_write` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no server error-log write timestamp |
 | `Firewall_access_denied` | ❌ | Counter value or embedded zero/empty |
 | `Firewall_access_granted` | ❌ | Counter value or embedded zero/empty |
 | `Firewall_access_suspicious` | ❌ | Counter value or embedded zero/empty |

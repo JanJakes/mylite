@@ -182,6 +182,31 @@ expect_value \
 global_compression_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Compression%';" | cut -f1)
 expect_value "global omits compression row names" "" "$global_compression_row_names"
 
+deprecated_row_names=$(run_mysql "SHOW STATUS LIKE 'Deprecated%';" | cut -f1)
+expected_deprecated_row_names="Deprecated_use_fk_on_non_standard_key_count
+Deprecated_use_fk_on_non_standard_key_last_timestamp
+Deprecated_use_i_s_processlist_count
+Deprecated_use_i_s_processlist_last_timestamp"
+expect_value "deprecated row names" "$expected_deprecated_row_names" "$deprecated_row_names"
+
+session_deprecated_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Deprecated%';" | cut -f1)
+expect_value \
+    "session deprecated row names" \
+    "$expected_deprecated_row_names" \
+    "$session_deprecated_row_names"
+
+local_deprecated_row_names=$(run_mysql "SHOW LOCAL STATUS LIKE 'Deprecated%';" | cut -f1)
+expect_value \
+    "local deprecated row names" \
+    "$expected_deprecated_row_names" \
+    "$local_deprecated_row_names"
+
+global_deprecated_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Deprecated%';" | cut -f1)
+expect_value \
+    "global deprecated row names" \
+    "$expected_deprecated_row_names" \
+    "$global_deprecated_row_names"
+
 bytes_row_names=$(run_mysql "SHOW STATUS LIKE 'Bytes\\_%';" | cut -f1)
 expected_bytes_row_names="Bytes_received
 Bytes_sent"
@@ -410,6 +435,31 @@ expect_value \
     "global current tls row names" \
     "$expected_current_tls_row_names" \
     "$global_current_tls_row_names"
+
+error_log_row_names=$(run_mysql "SHOW STATUS LIKE 'Error_log%';" | cut -f1)
+expected_error_log_row_names="Error_log_buffered_bytes
+Error_log_buffered_events
+Error_log_expired_events
+Error_log_latest_write"
+expect_value "error log row names" "$expected_error_log_row_names" "$error_log_row_names"
+
+session_error_log_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Error_log%';" | cut -f1)
+expect_value \
+    "session error log row names" \
+    "$expected_error_log_row_names" \
+    "$session_error_log_row_names"
+
+local_error_log_row_names=$(run_mysql "SHOW LOCAL STATUS LIKE 'Error_log%';" | cut -f1)
+expect_value \
+    "local error log row names" \
+    "$expected_error_log_row_names" \
+    "$local_error_log_row_names"
+
+global_error_log_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Error_log%';" | cut -f1)
+expect_value \
+    "global error log row names" \
+    "$expected_error_log_row_names" \
+    "$global_error_log_row_names"
 
 handler_row_names=$(run_mysql "SHOW STATUS LIKE 'Handler\\_%';" | cut -f1)
 expected_handler_row_names="Handler_commit

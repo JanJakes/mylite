@@ -330,6 +330,10 @@ static bool placeholder_scan_token_is_retryable_row_scalar_context_function(
     const struct placeholder_statement_scan *scan,
     size_t index
 );
+static bool placeholder_scan_token_is_sys_helper_function(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+);
 static bool placeholder_scan_token_is_top_level_where_predicate_context(
     const struct placeholder_statement_scan *scan,
     size_t index

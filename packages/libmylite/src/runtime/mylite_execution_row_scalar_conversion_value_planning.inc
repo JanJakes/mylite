@@ -67,6 +67,22 @@ static int plan_row_scalar_non_control_flow_expression(
     if (expression->kind == MYLITE_SQL_AST_LITERAL) {
         return plan_row_scalar_literal_value(database, expression, out_expression);
     }
+    {
+        enum mylite_sys_function_kind sys_function_kind = MYLITE_SYS_FUNCTION_NONE;
+
+        if (generic_sys_function_kind(expression, &sys_function_kind)) {
+            return plan_row_scalar_sys_function(
+                database,
+                expression,
+                sys_function_kind,
+                has_source,
+                source_context,
+                table_columns,
+                table_column_count,
+                out_expression
+            );
+        }
+    }
     if (generic_function_name_equals(expression, "GET_LOCK")) {
         return plan_row_scalar_get_lock_function(
             database,
@@ -1244,6 +1260,56 @@ static int plan_row_scalar_named_lock_function(
         return MYLITE_NOMEM;
     }
     for (size_t index = 0U; rc == MYLITE_OK && index < lock_function.argument_count; ++index) {
+        rc = plan_row_scalar_non_concat_expression(
+            database,
+            child_at(arguments, index),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            false,
+            &out_expression->arguments[index]
+        );
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(out_expression);
+    }
+    return rc;
+}
+
+static int plan_row_scalar_sys_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_sys_function_kind kind,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *arguments = generic_system_function_arguments(expression);
+    size_t argument_count = mylite_sys_function_argument_count(kind);
+    int rc = MYLITE_OK;
+
+    if ((arguments == NULL && argument_count != 0U) ||
+        (arguments != NULL && mylite_sql_ast_node_child_count(arguments) != argument_count)) {
+        set_native_function_parameter_count_error(database, mylite_sys_function_name(kind));
+        return MYLITE_ERROR;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION;
+    out_expression->sys_function_kind = kind;
+    out_expression->argument_count = argument_count;
+    if (argument_count == 0U) {
+        return MYLITE_OK;
+    }
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(argument_count, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < argument_count; ++index) {
         rc = plan_row_scalar_non_concat_expression(
             database,
             child_at(arguments, index),

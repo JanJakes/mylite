@@ -2436,6 +2436,16 @@ static int plan_row_scalar_update_xml_function(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_sys_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_sys_function_kind kind,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
 static int reject_row_scalar_xml_nonconstant_xpath(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -3402,6 +3412,8 @@ static bool row_scalar_column_descriptor_is_supported(
     const struct mylite_catalog_column_descriptor *column
 );
 static bool row_scalar_expression_contains_row_function(const struct mylite_sql_ast_node *expression
+);
+static bool row_scalar_expression_contains_sys_function(const struct mylite_sql_ast_node *expression
 );
 static bool row_scalar_expression_contains_context_expression_attempt(
     const struct mylite_sql_ast_node *expression,

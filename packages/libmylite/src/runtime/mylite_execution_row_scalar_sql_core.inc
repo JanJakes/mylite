@@ -343,6 +343,20 @@ static int append_row_scalar_expression_sql(
             expression,
             next_parameter
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION: {
+        const char *sqlite_name =
+            mylite_sys_function_sqlite_name(expression->sys_function_kind);
+
+        if (sqlite_name == NULL) {
+            return MYLITE_ERROR;
+        }
+        return append_row_scalar_registered_function_expression_sql(
+            string,
+            sqlite_name,
+            expression,
+            next_parameter
+        );
+    }
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_FUNCTION:
         return append_row_scalar_numeric_function_expression_sql(
             string,
@@ -870,6 +884,7 @@ static int append_row_scalar_conversion_base_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE:
     case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
         return append_row_scalar_expression_sql(string, expression, next_parameter);
@@ -1118,6 +1133,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE:
     case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
@@ -1221,6 +1237,7 @@ static int append_row_scalar_non_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE:
     case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION:
         return append_row_scalar_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
@@ -1457,6 +1474,7 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
     case PLANNED_ROW_SCALAR_EXPRESSION_SLEEP:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION:
         return append_row_scalar_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
         return append_row_scalar_unix_timestamp_expression_sql(string, expression, next_parameter);

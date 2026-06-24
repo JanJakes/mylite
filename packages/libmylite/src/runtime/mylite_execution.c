@@ -62,6 +62,7 @@
 #include "mylite_string_substring_index.h"
 #include "mylite_string_trim.h"
 #include "mylite_string_unhex.h"
+#include "mylite_sys_functions.h"
 #include "mylite_system_functions.h"
 #include "mylite_temporal_arithmetic.h"
 #include "mylite_temporal_constructor.h"

@@ -1511,6 +1511,7 @@ static bool row_scalar_expression_contains_context_expression_attempt(
     bool allow_insert_values_reference
 ) {
     return row_scalar_expression_contains_row_function(expression) ||
+           row_scalar_expression_contains_sys_function(expression) ||
            row_scalar_expression_contains_statement_context_function(expression) ||
            (allow_insert_values_reference &&
             row_scalar_expression_contains_insert_values_reference(expression)) ||
@@ -1526,6 +1527,42 @@ static bool row_scalar_expression_contains_context_expression_attempt(
            row_scalar_expression_contains_bitwise_attempt(expression) ||
            row_scalar_expression_contains_integer_arithmetic_attempt(expression) ||
            row_scalar_expression_is_concat_operator(expression);
+}
+
+static bool row_scalar_expression_contains_sys_function(const struct mylite_sql_ast_node *expression
+) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    bool found = false;
+
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        return false;
+    }
+    while (stack.count != 0U && !found) {
+        const struct mylite_sql_ast_node *current =
+            unwrap_parenthesized_expression(stack.items[--stack.count]);
+        enum mylite_sys_function_kind kind = MYLITE_SYS_FUNCTION_NONE;
+        size_t child_count = 0U;
+
+        if (current == NULL) {
+            continue;
+        }
+        if (generic_sys_function_kind(current, &kind)) {
+            found = true;
+            break;
+        }
+        if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
+            continue;
+        }
+        child_count = mylite_sql_ast_node_child_count(current);
+        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
+                scalar_arithmetic_node_stack_deinit(&stack);
+                return false;
+            }
+        }
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return found;
 }
 
 static bool row_scalar_expression_contains_insert_values_reference(
@@ -1663,17 +1700,18 @@ static bool row_scalar_expression_is_predicate_value_context_attempt(
 ) {
     const struct mylite_sql_ast_node *node = unwrap_parenthesized_predicate(expression);
     enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
+    enum mylite_sys_function_kind sys_function_kind = MYLITE_SYS_FUNCTION_NONE;
 
     if (node == NULL) {
         return false;
     }
-
     operator_kind = row_scalar_control_flow_condition_operator(node);
     if (operator_kind == MYLITE_SQL_AST_OPERATOR_LIKE ||
         operator_kind == MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE) {
         return false;
     }
     if (is_row_scalar_control_flow_expression(node) ||
+        generic_sys_function_kind(node, &sys_function_kind) ||
         row_scalar_expression_is_string_function(node->kind) ||
         is_row_scalar_json_expression(node) || row_scalar_expression_is_rand_function(node) ||
         row_scalar_numeric_function_kind_is_supported(node->kind) ||

@@ -129,11 +129,15 @@ static int generic_system_function_value(
     struct session_scalar_cell *out_cell
 ) {
     const struct mylite_sql_ast_node *arguments = generic_system_function_arguments(expression);
+    enum mylite_sys_function_kind sys_function_kind = MYLITE_SYS_FUNCTION_NONE;
 
     if (out_cell == NULL) {
         return MYLITE_MISUSE;
     }
     *out_cell = (struct session_scalar_cell){0};
+    if (generic_sys_function_kind(expression, &sys_function_kind)) {
+        return generic_sys_function_value(database, expression, sys_function_kind, out_cell);
+    }
     if (generic_system_function_name_equals(expression, "GET_LOCK")) {
         return generic_named_lock_get_value(database, arguments, out_cell);
     }
@@ -172,6 +176,98 @@ static int generic_system_function_value(
     }
     set_unsupported_error(database, "unsupported generic scalar function");
     return MYLITE_ERROR;
+}
+
+static bool generic_sys_function_kind(
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_sys_function_kind *out_kind
+) {
+    const struct mylite_sql_ast_node *current = NULL;
+    const struct mylite_sql_ast_node *first_identifier = NULL;
+    const struct mylite_sql_ast_node *second_identifier = NULL;
+    size_t identifier_count = 0U;
+
+    if (out_kind == NULL) {
+        return false;
+    }
+    *out_kind = MYLITE_SYS_FUNCTION_NONE;
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_GENERIC_FUNCTION) {
+        return false;
+    }
+    for (current = expression->first_child; current != NULL; current = current->next_sibling) {
+        if (current->kind != MYLITE_SQL_AST_IDENTIFIER) {
+            continue;
+        }
+        if (identifier_count == 0U) {
+            first_identifier = current;
+        } else if (identifier_count == 1U) {
+            second_identifier = current;
+        }
+        ++identifier_count;
+    }
+    if (identifier_count == 1U) {
+        return mylite_sys_function_lookup_span(NULL, &first_identifier->span, out_kind);
+    }
+    if (identifier_count == 2U) {
+        return mylite_sys_function_lookup_span(
+            &first_identifier->span,
+            &second_identifier->span,
+            out_kind
+        );
+    }
+    return false;
+}
+
+static int generic_sys_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_sys_function_kind kind,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *arguments = generic_system_function_arguments(expression);
+    struct session_scalar_cell cells[2] = {{0}};
+    struct mylite_sys_function_argument sys_arguments[2] = {{0}};
+    struct mylite_sys_function_result result = {0};
+    size_t argument_count = arguments == NULL ? 0U : mylite_sql_ast_node_child_count(arguments);
+    int rc = MYLITE_OK;
+
+    if (argument_count != mylite_sys_function_argument_count(kind)) {
+        set_native_function_parameter_count_error(database, mylite_sys_function_name(kind));
+        return MYLITE_ERROR;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < argument_count; ++index) {
+        rc = session_scalar_value(database, child_at(arguments, index), &cells[index]);
+        if (rc == MYLITE_OK) {
+            sys_arguments[index].is_null = cells[index].value == NULL;
+            sys_arguments[index].text = cells[index].value;
+            if (cells[index].value != NULL) {
+                sys_arguments[index].text_size =
+                    cells[index].has_value_size ? cells[index].value_size
+                                                : strlen(cells[index].value);
+            }
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sys_function_evaluate(database, kind, sys_arguments, argument_count, &result);
+    }
+    for (size_t index = 0U; index < argument_count; ++index) {
+        mylite_execution_session_scalar_cell_deinit(&cells[index]);
+    }
+    if (rc != MYLITE_OK) {
+        mylite_sys_function_result_deinit(&result);
+        return rc;
+    }
+    if (result.is_null) {
+        out_cell->value = NULL;
+        return MYLITE_OK;
+    }
+    out_cell->owned_text = result.text;
+    out_cell->value = result.text;
+    out_cell->has_value_size = true;
+    out_cell->value_size = result.text_size;
+    result.text = NULL;
+    mylite_sys_function_result_deinit(&result);
+    return MYLITE_OK;
 }
 
 static bool generic_system_function_name_equals(

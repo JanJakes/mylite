@@ -111,6 +111,38 @@ static bool expression_contains_generic_function_named(
     return found;
 }
 
+static bool expression_contains_sys_function(const struct mylite_sql_ast_node *expression) {
+    struct scalar_arithmetic_node_stack stack = {0};
+    bool found = false;
+
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        return false;
+    }
+    while (stack.count != 0U && !found) {
+        const struct mylite_sql_ast_node *current =
+            unwrap_parenthesized_expression(stack.items[--stack.count]);
+        enum mylite_sys_function_kind kind = MYLITE_SYS_FUNCTION_NONE;
+        size_t child_count = 0U;
+
+        if (current == NULL) {
+            continue;
+        }
+        if (generic_sys_function_kind(current, &kind)) {
+            found = true;
+            break;
+        }
+        child_count = mylite_sql_ast_node_child_count(current);
+        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
+                scalar_arithmetic_node_stack_deinit(&stack);
+                return false;
+            }
+        }
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return found;
+}
+
 static bool select_statement_is_row_scalar_projection_attempt(
     const struct mylite_sql_ast_node *statement
 ) {
@@ -184,6 +216,11 @@ static bool select_statement_is_row_scalar_projection_attempt(
 static bool expression_is_supported_row_scalar_system_function(
     const struct mylite_sql_ast_node *expression
 ) {
+    enum mylite_sys_function_kind kind = MYLITE_SYS_FUNCTION_NONE;
+
+    if (generic_sys_function_kind(expression, &kind)) {
+        return true;
+    }
     return generic_function_name_equals(expression, "GET_LOCK") ||
            generic_function_name_equals(expression, "IS_FREE_LOCK") ||
            generic_function_name_equals(expression, "IS_USED_LOCK") ||
@@ -201,6 +238,9 @@ static bool expression_is_supported_row_scalar_system_function(
 static bool expression_contains_supported_row_scalar_system_function(
     const struct mylite_sql_ast_node *expression
 ) {
+    if (expression_contains_sys_function(expression)) {
+        return true;
+    }
     return expression_contains_generic_function_named(expression, "GET_LOCK") ||
            expression_contains_generic_function_named(expression, "IS_FREE_LOCK") ||
            expression_contains_generic_function_named(expression, "IS_USED_LOCK") ||
@@ -1947,6 +1987,7 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE:
     case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION:
         populate_scalar_connection_string_result_column_descriptor(
             database,
             descriptor,

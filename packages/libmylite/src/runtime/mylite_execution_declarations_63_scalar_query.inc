@@ -313,6 +313,16 @@ static int generic_system_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static bool generic_sys_function_kind(
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_sys_function_kind *out_kind
+);
+static int generic_sys_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_sys_function_kind kind,
+    struct session_scalar_cell *out_cell
+);
 static bool generic_system_function_name_equals(
     const struct mylite_sql_ast_node *expression,
     const char *name

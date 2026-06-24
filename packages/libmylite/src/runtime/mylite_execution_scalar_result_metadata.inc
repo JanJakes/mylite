@@ -152,6 +152,35 @@ static int populate_scalar_function_result_column_descriptor(
     }
 
     if (expression->kind == MYLITE_SQL_AST_GENERIC_FUNCTION) {
+        enum mylite_sys_function_kind sys_function_kind = MYLITE_SYS_FUNCTION_NONE;
+
+        if (generic_sys_function_kind(expression, &sys_function_kind)) {
+            if (sys_function_kind == MYLITE_SYS_FUNCTION_VERSION_MAJOR ||
+                sys_function_kind == MYLITE_SYS_FUNCTION_VERSION_MINOR ||
+                sys_function_kind == MYLITE_SYS_FUNCTION_VERSION_PATCH) {
+                populate_scalar_binary_numeric_result_column_descriptor(
+                    descriptor,
+                    (struct scalar_binary_numeric_result_column_shape){
+                        .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                        .display_length = mysql_scalar_bigint_display_length,
+                        .decimals = 0U,
+                        .extra_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED,
+                        .nullable = false,
+                    }
+                );
+                return MYLITE_OK;
+            }
+            populate_scalar_connection_string_result_column_descriptor(
+                database,
+                descriptor,
+                (struct scalar_connection_string_result_column_shape){
+                    .display_length = mysql_json_document_display_length,
+                    .extra_flags = 0U,
+                    .nullable = true,
+                }
+            );
+            return MYLITE_OK;
+        }
         if (generic_system_function_name_equals(expression, "SLEEP") ||
             generic_system_function_name_equals(expression, "GET_LOCK") ||
             generic_system_function_name_equals(expression, "IS_FREE_LOCK") ||

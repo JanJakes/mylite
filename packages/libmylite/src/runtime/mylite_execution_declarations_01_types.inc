@@ -1575,6 +1575,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE = 112,
     PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE = 113,
     PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML = 114,
+    PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION = 115,
 };
 
 enum row_scalar_control_flow_bind_mode {
@@ -1764,6 +1765,7 @@ struct planned_row_scalar_expression {
     enum planned_row_scalar_numeric_function_kind numeric_function_kind;
     enum planned_row_scalar_base_conversion_kind base_conversion_kind;
     enum planned_row_scalar_numeric_extra_kind numeric_extra_kind;
+    enum mylite_sys_function_kind sys_function_kind;
     bool numeric_extra_has_decimal_scale;
     size_t numeric_extra_decimal_scale;
     enum planned_window_function_kind window_function_kind;

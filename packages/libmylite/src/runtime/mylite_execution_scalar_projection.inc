@@ -171,7 +171,12 @@ static bool is_scalar_function_projection_expression(const struct mylite_sql_ast
 static bool is_named_lock_and_info_projection_expression(
     const struct mylite_sql_ast_node *expression
 ) {
+    enum mylite_sys_function_kind sys_function_kind = MYLITE_SYS_FUNCTION_NONE;
+
     expression = unwrap_parenthesized_expression(expression);
+    if (generic_sys_function_kind(expression, &sys_function_kind)) {
+        return true;
+    }
     return (generic_function_name_equals(expression, "GET_LOCK") ||
             generic_function_name_equals(expression, "IS_FREE_LOCK") ||
             generic_function_name_equals(expression, "IS_USED_LOCK") ||

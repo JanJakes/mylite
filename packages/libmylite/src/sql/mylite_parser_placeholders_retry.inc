@@ -1269,7 +1269,35 @@ static bool placeholder_scan_token_is_retryable_row_scalar_context_function(
             return true;
         }
     }
-    return false;
+    return placeholder_scan_token_is_sys_helper_function(scan, index);
+}
+
+static bool placeholder_scan_token_is_sys_helper_function(
+    const struct placeholder_statement_scan *scan,
+    size_t index
+) {
+    static const char *const function_names[] = {
+        "EXTRACT_SCHEMA_FROM_FILE_NAME",
+        "EXTRACT_TABLE_FROM_FILE_NAME",
+        "FORMAT_BYTES",
+        "FORMAT_PATH",
+        "FORMAT_STATEMENT",
+        "FORMAT_TIME",
+        "LIST_ADD",
+        "LIST_DROP",
+        "QUOTE_IDENTIFIER",
+        "SYS_GET_CONFIG",
+        "VERSION_MAJOR",
+        "VERSION_MINOR",
+        "VERSION_PATCH",
+    };
+
+    return placeholder_scan_token_text_equals_any(
+        scan,
+        index,
+        function_names,
+        sizeof(function_names) / sizeof(function_names[0])
+    );
 }
 
 static bool placeholder_scan_token_is_top_level_where_predicate_context(
@@ -1589,7 +1617,7 @@ static bool placeholder_scan_token_is_retryable_update_assignment_row_scalar_fun
             return true;
         }
     }
-    return false;
+    return placeholder_scan_token_is_sys_helper_function(scan, index);
 }
 
 static bool placeholder_scan_top_level_update_set_index(
@@ -3145,6 +3173,9 @@ static bool placeholder_scan_token_is_supported_row_scalar_value_function(
     };
 
     if (placeholder_scan_token_is_supported_row_arithmetic_value_function(scan, index)) {
+        return true;
+    }
+    if (placeholder_scan_token_is_sys_helper_function(scan, index)) {
         return true;
     }
     return placeholder_scan_token_text_equals_any(

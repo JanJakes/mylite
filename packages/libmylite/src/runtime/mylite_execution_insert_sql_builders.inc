@@ -477,6 +477,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_LOAD_FILE:
     case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION:
         return true;
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
         return expression->numeric_extra_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT;

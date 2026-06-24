@@ -40,6 +40,10 @@
     COMMAND mylite_runtime_system_function_residuals_test
   )
   add_test(
+    NAME libmylite.runtime.sys_helper_functions
+    COMMAND mylite_runtime_sys_helper_functions_test
+  )
+  add_test(
     NAME libmylite.runtime.if_function
     COMMAND mylite_runtime_if_function_test
   )

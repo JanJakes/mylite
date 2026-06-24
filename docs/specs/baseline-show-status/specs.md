@@ -2,17 +2,19 @@
 
 ## Summary
 
-This phase adds a small MyLite-owned `SHOW STATUS` result surface:
+This phase adds a MyLite-owned `SHOW STATUS` result surface:
 
 ```sql
-SHOW [GLOBAL | SESSION | LOCAL] STATUS [LIKE 'pattern']
+SHOW [GLOBAL | SESSION | LOCAL] STATUS [LIKE 'pattern' | WHERE predicate]
 ```
 
-The statement exposes a limited registry of common status rows with embedded
-MyLite values. It is intended for clients that probe basic MySQL server state
-or feature availability. It does not implement MySQL's complete status-variable
-catalog, status counters, Performance Schema status tables, privilege checks,
-`mysqladmin extended-status`, `FLUSH STATUS`, or `WHERE` filtering.
+The statement exposes a limited registry of status rows with embedded MyLite
+values, including the MySQL 8.4.9 `Com_%` command-counter name surface. It is
+intended for clients that probe basic MySQL server state, command-counter
+presence, or feature availability. It does not implement MySQL's complete
+status-variable catalog, live status counters, Performance Schema status
+tables, privilege checks, `mysqladmin extended-status`, `FLUSH STATUS`, or
+arbitrary `WHERE` expression evaluation.
 
 ## Compatibility Authority
 
@@ -20,9 +22,9 @@ catalog, status counters, Performance Schema status tables, privilege checks,
   - `SHOW STATUS`: <https://dev.mysql.com/doc/refman/8.4/en/show-status.html>
   - server status variable reference:
     <https://dev.mysql.com/doc/refman/8.4/en/server-status-variable-reference.html>
-- Observed MySQL 8.4.9 runtime behavior from the local Homebrew
-  `mysql@8.4` server (`mysqld 8.4.9`) started with a temporary datadir and
-  Unix socket.
+- Observed MySQL 8.4.9 runtime behavior from the local `mylite-mysql-849`
+  container, captured by
+  `packages/libmylite/tests/mysql_baseline_show_status_expectations.sh`.
 
 Runtime probes against MySQL 8.4.9 establish these expectations for the
 admitted subset:
@@ -37,6 +39,10 @@ admitted subset:
   and backslash escapes;
 - `SHOW STATUS LIKE 'Threads\_%'` returns the thread rows whose names match the
   pattern;
+- `SHOW STATUS LIKE 'Com\_%'` returns the 168 MySQL 8.4.9 command-counter
+  names in the target runtime order for default, session, and global scopes;
+- `SHOW STATUS WHERE ...` admits the same limited output-row predicate subset
+  as `SHOW VARIABLES WHERE` over `Variable_name` and `Value`;
 - `SHOW STATUS LIKE 'Threads%' WHERE ...`, `SHOW STATUS ORDER BY ...`,
   `SHOW STATUS LIMIT ...`, `SHOW FULL STATUS`, and non-string `LIKE` operands
   are syntax errors;
@@ -56,10 +62,12 @@ embedded values documented below.
   It reports affected rows `0`, warning count `0`, no stored warnings, and
   updates the previous row count to `-1`.
 - Lexer/parser/AST: add a `SHOW STATUS` statement node with an optional scope
-  token and optional string-only `LIKE` clause. Reuse the existing identifier
-  and string-literal AST helpers.
+  token and either an optional string-only `LIKE` clause or a `WHERE` predicate
+  node. Reuse the existing identifier, string-literal, and predicate AST
+  helpers.
 - Runtime/analyzer: resolve the optional scope and iterate a static
-  MyLite-owned status registry. Apply `LIKE` while appending rows.
+  MyLite-owned status registry. Apply scope, `LIKE`, and the limited output-row
+  predicate while appending rows.
 - Catalog: not involved. Status variables are runtime/embedded metadata, not
   schema or table descriptors.
 - Result builder: build rows directly through the existing result API.
@@ -85,12 +93,13 @@ show_status_scope_opt:
 show_status_filter_opt:
     empty
   | LIKE string_literal
+  | WHERE show_status_predicate
 ```
 
-The grammar intentionally excludes `FULL`, `WHERE`, `ORDER BY`, `LIMIT`,
-schema qualifiers, parameters, non-string `LIKE` operands, and arbitrary
-expressions. `LOCAL` is admitted as a session-scope synonym because MySQL 8.4.9
-accepts it for this statement.
+`LIKE` and `WHERE` are mutually exclusive. The grammar intentionally excludes
+`FULL`, `ORDER BY`, `LIMIT`, schema qualifiers, parameters, non-string `LIKE`
+operands, and combined `LIKE ... WHERE` filters. `LOCAL` is admitted as a
+session-scope synonym because MySQL 8.4.9 accepts it for this statement.
 
 ### MyLite Lemon-Syntax Snippet
 
@@ -123,6 +132,9 @@ show_status_filter_opt(A) ::= . {
 show_status_filter_opt(A) ::= LIKE STRING(P). {
     A = mylite_sql_parser_make_literal(state, P, MYLITE_SQL_AST_LITERAL_STRING);
 }
+show_status_filter_opt(A) ::= WHERE(W) predicate(P). {
+    A = mylite_sql_parser_make_where_clause(state, W, P);
+}
 ```
 
 These snippets are independently authored for MyLite's admitted subset and are
@@ -132,7 +144,8 @@ not MySQL's full grammar.
 
 This phase exposes a limited common registry. Values are deterministic embedded
 placeholders unless listed otherwise. All numeric values are returned as
-decimal text.
+decimal text. The `Com_%` rows mirror the MySQL 8.4.9 command-counter names and
+order, but their values are fixed `0` placeholders rather than live counters.
 
 | Variable | Default/session/LOCAL visibility | GLOBAL visibility | MyLite value |
 | --- | --- | --- | --- |
@@ -140,17 +153,174 @@ decimal text.
 | `Aborted_connects` | yes | yes | `0` |
 | `Bytes_received` | yes | yes | `0` |
 | `Bytes_sent` | yes | yes | `0` |
+| `Com_admin_commands` | yes | yes | `0` |
+| `Com_assign_to_keycache` | yes | yes | `0` |
+| `Com_alter_db` | yes | yes | `0` |
+| `Com_alter_event` | yes | yes | `0` |
+| `Com_alter_function` | yes | yes | `0` |
+| `Com_alter_instance` | yes | yes | `0` |
+| `Com_alter_procedure` | yes | yes | `0` |
+| `Com_alter_resource_group` | yes | yes | `0` |
+| `Com_alter_server` | yes | yes | `0` |
+| `Com_alter_table` | yes | yes | `0` |
+| `Com_alter_tablespace` | yes | yes | `0` |
+| `Com_alter_user` | yes | yes | `0` |
+| `Com_alter_user_default_role` | yes | yes | `0` |
+| `Com_analyze` | yes | yes | `0` |
 | `Com_begin` | yes | yes | `0` |
+| `Com_binlog` | yes | yes | `0` |
+| `Com_call_procedure` | yes | yes | `0` |
+| `Com_change_db` | yes | yes | `0` |
+| `Com_change_repl_filter` | yes | yes | `0` |
+| `Com_change_replication_source` | yes | yes | `0` |
+| `Com_check` | yes | yes | `0` |
+| `Com_checksum` | yes | yes | `0` |
+| `Com_clone` | yes | yes | `0` |
 | `Com_commit` | yes | yes | `0` |
+| `Com_create_db` | yes | yes | `0` |
+| `Com_create_event` | yes | yes | `0` |
+| `Com_create_function` | yes | yes | `0` |
+| `Com_create_index` | yes | yes | `0` |
+| `Com_create_procedure` | yes | yes | `0` |
+| `Com_create_role` | yes | yes | `0` |
+| `Com_create_server` | yes | yes | `0` |
+| `Com_create_table` | yes | yes | `0` |
+| `Com_create_resource_group` | yes | yes | `0` |
+| `Com_create_trigger` | yes | yes | `0` |
+| `Com_create_udf` | yes | yes | `0` |
+| `Com_create_user` | yes | yes | `0` |
+| `Com_create_view` | yes | yes | `0` |
+| `Com_create_spatial_reference_system` | yes | yes | `0` |
+| `Com_dealloc_sql` | yes | yes | `0` |
 | `Com_delete` | yes | yes | `0` |
+| `Com_delete_multi` | yes | yes | `0` |
+| `Com_do` | yes | yes | `0` |
+| `Com_drop_db` | yes | yes | `0` |
+| `Com_drop_event` | yes | yes | `0` |
+| `Com_drop_function` | yes | yes | `0` |
+| `Com_drop_index` | yes | yes | `0` |
+| `Com_drop_procedure` | yes | yes | `0` |
+| `Com_drop_resource_group` | yes | yes | `0` |
+| `Com_drop_role` | yes | yes | `0` |
+| `Com_drop_server` | yes | yes | `0` |
+| `Com_drop_spatial_reference_system` | yes | yes | `0` |
+| `Com_drop_table` | yes | yes | `0` |
+| `Com_drop_trigger` | yes | yes | `0` |
+| `Com_drop_user` | yes | yes | `0` |
+| `Com_drop_view` | yes | yes | `0` |
+| `Com_empty_query` | yes | yes | `0` |
+| `Com_execute_sql` | yes | yes | `0` |
+| `Com_explain_other` | yes | yes | `0` |
+| `Com_flush` | yes | yes | `0` |
+| `Com_get_diagnostics` | yes | yes | `0` |
+| `Com_grant` | yes | yes | `0` |
+| `Com_grant_roles` | yes | yes | `0` |
+| `Com_ha_close` | yes | yes | `0` |
+| `Com_ha_open` | yes | yes | `0` |
+| `Com_ha_read` | yes | yes | `0` |
+| `Com_help` | yes | yes | `0` |
+| `Com_import` | yes | yes | `0` |
 | `Com_insert` | yes | yes | `0` |
+| `Com_insert_select` | yes | yes | `0` |
+| `Com_install_component` | yes | yes | `0` |
+| `Com_install_plugin` | yes | yes | `0` |
+| `Com_kill` | yes | yes | `0` |
+| `Com_load` | yes | yes | `0` |
+| `Com_lock_instance` | yes | yes | `0` |
+| `Com_lock_tables` | yes | yes | `0` |
+| `Com_optimize` | yes | yes | `0` |
+| `Com_preload_keys` | yes | yes | `0` |
+| `Com_prepare_sql` | yes | yes | `0` |
+| `Com_purge` | yes | yes | `0` |
+| `Com_purge_before_date` | yes | yes | `0` |
+| `Com_release_savepoint` | yes | yes | `0` |
+| `Com_rename_table` | yes | yes | `0` |
+| `Com_rename_user` | yes | yes | `0` |
+| `Com_repair` | yes | yes | `0` |
 | `Com_replace` | yes | yes | `0` |
+| `Com_replace_select` | yes | yes | `0` |
+| `Com_reset` | yes | yes | `0` |
+| `Com_resignal` | yes | yes | `0` |
+| `Com_restart` | yes | yes | `0` |
+| `Com_revoke` | yes | yes | `0` |
+| `Com_revoke_all` | yes | yes | `0` |
+| `Com_revoke_roles` | yes | yes | `0` |
 | `Com_rollback` | yes | yes | `0` |
+| `Com_rollback_to_savepoint` | yes | yes | `0` |
+| `Com_savepoint` | yes | yes | `0` |
 | `Com_select` | yes | yes | `0` |
 | `Com_set_option` | yes | yes | `0` |
+| `Com_set_password` | yes | yes | `0` |
+| `Com_set_resource_group` | yes | yes | `0` |
+| `Com_set_role` | yes | yes | `0` |
+| `Com_signal` | yes | yes | `0` |
+| `Com_show_binlog_events` | yes | yes | `0` |
+| `Com_show_binlogs` | yes | yes | `0` |
+| `Com_show_charsets` | yes | yes | `0` |
+| `Com_show_collations` | yes | yes | `0` |
+| `Com_show_create_db` | yes | yes | `0` |
+| `Com_show_create_event` | yes | yes | `0` |
+| `Com_show_create_func` | yes | yes | `0` |
+| `Com_show_create_proc` | yes | yes | `0` |
+| `Com_show_create_table` | yes | yes | `0` |
+| `Com_show_create_trigger` | yes | yes | `0` |
+| `Com_show_databases` | yes | yes | `0` |
+| `Com_show_engine_logs` | yes | yes | `0` |
+| `Com_show_engine_mutex` | yes | yes | `0` |
+| `Com_show_engine_status` | yes | yes | `0` |
+| `Com_show_events` | yes | yes | `0` |
+| `Com_show_errors` | yes | yes | `0` |
+| `Com_show_fields` | yes | yes | `0` |
+| `Com_show_function_code` | yes | yes | `0` |
+| `Com_show_function_status` | yes | yes | `0` |
+| `Com_show_grants` | yes | yes | `0` |
+| `Com_show_keys` | yes | yes | `0` |
+| `Com_show_binary_log_status` | yes | yes | `0` |
+| `Com_show_open_tables` | yes | yes | `0` |
+| `Com_show_parse_tree` | yes | yes | `0` |
+| `Com_show_plugins` | yes | yes | `0` |
+| `Com_show_privileges` | yes | yes | `0` |
+| `Com_show_procedure_code` | yes | yes | `0` |
+| `Com_show_procedure_status` | yes | yes | `0` |
+| `Com_show_processlist` | yes | yes | `0` |
+| `Com_show_profile` | yes | yes | `0` |
+| `Com_show_profiles` | yes | yes | `0` |
+| `Com_show_relaylog_events` | yes | yes | `0` |
+| `Com_show_replicas` | yes | yes | `0` |
+| `Com_show_replica_status` | yes | yes | `0` |
 | `Com_show_status` | yes | yes | `0` |
+| `Com_show_storage_engines` | yes | yes | `0` |
+| `Com_show_table_status` | yes | yes | `0` |
+| `Com_show_tables` | yes | yes | `0` |
+| `Com_show_triggers` | yes | yes | `0` |
 | `Com_show_variables` | yes | yes | `0` |
+| `Com_show_warnings` | yes | yes | `0` |
+| `Com_show_create_user` | yes | yes | `0` |
+| `Com_shutdown` | yes | yes | `0` |
+| `Com_replica_start` | yes | yes | `0` |
+| `Com_replica_stop` | yes | yes | `0` |
+| `Com_group_replication_start` | yes | yes | `0` |
+| `Com_group_replication_stop` | yes | yes | `0` |
+| `Com_stmt_execute` | yes | yes | `0` |
+| `Com_stmt_close` | yes | yes | `0` |
+| `Com_stmt_fetch` | yes | yes | `0` |
+| `Com_stmt_prepare` | yes | yes | `0` |
+| `Com_stmt_reset` | yes | yes | `0` |
+| `Com_stmt_send_long_data` | yes | yes | `0` |
+| `Com_truncate` | yes | yes | `0` |
+| `Com_uninstall_component` | yes | yes | `0` |
+| `Com_uninstall_plugin` | yes | yes | `0` |
+| `Com_unlock_instance` | yes | yes | `0` |
+| `Com_unlock_tables` | yes | yes | `0` |
 | `Com_update` | yes | yes | `0` |
+| `Com_update_multi` | yes | yes | `0` |
+| `Com_xa_commit` | yes | yes | `0` |
+| `Com_xa_end` | yes | yes | `0` |
+| `Com_xa_prepare` | yes | yes | `0` |
+| `Com_xa_recover` | yes | yes | `0` |
+| `Com_xa_rollback` | yes | yes | `0` |
+| `Com_xa_start` | yes | yes | `0` |
+| `Com_stmt_reprepare` | yes | yes | `0` |
 | `Compression` | yes | no | `OFF` |
 | `Connections` | yes | yes | `1` |
 | `Created_tmp_disk_tables` | yes | yes | `0` |
@@ -212,6 +382,24 @@ against `Variable_name` only. Matching is ASCII case-insensitive; `%` matches
 any byte sequence; `_` matches one byte; a backslash escapes the next pattern
 byte. This reuses the existing MyLite SHOW-pattern matcher.
 
+## WHERE Predicate Semantics
+
+The optional `WHERE` predicate is evaluated after scope filtering and against
+the visible output row. The admitted output columns are:
+
+- `Variable_name`
+- `Value`
+
+The predicate subset matches the baseline `SHOW VARIABLES WHERE` evaluator:
+string and `NULL` literals, comparisons, null-safe equality, `LIKE`/`NOT LIKE`,
+`IN`/`NOT IN`, `IS NULL`/`IS NOT NULL`, parenthesized predicates, `NOT`, `AND`,
+and `OR`. Output-column names are resolved ASCII case-insensitively.
+
+Numeric, decimal, float, hex, bit, boolean, national-string, introducer, or
+parameter literals; column-to-column comparisons; functions; `BETWEEN`;
+`REGEXP`/`RLIKE`; subqueries; CTEs; and arbitrary expression predicates remain
+outside this slice.
+
 ## Result Semantics
 
 Successful statements return a row result with columns:
@@ -241,10 +429,9 @@ that broader status-counter lifecycle is deferred.
   policy, currently `1064` / `42000`.
 - Non-string `LIKE` operands remain parse-time syntax errors because the
   admitted grammar accepts only string literals.
-- `SHOW STATUS WHERE ...` is intentionally a parser syntax error in this slice,
-  even though MySQL accepts it. A later slice should either generalize the
-  existing SHOW output-row predicate evaluator or add an independently
-  specified `SHOW STATUS WHERE` evaluator.
+- Unsupported `WHERE` predicate forms fail through the shared
+  `SHOW VARIABLES` output-row predicate diagnostics instead of being silently
+  approximated.
 - Allocation failures use the existing `MYLITE_NOMEM` / out-of-memory
   diagnostic policy.
 - Physical SQLite failures are not expected because this statement generates no
@@ -262,11 +449,13 @@ is appended.
 Fast C tests cover:
 
 - parser acceptance for default, `GLOBAL`, `SESSION`, `LOCAL`, and `LIKE`
-  forms;
-- parser rejection for `WHERE`, `ORDER BY`, `LIMIT`, `FULL`, and non-string
-  `LIKE` operands;
+  forms, plus the admitted `WHERE` predicate forms;
+- parser rejection for `LIKE ... WHERE`, `ORDER BY`, `LIMIT`, `FULL`, and
+  non-string `LIKE` operands;
 - result columns, fixed values, row ordering, scope filtering, and `LIKE`
   filtering;
+- exact MySQL 8.4.9 `Com_%` command-counter row names in MySQL expectation
+  tests and deterministic zero placeholder values in MyLite tests;
 - warning count, affected rows, absence of stored warnings, and `ROW_COUNT()`;
 - no storage mutation for file-backed handles;
 - independent handles.

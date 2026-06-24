@@ -24,169 +24,177 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Bytes_received` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Bytes_sent` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Caching_sha2_password_rsa_public_key` | ❌ | Counter value or embedded zero/empty |
-| `Com_admin_commands` | ❌ | Counter value or embedded zero/empty |
-| `Com_alter_db` | ❌ | Counter value or embedded zero/empty |
-| `Com_alter_event` | ❌ | Counter value or embedded zero/empty |
-| `Com_alter_function` | ❌ | Counter value or embedded zero/empty |
-| `Com_alter_procedure` | ❌ | Counter value or embedded zero/empty |
-| `Com_alter_resource_group` | ❌ | Counter value or embedded zero/empty |
-| `Com_alter_server` | ❌ | Counter value or embedded zero/empty |
-| `Com_alter_table` | ❌ | Counter value or embedded zero/empty |
-| `Com_alter_tablespace` | ❌ | Counter value or embedded zero/empty |
-| `Com_alter_user` | ❌ | Counter value or embedded zero/empty |
-| `Com_alter_user_default_role` | ❌ | Counter value or embedded zero/empty |
-| `Com_analyze` | ❌ | Counter value or embedded zero/empty |
-| `Com_assign_to_keycache` | ❌ | Counter value or embedded zero/empty |
+| `Com_admin_commands` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_alter_db` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_alter_event` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_alter_function` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_alter_instance` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_alter_procedure` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_alter_resource_group` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_alter_server` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_alter_table` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_alter_tablespace` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_alter_user` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_alter_user_default_role` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_analyze` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_assign_to_keycache` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_begin` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Com_binlog` | ❌ | Counter value or embedded zero/empty |
-| `Com_call_procedure` | ❌ | Counter value or embedded zero/empty |
-| `Com_change_db` | ❌ | Counter value or embedded zero/empty |
-| `Com_change_repl_filter` | ❌ | Counter value or embedded zero/empty |
-| `Com_change_replication_source` | ❌ | Counter value or embedded zero/empty |
-| `Com_check` | ❌ | Counter value or embedded zero/empty |
-| `Com_checksum` | ❌ | Counter value or embedded zero/empty |
-| `Com_clone` | ❌ | Counter value or embedded zero/empty |
+| `Com_binlog` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_call_procedure` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_change_db` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_change_repl_filter` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_change_replication_source` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_check` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_checksum` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_clone` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_commit` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Com_create_db` | ❌ | Counter value or embedded zero/empty |
-| `Com_create_event` | ❌ | Counter value or embedded zero/empty |
-| `Com_create_function` | ❌ | Counter value or embedded zero/empty |
-| `Com_create_index` | ❌ | Counter value or embedded zero/empty |
-| `Com_create_procedure` | ❌ | Counter value or embedded zero/empty |
-| `Com_create_resource_group` | ❌ | Counter value or embedded zero/empty |
-| `Com_create_role` | ❌ | Counter value or embedded zero/empty |
-| `Com_create_server` | ❌ | Counter value or embedded zero/empty |
-| `Com_create_table` | ❌ | Counter value or embedded zero/empty |
-| `Com_create_trigger` | ❌ | Counter value or embedded zero/empty |
-| `Com_create_udf` | ❌ | Counter value or embedded zero/empty |
-| `Com_create_user` | ❌ | Counter value or embedded zero/empty |
-| `Com_create_view` | ❌ | Counter value or embedded zero/empty |
-| `Com_dealloc_sql` | ❌ | Counter value or embedded zero/empty |
+| `Com_create_db` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_create_event` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_create_function` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_create_index` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_create_procedure` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_create_resource_group` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_create_role` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_create_server` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_create_table` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_create_trigger` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_create_udf` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_create_user` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_create_view` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_create_spatial_reference_system` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_dealloc_sql` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_delete` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Com_delete_multi` | ❌ | Counter value or embedded zero/empty |
-| `Com_do` | ❌ | Counter value or embedded zero/empty |
-| `Com_drop_db` | ❌ | Counter value or embedded zero/empty |
-| `Com_drop_event` | ❌ | Counter value or embedded zero/empty |
-| `Com_drop_function` | ❌ | Counter value or embedded zero/empty |
-| `Com_drop_index` | ❌ | Counter value or embedded zero/empty |
-| `Com_drop_procedure` | ❌ | Counter value or embedded zero/empty |
-| `Com_drop_resource_group` | ❌ | Counter value or embedded zero/empty |
-| `Com_drop_role` | ❌ | Counter value or embedded zero/empty |
-| `Com_drop_server` | ❌ | Counter value or embedded zero/empty |
-| `Com_drop_table` | ❌ | Counter value or embedded zero/empty |
-| `Com_drop_trigger` | ❌ | Counter value or embedded zero/empty |
-| `Com_drop_user` | ❌ | Counter value or embedded zero/empty |
-| `Com_drop_view` | ❌ | Counter value or embedded zero/empty |
-| `Com_empty_query` | ❌ | Counter value or embedded zero/empty |
-| `Com_execute_sql` | ❌ | Counter value or embedded zero/empty |
-| `Com_explain_other` | ❌ | Counter value or embedded zero/empty |
-| `Com_flush` | ❌ | Counter value or embedded zero/empty |
-| `Com_get_diagnostics` | ❌ | Counter value or embedded zero/empty |
-| `Com_grant` | ❌ | Counter value or embedded zero/empty |
-| `Com_grant_roles` | ❌ | Counter value or embedded zero/empty |
-| `Com_group_replication_start` | ❌ | Counter value or embedded zero/empty |
-| `Com_group_replication_stop` | ❌ | Counter value or embedded zero/empty |
-| `Com_ha_close` | ❌ | Counter value or embedded zero/empty |
-| `Com_ha_open` | ❌ | Counter value or embedded zero/empty |
-| `Com_ha_read` | ❌ | Counter value or embedded zero/empty |
-| `Com_help` | ❌ | Counter value or embedded zero/empty |
+| `Com_delete_multi` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_do` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_drop_db` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_drop_event` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_drop_function` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_drop_index` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_drop_procedure` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_drop_resource_group` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_drop_role` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_drop_server` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_drop_spatial_reference_system` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_drop_table` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_drop_trigger` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_drop_user` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_drop_view` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_empty_query` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_execute_sql` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_explain_other` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_flush` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_get_diagnostics` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_grant` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_grant_roles` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_group_replication_start` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_group_replication_stop` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_ha_close` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_ha_open` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_ha_read` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_help` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_import` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_insert` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Com_insert_select` | ❌ | Counter value or embedded zero/empty |
-| `Com_install_component` | ❌ | Counter value or embedded zero/empty |
-| `Com_install_plugin` | ❌ | Counter value or embedded zero/empty |
-| `Com_kill` | ❌ | Counter value or embedded zero/empty |
-| `Com_load` | ❌ | Counter value or embedded zero/empty |
-| `Com_lock_tables` | ❌ | Counter value or embedded zero/empty |
-| `Com_optimize` | ❌ | Counter value or embedded zero/empty |
-| `Com_preload_keys` | ❌ | Counter value or embedded zero/empty |
-| `Com_prepare_sql` | ❌ | Counter value or embedded zero/empty |
-| `Com_purge` | ❌ | Counter value or embedded zero/empty |
-| `Com_purge_before_date` | ❌ | Counter value or embedded zero/empty |
-| `Com_release_savepoint` | ❌ | Counter value or embedded zero/empty |
-| `Com_rename_table` | ❌ | Counter value or embedded zero/empty |
-| `Com_rename_user` | ❌ | Counter value or embedded zero/empty |
-| `Com_repair` | ❌ | Counter value or embedded zero/empty |
+| `Com_insert_select` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_install_component` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_install_plugin` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_kill` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_load` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_lock_instance` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_lock_tables` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_optimize` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_preload_keys` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_prepare_sql` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_purge` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_purge_before_date` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_release_savepoint` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_rename_table` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_rename_user` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_repair` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_replace` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Com_replace_select` | ❌ | Counter value or embedded zero/empty |
-| `Com_replica_start` | ❌ | Counter value or embedded zero/empty |
-| `Com_replica_stop` | ❌ | Counter value or embedded zero/empty |
-| `Com_reset` | ❌ | Counter value or embedded zero/empty |
-| `Com_resignal` | ❌ | Counter value or embedded zero/empty |
-| `Com_restart` | ❌ | Counter value or embedded zero/empty |
-| `Com_revoke` | ❌ | Counter value or embedded zero/empty |
-| `Com_revoke_all` | ❌ | Counter value or embedded zero/empty |
-| `Com_revoke_roles` | ❌ | Counter value or embedded zero/empty |
+| `Com_replace_select` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_replica_start` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_replica_stop` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_reset` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_resignal` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_restart` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_revoke` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_revoke_all` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_revoke_roles` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_rollback` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Com_rollback_to_savepoint` | ❌ | Counter value or embedded zero/empty |
-| `Com_savepoint` | ❌ | Counter value or embedded zero/empty |
+| `Com_rollback_to_savepoint` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_savepoint` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_select` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_set_option` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Com_set_resource_group` | ❌ | Counter value or embedded zero/empty |
-| `Com_set_role` | ❌ | Counter value or embedded zero/empty |
+| `Com_set_password` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_set_resource_group` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_set_role` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_show_authors` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_binary_log_status` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_binlog_events` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_binlogs` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_charsets` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_collations` | ❌ | Counter value or embedded zero/empty |
+| `Com_show_binary_log_status` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_binlog_events` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_binlogs` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_charsets` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_collations` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_show_contributors` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_create_db` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_create_event` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_create_func` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_create_proc` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_create_table` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_create_trigger` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_create_user` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_databases` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_engine_logs` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_engine_mutex` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_engine_status` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_errors` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_events` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_fields` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_function_code` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_function_status` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_grants` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_keys` | ❌ | Counter value or embedded zero/empty |
+| `Com_show_create_db` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_create_event` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_create_func` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_create_proc` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_create_table` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_create_trigger` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_create_user` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_databases` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_engine_logs` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_engine_mutex` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_engine_status` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_errors` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_events` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_fields` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_function_code` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_function_status` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_grants` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_keys` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_show_ndb_status` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_open_tables` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_plugins` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_privileges` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_procedure_code` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_procedure_status` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_processlist` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_profile` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_profiles` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_relaylog_events` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_replica_status` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_replicas` | ❌ | Counter value or embedded zero/empty |
+| `Com_show_open_tables` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_parse_tree` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_plugins` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_privileges` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_procedure_code` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_procedure_status` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_processlist` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_profile` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_profiles` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_relaylog_events` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_replica_status` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_replicas` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_show_status` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Com_show_storage_engines` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_table_status` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_tables` | ❌ | Counter value or embedded zero/empty |
-| `Com_show_triggers` | ❌ | Counter value or embedded zero/empty |
+| `Com_show_storage_engines` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_table_status` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_tables` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_show_triggers` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_show_variables` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Com_show_warnings` | ❌ | Counter value or embedded zero/empty |
-| `Com_shutdown` | ❌ | Counter value or embedded zero/empty |
-| `Com_signal` | ❌ | Counter value or embedded zero/empty |
-| `Com_stmt_close` | ❌ | Counter value or embedded zero/empty |
-| `Com_stmt_execute` | ❌ | Counter value or embedded zero/empty |
-| `Com_stmt_fetch` | ❌ | Counter value or embedded zero/empty |
-| `Com_stmt_prepare` | ❌ | Counter value or embedded zero/empty |
-| `Com_stmt_reprepare` | ❌ | Counter value or embedded zero/empty |
-| `Com_stmt_reset` | ❌ | Counter value or embedded zero/empty |
-| `Com_stmt_send_long_data` | ❌ | Counter value or embedded zero/empty |
-| `Com_truncate` | ❌ | Counter value or embedded zero/empty |
-| `Com_uninstall_component` | ❌ | Counter value or embedded zero/empty |
-| `Com_uninstall_plugin` | ❌ | Counter value or embedded zero/empty |
-| `Com_unlock_tables` | ❌ | Counter value or embedded zero/empty |
+| `Com_show_warnings` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_shutdown` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_signal` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_stmt_close` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_stmt_execute` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_stmt_fetch` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_stmt_prepare` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_stmt_reprepare` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_stmt_reset` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_stmt_send_long_data` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_truncate` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_uninstall_component` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_uninstall_plugin` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_unlock_instance` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_unlock_tables` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_update` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Com_update_multi` | ❌ | Counter value or embedded zero/empty |
-| `Com_xa_commit` | ❌ | Counter value or embedded zero/empty |
-| `Com_xa_end` | ❌ | Counter value or embedded zero/empty |
-| `Com_xa_prepare` | ❌ | Counter value or embedded zero/empty |
-| `Com_xa_recover` | ❌ | Counter value or embedded zero/empty |
-| `Com_xa_rollback` | ❌ | Counter value or embedded zero/empty |
-| `Com_xa_start` | ❌ | Counter value or embedded zero/empty |
+| `Com_update_multi` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_xa_commit` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_xa_end` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_xa_prepare` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_xa_recover` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_xa_rollback` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
+| `Com_xa_start` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Compression` | 🟡 | Limited `SHOW STATUS` session/`LOCAL` value `OFF`; omitted from `GLOBAL`; no compression protocol state |
 | `Compression_algorithm` | ❌ | Counter value or embedded zero/empty |
 | `Compression_level` | ❌ | Counter value or embedded zero/empty |

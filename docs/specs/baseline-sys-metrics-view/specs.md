@@ -39,7 +39,9 @@ USE sys;
 SELECT * FROM metrics;
 ```
 
-MyLite returns one row per supported global status descriptor. Each row uses:
+MyLite returns one row per supported global status descriptor. The current
+descriptor set produces 209 rows: all global-visible status placeholders from
+the `SHOW STATUS` registry, excluding session-only `Compression`. Each row uses:
 
 | Column | Value |
 | --- | --- |

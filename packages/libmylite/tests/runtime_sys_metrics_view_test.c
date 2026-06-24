@@ -188,15 +188,21 @@ int main(void) {
 
 static int test_sys_metrics_view(void) {
     enum {
-        metrics_row_count = 52,
+        metrics_row_count = 209,
     };
 
     static const char *const count_column[] = {"COUNT(*)"};
     static const char *const count_zero[] = {"0"};
-    static const char *const metrics_row_count_value[] = {"52"};
+    static const char *const metrics_row_count_value[] = {"209"};
     static const char *const row_count_minus_one[] = {"-1"};
     static const char *const aborted_clients_row[] = {
         "aborted_clients",
+        "0",
+        "Global Status",
+        "YES",
+    };
+    static const char *const com_select_row[] = {
+        "com_select",
         "0",
         "Global Status",
         "YES",
@@ -378,6 +384,18 @@ static int test_sys_metrics_view(void) {
             .values = aborted_clients_row,
             .row_count = 1U,
             .context = "sys.metrics aborted_clients row",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
+                   "WHERE Variable_name = 'com_select'",
+            .column_names = metrics_columns,
+            .column_count = metrics_column_count,
+            .values = com_select_row,
+            .row_count = 1U,
+            .context = "sys.metrics command counter row",
         }
     );
     failures += expect_query(

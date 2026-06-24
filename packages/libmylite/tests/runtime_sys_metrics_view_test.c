@@ -219,6 +219,12 @@ static int test_sys_metrics_view(void) {
         "Global Status",
         "YES",
     };
+    static const char *const created_tmp_tables_row[] = {
+        "created_tmp_tables",
+        "0",
+        "Global Status",
+        "YES",
+    };
     static const char *const connection_errors_internal_row[] = {
         "connection_errors_internal",
         "0",
@@ -227,6 +233,12 @@ static int test_sys_metrics_view(void) {
     };
     static const char *const handler_commit_row[] = {
         "handler_commit",
+        "0",
+        "Global Status",
+        "YES",
+    };
+    static const char *const open_tables_row[] = {
+        "open_tables",
         "0",
         "Global Status",
         "YES",
@@ -456,12 +468,36 @@ static int test_sys_metrics_view(void) {
         database,
         (struct expected_query){
             .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
+                   "WHERE Variable_name = 'created_tmp_tables'",
+            .column_names = metrics_columns,
+            .column_count = metrics_column_count,
+            .values = created_tmp_tables_row,
+            .row_count = 1U,
+            .context = "sys.metrics created counter row",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
                    "WHERE Variable_name = 'handler_commit'",
             .column_names = metrics_columns,
             .column_count = metrics_column_count,
             .values = handler_commit_row,
             .row_count = 1U,
             .context = "sys.metrics handler counter row",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
+                   "WHERE Variable_name = 'open_tables'",
+            .column_names = metrics_columns,
+            .column_count = metrics_column_count,
+            .values = open_tables_row,
+            .row_count = 1U,
+            .context = "sys.metrics open counter row",
         }
     );
     failures += expect_query(

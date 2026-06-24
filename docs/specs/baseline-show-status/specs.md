@@ -145,8 +145,9 @@ not MySQL's full grammar.
 This phase exposes a limited common registry. Values are deterministic embedded
 placeholders unless listed otherwise. All numeric values are returned as
 decimal text. The `Binlog_%`, `Com_%`, and `Handler_%` rows mirror the MySQL
-8.4.9 counter names and order, but their values are fixed `0` placeholders
-rather than live counters.
+8.4.9 counter names and order. The `Created_%` and `Open%` resource rows also
+mirror the MySQL 8.4.9 names and order. These values are fixed `0`
+placeholders rather than live counters.
 
 | Variable | Default/session/LOCAL visibility | GLOBAL visibility | MyLite value |
 | --- | --- | --- | --- |

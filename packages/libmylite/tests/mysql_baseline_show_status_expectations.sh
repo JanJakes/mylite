@@ -180,6 +180,30 @@ Connection_errors_peer_address
 Connection_errors_select
 Connection_errors_tcpwrap" "$global_connection_row_names"
 
+created_row_names=$(run_mysql "SHOW STATUS LIKE 'Created\\_%';" | cut -f1)
+expected_created_row_names="Created_tmp_disk_tables
+Created_tmp_files
+Created_tmp_tables"
+expect_value "created counter row names" "$expected_created_row_names" "$created_row_names"
+
+session_created_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Created\\_%';" | cut -f1)
+expect_value \
+    "session created counter row names" \
+    "$expected_created_row_names" \
+    "$session_created_row_names"
+
+local_created_row_names=$(run_mysql "SHOW LOCAL STATUS LIKE 'Created\\_%';" | cut -f1)
+expect_value \
+    "local created counter row names" \
+    "$expected_created_row_names" \
+    "$local_created_row_names"
+
+global_created_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Created\\_%';" | cut -f1)
+expect_value \
+    "global created counter row names" \
+    "$expected_created_row_names" \
+    "$global_created_row_names"
+
 handler_row_names=$(run_mysql "SHOW STATUS LIKE 'Handler\\_%';" | cut -f1)
 expected_handler_row_names="Handler_commit
 Handler_delete
@@ -203,6 +227,25 @@ expect_value "handler counter row names" "$expected_handler_row_names" "$handler
 
 global_handler_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Handler\\_%';" | cut -f1)
 expect_value "global handler counter row names" "$expected_handler_row_names" "$global_handler_row_names"
+
+open_row_names=$(run_mysql "SHOW STATUS LIKE 'Open%';" | cut -f1)
+expected_open_row_names="Open_files
+Open_streams
+Open_table_definitions
+Open_tables
+Opened_files
+Opened_table_definitions
+Opened_tables"
+expect_value "open resource row names" "$expected_open_row_names" "$open_row_names"
+
+session_open_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Open%';" | cut -f1)
+expect_value "session open resource row names" "$expected_open_row_names" "$session_open_row_names"
+
+local_open_row_names=$(run_mysql "SHOW LOCAL STATUS LIKE 'Open%';" | cut -f1)
+expect_value "local open resource row names" "$expected_open_row_names" "$local_open_row_names"
+
+global_open_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Open%';" | cut -f1)
+expect_value "global open resource row names" "$expected_open_row_names" "$global_open_row_names"
 
 thread_row_names=$(run_mysql "SHOW STATUS LIKE 'Threads\\_%';" | cut -f1)
 expect_value "threads like row names" "Threads_cached

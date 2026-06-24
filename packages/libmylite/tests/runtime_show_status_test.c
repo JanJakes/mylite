@@ -365,6 +365,11 @@ static int test_show_status_values_scopes_and_filters(void) {
         {"Connection_errors_select", "0"},
         {"Connection_errors_tcpwrap", "0"},
     };
+    static const struct expected_status_row expected_created_rows[] = {
+        {"Created_tmp_disk_tables", "0"},
+        {"Created_tmp_files", "0"},
+        {"Created_tmp_tables", "0"},
+    };
     static const struct expected_status_row expected_handler_rows[] = {
         {"Handler_commit", "0"},
         {"Handler_delete", "0"},
@@ -384,6 +389,15 @@ static int test_show_status_values_scopes_and_filters(void) {
         {"Handler_savepoint_rollback", "0"},
         {"Handler_update", "0"},
         {"Handler_write", "0"},
+    };
+    static const struct expected_status_row expected_open_rows[] = {
+        {"Open_files", "0"},
+        {"Open_streams", "0"},
+        {"Open_table_definitions", "0"},
+        {"Open_tables", "0"},
+        {"Opened_files", "0"},
+        {"Opened_table_definitions", "0"},
+        {"Opened_tables", "0"},
     };
     mylite_db *database = NULL;
     int failures = 0;
@@ -483,6 +497,27 @@ static int test_show_status_values_scopes_and_filters(void) {
     );
     failures += expect_status_rows(
         database,
+        "SHOW STATUS LIKE 'Created\\_%'",
+        expected_created_rows,
+        sizeof(expected_created_rows) / sizeof(expected_created_rows[0]),
+        "show status created counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Created\\_%'",
+        expected_created_rows,
+        sizeof(expected_created_rows) / sizeof(expected_created_rows[0]),
+        "show global status created counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW LOCAL STATUS LIKE 'Created\\_%'",
+        expected_created_rows,
+        sizeof(expected_created_rows) / sizeof(expected_created_rows[0]),
+        "show local status created counters"
+    );
+    failures += expect_status_rows(
+        database,
         "SHOW STATUS LIKE 'Handler\\_%'",
         expected_handler_rows,
         sizeof(expected_handler_rows) / sizeof(expected_handler_rows[0]),
@@ -494,6 +529,27 @@ static int test_show_status_values_scopes_and_filters(void) {
         expected_handler_rows,
         sizeof(expected_handler_rows) / sizeof(expected_handler_rows[0]),
         "show global status handler counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS LIKE 'Open%'",
+        expected_open_rows,
+        sizeof(expected_open_rows) / sizeof(expected_open_rows[0]),
+        "show status open counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Open%'",
+        expected_open_rows,
+        sizeof(expected_open_rows) / sizeof(expected_open_rows[0]),
+        "show global status open counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW LOCAL STATUS LIKE 'Open%'",
+        expected_open_rows,
+        sizeof(expected_open_rows) / sizeof(expected_open_rows[0]),
+        "show local status open counters"
     );
     failures += expect_status_rows(
         database,

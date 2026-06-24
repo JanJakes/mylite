@@ -133,6 +133,22 @@ int mylite_json_contains_path(
     int64_t *out_contains,
     struct mylite_json_normalize_result *out_result
 );
+int mylite_json_overlaps(
+    const char *left,
+    size_t left_length,
+    const char *right,
+    size_t right_length,
+    int64_t *out_overlaps,
+    struct mylite_json_normalize_result *out_result
+);
+int mylite_json_member_of(
+    const struct mylite_json_sql_value *value,
+    const char *document,
+    size_t document_length,
+    int64_t *out_member,
+    bool *out_is_null,
+    struct mylite_json_normalize_result *out_result
+);
 int mylite_json_set(
     const char *text,
     size_t text_length,

@@ -222,6 +222,28 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_binary_expression(
     return expression;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_member_of_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_token member_token,
+    struct mylite_sql_ast_node *right,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_source_span span =
+        left == NULL ? mylite_sql_parser_span_from_token(&member_token) : left->span;
+    struct mylite_sql_ast_node *expression = NULL;
+
+    span = mylite_sql_parser_span_join(span, mylite_sql_parser_span_from_token(&right_paren));
+    expression = mylite_sql_parser_make_node(state, MYLITE_SQL_AST_JSON_MEMBER_OF_FUNCTION, span);
+    if (expression == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(expression, left);
+    mylite_sql_ast_node_append_child(expression, right);
+    return expression;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_cast_binary_expression(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token cast_token,

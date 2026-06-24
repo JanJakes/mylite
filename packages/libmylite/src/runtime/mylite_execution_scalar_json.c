@@ -93,6 +93,18 @@ static int json_contains_path_one_or_all_value(
     bool *out_require_all,
     bool *out_is_null
 );
+static int json_member_of_scalar_value_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    struct mylite_json_sql_value *out_value,
+    char **out_owned_text
+);
+static int validate_json_overlaps_left_document(
+    struct mylite_db *database,
+    const char *document,
+    size_t document_length
+);
 static int json_length_path_scalar_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -163,6 +175,16 @@ static int finish_json_contains_scalar_result(
     const struct mylite_json_normalize_result *result
 );
 static int finish_json_contains_path_scalar_result(
+    struct mylite_db *database,
+    int rc,
+    const struct mylite_json_normalize_result *result
+);
+static int finish_json_overlaps_scalar_result(
+    struct mylite_db *database,
+    int rc,
+    const struct mylite_json_normalize_result *result
+);
+static int finish_json_member_of_scalar_result(
     struct mylite_db *database,
     int rc,
     const struct mylite_json_normalize_result *result
@@ -592,6 +614,238 @@ done:
     free(owned_document);
     mylite_execution_session_scalar_cell_deinit(&document_cell);
     return rc;
+}
+
+int mylite_execution_scalar_json_overlaps_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct session_scalar_cell left_cell = {0};
+    struct session_scalar_cell right_cell = {0};
+    char *owned_left = NULL;
+    char *owned_right = NULL;
+    const char *left = NULL;
+    const char *right = NULL;
+    size_t left_length = 0U;
+    size_t right_length = 0U;
+    int64_t overlaps = 0;
+    bool left_is_null = false;
+    bool right_is_null = false;
+    struct mylite_json_normalize_result result = {0};
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_JSON_OVERLAPS_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        mylite_execution_set_native_function_parameter_count_error(database, "JSON_OVERLAPS");
+        return MYLITE_ERROR;
+    }
+
+    rc = json_introspection_scalar_argument(
+        database,
+        mylite_execution_child_at(expression, 0U),
+        &left_cell,
+        "JSON_OVERLAPS",
+        &owned_left,
+        &left,
+        &left_length,
+        &left_is_null
+    );
+    if (rc != MYLITE_OK || left_is_null) {
+        goto done;
+    }
+
+    rc = validate_json_overlaps_left_document(database, left, left_length);
+    if (rc != MYLITE_OK) {
+        goto done;
+    }
+
+    rc = json_introspection_scalar_argument(
+        database,
+        mylite_execution_child_at(expression, 1U),
+        &right_cell,
+        "JSON_OVERLAPS",
+        &owned_right,
+        &right,
+        &right_length,
+        &right_is_null
+    );
+    if (rc != MYLITE_OK || right_is_null) {
+        goto done;
+    }
+
+    rc = mylite_json_overlaps(left, left_length, right, right_length, &overlaps, &result);
+    rc = finish_json_overlaps_scalar_result(database, rc, &result);
+    if (rc == MYLITE_OK) {
+        rc = format_json_search_scalar_result(
+            database,
+            overlaps,
+            "failed to format JSON_OVERLAPS() value",
+            out_cell
+        );
+    }
+
+done:
+    free(owned_left);
+    free(owned_right);
+    mylite_execution_session_scalar_cell_deinit(&left_cell);
+    mylite_execution_session_scalar_cell_deinit(&right_cell);
+    return rc;
+}
+
+int mylite_execution_scalar_json_member_of_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    struct session_scalar_cell value_cell = {0};
+    struct session_scalar_cell document_cell = {0};
+    struct mylite_json_sql_value value = {0};
+    char *owned_value = NULL;
+    char *owned_document = NULL;
+    const char *document = NULL;
+    size_t document_length = 0U;
+    int64_t is_member = 0;
+    bool document_is_null = false;
+    bool result_is_null = false;
+    struct mylite_json_normalize_result result = {0};
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_JSON_MEMBER_OF_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 2U) {
+        mylite_execution_set_runtime_error(database, "invalid MEMBER OF() expression");
+        return MYLITE_ERROR;
+    }
+
+    rc = json_member_of_scalar_value_argument(
+        database,
+        mylite_execution_child_at(expression, 0U),
+        &value_cell,
+        &value,
+        &owned_value
+    );
+    if (rc != MYLITE_OK) {
+        goto done;
+    }
+    if (value.kind == MYLITE_JSON_SQL_VALUE_NULL) {
+        result_is_null = true;
+        goto done;
+    }
+
+    rc = json_introspection_scalar_argument(
+        database,
+        mylite_execution_child_at(expression, 1U),
+        &document_cell,
+        "MEMBER OF",
+        &owned_document,
+        &document,
+        &document_length,
+        &document_is_null
+    );
+    if (rc != MYLITE_OK) {
+        goto done;
+    }
+    if (document_is_null) {
+        result_is_null = true;
+        goto done;
+    }
+
+    rc = mylite_json_member_of(
+        &value,
+        document,
+        document_length,
+        &is_member,
+        &result_is_null,
+        &result
+    );
+    rc = finish_json_member_of_scalar_result(database, rc, &result);
+    if (rc == MYLITE_OK && !result_is_null) {
+        rc = format_json_search_scalar_result(
+            database,
+            is_member,
+            "failed to format MEMBER OF() value",
+            out_cell
+        );
+    }
+
+done:
+    free(owned_value);
+    free(owned_document);
+    mylite_execution_session_scalar_cell_deinit(&value_cell);
+    mylite_execution_session_scalar_cell_deinit(&document_cell);
+    return rc;
+}
+
+static int json_member_of_scalar_value_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    struct mylite_json_sql_value *out_value,
+    char **out_owned_text
+) {
+    int rc = MYLITE_OK;
+
+    if (inout_cell == NULL || out_value == NULL || out_owned_text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = (struct mylite_json_sql_value){0};
+    *out_owned_text = NULL;
+
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        mylite_execution_set_unsupported_error(
+            database,
+            "MEMBER OF() supports only string, integer, boolean, NULL, JSON_ARRAY(), and "
+            "JSON_OBJECT() left operands"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_JSON_ARRAY_FUNCTION) {
+        rc = mylite_execution_scalar_json_array_function_value(database, expression, inout_cell);
+    } else if (expression->kind == MYLITE_SQL_AST_JSON_OBJECT_FUNCTION) {
+        rc = mylite_execution_scalar_json_object_function_value(database, expression, inout_cell);
+    } else {
+        return mylite_execution_scalar_json_evaluate_constructor_argument(
+            database,
+            expression,
+            out_value,
+            out_owned_text
+        );
+    }
+    if (rc == MYLITE_OK) {
+        if (inout_cell->value == NULL) {
+            out_value->kind = MYLITE_JSON_SQL_VALUE_NULL;
+        } else {
+            out_value->kind = MYLITE_JSON_SQL_VALUE_JSON;
+            out_value->text = inout_cell->value;
+            out_value->text_length = inout_cell->value_size;
+        }
+    }
+    return rc;
+}
+
+static int validate_json_overlaps_left_document(
+    struct mylite_db *database,
+    const char *document,
+    size_t document_length
+) {
+    const char *type_name = NULL;
+    struct mylite_json_normalize_result result = {0};
+    int rc = MYLITE_OK;
+
+    rc = mylite_json_type(document, document_length, &type_name, &result);
+    (void)type_name;
+    return finish_json_overlaps_scalar_result(database, rc, &result);
 }
 
 static int allocate_json_contains_path_scalar_buffers(
@@ -2281,6 +2535,58 @@ static int finish_json_contains_path_scalar_result(
         mylite_execution_set_unsupported_error(
             database,
             "JSON_CONTAINS_PATH() path or document shape is not supported"
+        );
+        return MYLITE_ERROR;
+    }
+    mylite_execution_set_invalid_json_function_text_error(
+        database,
+        result == NULL ? 0U : result->position
+    );
+    return MYLITE_ERROR;
+}
+
+static int finish_json_overlaps_scalar_result(
+    struct mylite_db *database,
+    int rc,
+    const struct mylite_json_normalize_result *result
+) {
+    if (rc == MYLITE_OK) {
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_NOMEM) {
+        mylite_execution_set_nomem_error(database);
+        return rc;
+    }
+    if (result != NULL && result->status == MYLITE_JSON_NORMALIZE_UNSUPPORTED) {
+        mylite_execution_set_unsupported_error(
+            database,
+            "JSON_OVERLAPS() document shape is not supported"
+        );
+        return MYLITE_ERROR;
+    }
+    mylite_execution_set_invalid_json_function_text_error(
+        database,
+        result == NULL ? 0U : result->position
+    );
+    return MYLITE_ERROR;
+}
+
+static int finish_json_member_of_scalar_result(
+    struct mylite_db *database,
+    int rc,
+    const struct mylite_json_normalize_result *result
+) {
+    if (rc == MYLITE_OK) {
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_NOMEM) {
+        mylite_execution_set_nomem_error(database);
+        return rc;
+    }
+    if (result != NULL && result->status == MYLITE_JSON_NORMALIZE_UNSUPPORTED) {
+        mylite_execution_set_unsupported_error(
+            database,
+            "MEMBER OF() document shape is not supported"
         );
         return MYLITE_ERROR;
     }

@@ -121,6 +121,12 @@ static void json_contains_path_sqlite_callback(
     int argc,
     sqlite3_value **argv
 );
+static void json_overlaps_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void json_member_of_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+);
 static void json_extract_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_value_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static int append_json_value_invalid_document_warning(
@@ -190,6 +196,19 @@ static void finish_json_contains_sqlite_result(
 static void finish_json_contains_path_sqlite_result(
     sqlite3_context *context,
     const struct json_search_sqlite_result *result
+);
+static void finish_json_overlaps_sqlite_result(
+    sqlite3_context *context,
+    const struct json_search_sqlite_result *result
+);
+static void finish_json_member_of_sqlite_result(
+    sqlite3_context *context,
+    const struct json_search_sqlite_result *result
+);
+static bool validate_json_overlaps_sqlite_left_document(
+    sqlite3_context *context,
+    const unsigned char *document,
+    int document_length
 );
 static int decode_json_keys_sqlite_arguments(
     sqlite3_context *context,
@@ -301,6 +320,34 @@ int mylite_sqlite_register_json_functions(sqlite3 *sqlite) {
                 SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
             .application_data = NULL,
             .scalar_callback = json_contains_path_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_json_overlaps",
+            .argument_count = 2,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = NULL,
+            .scalar_callback = json_overlaps_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_json_member_of",
+            .argument_count = 3,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = NULL,
+            .scalar_callback = json_member_of_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
             .value_callback = NULL,
@@ -908,6 +955,166 @@ static void json_contains_path_sqlite_callback(
     result.normalize_result = &normalize_result;
     finish_json_contains_path_sqlite_result(context, &result);
     json_contains_path_sqlite_arguments_deinit(&arguments);
+}
+
+static void json_overlaps_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+) {
+    const unsigned char *left = NULL;
+    const unsigned char *right = NULL;
+    int left_length = 0;
+    int right_length = 0;
+    int64_t overlaps = 0;
+    struct mylite_json_normalize_result normalize_result = {0};
+    struct json_search_sqlite_result result = {0};
+    int rc = MYLITE_OK;
+
+    if (context == NULL || argc != 2 || argv == NULL || argv[0] == NULL || argv[1] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite JSON_OVERLAPS callback", -1);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) != SQLITE_TEXT) {
+        sqlite3_result_error(context, "Invalid data type for JSON data in JSON_OVERLAPS()", -1);
+        return;
+    }
+    left = sqlite3_value_text(argv[0]);
+    left_length = sqlite3_value_bytes(argv[0]);
+    if (left == NULL || left_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+
+    if (sqlite3_value_type(argv[1]) == SQLITE_NULL) {
+        if (!validate_json_overlaps_sqlite_left_document(context, left, left_length)) {
+            return;
+        }
+        sqlite3_result_null(context);
+        return;
+    }
+    if (sqlite3_value_type(argv[1]) != SQLITE_TEXT) {
+        if (!validate_json_overlaps_sqlite_left_document(context, left, left_length)) {
+            return;
+        }
+        sqlite3_result_error(context, "Invalid data type for JSON data in JSON_OVERLAPS()", -1);
+        return;
+    }
+    right = sqlite3_value_text(argv[1]);
+    right_length = sqlite3_value_bytes(argv[1]);
+    if (right == NULL || right_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+
+    rc = mylite_json_overlaps(
+        (const char *)left,
+        (size_t)left_length,
+        (const char *)right,
+        (size_t)right_length,
+        &overlaps,
+        &normalize_result
+    );
+    result.rc = rc;
+    result.contains = overlaps;
+    result.is_null = false;
+    result.normalize_result = &normalize_result;
+    finish_json_overlaps_sqlite_result(context, &result);
+}
+
+static void json_member_of_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+) {
+    struct mylite_json_sql_value value = {0};
+    const unsigned char *document = NULL;
+    int document_length = 0;
+    int64_t is_member = 0;
+    bool is_null = false;
+    struct mylite_json_normalize_result normalize_result = {0};
+    struct json_search_sqlite_result result = {0};
+    int rc = MYLITE_OK;
+
+    if (context == NULL || argc != 3 || argv == NULL || argv[0] == NULL || argv[1] == NULL ||
+        argv[2] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite MEMBER OF callback", -1);
+        return;
+    }
+    rc = json_sql_value_from_sqlite(context, argv[0], argv[1], true, &value);
+    if (rc != MYLITE_OK) {
+        return;
+    }
+    if (value.kind == MYLITE_JSON_SQL_VALUE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+    if (sqlite3_value_type(argv[2]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+    if (sqlite3_value_type(argv[2]) != SQLITE_TEXT) {
+        sqlite3_result_error(context, "Invalid data type for JSON data in MEMBER OF()", -1);
+        return;
+    }
+    document = sqlite3_value_text(argv[2]);
+    document_length = sqlite3_value_bytes(argv[2]);
+    if (document == NULL || document_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+
+    rc = mylite_json_member_of(
+        &value,
+        (const char *)document,
+        (size_t)document_length,
+        &is_member,
+        &is_null,
+        &normalize_result
+    );
+    result.rc = rc;
+    result.contains = is_member;
+    result.is_null = is_null;
+    result.normalize_result = &normalize_result;
+    finish_json_member_of_sqlite_result(context, &result);
+}
+
+static bool validate_json_overlaps_sqlite_left_document(
+    sqlite3_context *context,
+    const unsigned char *document,
+    int document_length
+) {
+    const char *type_name = NULL;
+    struct mylite_json_normalize_result normalize_result = {0};
+    struct json_search_sqlite_result result = {0};
+    int rc = MYLITE_OK;
+
+    if (document == NULL || document_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return false;
+    }
+
+    rc = mylite_json_type(
+        (const char *)document,
+        (size_t)document_length,
+        &type_name,
+        &normalize_result
+    );
+    if (rc == MYLITE_OK) {
+        return true;
+    }
+
+    (void)type_name;
+    result.rc = rc;
+    result.contains = 0;
+    result.is_null = false;
+    result.normalize_result = &normalize_result;
+    finish_json_overlaps_sqlite_result(context, &result);
+    return false;
 }
 
 static int decode_json_contains_path_sqlite_mode(
@@ -2335,6 +2542,68 @@ static void finish_json_contains_path_sqlite_result(
             );
         } else {
             sqlite3_result_error(context, "MyLite JSON_CONTAINS_PATH failed", -1);
+        }
+        return;
+    }
+    if (result->is_null) {
+        sqlite3_result_null(context);
+        return;
+    }
+    sqlite3_result_int64(context, result->contains);
+}
+
+static void finish_json_overlaps_sqlite_result(
+    sqlite3_context *context,
+    const struct json_search_sqlite_result *result
+) {
+    if (result == NULL) {
+        sqlite3_result_error(context, "MyLite JSON_OVERLAPS failed", -1);
+        return;
+    }
+    if (result->rc == MYLITE_NOMEM) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    if (result->rc != MYLITE_OK) {
+        if (result->normalize_result != NULL &&
+            result->normalize_result->status == MYLITE_JSON_NORMALIZE_UNSUPPORTED) {
+            sqlite3_result_error(context, "Unsupported JSON document in JSON_OVERLAPS()", -1);
+        } else if (result->normalize_result != NULL &&
+                   result->normalize_result->status == MYLITE_JSON_NORMALIZE_INVALID) {
+            sqlite3_result_error(context, "Invalid JSON text in JSON_OVERLAPS()", -1);
+        } else {
+            sqlite3_result_error(context, "MyLite JSON_OVERLAPS failed", -1);
+        }
+        return;
+    }
+    if (result->is_null) {
+        sqlite3_result_null(context);
+        return;
+    }
+    sqlite3_result_int64(context, result->contains);
+}
+
+static void finish_json_member_of_sqlite_result(
+    sqlite3_context *context,
+    const struct json_search_sqlite_result *result
+) {
+    if (result == NULL) {
+        sqlite3_result_error(context, "MyLite MEMBER OF failed", -1);
+        return;
+    }
+    if (result->rc == MYLITE_NOMEM) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    if (result->rc != MYLITE_OK) {
+        if (result->normalize_result != NULL &&
+            result->normalize_result->status == MYLITE_JSON_NORMALIZE_UNSUPPORTED) {
+            sqlite3_result_error(context, "Unsupported JSON document in MEMBER OF()", -1);
+        } else if (result->normalize_result != NULL &&
+                   result->normalize_result->status == MYLITE_JSON_NORMALIZE_INVALID) {
+            sqlite3_result_error(context, "Invalid JSON text in MEMBER OF()", -1);
+        } else {
+            sqlite3_result_error(context, "MyLite MEMBER OF failed", -1);
         }
         return;
     }

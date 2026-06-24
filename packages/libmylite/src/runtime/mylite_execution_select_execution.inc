@@ -684,6 +684,30 @@ static bool map_json_search_row_scalar_step_error(struct mylite_db *database, co
         );
         return true;
     }
+    if (strcmp(message, "Invalid data type for JSON data in JSON_OVERLAPS()") == 0) {
+        set_invalid_json_data_type_error(database, "JSON_OVERLAPS");
+        return true;
+    }
+    if (strcmp(message, "Invalid JSON text in JSON_OVERLAPS()") == 0) {
+        set_invalid_json_function_text_error(database, 0U);
+        return true;
+    }
+    if (strcmp(message, "Unsupported JSON document in JSON_OVERLAPS()") == 0) {
+        set_unsupported_error(database, "JSON_OVERLAPS() document shape is not supported");
+        return true;
+    }
+    if (strcmp(message, "Invalid data type for JSON data in MEMBER OF()") == 0) {
+        set_invalid_json_data_type_error(database, "MEMBER OF");
+        return true;
+    }
+    if (strcmp(message, "Invalid JSON text in MEMBER OF()") == 0) {
+        set_invalid_json_function_text_error(database, 0U);
+        return true;
+    }
+    if (strcmp(message, "Unsupported JSON document in MEMBER OF()") == 0) {
+        set_unsupported_error(database, "MEMBER OF() document shape is not supported");
+        return true;
+    }
     return false;
 }
 
@@ -1893,6 +1917,8 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OVERLAPS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_MEMBER_OF:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_DEPTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:

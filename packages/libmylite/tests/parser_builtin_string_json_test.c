@@ -3271,6 +3271,44 @@ static int test_json_introspection_functions(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "SELECT JSON_OVERLAPS('[1,2]', '[2,3]'), 2 MEMBER OF('[1,2]') FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    second_expression = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_OVERLAPS_FUNCTION,
+        "json_overlaps function"
+    );
+    failures +=
+        parser_test_expect_child_count(first_expression, 2U, "json_overlaps argument count");
+    failures += parser_test_expect_node(
+        second_expression,
+        MYLITE_SQL_AST_JSON_MEMBER_OF_FUNCTION,
+        "member of expression"
+    );
+    failures += parser_test_expect_child_count(second_expression, 2U, "member of argument count");
+    failures +=
+        parser_test_expect_span_text(second_expression, "2 MEMBER OF('[1,2]')", "member of span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("SELECT JSON_OVERLAPS();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = parser_test_child_at(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),
+        0U
+    );
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_OVERLAPS_ARGUMENT_COUNT_ERROR,
+        "json_overlaps zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parser_test_parse_sql("SELECT JSON_TYPE();", MYLITE_SQL_PARSE_OK, &result);
     first_expression = parser_test_child_at(
         parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),
@@ -3374,8 +3412,9 @@ static int test_json_introspection_functions(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
-        "CREATE TABLE json_type (json_length INT, json_depth INT, json_pretty TEXT); "
-        "SELECT json_length, json_depth, json_pretty FROM json_type;",
+        "CREATE TABLE json_type (json_length INT, json_depth INT, json_pretty TEXT, "
+        "json_overlaps TEXT, member INT); "
+        "SELECT json_length, json_depth, json_pretty, json_overlaps, member FROM json_type;",
         MYLITE_SQL_PARSE_OK,
         &result
     );

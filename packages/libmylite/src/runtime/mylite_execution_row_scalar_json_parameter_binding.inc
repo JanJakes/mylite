@@ -35,6 +35,31 @@ static int bind_row_scalar_json_search_expression_parameters(
     return rc;
 }
 
+static int bind_row_scalar_json_member_of_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL || expression->argument_count != 2U) {
+        return MYLITE_ERROR;
+    }
+    rc = bind_row_scalar_json_set_value_argument_parameters(
+        statement,
+        &expression->arguments[0],
+        parameter_index
+    );
+    if (rc == MYLITE_OK) {
+        rc = bind_row_scalar_json_introspection_argument_parameters(
+            statement,
+            &expression->arguments[1],
+            parameter_index
+        );
+    }
+    return rc;
+}
+
 static int bind_row_scalar_json_extract_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
@@ -202,6 +227,8 @@ static int bind_row_scalar_json_extract_document_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OVERLAPS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_MEMBER_OF:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_PRETTY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
@@ -353,6 +380,8 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OVERLAPS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_MEMBER_OF:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_PRETTY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
@@ -633,6 +662,8 @@ static int bind_row_scalar_json_set_document_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OVERLAPS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_MEMBER_OF:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_PRETTY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:

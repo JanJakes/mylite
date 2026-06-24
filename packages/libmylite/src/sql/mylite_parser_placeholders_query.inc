@@ -1,6 +1,12 @@
 static enum placeholder_statement_kind classify_query_surface_placeholder_statement(
     const struct placeholder_statement_scan *scan
 ) {
+    for (size_t index = 0U; scan != NULL && index + 1U < scan->token_count; ++index) {
+        if (placeholder_scan_token_text_equals(scan, index, "MEMBER") &&
+            placeholder_scan_token_text_equals(scan, index + 1U, "OF")) {
+            return PLACEHOLDER_STATEMENT_NONE;
+        }
+    }
     if (classify_cte_placeholder_statement(scan) != PLACEHOLDER_STATEMENT_NONE) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }

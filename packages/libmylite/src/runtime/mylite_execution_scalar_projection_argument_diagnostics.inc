@@ -186,6 +186,8 @@ static const char *argument_count_error_node_function_name(
         return "JSON_CONTAINS";
     case MYLITE_SQL_AST_JSON_CONTAINS_PATH_ARGUMENT_COUNT_ERROR:
         return "JSON_CONTAINS_PATH";
+    case MYLITE_SQL_AST_JSON_OVERLAPS_ARGUMENT_COUNT_ERROR:
+        return "JSON_OVERLAPS";
     case MYLITE_SQL_AST_JSON_LENGTH_ARGUMENT_COUNT_ERROR:
         return "JSON_LENGTH";
     case MYLITE_SQL_AST_JSON_DEPTH_ARGUMENT_COUNT_ERROR:

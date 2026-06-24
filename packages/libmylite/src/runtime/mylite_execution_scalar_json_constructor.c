@@ -121,9 +121,9 @@ int mylite_execution_scalar_json_array_function_value(
         rc = finish_json_construction_result(database, rc, &result);
     }
     if (rc == MYLITE_OK) {
-        (void)result_length;
         out_cell->owned_text = result_text;
         out_cell->value = out_cell->owned_text;
+        out_cell->value_size = result_length;
         result_text = NULL;
     }
 
@@ -191,9 +191,9 @@ int mylite_execution_scalar_json_object_function_value(
         rc = finish_json_construction_result(database, rc, &result);
     }
     if (rc == MYLITE_OK) {
-        (void)result_length;
         out_cell->owned_text = result_text;
         out_cell->value = out_cell->owned_text;
+        out_cell->value_size = result_length;
         result_text = NULL;
     }
 

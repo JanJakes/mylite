@@ -1819,6 +1819,11 @@ static bool is_json_contains_projection_expression(const struct mylite_sql_ast_n
                 child_at(expression, 1U) != NULL &&
                 (child_count == 2U || child_at(expression, 2U) != NULL)) != 0;
     }
+    if (expression->kind == MYLITE_SQL_AST_JSON_OVERLAPS_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_MEMBER_OF_FUNCTION) {
+        return (child_count == 2U && child_at(expression, 0U) != NULL &&
+                child_at(expression, 1U) != NULL) != 0;
+    }
     if (expression->kind == MYLITE_SQL_AST_JSON_CONTAINS_PATH_FUNCTION) {
         const struct mylite_sql_ast_node *arguments = NULL;
 
@@ -2734,6 +2739,8 @@ static bool is_scalar_projection_known_function_attempt(enum mylite_sql_ast_node
     case MYLITE_SQL_AST_JSON_VALUE_FUNCTION:
     case MYLITE_SQL_AST_JSON_CONTAINS_FUNCTION:
     case MYLITE_SQL_AST_JSON_CONTAINS_PATH_FUNCTION:
+    case MYLITE_SQL_AST_JSON_OVERLAPS_FUNCTION:
+    case MYLITE_SQL_AST_JSON_MEMBER_OF_FUNCTION:
     case MYLITE_SQL_AST_JSON_LENGTH_FUNCTION:
     case MYLITE_SQL_AST_JSON_DEPTH_FUNCTION:
     case MYLITE_SQL_AST_JSON_KEYS_FUNCTION:
@@ -2812,6 +2819,7 @@ static bool is_scalar_projection_known_function_attempt(enum mylite_sql_ast_node
     case MYLITE_SQL_AST_JSON_EXTRACT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_CONTAINS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_CONTAINS_PATH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_OVERLAPS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_LENGTH_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_DEPTH_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_KEYS_ARGUMENT_COUNT_ERROR:

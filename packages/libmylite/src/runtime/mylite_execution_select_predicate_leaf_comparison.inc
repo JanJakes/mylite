@@ -3049,6 +3049,8 @@ static bool row_scalar_predicate_literal_prefers_text(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OVERLAPS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_MEMBER_OF:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
@@ -3675,7 +3677,9 @@ static bool predicate_node_is_json_contains_expression(
     predicate_node = unwrap_parenthesized_predicate(predicate_node);
     return (predicate_node != NULL &&
             (predicate_node->kind == MYLITE_SQL_AST_JSON_CONTAINS_FUNCTION ||
-             predicate_node->kind == MYLITE_SQL_AST_JSON_CONTAINS_PATH_FUNCTION)) != 0;
+             predicate_node->kind == MYLITE_SQL_AST_JSON_CONTAINS_PATH_FUNCTION ||
+             predicate_node->kind == MYLITE_SQL_AST_JSON_OVERLAPS_FUNCTION ||
+             predicate_node->kind == MYLITE_SQL_AST_JSON_MEMBER_OF_FUNCTION)) != 0;
 }
 
 static bool predicate_node_is_regexp_like_expression(

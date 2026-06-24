@@ -59,6 +59,41 @@ static int append_row_scalar_json_search_expression_sql(
     return rc;
 }
 
+static int append_row_scalar_json_member_of_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL || expression->argument_count != 2U) {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append(string, "_mylite_json_member_of(");
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_json_set_value_argument_sql(
+            string,
+            &expression->arguments[0],
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, ", ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_json_introspection_argument_sql(
+            string,
+            &expression->arguments[1],
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
 static int append_row_scalar_json_extract_expression_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
@@ -292,6 +327,8 @@ static int append_row_scalar_json_extract_document_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OVERLAPS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_MEMBER_OF:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_PRETTY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
@@ -431,6 +468,8 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OVERLAPS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_MEMBER_OF:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_PRETTY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
@@ -824,6 +863,8 @@ static int append_row_scalar_json_set_document_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OVERLAPS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_MEMBER_OF:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_PRETTY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE:
@@ -1092,6 +1133,8 @@ static int append_row_scalar_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OVERLAPS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_MEMBER_OF:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
@@ -1243,6 +1286,8 @@ static int append_row_scalar_nested_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OVERLAPS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_MEMBER_OF:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
@@ -2103,6 +2148,8 @@ static int append_row_scalar_control_flow_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OVERLAPS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_MEMBER_OF:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
@@ -2254,6 +2301,8 @@ static int append_row_scalar_control_flow_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OVERLAPS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_MEMBER_OF:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:
@@ -2407,6 +2456,8 @@ static int append_row_scalar_control_flow_leaf_condition_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OVERLAPS:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_MEMBER_OF:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_QUOTE:

@@ -647,6 +647,7 @@ static bool map_keyword_token(
         {"LOCKED", MYLITE_SQL_PARSE_LOCKED},
         {"LOAD", MYLITE_SQL_PARSE_LOAD},
         {"LAST", MYLITE_SQL_PARSE_LAST},
+        {"MEMBER", MYLITE_SQL_PARSE_MEMBER},
         {"MEMORY", MYLITE_SQL_PARSE_MEMORY},
         {"MODE", MYLITE_SQL_PARSE_MODE},
         {"NOWAIT", MYLITE_SQL_PARSE_NOWAIT},
@@ -786,6 +787,7 @@ static bool map_keyword_token(
         {"JSON_KEYS", MYLITE_SQL_PARSE_JSON_KEYS},
         {"JSON_LENGTH", MYLITE_SQL_PARSE_JSON_LENGTH},
         {"JSON_OBJECT", MYLITE_SQL_PARSE_JSON_OBJECT},
+        {"JSON_OVERLAPS", MYLITE_SQL_PARSE_JSON_OVERLAPS},
         {"JSON_PRETTY", MYLITE_SQL_PARSE_JSON_PRETTY},
         {"JSON_QUOTE", MYLITE_SQL_PARSE_JSON_QUOTE},
         {"JSON_REMOVE", MYLITE_SQL_PARSE_JSON_REMOVE},
@@ -1286,6 +1288,7 @@ static bool map_keyword_index(unsigned int keyword_index, int *out_parser_token)
         [432U] = MYLITE_SQL_PARSE_MEDIUMBLOB,          /* MEDIUMBLOB */
         [433U] = MYLITE_SQL_PARSE_MEDIUMINT,           /* MEDIUMINT */
         [434U] = MYLITE_SQL_PARSE_MEDIUMTEXT,          /* MEDIUMTEXT */
+        [435U] = MYLITE_SQL_PARSE_MEMBER,              /* MEMBER */
         [436U] = MYLITE_SQL_PARSE_MEMORY,              /* MEMORY */
         [437U] = MYLITE_SQL_PARSE_MERGE,               /* MERGE */
         [439U] = MYLITE_SQL_PARSE_MICROSECOND,         /* MICROSECOND */
@@ -1321,6 +1324,7 @@ static bool map_keyword_index(unsigned int keyword_index, int *out_parser_token)
         [486U] = MYLITE_SQL_PARSE_NVARCHAR,            /* NVARCHAR */
         [487U] = MYLITE_SQL_PARSE_OCT,                 /* OCT */
         [488U] = MYLITE_SQL_PARSE_OCTET_LENGTH,        /* OCTET_LENGTH */
+        [489U] = MYLITE_SQL_PARSE_OF,                  /* OF */
         [490U] = MYLITE_SQL_PARSE_OFF,                 /* OFF */
         [491U] = MYLITE_SQL_PARSE_OFFSET,              /* OFFSET */
         [494U] = MYLITE_SQL_PARSE_ON,                  /* ON */
@@ -1539,6 +1543,7 @@ static bool map_keyword_index(unsigned int keyword_index, int *out_parser_token)
         [890U] = MYLITE_SQL_PARSE_YEAR_MONTH,          /* YEAR_MONTH */
         [894U] = MYLITE_SQL_PARSE_JSON_DEPTH,          /* JSON_DEPTH */
         [895U] = MYLITE_SQL_PARSE_JSON_PRETTY,         /* JSON_PRETTY */
+        [896U] = MYLITE_SQL_PARSE_JSON_OVERLAPS,       /* JSON_OVERLAPS */
     };
     if (keyword_index < sizeof(keyword_parser_tokens) / sizeof(keyword_parser_tokens[0]) &&
         keyword_parser_tokens[keyword_index] != 0) {

@@ -616,6 +616,115 @@ int mylite_json_contains(
     return rc;
 }
 
+int mylite_json_overlaps(
+    const char *left,
+    size_t left_length,
+    const char *right,
+    size_t right_length,
+    int64_t *out_overlaps,
+    struct mylite_json_normalize_result *out_result
+) {
+    struct json_parser left_parser = {
+        .text = left,
+        .length = left_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_parser right_parser = {
+        .text = right,
+        .length = right_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_value left_value = {0};
+    struct json_value right_value = {0};
+    int rc = MYLITE_OK;
+
+    if (out_overlaps == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_overlaps = 0;
+    *out_result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_INVALID,
+        .position = 0U,
+    };
+    if (left == NULL || right == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_json_internal_parse_document(&left_parser, &left_value);
+    *out_result = left_parser.result;
+    if (rc == MYLITE_OK) {
+        rc = mylite_json_internal_parse_document(&right_parser, &right_value);
+        *out_result = right_parser.result;
+    }
+    if (rc == MYLITE_OK && mylite_json_internal_values_overlap(&left_value, &right_value)) {
+        *out_overlaps = 1;
+    }
+
+    mylite_json_internal_value_deinit(&right_value);
+    mylite_json_internal_value_deinit(&left_value);
+    return rc;
+}
+
+int mylite_json_member_of(
+    const struct mylite_json_sql_value *value,
+    const char *document,
+    size_t document_length,
+    int64_t *out_member,
+    bool *out_is_null,
+    struct mylite_json_normalize_result *out_result
+) {
+    struct json_parser document_parser = {
+        .text = document,
+        .length = document_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_value member_value = {0};
+    struct json_value document_value = {0};
+    int rc = MYLITE_OK;
+
+    if (value == NULL || out_member == NULL || out_is_null == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_member = 0;
+    *out_is_null = false;
+    *out_result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_INVALID,
+        .position = 0U,
+    };
+    if (value->kind == MYLITE_JSON_SQL_VALUE_NULL || document == NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+
+    rc = json_value_from_sql_value(value, &member_value, out_result);
+    if (rc == MYLITE_OK) {
+        rc = mylite_json_internal_parse_document(&document_parser, &document_value);
+        *out_result = document_parser.result;
+    }
+    if (rc == MYLITE_OK) {
+        if (document_value.kind == JSON_VALUE_ARRAY) {
+            for (size_t index = 0U; index < document_value.payload.array.count; ++index) {
+                if (mylite_json_internal_values_equal(
+                        &member_value,
+                        &document_value.payload.array.values[index]
+                    )) {
+                    *out_member = 1;
+                    break;
+                }
+            }
+        } else if (mylite_json_internal_values_equal(&member_value, &document_value)) {
+            *out_member = 1;
+        }
+    }
+
+    mylite_json_internal_value_deinit(&document_value);
+    mylite_json_internal_value_deinit(&member_value);
+    return rc;
+}
+
 int mylite_json_contains_path(
     const char *text,
     size_t text_length,

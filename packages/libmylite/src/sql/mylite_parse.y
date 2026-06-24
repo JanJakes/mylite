@@ -36,7 +36,7 @@
 %right NOT.
 %right ON.
 %left EQUAL NULL_SAFE_EQUAL NOT_EQUAL LESS LESS_EQUAL GREATER GREATER_EQUAL IS LIKE SOUNDS REGEXP
-    RLIKE BETWEEN.
+    RLIKE BETWEEN MEMBER.
 %left ESCAPE.
 %left BITWISE_OR.
 %left BITWISE_AND.
@@ -6897,6 +6897,16 @@ predicate_atom(A) ::= json_valid_expression(C). {
 predicate_atom(A) ::= json_contains_predicate_expression(C). {
     A = C;
 }
+predicate_atom(A) ::= predicate_scalar_literal(B) MEMBER(T) OF LPAREN expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_member_of_expression(state, B, T, C, R);
+}
+predicate_atom(A) ::= literal_left_comparison_value(B) MEMBER(T) OF LPAREN
+        expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_member_of_expression(state, B, T, C, R);
+}
+predicate_atom(A) ::= qualified_identifier(B) MEMBER(T) OF LPAREN expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_member_of_expression(state, B, T, C, R);
+}
 predicate_atom(A) ::= regexp_like_expression(C). {
     A = C;
 }
@@ -10386,6 +10396,9 @@ json_contains_predicate_expression(A) ::= json_contains_expression(B). {
 json_contains_predicate_expression(A) ::= json_contains_path_expression(B). {
     A = B;
 }
+json_contains_predicate_expression(A) ::= json_overlaps_expression(B). {
+    A = B;
+}
 json_contains_expression(A) ::= JSON_CONTAINS(T) LPAREN expression(B) COMMA
                                 expression(C) RPAREN(R). {
     A = mylite_sql_parser_make_two_argument_function(
@@ -10400,6 +10413,11 @@ json_contains_path_expression(A) ::= JSON_CONTAINS_PATH(T) LPAREN
                                      function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_JSON_CONTAINS_PATH_FUNCTION, B, R);
+}
+json_overlaps_expression(A) ::= JSON_OVERLAPS(T) LPAREN expression(B) COMMA
+                                expression(C) RPAREN(R). {
+    A = mylite_sql_parser_make_two_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_OVERLAPS_FUNCTION, B, C, R);
 }
 expression(A) ::= json_valid_expression(B). {
     A = B;
@@ -10451,6 +10469,9 @@ expression(A) ::= JSON_VALUE(T) LPAREN expression(B) COMMA expression(C) RPAREN(
 expression(A) ::= JSON_UNQUOTE(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION, B, R);
+}
+expression(A) ::= expression(B) MEMBER(T) OF LPAREN expression(C) RPAREN(R). [MEMBER] {
+    A = mylite_sql_parser_make_member_of_expression(state, B, T, C, R);
 }
 expression(A) ::= find_in_set_expression(B). {
     A = B;
@@ -11450,6 +11471,21 @@ expression(A) ::= JSON_CONTAINS(T) LPAREN expression(B) COMMA expression(C) COMM
 expression(A) ::= JSON_CONTAINS_PATH(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_JSON_CONTAINS_PATH_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= JSON_OVERLAPS(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_OVERLAPS_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= JSON_OVERLAPS(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_OVERLAPS_ARGUMENT_COUNT_ERROR, B, R);
+}
+expression(A) ::= JSON_OVERLAPS(T) LPAREN expression(B) COMMA expression(C) COMMA
+                  function_argument_list(D) RPAREN(R). {
+    (void)B;
+    (void)C;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_OVERLAPS_ARGUMENT_COUNT_ERROR, D, R);
 }
 expression(A) ::= JSON_EXTRACT(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -13189,6 +13225,9 @@ identifier(A) ::= JSON_CONTAINS(T). {
 identifier(A) ::= JSON_CONTAINS_PATH(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+identifier(A) ::= JSON_OVERLAPS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
 identifier(A) ::= JSON_VALID(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
@@ -13211,6 +13250,9 @@ identifier(A) ::= JSON_TYPE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_PRETTY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= MEMBER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_QUOTE(T). {

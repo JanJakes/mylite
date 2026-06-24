@@ -210,6 +210,14 @@ bool mylite_json_internal_value_contains(
     const struct json_value *target,
     const struct json_value *candidate
 );
+bool mylite_json_internal_values_equal(
+    const struct json_value *left,
+    const struct json_value *right
+);
+bool mylite_json_internal_values_overlap(
+    const struct json_value *left,
+    const struct json_value *right
+);
 int mylite_json_internal_apply_mutation_path(
     struct json_value *document,
     const struct json_set_path *path,

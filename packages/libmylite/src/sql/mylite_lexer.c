@@ -1235,7 +1235,8 @@ bool mylite_sql_keyword_lookup(
         {"ZONE", 0U},
         {"_FILENAME", MYLITE_SQL_KEYWORD_RESERVED},
         {"JSON_DEPTH", 0U},
-        {"JSON_PRETTY", 0U}
+        {"JSON_PRETTY", 0U},
+        {"JSON_OVERLAPS", 0U}
     };
 
     if (out_result != NULL) {
@@ -2931,6 +2932,11 @@ static unsigned int lookup_hot_keyword_index(const char *text, size_t length, un
                 return 319U;
             }
             break;
+        case 'M':
+            if (compare_keyword_text(text, length, "MEMBER") == 0) {
+                return 435U;
+            }
+            break;
         case 'R':
             if (compare_keyword_text(text, length, "RETURN") == 0) {
                 return 624U;
@@ -3109,6 +3115,17 @@ static unsigned int lookup_hot_keyword_index(const char *text, size_t length, un
         case 'R':
             if (compare_keyword_text(text, length, "REGEXP_LIKE") == 0) {
                 return 584U;
+            }
+            break;
+        default:
+            break;
+        }
+        break;
+    case 13U:
+        switch (first) {
+        case 'J':
+            if (compare_keyword_text(text, length, "JSON_OVERLAPS") == 0) {
+                return 896U;
             }
             break;
         default:

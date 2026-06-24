@@ -1409,6 +1409,9 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_JSON_CONTAINS_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_JSON_CONTAINS_PATH_FUNCTION ||
             current->kind == MYLITE_SQL_AST_JSON_CONTAINS_PATH_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_JSON_OVERLAPS_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_JSON_OVERLAPS_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_JSON_MEMBER_OF_FUNCTION ||
             current->kind == MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION ||
             current->kind == MYLITE_SQL_AST_JSON_EXTRACT_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_JSON_VALUE_FUNCTION ||

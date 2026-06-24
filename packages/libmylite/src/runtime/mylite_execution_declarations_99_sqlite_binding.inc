@@ -810,6 +810,11 @@ static int bind_row_scalar_json_search_expression_parameters(
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
 );
+static int bind_row_scalar_json_member_of_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+);
 static int bind_row_scalar_json_extract_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,

@@ -1928,6 +1928,13 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_binary_expression(
     enum mylite_sql_ast_operator operator_kind,
     struct mylite_sql_ast_node *right
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_member_of_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_token member_token,
+    struct mylite_sql_ast_node *right,
+    struct mylite_sql_token right_paren
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_cast_binary_expression(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token cast_token,

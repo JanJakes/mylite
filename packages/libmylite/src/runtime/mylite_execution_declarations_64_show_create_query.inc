@@ -416,7 +416,7 @@ static const struct mylite_execution_catalog_builtin_sys_view *show_create_targe
     const struct table_name_resolution *target
 );
 static bool show_create_target_was_schema_qualified(const struct mylite_sql_ast_node *statement);
-static int show_create_statement_targets_selected_builtin_sys_view(
+static int show_create_statement_targets_builtin_sys_view(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     const struct mylite_execution_catalog_builtin_sys_view **out_view

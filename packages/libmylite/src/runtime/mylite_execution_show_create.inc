@@ -35,19 +35,18 @@ static int execute_show_create_view_statement(
     struct mylite_catalog_view_descriptor view = {0};
     mylite_result *result = NULL;
     bool missing_schema = false;
-    const struct mylite_execution_catalog_builtin_sys_view *selected_builtin_sys_view = NULL;
     const struct mylite_execution_catalog_builtin_sys_view *builtin_sys_view = NULL;
-    int rc = show_create_statement_targets_selected_builtin_sys_view(
+    int rc = show_create_statement_targets_builtin_sys_view(
         database,
         statement,
-        &selected_builtin_sys_view
+        &builtin_sys_view
     );
 
-    if (rc == MYLITE_OK && selected_builtin_sys_view != NULL) {
+    if (rc == MYLITE_OK && builtin_sys_view != NULL) {
         return execute_show_create_builtin_sys_view_statement(
             database,
-            selected_builtin_sys_view,
-            false,
+            builtin_sys_view,
+            show_create_target_was_schema_qualified(statement),
             out_result
         );
     }
@@ -675,20 +674,20 @@ static int plan_show_create_table(
     struct planned_show_create_table *out_plan
 ) {
     bool missing_schema = false;
-    const struct mylite_execution_catalog_builtin_sys_view *selected_builtin_sys_view = NULL;
     const struct mylite_execution_catalog_builtin_sys_view *builtin_sys_view = NULL;
     int rc = MYLITE_OK;
 
     *out_plan = (struct planned_show_create_table){0};
-    rc = show_create_statement_targets_selected_builtin_sys_view(
+    rc = show_create_statement_targets_builtin_sys_view(
         database,
         statement,
-        &selected_builtin_sys_view
+        &builtin_sys_view
     );
-    if (rc == MYLITE_OK && selected_builtin_sys_view != NULL) {
-        populate_builtin_sys_view_target(&out_plan->target, selected_builtin_sys_view);
+    if (rc == MYLITE_OK && builtin_sys_view != NULL) {
+        populate_builtin_sys_view_target(&out_plan->target, builtin_sys_view);
+        out_plan->target_was_schema_qualified = show_create_target_was_schema_qualified(statement);
         out_plan->is_view = true;
-        out_plan->builtin_sys_view = selected_builtin_sys_view;
+        out_plan->builtin_sys_view = builtin_sys_view;
         return MYLITE_OK;
     }
     if (rc == MYLITE_OK) {
@@ -943,7 +942,7 @@ static bool show_create_target_was_schema_qualified(const struct mylite_sql_ast_
     return target != NULL && target->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER;
 }
 
-static int show_create_statement_targets_selected_builtin_sys_view(
+static int show_create_statement_targets_builtin_sys_view(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     const struct mylite_execution_catalog_builtin_sys_view **out_view
@@ -956,11 +955,6 @@ static int show_create_statement_targets_selected_builtin_sys_view(
         return MYLITE_MISUSE;
     }
     *out_view = NULL;
-    if (database == NULL || !database->session.has_selected_schema ||
-        strcmp(database->session.selected_schema, "sys") != 0) {
-        return MYLITE_OK;
-    }
-
     rc = collect_identifier_parts(
         statement == NULL ? NULL : child_at(statement, 0U),
         parts,
@@ -971,8 +965,11 @@ static int show_create_statement_targets_selected_builtin_sys_view(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (part_count == 1U) {
+    if (part_count == 1U && database != NULL && database->session.has_selected_schema &&
+        strcmp(database->session.selected_schema, "sys") == 0) {
         *out_view = find_builtin_sys_view_definition(parts[0]);
+    } else if (part_count == 2U && strcmp(parts[0], "sys") == 0) {
+        *out_view = find_builtin_sys_view_definition(parts[1]);
     }
     return MYLITE_OK;
 }

@@ -31,6 +31,8 @@ static const struct mylite_execution_catalog_sys_summary_system_table_provider
          mylite_execution_catalog_sys_summary_io_system_table_definition_at},
         {mylite_execution_catalog_sys_summary_memory_system_table_definition_count,
          mylite_execution_catalog_sys_summary_memory_system_table_definition_at},
+        {mylite_execution_catalog_sys_summary_statement_system_table_definition_count,
+         mylite_execution_catalog_sys_summary_statement_system_table_definition_at},
         {mylite_execution_catalog_sys_summary_instrumentation_system_table_definition_count,
          mylite_execution_catalog_sys_summary_instrumentation_system_table_definition_at},
 };
@@ -45,6 +47,8 @@ static const struct mylite_execution_catalog_sys_summary_system_table_provider
          mylite_execution_catalog_sys_summary_io_x_system_table_definition_at},
         {mylite_execution_catalog_sys_summary_memory_x_system_table_definition_count,
          mylite_execution_catalog_sys_summary_memory_x_system_table_definition_at},
+        {mylite_execution_catalog_sys_summary_statement_x_system_table_definition_count,
+         mylite_execution_catalog_sys_summary_statement_x_system_table_definition_at},
 };
 
 size_t mylite_execution_catalog_sys_summary_system_table_definition_count(void) {

@@ -184,6 +184,10 @@ static int append_information_schema_system_rows(
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_PROCESSLIST:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_SESSION:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_SESSION_SSL_STATUS:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_STATEMENT_ANALYSIS:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_STATEMENTS_WITH_ERRORS_OR_WARNINGS:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_STATEMENTS_WITH_FULL_TABLE_SCANS:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_STATEMENTS_WITH_RUNTIMES_IN_95TH_PERCENTILE:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_PS_CHECK_LOST_INSTRUMENTATION:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_SCHEMA_AUTO_INCREMENT_COLUMNS:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_SCHEMA_INDEX_STATISTICS:
@@ -217,6 +221,10 @@ static int append_information_schema_system_rows(
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_MEMORY_GLOBAL_TOTAL:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PROCESSLIST:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_SESSION:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_STATEMENT_ANALYSIS:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_STATEMENTS_WITH_ERRORS_OR_WARNINGS:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_STATEMENTS_WITH_FULL_TABLE_SCANS:
+    case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_STATEMENTS_WITH_RUNTIMES_IN_95TH_PERCENTILE:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PS_DIGEST_AVG_LATENCY_DISTRIBUTION:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PS_DIGEST_95TH_PERCENTILE_BY_AVG_US:
     case MYLITE_EXECUTION_CATALOG_TABLE_SYS_X_PS_SCHEMA_TABLE_STATISTICS_IO:
@@ -321,6 +329,14 @@ static int append_information_schema_views_system_rows(
                     strcmp(view->name, "x$schema_index_statistics") == 0 ||
                     strcmp(view->name, "schema_tables_with_full_table_scans") == 0 ||
                     strcmp(view->name, "x$schema_tables_with_full_table_scans") == 0 ||
+                    strcmp(view->name, "statement_analysis") == 0 ||
+                    strcmp(view->name, "x$statement_analysis") == 0 ||
+                    strcmp(view->name, "statements_with_errors_or_warnings") == 0 ||
+                    strcmp(view->name, "x$statements_with_errors_or_warnings") == 0 ||
+                    strcmp(view->name, "statements_with_full_table_scans") == 0 ||
+                    strcmp(view->name, "x$statements_with_full_table_scans") == 0 ||
+                    strcmp(view->name, "statements_with_runtimes_in_95th_percentile") == 0 ||
+                    strcmp(view->name, "x$statements_with_runtimes_in_95th_percentile") == 0 ||
                     strcmp(view->name, "schema_unused_indexes") == 0
                 ? "YES"
                 : "NO";
@@ -402,6 +418,23 @@ static int append_information_schema_view_table_usage_system_rows(
         {"session", "sys", "processlist"},
         {"session", "sys", "sys_config"},
         {"session_ssl_status", "performance_schema", "status_by_thread"},
+        {"statement_analysis", "performance_schema", "events_statements_summary_by_digest"},
+        {"statement_analysis", "sys", "sys_config"},
+        {"statements_with_errors_or_warnings",
+         "performance_schema",
+         "events_statements_summary_by_digest"},
+        {"statements_with_errors_or_warnings", "sys", "sys_config"},
+        {"statements_with_full_table_scans",
+         "performance_schema",
+         "events_statements_summary_by_digest"},
+        {"statements_with_full_table_scans", "sys", "sys_config"},
+        {"statements_with_runtimes_in_95th_percentile",
+         "performance_schema",
+         "events_statements_summary_by_digest"},
+        {"statements_with_runtimes_in_95th_percentile", "sys", "sys_config"},
+        {"statements_with_runtimes_in_95th_percentile",
+         "sys",
+         "x$ps_digest_95th_percentile_by_avg_us"},
         {"innodb_lock_waits", "information_schema", "INNODB_TRX"},
         {"innodb_lock_waits", "performance_schema", "data_lock_waits"},
         {"innodb_lock_waits", "performance_schema", "data_locks"},
@@ -503,6 +536,19 @@ static int append_information_schema_view_table_usage_system_rows(
         {"x$processlist", "performance_schema", "threads"},
         {"x$processlist", "sys", "x$memory_by_thread_by_current_bytes"},
         {"x$session", "sys", "x$processlist"},
+        {"x$statement_analysis", "performance_schema", "events_statements_summary_by_digest"},
+        {"x$statements_with_errors_or_warnings",
+         "performance_schema",
+         "events_statements_summary_by_digest"},
+        {"x$statements_with_full_table_scans",
+         "performance_schema",
+         "events_statements_summary_by_digest"},
+        {"x$statements_with_runtimes_in_95th_percentile",
+         "performance_schema",
+         "events_statements_summary_by_digest"},
+        {"x$statements_with_runtimes_in_95th_percentile",
+         "sys",
+         "x$ps_digest_95th_percentile_by_avg_us"},
         {"x$ps_digest_95th_percentile_by_avg_us",
          "performance_schema",
          "events_statements_summary_by_digest"},
@@ -573,6 +619,10 @@ static int append_information_schema_view_routine_usage_system_rows(
         {"processlist", "format_statement"},
         {"schema_table_lock_waits", "format_statement"},
         {"schema_table_lock_waits", "ps_thread_account"},
+        {"statement_analysis", "format_statement"},
+        {"statements_with_errors_or_warnings", "format_statement"},
+        {"statements_with_full_table_scans", "format_statement"},
+        {"statements_with_runtimes_in_95th_percentile", "format_statement"},
         {"x$innodb_lock_waits", "quote_identifier"},
         {"x$ps_schema_table_statistics_io", "extract_schema_from_file_name"},
         {"x$ps_schema_table_statistics_io", "extract_table_from_file_name"},

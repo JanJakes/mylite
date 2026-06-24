@@ -298,6 +298,355 @@ static const char sys_session_ssl_status_show_create_qualified_view_sql[] =
 #undef SYS_X_PROCESSLIST_QUALIFIED_VIEW_DEFINITION
 #undef SYS_X_PROCESSLIST_UNQUALIFIED_VIEW_DEFINITION
 
+#define SYS_STATEMENT_ANALYSIS_VIEW_COLUMNS                                                        \
+    "(`query`,`db`,`full_scan`,`exec_count`,`err_count`,`warn_count`,`total_latency`,"             \
+    "`max_latency`,`avg_latency`,`lock_latency`,`cpu_latency`,`rows_sent`,`rows_sent_avg`,"        \
+    "`rows_examined`,`rows_examined_avg`,`rows_affected`,`rows_affected_avg`,`tmp_tables`,"        \
+    "`tmp_disk_tables`,`rows_sorted`,`sort_merge_passes`,`max_controlled_memory`,"                 \
+    "`max_total_memory`,`digest`,`first_seen`,`last_seen`)"
+
+#define SYS_X_STATEMENT_ANALYSIS_VIEW_COLUMNS                                                      \
+    "(`query`,`db`,`full_scan`,`exec_count`,`exec_secondary_count`,`err_count`,`warn_count`,"      \
+    "`total_latency`,`max_latency`,`avg_latency`,`lock_latency`,`cpu_latency`,`rows_sent`,"        \
+    "`rows_sent_avg`,`rows_examined`,`rows_examined_avg`,`rows_affected`,`rows_affected_avg`,"     \
+    "`tmp_tables`,`tmp_disk_tables`,`rows_sorted`,`sort_merge_passes`,`max_controlled_memory`,"    \
+    "`max_total_memory`,`digest`,`first_seen`,`last_seen`)"
+
+#define SYS_STATEMENTS_WITH_ERRORS_OR_WARNINGS_VIEW_COLUMNS                                        \
+    "(`query`,`db`,`exec_count`,`errors`,`error_pct`,`warnings`,`warning_pct`,`first_seen`,"       \
+    "`last_seen`,`digest`)"
+
+#define SYS_STATEMENTS_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS                                          \
+    "(`query`,`db`,`exec_count`,`total_latency`,`no_index_used_count`,"                            \
+    "`no_good_index_used_count`,`no_index_used_pct`,`rows_sent`,`rows_examined`,"                  \
+    "`rows_sent_avg`,`rows_examined_avg`,`first_seen`,`last_seen`,`digest`)"
+
+#define SYS_STATEMENTS_WITH_RUNTIMES_IN_95TH_PERCENTILE_VIEW_COLUMNS                               \
+    "(`query`,`db`,`full_scan`,`exec_count`,`err_count`,`warn_count`,`total_latency`,"             \
+    "`max_latency`,`avg_latency`,`rows_sent`,`rows_sent_avg`,`rows_examined`,"                     \
+    "`rows_examined_avg`,`first_seen`,`last_seen`,`digest`)"
+
+#define SYS_STATEMENT_DIGEST_FULL_SCAN_EXPR(source)                                                \
+    "if(((`" source "`.`SUM_NO_GOOD_INDEX_USED` > 0) or (`" source                                 \
+    "`.`SUM_NO_INDEX_USED` > 0)),'*','') AS `full_scan`,"
+
+#define SYS_STATEMENT_DIGEST_AVG_EXPR(source, numerator, alias)                                    \
+    "round(ifnull((`" source "`.`" numerator "` / nullif(`" source                                 \
+    "`.`COUNT_STAR`,0)),0),0) AS `" alias "`,"
+
+#define SYS_STATEMENT_ANALYSIS_PREFIX(source, query_expression)                                    \
+    "select " query_expression " AS `query`,`" source                                              \
+    "`.`SCHEMA_NAME` AS `db`," SYS_STATEMENT_DIGEST_FULL_SCAN_EXPR(source                          \
+    ) "`" source "`.`COUNT_STAR` AS `exec_count`,"
+
+#define SYS_STATEMENT_ANALYSIS_COUNTERS(source)                                                    \
+    "`" source "`.`SUM_ERRORS` AS `err_count`,`" source "`.`SUM_WARNINGS` AS `warn_count`,"
+
+#define SYS_STATEMENT_ANALYSIS_FORMATTED_TIMERS(source)                                            \
+    "format_pico_time(`" source "`.`SUM_TIMER_WAIT`) AS `total_latency`,format_pico_time(`" source \
+    "`.`MAX_TIMER_WAIT`) AS `max_latency`,format_pico_time(`" source                               \
+    "`.`AVG_TIMER_WAIT`) AS `avg_latency`,format_pico_time(`" source                               \
+    "`.`SUM_LOCK_TIME`) AS `lock_latency`,format_pico_time(`" source                               \
+    "`.`SUM_CPU_TIME`) AS `cpu_latency`,"
+
+#define SYS_STATEMENT_ANALYSIS_RAW_TIMERS(source)                                                  \
+    "`" source "`.`SUM_TIMER_WAIT` AS `total_latency`,`" source                                    \
+    "`.`MAX_TIMER_WAIT` AS `max_latency`,`" source "`.`AVG_TIMER_WAIT` AS `avg_latency`,`" source  \
+    "`.`SUM_LOCK_TIME` AS `lock_latency`,`" source "`.`SUM_CPU_TIME` AS `cpu_latency`,"
+
+#define SYS_STATEMENT_ANALYSIS_ROW_COUNTERS(source)                                                \
+    "`" source "`.`SUM_ROWS_SENT` AS `rows_sent`," SYS_STATEMENT_DIGEST_AVG_EXPR(                  \
+        source,                                                                                    \
+        "SUM_ROWS_SENT",                                                                           \
+        "rows_sent_avg"                                                                            \
+    ) "`" source                                                                                   \
+      "`.`SUM_ROWS_EXAMINED` AS `rows_examined`," SYS_STATEMENT_DIGEST_AVG_EXPR(                   \
+          source,                                                                                  \
+          "SUM_ROWS_EXAMINED",                                                                     \
+          "rows_examined_avg"                                                                      \
+      ) "`" source                                                                                 \
+        "`.`SUM_ROWS_AFFECTED` AS `rows_affected`," SYS_STATEMENT_DIGEST_AVG_EXPR(                 \
+            source,                                                                                \
+            "SUM_ROWS_AFFECTED",                                                                   \
+            "rows_affected_avg"                                                                    \
+        )
+
+#define SYS_STATEMENT_ANALYSIS_SUFFIX_FORMATTED(source)                                            \
+    "`" source "`.`SUM_CREATED_TMP_TABLES` AS `tmp_tables`,`" source                               \
+    "`.`SUM_CREATED_TMP_DISK_TABLES` AS `tmp_disk_tables`,`" source                                \
+    "`.`SUM_SORT_ROWS` AS `rows_sorted`,`" source "`.`SUM_SORT_MERGE_PASSES` AS "                  \
+    "`sort_merge_passes`,format_bytes(`" source "`.`MAX_CONTROLLED_MEMORY`) AS "                   \
+    "`max_controlled_memory`,format_bytes(`" source "`.`MAX_TOTAL_MEMORY`) AS "                    \
+    "`max_total_memory`,`" source "`.`DIGEST` AS `digest`,`" source                                \
+    "`.`FIRST_SEEN` AS `first_seen`,`" source "`.`LAST_SEEN` AS `last_seen` from "                 \
+    "`performance_schema`.`events_statements_summary_by_digest` `" source "` order by `" source    \
+    "`.`SUM_TIMER_WAIT` desc"
+
+#define SYS_STATEMENT_ANALYSIS_SUFFIX_RAW(source)                                                  \
+    "`" source "`.`SUM_CREATED_TMP_TABLES` AS `tmp_tables`,`" source                               \
+    "`.`SUM_CREATED_TMP_DISK_TABLES` AS `tmp_disk_tables`,`" source                                \
+    "`.`SUM_SORT_ROWS` AS `rows_sorted`,`" source "`.`SUM_SORT_MERGE_PASSES` AS "                  \
+    "`sort_merge_passes`,`" source "`.`MAX_CONTROLLED_MEMORY` AS `max_controlled_memory`,`" source \
+    "`.`MAX_TOTAL_MEMORY` AS `max_total_memory`,`" source "`.`DIGEST` AS `digest`,`" source        \
+    "`.`FIRST_SEEN` AS `first_seen`,`" source "`.`LAST_SEEN` AS `last_seen` from "                 \
+    "`performance_schema`.`events_statements_summary_by_digest` `" source "` order by `" source    \
+    "`.`SUM_TIMER_WAIT` desc"
+
+static const char sys_statement_analysis_view_definition[] =
+    SYS_STATEMENT_ANALYSIS_PREFIX("stmts", "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)")
+        SYS_STATEMENT_ANALYSIS_COUNTERS("stmts") SYS_STATEMENT_ANALYSIS_FORMATTED_TIMERS("stmts")
+            SYS_STATEMENT_ANALYSIS_ROW_COUNTERS("stmts")
+                SYS_STATEMENT_ANALYSIS_SUFFIX_FORMATTED("stmts");
+
+static const char sys_statement_analysis_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`statement_analysis` " SYS_STATEMENT_ANALYSIS_VIEW_COLUMNS
+    " AS " SYS_STATEMENT_ANALYSIS_PREFIX("stmts", "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)")
+        SYS_STATEMENT_ANALYSIS_COUNTERS("stmts") SYS_STATEMENT_ANALYSIS_FORMATTED_TIMERS("stmts")
+            SYS_STATEMENT_ANALYSIS_ROW_COUNTERS("stmts")
+                SYS_STATEMENT_ANALYSIS_SUFFIX_FORMATTED("stmts");
+
+static const char sys_statement_analysis_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`statement_analysis` " SYS_STATEMENT_ANALYSIS_VIEW_COLUMNS
+    " AS " SYS_STATEMENT_ANALYSIS_PREFIX("stmts", "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)")
+        SYS_STATEMENT_ANALYSIS_COUNTERS("stmts") SYS_STATEMENT_ANALYSIS_FORMATTED_TIMERS("stmts")
+            SYS_STATEMENT_ANALYSIS_ROW_COUNTERS("stmts")
+                SYS_STATEMENT_ANALYSIS_SUFFIX_FORMATTED("stmts");
+
+static const char sys_x_statement_analysis_view_definition[] = SYS_STATEMENT_ANALYSIS_PREFIX(
+    "stmts",
+    "`stmts`.`DIGEST_TEXT`"
+) "`stmts`.`COUNT_SECONDARY` AS `exec_secondary_count`," SYS_STATEMENT_ANALYSIS_COUNTERS("stmts")
+    SYS_STATEMENT_ANALYSIS_RAW_TIMERS("stmts") SYS_STATEMENT_ANALYSIS_ROW_COUNTERS("stmts")
+        SYS_STATEMENT_ANALYSIS_SUFFIX_RAW("stmts");
+
+static const char sys_x_statement_analysis_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$statement_analysis` " SYS_X_STATEMENT_ANALYSIS_VIEW_COLUMNS
+    " AS " SYS_STATEMENT_ANALYSIS_PREFIX(
+        "stmts",
+        "`stmts`.`DIGEST_TEXT`"
+    ) "`stmts`.`COUNT_SECONDARY` AS `exec_secondary_count`," SYS_STATEMENT_ANALYSIS_COUNTERS("stmts"
+    ) SYS_STATEMENT_ANALYSIS_RAW_TIMERS("stmts") SYS_STATEMENT_ANALYSIS_ROW_COUNTERS("stmts")
+        SYS_STATEMENT_ANALYSIS_SUFFIX_RAW("stmts");
+
+static const char sys_x_statement_analysis_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$statement_analysis` " SYS_X_STATEMENT_ANALYSIS_VIEW_COLUMNS
+    " AS " SYS_STATEMENT_ANALYSIS_PREFIX(
+        "stmts",
+        "`stmts`.`DIGEST_TEXT`"
+    ) "`stmts`.`COUNT_SECONDARY` AS `exec_secondary_count`," SYS_STATEMENT_ANALYSIS_COUNTERS("stmts"
+    ) SYS_STATEMENT_ANALYSIS_RAW_TIMERS("stmts") SYS_STATEMENT_ANALYSIS_ROW_COUNTERS("stmts")
+        SYS_STATEMENT_ANALYSIS_SUFFIX_RAW("stmts");
+
+#define SYS_STATEMENTS_ERRORS_DEFINITION(source, query_expression)                                 \
+    "select " query_expression " AS `query`,`" source "`.`SCHEMA_NAME` AS `db`,`" source           \
+    "`.`COUNT_STAR` AS `exec_count`,`" source "`.`SUM_ERRORS` AS `errors`,(ifnull((`" source       \
+    "`.`SUM_ERRORS` / nullif(`" source "`.`COUNT_STAR`,0)),0) * 100) AS `error_pct`,`" source      \
+    "`.`SUM_WARNINGS` AS "                                                                         \
+    "`warnings`,(ifnull((`" source "`.`SUM_WARNINGS` / nullif(`" source                            \
+    "`.`COUNT_STAR`,0)),0) * 100) AS `warning_pct`,`" source "`.`FIRST_SEEN` AS "                  \
+    "`first_seen`,`" source "`.`LAST_SEEN` AS `last_seen`,`" source                                \
+    "`.`DIGEST` AS `digest` from `performance_schema`.`events_statements_summary_by_digest` "      \
+    "`" source "` where ((`" source "`.`SUM_ERRORS` > 0) or (`" source                             \
+    "`.`SUM_WARNINGS` > 0)) order by `" source "`.`SUM_ERRORS` desc,`" source                      \
+    "`.`SUM_WARNINGS` desc"
+
+static const char sys_statements_with_errors_or_warnings_view_definition[] =
+    SYS_STATEMENTS_ERRORS_DEFINITION("stmts", "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)");
+
+static const char sys_statements_with_errors_or_warnings_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`statements_with_errors_or_warnings` " SYS_STATEMENTS_WITH_ERRORS_OR_WARNINGS_VIEW_COLUMNS
+    " AS " SYS_STATEMENTS_ERRORS_DEFINITION(
+        "stmts",
+        "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)"
+    );
+
+static const char sys_statements_with_errors_or_warnings_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`statements_with_errors_or_warnings`"
+    " " SYS_STATEMENTS_WITH_ERRORS_OR_WARNINGS_VIEW_COLUMNS " AS " SYS_STATEMENTS_ERRORS_DEFINITION(
+        "stmts",
+        "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)"
+    );
+
+static const char sys_x_statements_with_errors_or_warnings_view_definition[] =
+    SYS_STATEMENTS_ERRORS_DEFINITION("stmts", "`stmts`.`DIGEST_TEXT`");
+
+static const char sys_x_statements_with_errors_or_warnings_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$statements_with_errors_or_warnings` " SYS_STATEMENTS_WITH_ERRORS_OR_WARNINGS_VIEW_COLUMNS
+    " AS " SYS_STATEMENTS_ERRORS_DEFINITION("stmts", "`stmts`.`DIGEST_TEXT`");
+
+static const char sys_x_statements_with_errors_or_warnings_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$statements_with_errors_or_warnings`"
+    " " SYS_STATEMENTS_WITH_ERRORS_OR_WARNINGS_VIEW_COLUMNS
+    " AS " SYS_STATEMENTS_ERRORS_DEFINITION("stmts", "`stmts`.`DIGEST_TEXT`");
+
+#define SYS_STATEMENTS_FULL_SCAN_DEFINITION(source, query_expression, latency_expression)          \
+    "select " query_expression " AS `query`,`" source "`.`SCHEMA_NAME` AS `db`,`" source           \
+    "`.`COUNT_STAR` AS `exec_count`," latency_expression " AS `total_latency`,`" source            \
+    "`.`SUM_NO_INDEX_USED` AS `no_index_used_count`,`" source                                      \
+    "`.`SUM_NO_GOOD_INDEX_USED` AS `no_good_index_used_count`,round((ifnull((`" source             \
+    "`.`SUM_NO_INDEX_USED` / nullif(`" source "`.`COUNT_STAR`,0)),0) * 100),0) AS "                \
+    "`no_index_used_pct`,`" source "`.`SUM_ROWS_SENT` AS `rows_sent`,`" source                     \
+    "`.`SUM_ROWS_EXAMINED` AS `rows_examined`,round((`" source "`.`SUM_ROWS_SENT` / `" source      \
+    "`.`COUNT_STAR`),0) AS `rows_sent_avg`,round((`" source "`.`SUM_ROWS_EXAMINED` / `" source     \
+    "`.`COUNT_STAR`),0) AS `rows_examined_avg`,`" source "`.`FIRST_SEEN` AS `first_seen`,`" source \
+    "`.`LAST_SEEN` AS `last_seen`,`" source "`.`DIGEST` AS `digest` from "                         \
+    "`performance_schema`.`events_statements_summary_by_digest` `" source "` where (((`" source    \
+    "`.`SUM_NO_INDEX_USED` > 0) or (`" source                                                      \
+    "`.`SUM_NO_GOOD_INDEX_USED` > 0)) and (not((`" source "`.`DIGEST_TEXT` like 'SHOW%'))))"
+
+static const char sys_statements_with_full_table_scans_view_definition[] =
+    SYS_STATEMENTS_FULL_SCAN_DEFINITION(
+        "stmts",
+        "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)",
+        "format_pico_time(`stmts`.`SUM_TIMER_WAIT`)"
+    );
+
+static const char sys_statements_with_full_table_scans_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`statements_with_full_table_scans` " SYS_STATEMENTS_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS
+    " AS " SYS_STATEMENTS_FULL_SCAN_DEFINITION(
+        "stmts",
+        "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)",
+        "format_pico_time(`stmts`.`SUM_TIMER_WAIT`)"
+    );
+
+static const char sys_statements_with_full_table_scans_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`statements_with_full_table_scans` " SYS_STATEMENTS_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS
+    " AS " SYS_STATEMENTS_FULL_SCAN_DEFINITION(
+        "stmts",
+        "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)",
+        "format_pico_time(`stmts`.`SUM_TIMER_WAIT`)"
+    );
+
+static const char sys_x_statements_with_full_table_scans_view_definition[] =
+    SYS_STATEMENTS_FULL_SCAN_DEFINITION(
+        "stmts",
+        "`stmts`.`DIGEST_TEXT`",
+        "`stmts`.`SUM_TIMER_WAIT`"
+    );
+
+static const char sys_x_statements_with_full_table_scans_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$statements_with_full_table_scans` " SYS_STATEMENTS_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS
+    " AS " SYS_STATEMENTS_FULL_SCAN_DEFINITION(
+        "stmts",
+        "`stmts`.`DIGEST_TEXT`",
+        "`stmts`.`SUM_TIMER_WAIT`"
+    );
+
+static const char sys_x_statements_with_full_table_scans_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`x$statements_with_full_table_scans` " SYS_STATEMENTS_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS
+    " AS " SYS_STATEMENTS_FULL_SCAN_DEFINITION(
+        "stmts",
+        "`stmts`.`DIGEST_TEXT`",
+        "`stmts`.`SUM_TIMER_WAIT`"
+    );
+
+#define SYS_STATEMENTS_RUNTIME_PERCENTILE_DEFINITION(query_expression, timer_expression)           \
+    "select " query_expression                                                                     \
+    " AS `query`,`stmts`.`SCHEMA_NAME` AS `db`," SYS_STATEMENT_DIGEST_FULL_SCAN_EXPR("stmts"       \
+    ) "`stmts`.`COUNT_STAR` AS `exec_count`,"                                                      \
+      "`stmts`.`SUM_ERRORS` AS `err_count`,`stmts`.`SUM_WARNINGS` AS "                             \
+      "`warn_count`," timer_expression                                                             \
+      "(`stmts`.`SUM_TIMER_WAIT`) AS `total_latency`," timer_expression                            \
+      "(`stmts`.`MAX_TIMER_WAIT`) AS `max_latency`," timer_expression                              \
+      "(`stmts`.`AVG_TIMER_WAIT`) AS `avg_latency`,`stmts`.`SUM_ROWS_SENT` AS "                    \
+      "`rows_sent`,round(ifnull((`stmts`.`SUM_ROWS_SENT` / nullif(`stmts`.`COUNT_STAR`,0)),0),0) " \
+      "AS `rows_sent_avg`,`stmts`.`SUM_ROWS_EXAMINED` AS `rows_examined`,round(ifnull(("           \
+      "`stmts`.`SUM_ROWS_EXAMINED` / nullif(`stmts`.`COUNT_STAR`,0)),0),0) AS "                    \
+      "`rows_examined_avg`,`stmts`.`FIRST_SEEN` AS `first_seen`,`stmts`.`LAST_SEEN` AS "           \
+      "`last_seen`,`stmts`.`DIGEST` AS `digest` from "                                             \
+      "(`performance_schema`.`events_statements_summary_by_digest` `stmts` join `sys`."            \
+      "`x$ps_digest_95th_percentile_by_avg_us` `top_percentile` on((round(("                       \
+      "`stmts`.`AVG_TIMER_WAIT` / 1000000),0) >= `sys`.`top_percentile`.`avg_us`))) order by "     \
+      "`stmts`.`AVG_TIMER_WAIT` desc"
+
+#define SYS_STATEMENTS_RUNTIME_PERCENTILE_RAW_DEFINITION                                           \
+    "select `stmts`.`DIGEST_TEXT` AS `query`,`stmts`.`SCHEMA_NAME` AS "                            \
+    "`db`," SYS_STATEMENT_DIGEST_FULL_SCAN_EXPR("stmts"                                            \
+    ) "`stmts`.`COUNT_STAR` AS `exec_count`,"                                                      \
+      "`stmts`.`SUM_ERRORS` AS `err_count`,`stmts`.`SUM_WARNINGS` AS `warn_count`,"                \
+      "`stmts`.`SUM_TIMER_WAIT` AS `total_latency`,`stmts`.`MAX_TIMER_WAIT` AS `max_latency`,"     \
+      "`stmts`.`AVG_TIMER_WAIT` AS `avg_latency`,`stmts`.`SUM_ROWS_SENT` AS `rows_sent`,"          \
+      "round(ifnull((`stmts`.`SUM_ROWS_SENT` / nullif(`stmts`.`COUNT_STAR`,0)),0),0) AS "          \
+      "`rows_sent_avg`,`stmts`.`SUM_ROWS_EXAMINED` AS `rows_examined`,round(ifnull(("              \
+      "`stmts`.`SUM_ROWS_EXAMINED` / nullif(`stmts`.`COUNT_STAR`,0)),0),0) AS "                    \
+      "`rows_examined_avg`,`stmts`.`FIRST_SEEN` AS `first_seen`,`stmts`.`LAST_SEEN` AS "           \
+      "`last_seen`,`stmts`.`DIGEST` AS `digest` from "                                             \
+      "(`performance_schema`.`events_statements_summary_by_digest` `stmts` join `sys`."            \
+      "`x$ps_digest_95th_percentile_by_avg_us` `top_percentile` on((round(("                       \
+      "`stmts`.`AVG_TIMER_WAIT` / 1000000),0) >= `sys`.`top_percentile`.`avg_us`))) order by "     \
+      "`stmts`.`AVG_TIMER_WAIT` desc"
+
+static const char sys_statements_with_runtimes_in_95th_percentile_view_definition[] =
+    SYS_STATEMENTS_RUNTIME_PERCENTILE_DEFINITION(
+        "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)",
+        "format_pico_time"
+    );
+
+static const char sys_statements_with_runtimes_in_95th_percentile_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`statements_with_runtimes_in_95th_percentile`"
+    " " SYS_STATEMENTS_WITH_RUNTIMES_IN_95TH_PERCENTILE_VIEW_COLUMNS
+    " AS " SYS_STATEMENTS_RUNTIME_PERCENTILE_DEFINITION(
+        "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)",
+        "format_pico_time"
+    );
+
+static const char sys_statements_with_runtimes_in_95th_percentile_show_create_qualified_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`sys`.`statements_with_runtimes_in_95th_percentile`"
+    " " SYS_STATEMENTS_WITH_RUNTIMES_IN_95TH_PERCENTILE_VIEW_COLUMNS
+    " AS " SYS_STATEMENTS_RUNTIME_PERCENTILE_DEFINITION(
+        "`sys`.`format_statement`(`stmts`.`DIGEST_TEXT`)",
+        "format_pico_time"
+    );
+
+static const char sys_x_statements_with_runtimes_in_95th_percentile_view_definition[] =
+    SYS_STATEMENTS_RUNTIME_PERCENTILE_RAW_DEFINITION;
+
+static const char sys_x_statements_with_runtimes_in_95th_percentile_show_create_view_sql[] =
+    "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+    "`x$statements_with_runtimes_in_95th_percentile`"
+    " " SYS_STATEMENTS_WITH_RUNTIMES_IN_95TH_PERCENTILE_VIEW_COLUMNS
+    " AS " SYS_STATEMENTS_RUNTIME_PERCENTILE_RAW_DEFINITION;
+
+static const char
+    sys_x_statements_with_runtimes_in_95th_percentile_show_create_qualified_view_sql[] =
+        "CREATE ALGORITHM=MERGE DEFINER=`mysql.sys`@`localhost` SQL SECURITY INVOKER VIEW "
+        "`sys`.`x$statements_with_runtimes_in_95th_percentile`"
+        " " SYS_STATEMENTS_WITH_RUNTIMES_IN_95TH_PERCENTILE_VIEW_COLUMNS
+        " AS " SYS_STATEMENTS_RUNTIME_PERCENTILE_RAW_DEFINITION;
+
+#undef SYS_STATEMENT_ANALYSIS_VIEW_COLUMNS
+#undef SYS_X_STATEMENT_ANALYSIS_VIEW_COLUMNS
+#undef SYS_STATEMENTS_WITH_ERRORS_OR_WARNINGS_VIEW_COLUMNS
+#undef SYS_STATEMENTS_WITH_FULL_TABLE_SCANS_VIEW_COLUMNS
+#undef SYS_STATEMENTS_WITH_RUNTIMES_IN_95TH_PERCENTILE_VIEW_COLUMNS
+#undef SYS_STATEMENT_DIGEST_FULL_SCAN_EXPR
+#undef SYS_STATEMENT_DIGEST_AVG_EXPR
+#undef SYS_STATEMENT_ANALYSIS_PREFIX
+#undef SYS_STATEMENT_ANALYSIS_COUNTERS
+#undef SYS_STATEMENT_ANALYSIS_FORMATTED_TIMERS
+#undef SYS_STATEMENT_ANALYSIS_RAW_TIMERS
+#undef SYS_STATEMENT_ANALYSIS_ROW_COUNTERS
+#undef SYS_STATEMENT_ANALYSIS_SUFFIX_FORMATTED
+#undef SYS_STATEMENT_ANALYSIS_SUFFIX_RAW
+#undef SYS_STATEMENTS_ERRORS_DEFINITION
+#undef SYS_STATEMENTS_FULL_SCAN_DEFINITION
+#undef SYS_STATEMENTS_RUNTIME_PERCENTILE_DEFINITION
+#undef SYS_STATEMENTS_RUNTIME_PERCENTILE_RAW_DEFINITION
+
 #define SYS_HOST_SUMMARY_VIEW_COLUMNS                                                              \
     "(`host`,`statements`,`statement_latency`,`statement_avg_latency`,`table_scans`,`file_ios`,"   \
     "`file_io_latency`,`current_connections`,`total_connections`,`unique_users`,`current_memory`," \
@@ -2617,6 +2966,22 @@ static const struct mylite_execution_catalog_builtin_sys_view builtin_sys_view_d
      sys_session_ssl_status_view_definition,
      sys_session_ssl_status_show_create_view_sql,
      sys_session_ssl_status_show_create_qualified_view_sql},
+    {"statement_analysis",
+     sys_statement_analysis_view_definition,
+     sys_statement_analysis_show_create_view_sql,
+     sys_statement_analysis_show_create_qualified_view_sql},
+    {"statements_with_errors_or_warnings",
+     sys_statements_with_errors_or_warnings_view_definition,
+     sys_statements_with_errors_or_warnings_show_create_view_sql,
+     sys_statements_with_errors_or_warnings_show_create_qualified_view_sql},
+    {"statements_with_full_table_scans",
+     sys_statements_with_full_table_scans_view_definition,
+     sys_statements_with_full_table_scans_show_create_view_sql,
+     sys_statements_with_full_table_scans_show_create_qualified_view_sql},
+    {"statements_with_runtimes_in_95th_percentile",
+     sys_statements_with_runtimes_in_95th_percentile_view_definition,
+     sys_statements_with_runtimes_in_95th_percentile_show_create_view_sql,
+     sys_statements_with_runtimes_in_95th_percentile_show_create_qualified_view_sql},
     {"host_summary",
      sys_host_summary_view_definition,
      sys_host_summary_show_create_view_sql,
@@ -2853,6 +3218,22 @@ static const struct mylite_execution_catalog_builtin_sys_view builtin_sys_view_d
      sys_x_schema_tables_with_full_table_scans_view_definition,
      sys_x_schema_tables_with_full_table_scans_show_create_view_sql,
      sys_x_schema_tables_with_full_table_scans_show_create_qualified_view_sql},
+    {"x$statement_analysis",
+     sys_x_statement_analysis_view_definition,
+     sys_x_statement_analysis_show_create_view_sql,
+     sys_x_statement_analysis_show_create_qualified_view_sql},
+    {"x$statements_with_errors_or_warnings",
+     sys_x_statements_with_errors_or_warnings_view_definition,
+     sys_x_statements_with_errors_or_warnings_show_create_view_sql,
+     sys_x_statements_with_errors_or_warnings_show_create_qualified_view_sql},
+    {"x$statements_with_full_table_scans",
+     sys_x_statements_with_full_table_scans_view_definition,
+     sys_x_statements_with_full_table_scans_show_create_view_sql,
+     sys_x_statements_with_full_table_scans_show_create_qualified_view_sql},
+    {"x$statements_with_runtimes_in_95th_percentile",
+     sys_x_statements_with_runtimes_in_95th_percentile_view_definition,
+     sys_x_statements_with_runtimes_in_95th_percentile_show_create_view_sql,
+     sys_x_statements_with_runtimes_in_95th_percentile_show_create_qualified_view_sql},
 };
 
 size_t mylite_execution_catalog_builtin_sys_view_definition_count(void) {

@@ -53,6 +53,11 @@ static int information_schema_catalog_filter_init_from_statement(
     const struct information_schema_query *query,
     struct information_schema_catalog_filter *out_filter
 );
+static bool information_schema_catalog_filter_resolve_schema_table_columns(
+    const struct mylite_execution_catalog_table_definition *definition,
+    size_t *out_schema_column_index,
+    size_t *out_table_column_index
+);
 static void information_schema_catalog_filter_deinit(
     struct information_schema_catalog_filter *filter
 );
@@ -74,6 +79,10 @@ static int information_schema_catalog_filter_set_value(
     struct information_schema_predicate_value *value
 );
 static bool information_schema_catalog_filter_allows_system_rows(
+    const struct mylite_execution_catalog_table_definition *definition,
+    const struct information_schema_catalog_filter *filter
+);
+static bool information_schema_catalog_filter_allows_user_catalog_rows(
     const struct mylite_execution_catalog_table_definition *definition,
     const struct information_schema_catalog_filter *filter
 );

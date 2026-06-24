@@ -234,16 +234,11 @@ static int information_schema_catalog_filter_init_from_statement(
     if (query == NULL || query->definition == NULL) {
         return MYLITE_OK;
     }
-    if (information_schema_table_definition_index(
+    if (!information_schema_catalog_filter_resolve_schema_table_columns(
             query->definition,
-            "TABLE_SCHEMA",
-            &out_filter->schema_column_index
-        ) != MYLITE_OK ||
-        information_schema_table_definition_index(
-            query->definition,
-            "TABLE_NAME",
+            &out_filter->schema_column_index,
             &out_filter->table_column_index
-        ) != MYLITE_OK) {
+        )) {
         return MYLITE_OK;
     }
 
@@ -268,6 +263,44 @@ static int information_schema_catalog_filter_init_from_statement(
         information_schema_catalog_filter_deinit(out_filter);
     }
     return rc;
+}
+
+static bool information_schema_catalog_filter_resolve_schema_table_columns(
+    const struct mylite_execution_catalog_table_definition *definition,
+    size_t *out_schema_column_index,
+    size_t *out_table_column_index
+) {
+    bool has_schema_column = false;
+    bool has_table_column = false;
+
+    if (definition == NULL || out_schema_column_index == NULL || out_table_column_index == NULL) {
+        return false;
+    }
+    if (definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_VIEW_TABLE_USAGE) {
+        has_schema_column = information_schema_table_definition_index(
+                                definition,
+                                "VIEW_SCHEMA",
+                                out_schema_column_index
+                            ) == MYLITE_OK;
+        has_table_column = information_schema_table_definition_index(
+                               definition,
+                               "VIEW_NAME",
+                               out_table_column_index
+                           ) == MYLITE_OK;
+        if (has_schema_column && has_table_column) {
+            return true;
+        }
+    }
+
+    has_schema_column = information_schema_table_definition_index(
+                            definition,
+                            "TABLE_SCHEMA",
+                            out_schema_column_index
+                        ) == MYLITE_OK;
+    has_table_column =
+        information_schema_table_definition_index(definition, "TABLE_NAME", out_table_column_index) ==
+        MYLITE_OK;
+    return has_schema_column && has_table_column;
 }
 
 static void information_schema_catalog_filter_deinit(
@@ -398,6 +431,14 @@ static bool information_schema_catalog_filter_allows_system_rows(
            information_schema_catalog_filter_allows_schema(definition, filter, "mysql") ||
            information_schema_catalog_filter_allows_schema(definition, filter, "performance_schema") ||
            information_schema_catalog_filter_allows_schema(definition, filter, "sys");
+}
+
+static bool information_schema_catalog_filter_allows_user_catalog_rows(
+    const struct mylite_execution_catalog_table_definition *definition,
+    const struct information_schema_catalog_filter *filter
+) {
+    return filter == NULL || !filter->has_schema_name ||
+           !information_schema_catalog_filter_allows_system_rows(definition, filter);
 }
 
 static bool information_schema_catalog_filter_allows_schema(

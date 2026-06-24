@@ -108,6 +108,22 @@ add Performance Schema host statement-summary collection, live statement-type
 rows, latency or row counters, sys helper-function execution, privilege
 filtering, or broader sys view execution.
 
+The `baseline-sys-statement-digest-views` slice extends
+`INFORMATION_SCHEMA.COLUMNS`, `TABLES`, `VIEWS`, `VIEW_TABLE_USAGE`, and
+`VIEW_ROUTINE_USAGE` with MySQL-shaped metadata for the supported empty
+synthetic statement digest diagnostic views:
+`sys.statement_analysis`, `sys.x$statement_analysis`,
+`sys.statements_with_errors_or_warnings`,
+`sys.x$statements_with_errors_or_warnings`,
+`sys.statements_with_full_table_scans`,
+`sys.x$statements_with_full_table_scans`,
+`sys.statements_with_runtimes_in_95th_percentile`, and
+`sys.x$statements_with_runtimes_in_95th_percentile`. It preserves
+MySQL-observed `IS_UPDATABLE = 'YES'` metadata for these views while writes
+remain blocked by MyLite's built-in schema guard. It does not add Performance
+Schema statement digest collection, live latency/error/full-scan rows, sys
+helper-function execution, privilege filtering, or broader sys view execution.
+
 The `baseline-sys-innodb-buffer-stats-by-schema-views` slice extends
 `INFORMATION_SCHEMA.COLUMNS`, `TABLES`, `VIEWS`, and `VIEW_TABLE_USAGE` with
 MySQL-shaped metadata for the supported empty synthetic

@@ -151,6 +151,19 @@ static int append_sys_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "session_ssl_status") == 0) {
         return append_sys_session_ssl_status_system_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "statement_analysis") == 0 ||
+        strcmp(definition->query_definition.name, "statements_with_errors_or_warnings") == 0 ||
+        strcmp(definition->query_definition.name, "statements_with_full_table_scans") == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "statements_with_runtimes_in_95th_percentile"
+        ) == 0) {
+        return append_sys_statement_digest_system_rows(
+            database,
+            rows,
+            definition->query_definition.name
+        );
+    }
     if (strcmp(definition->query_definition.name, "innodb_lock_waits") == 0) {
         return append_sys_innodb_lock_waits_system_rows(database, rows);
     }
@@ -310,6 +323,19 @@ static int append_sys_schema_x_system_table_rows(
     }
     if (strcmp(definition->query_definition.name, "x$ps_digest_95th_percentile_by_avg_us") == 0) {
         return append_sys_x_ps_digest_95th_percentile_by_avg_us_system_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "x$statement_analysis") == 0 ||
+        strcmp(definition->query_definition.name, "x$statements_with_errors_or_warnings") == 0 ||
+        strcmp(definition->query_definition.name, "x$statements_with_full_table_scans") == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "x$statements_with_runtimes_in_95th_percentile"
+        ) == 0) {
+        return append_sys_statement_digest_system_rows(
+            database,
+            rows,
+            definition->query_definition.name
+        );
     }
     if (strcmp(definition->query_definition.name, "x$ps_schema_table_statistics_io") == 0) {
         return append_sys_x_ps_schema_table_statistics_io_system_rows(database, rows);
@@ -946,6 +972,36 @@ static int append_sys_x_ps_digest_95th_percentile_by_avg_us_system_rows(
         set_runtime_error(database, "invalid sys.x$ps_digest_95th_percentile_by_avg_us columns");
         return MYLITE_ERROR;
     }
+    return MYLITE_OK;
+}
+
+static int append_sys_statement_digest_system_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const char *view_name
+) {
+    size_t expected_column_count = 0U;
+
+    if (strcmp(view_name, "statement_analysis") == 0) {
+        expected_column_count = sys_statement_analysis_column_count;
+    } else if (strcmp(view_name, "x$statement_analysis") == 0) {
+        expected_column_count = sys_x_statement_analysis_column_count;
+    } else if (strcmp(view_name, "statements_with_errors_or_warnings") == 0 ||
+               strcmp(view_name, "x$statements_with_errors_or_warnings") == 0) {
+        expected_column_count = sys_statements_with_errors_or_warnings_column_count;
+    } else if (strcmp(view_name, "statements_with_full_table_scans") == 0 ||
+               strcmp(view_name, "x$statements_with_full_table_scans") == 0) {
+        expected_column_count = sys_statements_with_full_table_scans_column_count;
+    } else if (strcmp(view_name, "statements_with_runtimes_in_95th_percentile") == 0 ||
+               strcmp(view_name, "x$statements_with_runtimes_in_95th_percentile") == 0) {
+        expected_column_count = sys_statements_with_runtimes_in_95th_percentile_column_count;
+    }
+
+    if (rows->definition->column_count != expected_column_count) {
+        set_runtime_error(database, "invalid sys statement digest view columns");
+        return MYLITE_ERROR;
+    }
+
     return MYLITE_OK;
 }
 

@@ -1143,6 +1143,12 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_binlog_events_statement(
     struct mylite_sql_token show_token,
     struct mylite_sql_token events_token
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_relaylog_events_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_token end_token,
+    struct mylite_sql_ast_node *channel
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_replica_status_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,

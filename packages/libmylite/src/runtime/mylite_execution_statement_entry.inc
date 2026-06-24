@@ -442,6 +442,8 @@ static int execute_non_prepared_statement(
         return execute_show_binary_logs_statement(database, out_result);
     case MYLITE_SQL_AST_SHOW_BINLOG_EVENTS_STATEMENT:
         return execute_show_binlog_events_statement(database, out_result);
+    case MYLITE_SQL_AST_SHOW_RELAYLOG_EVENTS_STATEMENT:
+        return execute_show_relaylog_events_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_REPLICA_STATUS_STATEMENT:
         return execute_show_replica_status_statement(database, out_result);
     case MYLITE_SQL_AST_SHOW_REPLICAS_STATEMENT:

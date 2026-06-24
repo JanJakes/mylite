@@ -15,8 +15,10 @@
 
 enum {
     mysql_error_parse = 1064,
+    mysql_error_replica_channel_does_not_exist = 3074,
     show_replica_status_column_count = 60,
     show_replicas_column_count = 5,
+    show_relaylog_events_column_count = 6,
     diagnostics_column_count = 2,
     test_path_capacity = 1024,
 };
@@ -105,6 +107,15 @@ static const char *const show_replicas_columns[show_replicas_column_count] = {
     "Replica_UUID",
 };
 
+static const char *const show_relaylog_events_columns[show_relaylog_events_column_count] = {
+    "Log_name",
+    "Pos",
+    "Event_type",
+    "Server_id",
+    "End_log_pos",
+    "Info",
+};
+
 static const struct expected_show_result show_replica_status = {
     .sql = "SHOW REPLICA STATUS",
     .columns = show_replica_status_columns,
@@ -115,6 +126,24 @@ static const struct expected_show_result show_replicas = {
     .sql = "SHOW REPLICAS",
     .columns = show_replicas_columns,
     .column_count = show_replicas_column_count,
+};
+
+static const struct expected_show_result show_relaylog_events = {
+    .sql = "SHOW RELAYLOG EVENTS",
+    .columns = show_relaylog_events_columns,
+    .column_count = show_relaylog_events_column_count,
+};
+
+static const struct expected_show_result show_relaylog_events_with_options = {
+    .sql = "SHOW RELAYLOG EVENTS IN 'x' FROM 4 LIMIT 1 OFFSET 2",
+    .columns = show_relaylog_events_columns,
+    .column_count = show_relaylog_events_column_count,
+};
+
+static const struct expected_show_result show_relaylog_events_with_empty_channel = {
+    .sql = "SHOW RELAYLOG EVENTS FOR CHANNEL ''",
+    .columns = show_relaylog_events_columns,
+    .column_count = show_relaylog_events_column_count,
 };
 
 static int test_show_replica_metadata_results(void);
@@ -165,6 +194,9 @@ static int test_show_replica_metadata_results(void) {
         expect_int(mylite_open_memory(&database), MYLITE_OK, "open memory replica metadata");
     failures += expect_show_replica_metadata(database, show_replica_status);
     failures += expect_show_replica_metadata(database, show_replicas);
+    failures += expect_show_replica_metadata(database, show_relaylog_events);
+    failures += expect_show_replica_metadata(database, show_relaylog_events_with_options);
+    failures += expect_show_replica_metadata(database, show_relaylog_events_with_empty_channel);
 
     mylite_close(database);
     return failures;
@@ -204,6 +236,7 @@ static int test_show_replica_metadata_file_reopen_and_preamble(void) {
     sqlite_schema_generation = session->sqlite_schema_generation;
     failures += expect_show_replica_metadata(database, show_replica_status);
     failures += expect_show_replica_metadata(database, show_replicas);
+    failures += expect_show_replica_metadata(database, show_relaylog_events);
     session = mylite_connection_session_state(database);
     failures += expect_int64(
         (int64_t)session->catalog_generation,
@@ -232,6 +265,7 @@ static int test_show_replica_metadata_file_reopen_and_preamble(void) {
     }
     failures += expect_show_replica_metadata(database, show_replica_status);
     failures += expect_show_replica_metadata(database, show_replicas);
+    failures += expect_show_replica_metadata(database, show_relaylog_events);
 
     mylite_close(database);
     remove_related_files(path);
@@ -247,8 +281,10 @@ static int test_independent_show_replica_metadata_handles(void) {
     failures += expect_int(mylite_open_memory(&second), MYLITE_OK, "open second replica handle");
     failures += expect_show_replica_metadata(first, show_replica_status);
     failures += expect_show_replica_metadata(first, show_replicas);
+    failures += expect_show_replica_metadata(first, show_relaylog_events);
     failures += expect_show_replica_metadata(second, show_replica_status);
     failures += expect_show_replica_metadata(second, show_replicas);
+    failures += expect_show_replica_metadata(second, show_relaylog_events);
 
     mylite_close(first);
     mylite_close(second);
@@ -312,6 +348,36 @@ static int test_show_replica_metadata_unsupported_diagnostics(void) {
             .message_part = "You have an error in your SQL syntax",
         },
         {
+            .sql = "SHOW RELAYLOG EVENTS FOR CHANNEL 'default'",
+            .code = mysql_error_replica_channel_does_not_exist,
+            .sqlstate = "HY000",
+            .message_part = "Replica channel 'default' does not exist",
+        },
+        {
+            .sql = "SHOW RELAYLOG EVENTS WHERE Log_name IS NOT NULL",
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        },
+        {
+            .sql = "SHOW FULL RELAYLOG EVENTS",
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        },
+        {
+            .sql = "SHOW RELAYLOG EVENTS FROM '4'",
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        },
+        {
+            .sql = "SHOW RELAYLOG EVENTS LIMIT '1'",
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        },
+        {
             .sql = "SHOW SLAVE STATUS",
             .code = mysql_error_parse,
             .sqlstate = "42000",
@@ -319,6 +385,12 @@ static int test_show_replica_metadata_unsupported_diagnostics(void) {
         },
         {
             .sql = "SHOW SLAVE HOSTS",
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "You have an error in your SQL syntax",
+        },
+        {
+            .sql = "SHOW PARSE_TREE SELECT 1",
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "You have an error in your SQL syntax",

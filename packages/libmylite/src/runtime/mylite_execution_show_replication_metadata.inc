@@ -141,6 +141,107 @@ static int execute_show_binlog_events_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_relaylog_events_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[show_relaylog_events_result_column_count] = {
+        "Log_name",
+        "Pos",
+        "Event_type",
+        "Server_id",
+        "End_log_pos",
+        "Info",
+    };
+    mylite_result *result = NULL;
+    int rc = validate_show_relaylog_events_channel(database, statement);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = mylite_result_create(&result);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_relaylog_events_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
+static int validate_show_relaylog_events_channel(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *channel = child_at(statement, 0U);
+    char *channel_name = NULL;
+    size_t channel_name_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (channel == NULL) {
+        return MYLITE_OK;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        channel,
+        "SHOW RELAYLOG EVENTS FOR CHANNEL supports only string literals",
+        "SHOW RELAYLOG EVENTS channel names do not support NUL bytes",
+        &channel_name,
+        &channel_name_length
+    );
+    if (rc != MYLITE_OK) {
+        free(channel_name);
+        return rc;
+    }
+
+    if (channel_name_length != 0U) {
+        set_replica_channel_does_not_exist_error(database, channel_name);
+        free(channel_name);
+        return MYLITE_ERROR;
+    }
+
+    free(channel_name);
+    return MYLITE_OK;
+}
+
+static void set_replica_channel_does_not_exist_error(
+    struct mylite_db *database,
+    const char *channel_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Replica channel '%s' does not exist.",
+        channel_name == NULL ? "" : channel_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_replica_channel_does_not_exist,
+        "HY000",
+        message
+    );
+}
+
 static int execute_show_replica_status_statement(
     struct mylite_db *database,
     mylite_result **out_result

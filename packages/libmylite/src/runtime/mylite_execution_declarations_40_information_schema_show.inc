@@ -1956,6 +1956,19 @@ static int execute_show_binlog_events_statement(
     struct mylite_db *database,
     mylite_result **out_result
 );
+static int execute_show_relaylog_events_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int validate_show_relaylog_events_channel(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement
+);
+static void set_replica_channel_does_not_exist_error(
+    struct mylite_db *database,
+    const char *channel_name
+);
 static int execute_show_replica_status_statement(
     struct mylite_db *database,
     mylite_result **out_result

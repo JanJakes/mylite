@@ -101,6 +101,54 @@ expect_value \
     "$(printf '%b' '-1\t0\t0')" \
     "$replicas_diagnostics"
 
+relaylog_events_columns=$(run_mysql_metadata 'SHOW RELAYLOG EVENTS;')
+expect_value \
+    "SHOW RELAYLOG EVENTS columns" \
+    "$(printf '%b' 'Log_name\tPos\tEvent_type\tServer_id\tEnd_log_pos\tInfo')" \
+    "$relaylog_events_columns"
+
+relaylog_events_rows=$(run_mysql 'SHOW RELAYLOG EVENTS;' | awk 'END { print NR + 0 }')
+expect_value "SHOW RELAYLOG EVENTS row count" "0" "$relaylog_events_rows"
+
+relaylog_events_in_rows=$(run_mysql "SHOW RELAYLOG EVENTS IN 'x';" | awk 'END { print NR + 0 }')
+expect_value "SHOW RELAYLOG EVENTS IN row count" "0" "$relaylog_events_in_rows"
+
+relaylog_events_from_rows=$(run_mysql 'SHOW RELAYLOG EVENTS FROM 4;' | awk 'END { print NR + 0 }')
+expect_value "SHOW RELAYLOG EVENTS FROM row count" "0" "$relaylog_events_from_rows"
+
+relaylog_events_limit_rows=$(run_mysql 'SHOW RELAYLOG EVENTS LIMIT 1;' | awk 'END { print NR + 0 }')
+expect_value "SHOW RELAYLOG EVENTS LIMIT row count" "0" "$relaylog_events_limit_rows"
+
+relaylog_events_comma_limit_rows=$(run_mysql 'SHOW RELAYLOG EVENTS LIMIT 1, 2;' | awk 'END { print NR + 0 }')
+expect_value \
+    "SHOW RELAYLOG EVENTS comma LIMIT row count" \
+    "0" \
+    "$relaylog_events_comma_limit_rows"
+
+relaylog_events_offset_limit_rows=$(run_mysql 'SHOW RELAYLOG EVENTS LIMIT 1 OFFSET 2;' | awk 'END { print NR + 0 }')
+expect_value \
+    "SHOW RELAYLOG EVENTS OFFSET LIMIT row count" \
+    "0" \
+    "$relaylog_events_offset_limit_rows"
+
+relaylog_events_options_rows=$(run_mysql "SHOW RELAYLOG EVENTS IN 'x' FROM 4 LIMIT 1 OFFSET 2;" | awk 'END { print NR + 0 }')
+expect_value \
+    "SHOW RELAYLOG EVENTS option row count" \
+    "0" \
+    "$relaylog_events_options_rows"
+
+relaylog_events_empty_channel_rows=$(run_mysql "SHOW RELAYLOG EVENTS FOR CHANNEL '';" | awk 'END { print NR + 0 }')
+expect_value \
+    "SHOW RELAYLOG EVENTS empty channel row count" \
+    "0" \
+    "$relaylog_events_empty_channel_rows"
+
+relaylog_events_diagnostics=$(run_mysql 'SHOW RELAYLOG EVENTS; SELECT ROW_COUNT(), @@warning_count, @@error_count;' | tail -n 1)
+expect_value \
+    "SHOW RELAYLOG EVENTS diagnostics" \
+    "$(printf '%b' '-1\t0\t0')" \
+    "$relaylog_events_diagnostics"
+
 expect_error \
     "SHOW REPLICA STATUS FOR CHANNEL missing channel" \
     3074 \
@@ -165,6 +213,41 @@ expect_error \
     "SHOW FULL REPLICAS;"
 
 expect_error \
+    "SHOW RELAYLOG EVENTS named channel missing" \
+    3074 \
+    HY000 \
+    "Replica channel 'default' does not exist" \
+    "SHOW RELAYLOG EVENTS FOR CHANNEL 'default';"
+
+expect_error \
+    "SHOW RELAYLOG EVENTS WHERE syntax" \
+    1064 \
+    42000 \
+    "near 'WHERE Log_name IS NOT NULL'" \
+    "SHOW RELAYLOG EVENTS WHERE Log_name IS NOT NULL;"
+
+expect_error \
+    "SHOW FULL RELAYLOG EVENTS syntax" \
+    1064 \
+    42000 \
+    "near 'RELAYLOG EVENTS'" \
+    "SHOW FULL RELAYLOG EVENTS;"
+
+expect_error \
+    "SHOW RELAYLOG EVENTS string FROM syntax" \
+    1064 \
+    42000 \
+    "near ''4''" \
+    "SHOW RELAYLOG EVENTS FROM '4';"
+
+expect_error \
+    "SHOW RELAYLOG EVENTS string LIMIT syntax" \
+    1064 \
+    42000 \
+    "near ''1''" \
+    "SHOW RELAYLOG EVENTS LIMIT '1';"
+
+expect_error \
     "SHOW SLAVE STATUS removed syntax" \
     1064 \
     42000 \
@@ -177,5 +260,12 @@ expect_error \
     42000 \
     "near 'SLAVE HOSTS'" \
     "SHOW SLAVE HOSTS;"
+
+expect_error \
+    "SHOW PARSE_TREE production syntax" \
+    1064 \
+    42000 \
+    "near 'PARSE_TREE SELECT 1'" \
+    "SHOW PARSE_TREE SELECT 1;"
 
 printf '%s\n' "mysql_baseline_show_replica_metadata_expectations: ok"

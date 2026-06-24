@@ -2286,6 +2286,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "show_binary_logs_statement";
     case MYLITE_SQL_AST_SHOW_BINLOG_EVENTS_STATEMENT:
         return "show_binlog_events_statement";
+    case MYLITE_SQL_AST_SHOW_RELAYLOG_EVENTS_STATEMENT:
+        return "show_relaylog_events_statement";
     case MYLITE_SQL_AST_SHOW_REPLICA_STATUS_STATEMENT:
         return "show_replica_status_statement";
     case MYLITE_SQL_AST_SHOW_REPLICAS_STATEMENT:

@@ -1838,8 +1838,13 @@ static int test_show_replica_metadata_statements(void) {
         "SHOW REPLICAS WHERE Host IS NOT NULL;",
         "SHOW REPLICAS LIMIT 1;",
         "SHOW FULL REPLICAS;",
+        "SHOW RELAYLOG EVENTS WHERE Log_name IS NOT NULL;",
+        "SHOW FULL RELAYLOG EVENTS;",
+        "SHOW RELAYLOG EVENTS FROM '4';",
+        "SHOW RELAYLOG EVENTS LIMIT '1';",
         "SHOW SLAVE STATUS;",
         "SHOW SLAVE HOSTS;",
+        "SHOW PARSE_TREE SELECT 1;",
     };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
@@ -1893,6 +1898,100 @@ static int test_show_replica_metadata_statements(void) {
     failures += parser_test_expect_span_text(statement, "show replicas", "lowercase show replicas");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql("SHOW RELAYLOG EVENTS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_RELAYLOG_EVENTS_STATEMENT,
+        "show relaylog events"
+    );
+    failures += parser_test_expect_child_count(statement, 0U, "show relaylog events child count");
+    failures += parser_test_expect_span_text(
+        statement,
+        "SHOW RELAYLOG EVENTS",
+        "show relaylog events span"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("show relaylog events;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_RELAYLOG_EVENTS_STATEMENT,
+        "lowercase show relaylog events"
+    );
+    failures +=
+        parser_test_expect_child_count(statement, 0U, "lowercase show relaylog events child count");
+    failures += parser_test_expect_span_text(
+        statement,
+        "show relaylog events",
+        "lowercase show relaylog events"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SHOW RELAYLOG EVENTS IN 'x' FROM 4 LIMIT 1, 2;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_RELAYLOG_EVENTS_STATEMENT,
+        "show relaylog events options"
+    );
+    failures +=
+        parser_test_expect_child_count(statement, 0U, "show relaylog events options child count");
+    failures += parser_test_expect_span_text(
+        statement,
+        "SHOW RELAYLOG EVENTS IN 'x' FROM 4 LIMIT 1, 2",
+        "show relaylog events options span"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SHOW RELAYLOG EVENTS LIMIT 1 OFFSET 2;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_RELAYLOG_EVENTS_STATEMENT,
+        "show relaylog events offset limit"
+    );
+    failures += parser_test_expect_child_count(
+        statement,
+        0U,
+        "show relaylog events offset limit child count"
+    );
+    failures += parser_test_expect_span_text(
+        statement,
+        "SHOW RELAYLOG EVENTS LIMIT 1 OFFSET 2",
+        "show relaylog events offset limit span"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SHOW RELAYLOG EVENTS FOR CHANNEL 'default';",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_RELAYLOG_EVENTS_STATEMENT,
+        "show relaylog events channel"
+    );
+    failures +=
+        parser_test_expect_child_count(statement, 1U, "show relaylog events channel child count");
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(statement, 0U),
+        "'default'",
+        "show relaylog events channel literal"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures +=
         parser_test_parse_sql("CREATE TABLE replica (id INT);", MYLITE_SQL_PARSE_OK, &result);
     statement = parser_test_child_at(result.root, 0U);
@@ -1914,6 +2013,30 @@ static int test_show_replica_metadata_statements(void) {
         parser_test_child_at(statement, 0U),
         "replicas",
         "replicas identifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parser_test_parse_sql("CREATE TABLE relaylog (id INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures +=
+        parser_test_expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "relaylog table");
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(statement, 0U),
+        "relaylog",
+        "relaylog identifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parser_test_parse_sql("CREATE TABLE channel (id INT);", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures +=
+        parser_test_expect_node(statement, MYLITE_SQL_AST_CREATE_TABLE_STATEMENT, "channel table");
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(statement, 0U),
+        "channel",
+        "channel identifier"
     );
     mylite_sql_parse_result_deinit(&result);
 

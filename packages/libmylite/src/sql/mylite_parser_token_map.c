@@ -366,6 +366,7 @@ static bool map_keyword_token(
         {"RAND", MYLITE_SQL_PARSE_RAND},
         {"REPLICA", MYLITE_SQL_PARSE_REPLICA},
         {"REPLICAS", MYLITE_SQL_PARSE_REPLICAS},
+        {"RELAYLOG", MYLITE_SQL_PARSE_RELAYLOG},
         {"SIN", MYLITE_SQL_PARSE_SIN},
         {"SQRT", MYLITE_SQL_PARSE_SQRT},
         {"TAN", MYLITE_SQL_PARSE_TAN},
@@ -561,6 +562,7 @@ static bool map_keyword_token(
         {"MAKE_SET", MYLITE_SQL_PARSE_MAKE_SET},
         {"CONSTRAINT", MYLITE_SQL_PARSE_CONSTRAINT},
         {"FOREIGN", MYLITE_SQL_PARSE_FOREIGN},
+        {"CHANNEL", MYLITE_SQL_PARSE_CHANNEL},
         {"KEY", MYLITE_SQL_PARSE_KEY},
         {"KEYS", MYLITE_SQL_PARSE_KEYS},
         {"REFERENCES", MYLITE_SQL_PARSE_REFERENCES},
@@ -1038,6 +1040,7 @@ static bool map_keyword_index(unsigned int keyword_index, int *out_parser_token)
         [73U] = MYLITE_SQL_PARSE_CHAIN,                /* CHAIN */
         [75U] = MYLITE_SQL_PARSE_CHANGE,               /* CHANGE */
         [76U] = MYLITE_SQL_PARSE_CHANGED,              /* CHANGED */
+        [77U] = MYLITE_SQL_PARSE_CHANNEL,              /* CHANNEL */
         [78U] = MYLITE_SQL_PARSE_CHAR,                 /* CHAR */
         [79U] = MYLITE_SQL_PARSE_CHARACTER,            /* CHARACTER */
         [80U] = MYLITE_SQL_PARSE_CHARACTER_LENGTH,     /* CHARACTER_LENGTH */
@@ -1365,6 +1368,7 @@ static bool map_keyword_index(unsigned int keyword_index, int *out_parser_token)
         [584U] = MYLITE_SQL_PARSE_REGEXP_LIKE,         /* REGEXP_LIKE */
         [585U] = MYLITE_SQL_PARSE_REGEXP_REPLACE,      /* REGEXP_REPLACE */
         [586U] = MYLITE_SQL_PARSE_REGEXP_SUBSTR,       /* REGEXP_SUBSTR */
+        [589U] = MYLITE_SQL_PARSE_RELAYLOG,            /* RELAYLOG */
         [593U] = MYLITE_SQL_PARSE_RELEASE,             /* RELEASE */
         [596U] = MYLITE_SQL_PARSE_RENAME,              /* RENAME */
         [598U] = MYLITE_SQL_PARSE_REPAIR,              /* REPAIR */

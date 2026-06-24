@@ -103,6 +103,10 @@
 %type predicate_comparison_result_is_opt { struct mylite_sql_comparison_operator_tokens }
 %type dml_function_token { struct mylite_sql_token }
 %type keyword_function_token { struct mylite_sql_token }
+%type show_relaylog_events_in_opt { struct mylite_sql_token }
+%type show_relaylog_events_from_opt { struct mylite_sql_token }
+%type show_relaylog_events_limit_opt { struct mylite_sql_token }
+%type show_relaylog_events_channel_opt { struct mylite_sql_ast_node * }
 %type merge_insert_method { struct mylite_sql_ast_node * }
 %type transaction_completion { struct mylite_sql_transaction_completion }
 %type transaction_chain_completion { struct mylite_sql_transaction_completion }
@@ -310,6 +314,9 @@ statement(A) ::= show_binary_logs_statement(B). {
     A = B;
 }
 statement(A) ::= show_binlog_events_statement(B). {
+    A = B;
+}
+statement(A) ::= show_relaylog_events_statement(B). {
     A = B;
 }
 statement(A) ::= show_replica_status_statement(B). {
@@ -2293,6 +2300,57 @@ show_binary_logs_statement(A) ::= SHOW(S) BINARY LOGS(L). {
 
 show_binlog_events_statement(A) ::= SHOW(S) BINLOG EVENTS(E). {
     A = mylite_sql_parser_make_show_binlog_events_statement(state, S, E);
+}
+
+show_relaylog_events_statement(A) ::= SHOW(S) RELAYLOG EVENTS(E)
+    show_relaylog_events_in_opt(I) show_relaylog_events_from_opt(F)
+    show_relaylog_events_limit_opt(L) show_relaylog_events_channel_opt(C). {
+    struct mylite_sql_token end_token = E;
+
+    if (I.text != NULL) {
+        end_token = I;
+    }
+    if (F.text != NULL) {
+        end_token = F;
+    }
+    if (L.text != NULL) {
+        end_token = L;
+    }
+    A = mylite_sql_parser_make_show_relaylog_events_statement(state, S, end_token, C);
+}
+
+show_relaylog_events_in_opt(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+show_relaylog_events_in_opt(A) ::= IN STRING(N). {
+    A = N;
+}
+
+show_relaylog_events_from_opt(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+show_relaylog_events_from_opt(A) ::= FROM INTEGER(P). {
+    A = P;
+}
+
+show_relaylog_events_limit_opt(A) ::= . {
+    A = (struct mylite_sql_token){0};
+}
+show_relaylog_events_limit_opt(A) ::= LIMIT INTEGER(C). {
+    A = C;
+}
+show_relaylog_events_limit_opt(A) ::= LIMIT INTEGER COMMA INTEGER(C). {
+    A = C;
+}
+show_relaylog_events_limit_opt(A) ::= LIMIT INTEGER OFFSET INTEGER(O). {
+    A = O;
+}
+
+show_relaylog_events_channel_opt(A) ::= . {
+    A = NULL;
+}
+show_relaylog_events_channel_opt(A) ::= FOR CHANNEL STRING(C). {
+    A = mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_STRING);
 }
 
 show_replica_status_statement(A) ::= SHOW(S) REPLICA STATUS(T). {
@@ -13435,6 +13493,12 @@ identifier(A) ::= REPLICA(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= REPLICAS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= RELAYLOG(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= CHANNEL(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= LOG10(T). {

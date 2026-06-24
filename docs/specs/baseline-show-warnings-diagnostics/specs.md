@@ -308,7 +308,7 @@ Required MySQL expectation artifact:
 ## Compatibility Documentation
 
 Update `COMPATIBILITY.md` and
-`docs/compatibility/sql-show-statements.md` to mark only
-`SHOW WARNINGS` and `SHOW COUNT(*) WARNINGS` as partial. Do not claim
-`SHOW ERRORS`, `GET DIAGNOSTICS`, full diagnostics-area behavior, notes,
-`max_error_count`, `sql_notes`, `WHERE`, or expression support.
+`docs/compatibility/sql-show-statements.md` to mark the verified
+`SHOW WARNINGS` and `SHOW COUNT(*) WARNINGS` retained-diagnostics baseline
+green. Keep `GET DIAGNOSTICS`, diagnostics stacks, stored-program condition
+handling, and broader diagnostics-area behavior in separate compatibility rows.

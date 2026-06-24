@@ -300,17 +300,11 @@ Add fast C tests under `packages/libmylite/tests/` for:
 
 ## Compatibility Documentation
 
-Update `COMPATIBILITY.md` and `docs/compatibility/sql-show-statements.md` only
-for the exact supported subset:
-
-- `SHOW ERRORS`: limited previous-statement error-condition rows with
-  `Level`, `Code`, and `Message`, plus unsigned decimal `LIMIT` slicing.
-- `SHOW COUNT(*) ERRORS`: limited previous-statement error-condition count
-  with column label `@@session.error_count`.
-
-Do not claim support for `@@error_count`, full diagnostics-area behavior,
-notes, max-error-count truncation, `GET DIAGNOSTICS`, filters, privileges, or
-multiple stored errors.
+Update `COMPATIBILITY.md` and `docs/compatibility/sql-show-statements.md` to
+mark the verified `SHOW ERRORS` and `SHOW COUNT(*) ERRORS` retained-diagnostics
+baseline green. Keep full diagnostics-area behavior, diagnostics stacks,
+stored-program condition handling, `GET DIAGNOSTICS`, and multiple stored-error
+semantics in separate compatibility rows.
 
 ## Verification
 

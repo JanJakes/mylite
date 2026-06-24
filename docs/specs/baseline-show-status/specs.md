@@ -148,7 +148,7 @@ decimal text. The core lifecycle rows (`Bytes_%`, `Connections`, `Compression`,
 `Prepared_stmt_count`, `Queries`, `Questions`, `Threads_%`, and `Uptime%`) and
 the `Binlog_%`, `Com_%`, `Compression%`, `Current_tls%`, `Deprecated%`,
 `Error_log%`, `Handler_%`, `Innodb%`, `Key_%`, `Last_query_%`, `Max_%`,
-`Performance_schema_%`, `Select_%`, `Slow_%`, `Sort_%`, `Ssl_%`,
+`Mysqlx%`, `Performance_schema_%`, `Select_%`, `Slow_%`, `Sort_%`, `Ssl_%`,
 `Table_locks_%`, `Table_open_cache_%`, `Tc_log_%`, `Telemetry_%`, and `Tls%`
 rows mirror the MySQL 8.4.9
 row names and scope visibility for the documented placeholder subset. The
@@ -478,6 +478,84 @@ values are fixed placeholders rather than live counters.
 | `Max_execution_time_set_failed` | yes | yes | `0` |
 | `Max_used_connections` | yes | yes | `1` |
 | `Max_used_connections_time` | yes | yes | `1970-01-01 00:00:00` |
+| `Mysqlx_aborted_clients` | yes | yes | `0` |
+| `Mysqlx_address` | yes | yes | `UNDEFINED` |
+| `Mysqlx_bytes_received` | yes | yes | `0` |
+| `Mysqlx_bytes_received_compressed_payload` | yes | yes | `0` |
+| `Mysqlx_bytes_received_uncompressed_frame` | yes | yes | `0` |
+| `Mysqlx_bytes_sent` | yes | yes | `0` |
+| `Mysqlx_bytes_sent_compressed_payload` | yes | yes | `0` |
+| `Mysqlx_bytes_sent_uncompressed_frame` | yes | yes | `0` |
+| `Mysqlx_compression_algorithm` | yes | yes | empty string |
+| `Mysqlx_compression_level` | yes | yes | empty string |
+| `Mysqlx_connection_accept_errors` | yes | yes | `0` |
+| `Mysqlx_connection_errors` | yes | yes | `0` |
+| `Mysqlx_connections_accepted` | yes | yes | `0` |
+| `Mysqlx_connections_closed` | yes | yes | `0` |
+| `Mysqlx_connections_rejected` | yes | yes | `0` |
+| `Mysqlx_crud_create_view` | yes | yes | `0` |
+| `Mysqlx_crud_delete` | yes | yes | `0` |
+| `Mysqlx_crud_drop_view` | yes | yes | `0` |
+| `Mysqlx_crud_find` | yes | yes | `0` |
+| `Mysqlx_crud_insert` | yes | yes | `0` |
+| `Mysqlx_crud_modify_view` | yes | yes | `0` |
+| `Mysqlx_crud_update` | yes | yes | `0` |
+| `Mysqlx_cursor_close` | yes | yes | `0` |
+| `Mysqlx_cursor_fetch` | yes | yes | `0` |
+| `Mysqlx_cursor_open` | yes | yes | `0` |
+| `Mysqlx_errors_sent` | yes | yes | `0` |
+| `Mysqlx_errors_unknown_message_type` | yes | yes | `0` |
+| `Mysqlx_expect_close` | yes | yes | `0` |
+| `Mysqlx_expect_open` | yes | yes | `0` |
+| `Mysqlx_init_error` | yes | yes | `0` |
+| `Mysqlx_messages_sent` | yes | yes | `0` |
+| `Mysqlx_notice_global_sent` | yes | yes | `0` |
+| `Mysqlx_notice_other_sent` | yes | yes | `0` |
+| `Mysqlx_notice_warning_sent` | yes | yes | `0` |
+| `Mysqlx_notified_by_group_replication` | yes | yes | `0` |
+| `Mysqlx_port` | yes | yes | `UNDEFINED` |
+| `Mysqlx_prep_deallocate` | yes | yes | `0` |
+| `Mysqlx_prep_execute` | yes | yes | `0` |
+| `Mysqlx_prep_prepare` | yes | yes | `0` |
+| `Mysqlx_rows_sent` | yes | yes | `0` |
+| `Mysqlx_sessions` | yes | yes | `0` |
+| `Mysqlx_sessions_accepted` | yes | yes | `0` |
+| `Mysqlx_sessions_closed` | yes | yes | `0` |
+| `Mysqlx_sessions_fatal_error` | yes | yes | `0` |
+| `Mysqlx_sessions_killed` | yes | yes | `0` |
+| `Mysqlx_sessions_rejected` | yes | yes | `0` |
+| `Mysqlx_socket` | yes | yes | empty string |
+| `Mysqlx_ssl_accepts` | yes | yes | `0` |
+| `Mysqlx_ssl_active` | yes | yes | empty string |
+| `Mysqlx_ssl_cipher` | yes | yes | empty string |
+| `Mysqlx_ssl_cipher_list` | yes | yes | empty string |
+| `Mysqlx_ssl_ctx_verify_depth` | yes | yes | `0` |
+| `Mysqlx_ssl_ctx_verify_mode` | yes | yes | `0` |
+| `Mysqlx_ssl_finished_accepts` | yes | yes | `0` |
+| `Mysqlx_ssl_server_not_after` | yes | yes | empty string |
+| `Mysqlx_ssl_server_not_before` | yes | yes | empty string |
+| `Mysqlx_ssl_verify_depth` | yes | yes | empty string |
+| `Mysqlx_ssl_verify_mode` | yes | yes | empty string |
+| `Mysqlx_ssl_version` | yes | yes | empty string |
+| `Mysqlx_stmt_create_collection` | yes | yes | `0` |
+| `Mysqlx_stmt_create_collection_index` | yes | yes | `0` |
+| `Mysqlx_stmt_disable_notices` | yes | yes | `0` |
+| `Mysqlx_stmt_drop_collection` | yes | yes | `0` |
+| `Mysqlx_stmt_drop_collection_index` | yes | yes | `0` |
+| `Mysqlx_stmt_enable_notices` | yes | yes | `0` |
+| `Mysqlx_stmt_ensure_collection` | yes | yes | `0` |
+| `Mysqlx_stmt_execute_mysqlx` | yes | yes | `0` |
+| `Mysqlx_stmt_execute_sql` | yes | yes | `0` |
+| `Mysqlx_stmt_execute_xplugin` | yes | yes | `0` |
+| `Mysqlx_stmt_get_collection_options` | yes | yes | `0` |
+| `Mysqlx_stmt_kill_client` | yes | yes | `0` |
+| `Mysqlx_stmt_list_clients` | yes | yes | `0` |
+| `Mysqlx_stmt_list_notices` | yes | yes | `0` |
+| `Mysqlx_stmt_list_objects` | yes | yes | `0` |
+| `Mysqlx_stmt_modify_collection_options` | yes | yes | `0` |
+| `Mysqlx_stmt_ping` | yes | yes | `0` |
+| `Mysqlx_worker_threads` | yes | yes | `0` |
+| `Mysqlx_worker_threads_active` | yes | yes | `0` |
 | `Not_flushed_delayed_rows` | yes | yes | `0` |
 | `Ongoing_anonymous_transaction_count` | yes | yes | `0` |
 | `Open_files` | yes | yes | `0` |

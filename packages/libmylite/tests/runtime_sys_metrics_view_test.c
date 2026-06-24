@@ -188,12 +188,12 @@ int main(void) {
 
 static int test_sys_metrics_view(void) {
     enum {
-        metrics_row_count = 423,
+        metrics_row_count = 501,
     };
 
     static const char *const count_column[] = {"COUNT(*)"};
     static const char *const count_zero[] = {"0"};
-    static const char *const metrics_row_count_value[] = {"423"};
+    static const char *const metrics_row_count_value[] = {"501"};
     static const char *const row_count_minus_one[] = {"-1"};
     static const char *const aborted_clients_row[] = {
         "aborted_clients",
@@ -276,6 +276,24 @@ static int test_sys_metrics_view(void) {
     static const char *const max_used_connections_row[] = {
         "max_used_connections",
         "1",
+        "Global Status",
+        "YES",
+    };
+    static const char *const mysqlx_address_row[] = {
+        "mysqlx_address",
+        "UNDEFINED",
+        "Global Status",
+        "YES",
+    };
+    static const char *const mysqlx_stmt_execute_sql_row[] = {
+        "mysqlx_stmt_execute_sql",
+        "0",
+        "Global Status",
+        "YES",
+    };
+    static const char *const mysqlx_worker_threads_row[] = {
+        "mysqlx_worker_threads",
+        "0",
         "Global Status",
         "YES",
     };
@@ -666,6 +684,42 @@ static int test_sys_metrics_view(void) {
             .values = max_used_connections_row,
             .row_count = 1U,
             .context = "sys.metrics max connection row",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
+                   "WHERE Variable_name = 'mysqlx_address'",
+            .column_names = metrics_columns,
+            .column_count = metrics_column_count,
+            .values = mysqlx_address_row,
+            .row_count = 1U,
+            .context = "sys.metrics mysqlx address row",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
+                   "WHERE Variable_name = 'mysqlx_stmt_execute_sql'",
+            .column_names = metrics_columns,
+            .column_count = metrics_column_count,
+            .values = mysqlx_stmt_execute_sql_row,
+            .row_count = 1U,
+            .context = "sys.metrics mysqlx statement row",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
+                   "WHERE Variable_name = 'mysqlx_worker_threads'",
+            .column_names = metrics_columns,
+            .column_count = metrics_column_count,
+            .values = mysqlx_worker_threads_row,
+            .row_count = 1U,
+            .context = "sys.metrics mysqlx worker row",
         }
     );
     failures += expect_query(

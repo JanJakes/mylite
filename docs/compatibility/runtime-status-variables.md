@@ -369,85 +369,85 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Max_used_connections` | 🟡 | Limited `SHOW STATUS` embedded value `1`; no live connection high-water accounting |
 | `Max_used_connections_time` | 🟡 | Limited `SHOW STATUS` embedded value `1970-01-01 00:00:00`; no live connection high-water accounting |
 | `mecab_charset` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_aborted_clients` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_address` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_bytes_received` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_bytes_received_compressed_payload` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_bytes_received_uncompressed_frame` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_bytes_sent` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_bytes_sent_compressed_payload` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_bytes_sent_uncompressed_frame` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_compression_algorithm` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_compression_level` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_connection_accept_errors` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_connection_errors` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_connections_accepted` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_connections_closed` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_connections_rejected` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_crud_create_view` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_crud_delete` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_crud_drop_view` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_crud_find` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_crud_insert` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_crud_modify_view` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_crud_update` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_cursor_close` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_cursor_fetch` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_cursor_open` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_errors_sent` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_errors_unknown_message_type` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_expect_close` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_expect_open` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_init_error` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_messages_sent` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_notice_global_sent` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_notice_other_sent` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_notice_warning_sent` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_notified_by_group_replication` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_port` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_prep_deallocate` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_prep_execute` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_prep_prepare` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_rows_sent` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_sessions` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_sessions_accepted` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_sessions_closed` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_sessions_fatal_error` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_sessions_killed` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_sessions_rejected` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_socket` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_ssl_accept_renegotiates` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_ssl_accepts` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_ssl_active` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_ssl_cipher` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_ssl_cipher_list` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_ssl_ctx_verify_depth` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_ssl_ctx_verify_mode` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_ssl_finished_accepts` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_ssl_server_not_after` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_ssl_server_not_before` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_ssl_verify_depth` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_ssl_verify_mode` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_ssl_version` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_stmt_create_collection` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_stmt_create_collection_index` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_stmt_disable_notices` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_stmt_drop_collection` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_stmt_drop_collection_index` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_stmt_enable_notices` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_stmt_ensure_collection` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_stmt_execute_mysqlx` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_stmt_execute_sql` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_stmt_execute_xplugin` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_stmt_get_collection_options` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_stmt_kill_client` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_stmt_list_clients` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_stmt_list_notices` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_stmt_list_objects` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_stmt_modify_collection_options` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_stmt_ping` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_worker_threads` | ❌ | Counter value or embedded zero/empty |
-| `Mysqlx_worker_threads_active` | ❌ | Counter value or embedded zero/empty |
+| `Mysqlx_aborted_clients` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin client accounting |
+| `Mysqlx_address` | 🟡 | Limited `SHOW STATUS` embedded value `UNDEFINED`; no X Plugin listener |
+| `Mysqlx_bytes_received` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin network accounting |
+| `Mysqlx_bytes_received_compressed_payload` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin compression accounting |
+| `Mysqlx_bytes_received_uncompressed_frame` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin compression accounting |
+| `Mysqlx_bytes_sent` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin network accounting |
+| `Mysqlx_bytes_sent_compressed_payload` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin compression accounting |
+| `Mysqlx_bytes_sent_uncompressed_frame` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin compression accounting |
+| `Mysqlx_compression_algorithm` | 🟡 | Limited `SHOW STATUS` embedded empty string; no X Plugin compression state |
+| `Mysqlx_compression_level` | 🟡 | Limited `SHOW STATUS` embedded empty string; no X Plugin compression state |
+| `Mysqlx_connection_accept_errors` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin connection accounting |
+| `Mysqlx_connection_errors` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin connection accounting |
+| `Mysqlx_connections_accepted` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin connection accounting |
+| `Mysqlx_connections_closed` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin connection accounting |
+| `Mysqlx_connections_rejected` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin connection accounting |
+| `Mysqlx_crud_create_view` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin CRUD accounting |
+| `Mysqlx_crud_delete` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin CRUD accounting |
+| `Mysqlx_crud_drop_view` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin CRUD accounting |
+| `Mysqlx_crud_find` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin CRUD accounting |
+| `Mysqlx_crud_insert` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin CRUD accounting |
+| `Mysqlx_crud_modify_view` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin CRUD accounting |
+| `Mysqlx_crud_update` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin CRUD accounting |
+| `Mysqlx_cursor_close` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin cursor accounting |
+| `Mysqlx_cursor_fetch` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin cursor accounting |
+| `Mysqlx_cursor_open` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin cursor accounting |
+| `Mysqlx_errors_sent` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin error accounting |
+| `Mysqlx_errors_unknown_message_type` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin message accounting |
+| `Mysqlx_expect_close` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin expectation accounting |
+| `Mysqlx_expect_open` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin expectation accounting |
+| `Mysqlx_init_error` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin startup accounting |
+| `Mysqlx_messages_sent` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin message accounting |
+| `Mysqlx_notice_global_sent` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin notice accounting |
+| `Mysqlx_notice_other_sent` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin notice accounting |
+| `Mysqlx_notice_warning_sent` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin notice accounting |
+| `Mysqlx_notified_by_group_replication` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin group-replication notices |
+| `Mysqlx_port` | 🟡 | Limited `SHOW STATUS` embedded value `UNDEFINED`; no X Plugin listener |
+| `Mysqlx_prep_deallocate` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin prepared-statement accounting |
+| `Mysqlx_prep_execute` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin prepared-statement accounting |
+| `Mysqlx_prep_prepare` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin prepared-statement accounting |
+| `Mysqlx_rows_sent` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin row accounting |
+| `Mysqlx_sessions` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin session accounting |
+| `Mysqlx_sessions_accepted` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin session accounting |
+| `Mysqlx_sessions_closed` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin session accounting |
+| `Mysqlx_sessions_fatal_error` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin session accounting |
+| `Mysqlx_sessions_killed` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin session accounting |
+| `Mysqlx_sessions_rejected` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin session accounting |
+| `Mysqlx_socket` | 🟡 | Limited `SHOW STATUS` embedded empty string; no X Plugin Unix socket |
+| `Mysqlx_ssl_accept_renegotiates` | ❌ | Listed by MySQL documentation but not exposed by the pinned MySQL 8.4.9 runtime `SHOW STATUS LIKE 'Mysqlx%'` probe |
+| `Mysqlx_ssl_accepts` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin SSL accounting |
+| `Mysqlx_ssl_active` | 🟡 | Limited `SHOW STATUS` embedded empty string; no X Plugin SSL state |
+| `Mysqlx_ssl_cipher` | 🟡 | Limited `SHOW STATUS` embedded empty string; no X Plugin SSL state |
+| `Mysqlx_ssl_cipher_list` | 🟡 | Limited `SHOW STATUS` embedded empty string; no X Plugin SSL state |
+| `Mysqlx_ssl_ctx_verify_depth` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin SSL context state |
+| `Mysqlx_ssl_ctx_verify_mode` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin SSL context state |
+| `Mysqlx_ssl_finished_accepts` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin SSL accounting |
+| `Mysqlx_ssl_server_not_after` | 🟡 | Limited `SHOW STATUS` embedded empty string; no X Plugin SSL certificate |
+| `Mysqlx_ssl_server_not_before` | 🟡 | Limited `SHOW STATUS` embedded empty string; no X Plugin SSL certificate |
+| `Mysqlx_ssl_verify_depth` | 🟡 | Limited `SHOW STATUS` embedded empty string; no X Plugin SSL connection state |
+| `Mysqlx_ssl_verify_mode` | 🟡 | Limited `SHOW STATUS` embedded empty string; no X Plugin SSL connection state |
+| `Mysqlx_ssl_version` | 🟡 | Limited `SHOW STATUS` embedded empty string; no X Plugin SSL connection state |
+| `Mysqlx_stmt_create_collection` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin statement accounting |
+| `Mysqlx_stmt_create_collection_index` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin statement accounting |
+| `Mysqlx_stmt_disable_notices` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin statement accounting |
+| `Mysqlx_stmt_drop_collection` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin statement accounting |
+| `Mysqlx_stmt_drop_collection_index` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin statement accounting |
+| `Mysqlx_stmt_enable_notices` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin statement accounting |
+| `Mysqlx_stmt_ensure_collection` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin statement accounting |
+| `Mysqlx_stmt_execute_mysqlx` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin statement accounting |
+| `Mysqlx_stmt_execute_sql` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin statement accounting |
+| `Mysqlx_stmt_execute_xplugin` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin statement accounting |
+| `Mysqlx_stmt_get_collection_options` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin statement accounting |
+| `Mysqlx_stmt_kill_client` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin statement accounting |
+| `Mysqlx_stmt_list_clients` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin statement accounting |
+| `Mysqlx_stmt_list_notices` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin statement accounting |
+| `Mysqlx_stmt_list_objects` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin statement accounting |
+| `Mysqlx_stmt_modify_collection_options` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin statement accounting |
+| `Mysqlx_stmt_ping` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin statement accounting |
+| `Mysqlx_worker_threads` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin worker threads |
+| `Mysqlx_worker_threads_active` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin worker threads |
 | `Ndb_api_adaptive_send_deferred_count` | ❌ | Counter value or embedded zero/empty |
 | `Ndb_api_adaptive_send_deferred_count_replica` | ❌ | Counter value or embedded zero/empty |
 | `Ndb_api_adaptive_send_deferred_count_session` | ❌ | Counter value or embedded zero/empty |

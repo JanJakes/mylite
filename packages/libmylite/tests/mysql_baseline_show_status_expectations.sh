@@ -569,6 +569,96 @@ expect_value "local innodb row names" "$expected_innodb_row_names" "$local_innod
 global_innodb_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Innodb%';" | cut -f1)
 expect_value "global innodb row names" "$expected_innodb_row_names" "$global_innodb_row_names"
 
+mysqlx_row_names=$(run_mysql "SHOW STATUS LIKE 'Mysqlx%';" | cut -f1)
+expected_mysqlx_row_names="Mysqlx_aborted_clients
+Mysqlx_address
+Mysqlx_bytes_received
+Mysqlx_bytes_received_compressed_payload
+Mysqlx_bytes_received_uncompressed_frame
+Mysqlx_bytes_sent
+Mysqlx_bytes_sent_compressed_payload
+Mysqlx_bytes_sent_uncompressed_frame
+Mysqlx_compression_algorithm
+Mysqlx_compression_level
+Mysqlx_connection_accept_errors
+Mysqlx_connection_errors
+Mysqlx_connections_accepted
+Mysqlx_connections_closed
+Mysqlx_connections_rejected
+Mysqlx_crud_create_view
+Mysqlx_crud_delete
+Mysqlx_crud_drop_view
+Mysqlx_crud_find
+Mysqlx_crud_insert
+Mysqlx_crud_modify_view
+Mysqlx_crud_update
+Mysqlx_cursor_close
+Mysqlx_cursor_fetch
+Mysqlx_cursor_open
+Mysqlx_errors_sent
+Mysqlx_errors_unknown_message_type
+Mysqlx_expect_close
+Mysqlx_expect_open
+Mysqlx_init_error
+Mysqlx_messages_sent
+Mysqlx_notice_global_sent
+Mysqlx_notice_other_sent
+Mysqlx_notice_warning_sent
+Mysqlx_notified_by_group_replication
+Mysqlx_port
+Mysqlx_prep_deallocate
+Mysqlx_prep_execute
+Mysqlx_prep_prepare
+Mysqlx_rows_sent
+Mysqlx_sessions
+Mysqlx_sessions_accepted
+Mysqlx_sessions_closed
+Mysqlx_sessions_fatal_error
+Mysqlx_sessions_killed
+Mysqlx_sessions_rejected
+Mysqlx_socket
+Mysqlx_ssl_accepts
+Mysqlx_ssl_active
+Mysqlx_ssl_cipher
+Mysqlx_ssl_cipher_list
+Mysqlx_ssl_ctx_verify_depth
+Mysqlx_ssl_ctx_verify_mode
+Mysqlx_ssl_finished_accepts
+Mysqlx_ssl_server_not_after
+Mysqlx_ssl_server_not_before
+Mysqlx_ssl_verify_depth
+Mysqlx_ssl_verify_mode
+Mysqlx_ssl_version
+Mysqlx_stmt_create_collection
+Mysqlx_stmt_create_collection_index
+Mysqlx_stmt_disable_notices
+Mysqlx_stmt_drop_collection
+Mysqlx_stmt_drop_collection_index
+Mysqlx_stmt_enable_notices
+Mysqlx_stmt_ensure_collection
+Mysqlx_stmt_execute_mysqlx
+Mysqlx_stmt_execute_sql
+Mysqlx_stmt_execute_xplugin
+Mysqlx_stmt_get_collection_options
+Mysqlx_stmt_kill_client
+Mysqlx_stmt_list_clients
+Mysqlx_stmt_list_notices
+Mysqlx_stmt_list_objects
+Mysqlx_stmt_modify_collection_options
+Mysqlx_stmt_ping
+Mysqlx_worker_threads
+Mysqlx_worker_threads_active"
+expect_value "mysqlx row names" "$expected_mysqlx_row_names" "$mysqlx_row_names"
+
+session_mysqlx_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Mysqlx%';" | cut -f1)
+expect_value "session mysqlx row names" "$expected_mysqlx_row_names" "$session_mysqlx_row_names"
+
+local_mysqlx_row_names=$(run_mysql "SHOW LOCAL STATUS LIKE 'Mysqlx%';" | cut -f1)
+expect_value "local mysqlx row names" "$expected_mysqlx_row_names" "$local_mysqlx_row_names"
+
+global_mysqlx_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Mysqlx%';" | cut -f1)
+expect_value "global mysqlx row names" "$expected_mysqlx_row_names" "$global_mysqlx_row_names"
+
 open_row_names=$(run_mysql "SHOW STATUS LIKE 'Open%';" | cut -f1)
 expected_open_row_names="Open_files
 Open_streams

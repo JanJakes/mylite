@@ -198,32 +198,32 @@ decision; MySQL 8.4.9 permits some `root` temporary-table writes in `sys`.
 | `sys.x$waits_by_user_by_latency` | 🟡 | Limited read-only empty raw user wait-latency view with the same metadata surface as the formatted view |
 | `sys.waits_global_by_latency` | 🟡 | Limited read-only empty formatted global wait-latency view with MySQL-shaped metadata; no live wait rows |
 | `sys.x$waits_global_by_latency` | 🟡 | Limited read-only empty raw global wait-latency view with the same metadata surface as the formatted view |
-| `sys.create_synonym_db()` | ❌ | Procedure behavior and diagnostics |
-| `sys.diagnostics()` | ❌ | Procedure behavior and diagnostics |
-| `sys.execute_prepared_stmt()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_setup_disable_background_threads()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_setup_disable_consumer()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_setup_disable_instrument()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_setup_disable_thread()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_setup_enable_background_threads()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_setup_enable_consumer()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_setup_enable_instrument()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_setup_enable_thread()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_setup_reload_saved()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_setup_reset_to_default()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_setup_save()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_setup_show_disabled()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_setup_show_disabled_consumers()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_setup_show_disabled_instruments()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_setup_show_enabled()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_setup_show_enabled_consumers()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_setup_show_enabled_instruments()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_statement_avg_latency_histogram()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_trace_statement_digest()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_trace_thread()` | ❌ | Procedure behavior and diagnostics |
-| `sys.ps_truncate_all_tables()` | ❌ | Procedure behavior and diagnostics |
-| `sys.statement_performance_analyzer()` | ❌ | Procedure behavior and diagnostics |
-| `sys.table_exists()` | ❌ | Procedure behavior and diagnostics |
+| `sys.create_synonym_db()` | ⚪ | Accepted with deterministic unsupported diagnostic; no physical sys view creation |
+| `sys.diagnostics()` | ⚪ | Accepted with deterministic unsupported diagnostic; no live Performance Schema capture |
+| `sys.execute_prepared_stmt()` | 🟡 | Executes one scalar SQL string under the `sys` routine schema; no debug-output config or exact prepared-statement internals |
+| `sys.ps_setup_disable_background_threads()` | ⚪ | Accepted embedded no-op summary; no mutable Performance Schema setup state |
+| `sys.ps_setup_disable_consumer()` | ⚪ | Accepted embedded no-op summary; no mutable Performance Schema setup state |
+| `sys.ps_setup_disable_instrument()` | ⚪ | Accepted embedded no-op summary; no mutable Performance Schema setup state |
+| `sys.ps_setup_disable_thread()` | ⚪ | Accepted embedded no-op summary; no mutable Performance Schema setup state |
+| `sys.ps_setup_enable_background_threads()` | ⚪ | Accepted embedded no-op summary; no mutable Performance Schema setup state |
+| `sys.ps_setup_enable_consumer()` | ⚪ | Accepted embedded no-op summary; no mutable Performance Schema setup state |
+| `sys.ps_setup_enable_instrument()` | ⚪ | Accepted embedded no-op summary; no mutable Performance Schema setup state |
+| `sys.ps_setup_enable_thread()` | ⚪ | Accepted embedded no-op summary; no mutable Performance Schema setup state |
+| `sys.ps_setup_reload_saved()` | ⚪ | Accepted embedded no-op summary; no mutable Performance Schema setup state |
+| `sys.ps_setup_reset_to_default()` | ⚪ | Accepted embedded no-op summary; no mutable Performance Schema setup state |
+| `sys.ps_setup_save()` | ⚪ | Accepted embedded no-op summary; no mutable Performance Schema setup state |
+| `sys.ps_setup_show_disabled()` | ⚪ | Accepted embedded no-op summary; no mutable Performance Schema setup state |
+| `sys.ps_setup_show_disabled_consumers()` | ⚪ | Empty MySQL-shaped placeholder rowset; no mutable consumer rows |
+| `sys.ps_setup_show_disabled_instruments()` | ⚪ | Empty MySQL-shaped placeholder rowset; no mutable instrument rows |
+| `sys.ps_setup_show_enabled()` | ⚪ | Accepted embedded no-op summary; no mutable Performance Schema setup state |
+| `sys.ps_setup_show_enabled_consumers()` | ⚪ | Empty MySQL-shaped placeholder rowset; no mutable consumer rows |
+| `sys.ps_setup_show_enabled_instruments()` | ⚪ | Empty MySQL-shaped placeholder rowset; no mutable instrument rows |
+| `sys.ps_statement_avg_latency_histogram()` | ⚪ | Accepted with deterministic unsupported diagnostic; no live digest histogram |
+| `sys.ps_trace_statement_digest()` | ⚪ | Accepted with deterministic unsupported diagnostic; no live digest tracing |
+| `sys.ps_trace_thread()` | ⚪ | Accepted with deterministic unsupported diagnostic; no live thread tracing |
+| `sys.ps_truncate_all_tables()` | ⚪ | Accepted embedded no-op summary; no Performance Schema table truncation |
+| `sys.statement_performance_analyzer()` | ⚪ | Accepted with deterministic unsupported diagnostic; no live analyzer snapshots |
+| `sys.table_exists()` | ✅ | MySQL-runtime-verified descriptor lookup for base tables, views, temporary tables, missing objects, OUT variables, and arity diagnostics |
 | `sys.extract_schema_from_file_name()` | ✅ | MySQL-runtime-verified path helper, including direct and row-backed calls |
 | `sys.extract_table_from_file_name()` | ✅ | MySQL-runtime-verified path helper, including direct and row-backed calls |
 | `sys.format_bytes()` | ✅ | MySQL-runtime-verified byte formatter, including `NULL` and numeric coercion cases |

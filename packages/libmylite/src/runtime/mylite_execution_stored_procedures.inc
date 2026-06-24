@@ -3,10 +3,241 @@ struct stored_procedure_target {
     bool was_schema_qualified;
 };
 
+enum sys_stored_procedure_behavior {
+    SYS_STORED_PROCEDURE_EMPTY_RESULT = 0,
+    SYS_STORED_PROCEDURE_SUMMARY_RESULT = 1,
+    SYS_STORED_PROCEDURE_TABLE_EXISTS = 2,
+    SYS_STORED_PROCEDURE_EXECUTE_PREPARED_STMT = 3,
+    SYS_STORED_PROCEDURE_UNSUPPORTED_DIAGNOSTIC = 4,
+};
+
+struct sys_stored_procedure_definition {
+    const char *name;
+    size_t argument_count;
+    enum sys_stored_procedure_behavior behavior;
+    const char *const *columns;
+    size_t column_count;
+    const char *summary;
+};
+
+static const char *const sys_summary_result_columns[] = {"summary"};
+static const char *const sys_disabled_consumers_columns[] = {"disabled_consumers"};
+static const char *const sys_enabled_consumers_columns[] = {"enabled_consumers"};
+static const char *const sys_disabled_instruments_columns[] = {"disabled_instruments", "timed"};
+static const char *const sys_enabled_instruments_columns[] = {"enabled_instruments", "timed"};
+
+static const struct sys_stored_procedure_definition sys_stored_procedures[] = {
+    {"create_synonym_db", 2U, SYS_STORED_PROCEDURE_UNSUPPORTED_DIAGNOSTIC, NULL, 0U, NULL},
+    {"diagnostics", 3U, SYS_STORED_PROCEDURE_UNSUPPORTED_DIAGNOSTIC, NULL, 0U, NULL},
+    {"execute_prepared_stmt", 1U, SYS_STORED_PROCEDURE_EXECUTE_PREPARED_STMT, NULL, 0U, NULL},
+    {"ps_setup_disable_background_threads",
+     0U,
+     SYS_STORED_PROCEDURE_SUMMARY_RESULT,
+     sys_summary_result_columns,
+     sizeof(sys_summary_result_columns) / sizeof(sys_summary_result_columns[0]),
+     "Disabled 0 background threads"},
+    {"ps_setup_disable_consumer",
+     1U,
+     SYS_STORED_PROCEDURE_SUMMARY_RESULT,
+     sys_summary_result_columns,
+     sizeof(sys_summary_result_columns) / sizeof(sys_summary_result_columns[0]),
+     "Disabled 0 consumers"},
+    {"ps_setup_disable_instrument",
+     1U,
+     SYS_STORED_PROCEDURE_SUMMARY_RESULT,
+     sys_summary_result_columns,
+     sizeof(sys_summary_result_columns) / sizeof(sys_summary_result_columns[0]),
+     "Disabled 0 instruments"},
+    {"ps_setup_disable_thread",
+     1U,
+     SYS_STORED_PROCEDURE_SUMMARY_RESULT,
+     sys_summary_result_columns,
+     sizeof(sys_summary_result_columns) / sizeof(sys_summary_result_columns[0]),
+     "Disabled 0 threads"},
+    {"ps_setup_enable_background_threads",
+     0U,
+     SYS_STORED_PROCEDURE_SUMMARY_RESULT,
+     sys_summary_result_columns,
+     sizeof(sys_summary_result_columns) / sizeof(sys_summary_result_columns[0]),
+     "Enabled 0 background threads"},
+    {"ps_setup_enable_consumer",
+     1U,
+     SYS_STORED_PROCEDURE_SUMMARY_RESULT,
+     sys_summary_result_columns,
+     sizeof(sys_summary_result_columns) / sizeof(sys_summary_result_columns[0]),
+     "Enabled 0 consumers"},
+    {"ps_setup_enable_instrument",
+     1U,
+     SYS_STORED_PROCEDURE_SUMMARY_RESULT,
+     sys_summary_result_columns,
+     sizeof(sys_summary_result_columns) / sizeof(sys_summary_result_columns[0]),
+     "Enabled 0 instruments"},
+    {"ps_setup_enable_thread",
+     1U,
+     SYS_STORED_PROCEDURE_SUMMARY_RESULT,
+     sys_summary_result_columns,
+     sizeof(sys_summary_result_columns) / sizeof(sys_summary_result_columns[0]),
+     "Enabled 0 threads"},
+    {"ps_setup_reload_saved",
+     0U,
+     SYS_STORED_PROCEDURE_SUMMARY_RESULT,
+     sys_summary_result_columns,
+     sizeof(sys_summary_result_columns) / sizeof(sys_summary_result_columns[0]),
+     "Reloaded 0 saved Performance Schema setup rows"},
+    {"ps_setup_reset_to_default",
+     1U,
+     SYS_STORED_PROCEDURE_SUMMARY_RESULT,
+     sys_summary_result_columns,
+     sizeof(sys_summary_result_columns) / sizeof(sys_summary_result_columns[0]),
+     "Reset Performance Schema setup to MyLite defaults"},
+    {"ps_setup_save",
+     1U,
+     SYS_STORED_PROCEDURE_SUMMARY_RESULT,
+     sys_summary_result_columns,
+     sizeof(sys_summary_result_columns) / sizeof(sys_summary_result_columns[0]),
+     "Saved 0 Performance Schema setup rows"},
+    {"ps_setup_show_disabled",
+     2U,
+     SYS_STORED_PROCEDURE_SUMMARY_RESULT,
+     sys_summary_result_columns,
+     sizeof(sys_summary_result_columns) / sizeof(sys_summary_result_columns[0]),
+     "No mutable Performance Schema setup rows are disabled"},
+    {"ps_setup_show_disabled_consumers",
+     0U,
+     SYS_STORED_PROCEDURE_EMPTY_RESULT,
+     sys_disabled_consumers_columns,
+     sizeof(sys_disabled_consumers_columns) / sizeof(sys_disabled_consumers_columns[0]),
+     NULL},
+    {"ps_setup_show_disabled_instruments",
+     0U,
+     SYS_STORED_PROCEDURE_EMPTY_RESULT,
+     sys_disabled_instruments_columns,
+     sizeof(sys_disabled_instruments_columns) / sizeof(sys_disabled_instruments_columns[0]),
+     NULL},
+    {"ps_setup_show_enabled",
+     2U,
+     SYS_STORED_PROCEDURE_SUMMARY_RESULT,
+     sys_summary_result_columns,
+     sizeof(sys_summary_result_columns) / sizeof(sys_summary_result_columns[0]),
+     "No mutable Performance Schema setup rows are enabled"},
+    {"ps_setup_show_enabled_consumers",
+     0U,
+     SYS_STORED_PROCEDURE_EMPTY_RESULT,
+     sys_enabled_consumers_columns,
+     sizeof(sys_enabled_consumers_columns) / sizeof(sys_enabled_consumers_columns[0]),
+     NULL},
+    {"ps_setup_show_enabled_instruments",
+     0U,
+     SYS_STORED_PROCEDURE_EMPTY_RESULT,
+     sys_enabled_instruments_columns,
+     sizeof(sys_enabled_instruments_columns) / sizeof(sys_enabled_instruments_columns[0]),
+     NULL},
+    {"ps_statement_avg_latency_histogram",
+     0U,
+     SYS_STORED_PROCEDURE_UNSUPPORTED_DIAGNOSTIC,
+     NULL,
+     0U,
+     NULL},
+    {"ps_trace_statement_digest",
+     5U,
+     SYS_STORED_PROCEDURE_UNSUPPORTED_DIAGNOSTIC,
+     NULL,
+     0U,
+     NULL},
+    {"ps_trace_thread", 7U, SYS_STORED_PROCEDURE_UNSUPPORTED_DIAGNOSTIC, NULL, 0U, NULL},
+    {"ps_truncate_all_tables",
+     1U,
+     SYS_STORED_PROCEDURE_SUMMARY_RESULT,
+     sys_summary_result_columns,
+     sizeof(sys_summary_result_columns) / sizeof(sys_summary_result_columns[0]),
+     "Truncated 0 Performance Schema tables"},
+    {"statement_performance_analyzer",
+     3U,
+     SYS_STORED_PROCEDURE_UNSUPPORTED_DIAGNOSTIC,
+     NULL,
+     0U,
+     NULL},
+    {"table_exists", 3U, SYS_STORED_PROCEDURE_TABLE_EXISTS, NULL, 0U, NULL},
+};
+
 static int resolve_stored_procedure_target(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *name_node,
     struct stored_procedure_target *out_target
+);
+static int try_resolve_sys_stored_procedure_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *name_node,
+    struct stored_procedure_target *out_target,
+    bool *out_found
+);
+static int execute_sys_stored_procedure_call(
+    struct mylite_db *database,
+    const struct stored_procedure_target *target,
+    const struct mylite_sql_ast_node *arguments,
+    mylite_result **out_result
+);
+static const struct sys_stored_procedure_definition *find_sys_stored_procedure_definition(
+    const char *name
+);
+static size_t stored_procedure_argument_count(const struct mylite_sql_ast_node *arguments);
+static const struct mylite_sql_ast_node *stored_procedure_argument_at(
+    const struct mylite_sql_ast_node *arguments,
+    size_t index
+);
+static int execute_sys_table_exists_procedure(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    mylite_result **out_result
+);
+static int execute_sys_execute_prepared_stmt_procedure(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    mylite_result **out_result
+);
+static int execute_sys_summary_procedure(
+    struct mylite_db *database,
+    const struct sys_stored_procedure_definition *definition,
+    mylite_result **out_result
+);
+static int execute_sys_empty_result_procedure(
+    struct mylite_db *database,
+    const struct sys_stored_procedure_definition *definition,
+    mylite_result **out_result
+);
+static int execute_sys_unsupported_procedure(
+    struct mylite_db *database,
+    const struct sys_stored_procedure_definition *definition
+);
+static int append_sys_result_columns(
+    struct mylite_db *database,
+    mylite_result *result,
+    const char *const *columns,
+    size_t column_count
+);
+static int copy_sys_procedure_string_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    char *buffer,
+    size_t buffer_size
+);
+static int sys_table_exists_value(
+    struct mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    const char **out_value
+);
+static int finish_sys_empty_ok_result(struct mylite_db *database, mylite_result **out_result);
+static int fill_builtin_stored_procedure_resolution(
+    const struct mylite_execution_catalog_builtin_schema *schema,
+    const char *table_name,
+    struct table_name_resolution *out_resolution
+);
+static void set_sys_stored_procedure_argument_count_error(
+    struct mylite_db *database,
+    const struct stored_procedure_target *target,
+    size_t expected,
+    size_t actual
 );
 static int copy_stored_procedure_select_sql(
     struct mylite_db *database,
@@ -240,7 +471,25 @@ static int execute_call_statement(
 ) {
     struct stored_procedure_target target = {0};
     struct mylite_session_stored_procedure *procedure = NULL;
-    int rc = MYLITE_OK;
+    bool is_sys_target = false;
+    int rc = try_resolve_sys_stored_procedure_target(
+        database,
+        child_at(statement, 0U),
+        &target,
+        &is_sys_target
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_sys_target) {
+        return execute_sys_stored_procedure_call(
+            database,
+            &target,
+            child_at(statement, 1U),
+            out_result
+        );
+    }
 
     if (child_at(statement, 1U) != NULL) {
         set_unsupported_error(database, "stored procedure arguments are not supported");
@@ -248,7 +497,6 @@ static int execute_call_statement(
     }
 
     rc = resolve_stored_procedure_target(database, child_at(statement, 0U), &target);
-
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -266,6 +514,384 @@ static int execute_call_statement(
     return mylite_execute(database, procedure->select_sql, procedure->select_sql_size, out_result);
 }
 
+static int execute_sys_stored_procedure_call(
+    struct mylite_db *database,
+    const struct stored_procedure_target *target,
+    const struct mylite_sql_ast_node *arguments,
+    mylite_result **out_result
+) {
+    const struct sys_stored_procedure_definition *definition =
+        find_sys_stored_procedure_definition(target->resolution.table_name);
+    size_t actual_argument_count = stored_procedure_argument_count(arguments);
+
+    if (definition == NULL) {
+        set_routine_does_not_exist_error(database, target, true);
+        return MYLITE_ERROR;
+    }
+    if (actual_argument_count != definition->argument_count) {
+        set_sys_stored_procedure_argument_count_error(
+            database,
+            target,
+            definition->argument_count,
+            actual_argument_count
+        );
+        return MYLITE_ERROR;
+    }
+
+    switch (definition->behavior) {
+    case SYS_STORED_PROCEDURE_TABLE_EXISTS:
+        return execute_sys_table_exists_procedure(database, arguments, out_result);
+    case SYS_STORED_PROCEDURE_EXECUTE_PREPARED_STMT:
+        return execute_sys_execute_prepared_stmt_procedure(database, arguments, out_result);
+    case SYS_STORED_PROCEDURE_SUMMARY_RESULT:
+        return execute_sys_summary_procedure(database, definition, out_result);
+    case SYS_STORED_PROCEDURE_EMPTY_RESULT:
+        return execute_sys_empty_result_procedure(database, definition, out_result);
+    case SYS_STORED_PROCEDURE_UNSUPPORTED_DIAGNOSTIC:
+        return execute_sys_unsupported_procedure(database, definition);
+    }
+
+    set_parse_error(database, NULL);
+    return MYLITE_ERROR;
+}
+
+static const struct sys_stored_procedure_definition *find_sys_stored_procedure_definition(
+    const char *name
+) {
+    size_t procedure_count = sizeof(sys_stored_procedures) / sizeof(sys_stored_procedures[0]);
+
+    for (size_t index = 0U; index < procedure_count; ++index) {
+        if (mylite_execution_text_equals_ascii_case_insensitive(
+                name,
+                sys_stored_procedures[index].name
+            )) {
+            return &sys_stored_procedures[index];
+        }
+    }
+
+    return NULL;
+}
+
+static size_t stored_procedure_argument_count(const struct mylite_sql_ast_node *arguments) {
+    size_t count = 0U;
+
+    if (arguments == NULL) {
+        return 0U;
+    }
+    for (const struct mylite_sql_ast_node *argument = child_at(arguments, 0U); argument != NULL;
+         argument = argument->next_sibling) {
+        ++count;
+    }
+
+    return count;
+}
+
+static const struct mylite_sql_ast_node *stored_procedure_argument_at(
+    const struct mylite_sql_ast_node *arguments,
+    size_t index
+) {
+    const struct mylite_sql_ast_node *argument = arguments == NULL ? NULL : child_at(arguments, 0U);
+
+    while (argument != NULL && index > 0U) {
+        argument = argument->next_sibling;
+        --index;
+    }
+
+    return argument;
+}
+
+static int execute_sys_table_exists_procedure(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    mylite_result **out_result
+) {
+    char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    struct session_scalar_cell output = {0};
+    const struct mylite_sql_ast_node *out_argument = stored_procedure_argument_at(arguments, 2U);
+    const char *exists_value = "";
+    int rc = copy_sys_procedure_string_argument(
+        database,
+        stored_procedure_argument_at(arguments, 0U),
+        schema_name,
+        sizeof(schema_name)
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = copy_sys_procedure_string_argument(
+            database,
+            stored_procedure_argument_at(arguments, 1U),
+            table_name,
+            sizeof(table_name)
+        );
+    }
+    if (rc == MYLITE_OK &&
+        (out_argument == NULL || out_argument->kind != MYLITE_SQL_AST_USER_VARIABLE)) {
+        set_parse_error(database, NULL);
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = sys_table_exists_value(database, schema_name, table_name, &exists_value);
+    }
+    if (rc == MYLITE_OK) {
+        output.value = exists_value;
+        output.value_size = strlen(exists_value);
+        output.has_value_size = true;
+        rc = set_session_user_variable(
+            database,
+            out_argument,
+            &output,
+            MYLITE_SESSION_USER_VARIABLE_VALUE_STRING
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return finish_sys_empty_ok_result(database, out_result);
+}
+
+static int execute_sys_execute_prepared_stmt_procedure(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    mylite_result **out_result
+) {
+    struct session_scalar_cell query = {0};
+    char saved_schema[MYLITE_SESSION_SCHEMA_CAPACITY];
+    char *sql = NULL;
+    size_t sql_size = 0U;
+    bool saved_has_schema = database->session.has_selected_schema;
+    int written =
+        snprintf(saved_schema, sizeof(saved_schema), "%s", database->session.selected_schema);
+    int rc = MYLITE_OK;
+
+    if (written < 0 || (size_t)written >= sizeof(saved_schema)) {
+        set_identifier_too_long_error(database, "database");
+        return MYLITE_ERROR;
+    }
+
+    rc = session_scalar_value(database, stored_procedure_argument_at(arguments, 0U), &query);
+    if (rc == MYLITE_OK) {
+        rc = copy_session_scalar_sql_text(database, &query, "NULL", &sql, &sql_size);
+    }
+    if (rc == MYLITE_OK) {
+        written = snprintf(
+            database->session.selected_schema,
+            sizeof(database->session.selected_schema),
+            "sys"
+        );
+        if (written < 0 || (size_t)written >= sizeof(database->session.selected_schema)) {
+            set_identifier_too_long_error(database, "database");
+            rc = MYLITE_ERROR;
+        } else {
+            database->session.has_selected_schema = true;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = execute_expanded_prepared_statement_sql(database, sql, sql_size, out_result);
+    }
+
+    database->session.has_selected_schema = saved_has_schema;
+    memcpy(
+        database->session.selected_schema,
+        saved_schema,
+        sizeof(database->session.selected_schema)
+    );
+    session_scalar_cell_deinit(&query);
+    free(sql);
+    return rc;
+}
+
+static int execute_sys_summary_procedure(
+    struct mylite_db *database,
+    const struct sys_stored_procedure_definition *definition,
+    mylite_result **out_result
+) {
+    mylite_result *result = NULL;
+    const char *values[] = {definition == NULL ? "" : definition->summary};
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    rc = append_sys_result_columns(database, result, definition->columns, definition->column_count);
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_sys_empty_result_procedure(
+    struct mylite_db *database,
+    const struct sys_stored_procedure_definition *definition,
+    mylite_result **out_result
+) {
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    rc = append_sys_result_columns(database, result, definition->columns, definition->column_count);
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
+}
+
+static int execute_sys_unsupported_procedure(
+    struct mylite_db *database,
+    const struct sys_stored_procedure_definition *definition
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "sys.%s() requires live Performance Schema instrumentation and is not supported by MyLite",
+        definition == NULL ? "" : definition->name
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_not_supported_yet,
+        "42000",
+        message
+    );
+    return MYLITE_ERROR;
+}
+
+static int append_sys_result_columns(
+    struct mylite_db *database,
+    mylite_result *result,
+    const char *const *columns,
+    size_t column_count
+) {
+    int rc = MYLITE_OK;
+
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+
+    return rc;
+}
+
+static int copy_sys_procedure_string_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    char *buffer,
+    size_t buffer_size
+) {
+    struct session_scalar_cell value = {0};
+    const char *source = NULL;
+    size_t source_size = 0U;
+    int rc = MYLITE_OK;
+
+    if (buffer == NULL || buffer_size == 0U) {
+        return MYLITE_MISUSE;
+    }
+    buffer[0] = '\0';
+    rc = session_scalar_value(database, argument, &value);
+    if (rc == MYLITE_OK && value.value != NULL) {
+        source = value.value;
+        source_size = value.has_value_size ? value.value_size : strlen(value.value);
+        if (source_size >= buffer_size) {
+            set_identifier_too_long_error(database, "identifier");
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && source != NULL) {
+        memcpy(buffer, source, source_size);
+        buffer[source_size] = '\0';
+    }
+
+    session_scalar_cell_deinit(&value);
+    return rc;
+}
+
+static int sys_table_exists_value(
+    struct mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    const char **out_value
+) {
+    struct mylite_catalog_schema_descriptor schema = {0};
+    struct mylite_catalog_table_descriptor table = {0};
+    bool found = false;
+    int rc = MYLITE_OK;
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_value = "";
+    if (schema_name == NULL || schema_name[0] == '\0' || table_name == NULL ||
+        table_name[0] == '\0') {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_temporary_catalog_try_read_table_by_name(
+        &database->session.temporary_catalog,
+        schema_name,
+        table_name,
+        &table,
+        &found
+    );
+    if (rc != MYLITE_OK || found) {
+        *out_value = found ? "TEMPORARY" : "";
+        return rc;
+    }
+
+    rc = mylite_catalog_try_read_schema_by_name(database, schema_name, &schema, &found);
+    if (rc != MYLITE_OK || !found) {
+        return rc;
+    }
+    rc = mylite_catalog_try_read_table_by_name(
+        database,
+        schema.schema_id,
+        table_name,
+        &table,
+        &found
+    );
+    if (rc != MYLITE_OK || !found) {
+        return rc;
+    }
+
+    *out_value = table.kind == MYLITE_CATALOG_TABLE_KIND_VIEW ? "VIEW" : "BASE TABLE";
+    return MYLITE_OK;
+}
+
+static int finish_sys_empty_ok_result(struct mylite_db *database, mylite_result **out_result) {
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    mylite_result_set_affected_rows(result, 0);
+    return finish_successful_result(database, result, out_result);
+}
+
 static int resolve_stored_procedure_target(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *name_node,
@@ -273,6 +899,7 @@ static int resolve_stored_procedure_target(
 ) {
     char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     size_t part_count = 0U;
+    bool is_sys_target = false;
     int rc = MYLITE_OK;
 
     if (out_target == NULL) {
@@ -280,8 +907,9 @@ static int resolve_stored_procedure_target(
     }
 
     *out_target = (struct stored_procedure_target){0};
-    rc = resolve_table_name(database, name_node, &out_target->resolution);
-    if (rc != MYLITE_OK) {
+    rc =
+        try_resolve_sys_stored_procedure_target(database, name_node, out_target, &is_sys_target);
+    if (rc != MYLITE_OK || is_sys_target) {
         return rc;
     }
 
@@ -290,8 +918,135 @@ static int resolve_stored_procedure_target(
     if (rc != MYLITE_OK) {
         return rc;
     }
+
+    rc = resolve_table_name(database, name_node, &out_target->resolution);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
     out_target->was_schema_qualified = part_count == 2U;
     return MYLITE_OK;
+}
+
+static int try_resolve_sys_stored_procedure_target(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *name_node,
+    struct stored_procedure_target *out_target,
+    bool *out_found
+) {
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    const struct mylite_execution_catalog_builtin_schema *schema = NULL;
+    size_t part_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_target == NULL || out_found == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_found = false;
+    rc =
+        collect_identifier_parts(name_node, parts, table_name_part_capacity, &part_count, database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    if (part_count == 2U && mylite_execution_text_equals_ascii_case_insensitive(parts[0], "sys")) {
+        schema = find_builtin_schema_descriptor(parts[0]);
+        if (schema == NULL) {
+            return MYLITE_OK;
+        }
+        rc = fill_builtin_stored_procedure_resolution(schema, parts[1], &out_target->resolution);
+        out_target->was_schema_qualified = true;
+        *out_found = rc == MYLITE_OK;
+        return rc;
+    }
+    if (part_count == 1U && database != NULL && database->session.has_selected_schema &&
+        mylite_execution_text_equals_ascii_case_insensitive(
+            database->session.selected_schema,
+            "sys"
+        )) {
+        schema = find_builtin_schema_descriptor(database->session.selected_schema);
+        if (schema == NULL) {
+            return MYLITE_OK;
+        }
+        rc = fill_builtin_stored_procedure_resolution(schema, parts[0], &out_target->resolution);
+        out_target->was_schema_qualified = false;
+        *out_found = rc == MYLITE_OK;
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+static int fill_builtin_stored_procedure_resolution(
+    const struct mylite_execution_catalog_builtin_schema *schema,
+    const char *table_name,
+    struct table_name_resolution *out_resolution
+) {
+    int written = 0;
+
+    if (schema == NULL || table_name == NULL || out_resolution == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_resolution = (struct table_name_resolution){0};
+    written = snprintf(
+        out_resolution->schema.name,
+        sizeof(out_resolution->schema.name),
+        "%s",
+        schema->name
+    );
+    if (written < 0 || (size_t)written >= sizeof(out_resolution->schema.name)) {
+        return MYLITE_ERROR;
+    }
+    written = snprintf(
+        out_resolution->schema.default_charset,
+        sizeof(out_resolution->schema.default_charset),
+        "%s",
+        schema->default_charset
+    );
+    if (written < 0 || (size_t)written >= sizeof(out_resolution->schema.default_charset)) {
+        return MYLITE_ERROR;
+    }
+    written = snprintf(
+        out_resolution->schema.default_collation,
+        sizeof(out_resolution->schema.default_collation),
+        "%s",
+        schema->default_collation
+    );
+    if (written < 0 || (size_t)written >= sizeof(out_resolution->schema.default_collation)) {
+        return MYLITE_ERROR;
+    }
+    written =
+        snprintf(out_resolution->table_name, sizeof(out_resolution->table_name), "%s", table_name);
+    return written < 0 || (size_t)written >= sizeof(out_resolution->table_name) ? MYLITE_ERROR
+                                                                                 : MYLITE_OK;
+}
+
+static void set_sys_stored_procedure_argument_count_error(
+    struct mylite_db *database,
+    const struct stored_procedure_target *target,
+    size_t expected,
+    size_t actual
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Incorrect number of arguments for PROCEDURE %s.%s; expected %zu, got %zu",
+        target == NULL ? "" : target->resolution.schema.name,
+        target == NULL ? "" : target->resolution.table_name,
+        expected,
+        actual
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_incorrect_routine_argument_count,
+        "42000",
+        message
+    );
 }
 
 static int copy_stored_procedure_select_sql(

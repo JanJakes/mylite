@@ -63,6 +63,7 @@ enum {
     mysql_error_key_does_not_exist = 1176,
     mysql_error_incorrect_foreign_key_definition = 1239,
     mysql_error_conflicting_declarations = 1302,
+    mysql_error_incorrect_routine_argument_count = 1318,
     mysql_error_no_data = 1329,
     mysql_error_row_is_referenced = 1451,
     mysql_error_no_referenced_row = 1452,

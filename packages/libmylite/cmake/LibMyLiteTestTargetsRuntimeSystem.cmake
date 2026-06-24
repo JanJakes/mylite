@@ -155,6 +155,17 @@
   )
   mylite_configure_c_target(mylite_runtime_sys_performance_schema_helper_functions_test)
 
+  add_executable(mylite_runtime_sys_procedure_placeholders_test
+    tests/runtime_sys_procedure_placeholders_test.c
+  )
+  target_link_libraries(mylite_runtime_sys_procedure_placeholders_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_sys_procedure_placeholders_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_sys_procedure_placeholders_test)
+
   add_executable(mylite_runtime_if_function_test
     tests/runtime_if_function_test.c
   )

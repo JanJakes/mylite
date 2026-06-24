@@ -34,6 +34,8 @@ Observed MySQL 8.4.9 behavior for this slice:
   - `JSON_CONTAINS(NULL, 'bad')` returns `NULL` without validating the
     candidate.
   - `JSON_CONTAINS('bad', NULL)` fails on invalid target JSON.
+  - `JSON_CONTAINS('bad', 1)` fails on invalid target JSON before reporting
+    the candidate type.
   - `JSON_CONTAINS('{}', 'bad', NULL)` fails on invalid candidate JSON.
   - `JSON_CONTAINS_PATH(NULL, 'bad', 'bad')` returns `NULL`.
   - `JSON_CONTAINS_PATH('bad', 'one', NULL)` fails on invalid document JSON.

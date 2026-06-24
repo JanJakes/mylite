@@ -548,6 +548,42 @@ static int test_json_contains_diagnostics(void) {
     );
     failures += execute_error(
         database,
+        "SELECT JSON_CONTAINS('bad',NULL)",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_json_text,
+            .sqlstate = "22032",
+            .message_part = "Invalid JSON text",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT JSON_CONTAINS('bad',1)",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_json_text,
+            .sqlstate = "22032",
+            .message_part = "Invalid JSON text",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT JSON_CONTAINS(s,NULL) FROM invalid_doc",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_json_text,
+            .sqlstate = "22032",
+            .message_part = "Invalid JSON text",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT JSON_CONTAINS(s,1) FROM invalid_doc",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_json_text,
+            .sqlstate = "22032",
+            .message_part = "Invalid JSON text",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT JSON_CONTAINS('{}','bad')",
         (struct expected_sql_error){
             .code = mysql_error_invalid_json_text,

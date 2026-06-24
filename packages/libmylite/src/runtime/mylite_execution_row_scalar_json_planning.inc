@@ -234,10 +234,9 @@ static int plan_row_scalar_json_contains_expression(
         &out_expression->arguments[0]
     );
     if (rc == MYLITE_OK) {
-        rc = plan_row_scalar_json_introspection_document_argument(
+        rc = plan_row_scalar_json_contains_candidate_argument(
             database,
             child_at(expression, 1U),
-            "JSON_CONTAINS",
             has_source,
             source_context,
             table_columns,
@@ -254,6 +253,43 @@ static int plan_row_scalar_json_contains_expression(
         );
     }
     return rc;
+}
+
+static int plan_row_scalar_json_contains_candidate_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (has_source && expression != NULL && expression->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(expression);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+            return plan_row_scalar_literal_value(database, expression, out_expression);
+        }
+    }
+    if (has_source && expression != NULL && expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        return plan_row_scalar_integer_value(database, expression, out_expression);
+    }
+    return plan_row_scalar_json_introspection_document_argument(
+        database,
+        expression,
+        "JSON_CONTAINS",
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        column_diagnostic_context,
+        out_expression
+    );
 }
 
 static int plan_row_scalar_json_overlaps_expression(

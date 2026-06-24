@@ -219,6 +219,9 @@ expect_output \
 "JSON_CONTAINS_PATH('{\"a\":1}', 'one', '$.a'); SELECT ROW_COUNT(), @@warning_count;" \
     "$DATABASE"
 
+run_mysql "CREATE TABLE invalid_doc(s VARCHAR(16)); INSERT INTO invalid_doc VALUES ('bad');" \
+    "$DATABASE" >/dev/null
+
 expect_error \
     "JSON_CONTAINS zero arguments" \
     1582 \
@@ -249,6 +252,38 @@ expect_error \
     "22032" \
     "Invalid JSON text" \
     "SELECT JSON_CONTAINS('bad','{}');" \
+    "$DATABASE"
+
+expect_error \
+    "JSON_CONTAINS invalid target before NULL candidate" \
+    3141 \
+    "22032" \
+    "Invalid JSON text" \
+    "SELECT JSON_CONTAINS('bad',NULL);" \
+    "$DATABASE"
+
+expect_error \
+    "JSON_CONTAINS invalid target before numeric candidate" \
+    3141 \
+    "22032" \
+    "Invalid JSON text" \
+    "SELECT JSON_CONTAINS('bad',1);" \
+    "$DATABASE"
+
+expect_error \
+    "table JSON_CONTAINS invalid target before NULL candidate" \
+    3141 \
+    "22032" \
+    "Invalid JSON text" \
+    "SELECT JSON_CONTAINS(s,NULL) FROM invalid_doc;" \
+    "$DATABASE"
+
+expect_error \
+    "table JSON_CONTAINS invalid target before numeric candidate" \
+    3141 \
+    "22032" \
+    "Invalid JSON text" \
+    "SELECT JSON_CONTAINS(s,1) FROM invalid_doc;" \
     "$DATABASE"
 
 expect_error \

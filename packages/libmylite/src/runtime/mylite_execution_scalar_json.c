@@ -100,6 +100,11 @@ static int json_member_of_scalar_value_argument(
     struct mylite_json_sql_value *out_value,
     char **out_owned_text
 );
+static int validate_json_contains_target_document(
+    struct mylite_db *database,
+    const char *document,
+    size_t document_length
+);
 static int validate_json_overlaps_left_document(
     struct mylite_db *database,
     const char *document,
@@ -437,6 +442,11 @@ int mylite_execution_scalar_json_contains_function_value(
         &target_is_null
     );
     if (rc != MYLITE_OK || target_is_null) {
+        goto done;
+    }
+
+    rc = validate_json_contains_target_document(database, target, target_length);
+    if (rc != MYLITE_OK) {
         goto done;
     }
 
@@ -832,6 +842,20 @@ static int json_member_of_scalar_value_argument(
         }
     }
     return rc;
+}
+
+static int validate_json_contains_target_document(
+    struct mylite_db *database,
+    const char *document,
+    size_t document_length
+) {
+    const char *type_name = NULL;
+    struct mylite_json_normalize_result result = {0};
+    int rc = MYLITE_OK;
+
+    rc = mylite_json_type(document, document_length, &type_name, &result);
+    (void)type_name;
+    return finish_json_contains_scalar_result(database, rc, &result);
 }
 
 static int validate_json_overlaps_left_document(

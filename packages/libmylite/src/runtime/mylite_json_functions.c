@@ -205,6 +205,11 @@ static void finish_json_member_of_sqlite_result(
     sqlite3_context *context,
     const struct json_search_sqlite_result *result
 );
+static bool validate_json_contains_sqlite_target_document(
+    sqlite3_context *context,
+    const unsigned char *document,
+    int document_length
+);
 static bool validate_json_overlaps_sqlite_left_document(
     sqlite3_context *context,
     const unsigned char *document,
@@ -834,6 +839,9 @@ static void json_contains_sqlite_callback(
         candidate_length = 4;
         force_null = true;
     } else if (sqlite3_value_type(argv[1]) != SQLITE_TEXT) {
+        if (!validate_json_contains_sqlite_target_document(context, target, target_length)) {
+            return;
+        }
         sqlite3_result_error(context, "Invalid data type for JSON data in JSON_CONTAINS()", -1);
         return;
     } else {
@@ -1081,6 +1089,40 @@ static void json_member_of_sqlite_callback(
     result.is_null = is_null;
     result.normalize_result = &normalize_result;
     finish_json_member_of_sqlite_result(context, &result);
+}
+
+static bool validate_json_contains_sqlite_target_document(
+    sqlite3_context *context,
+    const unsigned char *document,
+    int document_length
+) {
+    const char *type_name = NULL;
+    struct mylite_json_normalize_result normalize_result = {0};
+    struct json_search_sqlite_result result = {0};
+    int rc = MYLITE_OK;
+
+    if (document == NULL || document_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return false;
+    }
+
+    rc = mylite_json_type(
+        (const char *)document,
+        (size_t)document_length,
+        &type_name,
+        &normalize_result
+    );
+    if (rc == MYLITE_OK) {
+        return true;
+    }
+
+    (void)type_name;
+    result.rc = rc;
+    result.contains = 0;
+    result.is_null = false;
+    result.normalize_result = &normalize_result;
+    finish_json_contains_sqlite_result(context, &result);
+    return false;
 }
 
 static bool validate_json_overlaps_sqlite_left_document(

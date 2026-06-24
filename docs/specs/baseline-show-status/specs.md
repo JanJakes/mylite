@@ -146,13 +146,14 @@ This phase exposes a limited common registry. Values are deterministic embedded
 placeholders unless listed otherwise. All numeric values are returned as
 decimal text. The core lifecycle rows (`Bytes_%`, `Connections`, `Compression`,
 `Prepared_stmt_count`, `Queries`, `Questions`, `Threads_%`, and `Uptime%`) and
-the `Binlog_%`, `Com_%`, `Handler_%`, `Key_%`, `Last_query_%`, `Max_%`,
-`Performance_schema_%`, `Select_%`, `Slow_%`, `Sort_%`, `Ssl_%`, `Table_locks_%`,
-`Table_open_cache_%`, `Tc_log_%`, and `Telemetry_%` rows mirror the MySQL 8.4.9
+the `Binlog_%`, `Com_%`, `Compression%`, `Current_tls%`, `Handler_%`, `Key_%`,
+`Last_query_%`, `Max_%`, `Performance_schema_%`, `Select_%`, `Slow_%`, `Sort_%`,
+`Ssl_%`, `Table_locks_%`, `Table_open_cache_%`, `Tc_log_%`, `Telemetry_%`, and
+`Tls%` rows mirror the MySQL 8.4.9
 row names and scope visibility for the documented placeholder subset. The
-`Created_%`, `Delayed_%`, `Open%`, and other documented server/legacy scalar
-rows also mirror the MySQL 8.4.9 names and order. These values are fixed
-placeholders rather than live counters.
+`Created_%`, `Delayed_%`, `Open%`, RSA public-key, and other documented
+server/legacy scalar rows also mirror the MySQL 8.4.9 names and order. These
+values are fixed placeholders rather than live counters.
 
 | Variable | Default/session/LOCAL visibility | GLOBAL visibility | MyLite value |
 | --- | --- | --- | --- |
@@ -165,6 +166,7 @@ placeholders rather than live counters.
 | `Binlog_stmt_cache_use` | yes | yes | `0` |
 | `Bytes_received` | yes | yes | `0` |
 | `Bytes_sent` | yes | yes | `0` |
+| `Caching_sha2_password_rsa_public_key` | yes | yes | empty string |
 | `Com_admin_commands` | yes | yes | `0` |
 | `Com_assign_to_keycache` | yes | yes | `0` |
 | `Com_alter_db` | yes | yes | `0` |
@@ -334,6 +336,8 @@ placeholders rather than live counters.
 | `Com_xa_start` | yes | yes | `0` |
 | `Com_stmt_reprepare` | yes | yes | `0` |
 | `Compression` | yes | no | `OFF` |
+| `Compression_algorithm` | yes | no | empty string |
+| `Compression_level` | yes | no | `0` |
 | `Connection_control_delay_generated` | yes | yes | `0` |
 | `Connection_control_exempted_unknown_users` | yes | yes | `0` |
 | `Connection_errors_accept` | yes | yes | `0` |
@@ -346,6 +350,15 @@ placeholders rather than live counters.
 | `Created_tmp_disk_tables` | yes | yes | `0` |
 | `Created_tmp_files` | yes | yes | `0` |
 | `Created_tmp_tables` | yes | yes | `0` |
+| `Current_tls_ca` | yes | yes | empty string |
+| `Current_tls_capath` | yes | yes | empty string |
+| `Current_tls_cert` | yes | yes | empty string |
+| `Current_tls_cipher` | yes | yes | empty string |
+| `Current_tls_ciphersuites` | yes | yes | empty string |
+| `Current_tls_crl` | yes | yes | empty string |
+| `Current_tls_crlpath` | yes | yes | empty string |
+| `Current_tls_key` | yes | yes | empty string |
+| `Current_tls_version` | yes | yes | empty string |
 | `Delayed_errors` | yes | yes | `0` |
 | `Delayed_insert_threads` | yes | yes | `0` |
 | `Delayed_writes` | yes | yes | `0` |
@@ -432,6 +445,7 @@ placeholders rather than live counters.
 | `Questions` | yes | yes | `0` |
 | `Replica_open_temp_tables` | yes | yes | `0` |
 | `Resource_group_supported` | yes | yes | `OFF` |
+| `Rsa_public_key` | yes | yes | empty string |
 | `Secondary_engine_execution_count` | yes | yes | `0` |
 | `Select_full_join` | yes | yes | `0` |
 | `Select_full_range_join` | yes | yes | `0` |
@@ -486,6 +500,8 @@ placeholders rather than live counters.
 | `Threads_connected` | yes | yes | `1` |
 | `Threads_created` | yes | yes | `1` |
 | `Threads_running` | yes | yes | `1` |
+| `Tls_library_version` | yes | yes | empty string |
+| `Tls_sni_server_name` | yes | no | empty string |
 | `Uptime` | yes | yes | `0` |
 | `Uptime_since_flush_status` | yes | yes | `0` |
 

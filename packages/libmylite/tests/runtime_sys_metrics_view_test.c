@@ -188,12 +188,12 @@ int main(void) {
 
 static int test_sys_metrics_view(void) {
     enum {
-        metrics_row_count = 331,
+        metrics_row_count = 343,
     };
 
     static const char *const count_column[] = {"COUNT(*)"};
     static const char *const count_zero[] = {"0"};
-    static const char *const metrics_row_count_value[] = {"331"};
+    static const char *const metrics_row_count_value[] = {"343"};
     static const char *const row_count_minus_one[] = {"-1"};
     static const char *const aborted_clients_row[] = {
         "aborted_clients",
@@ -222,6 +222,12 @@ static int test_sys_metrics_view(void) {
     static const char *const created_tmp_tables_row[] = {
         "created_tmp_tables",
         "0",
+        "Global Status",
+        "YES",
+    };
+    static const char *const current_tls_version_row[] = {
+        "current_tls_version",
+        "",
         "Global Status",
         "YES",
     };
@@ -306,6 +312,12 @@ static int test_sys_metrics_view(void) {
     static const char *const threads_connected_row[] = {
         "threads_connected",
         "1",
+        "Global Status",
+        "YES",
+    };
+    static const char *const tls_library_version_row[] = {
+        "tls_library_version",
+        "",
         "Global Status",
         "YES",
     };
@@ -540,6 +552,18 @@ static int test_sys_metrics_view(void) {
         database,
         (struct expected_query){
             .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
+                   "WHERE Variable_name = 'current_tls_version'",
+            .column_names = metrics_columns,
+            .column_count = metrics_column_count,
+            .values = current_tls_version_row,
+            .row_count = 1U,
+            .context = "sys.metrics current tls row",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
                    "WHERE Variable_name = 'handler_commit'",
             .column_names = metrics_columns,
             .column_count = metrics_column_count,
@@ -690,6 +714,18 @@ static int test_sys_metrics_view(void) {
             .values = threads_connected_row,
             .row_count = 1U,
             .context = "sys.metrics threads_connected row",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT Variable_name, Variable_value, Type, Enabled FROM sys.metrics "
+                   "WHERE Variable_name = 'tls_library_version'",
+            .column_names = metrics_columns,
+            .column_count = metrics_column_count,
+            .values = tls_library_version_row,
+            .row_count = 1U,
+            .context = "sys.metrics tls library row",
         }
     );
     failures += expect_query(

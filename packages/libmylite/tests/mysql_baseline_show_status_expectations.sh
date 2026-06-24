@@ -161,6 +161,27 @@ expect_value "local compression" "Compression|OFF" "$local_compression"
 global_compression=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Compression';" | normalize_tsv)
 expect_value "global omits compression" "" "$global_compression"
 
+compression_row_names=$(run_mysql "SHOW STATUS LIKE 'Compression%';" | cut -f1)
+expected_compression_row_names="Compression
+Compression_algorithm
+Compression_level"
+expect_value "compression row names" "$expected_compression_row_names" "$compression_row_names"
+
+session_compression_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Compression%';" | cut -f1)
+expect_value \
+    "session compression row names" \
+    "$expected_compression_row_names" \
+    "$session_compression_row_names"
+
+local_compression_row_names=$(run_mysql "SHOW LOCAL STATUS LIKE 'Compression%';" | cut -f1)
+expect_value \
+    "local compression row names" \
+    "$expected_compression_row_names" \
+    "$local_compression_row_names"
+
+global_compression_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Compression%';" | cut -f1)
+expect_value "global omits compression row names" "" "$global_compression_row_names"
+
 bytes_row_names=$(run_mysql "SHOW STATUS LIKE 'Bytes\\_%';" | cut -f1)
 expected_bytes_row_names="Bytes_received
 Bytes_sent"
@@ -174,6 +195,31 @@ expect_value "local byte counter row names" "$expected_bytes_row_names" "$local_
 
 global_bytes_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Bytes\\_%';" | cut -f1)
 expect_value "global byte counter row names" "$expected_bytes_row_names" "$global_bytes_row_names"
+
+rsa_key_row_names=$(run_mysql \
+    "SHOW STATUS WHERE Variable_name IN (
+        'Caching_sha2_password_rsa_public_key',
+        'Rsa_public_key'
+    );" \
+    | awk -F "$TAB" '
+        $1 == "Caching_sha2_password_rsa_public_key" || $1 == "Rsa_public_key" { print $1 }
+    ')
+expected_rsa_key_row_names="Caching_sha2_password_rsa_public_key
+Rsa_public_key"
+expect_value "rsa public key row names" "$expected_rsa_key_row_names" "$rsa_key_row_names"
+
+global_rsa_key_row_names=$(run_mysql \
+    "SHOW GLOBAL STATUS WHERE Variable_name IN (
+        'Caching_sha2_password_rsa_public_key',
+        'Rsa_public_key'
+    );" \
+    | awk -F "$TAB" '
+        $1 == "Caching_sha2_password_rsa_public_key" || $1 == "Rsa_public_key" { print $1 }
+    ')
+expect_value \
+    "global rsa public key row names" \
+    "$expected_rsa_key_row_names" \
+    "$global_rsa_key_row_names"
 
 prepared_stmt_count=$(run_mysql "SHOW STATUS LIKE 'Prepared_stmt_count';" | normalize_tsv)
 expect_numeric_status_row "prepared statement count" "Prepared_stmt_count" "$prepared_stmt_count"
@@ -334,6 +380,36 @@ expect_value \
     "global created counter row names" \
     "$expected_created_row_names" \
     "$global_created_row_names"
+
+current_tls_row_names=$(run_mysql "SHOW STATUS LIKE 'Current_tls%';" | cut -f1)
+expected_current_tls_row_names="Current_tls_ca
+Current_tls_capath
+Current_tls_cert
+Current_tls_cipher
+Current_tls_ciphersuites
+Current_tls_crl
+Current_tls_crlpath
+Current_tls_key
+Current_tls_version"
+expect_value "current tls row names" "$expected_current_tls_row_names" "$current_tls_row_names"
+
+session_current_tls_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Current_tls%';" | cut -f1)
+expect_value \
+    "session current tls row names" \
+    "$expected_current_tls_row_names" \
+    "$session_current_tls_row_names"
+
+local_current_tls_row_names=$(run_mysql "SHOW LOCAL STATUS LIKE 'Current_tls%';" | cut -f1)
+expect_value \
+    "local current tls row names" \
+    "$expected_current_tls_row_names" \
+    "$local_current_tls_row_names"
+
+global_current_tls_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Current_tls%';" | cut -f1)
+expect_value \
+    "global current tls row names" \
+    "$expected_current_tls_row_names" \
+    "$global_current_tls_row_names"
 
 handler_row_names=$(run_mysql "SHOW STATUS LIKE 'Handler\\_%';" | cut -f1)
 expected_handler_row_names="Handler_commit
@@ -605,6 +681,20 @@ expect_value "threads uppercase like row names" "Threads_cached
 Threads_connected
 Threads_created
 Threads_running" "$thread_row_names_upper"
+
+tls_row_names=$(run_mysql "SHOW STATUS LIKE 'Tls%';" | cut -f1)
+expected_tls_row_names="Tls_library_version
+Tls_sni_server_name"
+expect_value "tls row names" "$expected_tls_row_names" "$tls_row_names"
+
+session_tls_row_names=$(run_mysql "SHOW SESSION STATUS LIKE 'Tls%';" | cut -f1)
+expect_value "session tls row names" "$expected_tls_row_names" "$session_tls_row_names"
+
+local_tls_row_names=$(run_mysql "SHOW LOCAL STATUS LIKE 'Tls%';" | cut -f1)
+expect_value "local tls row names" "$expected_tls_row_names" "$local_tls_row_names"
+
+global_tls_row_names=$(run_mysql "SHOW GLOBAL STATUS LIKE 'Tls%';" | cut -f1)
+expect_value "global tls row names" "Tls_library_version" "$global_tls_row_names"
 
 expected_com_row_names=$(cat <<'EOF'
 Com_admin_commands

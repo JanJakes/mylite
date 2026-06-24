@@ -58,6 +58,7 @@ static const struct expected_status_row expected_session_rows[] = {
     {"Binlog_stmt_cache_use", "0"},
     {"Bytes_received", "0"},
     {"Bytes_sent", "0"},
+    {"Caching_sha2_password_rsa_public_key", ""},
     {"Com_admin_commands", "0"},
     {"Com_assign_to_keycache", "0"},
     {"Com_alter_db", "0"},
@@ -227,6 +228,8 @@ static const struct expected_status_row expected_session_rows[] = {
     {"Com_xa_start", "0"},
     {"Com_stmt_reprepare", "0"},
     {"Compression", "OFF"},
+    {"Compression_algorithm", ""},
+    {"Compression_level", "0"},
     {"Connection_control_delay_generated", "0"},
     {"Connection_control_exempted_unknown_users", "0"},
     {"Connection_errors_accept", "0"},
@@ -239,6 +242,15 @@ static const struct expected_status_row expected_session_rows[] = {
     {"Created_tmp_disk_tables", "0"},
     {"Created_tmp_files", "0"},
     {"Created_tmp_tables", "0"},
+    {"Current_tls_ca", ""},
+    {"Current_tls_capath", ""},
+    {"Current_tls_cert", ""},
+    {"Current_tls_cipher", ""},
+    {"Current_tls_ciphersuites", ""},
+    {"Current_tls_crl", ""},
+    {"Current_tls_crlpath", ""},
+    {"Current_tls_key", ""},
+    {"Current_tls_version", ""},
     {"Delayed_errors", "0"},
     {"Delayed_insert_threads", "0"},
     {"Delayed_writes", "0"},
@@ -325,6 +337,7 @@ static const struct expected_status_row expected_session_rows[] = {
     {"Questions", "0"},
     {"Replica_open_temp_tables", "0"},
     {"Resource_group_supported", "OFF"},
+    {"Rsa_public_key", ""},
     {"Secondary_engine_execution_count", "0"},
     {"Select_full_join", "0"},
     {"Select_full_range_join", "0"},
@@ -379,6 +392,8 @@ static const struct expected_status_row expected_session_rows[] = {
     {"Threads_connected", "1"},
     {"Threads_created", "1"},
     {"Threads_running", "1"},
+    {"Tls_library_version", ""},
+    {"Tls_sni_server_name", ""},
     {"Uptime", "0"},
     {"Uptime_since_flush_status", "0"},
 };
@@ -442,6 +457,33 @@ static int test_show_status_values_scopes_and_filters(void) {
     static const struct expected_status_row expected_byte_rows[] = {
         {"Bytes_received", "0"},
         {"Bytes_sent", "0"},
+    };
+    static const struct expected_status_row expected_rsa_key_rows[] = {
+        {"Caching_sha2_password_rsa_public_key", ""},
+        {"Rsa_public_key", ""},
+    };
+    static const struct expected_status_row expected_compression_rows[] = {
+        {"Compression", "OFF"},
+        {"Compression_algorithm", ""},
+        {"Compression_level", "0"},
+    };
+    static const struct expected_status_row expected_current_tls_rows[] = {
+        {"Current_tls_ca", ""},
+        {"Current_tls_capath", ""},
+        {"Current_tls_cert", ""},
+        {"Current_tls_cipher", ""},
+        {"Current_tls_ciphersuites", ""},
+        {"Current_tls_crl", ""},
+        {"Current_tls_crlpath", ""},
+        {"Current_tls_key", ""},
+        {"Current_tls_version", ""},
+    };
+    static const struct expected_status_row expected_tls_rows[] = {
+        {"Tls_library_version", ""},
+        {"Tls_sni_server_name", ""},
+    };
+    static const struct expected_status_row expected_global_tls_rows[] = {
+        {"Tls_library_version", ""},
     };
     static const struct expected_status_row expected_thread_rows[] = {
         {"Threads_cached", "0"},
@@ -663,7 +705,7 @@ static int test_show_status_values_scopes_and_filters(void) {
     failures += expect_status_row_count(
         database,
         "SHOW GLOBAL STATUS",
-        (sizeof(expected_session_rows) / sizeof(expected_session_rows[0])) - 1U,
+        (sizeof(expected_session_rows) / sizeof(expected_session_rows[0])) - 4U,
         "show global status rows"
     );
     failures += expect_single_status_row(
@@ -693,6 +735,34 @@ static int test_show_status_values_scopes_and_filters(void) {
     );
     failures += expect_status_rows(
         database,
+        "SHOW STATUS LIKE 'Compression%'",
+        expected_compression_rows,
+        sizeof(expected_compression_rows) / sizeof(expected_compression_rows[0]),
+        "show status compression rows"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW SESSION STATUS LIKE 'Compression%'",
+        expected_compression_rows,
+        sizeof(expected_compression_rows) / sizeof(expected_compression_rows[0]),
+        "show session status compression rows"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW LOCAL STATUS LIKE 'Compression%'",
+        expected_compression_rows,
+        sizeof(expected_compression_rows) / sizeof(expected_compression_rows[0]),
+        "show local status compression rows"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Compression%'",
+        NULL,
+        0U,
+        "show global status omits compression rows"
+    );
+    failures += expect_status_rows(
+        database,
         "SHOW STATUS LIKE 'Bytes\\_%'",
         expected_byte_rows,
         sizeof(expected_byte_rows) / sizeof(expected_byte_rows[0]),
@@ -704,6 +774,22 @@ static int test_show_status_values_scopes_and_filters(void) {
         expected_byte_rows,
         sizeof(expected_byte_rows) / sizeof(expected_byte_rows[0]),
         "show global status byte counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS WHERE Variable_name IN "
+        "('Caching_sha2_password_rsa_public_key','Rsa_public_key')",
+        expected_rsa_key_rows,
+        sizeof(expected_rsa_key_rows) / sizeof(expected_rsa_key_rows[0]),
+        "show status rsa public key rows"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS WHERE Variable_name IN "
+        "('Caching_sha2_password_rsa_public_key','Rsa_public_key')",
+        expected_rsa_key_rows,
+        sizeof(expected_rsa_key_rows) / sizeof(expected_rsa_key_rows[0]),
+        "show global status rsa public key rows"
     );
     failures += expect_single_status_row(
         database,
@@ -834,6 +920,34 @@ static int test_show_status_values_scopes_and_filters(void) {
     );
     failures += expect_status_rows(
         database,
+        "SHOW STATUS LIKE 'Tls%'",
+        expected_tls_rows,
+        sizeof(expected_tls_rows) / sizeof(expected_tls_rows[0]),
+        "show status tls rows"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW SESSION STATUS LIKE 'Tls%'",
+        expected_tls_rows,
+        sizeof(expected_tls_rows) / sizeof(expected_tls_rows[0]),
+        "show session status tls rows"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW LOCAL STATUS LIKE 'Tls%'",
+        expected_tls_rows,
+        sizeof(expected_tls_rows) / sizeof(expected_tls_rows[0]),
+        "show local status tls rows"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Tls%'",
+        expected_global_tls_rows,
+        sizeof(expected_global_tls_rows) / sizeof(expected_global_tls_rows[0]),
+        "show global status tls rows"
+    );
+    failures += expect_status_rows(
+        database,
         "SHOW STATUS LIKE 'Uptime%'",
         expected_uptime_rows,
         sizeof(expected_uptime_rows) / sizeof(expected_uptime_rows[0]),
@@ -915,6 +1029,34 @@ static int test_show_status_values_scopes_and_filters(void) {
         expected_created_rows,
         sizeof(expected_created_rows) / sizeof(expected_created_rows[0]),
         "show local status created counters"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW STATUS LIKE 'Current_tls%'",
+        expected_current_tls_rows,
+        sizeof(expected_current_tls_rows) / sizeof(expected_current_tls_rows[0]),
+        "show status current tls rows"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW SESSION STATUS LIKE 'Current_tls%'",
+        expected_current_tls_rows,
+        sizeof(expected_current_tls_rows) / sizeof(expected_current_tls_rows[0]),
+        "show session status current tls rows"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW LOCAL STATUS LIKE 'Current_tls%'",
+        expected_current_tls_rows,
+        sizeof(expected_current_tls_rows) / sizeof(expected_current_tls_rows[0]),
+        "show local status current tls rows"
+    );
+    failures += expect_status_rows(
+        database,
+        "SHOW GLOBAL STATUS LIKE 'Current_tls%'",
+        expected_current_tls_rows,
+        sizeof(expected_current_tls_rows) / sizeof(expected_current_tls_rows[0]),
+        "show global status current tls rows"
     );
     failures += expect_single_status_row(
         database,

@@ -23,7 +23,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Binlog_stmt_cache_use` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Bytes_received` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Bytes_sent` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Caching_sha2_password_rsa_public_key` | ❌ | Counter value or embedded zero/empty |
+| `Caching_sha2_password_rsa_public_key` | 🟡 | Limited `SHOW STATUS` embedded empty string; no RSA authentication key exchange |
 | `Com_admin_commands` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_alter_db` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_alter_event` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
@@ -196,8 +196,8 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_xa_rollback` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_xa_start` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Compression` | 🟡 | Limited `SHOW STATUS` session/`LOCAL` value `OFF`; omitted from `GLOBAL`; no compression protocol state |
-| `Compression_algorithm` | ❌ | Counter value or embedded zero/empty |
-| `Compression_level` | ❌ | Counter value or embedded zero/empty |
+| `Compression_algorithm` | 🟡 | Limited `SHOW STATUS` session/`LOCAL` embedded empty string; omitted from `GLOBAL`; no compression protocol state |
+| `Compression_level` | 🟡 | Limited `SHOW STATUS` session/`LOCAL` embedded value `0`; omitted from `GLOBAL`; no compression protocol state |
 | `Connection_control_delay_generated` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live connection-control delay lifecycle |
 | `Connection_control_exempted_unknown_users` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live connection-control exemption lifecycle |
 | `Connection_errors_accept` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live connection error lifecycle |
@@ -210,15 +210,15 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Created_tmp_disk_tables` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Created_tmp_files` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Created_tmp_tables` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Current_tls_ca` | ❌ | Counter value or embedded zero/empty |
-| `Current_tls_capath` | ❌ | Counter value or embedded zero/empty |
-| `Current_tls_cert` | ❌ | Counter value or embedded zero/empty |
-| `Current_tls_cipher` | ❌ | Counter value or embedded zero/empty |
-| `Current_tls_ciphersuites` | ❌ | Counter value or embedded zero/empty |
-| `Current_tls_crl` | ❌ | Counter value or embedded zero/empty |
-| `Current_tls_crlpath` | ❌ | Counter value or embedded zero/empty |
-| `Current_tls_key` | ❌ | Counter value or embedded zero/empty |
-| `Current_tls_version` | ❌ | Counter value or embedded zero/empty |
+| `Current_tls_ca` | 🟡 | Limited `SHOW STATUS` embedded empty string; no TLS credential state |
+| `Current_tls_capath` | 🟡 | Limited `SHOW STATUS` embedded empty string; no TLS credential state |
+| `Current_tls_cert` | 🟡 | Limited `SHOW STATUS` embedded empty string; no TLS credential state |
+| `Current_tls_cipher` | 🟡 | Limited `SHOW STATUS` embedded empty string; no TLS credential state |
+| `Current_tls_ciphersuites` | 🟡 | Limited `SHOW STATUS` embedded empty string; no TLS credential state |
+| `Current_tls_crl` | 🟡 | Limited `SHOW STATUS` embedded empty string; no TLS credential state |
+| `Current_tls_crlpath` | 🟡 | Limited `SHOW STATUS` embedded empty string; no TLS credential state |
+| `Current_tls_key` | 🟡 | Limited `SHOW STATUS` embedded empty string; no TLS credential state |
+| `Current_tls_version` | 🟡 | Limited `SHOW STATUS` embedded empty string; no TLS credential state |
 | `Delayed_errors` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live delayed-insert lifecycle |
 | `Delayed_insert_threads` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live delayed-insert lifecycle |
 | `Delayed_writes` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live delayed-insert lifecycle |
@@ -660,7 +660,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Rpl_semi_sync_source_wait_pos_backtraverse` | ❌ | Counter value or embedded zero/empty |
 | `Rpl_semi_sync_source_wait_sessions` | ❌ | Counter value or embedded zero/empty |
 | `Rpl_semi_sync_source_yes_tx` | ❌ | Counter value or embedded zero/empty |
-| `Rsa_public_key` | ❌ | Counter value or embedded zero/empty |
+| `Rsa_public_key` | 🟡 | Limited `SHOW STATUS` embedded empty string; no RSA authentication key exchange |
 | `Secondary_engine_execution_count` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no secondary-engine execution lifecycle |
 | `Select_full_join` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Select_full_range_join` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
@@ -717,8 +717,8 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Threads_connected` | 🟡 | Limited `SHOW STATUS` embedded value `1`; current embedded handle only |
 | `Threads_created` | 🟡 | Limited `SHOW STATUS` embedded value `1`; current embedded handle only |
 | `Threads_running` | 🟡 | Limited `SHOW STATUS` embedded value `1`; current embedded handle only |
-| `Tls_library_version` | ❌ | Counter value or embedded zero/empty |
-| `Tls_sni_server_name` | ❌ | Counter value or embedded zero/empty |
+| `Tls_library_version` | 🟡 | Limited `SHOW STATUS` embedded empty string; no linked TLS library reporting |
+| `Tls_sni_server_name` | 🟡 | Limited `SHOW STATUS` session/`LOCAL` embedded empty string; omitted from `GLOBAL`; no TLS SNI state |
 | `Uptime` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live uptime clock |
 | `Uptime_since_flush_status` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no `FLUSH STATUS` lifecycle |
 | `validate_password_dictionary_file_last_parsed` | ❌ | Counter value or embedded zero/empty |

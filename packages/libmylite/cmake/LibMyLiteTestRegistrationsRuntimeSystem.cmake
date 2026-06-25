@@ -585,6 +585,10 @@
     COMMAND mylite_runtime_server_security_system_variables_test
   )
   add_test(
+    NAME libmylite.runtime.server_tls_system_variables
+    COMMAND mylite_runtime_server_tls_system_variables_test
+  )
+  add_test(
     NAME libmylite.runtime.authentication_password_system_variables
     COMMAND mylite_runtime_authentication_password_system_variables_test
   )

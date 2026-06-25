@@ -31,6 +31,9 @@ static int apply_set_system_variable_cell_value(
     if (mylite_execution_system_variable_is_fixed_global_mysqlx(target->kind)) {
         return apply_set_fixed_global_mysqlx_cell_value(database, target);
     }
+    if (mylite_execution_system_variable_is_fixed_global_server_tls(target->kind)) {
+        return apply_set_fixed_global_server_tls_cell_value(database, target);
+    }
     if (set_system_variable_is_text_session_state(target->kind)) {
         return apply_set_text_session_system_variable_cell_value(database, target, value);
     }
@@ -227,6 +230,24 @@ static int apply_set_fixed_global_mysqlx_cell_value(
     return MYLITE_ERROR;
 }
 
+static int apply_set_fixed_global_server_tls_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target
+) {
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_global_variable_set_global_required_error(database, target->name);
+        return MYLITE_ERROR;
+    }
+    set_unsupported_error(
+        database,
+        "SET server TLS system variables from user variables are not supported"
+    );
+    return MYLITE_ERROR;
+}
+
 static int apply_set_sql_mode_cell_value(
     struct mylite_db *database,
     const struct session_scalar_cell *value
@@ -328,6 +349,11 @@ static bool reject_invalid_read_only_system_variable_cell_target(
         return true;
     }
     if (mylite_execution_system_variable_is_fixed_global_mysqlx(target->kind) &&
+        target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_global_variable_set_global_required_error(database, target->name);
+        return true;
+    }
+    if (mylite_execution_system_variable_is_fixed_global_server_tls(target->kind) &&
         target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         set_global_variable_set_global_required_error(database, target->name);
         return true;
@@ -800,6 +826,27 @@ static int validate_set_default_only_value(
     if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
         return MYLITE_OK;
     }
+    set_unsupported_error(database, unsupported_message);
+    return MYLITE_ERROR;
+}
+
+static int validate_set_fixed_null_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const char *unsupported_message
+) {
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_LITERAL &&
+        mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
+        return MYLITE_OK;
+    }
+
     set_unsupported_error(database, unsupported_message);
     return MYLITE_ERROR;
 }

@@ -248,11 +248,19 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `sql_select_limit` | yes | yes | `18446744073709551615` |
 | `sql_slave_skip_counter` | yes | yes | `0` |
 | `sql_warnings` | yes | yes | `OFF` |
+| `ssl_ca` | yes | yes | empty string |
+| `ssl_capath` | yes | yes | empty string |
+| `ssl_cert` | yes | yes | empty string |
+| `ssl_cipher` | yes | yes | empty string |
+| `ssl_crl` | yes | yes | empty string |
+| `ssl_crlpath` | yes | yes | empty string |
 | `ssl_fips_mode` | yes | yes | `OFF` |
+| `ssl_key` | yes | yes | empty string |
 | `ssl_session_cache_mode` | yes | yes | `ON` |
 | `ssl_session_cache_timeout` | yes | yes | `300` |
 | `thread_handling` | yes | yes | `one-thread-per-connection` |
 | `tls_certificates_enforced_validation` | yes | yes | `OFF` |
+| `tls_ciphersuites` | yes | yes | empty string |
 | `tls_version` | yes | yes | `TLSv1.2,TLSv1.3` |
 | `tmpdir` | yes | yes | `/tmp` |
 | `transaction_isolation` | yes | yes | current session value or fixed global `REPEATABLE-READ` |

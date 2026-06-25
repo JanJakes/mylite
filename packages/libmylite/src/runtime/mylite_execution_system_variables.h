@@ -177,6 +177,14 @@ enum mylite_execution_system_variable_kind {
     MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQLX_WRITE_TIMEOUT = 168,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQLX_ZSTD_DEFAULT_COMPRESSION_LEVEL = 169,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQLX_ZSTD_MAX_CLIENT_COMPRESSION_LEVEL = 170,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_CA = 171,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_CAPATH = 172,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_CERT = 173,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_CIPHER = 174,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_CRL = 175,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_CRLPATH = 176,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_KEY = 177,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_TLS_CIPHERSUITES = 178,
 };
 
 struct mylite_execution_system_variable_descriptor {
@@ -250,6 +258,9 @@ bool mylite_execution_system_variable_is_fixed_global_admin_listener(
     enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_fixed_global_mysqlx(
+    enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_is_fixed_global_server_tls(
     enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_timeout(enum mylite_execution_system_variable_kind kind);

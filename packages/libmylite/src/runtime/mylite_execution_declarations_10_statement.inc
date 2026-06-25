@@ -573,6 +573,12 @@ static int apply_set_global_mysqlx_assignment(
     const struct mylite_sql_ast_node *value_node,
     bool *out_handled
 );
+static int apply_set_global_server_tls_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
 static int apply_set_global_authentication_password_assignment(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -696,6 +702,10 @@ static int apply_set_fixed_global_admin_listener_cell_value(
     const struct resolved_set_system_variable_target *target
 );
 static int apply_set_fixed_global_mysqlx_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target
+);
+static int apply_set_fixed_global_server_tls_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target
 );
@@ -862,6 +872,11 @@ static int validate_set_fixed_text_value(
     const char *expected_value
 );
 static int validate_set_default_only_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const char *unsupported_message
+);
+static int validate_set_fixed_null_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const char *unsupported_message

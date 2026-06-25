@@ -912,14 +912,14 @@ state through this fallback path.
 | `sql_select_limit` | ✅ | Session/local/unscoped scalar reads and `SHOW VARIABLES` expose handle-local state, global reads remain the fixed no-limit value `18446744073709551615`, and `SET` supports `DEFAULT`, unsigned integer literals, unary `+`/`-` integer literals, booleans, and integer user variables, with negative values clamped to `0` and warning `1292`. Top-level supported `SELECT` statements without explicit `LIMIT` are capped by the session value, including scalar, descriptor-backed, grouped, aggregate, information-schema, and compound result sets. No mutable global state, persisted variables, `SET_VAR`, safe-updates initialization, Performance Schema variable tables, or implicit caps for internal DML/DDL source selects |
 | `sql_slave_skip_counter` | 🟡 | Limited read-only scalar `SELECT @@sql_slave_skip_counter` with no scope or `global`; deprecated alias for MyLite's fixed `sql_replica_skip_counter` value `0`; emits MySQL-compatible deprecation warning `1287` once per successful alias reference; `session` and `local` scopes are rejected as global-only; no `SET`, mutable global state, replica SQL thread state, relay log/event skipping, channels, GTID restrictions, or Performance Schema variable tables |
 | `sql_warnings` | ✅ | Session readback for unscoped, `session`, and `local` reads; global default remains `0`; Boolean `SET SESSION`, `SET LOCAL`, `SET @@...`, `DEFAULT`, user-variable assignment, `SHOW VARIABLES`, `SHOW GLOBAL VARIABLES`, and expression reads are supported; diagnostics warnings are recorded for documented DML subsets; no global mutation, persisted state, privilege checks, protocol information strings, or Performance Schema variable tables |
-| `ssl_ca` | ❌ | Value, scope, SET, diagnostics |
-| `ssl_capath` | ❌ | Value, scope, SET, diagnostics |
-| `ssl_cert` | ❌ | Value, scope, SET, diagnostics |
-| `ssl_cipher` | ❌ | Value, scope, SET, diagnostics |
-| `ssl_crl` | ❌ | Value, scope, SET, diagnostics |
-| `ssl_crlpath` | ❌ | Value, scope, SET, diagnostics |
+| `ssl_ca` | ✅ | Default-state `NULL`/blank global readback/SHOW and `DEFAULT`/`NULL` global no-op SET |
+| `ssl_capath` | ✅ | Default-state `NULL`/blank global readback/SHOW and `DEFAULT`/`NULL` global no-op SET |
+| `ssl_cert` | ✅ | Default-state `NULL`/blank global readback/SHOW and `DEFAULT`/`NULL` global no-op SET |
+| `ssl_cipher` | ✅ | Default-state `NULL`/blank global readback/SHOW and `DEFAULT`/`NULL` global no-op SET |
+| `ssl_crl` | ✅ | Default-state `NULL`/blank global readback/SHOW and `DEFAULT`/`NULL` global no-op SET |
+| `ssl_crlpath` | ✅ | Default-state `NULL`/blank global readback/SHOW and `DEFAULT`/`NULL` global no-op SET |
 | `ssl_fips_mode` | ✅ | Fixed global read-only scalar and `SHOW VARIABLES` value `OFF`; no FIPS/TLS runtime behavior |
-| `ssl_key` | ❌ | Value, scope, SET, diagnostics |
+| `ssl_key` | ✅ | Default-state `NULL`/blank global readback/SHOW and `DEFAULT`/`NULL` global no-op SET |
 | `ssl_session_cache_mode` | ✅ | Fixed global scalar `1`, `SHOW VARIABLES` `ON`, global-only diagnostics, and exact no-op global `SET`; no SSL session cache |
 | `ssl_session_cache_timeout` | ✅ | Fixed global scalar and `SHOW VARIABLES` value `300`, global-only diagnostics, and exact no-op global `SET`; no SSL session cache |
 | `statement_id` | ❌ | Value, scope, SET, diagnostics |
@@ -997,7 +997,7 @@ state through this fallback path.
 | `time_zone` | 🟡 | Limited fixed global value `SYSTEM`, session-local scalar reads and `SHOW VARIABLES`, and session/local `SET time_zone` forms for `DEFAULT`, `SYSTEM`, `UTC`, and signed UTC offsets. Current date/time/timestamp materialization uses the session offset; `mysql.time_zone*` tables are metadata-only empty placeholders with no mutable global value, loaded named-zone rows, named-zone conversion beyond `UTC`, daylight-saving behavior, leap-second handling, or TIMESTAMP row storage/retrieval conversion |
 | `timestamp` | 🟡 | Limited session-only `@@timestamp`, `@@SESSION.timestamp`, `SHOW VARIABLES LIKE 'timestamp'`, and `SET timestamp` / `SET SESSION timestamp` / `SET @@SESSION.timestamp` for integer, signed integer reset, `DEFAULT`, and `@@timestamp` plus integer arithmetic inside `SET timestamp`. The value controls the current statement date/time/timestamp used by `CURDATE()` / `CURRENT_DATE`, `CURTIME()` / `CURRENT_TIME`, `NOW()` / `CURRENT_TIMESTAMP`, and automatic temporal defaults, with materialization adjusted by the limited session `time_zone`; no global scope, nonzero fractional assignment values, general system-variable scalar arithmetic, TIMESTAMP row storage/retrieval conversion, persisted state, or broader temporal-variable behavior |
 | `tls_certificates_enforced_validation` | ✅ | Fixed global read-only scalar `0`, `SHOW VARIABLES` `OFF`, and MySQL-style scope/SET diagnostics; no TLS certificate validation behavior |
-| `tls_ciphersuites` | ❌ | Value, scope, SET, diagnostics |
+| `tls_ciphersuites` | ✅ | Default-state `NULL`/blank global readback/SHOW and `DEFAULT`/`NULL` global no-op SET |
 | `tls_version` | ✅ | Fixed global scalar and `SHOW VARIABLES` value `TLSv1.2,TLSv1.3`, global-only diagnostics, and exact no-op global `SET`; no TLS negotiation |
 | `tmp_table_size` | ❌ | Value, scope, SET, diagnostics |
 | `tmpdir` | ✅ | Fixed global read-only scalar and `SHOW VARIABLES` value `/tmp`; no temp-file routing, startup options, persisted state, or Performance Schema variable tables |

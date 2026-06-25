@@ -114,6 +114,10 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc = apply_set_global_server_tls_assignment(database, &target, value_node, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     rc = apply_set_global_admin_listener_assignment(database, &target, value_node, &handled);
     if (rc != MYLITE_OK || handled) {
         return rc;
@@ -280,6 +284,30 @@ static int apply_set_system_variable_user_variable_assignment(
     }
     session_scalar_cell_deinit(&value);
     return rc;
+}
+
+static int apply_set_global_server_tls_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+) {
+    const char *unsupported_message = "SET supports only fixed no-op system variable assignments";
+
+    if (target == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (!mylite_execution_system_variable_is_fixed_global_server_tls(target->kind)) {
+        return MYLITE_OK;
+    }
+
+    *out_handled = true;
+    if (target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_global_variable_set_global_required_error(database, target->name);
+        return MYLITE_ERROR;
+    }
+    return validate_set_fixed_null_value(database, value_node, unsupported_message);
 }
 
 static int apply_set_integer_system_variable_value(

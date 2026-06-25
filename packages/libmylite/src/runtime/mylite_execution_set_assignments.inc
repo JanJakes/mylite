@@ -166,6 +166,9 @@ static int apply_set_system_variable_assignment(
     if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_BIG_TABLES) {
         return apply_set_big_tables_value(database, &target, value_node);
     }
+    if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOW_PRIORITY_UPDATES) {
+        return apply_set_low_priority_updates_value(database, &target, value_node);
+    }
     if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTOCOMMIT) {
         return apply_set_autocommit_value(database, &target, value_node);
     }
@@ -420,6 +423,21 @@ static int apply_set_integer_system_variable_value(
     }
     if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT) {
         return apply_set_max_error_count_value(database, target, value_node);
+    }
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SORT_BUFFER_SIZE) {
+        return apply_set_sort_buffer_size_value(database, target, value_node);
+    }
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SLOW_LAUNCH_TIME) {
+        if (target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+            set_global_variable_set_global_required_error(database, target->name);
+            return MYLITE_ERROR;
+        }
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            slow_launch_time_default_value,
+            "SET GLOBAL slow_launch_time assignment is not supported"
+        );
     }
     if (mylite_execution_system_variable_is_timeout(target->kind)) {
         return apply_set_timeout_system_variable_value(database, target, value_node);

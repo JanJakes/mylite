@@ -63,6 +63,20 @@ static int apply_set_system_variable_cell_value(
     if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LONG_QUERY_TIME) {
         return apply_set_long_query_time_cell_value(database, target, value, value_kind);
     }
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SORT_BUFFER_SIZE) {
+        return apply_set_sort_buffer_size_cell_value(database, target, value, value_kind);
+    }
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SLOW_LAUNCH_TIME) {
+        if (target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+            set_global_variable_set_global_required_error(database, target->name);
+            return MYLITE_ERROR;
+        }
+        set_unsupported_error(
+            database,
+            "SET slow_launch_time from user variables is not supported"
+        );
+        return MYLITE_ERROR;
+    }
     if (mylite_execution_system_variable_is_timeout(target->kind)) {
         return apply_set_timeout_system_variable_cell_value(database, target, value, value_kind);
     }
@@ -79,6 +93,9 @@ static int apply_set_system_variable_cell_value(
     }
     if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_BIG_TABLES) {
         return apply_set_big_tables_cell_value(database, target, value, value_kind);
+    }
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOW_PRIORITY_UPDATES) {
+        return apply_set_low_priority_updates_cell_value(database, target, value, value_kind);
     }
     if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP) {
         if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {

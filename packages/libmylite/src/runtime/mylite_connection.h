@@ -32,6 +32,9 @@ enum {
     MYLITE_SESSION_INFORMATION_SCHEMA_STATS_EXPIRY_DEFAULT_VALUE = 86400,
     MYLITE_SESSION_MAX_ERROR_COUNT_DEFAULT_VALUE = 1024,
     MYLITE_SESSION_MAX_ERROR_COUNT_MAX_VALUE = 65535,
+    MYLITE_SESSION_LOCK_WAIT_TIMEOUT_DEFAULT_VALUE = 31536000,
+    MYLITE_SESSION_SORT_BUFFER_SIZE_DEFAULT_VALUE = 262144,
+    MYLITE_SESSION_SORT_BUFFER_SIZE_MIN_VALUE = 32768,
     MYLITE_SESSION_UUID_NODE_SIZE = 6,
 };
 
@@ -172,6 +175,8 @@ struct mylite_session_state {
     uint64_t wait_timeout;
     uint64_t interactive_timeout;
     uint64_t long_query_time_microseconds;
+    uint64_t lock_wait_timeout;
+    uint64_t sort_buffer_size;
     uint64_t catalog_generation;
     uint64_t sqlite_schema_generation;
     uint64_t uuid_last_timestamp_100ns;
@@ -218,6 +223,7 @@ struct mylite_session_state {
     bool big_tables;
     bool foreign_key_checks_enabled;
     bool sql_require_primary_key;
+    bool low_priority_updates;
     bool autocommit_enabled;
     bool user_transaction_active;
     bool has_next_transaction_isolation;

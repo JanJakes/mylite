@@ -533,6 +533,8 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->wait_timeout = MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE;
     session->interactive_timeout = MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE;
     session->long_query_time_microseconds = MYLITE_SESSION_LONG_QUERY_TIME_DEFAULT_MICROSECONDS;
+    session->lock_wait_timeout = MYLITE_SESSION_LOCK_WAIT_TIMEOUT_DEFAULT_VALUE;
+    session->sort_buffer_size = MYLITE_SESSION_SORT_BUFFER_SIZE_DEFAULT_VALUE;
     session->catalog_generation = 0U;
     session->sqlite_schema_generation = 0U;
     session->autocommit_enabled = true;

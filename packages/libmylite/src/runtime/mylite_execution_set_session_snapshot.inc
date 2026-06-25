@@ -31,6 +31,8 @@ static int copy_set_session_snapshot(
     out_snapshot->wait_timeout = session->wait_timeout;
     out_snapshot->interactive_timeout = session->interactive_timeout;
     out_snapshot->long_query_time_microseconds = session->long_query_time_microseconds;
+    out_snapshot->lock_wait_timeout = session->lock_wait_timeout;
+    out_snapshot->sort_buffer_size = session->sort_buffer_size;
     out_snapshot->timestamp_override = session->timestamp_override;
     out_snapshot->time_zone_offset_minutes = session->time_zone_offset_minutes;
     out_snapshot->session_transaction_isolation = session->session_transaction_isolation;
@@ -44,6 +46,7 @@ static int copy_set_session_snapshot(
     out_snapshot->big_tables = session->big_tables;
     out_snapshot->foreign_key_checks_enabled = session->foreign_key_checks_enabled;
     out_snapshot->sql_require_primary_key = session->sql_require_primary_key;
+    out_snapshot->low_priority_updates = session->low_priority_updates;
     out_snapshot->autocommit_enabled = session->autocommit_enabled;
     out_snapshot->has_next_transaction_isolation = session->has_next_transaction_isolation;
     out_snapshot->has_next_transaction_access_mode = session->has_next_transaction_access_mode;
@@ -212,6 +215,8 @@ static void restore_set_session_snapshot(
     session->wait_timeout = snapshot->wait_timeout;
     session->interactive_timeout = snapshot->interactive_timeout;
     session->long_query_time_microseconds = snapshot->long_query_time_microseconds;
+    session->lock_wait_timeout = snapshot->lock_wait_timeout;
+    session->sort_buffer_size = snapshot->sort_buffer_size;
     session->timestamp_override = snapshot->timestamp_override;
     session->time_zone_offset_minutes = snapshot->time_zone_offset_minutes;
     session->session_transaction_isolation = snapshot->session_transaction_isolation;
@@ -225,6 +230,7 @@ static void restore_set_session_snapshot(
     session->big_tables = snapshot->big_tables;
     session->foreign_key_checks_enabled = snapshot->foreign_key_checks_enabled;
     session->sql_require_primary_key = snapshot->sql_require_primary_key;
+    session->low_priority_updates = snapshot->low_priority_updates;
     session->autocommit_enabled = snapshot->autocommit_enabled;
     session->has_next_transaction_isolation = snapshot->has_next_transaction_isolation;
     session->has_next_transaction_access_mode = snapshot->has_next_transaction_access_mode;

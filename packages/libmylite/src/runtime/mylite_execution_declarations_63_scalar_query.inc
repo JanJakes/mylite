@@ -1700,6 +1700,21 @@ static uint64_t timeout_system_variable_value(
     enum mylite_execution_system_variable_kind kind,
     bool global_scope
 );
+static uint64_t timeout_system_variable_default_value_for_kind(
+    enum mylite_execution_system_variable_kind kind
+);
+static uint64_t sort_buffer_size_system_variable_value(
+    const struct mylite_db *database,
+    bool global_scope
+);
+static uint64_t low_priority_updates_system_variable_uint64_value(
+    const struct mylite_db *database,
+    bool global_scope
+);
+static const char *low_priority_updates_system_variable_show_value(
+    const struct mylite_db *database,
+    bool global_scope
+);
 static const char *default_sql_mode_value(void);
 static const struct mylite_diagnostics *system_variable_count_diagnostics(
     const struct mylite_db *database

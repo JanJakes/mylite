@@ -3180,6 +3180,8 @@ struct set_session_snapshot {
     uint64_t wait_timeout;
     uint64_t interactive_timeout;
     uint64_t long_query_time_microseconds;
+    uint64_t lock_wait_timeout;
+    uint64_t sort_buffer_size;
     int64_t timestamp_override;
     int time_zone_offset_minutes;
     enum mylite_transaction_isolation session_transaction_isolation;
@@ -3193,6 +3195,7 @@ struct set_session_snapshot {
     bool big_tables;
     bool foreign_key_checks_enabled;
     bool sql_require_primary_key;
+    bool low_priority_updates;
     bool autocommit_enabled;
     bool has_next_transaction_isolation;
     bool has_next_transaction_access_mode;

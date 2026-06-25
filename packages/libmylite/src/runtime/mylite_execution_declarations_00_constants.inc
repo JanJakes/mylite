@@ -738,6 +738,12 @@ static const uint64_t caching_sha2_password_digest_rounds_system_variable_value 
 static const uint64_t ssl_session_cache_timeout_system_variable_value = 300ULL;
 static const uint64_t timeout_system_variable_default_value = MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE;
 static const uint64_t timeout_system_variable_max_value = 31536000ULL;
+static const uint64_t lock_wait_timeout_default_value =
+    MYLITE_SESSION_LOCK_WAIT_TIMEOUT_DEFAULT_VALUE;
+static const uint64_t sort_buffer_size_default_value =
+    MYLITE_SESSION_SORT_BUFFER_SIZE_DEFAULT_VALUE;
+static const uint64_t sort_buffer_size_min_value = MYLITE_SESSION_SORT_BUFFER_SIZE_MIN_VALUE;
+static const uint64_t slow_launch_time_default_value = 2ULL;
 static const uint64_t long_query_time_default_microseconds =
     MYLITE_SESSION_LONG_QUERY_TIME_DEFAULT_MICROSECONDS;
 static const uint64_t long_query_time_max_microseconds =

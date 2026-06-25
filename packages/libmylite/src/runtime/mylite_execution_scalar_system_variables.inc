@@ -185,10 +185,23 @@ static int system_variable_value(
             out_cell
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOCK_WAIT_TIMEOUT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
         return format_session_scalar_uint64_value(
             database,
             timeout_system_variable_value(database, variable, global_scope),
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SORT_BUFFER_SIZE:
+        return format_session_scalar_uint64_value(
+            database,
+            sort_buffer_size_system_variable_value(database, global_scope),
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOW_PRIORITY_UPDATES:
+        return format_session_scalar_uint64_value(
+            database,
+            low_priority_updates_system_variable_uint64_value(database, global_scope),
             out_cell
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
@@ -302,6 +315,8 @@ static int system_variable_value(
         return format_session_scalar_uint64_value(database, port_system_variable_value, out_cell);
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_ERROR_VERBOSITY:
         return format_session_scalar_uint64_value(database, 2U, out_cell);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLOW_LAUNCH_TIME:
+        return format_session_scalar_uint64_value(database, slow_launch_time_default_value, out_cell);
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PROTOCOL_VERSION:
         return format_session_scalar_uint64_value(
             database,
@@ -587,7 +602,7 @@ static uint64_t timeout_system_variable_value(
     bool global_scope
 ) {
     if (global_scope || database == NULL) {
-        return timeout_system_variable_default_value;
+        return timeout_system_variable_default_value_for_kind(kind);
     }
     if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_WAIT_TIMEOUT) {
         return database->session.wait_timeout;
@@ -595,7 +610,47 @@ static uint64_t timeout_system_variable_value(
     if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT) {
         return database->session.interactive_timeout;
     }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOCK_WAIT_TIMEOUT) {
+        return database->session.lock_wait_timeout;
+    }
+    return timeout_system_variable_default_value_for_kind(kind);
+}
+
+static uint64_t timeout_system_variable_default_value_for_kind(
+    enum mylite_execution_system_variable_kind kind
+) {
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOCK_WAIT_TIMEOUT) {
+        return lock_wait_timeout_default_value;
+    }
     return timeout_system_variable_default_value;
+}
+
+static uint64_t sort_buffer_size_system_variable_value(
+    const struct mylite_db *database,
+    bool global_scope
+) {
+    if (global_scope || database == NULL) {
+        return sort_buffer_size_default_value;
+    }
+    return database->session.sort_buffer_size;
+}
+
+static uint64_t low_priority_updates_system_variable_uint64_value(
+    const struct mylite_db *database,
+    bool global_scope
+) {
+    if (global_scope || database == NULL || !database->session.low_priority_updates) {
+        return 0U;
+    }
+    return 1U;
+}
+
+static const char *low_priority_updates_system_variable_show_value(
+    const struct mylite_db *database,
+    bool global_scope
+) {
+    return low_priority_updates_system_variable_uint64_value(database, global_scope) != 0U ? "ON"
+                                                                                         : "OFF";
 }
 
 static const char *transaction_isolation_system_variable_value(
@@ -970,6 +1025,7 @@ static int show_system_variable_value(
             out_value
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOCK_WAIT_TIMEOUT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
         return format_show_system_variable_uint64_value(
             database,
@@ -978,6 +1034,17 @@ static int show_system_variable_value(
             integer_buffer_size,
             out_value
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SORT_BUFFER_SIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            sort_buffer_size_system_variable_value(database, global_scope),
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOW_PRIORITY_UPDATES:
+        *out_value = low_priority_updates_system_variable_show_value(database, global_scope);
+        return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GROUP_CONCAT_MAX_LEN:
         return format_show_system_variable_uint64_value(
             database,
@@ -1080,6 +1147,7 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_THROTTLE_QUERIES_NOT_USING_INDEXES:
         *out_value = "0";
         return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLOW_LAUNCH_TIME:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_ERROR_VERBOSITY:
         *out_value = "2";
         return MYLITE_OK;

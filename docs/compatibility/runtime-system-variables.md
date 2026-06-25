@@ -520,7 +520,7 @@ state through this fallback path.
 | `lock_order_trace_missing_arc` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `lock_order_trace_missing_key` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `lock_order_trace_missing_unlock` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `lock_wait_timeout` | ❌ | Value, scope, SET, diagnostics |
+| `lock_wait_timeout` | ✅ | Session/global readback, SHOW, session SET, clamp warnings, and default global no-op; no metadata-lock timeout side effects |
 | `locked_in_memory` | ❌ | Value, scope, SET, diagnostics |
 | `log_bin` | 🟡 | Limited fixed global scalar value `1`; `SHOW VARIABLES` displays `ON`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; assignment returns MySQL-style read-only diagnostics; no binary log files, GTID recovery, replication side effects, startup option handling, or mutable state |
 | `log_bin_basename` | 🟡 | Limited fixed global scalar and `SHOW VARIABLES` value `binlog`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; assignment returns MySQL-style read-only diagnostics; no configured data directory, binary log files, path expansion, rotation, or startup option handling |
@@ -543,7 +543,7 @@ state through this fallback path.
 | `log_throttle_queries_not_using_indexes` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/`0` global no-op SET |
 | `log_timestamps` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/`UTC` global no-op SET |
 | `long_query_time` | ✅ | Session/local/global readback/SHOW, session SET with rounding/clamping diagnostics, user-variable values, and default global no-op; no mutable global state or slow-log side effects |
-| `low_priority_updates` | ❌ | Value, scope, SET, diagnostics |
+| `low_priority_updates` | ✅ | Session/global readback, SHOW, session SET, and default global no-op; no low-priority scheduling side effects |
 | `lower_case_file_system` | 🟡 | Limited fixed global read-only scalar value `0`; `SHOW VARIABLES` displays `OFF`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; no host filesystem probing, startup option handling, value `1`, or changed identifier behavior |
 | `lower_case_table_names` | 🟡 | Limited fixed global read-only scalar value `0`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; no startup option handling, values `1`/`2`, case-insensitive schema/table lookup, catalog collation changes, or coupling to `lower_case_file_system` |
 | `mandatory_roles` | ❌ | Value, scope, SET, diagnostics |
@@ -891,11 +891,11 @@ state through this fallback path.
 | `slave_sql_verify_checksum` | ❌ | Value, scope, SET, diagnostics |
 | `slave_transaction_retries` | ❌ | Value, scope, SET, diagnostics |
 | `slave_type_conversions` | ❌ | Value, scope, SET, diagnostics |
-| `slow_launch_time` | ❌ | Value, scope, SET, diagnostics |
+| `slow_launch_time` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/exact global no-op SET; no thread-launch accounting |
 | `slow_query_log` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/OFF global no-op SET; no slow-query logging |
 | `slow_query_log_file` | ✅ | Fixed global path readback/SHOW, global-only diagnostics, and default/path global no-op SET; no log file creation |
 | `socket` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `/var/run/mysqld/mysqld.sock`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No socket file is created or used |
-| `sort_buffer_size` | ❌ | Value, scope, SET, diagnostics |
+| `sort_buffer_size` | ✅ | Session/global readback, SHOW, session SET, clamp warnings, and default global no-op; no sort-buffer allocation effects |
 | `source_verify_checksum` | ❌ | Value, scope, SET, diagnostics |
 | `sql_auto_is_null` | ✅ | Session/local/unscoped scalar reads and `SHOW VARIABLES` default to `0`/`OFF`, Boolean session `SET` forms are connection-local, global reads and `SHOW GLOBAL VARIABLES` remain fixed `0`/`OFF`, and supported `AUTO_INCREMENT` `IS NULL` predicates use `LAST_INSERT_ID()` when enabled. No server-global mutation, persisted state, Performance Schema variable tables, or `ISNULL()` special lookup |
 | `sql_big_selects` | ✅ | Session/local/unscoped scalar reads and `SHOW VARIABLES` default to `1`/`ON`, Boolean session `SET` forms are connection-local, global reads and `SHOW GLOBAL VARIABLES` remain fixed `1`/`ON`, and descriptor-backed `SELECT` behavior is unchanged. No server-global mutation, persisted state, Performance Schema variable tables, `max_join_size`, optimizer row-estimate aborts, or changed `SELECT` diagnostics |

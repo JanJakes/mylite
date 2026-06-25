@@ -98,6 +98,39 @@ static int apply_set_big_tables_value(
     return MYLITE_OK;
 }
 
+static int apply_set_low_priority_updates_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+) {
+    bool value = false;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        set_runtime_error(database, "invalid low_priority_updates system variable target");
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_set_big_tables_value(database, target->name, value_node, &value);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        if (value) {
+            set_unsupported_error(
+                database,
+                "SET GLOBAL low_priority_updates assignment is not supported"
+            );
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
+
+    database->session.low_priority_updates = value;
+    database->session.system_variables_are_placeholder = false;
+    return MYLITE_OK;
+}
+
 static int apply_set_big_tables_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -127,6 +160,45 @@ static int apply_set_big_tables_cell_value(
     }
 
     database->session.big_tables = big_tables;
+    database->session.system_variables_are_placeholder = false;
+    return MYLITE_OK;
+}
+
+static int apply_set_low_priority_updates_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+) {
+    bool low_priority_updates = false;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = parse_set_big_tables_cell_value(
+        database,
+        target->name,
+        value,
+        value_kind,
+        &low_priority_updates
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        if (low_priority_updates) {
+            set_unsupported_error(
+                database,
+                "SET GLOBAL low_priority_updates assignment is not supported"
+            );
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
+
+    database->session.low_priority_updates = low_priority_updates;
     database->session.system_variables_are_placeholder = false;
     return MYLITE_OK;
 }

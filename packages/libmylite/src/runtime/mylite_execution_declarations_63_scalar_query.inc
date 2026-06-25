@@ -516,7 +516,8 @@ static int scalar_concat_operator_result(
     char **out_text,
     size_t *out_text_length
 );
-static bool concat_operator_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression
+static bool concat_operator_scalar_argument_is_admitted(
+    const struct mylite_sql_ast_node *expression
 );
 static bool concat_operator_scalar_argument_is_nested_scalar_value(
     const struct mylite_sql_ast_node *expression
@@ -1701,6 +1702,12 @@ static uint64_t timeout_system_variable_value(
     bool global_scope
 );
 static uint64_t timeout_system_variable_default_value_for_kind(
+    enum mylite_execution_system_variable_kind kind
+);
+static uint64_t timeout_system_variable_min_value_for_kind(
+    enum mylite_execution_system_variable_kind kind
+);
+static uint64_t timeout_system_variable_max_value_for_kind(
     enum mylite_execution_system_variable_kind kind
 );
 static uint64_t sort_buffer_size_system_variable_value(

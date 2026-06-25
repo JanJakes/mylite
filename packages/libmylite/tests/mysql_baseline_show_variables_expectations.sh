@@ -111,6 +111,7 @@ supported_session_rows=$(run_mysql "
       'version_comment',
       'character_set_server',
       'collation_server',
+      'connect_timeout',
       'character_set_database',
       'collation_database',
       'default_storage_engine',
@@ -125,6 +126,9 @@ supported_session_rows=$(run_mysql "
       'lower_case_file_system',
       'lower_case_table_names',
       'max_allowed_packet',
+      'net_read_timeout',
+      'net_retry_count',
+      'net_write_timeout',
       'read_only',
       'transaction_isolation',
       'transaction_read_only',
@@ -158,6 +162,7 @@ character_set_system|utf8mb3
 collation_connection|utf8mb4_0900_ai_ci
 collation_database|utf8mb4_0900_ai_ci
 collation_server|utf8mb4_0900_ai_ci
+connect_timeout|10
 default_storage_engine|InnoDB
 error_count|0
 foreign_key_checks|ON
@@ -167,6 +172,9 @@ interactive_timeout|28800
 lower_case_file_system|OFF
 lower_case_table_names|0
 max_allowed_packet|67108864
+net_read_timeout|30
+net_retry_count|10
+net_write_timeout|60
 read_only|OFF
 sql_auto_is_null|OFF
 sql_big_selects|ON
@@ -205,6 +213,7 @@ supported_global_rows=$(run_mysql "
       'version_comment',
       'character_set_server',
       'collation_server',
+      'connect_timeout',
       'character_set_database',
       'collation_database',
       'default_storage_engine',
@@ -219,6 +228,9 @@ supported_global_rows=$(run_mysql "
       'lower_case_file_system',
       'lower_case_table_names',
       'max_allowed_packet',
+      'net_read_timeout',
+      'net_retry_count',
+      'net_write_timeout',
       'read_only',
       'transaction_isolation',
       'transaction_read_only',
@@ -252,6 +264,7 @@ character_set_system|utf8mb3
 collation_connection|utf8mb4_0900_ai_ci
 collation_database|utf8mb4_0900_ai_ci
 collation_server|utf8mb4_0900_ai_ci
+connect_timeout|10
 default_storage_engine|InnoDB
 foreign_key_checks|ON
 group_concat_max_len|1024
@@ -260,6 +273,9 @@ interactive_timeout|28800
 lower_case_file_system|OFF
 lower_case_table_names|0
 max_allowed_packet|67108864
+net_read_timeout|30
+net_retry_count|10
+net_write_timeout|60
 read_only|OFF
 sql_auto_is_null|OFF
 sql_big_selects|ON

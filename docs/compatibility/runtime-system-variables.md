@@ -173,7 +173,7 @@ state through this fallback path.
 | `component_masking.masking_database` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `component_scheduler.enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `concurrent_insert` | ❌ | Value, scope, SET, diagnostics |
-| `connect_timeout` | ❌ | Value, scope, SET, diagnostics |
+| `connect_timeout` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/`10` global no-op SET; no connection timeout side effects |
 | `connection_control_failed_connections_threshold` | ❌ | Value, scope, SET, diagnostics |
 | `connection_control_max_connection_delay` | ❌ | Value, scope, SET, diagnostics |
 | `connection_control_min_connection_delay` | ❌ | Value, scope, SET, diagnostics |
@@ -694,9 +694,9 @@ state through this fallback path.
 | `ndbinfo_table_prefix` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `ndbinfo_version` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `net_buffer_length` | ❌ | Value, scope, SET, diagnostics |
-| `net_read_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `net_retry_count` | ❌ | Value, scope, SET, diagnostics |
-| `net_write_timeout` | ❌ | Value, scope, SET, diagnostics |
+| `net_read_timeout` | ✅ | Session/global readback, SHOW, session SET, clamp warnings, and default global no-op; no socket read timeout side effects |
+| `net_retry_count` | ✅ | Session/global readback, SHOW, session SET through `UINT64_MAX`, clamp warnings, and default global no-op; no interrupted-port retry side effects |
+| `net_write_timeout` | ✅ | Session/global readback, SHOW, session SET, clamp warnings, and default global no-op; no socket write timeout side effects |
 | `ngram_token_size` | ❌ | Value, scope, SET, diagnostics |
 | `offline_mode` | ❌ | Value, scope, SET, diagnostics |
 | `old_alter_table` | ✅ | Fixed default/session/global scalar `0` and `SHOW VARIABLES` `OFF`; session placeholder `SET` readback and fixed global no-op assignments are supported. No alternate ALTER TABLE algorithm routing, startup options, persisted state, or Performance Schema variable tables |

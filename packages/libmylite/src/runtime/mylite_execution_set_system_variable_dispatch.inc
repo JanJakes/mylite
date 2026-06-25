@@ -249,7 +249,10 @@ static int apply_set_fixed_global_mysqlx_cell_value(
         set_global_variable_set_global_required_error(database, target->name);
         return MYLITE_ERROR;
     }
-    set_unsupported_error(database, "SET X Plugin system variables from user variables are not supported");
+    set_unsupported_error(
+        database,
+        "SET X Plugin system variables from user variables are not supported"
+    );
     return MYLITE_ERROR;
 }
 
@@ -447,6 +450,11 @@ static int apply_set_timeout_system_variable_cell_value(
     if (target == NULL) {
         return MYLITE_MISUSE;
     }
+    if (target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL &&
+        !mylite_execution_system_variable_allows_session_scope(target->kind)) {
+        set_global_variable_set_global_required_error(database, target->name);
+        return MYLITE_ERROR;
+    }
     if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         set_unsupported_error(
             database,
@@ -455,13 +463,8 @@ static int apply_set_timeout_system_variable_cell_value(
         return MYLITE_ERROR;
     }
 
-    rc = parse_set_timeout_system_variable_cell_value(
-        database,
-        target->name,
-        value,
-        value_kind,
-        &timeout
-    );
+    rc =
+        parse_set_timeout_system_variable_cell_value(database, target, value, value_kind, &timeout);
     if (rc != MYLITE_OK) {
         return rc;
     }

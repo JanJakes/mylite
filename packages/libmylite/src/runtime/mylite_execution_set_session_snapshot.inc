@@ -32,6 +32,9 @@ static int copy_set_session_snapshot(
     out_snapshot->interactive_timeout = session->interactive_timeout;
     out_snapshot->long_query_time_microseconds = session->long_query_time_microseconds;
     out_snapshot->lock_wait_timeout = session->lock_wait_timeout;
+    out_snapshot->net_read_timeout = session->net_read_timeout;
+    out_snapshot->net_retry_count = session->net_retry_count;
+    out_snapshot->net_write_timeout = session->net_write_timeout;
     out_snapshot->sort_buffer_size = session->sort_buffer_size;
     out_snapshot->timestamp_override = session->timestamp_override;
     out_snapshot->time_zone_offset_minutes = session->time_zone_offset_minutes;
@@ -216,6 +219,9 @@ static void restore_set_session_snapshot(
     session->interactive_timeout = snapshot->interactive_timeout;
     session->long_query_time_microseconds = snapshot->long_query_time_microseconds;
     session->lock_wait_timeout = snapshot->lock_wait_timeout;
+    session->net_read_timeout = snapshot->net_read_timeout;
+    session->net_retry_count = snapshot->net_retry_count;
+    session->net_write_timeout = snapshot->net_write_timeout;
     session->sort_buffer_size = snapshot->sort_buffer_size;
     session->timestamp_override = snapshot->timestamp_override;
     session->time_zone_offset_minutes = snapshot->time_zone_offset_minutes;

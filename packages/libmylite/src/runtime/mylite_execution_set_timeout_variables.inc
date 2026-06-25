@@ -12,19 +12,19 @@ static int apply_set_timeout_system_variable_value(
         set_runtime_error(database, "invalid timeout system variable target");
         return MYLITE_ERROR;
     }
+    if (target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL &&
+        !mylite_execution_system_variable_allows_session_scope(target->kind)) {
+        set_global_variable_set_global_required_error(database, target->name);
+        return MYLITE_ERROR;
+    }
     if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
-        return validate_set_fixed_uint64_value(
-            database,
-            value_node,
-            timeout_system_variable_default_value_for_kind(target->kind),
-            "SET timeout system variable supports only fixed no-op global assignments"
-        );
+        return validate_set_fixed_timeout_system_variable_value(database, target, value_node);
     }
     if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
         return apply_timeout_system_variable_value(database, target, value);
     }
 
-    rc = parse_set_timeout_system_variable_value(database, target->name, value_node, &value);
+    rc = parse_set_timeout_system_variable_value(database, target, value_node, &value);
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -45,6 +45,12 @@ static int apply_timeout_system_variable_value(
         database->session.interactive_timeout = value;
     } else if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOCK_WAIT_TIMEOUT) {
         database->session.lock_wait_timeout = value;
+    } else if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_READ_TIMEOUT) {
+        database->session.net_read_timeout = value;
+    } else if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_RETRY_COUNT) {
+        database->session.net_retry_count = value;
+    } else if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_WRITE_TIMEOUT) {
+        database->session.net_write_timeout = value;
     } else {
         set_runtime_error(database, "invalid timeout system variable kind");
         return MYLITE_ERROR;
@@ -53,9 +59,40 @@ static int apply_timeout_system_variable_value(
     return MYLITE_OK;
 }
 
+static int validate_set_fixed_timeout_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+) {
+    uint64_t value = 0U;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        set_runtime_error(database, "invalid timeout system variable target");
+        return MYLITE_ERROR;
+    }
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+
+    rc = parse_set_timeout_system_variable_value(database, target, value_node, &value);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (value == timeout_system_variable_default_value_for_kind(target->kind)) {
+        return MYLITE_OK;
+    }
+
+    set_unsupported_error(
+        database,
+        "SET timeout system variable supports only fixed no-op global assignments"
+    );
+    return MYLITE_ERROR;
+}
+
 static int parse_set_timeout_system_variable_value(
     struct mylite_db *database,
-    const char *variable_name,
+    const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node,
     uint64_t *out_value
 ) {
@@ -68,7 +105,11 @@ static int parse_set_timeout_system_variable_value(
         set_runtime_error(database, "invalid timeout system variable output");
         return MYLITE_ERROR;
     }
-    *out_value = timeout_system_variable_default_value;
+    if (target == NULL) {
+        set_runtime_error(database, "invalid timeout system variable target");
+        return MYLITE_ERROR;
+    }
+    *out_value = timeout_system_variable_default_value_for_kind(target->kind);
     if (value_node == NULL) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
@@ -79,32 +120,36 @@ static int parse_set_timeout_system_variable_value(
 
     literal_node = unwrap_auto_increment_step_value_literal(value_node, &negative);
     if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL) {
-        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
     }
 
     literal_kind = mylite_sql_ast_node_literal_kind(literal_node);
     if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
         if (!sql_mode_token_matches(literal_node->span.text, literal_node->span.length, "TRUE")) {
-            return set_incorrect_system_variable_argument_type_error(database, variable_name);
+            return set_incorrect_system_variable_argument_type_error(database, target->name);
         }
         *out_value = 1U;
+        if (*out_value < timeout_system_variable_min_value_for_kind(target->kind)) {
+            *out_value = timeout_system_variable_min_value_for_kind(target->kind);
+            return append_truncated_incorrect_system_variable_warning(database, target->name, "1");
+        }
         return MYLITE_OK;
     }
     if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
         if (!sql_mode_token_matches(literal_node->span.text, literal_node->span.length, "FALSE")) {
-            return set_incorrect_system_variable_argument_type_error(database, variable_name);
+            return set_incorrect_system_variable_argument_type_error(database, target->name);
         }
-        *out_value = 1U;
-        return append_truncated_incorrect_system_variable_warning(database, variable_name, "0");
+        *out_value = timeout_system_variable_min_value_for_kind(target->kind);
+        return append_truncated_incorrect_system_variable_warning(database, target->name, "0");
     }
     if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
-        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
     }
 
     copy_auto_increment_step_value_text(value_node, value_text, sizeof(value_text));
     return parse_timeout_system_variable_integer(
         database,
-        variable_name,
+        target,
         &literal_node->span,
         negative,
         value_text,
@@ -114,41 +159,59 @@ static int parse_set_timeout_system_variable_value(
 
 static int parse_timeout_system_variable_integer(
     struct mylite_db *database,
-    const char *variable_name,
+    const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_source_span *unsigned_span,
     bool negative,
     const char *value_text,
     uint64_t *out_value
 ) {
     uint64_t magnitude = 0U;
+    uint64_t min_value = 1U;
+    uint64_t max_value = timeout_system_variable_max_value;
 
     if (out_value == NULL) {
         set_runtime_error(database, "invalid timeout system variable output");
         return MYLITE_ERROR;
     }
+    if (target == NULL) {
+        set_runtime_error(database, "invalid timeout system variable target");
+        return MYLITE_ERROR;
+    }
+    min_value = timeout_system_variable_min_value_for_kind(target->kind);
+    max_value = timeout_system_variable_max_value_for_kind(target->kind);
     if (negative) {
-        *out_value = 1U;
+        *out_value = min_value;
         return append_truncated_incorrect_system_variable_warning(
             database,
-            variable_name,
+            target->name,
             value_text
         );
     }
     if (unsigned_span == NULL ||
-        parse_unsigned_integer_literal(unsigned_span, &magnitude) != MYLITE_OK ||
-        magnitude > timeout_system_variable_max_value) {
-        *out_value = timeout_system_variable_max_value;
+        parse_unsigned_integer_literal(unsigned_span, &magnitude) != MYLITE_OK) {
+        if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_RETRY_COUNT) {
+            return set_incorrect_system_variable_argument_type_error(database, target->name);
+        }
+        *out_value = max_value;
         return append_truncated_incorrect_system_variable_warning(
             database,
-            variable_name,
+            target->name,
             value_text
         );
     }
-    if (magnitude == 0U) {
-        *out_value = 1U;
+    if (magnitude > max_value) {
+        *out_value = max_value;
         return append_truncated_incorrect_system_variable_warning(
             database,
-            variable_name,
+            target->name,
+            value_text
+        );
+    }
+    if (magnitude < min_value) {
+        *out_value = min_value;
+        return append_truncated_incorrect_system_variable_warning(
+            database,
+            target->name,
             value_text
         );
     }
@@ -159,7 +222,7 @@ static int parse_timeout_system_variable_integer(
 
 static int parse_set_timeout_system_variable_cell_value(
     struct mylite_db *database,
-    const char *variable_name,
+    const struct resolved_set_system_variable_target *target,
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind,
     uint64_t *out_value
@@ -173,9 +236,13 @@ static int parse_set_timeout_system_variable_cell_value(
         set_runtime_error(database, "invalid timeout system variable output");
         return MYLITE_ERROR;
     }
-    *out_value = timeout_system_variable_default_value;
+    if (target == NULL) {
+        set_runtime_error(database, "invalid timeout system variable target");
+        return MYLITE_ERROR;
+    }
+    *out_value = timeout_system_variable_default_value_for_kind(target->kind);
     if (value == NULL || text == NULL || value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER) {
-        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
     }
 
     if (value->has_value_size) {
@@ -184,7 +251,7 @@ static int parse_set_timeout_system_variable_cell_value(
         text_size = strlen(text);
     }
     if (text_size == 0U) {
-        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
     }
     if (text[0] == '+' || text[0] == '-') {
         negative = text[0] == '-';
@@ -192,13 +259,13 @@ static int parse_set_timeout_system_variable_cell_value(
         --text_size;
     }
     if (text_size == 0U) {
-        return set_incorrect_system_variable_argument_type_error(database, variable_name);
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
     }
 
     unsigned_span = (struct mylite_sql_source_span){.text = text, .length = text_size};
     return parse_timeout_system_variable_integer(
         database,
-        variable_name,
+        target,
         &unsigned_span,
         negative,
         value->value,
@@ -225,7 +292,10 @@ static int apply_set_long_query_time_value(
     }
     if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         if (value != long_query_time_default_microseconds) {
-            set_unsupported_error(database, "SET GLOBAL long_query_time assignment is not supported");
+            set_unsupported_error(
+                database,
+                "SET GLOBAL long_query_time assignment is not supported"
+            );
             return MYLITE_ERROR;
         }
         return MYLITE_OK;
@@ -451,7 +521,10 @@ static int apply_set_long_query_time_cell_value(
     }
     if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         if (long_query_time != long_query_time_default_microseconds) {
-            set_unsupported_error(database, "SET GLOBAL long_query_time assignment is not supported");
+            set_unsupported_error(
+                database,
+                "SET GLOBAL long_query_time assignment is not supported"
+            );
             return MYLITE_ERROR;
         }
         return MYLITE_OK;
@@ -575,6 +648,7 @@ static int parse_long_query_time_text(
     uint64_t *out_value
 ) {
     enum { long_query_time_text_capacity = 128U };
+
     char buffer[long_query_time_text_capacity];
     char *end = NULL;
     long double seconds = 0.0L;
@@ -602,8 +676,7 @@ static int parse_long_query_time_text(
     }
 
     microseconds = seconds * long_query_time_microseconds_per_second;
-    if (!isfinite(microseconds) ||
-        microseconds > (long double)long_query_time_max_microseconds) {
+    if (!isfinite(microseconds) || microseconds > (long double)long_query_time_max_microseconds) {
         *out_value = long_query_time_max_microseconds;
         return append_truncated_incorrect_system_variable_warning(database, variable_name, buffer);
     }

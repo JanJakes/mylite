@@ -157,6 +157,7 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `collation_connection` | yes | yes | current fixed session value |
 | `collation_database` | yes | yes | `utf8mb4_0900_ai_ci` |
 | `collation_server` | yes | yes | `utf8mb4_0900_ai_ci` |
+| `connect_timeout` | yes | yes | `10` |
 | `create_admin_listener_thread` | yes | yes | `OFF` |
 | `default_collation_for_utf8mb4` | yes | yes | `utf8mb4_0900_ai_ci` |
 | `default_password_lifetime` | yes | yes | `0` |
@@ -209,6 +210,9 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `mysqlx_write_timeout` | yes | yes | current session value or fixed global `60` |
 | `mysqlx_zstd_default_compression_level` | yes | yes | `3` |
 | `mysqlx_zstd_max_client_compression_level` | yes | yes | `11` |
+| `net_read_timeout` | yes | yes | current session value or fixed global `30` |
+| `net_retry_count` | yes | yes | current session value or fixed global `10` |
+| `net_write_timeout` | yes | yes | current session value or fixed global `60` |
 | `old_alter_table` | yes | yes | `OFF` |
 | `password_history` | yes | yes | `0` |
 | `password_require_current` | yes | yes | `OFF` |

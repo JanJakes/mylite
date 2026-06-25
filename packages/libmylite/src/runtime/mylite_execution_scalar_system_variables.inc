@@ -186,6 +186,10 @@ static int system_variable_value(
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOCK_WAIT_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECT_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_READ_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_RETRY_COUNT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_WRITE_TIMEOUT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
         return format_session_scalar_uint64_value(
             database,
@@ -316,7 +320,11 @@ static int system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_ERROR_VERBOSITY:
         return format_session_scalar_uint64_value(database, 2U, out_cell);
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLOW_LAUNCH_TIME:
-        return format_session_scalar_uint64_value(database, slow_launch_time_default_value, out_cell);
+        return format_session_scalar_uint64_value(
+            database,
+            slow_launch_time_default_value,
+            out_cell
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PROTOCOL_VERSION:
         return format_session_scalar_uint64_value(
             database,
@@ -613,16 +621,55 @@ static uint64_t timeout_system_variable_value(
     if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOCK_WAIT_TIMEOUT) {
         return database->session.lock_wait_timeout;
     }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_READ_TIMEOUT) {
+        return database->session.net_read_timeout;
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_RETRY_COUNT) {
+        return database->session.net_retry_count;
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_WRITE_TIMEOUT) {
+        return database->session.net_write_timeout;
+    }
     return timeout_system_variable_default_value_for_kind(kind);
 }
 
 static uint64_t timeout_system_variable_default_value_for_kind(
     enum mylite_execution_system_variable_kind kind
 ) {
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECT_TIMEOUT) {
+        return connect_timeout_default_value;
+    }
     if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOCK_WAIT_TIMEOUT) {
         return lock_wait_timeout_default_value;
     }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_READ_TIMEOUT) {
+        return net_read_timeout_default_value;
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_RETRY_COUNT) {
+        return net_retry_count_default_value;
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_WRITE_TIMEOUT) {
+        return net_write_timeout_default_value;
+    }
     return timeout_system_variable_default_value;
+}
+
+static uint64_t timeout_system_variable_min_value_for_kind(
+    enum mylite_execution_system_variable_kind kind
+) {
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECT_TIMEOUT) {
+        return connect_timeout_min_value;
+    }
+    return 1U;
+}
+
+static uint64_t timeout_system_variable_max_value_for_kind(
+    enum mylite_execution_system_variable_kind kind
+) {
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_RETRY_COUNT) {
+        return UINT64_MAX;
+    }
+    return timeout_system_variable_max_value;
 }
 
 static uint64_t sort_buffer_size_system_variable_value(
@@ -650,7 +697,7 @@ static const char *low_priority_updates_system_variable_show_value(
     bool global_scope
 ) {
     return low_priority_updates_system_variable_uint64_value(database, global_scope) != 0U ? "ON"
-                                                                                         : "OFF";
+                                                                                           : "OFF";
 }
 
 static const char *transaction_isolation_system_variable_value(
@@ -1026,6 +1073,10 @@ static int show_system_variable_value(
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOCK_WAIT_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECT_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_READ_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_RETRY_COUNT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_WRITE_TIMEOUT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_WAIT_TIMEOUT:
         return format_show_system_variable_uint64_value(
             database,

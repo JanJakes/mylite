@@ -39,6 +39,9 @@ enum {
     "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,"                         \
     "ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION"
 
+#define MYLITE_SESSION_LONG_QUERY_TIME_DEFAULT_MICROSECONDS UINT64_C(10000000)
+#define MYLITE_SESSION_LONG_QUERY_TIME_MAX_MICROSECONDS UINT64_C(31536000000000)
+
 enum mylite_session_sql_mode {
     MYLITE_SESSION_SQL_MODE_REAL_AS_FLOAT = 1U << 0U,
     MYLITE_SESSION_SQL_MODE_PIPES_AS_CONCAT = 1U << 1U,
@@ -168,6 +171,7 @@ struct mylite_session_state {
     uint64_t max_error_count;
     uint64_t wait_timeout;
     uint64_t interactive_timeout;
+    uint64_t long_query_time_microseconds;
     uint64_t catalog_generation;
     uint64_t sqlite_schema_generation;
     uint64_t uuid_last_timestamp_100ns;

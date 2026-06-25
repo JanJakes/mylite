@@ -30,6 +30,7 @@ static int copy_set_session_snapshot(
     out_snapshot->max_error_count = session->max_error_count;
     out_snapshot->wait_timeout = session->wait_timeout;
     out_snapshot->interactive_timeout = session->interactive_timeout;
+    out_snapshot->long_query_time_microseconds = session->long_query_time_microseconds;
     out_snapshot->timestamp_override = session->timestamp_override;
     out_snapshot->time_zone_offset_minutes = session->time_zone_offset_minutes;
     out_snapshot->session_transaction_isolation = session->session_transaction_isolation;
@@ -210,6 +211,7 @@ static void restore_set_session_snapshot(
     session->max_error_count = snapshot->max_error_count;
     session->wait_timeout = snapshot->wait_timeout;
     session->interactive_timeout = snapshot->interactive_timeout;
+    session->long_query_time_microseconds = snapshot->long_query_time_microseconds;
     session->timestamp_override = snapshot->timestamp_override;
     session->time_zone_offset_minutes = snapshot->time_zone_offset_minutes;
     session->session_transaction_isolation = snapshot->session_transaction_isolation;

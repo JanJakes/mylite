@@ -532,6 +532,7 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->max_error_count = MYLITE_SESSION_MAX_ERROR_COUNT_DEFAULT_VALUE;
     session->wait_timeout = MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE;
     session->interactive_timeout = MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE;
+    session->long_query_time_microseconds = MYLITE_SESSION_LONG_QUERY_TIME_DEFAULT_MICROSECONDS;
     session->catalog_generation = 0U;
     session->sqlite_schema_generation = 0U;
     session->autocommit_enabled = true;

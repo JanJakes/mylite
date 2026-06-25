@@ -218,8 +218,8 @@ state through this fallback path.
 | `ft_min_word_len` | ❌ | Value, scope, SET, diagnostics |
 | `ft_query_expansion_limit` | ❌ | Value, scope, SET, diagnostics |
 | `ft_stopword_file` | ❌ | Value, scope, SET, diagnostics |
-| `general_log` | ❌ | Value, scope, SET, diagnostics |
-| `general_log_file` | ❌ | Value, scope, SET, diagnostics |
+| `general_log` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/OFF global no-op SET; no general-query logging side effects |
+| `general_log_file` | ✅ | Fixed global path readback/SHOW, global-only diagnostics, and default/path global no-op SET; no log file creation |
 | `generated_random_password_length` | ❌ | Mutable session/global value, range SET, diagnostics |
 | `global_connection_memory_limit` | ❌ | Value, scope, SET, diagnostics |
 | `global_connection_memory_tracking` | ❌ | Value, scope, SET, diagnostics |
@@ -526,23 +526,23 @@ state through this fallback path.
 | `log_bin_basename` | 🟡 | Limited fixed global scalar and `SHOW VARIABLES` value `binlog`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; assignment returns MySQL-style read-only diagnostics; no configured data directory, binary log files, path expansion, rotation, or startup option handling |
 | `log_bin_index` | 🟡 | Limited fixed global scalar and `SHOW VARIABLES` value `binlog.index`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; assignment returns MySQL-style read-only diagnostics; no binary log index file, configured path, rotation, or startup option handling |
 | `log_bin_trust_function_creators` | 🟡 | Limited fixed global scalar value `0`; `SHOW VARIABLES` displays `OFF`; default/global scalar reads and `SHOW VARIABLES` rows are supported; scalar reads and successful exact no-op global `SET` forms emit MySQL-style deprecation warning `1287`; session/local scalar reads and non-global `SET` return MySQL-style global-variable diagnostics; no mutable global state, stored-function privilege behavior, trigger behavior, binary logging, or startup option handling |
-| `log_error` | ❌ | Value, scope, SET, diagnostics |
-| `log_error_services` | ❌ | Value, scope, SET, diagnostics |
-| `log_error_suppression_list` | ❌ | Value, scope, SET, diagnostics |
-| `log_error_verbosity` | ❌ | Value, scope, SET, diagnostics |
-| `log_output` | ❌ | Value, scope, SET, diagnostics |
-| `log_queries_not_using_indexes` | ❌ | Value, scope, SET, diagnostics |
-| `log_raw` | ❌ | Value, scope, SET, diagnostics |
-| `log_replica_updates` | ❌ | Value, scope, SET, diagnostics |
-| `log_slave_updates` | ❌ | Value, scope, SET, diagnostics |
-| `log_slow_admin_statements` | ❌ | Value, scope, SET, diagnostics |
-| `log_slow_extra` | ❌ | Value, scope, SET, diagnostics |
-| `log_slow_replica_statements` | ❌ | Value, scope, SET, diagnostics |
-| `log_slow_slave_statements` | ❌ | Value, scope, SET, diagnostics |
-| `log_statements_unsafe_for_binlog` | ❌ | Value, scope, SET, diagnostics |
-| `log_throttle_queries_not_using_indexes` | ❌ | Value, scope, SET, diagnostics |
-| `log_timestamps` | ❌ | Value, scope, SET, diagnostics |
-| `long_query_time` | ❌ | Value, scope, SET, diagnostics |
+| `log_error` | ✅ | Fixed read-only global readback/SHOW and read-only SET diagnostics; no error-log sink behavior |
+| `log_error_services` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/text global no-op SET; no error-log service routing |
+| `log_error_suppression_list` | ✅ | Fixed empty global readback/SHOW, global-only diagnostics, and default/empty global no-op SET |
+| `log_error_verbosity` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/`2` global no-op SET |
+| `log_output` | ✅ | Fixed `FILE` readback/SHOW, global-only diagnostics, and default/`FILE` global no-op SET; no file/table logging |
+| `log_queries_not_using_indexes` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/OFF global no-op SET; no slow-log side effects |
+| `log_raw` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/OFF global no-op SET |
+| `log_replica_updates` | ✅ | Fixed read-only global readback/SHOW and read-only SET diagnostics; no replication logging |
+| `log_slave_updates` | ✅ | Fixed deprecated global readback/SHOW, read-only SET diagnostics, and MySQL-style deprecation warning |
+| `log_slow_admin_statements` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/OFF global no-op SET; no slow-log side effects |
+| `log_slow_extra` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/OFF global no-op SET; no slow-log side effects |
+| `log_slow_replica_statements` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/OFF global no-op SET; no replica slow-log side effects |
+| `log_slow_slave_statements` | ✅ | Fixed deprecated global readback/SHOW, global-only diagnostics, default/OFF global no-op SET, and deprecation warning |
+| `log_statements_unsafe_for_binlog` | ✅ | Fixed deprecated global readback/SHOW, global-only diagnostics, default/ON global no-op SET, and deprecation warning |
+| `log_throttle_queries_not_using_indexes` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/`0` global no-op SET |
+| `log_timestamps` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/`UTC` global no-op SET |
+| `long_query_time` | ✅ | Session/local/global readback/SHOW, session SET with rounding/clamping diagnostics, user-variable values, and default global no-op; no mutable global state or slow-log side effects |
 | `low_priority_updates` | ❌ | Value, scope, SET, diagnostics |
 | `lower_case_file_system` | 🟡 | Limited fixed global read-only scalar value `0`; `SHOW VARIABLES` displays `OFF`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; no host filesystem probing, startup option handling, value `1`, or changed identifier behavior |
 | `lower_case_table_names` | 🟡 | Limited fixed global read-only scalar value `0`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; no startup option handling, values `1`/`2`, case-insensitive schema/table lookup, catalog collation changes, or coupling to `lower_case_file_system` |
@@ -892,8 +892,8 @@ state through this fallback path.
 | `slave_transaction_retries` | ❌ | Value, scope, SET, diagnostics |
 | `slave_type_conversions` | ❌ | Value, scope, SET, diagnostics |
 | `slow_launch_time` | ❌ | Value, scope, SET, diagnostics |
-| `slow_query_log` | ❌ | Value, scope, SET, diagnostics |
-| `slow_query_log_file` | ❌ | Value, scope, SET, diagnostics |
+| `slow_query_log` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/OFF global no-op SET; no slow-query logging |
+| `slow_query_log_file` | ✅ | Fixed global path readback/SHOW, global-only diagnostics, and default/path global no-op SET; no log file creation |
 | `socket` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `/var/run/mysqld/mysqld.sock`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No socket file is created or used |
 | `sort_buffer_size` | ❌ | Value, scope, SET, diagnostics |
 | `source_verify_checksum` | ❌ | Value, scope, SET, diagnostics |

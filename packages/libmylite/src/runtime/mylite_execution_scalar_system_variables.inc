@@ -129,6 +129,27 @@ static int system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LICENSE:
         out_cell->value = license_system_variable_value;
         return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GENERAL_LOG_FILE:
+        out_cell->value = general_log_file_system_variable_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_ERROR:
+        out_cell->value = "stderr";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_ERROR_SERVICES:
+        out_cell->value = "log_filter_internal; log_sink_internal";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_ERROR_SUPPRESSION_LIST:
+        out_cell->value = "";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_OUTPUT:
+        out_cell->value = "FILE";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_TIMESTAMPS:
+        out_cell->value = "UTC";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLOW_QUERY_LOG_FILE:
+        out_cell->value = slow_query_log_file_system_variable_value;
+        return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_BASENAME:
         out_cell->value = log_bin_basename_system_variable_value;
         return MYLITE_OK;
@@ -183,6 +204,15 @@ static int system_variable_value(
             information_schema_stats_expiry_system_variable_value(database, global_scope),
             out_cell
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LONG_QUERY_TIME:
+        return format_long_query_time_microseconds(
+            database,
+            global_scope ? long_query_time_default_microseconds
+                         : database->session.long_query_time_microseconds,
+            out_cell->literal_text,
+            sizeof(out_cell->literal_text),
+            &out_cell->value
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT:
         return format_session_scalar_uint64_value(
             database,
@@ -220,6 +250,9 @@ static int system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_LOG_BIN:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_REPLICA_UPDATES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLAVE_UPDATES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_STATEMENTS_UNSAFE_FOR_BINLOG:
         rc = format_uint64(database, 1U, out_cell->integer_text, sizeof(out_cell->integer_text));
         if (rc == MYLITE_OK) {
             out_cell->value = out_cell->integer_text;
@@ -234,8 +267,17 @@ static int system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_ONLY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GENERAL_LOG:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_QUERIES_NOT_USING_INDEXES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_RAW:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLOW_ADMIN_STATEMENTS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLOW_EXTRA:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLOW_REPLICA_STATEMENTS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLOW_SLAVE_STATEMENTS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_THROTTLE_QUERIES_NOT_USING_INDEXES:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_READ_ONLY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLOW_QUERY_LOG:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SUPER_READ_ONLY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
@@ -258,6 +300,8 @@ static int system_variable_value(
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PORT:
         return format_session_scalar_uint64_value(database, port_system_variable_value, out_cell);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_ERROR_VERBOSITY:
+        return format_session_scalar_uint64_value(database, 2U, out_cell);
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PROTOCOL_VERSION:
         return format_session_scalar_uint64_value(
             database,
@@ -466,6 +510,29 @@ static int format_session_scalar_uint64_value(
         out_cell->value = out_cell->integer_text;
     }
     return rc;
+}
+
+static int format_long_query_time_microseconds(
+    struct mylite_db *database,
+    uint64_t microseconds,
+    char *buffer,
+    size_t buffer_size,
+    const char **out_value
+) {
+    uint64_t seconds = microseconds / microseconds_per_second;
+    uint64_t fraction = microseconds % microseconds_per_second;
+    int written = 0;
+
+    if (buffer == NULL || out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    written = snprintf(buffer, buffer_size, "%" PRIu64 ".%06" PRIu64, seconds, fraction);
+    if (written < 0 || (size_t)written >= buffer_size) {
+        set_runtime_error(database, "failed to format long_query_time system variable");
+        return MYLITE_ERROR;
+    }
+    *out_value = buffer;
+    return MYLITE_OK;
 }
 
 static uint64_t boolean_session_placeholder_system_variable_uint64_value(
@@ -845,6 +912,24 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LICENSE:
         *out_value = license_system_variable_value;
         return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GENERAL_LOG_FILE:
+        *out_value = general_log_file_system_variable_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_ERROR:
+        *out_value = "stderr";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_ERROR_SERVICES:
+        *out_value = "log_filter_internal; log_sink_internal";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_ERROR_SUPPRESSION_LIST:
+        *out_value = "";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_OUTPUT:
+        *out_value = "FILE";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_TIMESTAMPS:
+        *out_value = "UTC";
+        return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_BASENAME:
         *out_value = log_bin_basename_system_variable_value;
         return MYLITE_OK;
@@ -871,6 +956,9 @@ static int show_system_variable_value(
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SOCKET:
         *out_value = socket_system_variable_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLOW_QUERY_LOG_FILE:
+        *out_value = slow_query_log_file_system_variable_value;
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET:
@@ -907,6 +995,15 @@ static int show_system_variable_value(
             integer_buffer_size,
             out_value
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LONG_QUERY_TIME:
+        return format_long_query_time_microseconds(
+            database,
+            global_scope ? long_query_time_default_microseconds
+                         : database->session.long_query_time_microseconds,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT:
         return format_show_system_variable_uint64_value(
             database,
@@ -934,6 +1031,9 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_LOG_BIN:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_REPLICA_UPDATES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLAVE_UPDATES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_STATEMENTS_UNSAFE_FOR_BINLOG:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_CACHING_SHA2_PASSWORD_AUTO_GENERATE_RSA_KEYS:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DISCONNECT_ON_EXPIRED_PASSWORD:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SHA256_PASSWORD_AUTO_GENERATE_RSA_KEYS:
@@ -950,7 +1050,14 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_LOG_OFF:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_ONLY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GENERAL_LOG:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_QUERIES_NOT_USING_INDEXES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_RAW:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLOW_ADMIN_STATEMENTS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLOW_EXTRA:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLOW_REPLICA_STATEMENTS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLOW_SLAVE_STATEMENTS:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQL_NATIVE_PASSWORD_PROXY_USERS:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PASSWORD_REQUIRE_CURRENT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_READ_ONLY:
@@ -960,6 +1067,7 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SKIP_NETWORKING:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SKIP_SHOW_DATABASE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_FIPS_MODE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLOW_QUERY_LOG:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SUPER_READ_ONLY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_TLS_CERTIFICATES_ENFORCED_VALIDATION:
         *out_value = "OFF";
@@ -969,7 +1077,11 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_THROTTLE_QUERIES_NOT_USING_INDEXES:
         *out_value = "0";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_ERROR_VERBOSITY:
+        *out_value = "2";
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_ID:
         return format_show_system_variable_uint64_value(
@@ -1217,6 +1329,33 @@ static int append_system_variable_read_warning(
             mysql_warning_deprecated_system_variable,
             "HY000",
             "'@@log_bin_trust_function_creators' is deprecated and will be removed in a future "
+            "release."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLAVE_UPDATES) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@log_slave_updates' is deprecated and will be removed in a future release. "
+            "Please use log_replica_updates instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLOW_SLAVE_STATEMENTS) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@log_slow_slave_statements' is deprecated and will be removed in a future "
+            "release. Please use log_slow_replica_statements instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_STATEMENTS_UNSAFE_FOR_BINLOG) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@log_statements_unsafe_for_binlog' is deprecated and will be removed in a future "
             "release."
         );
     }

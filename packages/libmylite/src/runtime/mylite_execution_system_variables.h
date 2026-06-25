@@ -185,6 +185,27 @@ enum mylite_execution_system_variable_kind {
     MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_CRLPATH = 176,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_KEY = 177,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_TLS_CIPHERSUITES = 178,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_GENERAL_LOG = 179,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_GENERAL_LOG_FILE = 180,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_ERROR = 181,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_ERROR_SERVICES = 182,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_ERROR_SUPPRESSION_LIST = 183,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_ERROR_VERBOSITY = 184,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_OUTPUT = 185,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_QUERIES_NOT_USING_INDEXES = 186,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_RAW = 187,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_REPLICA_UPDATES = 188,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLAVE_UPDATES = 189,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLOW_ADMIN_STATEMENTS = 190,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLOW_EXTRA = 191,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLOW_REPLICA_STATEMENTS = 192,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLOW_SLAVE_STATEMENTS = 193,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_STATEMENTS_UNSAFE_FOR_BINLOG = 194,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_THROTTLE_QUERIES_NOT_USING_INDEXES = 195,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_TIMESTAMPS = 196,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_LONG_QUERY_TIME = 197,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SLOW_QUERY_LOG = 198,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SLOW_QUERY_LOG_FILE = 199,
 };
 
 struct mylite_execution_system_variable_descriptor {
@@ -248,6 +269,9 @@ bool mylite_execution_system_variable_is_read_only_admin_listener(
 bool mylite_execution_system_variable_is_read_only_mysqlx(
     enum mylite_execution_system_variable_kind kind
 );
+bool mylite_execution_system_variable_is_read_only_server_logging(
+    enum mylite_execution_system_variable_kind kind
+);
 bool mylite_execution_system_variable_is_fixed_global_server_security(
     enum mylite_execution_system_variable_kind kind
 );
@@ -261,6 +285,9 @@ bool mylite_execution_system_variable_is_fixed_global_mysqlx(
     enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_fixed_global_server_tls(
+    enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_is_fixed_global_server_logging(
     enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_timeout(enum mylite_execution_system_variable_kind kind);

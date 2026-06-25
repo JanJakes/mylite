@@ -3179,6 +3179,7 @@ struct set_session_snapshot {
     uint64_t max_error_count;
     uint64_t wait_timeout;
     uint64_t interactive_timeout;
+    uint64_t long_query_time_microseconds;
     int64_t timestamp_override;
     int time_zone_offset_minutes;
     enum mylite_transaction_isolation session_transaction_isolation;

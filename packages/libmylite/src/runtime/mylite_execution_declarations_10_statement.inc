@@ -579,6 +579,12 @@ static int apply_set_global_server_tls_assignment(
     const struct mylite_sql_ast_node *value_node,
     bool *out_handled
 );
+static int apply_set_global_server_logging_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
 static int apply_set_global_authentication_password_assignment(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -706,6 +712,10 @@ static int apply_set_fixed_global_mysqlx_cell_value(
     const struct resolved_set_system_variable_target *target
 );
 static int apply_set_fixed_global_server_tls_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target
+);
+static int apply_set_fixed_global_server_logging_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target
 );
@@ -945,6 +955,11 @@ static int apply_set_timeout_system_variable_value(
     const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node
 );
+static int apply_set_long_query_time_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
 static int apply_set_integer_system_variable_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -957,6 +972,12 @@ static int apply_timeout_system_variable_value(
     uint64_t value
 );
 static int parse_set_timeout_system_variable_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+);
+static int parse_set_long_query_time_value(
     struct mylite_db *database,
     const char *variable_name,
     const struct mylite_sql_ast_node *value_node,
@@ -1035,6 +1056,26 @@ static int parse_set_timeout_system_variable_cell_value(
     const char *variable_name,
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind,
+    uint64_t *out_value
+);
+static int apply_set_long_query_time_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int parse_set_long_query_time_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    uint64_t *out_value
+);
+static int parse_long_query_time_text(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_size,
+    const char *variable_name,
     uint64_t *out_value
 );
 static int append_truncated_incorrect_system_variable_warning(

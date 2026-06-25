@@ -34,6 +34,9 @@ static int apply_set_system_variable_cell_value(
     if (mylite_execution_system_variable_is_fixed_global_server_tls(target->kind)) {
         return apply_set_fixed_global_server_tls_cell_value(database, target);
     }
+    if (mylite_execution_system_variable_is_fixed_global_server_logging(target->kind)) {
+        return apply_set_fixed_global_server_logging_cell_value(database, target);
+    }
     if (set_system_variable_is_text_session_state(target->kind)) {
         return apply_set_text_session_system_variable_cell_value(database, target, value);
     }
@@ -56,6 +59,9 @@ static int apply_set_system_variable_cell_value(
     }
     if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT) {
         return apply_set_max_error_count_cell_value(database, target, value, value_kind);
+    }
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LONG_QUERY_TIME) {
+        return apply_set_long_query_time_cell_value(database, target, value, value_kind);
     }
     if (mylite_execution_system_variable_is_timeout(target->kind)) {
         return apply_set_timeout_system_variable_cell_value(database, target, value, value_kind);
@@ -244,6 +250,24 @@ static int apply_set_fixed_global_server_tls_cell_value(
     set_unsupported_error(
         database,
         "SET server TLS system variables from user variables are not supported"
+    );
+    return MYLITE_ERROR;
+}
+
+static int apply_set_fixed_global_server_logging_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target
+) {
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_global_variable_set_global_required_error(database, target->name);
+        return MYLITE_ERROR;
+    }
+    set_unsupported_error(
+        database,
+        "SET server logging system variables from user variables are not supported"
     );
     return MYLITE_ERROR;
 }

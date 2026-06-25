@@ -118,6 +118,10 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc = apply_set_global_server_logging_assignment(database, &target, value_node, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     rc = apply_set_global_admin_listener_assignment(database, &target, value_node, &handled);
     if (rc != MYLITE_OK || handled) {
         return rc;
@@ -145,6 +149,9 @@ static int apply_set_system_variable_assignment(
     }
     if (set_system_variable_is_text_session_state(target.kind)) {
         return apply_set_text_session_system_variable_value(database, &target, value_node);
+    }
+    if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LONG_QUERY_TIME) {
+        return apply_set_long_query_time_value(database, &target, value_node);
     }
     rc = apply_set_integer_system_variable_value(database, &target, value_node, &handled);
     if (rc != MYLITE_OK || handled) {
@@ -203,7 +210,8 @@ static bool set_system_variable_target_is_read_only(
            mylite_execution_system_variable_is_read_only_authentication_password(kind) ||
            mylite_execution_system_variable_is_read_only_server_capability(kind) ||
            mylite_execution_system_variable_is_read_only_admin_listener(kind) ||
-           mylite_execution_system_variable_is_read_only_mysqlx(kind);
+           mylite_execution_system_variable_is_read_only_mysqlx(kind) ||
+           mylite_execution_system_variable_is_read_only_server_logging(kind);
 }
 
 static int apply_set_server_identity_binary_log_system_variable_assignment(
@@ -308,6 +316,80 @@ static int apply_set_global_server_tls_assignment(
         return MYLITE_ERROR;
     }
     return validate_set_fixed_null_value(database, value_node, unsupported_message);
+}
+
+static int apply_set_global_server_logging_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+) {
+    const char *unsupported_message = "SET supports only fixed no-op system variable assignments";
+    int rc = MYLITE_OK;
+
+    if (target == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (!mylite_execution_system_variable_is_fixed_global_server_logging(target->kind)) {
+        return MYLITE_OK;
+    }
+
+    *out_handled = true;
+    if (target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_global_variable_set_global_required_error(database, target->name);
+        return MYLITE_ERROR;
+    }
+
+    switch (target->kind) {
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GENERAL_LOG:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_QUERIES_NOT_USING_INDEXES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_RAW:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLOW_ADMIN_STATEMENTS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLOW_EXTRA:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLOW_REPLICA_STATEMENTS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLOW_QUERY_LOG:
+        return validate_set_fixed_boolean_value(database, value_node, false);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_SLOW_SLAVE_STATEMENTS:
+        rc = validate_set_fixed_boolean_value(database, value_node, false);
+        if (rc == MYLITE_OK) {
+            rc = append_system_variable_read_warning(database, target->kind);
+        }
+        return rc;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_STATEMENTS_UNSAFE_FOR_BINLOG:
+        rc = validate_set_fixed_boolean_value(database, value_node, true);
+        if (rc == MYLITE_OK) {
+            rc = append_system_variable_read_warning(database, target->kind);
+        }
+        return rc;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GENERAL_LOG_FILE:
+        return validate_set_fixed_text_value(database, value_node, general_log_file_system_variable_value);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_ERROR_SERVICES:
+        return validate_set_fixed_text_value(
+            database,
+            value_node,
+            "log_filter_internal; log_sink_internal"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_ERROR_SUPPRESSION_LIST:
+        return validate_set_fixed_text_value(database, value_node, "");
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_ERROR_VERBOSITY:
+        return validate_set_fixed_uint64_value(database, value_node, 2U, unsupported_message);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_OUTPUT:
+        return validate_set_fixed_text_value(database, value_node, "FILE");
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_THROTTLE_QUERIES_NOT_USING_INDEXES:
+        return validate_set_fixed_uint64_value(database, value_node, 0U, unsupported_message);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_TIMESTAMPS:
+        return validate_set_fixed_text_value(database, value_node, "UTC");
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLOW_QUERY_LOG_FILE:
+        return validate_set_fixed_text_value(
+            database,
+            value_node,
+            slow_query_log_file_system_variable_value
+        );
+    default:
+        set_runtime_error(database, "invalid fixed server logging system variable");
+        return MYLITE_ERROR;
+    }
 }
 
 static int apply_set_integer_system_variable_value(

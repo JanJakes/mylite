@@ -741,10 +741,9 @@ static int test_json_contains_diagnostics(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "JSON introspection supports only string, NULL, JSON_EXTRACT(), "
-                            "JSON_SET(), JSON_INSERT(), JSON_ARRAY_APPEND(), "
-                            "JSON_ARRAY_INSERT(), JSON_REPLACE(), JSON_REMOVE(), and descriptor "
-                            "column documents",
+            .message_part =
+                "JSON introspection supports only current JSON document producers and descriptor "
+                "columns",
         }
     );
 

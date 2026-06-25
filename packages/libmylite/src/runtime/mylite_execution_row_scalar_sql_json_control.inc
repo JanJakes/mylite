@@ -262,6 +262,20 @@ static int append_row_scalar_json_extract_document_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return append_row_scalar_non_concat_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
+        return append_row_scalar_json_constructor_expression_sql(
+            string,
+            "_mylite_json_array",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
+        return append_row_scalar_json_constructor_expression_sql(
+            string,
+            "_mylite_json_object",
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SET:
         return append_row_scalar_json_set_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
@@ -341,8 +355,6 @@ static int append_row_scalar_json_extract_document_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_FREE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_KEYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
@@ -403,6 +415,20 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return append_row_scalar_non_concat_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
+        return append_row_scalar_json_constructor_expression_sql(
+            string,
+            "_mylite_json_array",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
+        return append_row_scalar_json_constructor_expression_sql(
+            string,
+            "_mylite_json_object",
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SET:
         return append_row_scalar_json_set_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
@@ -483,8 +509,6 @@ static int append_row_scalar_json_introspection_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_FREE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_KEYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
@@ -709,19 +733,34 @@ static int append_row_scalar_json_set_expression_sql(
     const char *sqlite_function_name = NULL;
     int rc = MYLITE_OK;
 
+    if (expression == NULL) {
+        return MYLITE_ERROR;
+    }
+    if (json_mutation_kind_preserves_first_null(expression->json_mutation_kind)) {
+        return append_row_scalar_json_merge_preserve_expression_sql(
+            string,
+            expression,
+            next_parameter
+        );
+    }
+
     rc = json_mutation_sqlite_function_name(expression, &sqlite_function_name);
     if (rc != MYLITE_OK) {
         return MYLITE_ERROR;
     }
     rc = mylite_dynamic_string_append(string, sqlite_function_name);
     if (rc == MYLITE_OK) {
-        rc = append_row_scalar_json_set_document_argument_sql(
-            string,
-            &expression->arguments[0],
-            next_parameter
-        );
+        if (json_mutation_kind_is_merge(expression->json_mutation_kind)) {
+            rc = append_row_scalar_json_merge_arguments_sql(string, expression, next_parameter);
+        } else {
+            rc = append_row_scalar_json_set_document_argument_sql(
+                string,
+                &expression->arguments[0],
+                next_parameter
+            );
+        }
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && !json_mutation_kind_is_merge(expression->json_mutation_kind)) {
         if (expression->json_mutation_kind == PLANNED_JSON_MUTATION_REMOVE) {
             rc = append_row_scalar_json_remove_arguments_sql(string, expression, next_parameter);
         } else {
@@ -730,6 +769,59 @@ static int append_row_scalar_json_set_expression_sql(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_row_scalar_json_merge_preserve_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL || expression->argument_count < 2U) {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append(string, "(CASE");
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < expression->argument_count;
+         ++argument_index) {
+        rc = mylite_dynamic_string_append(string, " WHEN ");
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_json_introspection_argument_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, " IS NULL THEN ");
+        }
+        if (rc == MYLITE_OK && argument_index == 0U) {
+            rc = mylite_dynamic_string_append(string, "NULL");
+        } else if (rc == MYLITE_OK) {
+            rc = append_row_scalar_json_merge_function_call_sql(
+                string,
+                expression,
+                argument_index + 1U,
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " ELSE ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_json_merge_function_call_sql(
+            string,
+            expression,
+            expression->argument_count,
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " END)");
     }
     return rc;
 }
@@ -767,6 +859,21 @@ static int json_mutation_sqlite_function_name(
         }
         *out_function_name = "_mylite_json_array_insert(";
         return MYLITE_OK;
+    case PLANNED_JSON_MUTATION_MERGE:
+    case PLANNED_JSON_MUTATION_MERGE_PRESERVE:
+        if (expression->argument_count < 2U) {
+            return MYLITE_ERROR;
+        }
+        *out_function_name = expression->json_mutation_kind == PLANNED_JSON_MUTATION_MERGE
+                                 ? "_mylite_json_merge("
+                                 : "_mylite_json_merge_preserve(";
+        return MYLITE_OK;
+    case PLANNED_JSON_MUTATION_MERGE_PATCH:
+        if (expression->argument_count < 2U) {
+            return MYLITE_ERROR;
+        }
+        *out_function_name = "_mylite_json_merge_patch(";
+        return MYLITE_OK;
     case PLANNED_JSON_MUTATION_REPLACE:
         if (expression->argument_count < 3U || (expression->argument_count % 2U) == 0U) {
             return MYLITE_ERROR;
@@ -781,6 +888,70 @@ static int json_mutation_sqlite_function_name(
         return MYLITE_OK;
     }
     return MYLITE_ERROR;
+}
+
+static int append_row_scalar_json_merge_function_call_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t argument_count,
+    size_t *next_parameter
+) {
+    const char *sqlite_function_name = NULL;
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL || argument_count < 2U ||
+        argument_count > expression->argument_count) {
+        return MYLITE_ERROR;
+    }
+
+    rc = json_mutation_sqlite_function_name(expression, &sqlite_function_name);
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, sqlite_function_name);
+    }
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < argument_count;
+         ++argument_index) {
+        if (argument_index != 0U) {
+            rc = mylite_dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_json_introspection_argument_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_row_scalar_json_merge_arguments_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->arguments == NULL || expression->argument_count < 2U) {
+        return MYLITE_ERROR;
+    }
+
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < expression->argument_count;
+         ++argument_index) {
+        if (argument_index != 0U) {
+            rc = mylite_dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_json_introspection_argument_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
+        }
+    }
+    return rc;
 }
 
 static int append_row_scalar_json_remove_arguments_sql(

@@ -788,6 +788,9 @@ static bool map_keyword_token(
         {"JSON_INSERT", MYLITE_SQL_PARSE_JSON_INSERT},
         {"JSON_KEYS", MYLITE_SQL_PARSE_JSON_KEYS},
         {"JSON_LENGTH", MYLITE_SQL_PARSE_JSON_LENGTH},
+        {"JSON_MERGE", MYLITE_SQL_PARSE_JSON_MERGE},
+        {"JSON_MERGE_PATCH", MYLITE_SQL_PARSE_JSON_MERGE_PATCH},
+        {"JSON_MERGE_PRESERVE", MYLITE_SQL_PARSE_JSON_MERGE_PRESERVE},
         {"JSON_OBJECT", MYLITE_SQL_PARSE_JSON_OBJECT},
         {"JSON_OVERLAPS", MYLITE_SQL_PARSE_JSON_OVERLAPS},
         {"JSON_PRETTY", MYLITE_SQL_PARSE_JSON_PRETTY},
@@ -1552,6 +1555,9 @@ static bool map_keyword_index(unsigned int keyword_index, int *out_parser_token)
         [898U] = MYLITE_SQL_PARSE_JSON_STORAGE_FREE,   /* JSON_STORAGE_FREE */
         [899U] = MYLITE_SQL_PARSE_JSON_ARRAY_APPEND,   /* JSON_ARRAY_APPEND */
         [900U] = MYLITE_SQL_PARSE_JSON_ARRAY_INSERT,   /* JSON_ARRAY_INSERT */
+        [901U] = MYLITE_SQL_PARSE_JSON_MERGE,          /* JSON_MERGE */
+        [902U] = MYLITE_SQL_PARSE_JSON_MERGE_PATCH,    /* JSON_MERGE_PATCH */
+        [903U] = MYLITE_SQL_PARSE_JSON_MERGE_PRESERVE, /* JSON_MERGE_PRESERVE */
     };
     if (keyword_index < sizeof(keyword_parser_tokens) / sizeof(keyword_parser_tokens[0]) &&
         keyword_parser_tokens[keyword_index] != 0) {

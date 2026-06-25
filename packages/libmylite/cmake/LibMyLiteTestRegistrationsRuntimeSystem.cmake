@@ -469,6 +469,10 @@
     COMMAND mylite_runtime_json_array_mutation_functions_test
   )
   add_test(
+    NAME libmylite.runtime.json_merge_functions
+    COMMAND mylite_runtime_json_merge_functions_test
+  )
+  add_test(
     NAME libmylite.runtime.json_replace_function
     COMMAND mylite_runtime_json_replace_function_test
   )

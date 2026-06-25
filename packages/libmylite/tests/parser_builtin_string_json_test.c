@@ -3051,6 +3051,95 @@ static int test_json_set_function(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "SELECT JSON_MERGE('1', 'true'), json_merge(j, JSON_ARRAY(1)) AS changed FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    second_item = parser_test_child_at(select_list, 1U);
+    second_expression = parser_test_child_at(second_item, 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_MERGE_FUNCTION,
+        "json_merge function"
+    );
+    failures += parser_test_expect_span_text(
+        first_expression,
+        "JSON_MERGE('1', 'true')",
+        "json_merge span"
+    );
+    arguments = parser_test_child_at(first_expression, 0U);
+    failures += parser_test_expect_child_count(arguments, 2U, "json_merge argument count");
+    failures += parser_test_expect_node(
+        second_expression,
+        MYLITE_SQL_AST_JSON_MERGE_FUNCTION,
+        "lower json_merge"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT JSON_MERGE_PATCH('{\"a\":1}', '{\"b\":2}'), "
+        "json_merge_patch(j, JSON_OBJECT('b', 2)) AS patched FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    second_item = parser_test_child_at(select_list, 1U);
+    second_expression = parser_test_child_at(second_item, 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_MERGE_PATCH_FUNCTION,
+        "json_merge_patch function"
+    );
+    failures += parser_test_expect_span_text(
+        first_expression,
+        "JSON_MERGE_PATCH('{\"a\":1}', '{\"b\":2}')",
+        "json_merge_patch span"
+    );
+    arguments = parser_test_child_at(first_expression, 0U);
+    failures += parser_test_expect_child_count(arguments, 2U, "json_merge_patch argument count");
+    failures += parser_test_expect_node(
+        second_expression,
+        MYLITE_SQL_AST_JSON_MERGE_PATCH_FUNCTION,
+        "lower json_merge_patch"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT JSON_MERGE_PRESERVE('[1]', '[2]'), "
+        "json_merge_preserve(j, JSON_ARRAY(2)) AS preserved FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    second_item = parser_test_child_at(select_list, 1U);
+    second_expression = parser_test_child_at(second_item, 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_MERGE_PRESERVE_FUNCTION,
+        "json_merge_preserve function"
+    );
+    failures += parser_test_expect_span_text(
+        first_expression,
+        "JSON_MERGE_PRESERVE('[1]', '[2]')",
+        "json_merge_preserve span"
+    );
+    arguments = parser_test_child_at(first_expression, 0U);
+    failures += parser_test_expect_child_count(arguments, 2U, "json_merge_preserve argument count");
+    failures += parser_test_expect_node(
+        second_expression,
+        MYLITE_SQL_AST_JSON_MERGE_PRESERVE_FUNCTION,
+        "lower json_merge_preserve"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "SELECT JSON_REMOVE('{\"a\":1}', '$.a'), json_remove(j, '$.b') AS changed FROM t;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -3142,6 +3231,43 @@ static int test_json_set_function(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql("SELECT JSON_MERGE();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = parser_test_child_at(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),
+        0U
+    );
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_MERGE_ARGUMENT_COUNT_ERROR,
+        "json_merge zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("SELECT JSON_MERGE_PATCH();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = parser_test_child_at(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),
+        0U
+    );
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_MERGE_PATCH_ARGUMENT_COUNT_ERROR,
+        "json_merge_patch zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parser_test_parse_sql("SELECT JSON_MERGE_PRESERVE();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = parser_test_child_at(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),
+        0U
+    );
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_MERGE_PRESERVE_ARGUMENT_COUNT_ERROR,
+        "json_merge_preserve zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parser_test_parse_sql("SELECT JSON_REPLACE();", MYLITE_SQL_PARSE_OK, &result);
     first_expression = parser_test_child_at(
         parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),
@@ -3204,6 +3330,32 @@ static int test_json_set_function(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "DO JSON_MERGE('1', 'true'), JSON_MERGE_PATCH('{\"a\":1}', '{\"b\":2}'), "
+        "JSON_MERGE_PRESERVE('[1]', '[2]');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    expression_list = parser_test_child_at(statement, 0U);
+    failures += parser_test_expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "json merge do");
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression_list, 0U),
+        MYLITE_SQL_AST_JSON_MERGE_FUNCTION,
+        "do json_merge"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression_list, 1U),
+        MYLITE_SQL_AST_JSON_MERGE_PATCH_FUNCTION,
+        "do json_merge_patch"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression_list, 2U),
+        MYLITE_SQL_AST_JSON_MERGE_PRESERVE_FUNCTION,
+        "do json_merge_preserve"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "CREATE TABLE json_set (json_set INT); SELECT json_set FROM json_set;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -3228,6 +3380,29 @@ static int test_json_set_function(void) {
     failures += parser_test_parse_sql(
         "CREATE TABLE json_array_insert (json_array_insert INT); "
         "SELECT json_array_insert FROM json_array_insert;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE json_merge (json_merge INT); SELECT json_merge FROM json_merge;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE json_merge_patch (json_merge_patch INT); "
+        "SELECT json_merge_patch FROM json_merge_patch;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE json_merge_preserve (json_merge_preserve INT); "
+        "SELECT json_merge_preserve FROM json_merge_preserve;",
         MYLITE_SQL_PARSE_OK,
         &result
     );

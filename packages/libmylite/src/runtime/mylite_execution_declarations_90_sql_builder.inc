@@ -1735,11 +1735,27 @@ static int append_row_scalar_json_set_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
+static int append_row_scalar_json_merge_preserve_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
 static int json_mutation_sqlite_function_name(
     const struct planned_row_scalar_expression *expression,
     const char **out_function_name
 );
+static int append_row_scalar_json_merge_function_call_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t argument_count,
+    size_t *next_parameter
+);
 static int append_row_scalar_json_remove_arguments_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static int append_row_scalar_json_merge_arguments_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
@@ -2051,10 +2067,7 @@ static int append_column_aggregate_count_sql(
     const struct planned_column_aggregate *item,
     size_t *next_parameter
 );
-static int append_aggregate_distinct_sql(
-    struct mylite_dynamic_string *string,
-    bool is_distinct
-);
+static int append_aggregate_distinct_sql(struct mylite_dynamic_string *string, bool is_distinct);
 static int append_group_concat_call_sql(
     struct mylite_dynamic_string *string,
     const struct mylite_catalog_column_descriptor *value_column,

@@ -200,8 +200,8 @@ static bool select_statement_is_row_scalar_projection_attempt(
              (has_row_source && row_scalar_expression_contains_bitwise_attempt(expression)) ||
              (expression != NULL && expression->kind == MYLITE_SQL_AST_EXISTS_PREDICATE) ||
              (has_row_source && expression_is_supported_row_scalar_system_function(expression)) ||
-             (has_row_source &&
-              expression_contains_supported_row_scalar_system_function(expression)) ||
+             (has_row_source && expression_contains_supported_row_scalar_system_function(expression)
+             ) ||
              (has_row_source && expression != NULL && expression->kind == MYLITE_SQL_AST_LITERAL) ||
              (has_row_source && expression != NULL &&
               expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION))) {
@@ -705,6 +705,42 @@ static bool map_json_mutation_row_scalar_step_error(
     }
     if (strcmp(message, "Unsupported JSON path or JSON document in JSON_REMOVE()") == 0) {
         set_unsupported_error(database, "JSON_REMOVE() path or document shape is not supported");
+        return true;
+    }
+    if (strcmp(message, "Invalid data type for JSON data in JSON_MERGE()") == 0) {
+        set_invalid_json_data_type_error(database, "JSON_MERGE");
+        return true;
+    }
+    if (strcmp(message, "Invalid JSON text in JSON_MERGE()") == 0) {
+        set_invalid_json_function_text_error(database, 0U);
+        return true;
+    }
+    if (strcmp(message, "Unsupported JSON document in JSON_MERGE()") == 0) {
+        set_unsupported_error(database, "JSON_MERGE() document shape is not supported");
+        return true;
+    }
+    if (strcmp(message, "Invalid data type for JSON data in JSON_MERGE_PATCH()") == 0) {
+        set_invalid_json_data_type_error(database, "JSON_MERGE_PATCH");
+        return true;
+    }
+    if (strcmp(message, "Invalid JSON text in JSON_MERGE_PATCH()") == 0) {
+        set_invalid_json_function_text_error(database, 0U);
+        return true;
+    }
+    if (strcmp(message, "Unsupported JSON document in JSON_MERGE_PATCH()") == 0) {
+        set_unsupported_error(database, "JSON_MERGE_PATCH() document shape is not supported");
+        return true;
+    }
+    if (strcmp(message, "Invalid data type for JSON data in JSON_MERGE_PRESERVE()") == 0) {
+        set_invalid_json_data_type_error(database, "JSON_MERGE_PRESERVE");
+        return true;
+    }
+    if (strcmp(message, "Invalid JSON text in JSON_MERGE_PRESERVE()") == 0) {
+        set_invalid_json_function_text_error(database, 0U);
+        return true;
+    }
+    if (strcmp(message, "Unsupported JSON document in JSON_MERGE_PRESERVE()") == 0) {
+        set_unsupported_error(database, "JSON_MERGE_PRESERVE() document shape is not supported");
         return true;
     }
     return false;

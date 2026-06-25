@@ -372,6 +372,29 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_JSON_ARRAY_INSERT_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "JSON_ARRAY_INSERT");
         return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_MERGE_FUNCTION:
+        return mylite_execution_scalar_json_merge_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_JSON_MERGE_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_MERGE");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_MERGE_PATCH_FUNCTION:
+        return mylite_execution_scalar_json_merge_patch_function_value(
+            database,
+            expression,
+            out_cell
+        );
+    case MYLITE_SQL_AST_JSON_MERGE_PATCH_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_MERGE_PATCH");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_MERGE_PRESERVE_FUNCTION:
+        return mylite_execution_scalar_json_merge_preserve_function_value(
+            database,
+            expression,
+            out_cell
+        );
+    case MYLITE_SQL_AST_JSON_MERGE_PRESERVE_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_MERGE_PRESERVE");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_JSON_REPLACE_FUNCTION:
         return mylite_execution_scalar_json_replace_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_JSON_REPLACE_ARGUMENT_COUNT_ERROR:

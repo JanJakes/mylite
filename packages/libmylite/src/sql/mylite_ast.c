@@ -1730,6 +1730,18 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "json_array_insert_function";
     case MYLITE_SQL_AST_JSON_ARRAY_INSERT_ARGUMENT_COUNT_ERROR:
         return "json_array_insert_argument_count_error";
+    case MYLITE_SQL_AST_JSON_MERGE_FUNCTION:
+        return "json_merge_function";
+    case MYLITE_SQL_AST_JSON_MERGE_ARGUMENT_COUNT_ERROR:
+        return "json_merge_argument_count_error";
+    case MYLITE_SQL_AST_JSON_MERGE_PATCH_FUNCTION:
+        return "json_merge_patch_function";
+    case MYLITE_SQL_AST_JSON_MERGE_PATCH_ARGUMENT_COUNT_ERROR:
+        return "json_merge_patch_argument_count_error";
+    case MYLITE_SQL_AST_JSON_MERGE_PRESERVE_FUNCTION:
+        return "json_merge_preserve_function";
+    case MYLITE_SQL_AST_JSON_MERGE_PRESERVE_ARGUMENT_COUNT_ERROR:
+        return "json_merge_preserve_argument_count_error";
     case MYLITE_SQL_AST_JSON_OBJECT_FUNCTION:
         return "json_object_function";
     case MYLITE_SQL_AST_JSON_CONTAINS_FUNCTION:

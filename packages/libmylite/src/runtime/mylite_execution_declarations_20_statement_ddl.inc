@@ -564,6 +564,10 @@ static int execute_update_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int append_update_assignment_warnings(
+    struct mylite_db *database,
+    const struct planned_update *plan
+);
 static int execute_do_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,

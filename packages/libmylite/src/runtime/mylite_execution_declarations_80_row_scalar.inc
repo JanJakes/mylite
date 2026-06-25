@@ -1493,6 +1493,20 @@ static int plan_row_scalar_json_mutation_arguments(
     enum column_reference_diagnostic_context column_diagnostic_context,
     struct planned_row_scalar_expression *out_expression
 );
+static bool json_mutation_kind_is_merge(enum planned_json_mutation_kind mutation_kind);
+static bool json_mutation_kind_preserves_first_null(enum planned_json_mutation_kind mutation_kind);
+static int plan_row_scalar_json_merge_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    size_t argument_count,
+    const char *function_name,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_json_remove_path_arguments(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *argument,

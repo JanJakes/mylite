@@ -353,6 +353,9 @@ static int execute_update_statement(
     if (rc == MYLITE_OK) {
         rc = execute_update_from_plan(database, &plan, result);
     }
+    if (rc == MYLITE_OK) {
+        rc = append_update_assignment_warnings(database, &plan);
+    }
     planned_update_deinit(&plan);
     if (rc != MYLITE_OK) {
         mylite_result_free(result);
@@ -361,4 +364,30 @@ static int execute_update_statement(
 
     clear_next_transaction_characteristics_after_statement(database);
     return finish_successful_result(database, result, out_result);
+}
+
+static int append_update_assignment_warnings(
+    struct mylite_db *database,
+    const struct planned_update *plan
+) {
+    int rc = MYLITE_OK;
+
+    if (plan == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (planned_update_has_multiple_assignments(plan)) {
+        for (size_t index = 0U; rc == MYLITE_OK && index < plan->assignment_count; ++index) {
+            if (!planned_update_assignment_is_noop(&plan->assignments[index])) {
+                rc = append_session_scalar_expression_warnings(
+                    database,
+                    plan->assignments[index].value_node
+                );
+            }
+        }
+        return rc;
+    }
+    if (plan->generated_default_noop) {
+        return MYLITE_OK;
+    }
+    return append_session_scalar_expression_warnings(database, plan->assignment_value_node);
 }

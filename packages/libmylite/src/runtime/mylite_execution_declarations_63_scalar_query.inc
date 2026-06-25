@@ -237,6 +237,7 @@ static int append_select_modifier_warnings(
     const struct mylite_sql_ast_node *statement
 );
 static int append_found_rows_deprecation_warning(struct mylite_db *database);
+static int append_json_merge_deprecation_warning(struct mylite_db *database);
 static int append_sql_calc_found_rows_deprecation_warning(struct mylite_db *database);
 static int append_sql_no_cache_deprecation_warning(struct mylite_db *database);
 static int append_convert_using_charset_warning(

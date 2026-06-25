@@ -3513,6 +3513,12 @@ static bool is_row_scalar_json_expression(const struct mylite_sql_ast_node *expr
     case MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION:
     case MYLITE_SQL_AST_JSON_ARRAY_INSERT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION:
+    case MYLITE_SQL_AST_JSON_MERGE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_MERGE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_MERGE_PATCH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_MERGE_PATCH_FUNCTION:
+    case MYLITE_SQL_AST_JSON_MERGE_PRESERVE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_MERGE_PRESERVE_FUNCTION:
     case MYLITE_SQL_AST_JSON_REPLACE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_REPLACE_FUNCTION:
     case MYLITE_SQL_AST_JSON_REMOVE_ARGUMENT_COUNT_ERROR:
@@ -3754,6 +3760,9 @@ static int plan_row_scalar_json_expression(
     case MYLITE_SQL_AST_JSON_INSERT_FUNCTION:
     case MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION:
     case MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION:
+    case MYLITE_SQL_AST_JSON_MERGE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_MERGE_PATCH_FUNCTION:
+    case MYLITE_SQL_AST_JSON_MERGE_PRESERVE_FUNCTION:
     case MYLITE_SQL_AST_JSON_REPLACE_FUNCTION:
     case MYLITE_SQL_AST_JSON_REMOVE_FUNCTION:
         return plan_row_scalar_json_set_expression(
@@ -3774,6 +3783,15 @@ static int plan_row_scalar_json_expression(
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_JSON_ARRAY_INSERT_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "JSON_ARRAY_INSERT");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_MERGE_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_MERGE");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_MERGE_PATCH_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_MERGE_PATCH");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_MERGE_PRESERVE_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_MERGE_PRESERVE");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_JSON_REPLACE_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "JSON_REPLACE");

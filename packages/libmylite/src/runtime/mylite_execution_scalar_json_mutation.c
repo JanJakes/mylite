@@ -347,7 +347,10 @@ int mylite_execution_scalar_json_require_mutation_argument_count(
     if (function_name == NULL) {
         return MYLITE_MISUSE;
     }
-    if (mutation_kind == PLANNED_JSON_MUTATION_REMOVE) {
+    if (mutation_kind == PLANNED_JSON_MUTATION_MERGE ||
+        mutation_kind == PLANNED_JSON_MUTATION_MERGE_PATCH ||
+        mutation_kind == PLANNED_JSON_MUTATION_MERGE_PRESERVE ||
+        mutation_kind == PLANNED_JSON_MUTATION_REMOVE) {
         valid = argument_count >= 2U;
     } else if (argument_count >= 3U) {
         valid = (argument_count % 2U) != 0U;

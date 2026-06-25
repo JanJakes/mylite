@@ -32,6 +32,9 @@ enum planned_json_mutation_kind {
     PLANNED_JSON_MUTATION_ARRAY_APPEND = 3,
     PLANNED_JSON_MUTATION_ARRAY_INSERT = 4,
     PLANNED_JSON_MUTATION_REMOVE = 5,
+    PLANNED_JSON_MUTATION_MERGE = 6,
+    PLANNED_JSON_MUTATION_MERGE_PATCH = 7,
+    PLANNED_JSON_MUTATION_MERGE_PRESERVE = 8,
 };
 
 enum planned_string_length_function_kind {
@@ -460,6 +463,21 @@ int mylite_execution_scalar_json_remove_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+int mylite_execution_scalar_json_merge_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+int mylite_execution_scalar_json_merge_patch_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+int mylite_execution_scalar_json_merge_preserve_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 
 bool mylite_execution_scalar_json_valid_scalar_argument_is_admitted(
     const struct mylite_sql_ast_node *expression
@@ -476,6 +494,11 @@ int mylite_execution_scalar_json_require_mutation_argument_count(
     size_t argument_count,
     const char *function_name,
     enum planned_json_mutation_kind mutation_kind
+);
+int mylite_execution_scalar_json_require_merge_argument_count(
+    struct mylite_db *database,
+    size_t argument_count,
+    const char *function_name
 );
 int mylite_execution_scalar_json_finish_path_result(
     struct mylite_db *database,

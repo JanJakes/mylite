@@ -59,6 +59,13 @@ struct json_set_sqlite_arguments {
     bool force_null;
 };
 
+struct json_merge_sqlite_arguments {
+    const char **documents;
+    size_t *document_lengths;
+    size_t document_count;
+    bool force_null;
+};
+
 struct json_mutation_sqlite_messages {
     const char *invalid_callback;
     const char *invalid_document_type;
@@ -190,6 +197,23 @@ static void json_array_insert_sqlite_callback(
     int argc,
     sqlite3_value **argv
 );
+static void json_merge_patch_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+);
+static void json_merge_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void json_merge_preserve_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+);
+static void json_merge_preserve_like_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv,
+    const char *function_name
+);
 static void json_replace_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_remove_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_type_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
@@ -315,6 +339,23 @@ static void finish_json_set_sqlite_error(
     int rc,
     const struct mylite_json_normalize_result *normalize_result,
     const struct json_mutation_sqlite_messages *messages
+);
+static int decode_json_merge_sqlite_arguments(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv,
+    const char *function_name,
+    bool patch_null_rule,
+    struct json_merge_sqlite_arguments *arguments
+);
+static void json_merge_sqlite_arguments_deinit(struct json_merge_sqlite_arguments *arguments);
+static void finish_json_merge_sqlite_result(
+    sqlite3_context *context,
+    int rc,
+    char *result,
+    size_t result_length,
+    const struct mylite_json_normalize_result *normalize_result,
+    const char *function_name
 );
 
 int mylite_sqlite_register_json_functions(sqlite3 *sqlite) {
@@ -620,6 +661,48 @@ int mylite_sqlite_register_json_functions(sqlite3 *sqlite) {
                 SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
             .application_data = NULL,
             .scalar_callback = json_array_insert_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_json_merge_patch",
+            .argument_count = -1,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = NULL,
+            .scalar_callback = json_merge_patch_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_json_merge",
+            .argument_count = -1,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = NULL,
+            .scalar_callback = json_merge_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_json_merge_preserve",
+            .argument_count = -1,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = NULL,
+            .scalar_callback = json_merge_preserve_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
             .value_callback = NULL,
@@ -2148,6 +2231,140 @@ static void json_array_insert_sqlite_callback(
     json_set_sqlite_arguments_deinit(&arguments);
 }
 
+static void json_merge_patch_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+) {
+    struct json_merge_sqlite_arguments arguments = {0};
+    char *result = NULL;
+    size_t result_length = 0U;
+    struct mylite_json_normalize_result normalize_result = {0};
+    int rc = MYLITE_OK;
+
+    rc = decode_json_merge_sqlite_arguments(
+        context,
+        argc,
+        argv,
+        "JSON_MERGE_PATCH",
+        true,
+        &arguments
+    );
+    if (rc != MYLITE_OK) {
+        return;
+    }
+    if (arguments.force_null) {
+        rc = mylite_json_merge_patch_validate_documents(
+            arguments.documents,
+            arguments.document_lengths,
+            arguments.document_count,
+            &normalize_result
+        );
+        if (rc == MYLITE_OK) {
+            sqlite3_result_null(context);
+        } else {
+            finish_json_merge_sqlite_result(
+                context,
+                rc,
+                NULL,
+                0U,
+                &normalize_result,
+                "JSON_MERGE_PATCH"
+            );
+        }
+        json_merge_sqlite_arguments_deinit(&arguments);
+        return;
+    }
+
+    rc = mylite_json_merge_patch(
+        arguments.documents,
+        arguments.document_lengths,
+        arguments.document_count,
+        &result,
+        &result_length,
+        &normalize_result
+    );
+    finish_json_merge_sqlite_result(
+        context,
+        rc,
+        result,
+        result_length,
+        &normalize_result,
+        "JSON_MERGE_PATCH"
+    );
+    json_merge_sqlite_arguments_deinit(&arguments);
+}
+
+static void json_merge_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    json_merge_preserve_like_sqlite_callback(context, argc, argv, "JSON_MERGE");
+}
+
+static void json_merge_preserve_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+) {
+    json_merge_preserve_like_sqlite_callback(context, argc, argv, "JSON_MERGE_PRESERVE");
+}
+
+static void json_merge_preserve_like_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv,
+    const char *function_name
+) {
+    struct json_merge_sqlite_arguments arguments = {0};
+    char *result = NULL;
+    size_t result_length = 0U;
+    struct mylite_json_normalize_result normalize_result = {0};
+    int rc = MYLITE_OK;
+
+    rc = decode_json_merge_sqlite_arguments(context, argc, argv, function_name, false, &arguments);
+    if (rc != MYLITE_OK) {
+        return;
+    }
+    if (arguments.force_null) {
+        rc = mylite_json_merge_patch_validate_documents(
+            arguments.documents,
+            arguments.document_lengths,
+            arguments.document_count,
+            &normalize_result
+        );
+        if (rc == MYLITE_OK) {
+            sqlite3_result_null(context);
+        } else {
+            finish_json_merge_sqlite_result(
+                context,
+                rc,
+                NULL,
+                0U,
+                &normalize_result,
+                function_name
+            );
+        }
+        json_merge_sqlite_arguments_deinit(&arguments);
+        return;
+    }
+
+    rc = mylite_json_merge_preserve(
+        arguments.documents,
+        arguments.document_lengths,
+        arguments.document_count,
+        &result,
+        &result_length,
+        &normalize_result
+    );
+    finish_json_merge_sqlite_result(
+        context,
+        rc,
+        result,
+        result_length,
+        &normalize_result,
+        function_name
+    );
+    json_merge_sqlite_arguments_deinit(&arguments);
+}
+
 static void json_replace_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
     struct json_set_sqlite_arguments arguments = {0};
     char *result = NULL;
@@ -2529,6 +2746,137 @@ static void finish_json_set_sqlite_error(
         return;
     }
     sqlite3_result_error(context, messages->failed, -1);
+}
+
+static int decode_json_merge_sqlite_arguments(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv,
+    const char *function_name,
+    bool patch_null_rule,
+    struct json_merge_sqlite_arguments *arguments
+) {
+    if (arguments == NULL || function_name == NULL) {
+        sqlite3_result_error(context, "invalid MyLite JSON merge callback", -1);
+        return MYLITE_MISUSE;
+    }
+    *arguments = (struct json_merge_sqlite_arguments){0};
+
+    if (context == NULL || argc < 2 || argv == NULL) {
+        sqlite3_result_error(context, "invalid MyLite JSON merge callback", -1);
+        return MYLITE_ERROR;
+    }
+    if ((size_t)argc > SIZE_MAX / sizeof(*arguments->documents) ||
+        (size_t)argc > SIZE_MAX / sizeof(*arguments->document_lengths)) {
+        sqlite3_result_error_nomem(context);
+        return MYLITE_NOMEM;
+    }
+    arguments->documents = (const char **)calloc((size_t)argc, sizeof(*arguments->documents));
+    arguments->document_lengths =
+        (size_t *)calloc((size_t)argc, sizeof(*arguments->document_lengths));
+    if (arguments->documents == NULL || arguments->document_lengths == NULL) {
+        sqlite3_result_error_nomem(context);
+        json_merge_sqlite_arguments_deinit(arguments);
+        return MYLITE_NOMEM;
+    }
+
+    for (int index = 0; index < argc; ++index) {
+        if (argv[index] == NULL) {
+            sqlite3_result_error(context, "invalid MyLite JSON merge callback", -1);
+            json_merge_sqlite_arguments_deinit(arguments);
+            return MYLITE_ERROR;
+        }
+        if (sqlite3_value_type(argv[index]) == SQLITE_NULL) {
+            arguments->force_null = true;
+            if (!patch_null_rule) {
+                return MYLITE_OK;
+            }
+            continue;
+        }
+        if (sqlite3_value_type(argv[index]) != SQLITE_TEXT) {
+            char message[json_storage_error_message_capacity];
+            int written = snprintf(
+                message,
+                sizeof(message),
+                "Invalid data type for JSON data in %s()",
+                function_name
+            );
+
+            if (written < 0 || (size_t)written >= sizeof(message)) {
+                sqlite3_result_error(context, "Invalid data type for JSON data", -1);
+            } else {
+                sqlite3_result_error(context, message, -1);
+            }
+            json_merge_sqlite_arguments_deinit(arguments);
+            return MYLITE_ERROR;
+        }
+
+        arguments->documents[arguments->document_count] =
+            (const char *)sqlite3_value_text(argv[index]);
+        if (arguments->documents[arguments->document_count] == NULL) {
+            sqlite3_result_error_nomem(context);
+            json_merge_sqlite_arguments_deinit(arguments);
+            return MYLITE_NOMEM;
+        }
+        arguments->document_lengths[arguments->document_count] =
+            (size_t)sqlite3_value_bytes(argv[index]);
+        ++arguments->document_count;
+    }
+    return MYLITE_OK;
+}
+
+static void json_merge_sqlite_arguments_deinit(struct json_merge_sqlite_arguments *arguments) {
+    if (arguments == NULL) {
+        return;
+    }
+    free(arguments->document_lengths);
+    free((void *)arguments->documents);
+    *arguments = (struct json_merge_sqlite_arguments){0};
+}
+
+static void finish_json_merge_sqlite_result(
+    sqlite3_context *context,
+    int rc,
+    char *result,
+    size_t result_length,
+    const struct mylite_json_normalize_result *normalize_result,
+    const char *function_name
+) {
+    if (rc == MYLITE_NOMEM) {
+        free(result);
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    if (rc != MYLITE_OK) {
+        char message[json_storage_error_message_capacity];
+        int written = 0;
+
+        free(result);
+        if (normalize_result != NULL &&
+            normalize_result->status == MYLITE_JSON_NORMALIZE_UNSUPPORTED) {
+            written = snprintf(
+                message,
+                sizeof(message),
+                "Unsupported JSON document in %s()",
+                function_name
+            );
+        } else {
+            written =
+                snprintf(message, sizeof(message), "Invalid JSON text in %s()", function_name);
+        }
+        if (written < 0 || (size_t)written >= sizeof(message)) {
+            sqlite3_result_error(context, "MyLite JSON merge failed", -1);
+            return;
+        }
+        sqlite3_result_error(context, message, -1);
+        return;
+    }
+    if (result_length > (size_t)INT_MAX) {
+        free(result);
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    sqlite3_result_text(context, result, (int)result_length, free);
 }
 
 static void json_unquote_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {

@@ -1937,7 +1937,10 @@ static bool is_json_set_projection_expression(const struct mylite_sql_ast_node *
                                expression->kind != MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION &&
                                expression->kind != MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION &&
                                expression->kind != MYLITE_SQL_AST_JSON_REPLACE_FUNCTION &&
-                               expression->kind != MYLITE_SQL_AST_JSON_REMOVE_FUNCTION)) {
+                               expression->kind != MYLITE_SQL_AST_JSON_REMOVE_FUNCTION &&
+                               expression->kind != MYLITE_SQL_AST_JSON_MERGE_FUNCTION &&
+                               expression->kind != MYLITE_SQL_AST_JSON_MERGE_PATCH_FUNCTION &&
+                               expression->kind != MYLITE_SQL_AST_JSON_MERGE_PRESERVE_FUNCTION)) {
         return false;
     }
     if (mylite_sql_ast_node_child_count(expression) != 1U) {
@@ -1948,6 +1951,11 @@ static bool is_json_set_projection_expression(const struct mylite_sql_ast_node *
         return false;
     }
     argument_count = mylite_sql_ast_node_child_count(arguments);
+    if (expression->kind == MYLITE_SQL_AST_JSON_MERGE_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_MERGE_PATCH_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_MERGE_PRESERVE_FUNCTION) {
+        return argument_count >= 2U;
+    }
     if (expression->kind == MYLITE_SQL_AST_JSON_REMOVE_FUNCTION) {
         return argument_count >= 2U;
     }
@@ -2762,6 +2770,9 @@ static bool is_scalar_projection_known_function_attempt(enum mylite_sql_ast_node
     case MYLITE_SQL_AST_JSON_INSERT_FUNCTION:
     case MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION:
     case MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION:
+    case MYLITE_SQL_AST_JSON_MERGE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_MERGE_PATCH_FUNCTION:
+    case MYLITE_SQL_AST_JSON_MERGE_PRESERVE_FUNCTION:
     case MYLITE_SQL_AST_JSON_REPLACE_FUNCTION:
     case MYLITE_SQL_AST_JSON_REMOVE_FUNCTION:
     case MYLITE_SQL_AST_JSON_QUOTE_FUNCTION:
@@ -2845,6 +2856,9 @@ static bool is_scalar_projection_known_function_attempt(enum mylite_sql_ast_node
     case MYLITE_SQL_AST_JSON_INSERT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_ARRAY_APPEND_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_ARRAY_INSERT_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_MERGE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_MERGE_PATCH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_MERGE_PRESERVE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_REPLACE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_REMOVE_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_QUOTE_ARGUMENT_COUNT_ERROR:

@@ -119,6 +119,7 @@ add_library(mylite STATIC
   src/runtime/mylite_execution_scalar_ip_address.c
   src/runtime/mylite_execution_scalar_json.c
   src/runtime/mylite_execution_scalar_json_constructor.c
+  src/runtime/mylite_execution_scalar_json_merge.c
   src/runtime/mylite_execution_scalar_json_mutation.c
   src/runtime/mylite_execution_scalar_numeric.c
   src/runtime/mylite_execution_scalar_numeric_decimal_format.c
@@ -147,6 +148,7 @@ add_library(mylite STATIC
   src/runtime/mylite_json_dom.c
   src/runtime/mylite_json_functions.c
   src/runtime/mylite_like.c
+  src/runtime/mylite_json_merge.c
   src/runtime/mylite_json_mutation.c
   src/runtime/mylite_json_parse.c
   src/runtime/mylite_json_path.c

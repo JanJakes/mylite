@@ -221,6 +221,28 @@ int mylite_json_remove(
     size_t *out_text_length,
     struct mylite_json_normalize_result *out_result
 );
+int mylite_json_merge_patch(
+    const char *const *documents,
+    const size_t *document_lengths,
+    size_t document_count,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+);
+int mylite_json_merge_preserve(
+    const char *const *documents,
+    const size_t *document_lengths,
+    size_t document_count,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+);
+int mylite_json_merge_patch_validate_documents(
+    const char *const *documents,
+    const size_t *document_lengths,
+    size_t document_count,
+    struct mylite_json_normalize_result *out_result
+);
 int mylite_json_mutation_validate_before_null(
     const char *text,
     size_t text_length,

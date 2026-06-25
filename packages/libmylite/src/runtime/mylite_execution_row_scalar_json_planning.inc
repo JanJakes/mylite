@@ -1079,11 +1079,10 @@ static int plan_row_scalar_json_array_expression(
     }
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY;
     out_expression->argument_count = argument_count;
-    out_expression->arguments = argument_count == 0U
-                                    ? NULL
-                                    : (
-                                          struct planned_row_scalar_expression *
-                                      )calloc(argument_count, sizeof(*out_expression->arguments));
+    out_expression->arguments =
+        argument_count == 0U ? NULL
+                             : (struct planned_row_scalar_expression *)
+                                   calloc(argument_count, sizeof(*out_expression->arguments));
     if (argument_count != 0U && out_expression->arguments == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -1153,11 +1152,10 @@ static int plan_row_scalar_json_object_expression(
     }
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT;
     out_expression->argument_count = argument_count;
-    out_expression->arguments = argument_count == 0U
-                                    ? NULL
-                                    : (
-                                          struct planned_row_scalar_expression *
-                                      )calloc(argument_count, sizeof(*out_expression->arguments));
+    out_expression->arguments =
+        argument_count == 0U ? NULL
+                             : (struct planned_row_scalar_expression *)
+                                   calloc(argument_count, sizeof(*out_expression->arguments));
     if (argument_count != 0U && out_expression->arguments == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
@@ -1287,6 +1285,18 @@ static int json_mutation_kind_from_ast(
         *out_function_name = "JSON_ARRAY_INSERT";
         *out_mutation_kind = PLANNED_JSON_MUTATION_ARRAY_INSERT;
         return MYLITE_OK;
+    case MYLITE_SQL_AST_JSON_MERGE_FUNCTION:
+        *out_function_name = "JSON_MERGE";
+        *out_mutation_kind = PLANNED_JSON_MUTATION_MERGE;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_JSON_MERGE_PATCH_FUNCTION:
+        *out_function_name = "JSON_MERGE_PATCH";
+        *out_mutation_kind = PLANNED_JSON_MUTATION_MERGE_PATCH;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_JSON_MERGE_PRESERVE_FUNCTION:
+        *out_function_name = "JSON_MERGE_PRESERVE";
+        *out_mutation_kind = PLANNED_JSON_MUTATION_MERGE_PRESERVE;
+        return MYLITE_OK;
     case MYLITE_SQL_AST_JSON_REPLACE_FUNCTION:
         *out_function_name = "JSON_REPLACE";
         *out_mutation_kind = PLANNED_JSON_MUTATION_REPLACE;
@@ -1315,6 +1325,21 @@ static int plan_row_scalar_json_mutation_arguments(
 ) {
     const struct mylite_sql_ast_node *argument = child_at(arguments, 0U);
     int rc = MYLITE_OK;
+
+    if (json_mutation_kind_is_merge(mutation_kind)) {
+        return plan_row_scalar_json_merge_arguments(
+            database,
+            arguments,
+            argument_count,
+            function_name,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            column_diagnostic_context,
+            out_expression
+        );
+    }
 
     rc = plan_row_scalar_json_set_document_argument(
         database,
@@ -1351,6 +1376,59 @@ static int plan_row_scalar_json_mutation_arguments(
         column_diagnostic_context,
         out_expression
     );
+}
+
+static bool json_mutation_kind_is_merge(enum planned_json_mutation_kind mutation_kind) {
+    return mutation_kind == PLANNED_JSON_MUTATION_MERGE ||
+           mutation_kind == PLANNED_JSON_MUTATION_MERGE_PATCH ||
+           mutation_kind == PLANNED_JSON_MUTATION_MERGE_PRESERVE;
+}
+
+static bool json_mutation_kind_preserves_first_null(enum planned_json_mutation_kind mutation_kind) {
+    return mutation_kind == PLANNED_JSON_MUTATION_MERGE ||
+           mutation_kind == PLANNED_JSON_MUTATION_MERGE_PRESERVE;
+}
+
+static int plan_row_scalar_json_merge_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    size_t argument_count,
+    const char *function_name,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *argument = child_at(arguments, 0U);
+    int rc = MYLITE_OK;
+
+    if (out_expression == NULL || out_expression->arguments == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    for (size_t argument_index = 0U;
+         rc == MYLITE_OK && argument_index < argument_count && argument != NULL;
+         ++argument_index) {
+        rc = plan_row_scalar_json_introspection_document_argument(
+            database,
+            argument,
+            function_name,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            column_diagnostic_context,
+            &out_expression->arguments[argument_index]
+        );
+        argument = argument->next_sibling;
+    }
+    if (rc == MYLITE_OK && argument != NULL) {
+        set_parse_error(database, NULL);
+        rc = MYLITE_ERROR;
+    }
+    return rc;
 }
 
 static int plan_row_scalar_json_remove_path_arguments(
@@ -1899,9 +1977,8 @@ static int plan_row_scalar_json_introspection_document_argument(
     if (expression == NULL) {
         set_unsupported_error(
             database,
-            "JSON introspection supports only string, NULL, JSON_EXTRACT(), JSON_SET(), "
-            "JSON_INSERT(), JSON_ARRAY_APPEND(), JSON_ARRAY_INSERT(), JSON_REPLACE(), "
-            "JSON_REMOVE(), and descriptor column documents"
+            "JSON introspection supports only current JSON document producers and descriptor "
+            "columns"
         );
         return MYLITE_ERROR;
     }
@@ -1910,8 +1987,35 @@ static int plan_row_scalar_json_introspection_document_argument(
         expression->kind == MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_JSON_REPLACE_FUNCTION ||
-        expression->kind == MYLITE_SQL_AST_JSON_REMOVE_FUNCTION) {
+        expression->kind == MYLITE_SQL_AST_JSON_REMOVE_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_MERGE_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_MERGE_PATCH_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_MERGE_PRESERVE_FUNCTION) {
         return plan_row_scalar_json_set_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            column_diagnostic_context,
+            out_expression
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_JSON_ARRAY_FUNCTION) {
+        return plan_row_scalar_json_array_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            column_diagnostic_context,
+            out_expression
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_JSON_OBJECT_FUNCTION) {
+        return plan_row_scalar_json_object_expression(
             database,
             expression,
             has_source,
@@ -2003,9 +2107,7 @@ static int plan_row_scalar_json_introspection_document_argument(
 
     set_unsupported_error(
         database,
-        "JSON introspection supports only string, NULL, JSON_EXTRACT(), JSON_SET(), "
-        "JSON_INSERT(), JSON_ARRAY_APPEND(), JSON_ARRAY_INSERT(), JSON_REPLACE(), "
-        "JSON_REMOVE(), and descriptor column documents"
+        "JSON introspection supports only current JSON document producers and descriptor columns"
     );
     return MYLITE_ERROR;
 }
@@ -2107,9 +2209,7 @@ static int plan_row_scalar_json_document_argument(
     if (expression == NULL) {
         set_unsupported_error(
             database,
-            "JSON_EXTRACT() supports only string, NULL, JSON_SET(), JSON_INSERT(), "
-            "JSON_ARRAY_APPEND(), JSON_ARRAY_INSERT(), JSON_REPLACE(), JSON_REMOVE(), "
-            "and descriptor column documents"
+            "JSON_EXTRACT() supports only current JSON document producers and descriptor columns"
         );
         return MYLITE_ERROR;
     }
@@ -2118,7 +2218,10 @@ static int plan_row_scalar_json_document_argument(
         expression->kind == MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_JSON_REPLACE_FUNCTION ||
-        expression->kind == MYLITE_SQL_AST_JSON_REMOVE_FUNCTION) {
+        expression->kind == MYLITE_SQL_AST_JSON_REMOVE_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_MERGE_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_MERGE_PATCH_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_MERGE_PRESERVE_FUNCTION) {
         return plan_row_scalar_json_set_expression(
             database,
             expression,
@@ -2186,9 +2289,7 @@ static int plan_row_scalar_json_document_argument(
 
     set_unsupported_error(
         database,
-        "JSON_EXTRACT() supports only string, NULL, JSON_SET(), JSON_INSERT(), "
-        "JSON_ARRAY_APPEND(), JSON_ARRAY_INSERT(), JSON_REPLACE(), JSON_REMOVE(), and descriptor "
-        "column documents"
+        "JSON_EXTRACT() supports only current JSON document producers and descriptor columns"
     );
     return MYLITE_ERROR;
 }

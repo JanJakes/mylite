@@ -101,6 +101,8 @@ static int append_session_scalar_expression_warnings(
         }
         if (current->kind == MYLITE_SQL_AST_FOUND_ROWS_FUNCTION) {
             rc = append_found_rows_deprecation_warning(database);
+        } else if (current->kind == MYLITE_SQL_AST_JSON_MERGE_FUNCTION) {
+            rc = append_json_merge_deprecation_warning(database);
         } else if (current->kind == MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION) {
             rc = append_convert_using_charset_warning(database, current);
         } else if (current->kind == MYLITE_SQL_AST_CHAR_FUNCTION) {
@@ -149,6 +151,16 @@ static int append_found_rows_deprecation_warning(struct mylite_db *database) {
         "HY000",
         "FOUND_ROWS() is deprecated and will be removed in a future release. Consider using "
         "COUNT(*) instead."
+    );
+}
+
+static int append_json_merge_deprecation_warning(struct mylite_db *database) {
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_json_merge_deprecated,
+        "HY000",
+        "'JSON_MERGE' is deprecated and will be removed in a future release. Please use "
+        "JSON_MERGE_PRESERVE/JSON_MERGE_PATCH instead"
     );
 }
 

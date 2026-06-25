@@ -157,6 +157,13 @@ static int bind_row_scalar_json_extract_document_argument_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
+        return bind_row_scalar_json_constructor_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SET:
         return bind_row_scalar_json_set_expression_parameters(
             statement,
@@ -241,8 +248,6 @@ static int bind_row_scalar_json_extract_document_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_FREE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_KEYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
@@ -302,6 +307,13 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return bind_row_scalar_non_concat_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
+        return bind_row_scalar_json_constructor_expression_parameters(
             statement,
             expression,
             parameter_index
@@ -395,8 +407,6 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_FREE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_KEYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
-    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OBJECT:
     case PLANNED_ROW_SCALAR_EXPRESSION_HEX:
     case PLANNED_ROW_SCALAR_EXPRESSION_DIGEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_TO_BASE64:
@@ -557,7 +567,8 @@ static int bind_row_scalar_json_set_expression_parameters(
     if (expression == NULL || expression->arguments == NULL) {
         return MYLITE_ERROR;
     }
-    if (expression->json_mutation_kind == PLANNED_JSON_MUTATION_REMOVE) {
+    if (json_mutation_kind_is_merge(expression->json_mutation_kind) ||
+        expression->json_mutation_kind == PLANNED_JSON_MUTATION_REMOVE) {
         if (expression->argument_count < 2U) {
             return MYLITE_ERROR;
         }
@@ -565,12 +576,55 @@ static int bind_row_scalar_json_set_expression_parameters(
         return MYLITE_ERROR;
     }
 
-    rc = bind_row_scalar_json_set_document_argument_parameters(
-        statement,
-        &expression->arguments[0],
-        parameter_index
-    );
-    if (expression->json_mutation_kind == PLANNED_JSON_MUTATION_REMOVE) {
+    if (json_mutation_kind_preserves_first_null(expression->json_mutation_kind)) {
+        for (size_t argument_index = 0U;
+             rc == MYLITE_OK && argument_index < expression->argument_count;
+             ++argument_index) {
+            rc = bind_row_scalar_json_introspection_argument_parameters(
+                statement,
+                &expression->arguments[argument_index],
+                parameter_index
+            );
+            for (size_t prefix_index = 0U;
+                 rc == MYLITE_OK && argument_index > 0U && prefix_index <= argument_index;
+                 ++prefix_index) {
+                rc = bind_row_scalar_json_introspection_argument_parameters(
+                    statement,
+                    &expression->arguments[prefix_index],
+                    parameter_index
+                );
+            }
+        }
+        for (size_t argument_index = 0U;
+             rc == MYLITE_OK && argument_index < expression->argument_count;
+             ++argument_index) {
+            rc = bind_row_scalar_json_introspection_argument_parameters(
+                statement,
+                &expression->arguments[argument_index],
+                parameter_index
+            );
+        }
+        return rc;
+    }
+
+    if (json_mutation_kind_is_merge(expression->json_mutation_kind)) {
+        for (size_t argument_index = 0U;
+             rc == MYLITE_OK && argument_index < expression->argument_count;
+             ++argument_index) {
+            rc = bind_row_scalar_json_introspection_argument_parameters(
+                statement,
+                &expression->arguments[argument_index],
+                parameter_index
+            );
+        }
+    } else {
+        rc = bind_row_scalar_json_set_document_argument_parameters(
+            statement,
+            &expression->arguments[0],
+            parameter_index
+        );
+    }
+    if (rc == MYLITE_OK && expression->json_mutation_kind == PLANNED_JSON_MUTATION_REMOVE) {
         for (size_t argument_index = 1U;
              rc == MYLITE_OK && argument_index < expression->argument_count;
              ++argument_index) {
@@ -580,7 +634,7 @@ static int bind_row_scalar_json_set_expression_parameters(
                 parameter_index
             );
         }
-    } else {
+    } else if (rc == MYLITE_OK && !json_mutation_kind_is_merge(expression->json_mutation_kind)) {
         for (size_t argument_index = 1U;
              rc == MYLITE_OK && argument_index < expression->argument_count;
              argument_index += 2U) {

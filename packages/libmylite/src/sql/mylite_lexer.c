@@ -1240,7 +1240,10 @@ bool mylite_sql_keyword_lookup(
         {"JSON_STORAGE_SIZE", 0U},
         {"JSON_STORAGE_FREE", 0U},
         {"JSON_ARRAY_APPEND", 0U},
-        {"JSON_ARRAY_INSERT", 0U}
+        {"JSON_ARRAY_INSERT", 0U},
+        {"JSON_MERGE", 0U},
+        {"JSON_MERGE_PATCH", 0U},
+        {"JSON_MERGE_PRESERVE", 0U}
     };
 
     if (out_result != NULL) {
@@ -2576,7 +2579,7 @@ static bool keyword_length_is_possible(unsigned char first, size_t length) {
     case 'I':
         return (UINT64_C(0x000000000002fffc) & (UINT64_C(1) << length)) != 0U;
     case 'J':
-        return (UINT64_C(0x0000000000063f10) & (UINT64_C(1) << length)) != 0U;
+        return (UINT64_C(0x00000000000f3f10) & (UINT64_C(1) << length)) != 0U;
     case 'K':
         return (UINT64_C(0x0000000000004098) & (UINT64_C(1) << length)) != 0U;
     case 'L':
@@ -3099,6 +3102,9 @@ static unsigned int lookup_hot_keyword_index(const char *text, size_t length, un
             if (compare_keyword_text(text, length, "JSON_DEPTH") == 0) {
                 return 894U;
             }
+            if (compare_keyword_text(text, length, "JSON_MERGE") == 0) {
+                return 901U;
+            }
             break;
         case 'T':
             if (compare_keyword_text(text, length, "TABLE_NAME") == 0) {
@@ -3136,6 +3142,17 @@ static unsigned int lookup_hot_keyword_index(const char *text, size_t length, un
             break;
         }
         break;
+    case 16U:
+        switch (first) {
+        case 'J':
+            if (compare_keyword_text(text, length, "JSON_MERGE_PATCH") == 0) {
+                return 902U;
+            }
+            break;
+        default:
+            break;
+        }
+        break;
     case 17U:
         switch (first) {
         case 'J':
@@ -3150,6 +3167,17 @@ static unsigned int lookup_hot_keyword_index(const char *text, size_t length, un
             }
             if (compare_keyword_text(text, length, "JSON_STORAGE_FREE") == 0) {
                 return 898U;
+            }
+            break;
+        default:
+            break;
+        }
+        break;
+    case 19U:
+        switch (first) {
+        case 'J':
+            if (compare_keyword_text(text, length, "JSON_MERGE_PRESERVE") == 0) {
+                return 903U;
             }
             break;
         default:

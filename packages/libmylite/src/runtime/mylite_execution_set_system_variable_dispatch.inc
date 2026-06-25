@@ -28,6 +28,9 @@ static int apply_set_system_variable_cell_value(
     if (mylite_execution_system_variable_is_fixed_global_admin_listener(target->kind)) {
         return apply_set_fixed_global_admin_listener_cell_value(database, target);
     }
+    if (mylite_execution_system_variable_is_fixed_global_connection_system(target->kind)) {
+        return apply_set_fixed_global_connection_system_cell_value(database, target);
+    }
     if (mylite_execution_system_variable_is_fixed_global_mysqlx(target->kind)) {
         return apply_set_fixed_global_mysqlx_cell_value(database, target);
     }
@@ -79,6 +82,14 @@ static int apply_set_system_variable_cell_value(
     }
     if (mylite_execution_system_variable_is_timeout(target->kind)) {
         return apply_set_timeout_system_variable_cell_value(database, target, value, value_kind);
+    }
+    if (mylite_execution_system_variable_is_connection_memory(target->kind)) {
+        return apply_set_connection_memory_system_variable_cell_value(
+            database,
+            target,
+            value,
+            value_kind
+        );
     }
     if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_FOREIGN_KEY_CHECKS) {
         rc = parse_set_boolean_cell_value(database, target->name, value, &boolean_value);
@@ -234,6 +245,24 @@ static int apply_set_fixed_global_admin_listener_cell_value(
     set_unsupported_error(
         database,
         "SET admin listener system variables from user variables are not supported"
+    );
+    return MYLITE_ERROR;
+}
+
+static int apply_set_fixed_global_connection_system_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target
+) {
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_global_variable_set_global_required_error(database, target->name);
+        return MYLITE_ERROR;
+    }
+    set_unsupported_error(
+        database,
+        "SET connection system variables from user variables are not supported"
     );
     return MYLITE_ERROR;
 }

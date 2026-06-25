@@ -177,6 +177,45 @@ static int system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SOCKET:
         out_cell->value = socket_system_variable_value;
         return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_BIND_ADDRESS:
+        out_cell->value = bind_address_system_variable_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_BACK_LOG:
+        return format_session_scalar_uint64_value(
+            database,
+            back_log_system_variable_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_HOST_CACHE_SIZE:
+        return format_session_scalar_uint64_value(
+            database,
+            host_cache_size_system_variable_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_LIMIT:
+        return format_session_scalar_uint64_value(
+            database,
+            global_connection_memory_limit_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECTION_CONTROL_FAILED_CONNECTIONS_THRESHOLD:
+        return format_session_scalar_uint64_value(
+            database,
+            connection_control_failed_connections_threshold_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECTION_CONTROL_MAX_CONNECTION_DELAY:
+        return format_session_scalar_uint64_value(
+            database,
+            connection_control_max_connection_delay_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECTION_CONTROL_MIN_CONNECTION_DELAY:
+        return format_session_scalar_uint64_value(
+            database,
+            connection_control_min_connection_delay_default_value,
+            out_cell
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_INCREMENT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_INCREMENT_OFFSET:
         return format_session_scalar_uint64_value(
@@ -194,6 +233,19 @@ static int system_variable_value(
         return format_session_scalar_uint64_value(
             database,
             timeout_system_variable_value(database, variable, global_scope),
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECTION_MEMORY_CHUNK_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECTION_MEMORY_LIMIT:
+        return format_session_scalar_uint64_value(
+            database,
+            connection_memory_system_variable_value(database, variable, global_scope),
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_TRACKING:
+        return format_session_scalar_uint64_value(
+            database,
+            global_connection_memory_tracking_system_variable_value(database, global_scope),
             out_cell
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SORT_BUFFER_SIZE:
@@ -672,6 +724,41 @@ static uint64_t timeout_system_variable_max_value_for_kind(
     return timeout_system_variable_max_value;
 }
 
+static uint64_t connection_memory_system_variable_value(
+    const struct mylite_db *database,
+    enum mylite_execution_system_variable_kind kind,
+    bool global_scope
+) {
+    if (global_scope || database == NULL) {
+        if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECTION_MEMORY_CHUNK_SIZE) {
+            return connection_memory_chunk_size_default_value;
+        }
+        return connection_memory_limit_default_value;
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECTION_MEMORY_CHUNK_SIZE) {
+        return database->session.connection_memory_chunk_size;
+    }
+    return database->session.connection_memory_limit;
+}
+
+static uint64_t global_connection_memory_tracking_system_variable_value(
+    const struct mylite_db *database,
+    bool global_scope
+) {
+    const char *value = NULL;
+
+    if (!global_scope && database != NULL) {
+        value = session_system_variable_override_value(
+            database,
+            MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_TRACKING
+        );
+    }
+    if (value != NULL && strcmp(value, "1") == 0) {
+        return 1U;
+    }
+    return 0U;
+}
+
 static uint64_t sort_buffer_size_system_variable_value(
     const struct mylite_db *database,
     bool global_scope
@@ -1059,6 +1146,9 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SOCKET:
         *out_value = socket_system_variable_value;
         return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_BIND_ADDRESS:
+        *out_value = bind_address_system_variable_value;
+        return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLOW_QUERY_LOG_FILE:
         *out_value = slow_query_log_file_system_variable_value;
         return MYLITE_OK;
@@ -1085,6 +1175,69 @@ static int show_system_variable_value(
             integer_buffer_size,
             out_value
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_BACK_LOG:
+        return format_show_system_variable_uint64_value(
+            database,
+            back_log_system_variable_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_HOST_CACHE_SIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            host_cache_size_system_variable_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECTION_MEMORY_CHUNK_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECTION_MEMORY_LIMIT:
+        return format_show_system_variable_uint64_value(
+            database,
+            connection_memory_system_variable_value(database, kind, global_scope),
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_LIMIT:
+        return format_show_system_variable_uint64_value(
+            database,
+            global_connection_memory_limit_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECTION_CONTROL_FAILED_CONNECTIONS_THRESHOLD:
+        return format_show_system_variable_uint64_value(
+            database,
+            connection_control_failed_connections_threshold_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECTION_CONTROL_MAX_CONNECTION_DELAY:
+        return format_show_system_variable_uint64_value(
+            database,
+            connection_control_max_connection_delay_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECTION_CONTROL_MIN_CONNECTION_DELAY:
+        return format_show_system_variable_uint64_value(
+            database,
+            connection_control_min_connection_delay_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_TRACKING:
+        *out_value =
+            global_connection_memory_tracking_system_variable_value(database, global_scope) != 0U
+                ? "ON"
+                : "OFF";
+        return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SORT_BUFFER_SIZE:
         return format_show_system_variable_uint64_value(
             database,

@@ -84,6 +84,14 @@ case "$version" in
     *) fail "expected MySQL 8.4.9 runtime, got [$version]" ;;
 esac
 
+run_mysql \
+    "SET GLOBAL host_cache_size = 0;
+     SET GLOBAL global_connection_memory_limit = DEFAULT;
+     SET GLOBAL global_connection_memory_tracking = DEFAULT;
+     SET GLOBAL connection_control_failed_connections_threshold = DEFAULT;
+     SET GLOBAL connection_control_max_connection_delay = DEFAULT;
+     SET GLOBAL connection_control_min_connection_delay = DEFAULT;" >/dev/null
+
 headers=$(run_mysql_with_headers "SHOW VARIABLES LIKE 'autocommit';" | sed -n '1p')
 expect_value "headers" "Variable_name${TAB}Value" "$headers"
 
@@ -112,15 +120,25 @@ supported_session_rows=$(run_mysql "
       'character_set_server',
       'collation_server',
       'connect_timeout',
+      'connection_control_failed_connections_threshold',
+      'connection_control_max_connection_delay',
+      'connection_control_min_connection_delay',
+      'connection_memory_chunk_size',
+      'connection_memory_limit',
       'character_set_database',
       'collation_database',
       'default_storage_engine',
       'character_set_system',
       'character_set_filesystem',
       'autocommit',
+      'back_log',
+      'bind_address',
       'sql_quote_show_create',
       'foreign_key_checks',
+      'global_connection_memory_limit',
+      'global_connection_memory_tracking',
       'group_concat_max_len',
+      'host_cache_size',
       'innodb_read_only',
       'interactive_timeout',
       'lower_case_file_system',
@@ -152,6 +170,8 @@ supported_session_rows=$(run_mysql "
       'wait_timeout'
     );" | normalize_tsv)
 expect_value "supported session rows" "autocommit|ON
+back_log|151
+bind_address|*
 character_set_client|utf8mb4
 character_set_connection|utf8mb4
 character_set_database|utf8mb4
@@ -163,10 +183,18 @@ collation_connection|utf8mb4_0900_ai_ci
 collation_database|utf8mb4_0900_ai_ci
 collation_server|utf8mb4_0900_ai_ci
 connect_timeout|10
+connection_control_failed_connections_threshold|3
+connection_control_max_connection_delay|2147483647
+connection_control_min_connection_delay|1000
+connection_memory_chunk_size|8192
+connection_memory_limit|18446744073709551615
 default_storage_engine|InnoDB
 error_count|0
 foreign_key_checks|ON
+global_connection_memory_limit|18446744073709551615
+global_connection_memory_tracking|OFF
 group_concat_max_len|1024
+host_cache_size|0
 innodb_read_only|OFF
 interactive_timeout|28800
 lower_case_file_system|OFF
@@ -214,15 +242,25 @@ supported_global_rows=$(run_mysql "
       'character_set_server',
       'collation_server',
       'connect_timeout',
+      'connection_control_failed_connections_threshold',
+      'connection_control_max_connection_delay',
+      'connection_control_min_connection_delay',
+      'connection_memory_chunk_size',
+      'connection_memory_limit',
       'character_set_database',
       'collation_database',
       'default_storage_engine',
       'character_set_system',
       'character_set_filesystem',
       'autocommit',
+      'back_log',
+      'bind_address',
       'sql_quote_show_create',
       'foreign_key_checks',
+      'global_connection_memory_limit',
+      'global_connection_memory_tracking',
       'group_concat_max_len',
+      'host_cache_size',
       'innodb_read_only',
       'interactive_timeout',
       'lower_case_file_system',
@@ -254,6 +292,8 @@ supported_global_rows=$(run_mysql "
       'wait_timeout'
     );" | normalize_tsv)
 expect_value "supported global rows" "autocommit|ON
+back_log|151
+bind_address|*
 character_set_client|utf8mb4
 character_set_connection|utf8mb4
 character_set_database|utf8mb4
@@ -265,9 +305,17 @@ collation_connection|utf8mb4_0900_ai_ci
 collation_database|utf8mb4_0900_ai_ci
 collation_server|utf8mb4_0900_ai_ci
 connect_timeout|10
+connection_control_failed_connections_threshold|3
+connection_control_max_connection_delay|2147483647
+connection_control_min_connection_delay|1000
+connection_memory_chunk_size|8192
+connection_memory_limit|18446744073709551615
 default_storage_engine|InnoDB
 foreign_key_checks|ON
+global_connection_memory_limit|18446744073709551615
+global_connection_memory_tracking|OFF
 group_concat_max_len|1024
+host_cache_size|0
 innodb_read_only|OFF
 interactive_timeout|28800
 lower_case_file_system|OFF

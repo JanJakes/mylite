@@ -108,10 +108,10 @@ state through this fallback path.
 | `auto_increment_offset` | ✅ | Session/local/unscoped reads, fixed global reads, `SHOW VARIABLES`, session `SET`, clamp diagnostics, and descriptor-owned generated `AUTO_INCREMENT` allocation are MySQL-runtime verified for values `1..65535` when `auto_increment_offset <= auto_increment_increment`; no mutable global state, persisted/startup values, `SET_VAR`, replication behavior, concurrency lock-mode, or offset-greater-than-increment allocation |
 | `autocommit` | 🟡 | Session/local/unscoped scalar reads, `SHOW VARIABLES`, and `SET autocommit` are supported for the documented baseline, including current DML commit/rollback effects, `SET autocommit=1` commit, `START TRANSACTION` interaction, and savepoints while disabled; global readback is fixed `ON`, and mutable global/persisted state, protocol status flags, MVCC snapshot parity, lock semantics, privileges, and Performance Schema variable tables remain unsupported |
 | `automatic_sp_privileges` | ❌ | Value, scope, SET, diagnostics |
-| `back_log` | ❌ | Value, scope, SET, diagnostics |
+| `back_log` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics; no listener backlog side effects |
 | `basedir` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `/usr/`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No host installation discovery, startup option handling, path probing, or filesystem behavior |
 | `big_tables` | 🟡 | Limited scalar `SELECT @@big_tables` with no scope, `session`, `local`, or fixed `global`; limited `SHOW VARIABLES` rows; and handle-local session `SET` assignment for no scope, `SESSION`, `LOCAL`, direct `@@variable`, `@@session`, and `@@local` forms using `DEFAULT`, boolean tokens, integer `0`/`1` with supported unary signs, string `ON`/`OFF`, and supported integer/string user variables, with decimal user variables rejected using MySQL-compatible diagnostics. Session/local/unscoped reads report the handle-local value; global reads remain fixed at `0`, and mutable global assignment is limited to exact no-op forms. No actual temporary-table storage, optimizer planning, row materialization, startup/persisted values, `SET_VAR` hints, privileges, or Performance Schema variable tables |
-| `bind_address` | ❌ | Value, scope, SET, diagnostics |
+| `bind_address` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics; no TCP listener binding side effects |
 | `binlog_cache_size` | ❌ | Value, scope, SET, diagnostics |
 | `binlog_checksum` | ❌ | Value, scope, SET, diagnostics |
 | `binlog_direct_non_transactional_updates` | ❌ | Value, scope, SET, diagnostics |
@@ -174,11 +174,11 @@ state through this fallback path.
 | `component_scheduler.enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `concurrent_insert` | ❌ | Value, scope, SET, diagnostics |
 | `connect_timeout` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/`10` global no-op SET; no connection timeout side effects |
-| `connection_control_failed_connections_threshold` | ❌ | Value, scope, SET, diagnostics |
-| `connection_control_max_connection_delay` | ❌ | Value, scope, SET, diagnostics |
-| `connection_control_min_connection_delay` | ❌ | Value, scope, SET, diagnostics |
-| `connection_memory_chunk_size` | ❌ | Value, scope, SET, diagnostics |
-| `connection_memory_limit` | ❌ | Value, scope, SET, diagnostics |
+| `connection_control_failed_connections_threshold` | ✅ | Fixed global readback/SHOW and exact global no-op SET; no failed-login delay enforcement or status reset side effects |
+| `connection_control_max_connection_delay` | ✅ | Fixed global readback/SHOW and exact global no-op SET; no failed-login delay enforcement |
+| `connection_control_min_connection_delay` | ✅ | Fixed global readback/SHOW and exact global no-op SET; no failed-login delay enforcement |
+| `connection_memory_chunk_size` | ✅ | Session/local/unscoped readback, fixed global readback, SHOW, session SET, clamp diagnostics, and DEFAULT reset; no connection-memory accounting side effects |
+| `connection_memory_limit` | ✅ | Session/local/unscoped readback, fixed global readback, SHOW, session SET, clamp diagnostics, and DEFAULT reset; no connection-memory enforcement side effects |
 | `core_file` | ❌ | Value, scope, SET, diagnostics |
 | `create_admin_listener_thread` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
 | `cte_max_recursion_depth` | ❌ | Value, scope, SET, diagnostics |
@@ -221,8 +221,8 @@ state through this fallback path.
 | `general_log` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/OFF global no-op SET; no general-query logging side effects |
 | `general_log_file` | ✅ | Fixed global path readback/SHOW, global-only diagnostics, and default/path global no-op SET; no log file creation |
 | `generated_random_password_length` | ❌ | Mutable session/global value, range SET, diagnostics |
-| `global_connection_memory_limit` | ❌ | Value, scope, SET, diagnostics |
-| `global_connection_memory_tracking` | ❌ | Value, scope, SET, diagnostics |
+| `global_connection_memory_limit` | ✅ | Fixed global readback/SHOW and exact global no-op SET; no global memory limiter side effects |
+| `global_connection_memory_tracking` | ✅ | Session/local/unscoped boolean readback, fixed global readback, SHOW, session SET, and DEFAULT reset; no global memory accounting side effects |
 | `group_concat_max_len` | ✅ | Session/local/unscoped scalar reads, fixed global reads, `SHOW VARIABLES`, and handle-local session `SET` forms are MySQL-runtime verified, including `DEFAULT`, integer/user-variable assignment, minimum clamp warning `1292`, unsupported-value diagnostics, byte-capped output, UTF-8-safe truncation, and warning `1260` for supported `GROUP_CONCAT()` forms. No mutable global state, startup/persisted values, `SET_VAR`, Performance Schema variable tables, binary metadata threshold behavior, or broader aggregate syntax |
 | `group_replication_advertise_recovery_endpoints` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `group_replication_allow_local_lower_version_join` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
@@ -300,7 +300,7 @@ state through this fallback path.
 | `have_statement_timeout` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
 | `have_symlink` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
 | `histogram_generation_max_mem_size` | ❌ | Value, scope, SET, diagnostics |
-| `host_cache_size` | ❌ | Value, scope, SET, diagnostics |
+| `host_cache_size` | ✅ | Fixed embedded host-cache-disabled global readback/SHOW and exact global no-op SET; no host cache or Performance Schema host-cache side effects |
 | `hostname` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `mylite`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No host-name probing, DNS behavior, startup option handling, or replication identity behavior |
 | `identity` | ❌ | Value, scope, SET, diagnostics |
 | `immediate_server_version` | ❌ | Value, scope, SET, diagnostics |

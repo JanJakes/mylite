@@ -214,6 +214,16 @@ enum mylite_execution_system_variable_kind {
     MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_READ_TIMEOUT = 205,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_RETRY_COUNT = 206,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_WRITE_TIMEOUT = 207,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_BACK_LOG = 208,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_BIND_ADDRESS = 209,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_HOST_CACHE_SIZE = 210,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECTION_MEMORY_CHUNK_SIZE = 211,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECTION_MEMORY_LIMIT = 212,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_LIMIT = 213,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_TRACKING = 214,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECTION_CONTROL_FAILED_CONNECTIONS_THRESHOLD = 215,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECTION_CONTROL_MAX_CONNECTION_DELAY = 216,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CONNECTION_CONTROL_MIN_CONNECTION_DELAY = 217,
 };
 
 struct mylite_execution_system_variable_descriptor {
@@ -274,6 +284,9 @@ bool mylite_execution_system_variable_is_read_only_server_capability(
 bool mylite_execution_system_variable_is_read_only_admin_listener(
     enum mylite_execution_system_variable_kind kind
 );
+bool mylite_execution_system_variable_is_read_only_connection_listener(
+    enum mylite_execution_system_variable_kind kind
+);
 bool mylite_execution_system_variable_is_read_only_mysqlx(
     enum mylite_execution_system_variable_kind kind
 );
@@ -298,7 +311,13 @@ bool mylite_execution_system_variable_is_fixed_global_server_tls(
 bool mylite_execution_system_variable_is_fixed_global_server_logging(
     enum mylite_execution_system_variable_kind kind
 );
+bool mylite_execution_system_variable_is_fixed_global_connection_system(
+    enum mylite_execution_system_variable_kind kind
+);
 bool mylite_execution_system_variable_is_timeout(enum mylite_execution_system_variable_kind kind);
+bool mylite_execution_system_variable_is_connection_memory(
+    enum mylite_execution_system_variable_kind kind
+);
 bool mylite_execution_system_variable_is_session_placeholder(
     enum mylite_execution_system_variable_kind kind
 );

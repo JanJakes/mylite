@@ -36,6 +36,7 @@ enum {
     MYLITE_SESSION_NET_READ_TIMEOUT_DEFAULT_VALUE = 30,
     MYLITE_SESSION_NET_RETRY_COUNT_DEFAULT_VALUE = 10,
     MYLITE_SESSION_NET_WRITE_TIMEOUT_DEFAULT_VALUE = 60,
+    MYLITE_SESSION_CONNECTION_MEMORY_CHUNK_SIZE_DEFAULT_VALUE = 8192,
     MYLITE_SESSION_SORT_BUFFER_SIZE_DEFAULT_VALUE = 262144,
     MYLITE_SESSION_SORT_BUFFER_SIZE_MIN_VALUE = 32768,
     MYLITE_SESSION_UUID_NODE_SIZE = 6,
@@ -47,6 +48,7 @@ enum {
 
 #define MYLITE_SESSION_LONG_QUERY_TIME_DEFAULT_MICROSECONDS UINT64_C(10000000)
 #define MYLITE_SESSION_LONG_QUERY_TIME_MAX_MICROSECONDS UINT64_C(31536000000000)
+#define MYLITE_SESSION_CONNECTION_MEMORY_LIMIT_DEFAULT_VALUE UINT64_MAX
 
 enum mylite_session_sql_mode {
     MYLITE_SESSION_SQL_MODE_REAL_AS_FLOAT = 1U << 0U,
@@ -182,6 +184,8 @@ struct mylite_session_state {
     uint64_t net_read_timeout;
     uint64_t net_retry_count;
     uint64_t net_write_timeout;
+    uint64_t connection_memory_chunk_size;
+    uint64_t connection_memory_limit;
     uint64_t sort_buffer_size;
     uint64_t catalog_generation;
     uint64_t sqlite_schema_generation;

@@ -1188,6 +1188,8 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_set_timeout_variables.inc"
 
+#include "mylite_execution_set_connection_system_variables.inc"
+
 #include "mylite_execution_set_sql_mode_timestamp_time_zone.inc"
 
 #include "mylite_execution_ddl_create_table_statements.inc"

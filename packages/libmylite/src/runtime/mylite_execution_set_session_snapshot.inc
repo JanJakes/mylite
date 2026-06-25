@@ -35,6 +35,8 @@ static int copy_set_session_snapshot(
     out_snapshot->net_read_timeout = session->net_read_timeout;
     out_snapshot->net_retry_count = session->net_retry_count;
     out_snapshot->net_write_timeout = session->net_write_timeout;
+    out_snapshot->connection_memory_chunk_size = session->connection_memory_chunk_size;
+    out_snapshot->connection_memory_limit = session->connection_memory_limit;
     out_snapshot->sort_buffer_size = session->sort_buffer_size;
     out_snapshot->timestamp_override = session->timestamp_override;
     out_snapshot->time_zone_offset_minutes = session->time_zone_offset_minutes;
@@ -222,6 +224,8 @@ static void restore_set_session_snapshot(
     session->net_read_timeout = snapshot->net_read_timeout;
     session->net_retry_count = snapshot->net_retry_count;
     session->net_write_timeout = snapshot->net_write_timeout;
+    session->connection_memory_chunk_size = snapshot->connection_memory_chunk_size;
+    session->connection_memory_limit = snapshot->connection_memory_limit;
     session->sort_buffer_size = snapshot->sort_buffer_size;
     session->timestamp_override = snapshot->timestamp_override;
     session->time_zone_offset_minutes = snapshot->time_zone_offset_minutes;

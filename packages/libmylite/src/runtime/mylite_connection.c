@@ -537,6 +537,9 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->net_read_timeout = MYLITE_SESSION_NET_READ_TIMEOUT_DEFAULT_VALUE;
     session->net_retry_count = MYLITE_SESSION_NET_RETRY_COUNT_DEFAULT_VALUE;
     session->net_write_timeout = MYLITE_SESSION_NET_WRITE_TIMEOUT_DEFAULT_VALUE;
+    session->connection_memory_chunk_size =
+        MYLITE_SESSION_CONNECTION_MEMORY_CHUNK_SIZE_DEFAULT_VALUE;
+    session->connection_memory_limit = MYLITE_SESSION_CONNECTION_MEMORY_LIMIT_DEFAULT_VALUE;
     session->sort_buffer_size = MYLITE_SESSION_SORT_BUFFER_SIZE_DEFAULT_VALUE;
     session->catalog_generation = 0U;
     session->sqlite_schema_generation = 0U;

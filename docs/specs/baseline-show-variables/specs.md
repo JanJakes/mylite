@@ -143,6 +143,8 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `admin_tls_version` | yes | yes | `TLSv1.2,TLSv1.3` |
 | `authentication_policy` | yes | yes | `*,,` |
 | `autocommit` | yes | yes | `ON` |
+| `back_log` | yes | yes | `151` |
+| `bind_address` | yes | yes | `*` |
 | `caching_sha2_password_auto_generate_rsa_keys` | yes | yes | `ON` |
 | `caching_sha2_password_digest_rounds` | yes | yes | `5000` |
 | `caching_sha2_password_private_key_path` | yes | yes | `private_key.pem` |
@@ -158,6 +160,11 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `collation_database` | yes | yes | `utf8mb4_0900_ai_ci` |
 | `collation_server` | yes | yes | `utf8mb4_0900_ai_ci` |
 | `connect_timeout` | yes | yes | `10` |
+| `connection_control_failed_connections_threshold` | yes | yes | `3` |
+| `connection_control_max_connection_delay` | yes | yes | `2147483647` |
+| `connection_control_min_connection_delay` | yes | yes | `1000` |
+| `connection_memory_chunk_size` | yes | yes | current session value or fixed global `8192` |
+| `connection_memory_limit` | yes | yes | current session value or fixed global `18446744073709551615` |
 | `create_admin_listener_thread` | yes | yes | `OFF` |
 | `default_collation_for_utf8mb4` | yes | yes | `utf8mb4_0900_ai_ci` |
 | `default_password_lifetime` | yes | yes | `0` |
@@ -167,6 +174,8 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `end_markers_in_json` | yes | yes | `OFF` |
 | `error_count` | yes | no | `0` |
 | `foreign_key_checks` | yes | yes | `ON` |
+| `global_connection_memory_limit` | yes | yes | `18446744073709551615` |
+| `global_connection_memory_tracking` | yes | yes | current session value or fixed global `OFF` |
 | `have_compress` | yes | yes | `YES` |
 | `have_dynamic_loading` | yes | yes | `YES` |
 | `have_geometry` | yes | yes | `YES` |
@@ -175,6 +184,7 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `have_rtree_keys` | yes | yes | `YES` |
 | `have_statement_timeout` | yes | yes | `YES` |
 | `have_symlink` | yes | yes | `DISABLED` |
+| `host_cache_size` | yes | yes | `0` |
 | `interactive_timeout` | yes | yes | current session value or fixed global `28800` |
 | `keep_files_on_create` | yes | yes | `OFF` |
 | `lower_case_file_system` | yes | yes | `OFF` |

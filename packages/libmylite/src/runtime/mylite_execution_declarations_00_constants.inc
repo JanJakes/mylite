@@ -731,9 +731,23 @@ static const char log_bin_basename_system_variable_value[] = "binlog";
 static const char log_bin_index_system_variable_value[] = "binlog.index";
 static const char general_log_file_system_variable_value[] = "/var/lib/mysql/mylite.log";
 static const char slow_query_log_file_system_variable_value[] = "/var/lib/mysql/mylite-slow.log";
+static const char bind_address_system_variable_value[] = "*";
 static const uint64_t microseconds_per_second = 1000000ULL;
 static const long double long_query_time_microseconds_per_second = 1000000.0L;
 static const long double long_query_time_round_half_microsecond = 0.5L;
+static const uint64_t back_log_system_variable_value = 151ULL;
+static const uint64_t host_cache_size_system_variable_value = 0ULL;
+static const uint64_t global_connection_memory_limit_default_value = UINT64_MAX;
+static const uint64_t connection_memory_chunk_size_default_value =
+    MYLITE_SESSION_CONNECTION_MEMORY_CHUNK_SIZE_DEFAULT_VALUE;
+static const uint64_t connection_memory_chunk_size_min_value = 1ULL;
+static const uint64_t connection_memory_chunk_size_max_value = 536870912ULL;
+static const uint64_t connection_memory_limit_default_value =
+    MYLITE_SESSION_CONNECTION_MEMORY_LIMIT_DEFAULT_VALUE;
+static const uint64_t connection_memory_limit_min_value = 2097152ULL;
+static const uint64_t connection_control_failed_connections_threshold_default_value = 3ULL;
+static const uint64_t connection_control_max_connection_delay_default_value = 2147483647ULL;
+static const uint64_t connection_control_min_connection_delay_default_value = 1000ULL;
 static const uint64_t caching_sha2_password_digest_rounds_system_variable_value = 5000ULL;
 static const uint64_t ssl_session_cache_timeout_system_variable_value = 300ULL;
 static const uint64_t timeout_system_variable_default_value = MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE;

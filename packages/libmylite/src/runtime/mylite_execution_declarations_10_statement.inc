@@ -707,6 +707,10 @@ static int apply_set_fixed_global_admin_listener_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target
 );
+static int apply_set_fixed_global_connection_system_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target
+);
 static int apply_set_fixed_global_mysqlx_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target
@@ -966,6 +970,17 @@ static int apply_set_timeout_system_variable_value(
     const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node
 );
+static int apply_set_connection_memory_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int apply_set_global_connection_system_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
 static int apply_set_long_query_time_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -1092,6 +1107,47 @@ static int parse_set_timeout_system_variable_cell_value(
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind,
     uint64_t *out_value
+);
+static int apply_set_connection_memory_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int apply_connection_memory_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    uint64_t value
+);
+static int parse_set_connection_memory_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+);
+static int parse_set_connection_memory_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    uint64_t *out_value
+);
+static uint64_t connection_memory_system_variable_default_value_for_kind(
+    enum mylite_execution_system_variable_kind kind
+);
+static int parse_connection_memory_system_variable_integer(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_source_span *unsigned_span,
+    bool negative,
+    const char *value_text,
+    uint64_t *out_value
+);
+static uint64_t connection_memory_system_variable_min_value_for_kind(
+    enum mylite_execution_system_variable_kind kind
+);
+static uint64_t connection_memory_system_variable_max_value_for_kind(
+    enum mylite_execution_system_variable_kind kind
 );
 static int apply_set_long_query_time_cell_value(
     struct mylite_db *database,

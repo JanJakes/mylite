@@ -1710,6 +1710,15 @@ static uint64_t timeout_system_variable_min_value_for_kind(
 static uint64_t timeout_system_variable_max_value_for_kind(
     enum mylite_execution_system_variable_kind kind
 );
+static uint64_t connection_memory_system_variable_value(
+    const struct mylite_db *database,
+    enum mylite_execution_system_variable_kind kind,
+    bool global_scope
+);
+static uint64_t global_connection_memory_tracking_system_variable_value(
+    const struct mylite_db *database,
+    bool global_scope
+);
 static uint64_t sort_buffer_size_system_variable_value(
     const struct mylite_db *database,
     bool global_scope

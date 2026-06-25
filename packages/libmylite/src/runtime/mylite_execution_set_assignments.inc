@@ -126,6 +126,10 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc = apply_set_global_connection_system_assignment(database, &target, value_node, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     rc = apply_set_global_mysqlx_assignment(database, &target, value_node, &handled);
     if (rc != MYLITE_OK || handled) {
         return rc;
@@ -213,6 +217,7 @@ static bool set_system_variable_target_is_read_only(
            mylite_execution_system_variable_is_read_only_authentication_password(kind) ||
            mylite_execution_system_variable_is_read_only_server_capability(kind) ||
            mylite_execution_system_variable_is_read_only_admin_listener(kind) ||
+           mylite_execution_system_variable_is_read_only_connection_listener(kind) ||
            mylite_execution_system_variable_is_read_only_mysqlx(kind) ||
            mylite_execution_system_variable_is_read_only_server_logging(kind);
 }
@@ -441,6 +446,9 @@ static int apply_set_integer_system_variable_value(
     }
     if (mylite_execution_system_variable_is_timeout(target->kind)) {
         return apply_set_timeout_system_variable_value(database, target, value_node);
+    }
+    if (mylite_execution_system_variable_is_connection_memory(target->kind)) {
+        return apply_set_connection_memory_system_variable_value(database, target, value_node);
     }
 
     *out_handled = false;
@@ -1526,6 +1534,7 @@ static bool set_global_session_placeholder_assignment_handles_kind(
     switch (kind) {
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_COLLATION_FOR_UTF8MB4:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_END_MARKERS_IN_JSON:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_TRACKING:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_KEEP_FILES_ON_CREATE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_OLD_ALTER_TABLE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PRINT_IDENTIFIED_WITH_AS_HEX:

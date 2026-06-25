@@ -601,6 +601,10 @@
     COMMAND mylite_runtime_network_timeout_system_variables_test
   )
   add_test(
+    NAME libmylite.runtime.connection_system_variables
+    COMMAND mylite_runtime_connection_system_variables_test
+  )
+  add_test(
     NAME libmylite.runtime.authentication_password_system_variables
     COMMAND mylite_runtime_authentication_password_system_variables_test
   )

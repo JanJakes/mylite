@@ -250,6 +250,10 @@ static bool reject_invalid_read_only_system_variable_cell_target(
         set_read_only_system_variable_error(database, target->name);
         return true;
     }
+    if (mylite_execution_system_variable_is_read_only_server_capability(target->kind)) {
+        set_read_only_system_variable_error(database, target->name);
+        return true;
+    }
     if ((fixed_global_uint64_server_identity_system_variable_value(target->kind, NULL, NULL) ||
          target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS) &&
         target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {

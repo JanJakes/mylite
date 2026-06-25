@@ -291,14 +291,14 @@ state through this fallback path.
 | `gtid_next` | ❌ | Value, scope, SET, diagnostics |
 | `gtid_owned` | 🟡 | Limited empty-string scalar placeholder for default/global/session/local reads and `SHOW VARIABLES`; read-only; no owned-GTID tracking, replication, privileges, or mutable state |
 | `gtid_purged` | 🟡 | Limited empty-string scalar placeholder for default/global reads and `SHOW VARIABLES`; session/local scalar reads return MySQL-style global-variable diagnostics; read-only; no GTID set parsing, `SET GLOBAL gtid_purged`, replication, privileges, or mutable state |
-| `have_compress` | ❌ | Value, scope, SET, diagnostics |
-| `have_dynamic_loading` | ❌ | Value, scope, SET, diagnostics |
-| `have_geometry` | ❌ | Value, scope, SET, diagnostics |
-| `have_profiling` | ❌ | Value, scope, SET, diagnostics |
-| `have_query_cache` | ❌ | Value, scope, SET, diagnostics |
-| `have_rtree_keys` | ❌ | Value, scope, SET, diagnostics |
-| `have_statement_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `have_symlink` | ❌ | Value, scope, SET, diagnostics |
+| `have_compress` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
+| `have_dynamic_loading` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
+| `have_geometry` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
+| `have_profiling` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
+| `have_query_cache` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
+| `have_rtree_keys` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
+| `have_statement_timeout` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
+| `have_symlink` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
 | `histogram_generation_max_mem_size` | ❌ | Value, scope, SET, diagnostics |
 | `host_cache_size` | ❌ | Value, scope, SET, diagnostics |
 | `hostname` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `mylite`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No host-name probing, DNS behavior, startup option handling, or replication identity behavior |

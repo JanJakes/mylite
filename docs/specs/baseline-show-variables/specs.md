@@ -154,6 +154,14 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `end_markers_in_json` | yes | yes | `OFF` |
 | `error_count` | yes | no | `0` |
 | `foreign_key_checks` | yes | yes | `ON` |
+| `have_compress` | yes | yes | `YES` |
+| `have_dynamic_loading` | yes | yes | `YES` |
+| `have_geometry` | yes | yes | `YES` |
+| `have_profiling` | yes | yes | `YES` |
+| `have_query_cache` | yes | yes | `NO` |
+| `have_rtree_keys` | yes | yes | `YES` |
+| `have_statement_timeout` | yes | yes | `YES` |
+| `have_symlink` | yes | yes | `DISABLED` |
 | `interactive_timeout` | yes | yes | current session value or fixed global `28800` |
 | `keep_files_on_create` | yes | yes | `OFF` |
 | `lower_case_file_system` | yes | yes | `OFF` |

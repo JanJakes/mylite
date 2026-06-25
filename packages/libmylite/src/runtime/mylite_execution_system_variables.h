@@ -127,7 +127,15 @@ enum mylite_execution_system_variable_kind {
     MYLITE_EXECUTION_SYSTEM_VARIABLE_SHA256_PASSWORD_PRIVATE_KEY_PATH = 118,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_SHA256_PASSWORD_PROXY_USERS = 119,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_SHA256_PASSWORD_PUBLIC_KEY_PATH = 120,
-    MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT = 121,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_HAVE_COMPRESS = 121,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_HAVE_DYNAMIC_LOADING = 122,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_HAVE_GEOMETRY = 123,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_HAVE_PROFILING = 124,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_HAVE_QUERY_CACHE = 125,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_HAVE_RTREE_KEYS = 126,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_HAVE_STATEMENT_TIMEOUT = 127,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_HAVE_SYMLINK = 128,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT = 129,
 };
 
 struct mylite_execution_system_variable_descriptor {
@@ -180,6 +188,9 @@ bool mylite_execution_system_variable_is_read_only_server_environment(
     enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_read_only_authentication_password(
+    enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_is_read_only_server_capability(
     enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_fixed_global_server_security(

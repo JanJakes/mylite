@@ -188,7 +188,8 @@ static bool set_system_variable_target_is_read_only(
            kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_ONLY ||
            mylite_execution_system_variable_is_read_only_server_build(kind) ||
            mylite_execution_system_variable_is_read_only_server_environment(kind) ||
-           mylite_execution_system_variable_is_read_only_authentication_password(kind);
+           mylite_execution_system_variable_is_read_only_authentication_password(kind) ||
+           mylite_execution_system_variable_is_read_only_server_capability(kind);
 }
 
 static int apply_set_server_identity_binary_log_system_variable_assignment(

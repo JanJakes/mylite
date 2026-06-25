@@ -328,6 +328,13 @@ static int bind_row_scalar_expression_parameters(
             expression,
             parameter_index
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_SIZE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_FREE:
+        return bind_row_scalar_json_storage_expression_parameters(
+            statement,
+            expression,
+            parameter_index
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_KEYS:
         return bind_row_scalar_json_keys_expression_parameters(
             statement,

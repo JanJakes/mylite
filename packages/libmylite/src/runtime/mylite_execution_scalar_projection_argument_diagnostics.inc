@@ -192,6 +192,10 @@ static const char *argument_count_error_node_function_name(
         return "JSON_LENGTH";
     case MYLITE_SQL_AST_JSON_DEPTH_ARGUMENT_COUNT_ERROR:
         return "JSON_DEPTH";
+    case MYLITE_SQL_AST_JSON_STORAGE_SIZE_ARGUMENT_COUNT_ERROR:
+        return "JSON_STORAGE_SIZE";
+    case MYLITE_SQL_AST_JSON_STORAGE_FREE_ARGUMENT_COUNT_ERROR:
+        return "JSON_STORAGE_FREE";
     case MYLITE_SQL_AST_JSON_KEYS_ARGUMENT_COUNT_ERROR:
         return "JSON_KEYS";
     case MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR:

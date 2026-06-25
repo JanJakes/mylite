@@ -3218,6 +3218,31 @@ static int test_json_introspection_functions(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "SELECT JSON_STORAGE_SIZE('{\"a\":1}'), JSON_STORAGE_FREE(j) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    second_expression = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_STORAGE_SIZE_FUNCTION,
+        "json_storage_size function"
+    );
+    failures +=
+        parser_test_expect_child_count(first_expression, 1U, "json_storage_size argument count");
+    failures += parser_test_expect_node(
+        second_expression,
+        MYLITE_SQL_AST_JSON_STORAGE_FREE_FUNCTION,
+        "json_storage_free function"
+    );
+    failures +=
+        parser_test_expect_child_count(second_expression, 1U, "json_storage_free argument count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "SELECT JSON_TYPE(JSON_EXTRACT('{\"a\":[1]}', '$.a')), "
         "JSON_LENGTH(JSON_EXTRACT('{\"a\":[1]}', '$.a'));",
         MYLITE_SQL_PARSE_OK,
@@ -3383,6 +3408,56 @@ static int test_json_introspection_functions(void) {
         first_expression,
         MYLITE_SQL_AST_JSON_DEPTH_ARGUMENT_COUNT_ERROR,
         "json_depth many argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("SELECT JSON_STORAGE_SIZE();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = parser_test_child_at(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),
+        0U
+    );
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_STORAGE_SIZE_ARGUMENT_COUNT_ERROR,
+        "json_storage_size zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parser_test_parse_sql("SELECT JSON_STORAGE_SIZE('{}', '$');", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = parser_test_child_at(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),
+        0U
+    );
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_STORAGE_SIZE_ARGUMENT_COUNT_ERROR,
+        "json_storage_size many argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("SELECT JSON_STORAGE_FREE();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = parser_test_child_at(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),
+        0U
+    );
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_STORAGE_FREE_ARGUMENT_COUNT_ERROR,
+        "json_storage_free zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures +=
+        parser_test_parse_sql("SELECT JSON_STORAGE_FREE('{}', '$');", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = parser_test_child_at(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),
+        0U
+    );
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_STORAGE_FREE_ARGUMENT_COUNT_ERROR,
+        "json_storage_free many argument marker"
     );
     mylite_sql_parse_result_deinit(&result);
 

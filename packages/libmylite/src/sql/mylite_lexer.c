@@ -1236,7 +1236,9 @@ bool mylite_sql_keyword_lookup(
         {"_FILENAME", MYLITE_SQL_KEYWORD_RESERVED},
         {"JSON_DEPTH", 0U},
         {"JSON_PRETTY", 0U},
-        {"JSON_OVERLAPS", 0U}
+        {"JSON_OVERLAPS", 0U},
+        {"JSON_STORAGE_SIZE", 0U},
+        {"JSON_STORAGE_FREE", 0U}
     };
 
     if (out_result != NULL) {
@@ -2572,7 +2574,7 @@ static bool keyword_length_is_possible(unsigned char first, size_t length) {
     case 'I':
         return (UINT64_C(0x000000000002fffc) & (UINT64_C(1) << length)) != 0U;
     case 'J':
-        return (UINT64_C(0x0000000000043f10) & (UINT64_C(1) << length)) != 0U;
+        return (UINT64_C(0x0000000000063f10) & (UINT64_C(1) << length)) != 0U;
     case 'K':
         return (UINT64_C(0x0000000000004098) & (UINT64_C(1) << length)) != 0U;
     case 'L':
@@ -3126,6 +3128,20 @@ static unsigned int lookup_hot_keyword_index(const char *text, size_t length, un
         case 'J':
             if (compare_keyword_text(text, length, "JSON_OVERLAPS") == 0) {
                 return 896U;
+            }
+            break;
+        default:
+            break;
+        }
+        break;
+    case 17U:
+        switch (first) {
+        case 'J':
+            if (compare_keyword_text(text, length, "JSON_STORAGE_SIZE") == 0) {
+                return 897U;
+            }
+            if (compare_keyword_text(text, length, "JSON_STORAGE_FREE") == 0) {
+                return 898U;
             }
             break;
         default:

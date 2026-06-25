@@ -63,6 +63,12 @@ int mylite_json_depth(
     int64_t *out_depth,
     struct mylite_json_normalize_result *out_result
 );
+int mylite_json_storage_size(
+    const char *text,
+    size_t text_length,
+    uint64_t *out_size,
+    struct mylite_json_normalize_result *out_result
+);
 int mylite_json_pretty(
     const char *text,
     size_t text_length,

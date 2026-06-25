@@ -10514,6 +10514,14 @@ expression(A) ::= JSON_PRETTY(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_JSON_PRETTY_FUNCTION, B, R);
 }
+expression(A) ::= JSON_STORAGE_SIZE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_STORAGE_SIZE_FUNCTION, B, R);
+}
+expression(A) ::= JSON_STORAGE_FREE(T) LPAREN expression(B) RPAREN(R). {
+    A = mylite_sql_parser_make_one_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_STORAGE_FREE_FUNCTION, B, R);
+}
 expression(A) ::= JSON_QUOTE(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_JSON_QUOTE_FUNCTION, B, R);
@@ -11610,6 +11618,26 @@ expression(A) ::= JSON_PRETTY(T) LPAREN expression(B) COMMA function_argument_li
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_JSON_PRETTY_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= JSON_STORAGE_SIZE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_STORAGE_SIZE_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= JSON_STORAGE_SIZE(T) LPAREN expression(B) COMMA function_argument_list(C)
+    RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_STORAGE_SIZE_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= JSON_STORAGE_FREE(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_STORAGE_FREE_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= JSON_STORAGE_FREE(T) LPAREN expression(B) COMMA function_argument_list(C)
+    RPAREN(R). {
+    (void)B;
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_STORAGE_FREE_ARGUMENT_COUNT_ERROR, C, R);
 }
 expression(A) ::= JSON_QUOTE(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -13310,6 +13338,12 @@ identifier(A) ::= JSON_TYPE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_PRETTY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= JSON_STORAGE_SIZE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= JSON_STORAGE_FREE(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= MEMBER(T). {

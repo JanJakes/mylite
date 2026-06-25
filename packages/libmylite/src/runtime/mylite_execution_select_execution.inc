@@ -550,6 +550,30 @@ static bool map_json_extract_row_scalar_step_error(
         set_unsupported_error(database, "JSON_DEPTH() document shape is not supported");
         return true;
     }
+    if (strcmp(message, "Invalid data type for JSON data in JSON_STORAGE_SIZE()") == 0) {
+        set_invalid_json_data_type_error(database, "JSON_STORAGE_SIZE");
+        return true;
+    }
+    if (strcmp(message, "Invalid JSON text in JSON_STORAGE_SIZE()") == 0) {
+        set_invalid_json_function_text_error(database, 0U);
+        return true;
+    }
+    if (strcmp(message, "Unsupported JSON document in JSON_STORAGE_SIZE()") == 0) {
+        set_unsupported_error(database, "JSON_STORAGE_SIZE() document shape is not supported");
+        return true;
+    }
+    if (strcmp(message, "Invalid data type for JSON data in JSON_STORAGE_FREE()") == 0) {
+        set_invalid_json_data_type_error(database, "JSON_STORAGE_FREE");
+        return true;
+    }
+    if (strcmp(message, "Invalid JSON text in JSON_STORAGE_FREE()") == 0) {
+        set_invalid_json_function_text_error(database, 0U);
+        return true;
+    }
+    if (strcmp(message, "Unsupported JSON document in JSON_STORAGE_FREE()") == 0) {
+        set_unsupported_error(database, "JSON_STORAGE_FREE() document shape is not supported");
+        return true;
+    }
     if (strcmp(message, "Invalid data type for JSON data in JSON_KEYS()") == 0) {
         set_invalid_json_data_type_error(database, "JSON_KEYS");
         return true;
@@ -1921,6 +1945,8 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_MEMBER_OF:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_DEPTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_SIZE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_FREE:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_INTERVAL:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_INSTR:

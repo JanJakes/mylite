@@ -1402,6 +1402,19 @@ static int plan_row_scalar_json_depth_expression(
     enum column_reference_diagnostic_context column_diagnostic_context,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_json_storage_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    enum mylite_sql_ast_node_kind function_kind,
+    const char *function_name,
+    enum planned_row_scalar_expression_kind planned_kind,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_json_keys_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

@@ -237,6 +237,8 @@ static int bind_row_scalar_json_extract_document_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_DEPTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_SIZE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_FREE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_KEYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
@@ -389,6 +391,8 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_DEPTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_SIZE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_FREE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_KEYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:
@@ -484,6 +488,21 @@ static int bind_row_scalar_json_keys_expression_parameters(
 }
 
 static int bind_row_scalar_json_depth_expression_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_row_scalar_expression *expression,
+    int *parameter_index
+) {
+    if (expression == NULL || expression->arguments == NULL || expression->argument_count != 1U) {
+        return MYLITE_ERROR;
+    }
+    return bind_row_scalar_json_introspection_argument_parameters(
+        statement,
+        &expression->arguments[0],
+        parameter_index
+    );
+}
+
+static int bind_row_scalar_json_storage_expression_parameters(
     sqlite3_stmt *statement,
     const struct planned_row_scalar_expression *expression,
     int *parameter_index
@@ -674,6 +693,8 @@ static int bind_row_scalar_json_set_document_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_UNQUOTE_EXTRACT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_DEPTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_SIZE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_FREE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_KEYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_ARRAY:

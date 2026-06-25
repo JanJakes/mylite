@@ -130,6 +130,19 @@ expect_output \
 "JSON_DEPTH('{\"a\":{\"b\":[1]}}');" \
     "$DATABASE"
 
+storage_expected=$(cat <<EXPECTED
+NULL	5	5	13	14	5	NULL	0	0
+EXPECTED
+)
+expect_output \
+    "literal JSON storage values" \
+    "$storage_expected" \
+    "SELECT JSON_STORAGE_SIZE(NULL), JSON_STORAGE_SIZE('{}'), JSON_STORAGE_SIZE('[]'), "\
+"JSON_STORAGE_SIZE('{\"a\":1}'), JSON_STORAGE_SIZE('[1,2,3]'), "\
+"JSON_STORAGE_SIZE('\"abc\"'), JSON_STORAGE_FREE(NULL), JSON_STORAGE_FREE('{}'), "\
+"JSON_STORAGE_FREE(JSON_SET('{\"a\":1}', '$.a', 2));" \
+    "$DATABASE"
+
 pretty_expected=$(cat <<EXPECTED
 313233	7B0A20202261223A20322C0A20202262223A20310A7D	5B0A2020312C0A20207B0A202020202261223A205B0A202020202020747275652C0A20202020202066616C73652C0A2020202020206E756C6C2C0A2020202020202278220A202020205D0A20207D0A5D	7B7D	NULL
 EXPECTED
@@ -143,8 +156,8 @@ expect_output \
     "$DATABASE"
 
 table_expected=$(cat <<EXPECTED
-1	OBJECT	2	3	7B0A20202263223A20330A7D	ARRAY	2	2	NULL
-2	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
+1	OBJECT	2	3	43	0	13	0	ARRAY	2	2	11	0	23	0	NULL
+2	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL
 EXPECTED
 )
 expect_output \
@@ -155,22 +168,26 @@ expect_output \
 "(2, NULL, NULL); "\
 "UPDATE t SET j = '{\"a\":[10,true],\"b\":{\"c\":3}}' WHERE id = 1; "\
 "SELECT id, JSON_TYPE(j), JSON_LENGTH(j), JSON_DEPTH(j), "\
-"HEX(JSON_PRETTY(JSON_EXTRACT(j,'$.b'))), JSON_TYPE(JSON_EXTRACT(j,'$.a')), "\
-"JSON_LENGTH(JSON_EXTRACT(j,'$.a')), JSON_DEPTH(JSON_EXTRACT(j,'$.a')), "\
-"JSON_DEPTH(NULL) "\
+"JSON_STORAGE_SIZE(j), JSON_STORAGE_FREE(j), "\
+"JSON_STORAGE_SIZE(JSON_EXTRACT(j,'$.b')), JSON_STORAGE_FREE(JSON_EXTRACT(j,'$.b')), "\
+"JSON_TYPE(JSON_EXTRACT(j,'$.a')), JSON_LENGTH(JSON_EXTRACT(j,'$.a')), "\
+"JSON_DEPTH(JSON_EXTRACT(j,'$.a')), "\
+"JSON_STORAGE_SIZE(JSON_EXTRACT(j,'$.a')), JSON_STORAGE_FREE(JSON_EXTRACT(j,'$.a')), "\
+"JSON_STORAGE_SIZE(v), JSON_STORAGE_FREE(v), JSON_DEPTH(NULL) "\
 "FROM t ORDER BY id;" \
     "$DATABASE"
 
 labels_expected=$(cat <<EXPECTED
-jt	jl	jd	jp
-OBJECT	2	3	7B0A20202261223A20310A7D
+jt	jl	jd	jss	jsf	jp
+OBJECT	2	3	13	0	7B0A20202261223A20310A7D
 EXPECTED
 )
 expect_output_with_headers \
     "labels and aliases" \
     "$labels_expected" \
     "SELECT JSON_TYPE('{\"a\":1}') AS jt, JSON_LENGTH('{\"a\":1,\"b\":2}') AS jl "\
-" , JSON_DEPTH('[1,[2]]') AS jd, HEX(JSON_PRETTY('{\"a\":1}')) AS jp "\
+" , JSON_DEPTH('[1,[2]]') AS jd, JSON_STORAGE_SIZE('{\"a\":1}') AS jss, "\
+"JSON_STORAGE_FREE('{\"a\":1}') AS jsf, HEX(JSON_PRETTY('{\"a\":1}')) AS jp "\
 "FROM DUAL;" \
     "$DATABASE"
 
@@ -181,7 +198,8 @@ EXPECTED
 expect_output \
     "DO JSON introspection status" \
     "$do_expected" \
-    "DO JSON_TYPE('{\"a\":1}'), JSON_LENGTH('[1,2]'); "\
+    "DO JSON_TYPE('{\"a\":1}'), JSON_LENGTH('[1,2]'), "\
+"JSON_STORAGE_SIZE('{\"a\":1}'), JSON_STORAGE_FREE('{\"a\":1}'); "\
 "SELECT ROW_COUNT(), @@warning_count;" \
     "$DATABASE"
 
@@ -234,6 +252,38 @@ expect_error \
     "$DATABASE"
 
 expect_error \
+    "JSON_STORAGE_SIZE zero arguments" \
+    1582 \
+    "42000" \
+    "Incorrect parameter count" \
+    "SELECT JSON_STORAGE_SIZE();" \
+    "$DATABASE"
+
+expect_error \
+    "JSON_STORAGE_SIZE many arguments" \
+    1582 \
+    "42000" \
+    "Incorrect parameter count" \
+    "SELECT JSON_STORAGE_SIZE('{}', '$');" \
+    "$DATABASE"
+
+expect_error \
+    "JSON_STORAGE_FREE zero arguments" \
+    1582 \
+    "42000" \
+    "Incorrect parameter count" \
+    "SELECT JSON_STORAGE_FREE();" \
+    "$DATABASE"
+
+expect_error \
+    "JSON_STORAGE_FREE many arguments" \
+    1582 \
+    "42000" \
+    "Incorrect parameter count" \
+    "SELECT JSON_STORAGE_FREE('{}', '$');" \
+    "$DATABASE"
+
+expect_error \
     "JSON_PRETTY zero arguments" \
     1582 \
     "42000" \
@@ -274,6 +324,22 @@ expect_error \
     "$DATABASE"
 
 expect_error \
+    "JSON_STORAGE_SIZE non-json scalar" \
+    3146 \
+    "22032" \
+    "Invalid data type for JSON data" \
+    "SELECT JSON_STORAGE_SIZE(1);" \
+    "$DATABASE"
+
+expect_error \
+    "JSON_STORAGE_FREE non-json scalar" \
+    3146 \
+    "22032" \
+    "Invalid data type for JSON data" \
+    "SELECT JSON_STORAGE_FREE(1);" \
+    "$DATABASE"
+
+expect_error \
     "JSON_PRETTY non-json scalar" \
     3146 \
     "22032" \
@@ -303,6 +369,22 @@ expect_error \
     "22032" \
     "Invalid JSON text" \
     "SELECT JSON_DEPTH('bad');" \
+    "$DATABASE"
+
+expect_error \
+    "JSON_STORAGE_SIZE invalid text" \
+    3141 \
+    "22032" \
+    "Invalid JSON text" \
+    "SELECT JSON_STORAGE_SIZE('bad');" \
+    "$DATABASE"
+
+expect_error \
+    "JSON_STORAGE_FREE invalid text" \
+    3141 \
+    "22032" \
+    "Invalid JSON text" \
+    "SELECT JSON_STORAGE_FREE('bad');" \
     "$DATABASE"
 
 expect_error \
@@ -343,6 +425,22 @@ expect_error \
     "22032" \
     "Cannot create a JSON value from a string with CHARACTER SET 'binary'" \
     "SELECT JSON_DEPTH(CAST('{\"a\":1}' AS BINARY));" \
+    "$DATABASE"
+
+expect_error \
+    "JSON_STORAGE_SIZE binary input" \
+    3144 \
+    "22032" \
+    "Cannot create a JSON value from a string with CHARACTER SET 'binary'" \
+    "SELECT JSON_STORAGE_SIZE(CAST('{\"a\":1}' AS BINARY));" \
+    "$DATABASE"
+
+expect_error \
+    "JSON_STORAGE_FREE binary input" \
+    3144 \
+    "22032" \
+    "Cannot create a JSON value from a string with CHARACTER SET 'binary'" \
+    "SELECT JSON_STORAGE_FREE(CAST('{\"a\":1}' AS BINARY));" \
     "$DATABASE"
 
 expect_error \

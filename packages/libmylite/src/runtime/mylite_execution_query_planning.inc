@@ -640,6 +640,8 @@ static int row_scalar_collate_base_charset(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_TYPE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_LENGTH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_DEPTH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_SIZE:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_FREE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OVERLAPS:
@@ -3493,6 +3495,10 @@ static bool is_row_scalar_json_expression(const struct mylite_sql_ast_node *expr
     case MYLITE_SQL_AST_JSON_LENGTH_FUNCTION:
     case MYLITE_SQL_AST_JSON_DEPTH_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_DEPTH_FUNCTION:
+    case MYLITE_SQL_AST_JSON_STORAGE_SIZE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_STORAGE_SIZE_FUNCTION:
+    case MYLITE_SQL_AST_JSON_STORAGE_FREE_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_STORAGE_FREE_FUNCTION:
     case MYLITE_SQL_AST_JSON_KEYS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_KEYS_FUNCTION:
     case MYLITE_SQL_AST_JSON_TYPE_ARGUMENT_COUNT_ERROR:
@@ -3659,6 +3665,40 @@ static int plan_row_scalar_json_expression(
             table_columns,
             table_column_count,
             column_diagnostic_context,
+            out_expression
+        );
+    case MYLITE_SQL_AST_JSON_STORAGE_SIZE_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_STORAGE_SIZE");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_STORAGE_SIZE_FUNCTION:
+        return plan_row_scalar_json_storage_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            column_diagnostic_context,
+            MYLITE_SQL_AST_JSON_STORAGE_SIZE_FUNCTION,
+            "JSON_STORAGE_SIZE",
+            PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_SIZE,
+            out_expression
+        );
+    case MYLITE_SQL_AST_JSON_STORAGE_FREE_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_STORAGE_FREE");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_STORAGE_FREE_FUNCTION:
+        return plan_row_scalar_json_storage_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            column_diagnostic_context,
+            MYLITE_SQL_AST_JSON_STORAGE_FREE_FUNCTION,
+            "JSON_STORAGE_FREE",
+            PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_FREE,
             out_expression
         );
     case MYLITE_SQL_AST_JSON_KEYS_ARGUMENT_COUNT_ERROR:

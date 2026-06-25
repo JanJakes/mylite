@@ -1417,6 +1417,10 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_JSON_VALUE_FUNCTION ||
             current->kind == MYLITE_SQL_AST_JSON_LENGTH_FUNCTION ||
             current->kind == MYLITE_SQL_AST_JSON_LENGTH_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_JSON_STORAGE_SIZE_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_JSON_STORAGE_SIZE_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_JSON_STORAGE_FREE_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_JSON_STORAGE_FREE_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_JSON_KEYS_FUNCTION ||
             current->kind == MYLITE_SQL_AST_JSON_KEYS_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_JSON_TYPE_FUNCTION ||

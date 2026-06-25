@@ -311,6 +311,24 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_JSON_DEPTH_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "JSON_DEPTH");
         return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_STORAGE_SIZE_FUNCTION:
+        return mylite_execution_scalar_json_storage_size_function_value(
+            database,
+            expression,
+            out_cell
+        );
+    case MYLITE_SQL_AST_JSON_STORAGE_SIZE_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_STORAGE_SIZE");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_STORAGE_FREE_FUNCTION:
+        return mylite_execution_scalar_json_storage_free_function_value(
+            database,
+            expression,
+            out_cell
+        );
+    case MYLITE_SQL_AST_JSON_STORAGE_FREE_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_STORAGE_FREE");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_JSON_KEYS_FUNCTION:
         return mylite_execution_scalar_json_keys_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_JSON_KEYS_ARGUMENT_COUNT_ERROR:

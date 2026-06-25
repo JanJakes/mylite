@@ -4,11 +4,25 @@
 #include "mylite_json_internal.h"
 
 #include <inttypes.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+enum {
+    json_binary_literal_payload_size = 1,
+    json_binary_small_container_header_size = 4,
+    json_binary_array_entry_size = 3,
+    json_binary_object_entry_size = 7,
+    json_binary_inline_payload_limit = 2,
+    json_binary_int16_payload_size = 2,
+    json_binary_int32_payload_size = 4,
+    json_binary_int64_payload_size = 8,
+    json_binary_varint_payload_bits = 7,
+    json_binary_varint_single_byte_max = 0x7f,
+};
 
 static int mutate_json_document(
     const char *text,
@@ -38,6 +52,13 @@ static int emit_constructed_json(
     char **out_text,
     size_t *out_text_length
 );
+static uint64_t json_binary_root_storage_size(const struct json_value *value);
+static uint64_t json_binary_value_payload_size(const struct json_value *value);
+static uint64_t json_binary_inline_payload_size(const struct json_value *value);
+static bool json_binary_value_is_inlined(const struct json_value *value);
+static uint64_t json_binary_integer_payload_size(const struct json_value *value);
+static uint64_t json_binary_string_payload_size(size_t text_length);
+static uint64_t json_binary_varint_size(size_t value);
 
 int mylite_json_normalize(
     const char *text,
@@ -181,6 +202,43 @@ int mylite_json_depth(
     return rc;
 }
 
+int mylite_json_storage_size(
+    const char *text,
+    size_t text_length,
+    uint64_t *out_size,
+    struct mylite_json_normalize_result *out_result
+) {
+    struct json_parser parser = {
+        .text = text,
+        .length = text_length,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    struct json_value value = {0};
+    int rc = MYLITE_OK;
+
+    if (out_size == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_size = 0U;
+    *out_result = (struct mylite_json_normalize_result){
+        .status = MYLITE_JSON_NORMALIZE_INVALID,
+        .position = 0U,
+    };
+    if (text == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_json_internal_parse_document(&parser, &value);
+    *out_result = parser.result;
+    if (rc == MYLITE_OK) {
+        *out_size = json_binary_root_storage_size(&value);
+    }
+
+    mylite_json_internal_value_deinit(&value);
+    return rc;
+}
+
 int mylite_json_pretty(
     const char *text,
     size_t text_length,
@@ -227,6 +285,118 @@ int mylite_json_pretty(
     mylite_json_internal_value_deinit(&value);
     mylite_json_internal_writer_deinit(&writer);
     return rc;
+}
+
+static uint64_t json_binary_root_storage_size(const struct json_value *value) {
+    return json_binary_literal_payload_size + json_binary_value_payload_size(value);
+}
+
+static uint64_t json_binary_value_payload_size(const struct json_value *value) {
+    uint64_t size = 0U;
+
+    if (value == NULL) {
+        return 0U;
+    }
+    switch (value->kind) {
+    case JSON_VALUE_NULL:
+    case JSON_VALUE_BOOL:
+        return json_binary_literal_payload_size;
+    case JSON_VALUE_NUMBER:
+        return json_binary_integer_payload_size(value);
+    case JSON_VALUE_STRING:
+        return json_binary_string_payload_size(value->payload.text.length);
+    case JSON_VALUE_ARRAY:
+        size = json_binary_small_container_header_size +
+               (json_binary_array_entry_size * value->payload.array.count);
+        for (size_t index = 0U; index < value->payload.array.count; ++index) {
+            const struct json_value *child = &value->payload.array.values[index];
+
+            if (!json_binary_value_is_inlined(child)) {
+                size += json_binary_value_payload_size(child);
+            }
+        }
+        return size;
+    case JSON_VALUE_OBJECT:
+        size = json_binary_small_container_header_size +
+               (json_binary_object_entry_size * value->payload.object.count);
+        for (size_t index = 0U; index < value->payload.object.count; ++index) {
+            const struct json_member *member = &value->payload.object.members[index];
+
+            size += member->key_length;
+            if (!json_binary_value_is_inlined(member->value)) {
+                size += json_binary_value_payload_size(member->value);
+            }
+        }
+        return size;
+    }
+    return 0U;
+}
+
+static uint64_t json_binary_inline_payload_size(const struct json_value *value) {
+    if (value == NULL) {
+        return 0U;
+    }
+    switch (value->kind) {
+    case JSON_VALUE_NULL:
+    case JSON_VALUE_BOOL:
+        return json_binary_literal_payload_size;
+    case JSON_VALUE_NUMBER:
+        return json_binary_integer_payload_size(value);
+    case JSON_VALUE_STRING:
+    case JSON_VALUE_ARRAY:
+    case JSON_VALUE_OBJECT:
+        return 0U;
+    }
+    return 0U;
+}
+
+static bool json_binary_value_is_inlined(const struct json_value *value) {
+    if (value == NULL) {
+        return false;
+    }
+    switch (value->kind) {
+    case JSON_VALUE_NULL:
+    case JSON_VALUE_BOOL:
+    case JSON_VALUE_NUMBER:
+        return json_binary_inline_payload_size(value) <= json_binary_inline_payload_limit;
+    case JSON_VALUE_STRING:
+    case JSON_VALUE_ARRAY:
+    case JSON_VALUE_OBJECT:
+        return false;
+    }
+    return false;
+}
+
+static uint64_t json_binary_integer_payload_size(const struct json_value *value) {
+    int64_t integer = 0;
+
+    if (value == NULL || value->kind != JSON_VALUE_NUMBER) {
+        return 0U;
+    }
+    integer = value->payload.text.text == NULL
+                  ? 0
+                  : strtoll(value->payload.text.text, NULL, json_decimal_base);
+    if (integer >= INT16_MIN && integer <= INT16_MAX) {
+        return json_binary_int16_payload_size;
+    }
+    if (integer >= INT32_MIN && integer <= INT32_MAX) {
+        return json_binary_int32_payload_size;
+    }
+    return json_binary_int64_payload_size;
+}
+
+static uint64_t json_binary_string_payload_size(size_t text_length) {
+    return json_binary_varint_size(text_length) + text_length;
+}
+
+static uint64_t json_binary_varint_size(size_t value) {
+    uint64_t size = 1U;
+
+    while (value > json_binary_varint_single_byte_max) {
+        value >>= json_binary_varint_payload_bits;
+        ++size;
+    }
+    return size;
 }
 
 int mylite_json_length(

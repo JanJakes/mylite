@@ -793,6 +793,8 @@ static bool map_keyword_token(
         {"JSON_REMOVE", MYLITE_SQL_PARSE_JSON_REMOVE},
         {"JSON_REPLACE", MYLITE_SQL_PARSE_JSON_REPLACE},
         {"JSON_SET", MYLITE_SQL_PARSE_JSON_SET},
+        {"JSON_STORAGE_FREE", MYLITE_SQL_PARSE_JSON_STORAGE_FREE},
+        {"JSON_STORAGE_SIZE", MYLITE_SQL_PARSE_JSON_STORAGE_SIZE},
         {"JSON_TYPE", MYLITE_SQL_PARSE_JSON_TYPE},
         {"JSON_UNQUOTE", MYLITE_SQL_PARSE_JSON_UNQUOTE},
         {"JSON_VALUE", MYLITE_SQL_PARSE_JSON_VALUE},
@@ -1544,6 +1546,8 @@ static bool map_keyword_index(unsigned int keyword_index, int *out_parser_token)
         [894U] = MYLITE_SQL_PARSE_JSON_DEPTH,          /* JSON_DEPTH */
         [895U] = MYLITE_SQL_PARSE_JSON_PRETTY,         /* JSON_PRETTY */
         [896U] = MYLITE_SQL_PARSE_JSON_OVERLAPS,       /* JSON_OVERLAPS */
+        [897U] = MYLITE_SQL_PARSE_JSON_STORAGE_SIZE,   /* JSON_STORAGE_SIZE */
+        [898U] = MYLITE_SQL_PARSE_JSON_STORAGE_FREE,   /* JSON_STORAGE_FREE */
     };
     if (keyword_index < sizeof(keyword_parser_tokens) / sizeof(keyword_parser_tokens[0]) &&
         keyword_parser_tokens[keyword_index] != 0) {

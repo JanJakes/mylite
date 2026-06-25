@@ -17,6 +17,7 @@
 
 enum {
     mysql_error_invalid_json_text_in_function = 3141,
+    json_storage_error_message_capacity = 128,
 };
 
 struct json_search_sqlite_result {
@@ -137,6 +138,16 @@ static void json_depth_sqlite_callback(sqlite3_context *context, int argc, sqlit
 static void json_keys_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_length_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_pretty_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void json_storage_size_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+);
+static void json_storage_free_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+);
 static void json_quote_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_set_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_insert_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
@@ -145,6 +156,13 @@ static void json_remove_sqlite_callback(sqlite3_context *context, int argc, sqli
 static void json_type_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_unquote_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_valid_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void json_storage_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv,
+    const char *function_name,
+    bool report_free_space
+);
 static int collect_json_array_sql_values(
     sqlite3_context *context,
     int argc,
@@ -409,6 +427,34 @@ int mylite_sqlite_register_json_functions(sqlite3 *sqlite) {
                 SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
             .application_data = NULL,
             .scalar_callback = json_depth_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_json_storage_size",
+            .argument_count = 1,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = NULL,
+            .scalar_callback = json_storage_size_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_json_storage_free",
+            .argument_count = 1,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = NULL,
+            .scalar_callback = json_storage_free_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
             .value_callback = NULL,
@@ -1371,6 +1417,103 @@ static void json_depth_sqlite_callback(sqlite3_context *context, int argc, sqlit
         return;
     }
     sqlite3_result_int64(context, (sqlite3_int64)depth);
+}
+
+static void json_storage_size_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+) {
+    json_storage_sqlite_callback(context, argc, argv, "JSON_STORAGE_SIZE", false);
+}
+
+static void json_storage_free_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+) {
+    json_storage_sqlite_callback(context, argc, argv, "JSON_STORAGE_FREE", true);
+}
+
+static void json_storage_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv,
+    const char *function_name,
+    bool report_free_space
+) {
+    const unsigned char *document = NULL;
+    int document_length = 0;
+    uint64_t storage_size = 0U;
+    struct mylite_json_normalize_result normalize_result = {0};
+    int rc = MYLITE_OK;
+    char message[json_storage_error_message_capacity];
+    int written = 0;
+
+    if (context == NULL || argc != 1 || argv == NULL || argv[0] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite JSON storage callback", -1);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) != SQLITE_TEXT) {
+        written = snprintf(
+            message,
+            sizeof(message),
+            "Invalid data type for JSON data in %s()",
+            function_name
+        );
+        sqlite3_result_error(
+            context,
+            written < 0 || (size_t)written >= sizeof(message) ? "Invalid JSON data type" : message,
+            -1
+        );
+        return;
+    }
+
+    document = sqlite3_value_text(argv[0]);
+    document_length = sqlite3_value_bytes(argv[0]);
+    if (document == NULL || document_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+
+    rc = mylite_json_storage_size(
+        (const char *)document,
+        (size_t)document_length,
+        &storage_size,
+        &normalize_result
+    );
+    if (rc == MYLITE_NOMEM) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    if (rc != MYLITE_OK) {
+        if (normalize_result.status == MYLITE_JSON_NORMALIZE_UNSUPPORTED) {
+            written = snprintf(
+                message,
+                sizeof(message),
+                "Unsupported JSON document in %s()",
+                function_name
+            );
+        } else {
+            written =
+                snprintf(message, sizeof(message), "Invalid JSON text in %s()", function_name);
+        }
+        sqlite3_result_error(
+            context,
+            written < 0 || (size_t)written >= sizeof(message) ? "MyLite JSON storage failed"
+                                                              : message,
+            -1
+        );
+        return;
+    }
+    if (report_free_space) {
+        storage_size = 0U;
+    }
+    sqlite3_result_int64(context, (sqlite3_int64)storage_size);
 }
 
 static void json_keys_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {

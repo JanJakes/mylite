@@ -23,6 +23,10 @@ struct json_contains_path_scalar_buffers {
     bool force_null;
 };
 
+enum {
+    json_storage_error_message_capacity = 128,
+};
+
 static int evaluate_json_valid_scalar_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -143,6 +147,14 @@ static int json_quote_scalar_argument(
     size_t *out_text_length,
     bool *out_is_null
 );
+static int json_storage_scalar_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell,
+    enum mylite_sql_ast_node_kind function_kind,
+    const char *function_name,
+    bool report_free_space
+);
 static int finish_json_value_scalar_result(
     struct mylite_db *database,
     int rc,
@@ -158,6 +170,12 @@ static int finish_json_depth_scalar_result(
     struct mylite_db *database,
     int rc,
     const struct mylite_json_normalize_result *result
+);
+static int finish_json_storage_scalar_result(
+    struct mylite_db *database,
+    int rc,
+    const struct mylite_json_normalize_result *result,
+    const char *function_name
 );
 static int finish_json_keys_scalar_result(
     struct mylite_db *database,
@@ -1297,6 +1315,109 @@ int mylite_execution_scalar_json_depth_function_value(
     return rc;
 }
 
+int mylite_execution_scalar_json_storage_size_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    return json_storage_scalar_function_value(
+        database,
+        expression,
+        out_cell,
+        MYLITE_SQL_AST_JSON_STORAGE_SIZE_FUNCTION,
+        "JSON_STORAGE_SIZE",
+        false
+    );
+}
+
+int mylite_execution_scalar_json_storage_free_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    return json_storage_scalar_function_value(
+        database,
+        expression,
+        out_cell,
+        MYLITE_SQL_AST_JSON_STORAGE_FREE_FUNCTION,
+        "JSON_STORAGE_FREE",
+        true
+    );
+}
+
+static int json_storage_scalar_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell,
+    enum mylite_sql_ast_node_kind function_kind,
+    const char *function_name,
+    bool report_free_space
+) {
+    struct session_scalar_cell document_cell = {0};
+    char *owned_document = NULL;
+    const char *document = NULL;
+    size_t document_length = 0U;
+    uint64_t storage_size = 0U;
+    bool document_is_null = false;
+    struct mylite_json_normalize_result result = {0};
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != function_kind ||
+        mylite_sql_ast_node_child_count(expression) != 1U) {
+        mylite_execution_set_native_function_parameter_count_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+
+    rc = json_introspection_scalar_argument(
+        database,
+        mylite_execution_child_at(expression, 0U),
+        &document_cell,
+        function_name,
+        &owned_document,
+        &document,
+        &document_length,
+        &document_is_null
+    );
+    if (rc == MYLITE_OK && document_is_null) {
+        out_cell->value = NULL;
+    } else if (rc == MYLITE_OK) {
+        rc = mylite_json_storage_size(document, document_length, &storage_size, &result);
+        rc = finish_json_storage_scalar_result(database, rc, &result, function_name);
+        if (rc == MYLITE_OK) {
+            int written = 0;
+
+            if (report_free_space) {
+                storage_size = 0U;
+            }
+            written = snprintf(
+                out_cell->integer_text,
+                sizeof(out_cell->integer_text),
+                "%" PRIu64,
+                storage_size
+            );
+            if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+                mylite_execution_set_runtime_error(
+                    database,
+                    report_free_space ? "failed to format JSON_STORAGE_FREE() value"
+                                      : "failed to format JSON_STORAGE_SIZE() value"
+                );
+                rc = MYLITE_ERROR;
+            } else {
+                out_cell->value = out_cell->integer_text;
+            }
+        }
+    }
+
+    free(owned_document);
+    mylite_execution_session_scalar_cell_deinit(&document_cell);
+    return rc;
+}
+
 int mylite_execution_scalar_json_keys_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -2407,6 +2528,42 @@ static int finish_json_depth_scalar_result(
             database,
             "JSON_DEPTH() document shape is not supported"
         );
+        return MYLITE_ERROR;
+    }
+    mylite_execution_set_invalid_json_function_text_error(
+        database,
+        result == NULL ? 0U : result->position
+    );
+    return MYLITE_ERROR;
+}
+
+static int finish_json_storage_scalar_result(
+    struct mylite_db *database,
+    int rc,
+    const struct mylite_json_normalize_result *result,
+    const char *function_name
+) {
+    if (rc == MYLITE_OK) {
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_NOMEM) {
+        mylite_execution_set_nomem_error(database);
+        return rc;
+    }
+    if (result != NULL && result->status == MYLITE_JSON_NORMALIZE_UNSUPPORTED) {
+        char message[json_storage_error_message_capacity];
+        int written = snprintf(
+            message,
+            sizeof(message),
+            "%s() document shape is not supported",
+            function_name == NULL ? "JSON_STORAGE" : function_name
+        );
+
+        if (written < 0 || (size_t)written >= sizeof(message)) {
+            mylite_execution_set_runtime_error(database, "failed to format JSON storage error");
+            return MYLITE_ERROR;
+        }
+        mylite_execution_set_unsupported_error(database, message);
         return MYLITE_ERROR;
     }
     mylite_execution_set_invalid_json_function_text_error(

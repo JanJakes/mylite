@@ -460,6 +460,7 @@ static int evaluate_user_variable_assignment_value(
     case MYLITE_SQL_AST_DATE_ADD_FUNCTION:
     case MYLITE_SQL_AST_ADDTIME_FUNCTION:
     case MYLITE_SQL_AST_TIMESTAMP_FUNCTION:
+    case MYLITE_SQL_AST_GENERIC_FUNCTION:
         rc = session_scalar_value(database, unwrapped, out_cell);
         if (rc == MYLITE_OK) {
             *out_value_kind = infer_user_variable_value_kind(unwrapped, out_cell);

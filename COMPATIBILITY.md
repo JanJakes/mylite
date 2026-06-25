@@ -743,7 +743,7 @@ and [parser corpus JSON/statistical aggregate window surfaces](docs/specs/parser
 | `UPPER()` | ✅ | MySQL-runtime-verified for the documented baseline expression-context subset; broader type, argument, metadata, collation, or mode gaps remain in the linked detailed table. | [string functions](docs/compatibility/functions-string.md), [baseline SELECT row-scalar predicates](docs/specs/baseline-select-row-scalar-predicates/specs.md) |
 | `WEIGHT_STRING()` | ✅ | MySQL-runtime-verified for the documented baseline expression-context subset; broader type, argument, metadata, collation, or mode gaps remain in the linked detailed table. | [string functions](docs/compatibility/functions-string.md), [collations](docs/compatibility/collations.md), [baseline scalar period/time-zone/weight functions](docs/specs/baseline-scalar-period-timezone-weight-functions/specs.md) |
 
-### Compression, Digest, and Random Functions
+### Compression, Digest, Random, and Password Functions
 
 | Feature | Status | Notes | Full table |
 | --- | :-: | --- | --- |
@@ -754,6 +754,7 @@ and [parser corpus JSON/statistical aggregate window surfaces](docs/specs/parser
 | `SHA2()` | ✅ | MySQL-runtime-verified for the documented baseline expression-context subset; broader expression, length coercion, metadata, grouping, or binary/collation gaps remain in the linked detailed table. | [crypto and password functions](docs/compatibility/functions-crypto-password.md), [baseline digest functions](docs/specs/baseline-digest-functions/specs.md), [baseline binary/digest/compression UPDATE contexts](docs/specs/baseline-binary-digest-compression-update-contexts/specs.md) |
 | `UNCOMPRESS()` | ✅ | MySQL-runtime-verified for the documented baseline expression-context subset; broader expression, metadata, grouping, or binary/collation gaps remain in the linked detailed table. | [compression functions](docs/compatibility/functions-compression.md), [baseline compression and random byte functions](docs/specs/baseline-compression-random-functions/specs.md), [baseline binary/digest/compression UPDATE contexts](docs/specs/baseline-binary-digest-compression-update-contexts/specs.md) |
 | `UNCOMPRESSED_LENGTH()` | ✅ | MySQL-runtime-verified for the documented baseline expression-context subset; broader expression, metadata, grouping, or binary/collation gaps remain in the linked detailed table. | [compression functions](docs/compatibility/functions-compression.md), [baseline compression and random byte functions](docs/specs/baseline-compression-random-functions/specs.md), [baseline binary/digest/compression UPDATE contexts](docs/specs/baseline-binary-digest-compression-update-contexts/specs.md) |
+| `VALIDATE_PASSWORD_STRENGTH()` | ✅ | MySQL-runtime-verified component-absent baseline returns `0` for non-`NULL` inputs and `NULL` for `NULL`; installed-component policy scoring remains future work. | [crypto and password functions](docs/compatibility/functions-crypto-password.md), [baseline VALIDATE_PASSWORD_STRENGTH function](docs/specs/baseline-validate-password-strength-function/specs.md) |
 
 ### System Functions
 

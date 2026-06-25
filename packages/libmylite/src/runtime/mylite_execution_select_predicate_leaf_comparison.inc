@@ -2467,7 +2467,7 @@ static int plan_row_scalar_expression_comparison_predicate(
         node.row_scalar_expression
     );
     if (rc == MYLITE_OK && !node.row_scalar_compare_as_real &&
-        row_scalar_numeric_extra_expression_needs_real_sql_context(node.row_scalar_expression)) {
+        row_scalar_expression_needs_real_comparison_context(node.row_scalar_expression)) {
         node.row_scalar_compare_as_real = true;
     }
     if (rc == MYLITE_OK) {
@@ -2592,7 +2592,7 @@ static int plan_row_scalar_expression_between_predicate(
         );
     }
     if (rc == MYLITE_OK && !node.row_scalar_compare_as_real &&
-        row_scalar_numeric_extra_expression_needs_real_sql_context(node.row_scalar_expression)) {
+        row_scalar_expression_needs_real_comparison_context(node.row_scalar_expression)) {
         node.row_scalar_compare_as_real = true;
     }
     if (rc == MYLITE_OK && node.row_scalar_compare_as_real) {
@@ -3109,6 +3109,17 @@ static bool row_scalar_predicate_literal_prefers_blob(
     }
 
     return false;
+}
+
+static bool row_scalar_expression_needs_real_comparison_context(
+    const struct planned_row_scalar_expression *expression
+) {
+    if (row_scalar_numeric_extra_expression_needs_real_sql_context(expression)) {
+        return true;
+    }
+    return expression != NULL &&
+           expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION &&
+           expression->sys_function_kind == MYLITE_SYS_FUNCTION_VALIDATE_PASSWORD_STRENGTH;
 }
 
 static int plan_where_scalar_literal_expression(

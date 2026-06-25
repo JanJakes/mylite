@@ -155,6 +155,19 @@ static int populate_scalar_function_result_column_descriptor(
         enum mylite_sys_function_kind sys_function_kind = MYLITE_SYS_FUNCTION_NONE;
 
         if (generic_sys_function_kind(expression, &sys_function_kind)) {
+            if (sys_function_kind == MYLITE_SYS_FUNCTION_VALIDATE_PASSWORD_STRENGTH) {
+                populate_scalar_binary_numeric_result_column_descriptor(
+                    descriptor,
+                    (struct scalar_binary_numeric_result_column_shape){
+                        .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                        .display_length = mysql_validate_password_strength_display_length,
+                        .decimals = 0U,
+                        .extra_flags = 0U,
+                        .nullable = true,
+                    }
+                );
+                return MYLITE_OK;
+            }
             if (sys_function_kind == MYLITE_SYS_FUNCTION_VERSION_MAJOR ||
                 sys_function_kind == MYLITE_SYS_FUNCTION_VERSION_MINOR ||
                 sys_function_kind == MYLITE_SYS_FUNCTION_VERSION_PATCH ||

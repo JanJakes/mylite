@@ -1964,6 +1964,8 @@ static bool is_json_set_projection_expression(const struct mylite_sql_ast_node *
 }
 
 static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_node *expression) {
+    enum mylite_sys_function_kind sys_function_kind = MYLITE_SYS_FUNCTION_NONE;
+
     expression = unwrap_parenthesized_expression(expression);
 
     if (expression == NULL) {
@@ -1976,6 +1978,9 @@ static bool is_scalar_value_projection_expression(const struct mylite_sql_ast_no
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
+        return true;
+    }
+    if (generic_sys_function_kind(expression, &sys_function_kind)) {
         return true;
     }
     return is_scalar_function_expression(expression);
@@ -2957,6 +2962,7 @@ static bool scalar_arithmetic_attempt_node_is_admitted(
 static bool is_scalar_value_projection_attempt_operand(const struct mylite_sql_ast_node *expression
 ) {
     while (true) {
+        enum mylite_sys_function_kind sys_function_kind = MYLITE_SYS_FUNCTION_NONE;
         enum mylite_sql_ast_operator operator_kind = MYLITE_SQL_AST_OPERATOR_NONE;
 
         expression = unwrap_parenthesized_expression(expression);
@@ -2970,6 +2976,9 @@ static bool is_scalar_value_projection_attempt_operand(const struct mylite_sql_a
             return true;
         }
         if (expression->kind == MYLITE_SQL_AST_SYSTEM_VARIABLE) {
+            return true;
+        }
+        if (generic_sys_function_kind(expression, &sys_function_kind)) {
             return true;
         }
         if (is_scalar_function_expression(expression)) {

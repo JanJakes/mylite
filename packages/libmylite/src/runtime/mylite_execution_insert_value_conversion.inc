@@ -246,6 +246,7 @@ static bool dml_value_is_constant_scalar_expression(
     case MYLITE_SQL_AST_CONVERT_TZ_FUNCTION:
     case MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION:
     case MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION:
+    case MYLITE_SQL_AST_GENERIC_FUNCTION:
     case MYLITE_SQL_AST_SYSTEM_VARIABLE:
     case MYLITE_SQL_AST_USER_VARIABLE:
         return true;
@@ -309,6 +310,10 @@ static bool dml_scalar_expression_child_is_syntax_metadata(
 ) {
     if (value_node == NULL || child == NULL) {
         return false;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_GENERIC_FUNCTION &&
+        child->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        return true;
     }
     if (value_node->kind == MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION && child_index == 1U) {
         return true;

@@ -1260,7 +1260,7 @@ static bool placeholder_scan_token_is_retryable_row_scalar_context_function(
         "RPAD",    "REPEAT",         "SPACE",     "QUOTE",      "REVERSE",
         "SOUNDEX", "UNHEX",          "INET_ATON",  "INET_NTOA",  "EXPORT_SET",
         "MAKE_SET", "SUBSTRING_INDEX", "STRCMP",   "ROW_COUNT",  "FOUND_ROWS",
-        "LAST_INSERT_ID",
+        "LAST_INSERT_ID", "VALIDATE_PASSWORD_STRENGTH",
     };
 
     for (size_t name_index = 0U; name_index < sizeof(function_names) / sizeof(function_names[0]);
@@ -1613,6 +1613,7 @@ static bool placeholder_scan_token_is_retryable_update_assignment_row_scalar_fun
         "WEEKDAY",       "WEEKOFYEAR",
         "YEAR",          "YEARWEEK",
         "EXTRACT",
+        "VALIDATE_PASSWORD_STRENGTH",
     };
 
     for (size_t name_index = 0U; name_index < sizeof(function_names) / sizeof(function_names[0]);
@@ -3180,6 +3181,7 @@ static bool placeholder_scan_token_is_supported_row_scalar_value_function(
         "RAND",
         "EXPORT_SET",
         "MAKE_SET",
+        "VALIDATE_PASSWORD_STRENGTH",
     };
 
     if (placeholder_scan_token_is_supported_row_arithmetic_value_function(scan, index)) {

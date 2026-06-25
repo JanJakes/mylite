@@ -224,6 +224,10 @@
     COMMAND mylite_runtime_digest_functions_test
   )
   add_test(
+    NAME libmylite.runtime.validate_password_strength_function
+    COMMAND mylite_runtime_validate_password_strength_function_test
+  )
+  add_test(
     NAME libmylite.runtime.unhex_function
     COMMAND mylite_runtime_unhex_function_test
   )

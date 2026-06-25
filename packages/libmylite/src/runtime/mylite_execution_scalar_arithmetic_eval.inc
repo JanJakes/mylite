@@ -494,6 +494,7 @@ static int evaluate_scalar_arithmetic_operand(
     struct scalar_arithmetic_value *out_value
 ) {
     struct session_scalar_cell cell = {0};
+    enum mylite_sys_function_kind sys_function_kind = MYLITE_SYS_FUNCTION_NONE;
     int rc = MYLITE_OK;
 
     expression = unwrap_parenthesized_expression(expression);
@@ -527,6 +528,14 @@ static int evaluate_scalar_arithmetic_operand(
         if (rc == MYLITE_OK) {
             rc = parse_scalar_arithmetic_operand(database, &cell, out_value);
         }
+        return rc;
+    }
+    if (generic_sys_function_kind(expression, &sys_function_kind)) {
+        rc = generic_sys_function_value(database, expression, sys_function_kind, &cell);
+        if (rc == MYLITE_OK) {
+            rc = parse_scalar_arithmetic_operand(database, &cell, out_value);
+        }
+        session_scalar_cell_deinit(&cell);
         return rc;
     }
 

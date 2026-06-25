@@ -36,6 +36,7 @@ static int test_unhex_function(void);
 static int test_pi_function(void);
 static int test_rand_function(void);
 static int test_any_value_function(void);
+static int test_validate_password_strength_function(void);
 static int test_sqrt_function(void);
 static int test_angle_conversion_functions(void);
 static int test_inverse_trig_functions(void);
@@ -77,6 +78,7 @@ int main(void) {
     failures += test_pi_function();
     failures += test_rand_function();
     failures += test_any_value_function();
+    failures += test_validate_password_strength_function();
     failures += test_sqrt_function();
     failures += test_angle_conversion_functions();
     failures += test_inverse_trig_functions();
@@ -5425,6 +5427,158 @@ static int test_any_value_function(void) {
     mylite_sql_parse_result_deinit(&result);
     failures +=
         parser_test_parse_sql("SELECT ANY_VALUE(DISTINCT v) FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_validate_password_strength_function(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *function = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *expression_list = NULL;
+    const struct mylite_sql_ast_node *where_clause = NULL;
+    const struct mylite_sql_ast_node *predicate = NULL;
+    int failures = 0;
+
+    failures += parser_test_parse_sql(
+        "SELECT VALIDATE_PASSWORD_STRENGTH('abc'), validate_password_strength(NULL), "
+        "VaLiDaTe_PaSsWoRd_StReNgTh(col) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    function = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        function,
+        MYLITE_SQL_AST_GENERIC_FUNCTION,
+        "validate password strength generic function"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(function, 0U),
+        "VALIDATE_PASSWORD_STRENGTH",
+        "validate password strength uppercase name"
+    );
+    arguments = parser_test_child_at(function, 1U);
+    failures += parser_test_expect_node(
+        arguments,
+        MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST,
+        "validate password strength arguments"
+    );
+    failures += parser_test_expect_child_count(arguments, 1U, "validate password strength arity");
+
+    function = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+    failures += parser_test_expect_node(
+        function,
+        MYLITE_SQL_AST_GENERIC_FUNCTION,
+        "validate password strength lowercase generic function"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(function, 0U),
+        "validate_password_strength",
+        "validate password strength lowercase name"
+    );
+
+    function = parser_test_child_at(parser_test_child_at(select_list, 2U), 0U);
+    failures += parser_test_expect_node(
+        function,
+        MYLITE_SQL_AST_GENERIC_FUNCTION,
+        "validate password strength mixed-case generic function"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(function, 0U),
+        "VaLiDaTe_PaSsWoRd_StReNgTh",
+        "validate password strength mixed-case name"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT VALIDATE_PASSWORD_STRENGTH(), VALIDATE_PASSWORD_STRENGTH('a','b');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    function = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        function,
+        MYLITE_SQL_AST_GENERIC_FUNCTION,
+        "validate password strength zero-argument generic function"
+    );
+    failures += parser_test_expect_child_count(
+        function,
+        1U,
+        "validate password strength zero-argument child count"
+    );
+    function = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+    failures += parser_test_expect_node(
+        function,
+        MYLITE_SQL_AST_GENERIC_FUNCTION,
+        "validate password strength extra-argument generic function"
+    );
+    failures += parser_test_expect_child_count(
+        parser_test_child_at(function, 1U),
+        2U,
+        "validate password strength extra-argument parse count"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT id FROM vp WHERE VALIDATE_PASSWORD_STRENGTH(p) = 0;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    where_clause = parser_test_first_child_kind(select, MYLITE_SQL_AST_WHERE_CLAUSE);
+    predicate = parser_test_child_at(where_clause, 0U);
+    failures += parser_test_expect_node(
+        predicate,
+        MYLITE_SQL_AST_COMPARISON_PREDICATE,
+        "validate password strength where predicate"
+    );
+    failures += parser_test_expect_operator(
+        predicate,
+        MYLITE_SQL_AST_OPERATOR_EQUAL,
+        "validate password strength where operator"
+    );
+    function = parser_test_child_at(predicate, 0U);
+    failures += parser_test_expect_node(
+        function,
+        MYLITE_SQL_AST_GENERIC_FUNCTION,
+        "validate password strength where lhs"
+    );
+    failures += parser_test_expect_literal(
+        parser_test_child_at(predicate, 1U),
+        MYLITE_SQL_AST_LITERAL_INTEGER,
+        "validate password strength where rhs"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "DO VALIDATE_PASSWORD_STRENGTH('abc'), VALIDATE_PASSWORD_STRENGTH(NULL);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    expression_list = parser_test_child_at(statement, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_DO_STATEMENT,
+        "validate password strength do"
+    );
+    failures += parser_test_expect_child_count(
+        expression_list,
+        2U,
+        "validate password strength do expression count"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression_list, 0U),
+        MYLITE_SQL_AST_GENERIC_FUNCTION,
+        "validate password strength do expression"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

@@ -86,6 +86,14 @@ static const struct sys_function_descriptor sys_function_descriptors[] = {
         true,
         false,
     },
+    {
+        "VALIDATE_PASSWORD_STRENGTH",
+        "_mylite_validate_password_strength",
+        1U,
+        MYLITE_SYS_FUNCTION_VALIDATE_PASSWORD_STRENGTH,
+        true,
+        false,
+    },
     {"extract_schema_from_file_name",
      "_mylite_sys_extract_schema_from_file_name",
      1U,
@@ -412,6 +420,10 @@ static int sys_ps_thread_trx_info(
     const struct mylite_sys_function_argument *arguments,
     struct mylite_sys_function_result *out_result
 );
+static int sys_validate_password_strength(
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+);
 static size_t last_slash_before(const char *text, size_t end);
 static size_t last_dot_between(const char *text, size_t start, size_t end);
 static int copy_argument_text(const struct mylite_sys_function_argument *argument, char **out_text);
@@ -615,6 +627,8 @@ int mylite_sys_function_evaluate(
         return sys_ps_current_thread_id(database, out_result);
     case MYLITE_SYS_FUNCTION_NATIVE_PS_THREAD_ID:
         return sys_ps_thread_id_native(database, arguments, out_result);
+    case MYLITE_SYS_FUNCTION_VALIDATE_PASSWORD_STRENGTH:
+        return sys_validate_password_strength(arguments, out_result);
     case MYLITE_SYS_FUNCTION_EXTRACT_SCHEMA_FROM_FILE_NAME:
         return sys_extract_schema_from_file_name(arguments, out_result);
     case MYLITE_SYS_FUNCTION_EXTRACT_TABLE_FROM_FILE_NAME:
@@ -847,6 +861,19 @@ static int sys_extract_schema_from_file_name(
     previous_slash = last_slash_before(path, last_slash);
     start = previous_slash == SIZE_MAX ? 0U : previous_slash + 1U;
     return sys_function_copy_result(out_result, path + start, last_slash - start);
+}
+
+static int sys_validate_password_strength(
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+) {
+    if (arguments == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (arguments[0].is_null) {
+        return sys_function_null_result(out_result);
+    }
+    return sys_function_copy_result(out_result, "0", 1U);
 }
 
 static int sys_extract_table_from_file_name(

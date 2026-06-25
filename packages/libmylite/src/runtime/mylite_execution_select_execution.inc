@@ -311,6 +311,9 @@ static bool select_where_clause_contains_row_scalar_context_attempt(
             MYLITE_SQL_AST_OPERATOR_SOUNDS_LIKE) {
         return false;
     }
+    if (expression_contains_supported_row_scalar_system_function(predicate)) {
+        return true;
+    }
     return row_scalar_expression_contains_context_expression_attempt(predicate, false);
 }
 
@@ -2167,6 +2170,19 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
     case PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION:
+        if (expression->sys_function_kind == MYLITE_SYS_FUNCTION_VALIDATE_PASSWORD_STRENGTH) {
+            populate_scalar_binary_numeric_result_column_descriptor(
+                descriptor,
+                (struct scalar_binary_numeric_result_column_shape){
+                    .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                    .display_length = mysql_validate_password_strength_display_length,
+                    .decimals = 0U,
+                    .extra_flags = 0U,
+                    .nullable = true,
+                }
+            );
+            return MYLITE_OK;
+        }
         populate_scalar_connection_string_result_column_descriptor(
             database,
             descriptor,

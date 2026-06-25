@@ -423,6 +423,10 @@
     COMMAND mylite_runtime_show_variables_test
   )
   add_test(
+    NAME libmylite.runtime.show_variables_optional_absence
+    COMMAND mylite_runtime_show_variables_optional_absence_test
+  )
+  add_test(
     NAME libmylite.runtime.show_status
     COMMAND mylite_runtime_show_status_test
   )

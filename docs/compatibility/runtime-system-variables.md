@@ -10,6 +10,12 @@ for the fixed variables in the runtime registry defined by
 Variables outside that registry remain absent from `SHOW VARIABLES`, and
 Performance Schema variable tables remain unsupported.
 
+Variables marked as target-runtime optional absence are MySQL 8.4.9
+target-build-absent names verified by
+[baseline SHOW VARIABLES optional absence](../specs/baseline-show-variables-optional-absence/specs.md):
+`SHOW VARIABLES` returns no rows for default, session, local, and global
+scopes, and representative scalar reads return `1193 / HY000`.
+
 Persisted-variable server management forms such as `SET PERSIST`,
 `SET PERSIST_ONLY`, `SET @@PERSIST.name = value`, `SET @@PERSIST_ONLY.name =
 value`, and `RESET PERSIST` are accepted as embedded admin no-ops with warning
@@ -35,68 +41,68 @@ state through this fallback path.
 | `admin_ssl_key` | ❌ | Value, scope, SET, diagnostics |
 | `admin_tls_ciphersuites` | ❌ | Value, scope, SET, diagnostics |
 | `admin_tls_version` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_buffer_size` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_compression` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_connection_policy` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_current_session` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_database` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_disable` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_encryption` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_exclude_accounts` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_file` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_filter_id` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_flush` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_flush_interval_seconds` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_format` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_format_unix_timestamp` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_include_accounts` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_password_history_keep_days` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_policy` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_prune_seconds` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_read_buffer_size` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_rotate_on_size` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_statement_policy` | ❌ | Value, scope, SET, diagnostics |
-| `audit_log_strategy` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_kerberos_service_key_tab` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_kerberos_service_principal` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_sasl_auth_method_name` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_sasl_bind_base_dn` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_sasl_bind_root_dn` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_sasl_bind_root_pwd` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_sasl_ca_path` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_sasl_connect_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_sasl_group_search_attr` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_sasl_group_search_filter` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_sasl_init_pool_size` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_sasl_log_status` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_sasl_max_pool_size` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_sasl_referral` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_sasl_response_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_sasl_server_host` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_sasl_server_port` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_sasl_tls` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_sasl_user_search_attr` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_simple_auth_method_name` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_simple_bind_base_dn` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_simple_bind_root_dn` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_simple_bind_root_pwd` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_simple_ca_path` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_simple_connect_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_simple_group_search_attr` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_simple_group_search_filter` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_simple_init_pool_size` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_simple_log_status` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_simple_max_pool_size` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_simple_referral` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_simple_response_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_simple_server_host` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_simple_server_port` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_simple_tls` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_ldap_simple_user_search_attr` | ❌ | Value, scope, SET, diagnostics |
+| `audit_log_buffer_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_compression` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_connection_policy` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_current_session` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_database` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_disable` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_encryption` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_exclude_accounts` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_file` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_filter_id` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_flush` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_flush_interval_seconds` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_format` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_format_unix_timestamp` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_include_accounts` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_password_history_keep_days` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_policy` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_prune_seconds` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_read_buffer_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_rotate_on_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_statement_policy` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `audit_log_strategy` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_kerberos_service_key_tab` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_kerberos_service_principal` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_sasl_auth_method_name` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_sasl_bind_base_dn` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_sasl_bind_root_dn` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_sasl_bind_root_pwd` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_sasl_ca_path` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_sasl_connect_timeout` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_sasl_group_search_attr` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_sasl_group_search_filter` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_sasl_init_pool_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_sasl_log_status` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_sasl_max_pool_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_sasl_referral` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_sasl_response_timeout` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_sasl_server_host` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_sasl_server_port` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_sasl_tls` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_sasl_user_search_attr` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_simple_auth_method_name` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_simple_bind_base_dn` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_simple_bind_root_dn` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_simple_bind_root_pwd` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_simple_ca_path` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_simple_connect_timeout` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_simple_group_search_attr` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_simple_group_search_filter` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_simple_init_pool_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_simple_log_status` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_simple_max_pool_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_simple_referral` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_simple_response_timeout` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_simple_server_host` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_simple_server_port` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_simple_tls` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_ldap_simple_user_search_attr` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `authentication_policy` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_webauthn_rp_id` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_windows_log_level` | ❌ | Value, scope, SET, diagnostics |
-| `authentication_windows_use_principal_name` | ❌ | Value, scope, SET, diagnostics |
+| `authentication_webauthn_rp_id` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_windows_log_level` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `authentication_windows_use_principal_name` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `auto_generate_certs` | ❌ | Value, scope, SET, diagnostics |
 | `auto_increment_increment` | ✅ | Session/local/unscoped reads, fixed global reads, `SHOW VARIABLES`, session `SET`, clamp diagnostics, and descriptor-owned generated `AUTO_INCREMENT` allocation are MySQL-runtime verified for values `1..65535` when `auto_increment_offset <= auto_increment_increment`; no mutable global state, persisted/startup values, `SET_VAR`, replication behavior, concurrency lock-mode, or offset-greater-than-increment allocation |
 | `auto_increment_offset` | ✅ | Session/local/unscoped reads, fixed global reads, `SHOW VARIABLES`, session `SET`, clamp diagnostics, and descriptor-owned generated `AUTO_INCREMENT` allocation are MySQL-runtime verified for values `1..65535` when `auto_increment_offset <= auto_increment_increment`; no mutable global state, persisted/startup values, `SET_VAR`, replication behavior, concurrency lock-mode, or offset-greater-than-increment allocation |
@@ -145,27 +151,27 @@ state through this fallback path.
 | `character_set_system` | 🟡 | Limited read-only scalar `SELECT @@character_set_system` with no scope or `global`; returns MyLite's fixed identifier-system charset placeholder `utf8mb3`; no `session`/`local`, `SET`, mutable state, identifier conversion, string conversion, or protocol charset metadata |
 | `character_sets_dir` | ❌ | Value, scope, SET, diagnostics |
 | `check_proxy_users` | ❌ | Value, scope, SET, diagnostics |
-| `clone_autotune_concurrency` | ❌ | Value, scope, SET, diagnostics |
-| `clone_block_ddl` | ❌ | Value, scope, SET, diagnostics |
-| `clone_buffer_size` | ❌ | Value, scope, SET, diagnostics |
-| `clone_ddl_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `clone_delay_after_data_drop` | ❌ | Value, scope, SET, diagnostics |
-| `clone_donor_timeout_after_network_failure` | ❌ | Value, scope, SET, diagnostics |
-| `clone_enable_compression` | ❌ | Value, scope, SET, diagnostics |
-| `clone_max_concurrency` | ❌ | Value, scope, SET, diagnostics |
-| `clone_max_data_bandwidth` | ❌ | Value, scope, SET, diagnostics |
-| `clone_max_network_bandwidth` | ❌ | Value, scope, SET, diagnostics |
-| `clone_ssl_ca` | ❌ | Value, scope, SET, diagnostics |
-| `clone_ssl_cert` | ❌ | Value, scope, SET, diagnostics |
-| `clone_ssl_key` | ❌ | Value, scope, SET, diagnostics |
-| `clone_valid_donor_list` | ❌ | Value, scope, SET, diagnostics |
+| `clone_autotune_concurrency` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `clone_block_ddl` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `clone_buffer_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `clone_ddl_timeout` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `clone_delay_after_data_drop` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `clone_donor_timeout_after_network_failure` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `clone_enable_compression` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `clone_max_concurrency` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `clone_max_data_bandwidth` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `clone_max_network_bandwidth` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `clone_ssl_ca` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `clone_ssl_cert` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `clone_ssl_key` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `clone_valid_donor_list` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `collation_connection` | 🟡 | Limited scalar `SELECT @@collation_connection` with no scope, `session`, `local`, or `global`; returns the current session connection collation readback, supports admitted `SET NAMES ... COLLATE ...` collations for `utf8mb4`, `utf8mb3` aliases, focused WordPress legacy defaults, and `binary`, supports atomic tail assignments after connection charset statements, and resets to the charset default for `SET CHARACTER SET`; no mutable collation coercibility, string comparison semantics, or protocol collation metadata |
 | `collation_database` | 🟡 | Limited read-only scalar `SELECT @@collation_database` with no scope, `session`, `local`, or `global`; session/local reads return the selected MyLite schema descriptor default, fixed server fallback default, or synthetic `information_schema` value, while global reads return the fixed server default; no `SET`, string comparison semantics, conversion, or protocol collation metadata |
 | `collation_server` | 🟡 | Limited read-only scalar `SELECT @@collation_server` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4_0900_ai_ci` embedded server default; no `SET`, startup options, mutable global state, database defaults, string comparison semantics, or protocol collation metadata |
 | `completion_type` | ❌ | Value, scope, SET, diagnostics |
-| `component_masking.dictionaries_flush_interval_seconds` | ❌ | Value, scope, SET, diagnostics |
-| `component_masking.masking_database` | ❌ | Value, scope, SET, diagnostics |
-| `component_scheduler.enabled` | ❌ | Value, scope, SET, diagnostics |
+| `component_masking.dictionaries_flush_interval_seconds` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `component_masking.masking_database` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `component_scheduler.enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `concurrent_insert` | ❌ | Value, scope, SET, diagnostics |
 | `connect_timeout` | ❌ | Value, scope, SET, diagnostics |
 | `connection_control_failed_connections_threshold` | ❌ | Value, scope, SET, diagnostics |
@@ -177,8 +183,8 @@ state through this fallback path.
 | `create_admin_listener_thread` | ❌ | Value, scope, SET, diagnostics |
 | `cte_max_recursion_depth` | ❌ | Value, scope, SET, diagnostics |
 | `datadir` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `/var/lib/mysql/`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No MySQL data-directory layout, startup option handling, path probing, or file placement behavior |
-| `debug` | ❌ | Value, scope, SET, diagnostics |
-| `debug_sync` | ❌ | Value, scope, SET, diagnostics |
+| `debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `debug_sync` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `default_collation_for_utf8mb4` | ❌ | Value, scope, SET, diagnostics |
 | `default_password_lifetime` | ❌ | Value, scope, SET, diagnostics |
 | `default_storage_engine` | 🟡 | Limited read-only scalar `SELECT @@default_storage_engine` with no scope, `session`, `local`, or `global`, plus `SHOW VARIABLES` rows; returns MyLite's fixed embedded permanent-table default `InnoDB`; current unavailable-engine substitution is controlled only by `@@sql_mode` during explicit `CREATE TABLE` / `CREATE TEMPORARY TABLE` `ENGINE` validation. No `SET`, mutable global/session state, alternate engines, plugins |
@@ -192,11 +198,11 @@ state through this fallback path.
 | `disabled_storage_engines` | ❌ | Value, scope, SET, diagnostics |
 | `disconnect_on_expired_password` | ❌ | Value, scope, SET, diagnostics |
 | `div_precision_increment` | ❌ | Value, scope, SET, diagnostics |
-| `dragnet.log_error_filter_rules` | ❌ | Value, scope, SET, diagnostics |
+| `dragnet.log_error_filter_rules` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `end_markers_in_json` | ❌ | Value, scope, SET, diagnostics |
 | `enforce_gtid_consistency` | ❌ | Value, scope, SET, diagnostics |
-| `enterprise_encryption.maximum_rsa_key_size` | ❌ | Value, scope, SET, diagnostics |
-| `enterprise_encryption.rsa_support_legacy_padding` | ❌ | Value, scope, SET, diagnostics |
+| `enterprise_encryption.maximum_rsa_key_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `enterprise_encryption.rsa_support_legacy_padding` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `eq_range_index_dive_limit` | ❌ | Value, scope, SET, diagnostics |
 | `error_count` | ✅ | Read-only session/local/unscoped scalar reads and simple expression reads over the previous diagnostics snapshot are MySQL-runtime verified, including retained error rows, nondiagnostic `SELECT` clearing, and current `max_error_count=0` parse-error snapshot behavior; global scope and `SET` are rejected as in MySQL, with no diagnostics stacks or broader stored-program diagnostics |
 | `event_scheduler` | ❌ | Value, scope, SET, diagnostics |
@@ -218,67 +224,67 @@ state through this fallback path.
 | `global_connection_memory_limit` | ❌ | Value, scope, SET, diagnostics |
 | `global_connection_memory_tracking` | ❌ | Value, scope, SET, diagnostics |
 | `group_concat_max_len` | ✅ | Session/local/unscoped scalar reads, fixed global reads, `SHOW VARIABLES`, and handle-local session `SET` forms are MySQL-runtime verified, including `DEFAULT`, integer/user-variable assignment, minimum clamp warning `1292`, unsupported-value diagnostics, byte-capped output, UTF-8-safe truncation, and warning `1260` for supported `GROUP_CONCAT()` forms. No mutable global state, startup/persisted values, `SET_VAR`, Performance Schema variable tables, binary metadata threshold behavior, or broader aggregate syntax |
-| `group_replication_advertise_recovery_endpoints` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_allow_local_lower_version_join` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_auto_increment_increment` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_autorejoin_tries` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_bootstrap_group` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_clone_threshold` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_communication_debug_options` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_communication_max_message_size` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_communication_stack` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_components_stop_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_compression_threshold` | ❌ | Value, scope, SET, diagnostics |
+| `group_replication_advertise_recovery_endpoints` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_allow_local_lower_version_join` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_auto_increment_increment` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_autorejoin_tries` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_bootstrap_group` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_clone_threshold` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_communication_debug_options` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_communication_max_message_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_communication_stack` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_components_stop_timeout` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_compression_threshold` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `group_replication_consistency` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_enforce_update_everywhere_checks` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_exit_state_action` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_flow_control_applier_threshold` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_flow_control_certifier_threshold` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_flow_control_hold_percent` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_flow_control_max_quota` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_flow_control_member_quota_percent` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_flow_control_min_quota` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_flow_control_min_recovery_quota` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_flow_control_mode` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_flow_control_period` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_flow_control_release_percent` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_force_members` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_group_name` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_group_seeds` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_gtid_assignment_block_size` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_ip_allowlist` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_local_address` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_member_expel_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_member_weight` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_message_cache_size` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_paxos_single_leader` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_poll_spin_loops` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_preemptive_garbage_collection` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_preemptive_garbage_collection_rows_threshold` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_recovery_compression_algorithms` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_recovery_get_public_key` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_recovery_public_key_path` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_recovery_reconnect_interval` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_recovery_retry_count` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_recovery_ssl_ca` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_recovery_ssl_capath` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_recovery_ssl_cert` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_recovery_ssl_cipher` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_recovery_ssl_crl` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_recovery_ssl_crlpath` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_recovery_ssl_key` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_recovery_ssl_verify_server_cert` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_recovery_tls_ciphersuites` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_recovery_tls_version` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_recovery_use_ssl` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_recovery_zstd_compression_level` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_single_primary_mode` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_ssl_mode` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_start_on_boot` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_tls_source` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_transaction_size_limit` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_unreachable_majority_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `group_replication_view_change_uuid` | ❌ | Value, scope, SET, diagnostics |
+| `group_replication_enforce_update_everywhere_checks` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_exit_state_action` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_flow_control_applier_threshold` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_flow_control_certifier_threshold` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_flow_control_hold_percent` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_flow_control_max_quota` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_flow_control_member_quota_percent` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_flow_control_min_quota` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_flow_control_min_recovery_quota` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_flow_control_mode` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_flow_control_period` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_flow_control_release_percent` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_force_members` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_group_name` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_group_seeds` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_gtid_assignment_block_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_ip_allowlist` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_local_address` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_member_expel_timeout` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_member_weight` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_message_cache_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_paxos_single_leader` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_poll_spin_loops` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_preemptive_garbage_collection` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_preemptive_garbage_collection_rows_threshold` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_recovery_compression_algorithms` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_recovery_get_public_key` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_recovery_public_key_path` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_recovery_reconnect_interval` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_recovery_retry_count` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_recovery_ssl_ca` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_recovery_ssl_capath` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_recovery_ssl_cert` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_recovery_ssl_cipher` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_recovery_ssl_crl` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_recovery_ssl_crlpath` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_recovery_ssl_key` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_recovery_ssl_verify_server_cert` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_recovery_tls_ciphersuites` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_recovery_tls_version` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_recovery_use_ssl` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_recovery_zstd_compression_level` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_single_primary_mode` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_ssl_mode` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_start_on_boot` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_tls_source` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_transaction_size_limit` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_unreachable_majority_timeout` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `group_replication_view_change_uuid` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `gtid_executed` | 🟡 | Limited empty-string scalar placeholder for default/global reads and `SHOW VARIABLES`; session/local scalar reads return MySQL-style global-variable diagnostics; no GTID set tracking, replication, privileges, or mutable state |
 | `gtid_executed_compression_period` | ❌ | Value, scope, SET, diagnostics |
 | `gtid_mode` | 🟡 | Limited fixed `OFF` scalar placeholder for default/global reads and `SHOW VARIABLES`; session/local scalar reads return MySQL-style global-variable diagnostics; no GTID enforcement, mode changes, replication, privileges, or mutable state |
@@ -310,9 +316,9 @@ state through this fallback path.
 | `innodb_adaptive_max_sleep_delay` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_autoextend_increment` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_autoinc_lock_mode` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_background_drop_list_empty` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_background_drop_list_empty` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_buffer_pool_chunk_size` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_buffer_pool_debug` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_buffer_pool_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_buffer_pool_dump_at_shutdown` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_buffer_pool_dump_now` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_buffer_pool_dump_pct` | ❌ | Value, scope, SET, diagnostics |
@@ -325,12 +331,12 @@ state through this fallback path.
 | `innodb_buffer_pool_size` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_change_buffer_max_size` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_change_buffering` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_change_buffering_debug` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_checkpoint_disabled` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_change_buffering_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `innodb_checkpoint_disabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_checksum_algorithm` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_cmp_per_index_enabled` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_commit_concurrency` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_compress_debug` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_compress_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_compression_failure_threshold_pct` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_compression_level` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_compression_pad_pct_max` | ❌ | Value, scope, SET, diagnostics |
@@ -338,7 +344,7 @@ state through this fallback path.
 | `innodb_data_file_path` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_data_home_dir` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_ddl_buffer_size` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_ddl_log_crash_reset_debug` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_ddl_log_crash_reset_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_ddl_threads` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_deadlock_detect` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_dedicated_server` | ❌ | Value, scope, SET, diagnostics |
@@ -352,7 +358,7 @@ state through this fallback path.
 | `innodb_doublewrite_pages` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_extend_and_initialize` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_fast_shutdown` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_fil_make_page_dirty_debug` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_fil_make_page_dirty_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_file_per_table` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_fill_factor` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_flush_log_at_timeout` | ❌ | Value, scope, SET, diagnostics |
@@ -379,11 +385,11 @@ state through this fallback path.
 | `innodb_idle_flush_pct` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_io_capacity` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_io_capacity_max` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_limit_optimistic_insert_debug` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_limit_optimistic_insert_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_lock_wait_timeout` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_log_buffer_size` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_log_checkpoint_fuzzy_now` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_log_checkpoint_now` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_log_checkpoint_fuzzy_now` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `innodb_log_checkpoint_now` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_log_checksums` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_log_compressed_pages` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_log_file_size` | ❌ | Value, scope, SET, diagnostics |
@@ -400,12 +406,12 @@ state through this fallback path.
 | `innodb_max_purge_lag` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_max_purge_lag_delay` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_max_undo_log_size` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_merge_threshold_set_all_debug` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_merge_threshold_set_all_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_monitor_disable` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_monitor_enable` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_monitor_reset` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_monitor_reset_all` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_numa_interleave` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_numa_interleave` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_old_blocks_pct` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_old_blocks_time` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_online_alter_log_max_size` | ❌ | Value, scope, SET, diagnostics |
@@ -429,7 +435,7 @@ state through this fallback path.
 | `innodb_replication_delay` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_rollback_on_timeout` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_rollback_segments` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_saved_page_number_debug` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_saved_page_number_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_segment_reserve_factor` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_sort_buffer_size` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_spin_wait_delay` | ❌ | Value, scope, SET, diagnostics |
@@ -445,7 +451,7 @@ state through this fallback path.
 | `innodb_status_output_locks` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_strict_mode` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_sync_array_size` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_sync_debug` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_sync_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_sync_spin_loops` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_table_locks` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_temp_data_file_path` | ❌ | Value, scope, SET, diagnostics |
@@ -453,8 +459,8 @@ state through this fallback path.
 | `innodb_thread_concurrency` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_thread_sleep_delay` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_tmpdir` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_trx_purge_view_update_only_debug` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_trx_rseg_n_slots_debug` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_trx_purge_view_update_only_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `innodb_trx_rseg_n_slots_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_undo_directory` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_undo_log_encrypt` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_undo_log_truncate` | ❌ | Value, scope, SET, diagnostics |
@@ -473,24 +479,24 @@ state through this fallback path.
 | `key_cache_age_threshold` | ❌ | Value, scope, SET, diagnostics |
 | `key_cache_block_size` | ❌ | Value, scope, SET, diagnostics |
 | `key_cache_division_limit` | ❌ | Value, scope, SET, diagnostics |
-| `keyring_aws_cmk_id` | ❌ | Value, scope, SET, diagnostics |
-| `keyring_aws_conf_file` | ❌ | Value, scope, SET, diagnostics |
-| `keyring_aws_data_file` | ❌ | Value, scope, SET, diagnostics |
-| `keyring_aws_region` | ❌ | Value, scope, SET, diagnostics |
-| `keyring_hashicorp_auth_path` | ❌ | Value, scope, SET, diagnostics |
-| `keyring_hashicorp_ca_path` | ❌ | Value, scope, SET, diagnostics |
-| `keyring_hashicorp_caching` | ❌ | Value, scope, SET, diagnostics |
-| `keyring_hashicorp_commit_auth_path` | ❌ | Value, scope, SET, diagnostics |
-| `keyring_hashicorp_commit_ca_path` | ❌ | Value, scope, SET, diagnostics |
-| `keyring_hashicorp_commit_caching` | ❌ | Value, scope, SET, diagnostics |
-| `keyring_hashicorp_commit_role_id` | ❌ | Value, scope, SET, diagnostics |
-| `keyring_hashicorp_commit_server_url` | ❌ | Value, scope, SET, diagnostics |
-| `keyring_hashicorp_commit_store_path` | ❌ | Value, scope, SET, diagnostics |
-| `keyring_hashicorp_role_id` | ❌ | Value, scope, SET, diagnostics |
-| `keyring_hashicorp_secret_id` | ❌ | Value, scope, SET, diagnostics |
-| `keyring_hashicorp_server_url` | ❌ | Value, scope, SET, diagnostics |
-| `keyring_hashicorp_store_path` | ❌ | Value, scope, SET, diagnostics |
-| `keyring_okv_conf_dir` | ❌ | Value, scope, SET, diagnostics |
+| `keyring_aws_cmk_id` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `keyring_aws_conf_file` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `keyring_aws_data_file` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `keyring_aws_region` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `keyring_hashicorp_auth_path` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `keyring_hashicorp_ca_path` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `keyring_hashicorp_caching` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `keyring_hashicorp_commit_auth_path` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `keyring_hashicorp_commit_ca_path` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `keyring_hashicorp_commit_caching` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `keyring_hashicorp_commit_role_id` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `keyring_hashicorp_commit_server_url` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `keyring_hashicorp_commit_store_path` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `keyring_hashicorp_role_id` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `keyring_hashicorp_secret_id` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `keyring_hashicorp_server_url` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `keyring_hashicorp_store_path` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `keyring_okv_conf_dir` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `keyring_operations` | ❌ | Value, scope, SET, diagnostics |
 | `large_files_support` | ❌ | Value, scope, SET, diagnostics |
 | `large_page_size` | ❌ | Value, scope, SET, diagnostics |
@@ -501,19 +507,19 @@ state through this fallback path.
 | `lc_time_names` | ❌ | Value, scope, SET, diagnostics |
 | `license` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` compatibility placeholder `GPL`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. The placeholder is not a project license notice; no server-build license discovery or startup option behavior |
 | `local_infile` | ❌ | Value, scope, SET, diagnostics |
-| `lock_order` | ❌ | Value, scope, SET, diagnostics |
-| `lock_order_debug_loop` | ❌ | Value, scope, SET, diagnostics |
-| `lock_order_debug_missing_arc` | ❌ | Value, scope, SET, diagnostics |
-| `lock_order_debug_missing_key` | ❌ | Value, scope, SET, diagnostics |
-| `lock_order_debug_missing_unlock` | ❌ | Value, scope, SET, diagnostics |
-| `lock_order_dependencies` | ❌ | Value, scope, SET, diagnostics |
-| `lock_order_extra_dependencies` | ❌ | Value, scope, SET, diagnostics |
-| `lock_order_output_directory` | ❌ | Value, scope, SET, diagnostics |
-| `lock_order_print_txt` | ❌ | Value, scope, SET, diagnostics |
-| `lock_order_trace_loop` | ❌ | Value, scope, SET, diagnostics |
-| `lock_order_trace_missing_arc` | ❌ | Value, scope, SET, diagnostics |
-| `lock_order_trace_missing_key` | ❌ | Value, scope, SET, diagnostics |
-| `lock_order_trace_missing_unlock` | ❌ | Value, scope, SET, diagnostics |
+| `lock_order` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `lock_order_debug_loop` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `lock_order_debug_missing_arc` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `lock_order_debug_missing_key` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `lock_order_debug_missing_unlock` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `lock_order_dependencies` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `lock_order_extra_dependencies` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `lock_order_output_directory` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `lock_order_print_txt` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `lock_order_trace_loop` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `lock_order_trace_missing_arc` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `lock_order_trace_missing_key` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `lock_order_trace_missing_unlock` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `lock_wait_timeout` | ❌ | Value, scope, SET, diagnostics |
 | `locked_in_memory` | ❌ | Value, scope, SET, diagnostics |
 | `log_bin` | 🟡 | Limited fixed global scalar value `1`; `SHOW VARIABLES` displays `ON`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; assignment returns MySQL-style read-only diagnostics; no binary log files, GTID recovery, replication side effects, startup option handling, or mutable state |
@@ -564,7 +570,7 @@ state through this fallback path.
 | `max_sp_recursion_depth` | ❌ | Value, scope, SET, diagnostics |
 | `max_user_connections` | ❌ | Value, scope, SET, diagnostics |
 | `max_write_lock_count` | ❌ | Value, scope, SET, diagnostics |
-| `mecab_rc_file` | ❌ | Value, scope, SET, diagnostics |
+| `mecab_rc_file` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `min_examined_row_limit` | ❌ | Value, scope, SET, diagnostics |
 | `myisam_data_pointer_size` | ❌ | Value, scope, SET, diagnostics |
 | `myisam_max_sort_file_size` | ❌ | Value, scope, SET, diagnostics |
@@ -573,10 +579,10 @@ state through this fallback path.
 | `myisam_sort_buffer_size` | ❌ | Value, scope, SET, diagnostics |
 | `myisam_stats_method` | ❌ | Value, scope, SET, diagnostics |
 | `myisam_use_mmap` | ❌ | Value, scope, SET, diagnostics |
-| `mysql_firewall_database` | ❌ | Value, scope, SET, diagnostics |
-| `mysql_firewall_mode` | ❌ | Value, scope, SET, diagnostics |
-| `mysql_firewall_reload_interval_seconds` | ❌ | Value, scope, SET, diagnostics |
-| `mysql_firewall_trace` | ❌ | Value, scope, SET, diagnostics |
+| `mysql_firewall_database` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `mysql_firewall_mode` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `mysql_firewall_reload_interval_seconds` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `mysql_firewall_trace` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `mysql_native_password_proxy_users` | ❌ | Value, scope, SET, diagnostics |
 | `mysqlx_bind_address` | ❌ | Value, scope, SET, diagnostics |
 | `mysqlx_compression_algorithms` | ❌ | Value, scope, SET, diagnostics |
@@ -607,86 +613,86 @@ state through this fallback path.
 | `mysqlx_write_timeout` | ❌ | Value, scope, SET, diagnostics |
 | `mysqlx_zstd_default_compression_level` | ❌ | Value, scope, SET, diagnostics |
 | `mysqlx_zstd_max_client_compression_level` | ❌ | Value, scope, SET, diagnostics |
-| `named_pipe` | ❌ | Value, scope, SET, diagnostics |
-| `named_pipe_full_access_group` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_allow_copying_alter_table` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_applier_allow_skip_epoch` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_autoincrement_prefetch_sz` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_batch_size` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_blob_read_batch_bytes` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_blob_write_batch_bytes` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_clear_apply_status` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_cluster_connection_pool` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_cluster_connection_pool_nodeids` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_conflict_role` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_data_node_neighbour` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_dbg_check_shares` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_default_column_format` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_deferred_constraints` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_distribution` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_eventbuffer_free_percent` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_eventbuffer_max_alloc` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_extra_logging` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_force_send` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_fully_replicated` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_index_stat_enable` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_index_stat_option` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_join_pushdown` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_log_apply_status` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_log_bin` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_log_binlog_index` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_log_cache_size` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_log_empty_epochs` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_log_empty_update` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_log_exclusive_reads` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_log_fail_terminate` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_log_orig` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_log_transaction_compression` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_log_transaction_compression_level_zstd` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_log_transaction_dependency` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_log_transaction_id` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_log_update_as_write` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_log_update_minimal` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_log_updated_only` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_metadata_check` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_metadata_check_interval` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_metadata_sync` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_mgm_tls` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_optimization_delay` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_optimized_node_selection` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_read_backup` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_recv_thread_activation_threshold` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_recv_thread_cpu_mask` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_replica_batch_size` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_replica_blob_write_batch_bytes` | ❌ | Value, scope, SET, diagnostics |
-| `Ndb_replica_max_replicated_epoch` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_report_thresh_binlog_epoch_slip` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_report_thresh_binlog_mem_usage` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_row_checksum` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_schema_dist_lock_wait_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_schema_dist_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_schema_dist_upgrade_allowed` | ❌ | Value, scope, SET, diagnostics |
-| `Ndb_schema_participant_count` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_show_foreign_key_mock_tables` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_slave_conflict_role` | ❌ | Value, scope, SET, diagnostics |
-| `Ndb_system_name` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_table_no_logging` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_table_temporary` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_tls_search_path` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_use_copying_alter_table` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_use_exact_count` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_use_transactions` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_version` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_version_string` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_wait_connected` | ❌ | Value, scope, SET, diagnostics |
-| `ndb_wait_setup` | ❌ | Value, scope, SET, diagnostics |
-| `ndbinfo_database` | ❌ | Value, scope, SET, diagnostics |
-| `ndbinfo_max_bytes` | ❌ | Value, scope, SET, diagnostics |
-| `ndbinfo_max_rows` | ❌ | Value, scope, SET, diagnostics |
-| `ndbinfo_offline` | ❌ | Value, scope, SET, diagnostics |
-| `ndbinfo_show_hidden` | ❌ | Value, scope, SET, diagnostics |
-| `ndbinfo_table_prefix` | ❌ | Value, scope, SET, diagnostics |
-| `ndbinfo_version` | ❌ | Value, scope, SET, diagnostics |
+| `named_pipe` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `named_pipe_full_access_group` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_allow_copying_alter_table` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_applier_allow_skip_epoch` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_autoincrement_prefetch_sz` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_batch_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_blob_read_batch_bytes` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_blob_write_batch_bytes` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_clear_apply_status` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_cluster_connection_pool` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_cluster_connection_pool_nodeids` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_conflict_role` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_data_node_neighbour` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_dbg_check_shares` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_default_column_format` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_deferred_constraints` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_distribution` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_eventbuffer_free_percent` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_eventbuffer_max_alloc` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_extra_logging` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_force_send` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_fully_replicated` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_index_stat_enable` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_index_stat_option` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_join_pushdown` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_log_apply_status` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_log_bin` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_log_binlog_index` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_log_cache_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_log_empty_epochs` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_log_empty_update` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_log_exclusive_reads` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_log_fail_terminate` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_log_orig` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_log_transaction_compression` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_log_transaction_compression_level_zstd` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_log_transaction_dependency` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_log_transaction_id` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_log_update_as_write` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_log_update_minimal` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_log_updated_only` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_metadata_check` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_metadata_check_interval` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_metadata_sync` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_mgm_tls` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_optimization_delay` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_optimized_node_selection` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_read_backup` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_recv_thread_activation_threshold` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_recv_thread_cpu_mask` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_replica_batch_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_replica_blob_write_batch_bytes` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `Ndb_replica_max_replicated_epoch` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_report_thresh_binlog_epoch_slip` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_report_thresh_binlog_mem_usage` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_row_checksum` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_schema_dist_lock_wait_timeout` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_schema_dist_timeout` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_schema_dist_upgrade_allowed` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `Ndb_schema_participant_count` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_show_foreign_key_mock_tables` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_slave_conflict_role` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `Ndb_system_name` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_table_no_logging` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_table_temporary` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_tls_search_path` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_use_copying_alter_table` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_use_exact_count` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_use_transactions` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_version` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_version_string` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_wait_connected` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndb_wait_setup` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndbinfo_database` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndbinfo_max_bytes` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndbinfo_max_rows` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndbinfo_offline` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndbinfo_show_hidden` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndbinfo_table_prefix` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `ndbinfo_version` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `net_buffer_length` | ❌ | Value, scope, SET, diagnostics |
 | `net_read_timeout` | ❌ | Value, scope, SET, diagnostics |
 | `net_retry_count` | ❌ | Value, scope, SET, diagnostics |
@@ -817,26 +823,26 @@ state through this fallback path.
 | `require_secure_transport` | ❌ | Value, scope, SET, diagnostics |
 | `restrict_fk_on_non_standard_key` | ❌ | Value, scope, SET, diagnostics |
 | `resultset_metadata` | ❌ | Value, scope, SET, diagnostics |
-| `rewriter_enabled` | ❌ | Value, scope, SET, diagnostics |
-| `rewriter_enabled_for_threads_without_privilege_checks` | ❌ | Value, scope, SET, diagnostics |
-| `rewriter_verbose` | ❌ | Value, scope, SET, diagnostics |
+| `rewriter_enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `rewriter_enabled_for_threads_without_privilege_checks` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `rewriter_verbose` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `rpl_read_size` | ❌ | Value, scope, SET, diagnostics |
-| `rpl_semi_sync_master_enabled` | ❌ | Value, scope, SET, diagnostics |
-| `rpl_semi_sync_master_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `rpl_semi_sync_master_trace_level` | ❌ | Value, scope, SET, diagnostics |
-| `rpl_semi_sync_master_wait_for_slave_count` | ❌ | Value, scope, SET, diagnostics |
-| `rpl_semi_sync_master_wait_no_slave` | ❌ | Value, scope, SET, diagnostics |
-| `rpl_semi_sync_master_wait_point` | ❌ | Value, scope, SET, diagnostics |
-| `rpl_semi_sync_replica_enabled` | ❌ | Value, scope, SET, diagnostics |
-| `rpl_semi_sync_replica_trace_level` | ❌ | Value, scope, SET, diagnostics |
-| `rpl_semi_sync_slave_enabled` | ❌ | Value, scope, SET, diagnostics |
-| `rpl_semi_sync_slave_trace_level` | ❌ | Value, scope, SET, diagnostics |
-| `rpl_semi_sync_source_enabled` | ❌ | Value, scope, SET, diagnostics |
-| `rpl_semi_sync_source_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `rpl_semi_sync_source_trace_level` | ❌ | Value, scope, SET, diagnostics |
-| `rpl_semi_sync_source_wait_for_replica_count` | ❌ | Value, scope, SET, diagnostics |
-| `rpl_semi_sync_source_wait_no_replica` | ❌ | Value, scope, SET, diagnostics |
-| `rpl_semi_sync_source_wait_point` | ❌ | Value, scope, SET, diagnostics |
+| `rpl_semi_sync_master_enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `rpl_semi_sync_master_timeout` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `rpl_semi_sync_master_trace_level` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `rpl_semi_sync_master_wait_for_slave_count` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `rpl_semi_sync_master_wait_no_slave` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `rpl_semi_sync_master_wait_point` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `rpl_semi_sync_replica_enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `rpl_semi_sync_replica_trace_level` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `rpl_semi_sync_slave_enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `rpl_semi_sync_slave_trace_level` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `rpl_semi_sync_source_enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `rpl_semi_sync_source_timeout` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `rpl_semi_sync_source_trace_level` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `rpl_semi_sync_source_wait_for_replica_count` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `rpl_semi_sync_source_wait_no_replica` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `rpl_semi_sync_source_wait_point` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `rpl_stop_replica_timeout` | ❌ | Value, scope, SET, diagnostics |
 | `rpl_stop_slave_timeout` | ❌ | Value, scope, SET, diagnostics |
 | `schema_definition_cache` | ❌ | Value, scope, SET, diagnostics |
@@ -858,8 +864,8 @@ state through this fallback path.
 | `sha256_password_private_key_path` | ❌ | Value, scope, SET, diagnostics |
 | `sha256_password_proxy_users` | ❌ | Value, scope, SET, diagnostics |
 | `sha256_password_public_key_path` | ❌ | Value, scope, SET, diagnostics |
-| `shared_memory` | ❌ | Value, scope, SET, diagnostics |
-| `shared_memory_base_name` | ❌ | Value, scope, SET, diagnostics |
+| `shared_memory` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `shared_memory_base_name` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `show_create_table_skip_secondary_engine` | ❌ | Value, scope, SET, diagnostics |
 | `show_create_table_verbosity` | ❌ | Value, scope, SET, diagnostics |
 | `show_gipk_in_create_table_and_information_schema` | ❌ | Value, scope, SET, diagnostics |
@@ -925,68 +931,68 @@ state through this fallback path.
 | `sync_relay_log` | ❌ | Value, scope, SET, diagnostics |
 | `sync_relay_log_info` | ❌ | Value, scope, SET, diagnostics |
 | `sync_source_info` | ❌ | Value, scope, SET, diagnostics |
-| `syseventlog.facility` | ❌ | Value, scope, SET, diagnostics |
-| `syseventlog.include_pid` | ❌ | Value, scope, SET, diagnostics |
-| `syseventlog.tag` | ❌ | Value, scope, SET, diagnostics |
+| `syseventlog.facility` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `syseventlog.include_pid` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `syseventlog.tag` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `system_time_zone` | 🟡 | Limited fixed global-only readback value `UTC` through scalar reads and `SHOW VARIABLES`; no host-local time zone discovery, loaded named time-zone rows, or mutable state |
 | `table_definition_cache` | ❌ | Value, scope, SET, diagnostics |
 | `table_encryption_privilege_check` | ❌ | Value, scope, SET, diagnostics |
 | `table_open_cache` | ❌ | Value, scope, SET, diagnostics |
 | `table_open_cache_instances` | ❌ | Value, scope, SET, diagnostics |
 | `tablespace_definition_cache` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.metrics_enabled` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.metrics_reader_frequency_1` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.metrics_reader_frequency_2` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.metrics_reader_frequency_3` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_bsp_max_export_batch_size` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_bsp_max_queue_size` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_bsp_schedule_delay` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_metrics_certificates` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_metrics_cipher` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_metrics_cipher_suite` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_metrics_client_certificates` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_metrics_client_key` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_metrics_compression` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_metrics_endpoint` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_metrics_headers` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_metrics_max_tls` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_metrics_min_tls` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_metrics_protocol` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_metrics_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_traces_certificates` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_traces_cipher` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_traces_cipher_suite` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_traces_client_certificates` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_traces_client_key` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_traces_compression` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_traces_endpoint` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_traces_headers` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_traces_max_tls` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_traces_min_tls` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_traces_protocol` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_exporter_otlp_traces_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_log_level` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.otel_resource_attributes` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.query_text_enabled` | ❌ | Value, scope, SET, diagnostics |
-| `telemetry.trace_enabled` | ❌ | Value, scope, SET, diagnostics |
+| `telemetry.metrics_enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.metrics_reader_frequency_1` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.metrics_reader_frequency_2` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.metrics_reader_frequency_3` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_bsp_max_export_batch_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_bsp_max_queue_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_bsp_schedule_delay` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_metrics_certificates` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_metrics_cipher` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_metrics_cipher_suite` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_metrics_client_certificates` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_metrics_client_key` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_metrics_compression` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_metrics_endpoint` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_metrics_headers` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_metrics_max_tls` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_metrics_min_tls` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_metrics_protocol` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_metrics_timeout` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_traces_certificates` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_traces_cipher` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_traces_cipher_suite` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_traces_client_certificates` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_traces_client_key` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_traces_compression` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_traces_endpoint` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_traces_headers` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_traces_max_tls` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_traces_min_tls` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_traces_protocol` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_exporter_otlp_traces_timeout` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_log_level` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.otel_resource_attributes` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.query_text_enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `telemetry.trace_enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `temptable_max_mmap` | ❌ | Value, scope, SET, diagnostics |
 | `temptable_max_ram` | ❌ | Value, scope, SET, diagnostics |
 | `temptable_use_mmap` | ❌ | Value, scope, SET, diagnostics |
 | `terminology_use_previous` | ❌ | Value, scope, SET, diagnostics |
 | `thread_cache_size` | ❌ | Value, scope, SET, diagnostics |
 | `thread_handling` | ❌ | Value, scope, SET, diagnostics |
-| `thread_pool_algorithm` | ❌ | Value, scope, SET, diagnostics |
-| `thread_pool_dedicated_listeners` | ❌ | Value, scope, SET, diagnostics |
-| `thread_pool_high_priority_connection` | ❌ | Value, scope, SET, diagnostics |
-| `thread_pool_longrun_trx_limit` | ❌ | Value, scope, SET, diagnostics |
-| `thread_pool_max_active_query_threads` | ❌ | Value, scope, SET, diagnostics |
-| `thread_pool_max_transactions_limit` | ❌ | Value, scope, SET, diagnostics |
-| `thread_pool_max_unused_threads` | ❌ | Value, scope, SET, diagnostics |
-| `thread_pool_prio_kickup_timer` | ❌ | Value, scope, SET, diagnostics |
-| `thread_pool_query_threads_per_group` | ❌ | Value, scope, SET, diagnostics |
-| `thread_pool_size` | ❌ | Value, scope, SET, diagnostics |
-| `thread_pool_stall_limit` | ❌ | Value, scope, SET, diagnostics |
-| `thread_pool_transaction_delay` | ❌ | Value, scope, SET, diagnostics |
+| `thread_pool_algorithm` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `thread_pool_dedicated_listeners` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `thread_pool_high_priority_connection` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `thread_pool_longrun_trx_limit` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `thread_pool_max_active_query_threads` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `thread_pool_max_transactions_limit` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `thread_pool_max_unused_threads` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `thread_pool_prio_kickup_timer` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `thread_pool_query_threads_per_group` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `thread_pool_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `thread_pool_stall_limit` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `thread_pool_transaction_delay` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `thread_stack` | ❌ | Value, scope, SET, diagnostics |
 | `time_zone` | 🟡 | Limited fixed global value `SYSTEM`, session-local scalar reads and `SHOW VARIABLES`, and session/local `SET time_zone` forms for `DEFAULT`, `SYSTEM`, `UTC`, and signed UTC offsets. Current date/time/timestamp materialization uses the session offset; `mysql.time_zone*` tables are metadata-only empty placeholders with no mutable global value, loaded named-zone rows, named-zone conversion beyond `UTC`, daylight-saving behavior, leap-second handling, or TIMESTAMP row storage/retrieval conversion |
 | `timestamp` | 🟡 | Limited session-only `@@timestamp`, `@@SESSION.timestamp`, `SHOW VARIABLES LIKE 'timestamp'`, and `SET timestamp` / `SET SESSION timestamp` / `SET @@SESSION.timestamp` for integer, signed integer reset, `DEFAULT`, and `@@timestamp` plus integer arithmetic inside `SET timestamp`. The value controls the current statement date/time/timestamp used by `CURDATE()` / `CURRENT_DATE`, `CURTIME()` / `CURRENT_TIME`, `NOW()` / `CURRENT_TIMESTAMP`, and automatic temporal defaults, with materialization adjusted by the limited session `time_zone`; no global scope, nonzero fractional assignment values, general system-variable scalar arithmetic, TIMESTAMP row storage/retrieval conversion, persisted state, or broader temporal-variable behavior |
@@ -1003,28 +1009,28 @@ state through this fallback path.
 | `unique_checks` | ✅ | Session/local/unscoped scalar and expression reads plus `SHOW VARIABLES` default to `1`/`ON`, Boolean session `SET` forms are connection-local, global reads and `SHOW GLOBAL VARIABLES` remain fixed `1`/`ON`, and descriptor-owned primary-key and supported unique-index duplicate checks remain enabled. No server-global mutation, persisted state, import optimizations, optimizer effects, privileges, or Performance Schema variable tables |
 | `updatable_views_with_limit` | ✅ | Session/local/unscoped scalar reads and `SHOW VARIABLES` default to `YES`, Boolean session `SET` forms are connection-local and read back as `YES`/`NO`, global reads and `SHOW GLOBAL VARIABLES` remain fixed `YES`, and embedded statement execution is unchanged. No view DML side effects, server-global mutation, persisted state, check-option enforcement, privileges, or Performance Schema variable tables |
 | `use_secondary_engine` | ❌ | Value, scope, SET, diagnostics |
-| `validate_password_check_user_name` | ❌ | Value, scope, SET, diagnostics |
-| `validate_password_dictionary_file` | ❌ | Value, scope, SET, diagnostics |
-| `validate_password_length` | ❌ | Value, scope, SET, diagnostics |
-| `validate_password_mixed_case_count` | ❌ | Value, scope, SET, diagnostics |
-| `validate_password_number_count` | ❌ | Value, scope, SET, diagnostics |
-| `validate_password_policy` | ❌ | Value, scope, SET, diagnostics |
-| `validate_password_special_char_count` | ❌ | Value, scope, SET, diagnostics |
-| `validate_password.changed_characters_percentage` | ❌ | Value, scope, SET, diagnostics |
-| `validate_password.check_user_name` | ❌ | Value, scope, SET, diagnostics |
-| `validate_password.dictionary_file` | ❌ | Value, scope, SET, diagnostics |
-| `validate_password.length` | ❌ | Value, scope, SET, diagnostics |
-| `validate_password.mixed_case_count` | ❌ | Value, scope, SET, diagnostics |
-| `validate_password.number_count` | ❌ | Value, scope, SET, diagnostics |
-| `validate_password.policy` | ❌ | Value, scope, SET, diagnostics |
-| `validate_password.special_char_count` | ❌ | Value, scope, SET, diagnostics |
+| `validate_password_check_user_name` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `validate_password_dictionary_file` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `validate_password_length` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `validate_password_mixed_case_count` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `validate_password_number_count` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `validate_password_policy` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `validate_password_special_char_count` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `validate_password.changed_characters_percentage` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `validate_password.check_user_name` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `validate_password.dictionary_file` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `validate_password.length` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `validate_password.mixed_case_count` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `validate_password.number_count` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `validate_password.policy` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `validate_password.special_char_count` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `version` | ✅ | MySQL-runtime-verified read-only scalar `SELECT @@version` with no scope or `global`, plus matching `SHOW VARIABLES` rows, returns the fixed MySQL 8.4.9 compatibility version string and rejects unsupported scopes with the documented MySQL-shaped diagnostics; assignment behavior, protocol handshake version reporting, and configurable server-version identity are tracked outside this variable row |
 | `version_comment` | ✅ | MySQL-runtime-verified read-only scalar `SELECT @@version_comment` with no scope or `global`, plus matching `SHOW VARIABLES` rows, returns the fixed MySQL 8.4.9 community-server comment and rejects unsupported scopes with the documented MySQL-shaped diagnostics; assignment behavior, protocol metadata, and configurable build comments are tracked outside this variable row |
 | `version_compile_machine` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` compatibility placeholder `aarch64`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No host build-machine introspection or startup option behavior |
 | `version_compile_os` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` compatibility placeholder `Linux`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No host operating-system introspection or startup option behavior |
 | `version_compile_zlib` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` compatibility placeholder `1.3.2`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No linked zlib version introspection or startup option behavior |
-| `version_tokens_session` | ❌ | Value, scope, SET, diagnostics |
-| `version_tokens_session_number` | ❌ | Value, scope, SET, diagnostics |
+| `version_tokens_session` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
+| `version_tokens_session_number` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `wait_timeout` | 🟡 | Limited handle-local session scalar reads, `SHOW VARIABLES` rows, and session/local/unqualified `SET` assignment with MySQL-compatible integer range `1..31536000`, `DEFAULT = 28800`, boolean conversion, clamp warnings, and integer user-variable assignment. Global reads expose fixed `28800` and mutable global assignment is limited to exact no-op `DEFAULT`/`28800` forms; no idle timeout enforcement, protocol behavior, startup options, persisted state, privileges, or Performance Schema rows |
 | `warning_count` | ✅ | Read-only session/local/unscoped scalar reads and simple expression reads over the previous diagnostics snapshot are MySQL-runtime verified; counts current warning, note, and error conditions even when `@@max_error_count` caps retained rows, honors `sql_notes=0`, and clears after nondiagnostic `SELECT`. Global scope and `SET` are rejected as in MySQL; no diagnostics stacks or broader warning-producer coverage |
 | `windowing_use_high_precision` | ❌ | Value, scope, SET, diagnostics |

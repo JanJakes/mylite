@@ -1462,6 +1462,7 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_SHA2_FUNCTION ||
             current->kind == MYLITE_SQL_AST_SHA2_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_UUID_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_UUID_SHORT_FUNCTION ||
             current->kind == MYLITE_SQL_AST_IS_UUID_FUNCTION ||
             current->kind == MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION ||
             current->kind == MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION ||

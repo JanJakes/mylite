@@ -922,6 +922,7 @@ static bool is_uuid_projection_expression(const struct mylite_sql_ast_node *expr
     child_count = mylite_sql_ast_node_child_count(expression);
     switch (expression->kind) {
     case MYLITE_SQL_AST_UUID_FUNCTION:
+    case MYLITE_SQL_AST_UUID_SHORT_FUNCTION:
         return child_count == 0U;
     case MYLITE_SQL_AST_IS_UUID_FUNCTION:
         if (child_count != 1U) {
@@ -983,6 +984,7 @@ static bool is_uuid_value_projection_argument_supported(const struct mylite_sql_
     case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
     case MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION:
     case MYLITE_SQL_AST_UUID_FUNCTION:
+    case MYLITE_SQL_AST_UUID_SHORT_FUNCTION:
     case MYLITE_SQL_AST_DATABASE_FUNCTION:
     case MYLITE_SQL_AST_SCHEMA_FUNCTION:
     case MYLITE_SQL_AST_USER_FUNCTION:
@@ -2654,6 +2656,7 @@ static bool is_scalar_projection_known_function_attempt(enum mylite_sql_ast_node
     case MYLITE_SQL_AST_WEIGHT_STRING_FUNCTION:
     case MYLITE_SQL_AST_WEIGHT_STRING_BINARY_FUNCTION:
     case MYLITE_SQL_AST_UUID_FUNCTION:
+    case MYLITE_SQL_AST_UUID_SHORT_FUNCTION:
     case MYLITE_SQL_AST_IS_UUID_FUNCTION:
     case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
     case MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION:
@@ -2857,6 +2860,7 @@ static bool is_scalar_projection_known_function_attempt(enum mylite_sql_ast_node
     case MYLITE_SQL_AST_INET_NTOA_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UNHEX_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_UUID_SHORT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_IS_UUID_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_UUID_TO_BIN_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_BIN_TO_UUID_ARGUMENT_COUNT_ERROR:

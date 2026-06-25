@@ -376,6 +376,7 @@ static int append_row_scalar_uuid_expression_sql(
 
     if (function_name == NULL || expression->argument_count > 2U ||
         (expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_UUID &&
+         expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_UUID_SHORT &&
          (expression->argument_count == 0U || expression->arguments == NULL))) {
         return MYLITE_ERROR;
     }
@@ -419,6 +420,7 @@ static int append_row_scalar_uuid_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return append_row_scalar_uuid_leaf_argument_sql(string, argument, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_SHORT:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -556,6 +558,7 @@ static int append_row_scalar_uuid_inner_expression_sql(
 
     if (function_name == NULL || expression->argument_count > 2U ||
         (expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_UUID &&
+         expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_UUID_SHORT &&
          (expression->argument_count == 0U || expression->arguments == NULL))) {
         return MYLITE_ERROR;
     }
@@ -707,6 +710,7 @@ static int append_row_scalar_uuid_leaf_argument_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_SHORT:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -730,6 +734,8 @@ static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_exp
     switch (kind) {
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
         return "_mylite_uuid";
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_SHORT:
+        return "_mylite_uuid_short";
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
         return "_mylite_is_uuid";
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:

@@ -435,9 +435,13 @@ static int string_length_session_scalar_argument_value(
     case MYLITE_SQL_AST_RAND_SEED_FUNCTION:
         return mylite_execution_scalar_rand_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_UUID_FUNCTION:
+    case MYLITE_SQL_AST_UUID_SHORT_FUNCTION:
         return mylite_execution_scalar_uuid_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
         mylite_execution_set_native_function_parameter_count_error(database, "UUID");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_UUID_SHORT_ARGUMENT_COUNT_ERROR:
+        mylite_execution_set_native_function_parameter_count_error(database, "UUID_SHORT");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_CURRENT_TIMESTAMP_VALUE:
         return mylite_execution_current_timestamp_scalar_value(database, out_cell);

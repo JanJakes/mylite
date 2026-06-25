@@ -192,6 +192,7 @@ static int bind_row_scalar_uuid_expression_parameters(
 
     if (expression == NULL || expression->argument_count > 2U ||
         (expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_UUID &&
+         expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_UUID_SHORT &&
          (expression->argument_count == 0U || expression->arguments == NULL))) {
         return MYLITE_ERROR;
     }
@@ -223,6 +224,7 @@ static int bind_row_scalar_uuid_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return bind_row_scalar_uuid_leaf_argument_parameters(statement, argument, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_SHORT:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:
@@ -362,6 +364,7 @@ static int bind_row_scalar_uuid_inner_expression_parameters(
 
     if (expression == NULL || expression->argument_count > 2U ||
         (expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_UUID &&
+         expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_UUID_SHORT &&
          (expression->argument_count == 0U || expression->arguments == NULL))) {
         return MYLITE_ERROR;
     }
@@ -501,6 +504,7 @@ static int bind_row_scalar_uuid_leaf_argument_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_SHORT:
     case PLANNED_ROW_SCALAR_EXPRESSION_IS_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_BIN_TO_UUID:

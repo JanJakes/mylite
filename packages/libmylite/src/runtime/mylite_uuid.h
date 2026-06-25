@@ -7,6 +7,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 enum {
     MYLITE_UUID_BINARY_SIZE = 16,
@@ -35,6 +36,7 @@ int mylite_uuid_set_incorrect_string_error(
     const char *function_name
 );
 int mylite_uuid_generate(struct mylite_db *database, char out_text[MYLITE_UUID_TEXT_SIZE + 1U]);
+uint64_t mylite_uuid_short_generate(struct mylite_db *database);
 int mylite_sqlite_register_uuid_functions(sqlite3 *sqlite);
 
 #endif

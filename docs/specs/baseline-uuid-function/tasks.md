@@ -11,4 +11,11 @@
 - [x] Update compatibility docs.
 - [x] Run focused build/tests and MySQL expectation script.
 - [x] Run `cmake --workflow --preset check`.
-- [x] Review, commit, subagent-review, amend if needed, and push `origin main`.
+- [x] Review, commit, amend if needed, and push `origin main`.
+- [x] Verify MySQL 8.4.9 behavior for `UUID_SHORT()` values, metadata, scalar
+      metadata functions, `DO`, identifier handling, and arity errors.
+- [x] Extend the spec, MySQL expectation script, parser coverage, runtime tests,
+      compatibility docs, and runtime implementation for the `UUID_SHORT()`
+      baseline.
+- [x] Run focused build/tests, MySQL expectation script, and check workflow for
+      the `UUID_SHORT()` baseline.

@@ -589,9 +589,13 @@ static int session_scalar_value(
         set_native_function_parameter_count_error(database, "UNHEX");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_UUID_FUNCTION:
+    case MYLITE_SQL_AST_UUID_SHORT_FUNCTION:
         return mylite_execution_scalar_uuid_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "UUID");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_UUID_SHORT_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "UUID_SHORT");
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_IS_UUID_FUNCTION:
     case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:

@@ -2170,6 +2170,18 @@ static int populate_row_scalar_expression_result_column_descriptor(
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
         populate_uuid_string_result_column_descriptor(descriptor, true);
         return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_UUID_SHORT:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                .display_length = mysql_scalar_bigint_display_length,
+                .decimals = 0U,
+                .extra_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED,
+                .nullable = false,
+            }
+        );
+        return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
         descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
         descriptor->charset_id = mysql_collation_binary_id;

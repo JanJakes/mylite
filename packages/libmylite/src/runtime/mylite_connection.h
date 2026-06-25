@@ -171,6 +171,8 @@ struct mylite_session_state {
     uint64_t catalog_generation;
     uint64_t sqlite_schema_generation;
     uint64_t uuid_last_timestamp_100ns;
+    uint64_t uuid_short_startup_seconds;
+    uint64_t uuid_short_counter;
     struct mylite_session_savepoint *savepoints;
     size_t savepoint_count;
     size_t savepoint_capacity;
@@ -221,6 +223,7 @@ struct mylite_session_state {
     bool active_transaction_read_only;
     bool has_timestamp_override;
     bool uuid_state_initialized;
+    bool uuid_short_state_initialized;
     char selected_schema[MYLITE_SESSION_SCHEMA_CAPACITY];
     char current_user_identity[MYLITE_SESSION_IDENTIFIER_CAPACITY];
     char client_user_identity[MYLITE_SESSION_IDENTIFIER_CAPACITY];

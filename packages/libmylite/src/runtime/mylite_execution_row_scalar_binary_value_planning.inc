@@ -1028,9 +1028,12 @@ static int plan_row_scalar_uuid_expression(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (expression->kind == MYLITE_SQL_AST_UUID_FUNCTION) {
+    if (expression->kind == MYLITE_SQL_AST_UUID_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_UUID_SHORT_FUNCTION) {
         if (has_source) {
-            out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_UUID;
+            out_expression->kind = expression->kind == MYLITE_SQL_AST_UUID_SHORT_FUNCTION
+                                       ? PLANNED_ROW_SCALAR_EXPRESSION_UUID_SHORT
+                                       : PLANNED_ROW_SCALAR_EXPRESSION_UUID;
             out_expression->argument_count = 0U;
             out_expression->arguments = NULL;
             return MYLITE_OK;
@@ -1069,6 +1072,14 @@ static int validate_row_scalar_uuid_expression_arity(
     }
     if (expression->kind == MYLITE_SQL_AST_UUID_FUNCTION && child_count != 0U) {
         set_native_function_parameter_count_error(database, "UUID");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UUID_SHORT_ARGUMENT_COUNT_ERROR) {
+        set_native_function_parameter_count_error(database, "UUID_SHORT");
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_UUID_SHORT_FUNCTION && child_count != 0U) {
+        set_native_function_parameter_count_error(database, "UUID_SHORT");
         return MYLITE_ERROR;
     }
     if (expression->kind == MYLITE_SQL_AST_IS_UUID_FUNCTION && child_count != 1U) {
@@ -1419,6 +1430,8 @@ static int plan_row_scalar_binary_string_expression(
         );
     case MYLITE_SQL_AST_UUID_FUNCTION:
     case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_UUID_SHORT_FUNCTION:
+    case MYLITE_SQL_AST_UUID_SHORT_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_IS_UUID_FUNCTION:
     case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
     case MYLITE_SQL_AST_BIN_TO_UUID_FUNCTION:

@@ -456,6 +456,18 @@ static int populate_scalar_function_result_column_descriptor(
         descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
         descriptor->nullable = true;
         return MYLITE_OK;
+    case MYLITE_SQL_AST_UUID_SHORT_FUNCTION:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                .display_length = mysql_scalar_bigint_display_length,
+                .decimals = 0U,
+                .extra_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED,
+                .nullable = false,
+            }
+        );
+        return MYLITE_OK;
     case MYLITE_SQL_AST_UUID_FUNCTION:
         populate_uuid_string_result_column_descriptor(descriptor, true);
         return MYLITE_OK;

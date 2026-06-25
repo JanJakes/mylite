@@ -7,6 +7,11 @@ static int uuid_generate_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int uuid_short_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 static int is_uuid_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -94,6 +99,8 @@ int mylite_execution_scalar_uuid_function_value(
     switch (expression->kind) {
     case MYLITE_SQL_AST_UUID_FUNCTION:
         return uuid_generate_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_UUID_SHORT_FUNCTION:
+        return uuid_short_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_IS_UUID_FUNCTION:
         return is_uuid_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_UUID_TO_BIN_FUNCTION:
@@ -134,6 +141,34 @@ static int uuid_generate_function_value(
         out_cell->value = out_cell->owned_text;
     }
     return rc;
+}
+
+static int uuid_short_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    uint64_t value = 0U;
+    int written = 0;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_UUID_SHORT_FUNCTION ||
+        mylite_sql_ast_node_child_count(expression) != 0U) {
+        mylite_execution_set_native_function_parameter_count_error(database, "UUID_SHORT");
+        return MYLITE_ERROR;
+    }
+
+    value = mylite_uuid_short_generate(database);
+    written = snprintf(out_cell->integer_text, sizeof(out_cell->integer_text), "%" PRIu64, value);
+    if (written < 0 || (size_t)written >= sizeof(out_cell->integer_text)) {
+        mylite_execution_set_runtime_error(database, "failed to format UUID_SHORT() value");
+        return MYLITE_ERROR;
+    }
+    out_cell->value = out_cell->integer_text;
+    return MYLITE_OK;
 }
 
 static int is_uuid_function_value(
@@ -680,6 +715,10 @@ static int uuid_scalar_argument_value(
     if (expression->kind == MYLITE_SQL_AST_UUID_FUNCTION) {
         *out_handled = true;
         return uuid_generate_function_value(database, expression, out_cell);
+    }
+    if (expression->kind == MYLITE_SQL_AST_UUID_SHORT_FUNCTION) {
+        *out_handled = true;
+        return uuid_short_function_value(database, expression, out_cell);
     }
     return mylite_execution_scalar_binary_scalar_argument_value(
         database,

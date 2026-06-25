@@ -3,6 +3,7 @@
 #include "runtime/mylite_connection.h"
 #include "storage/mylite_file_format.h"
 
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -19,7 +20,18 @@ enum {
     test_path_capacity = 1024,
     uuid_text_size = 36,
     uuid_metadata_charset_id = 33,
+    uuid_short_metadata_charset_id = 63,
+    uuid_short_display_length = 21,
+    uuid_short_metadata_flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL |
+                                MYLITE_RESULT_COLUMN_FLAG_UNSIGNED |
+                                MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+    uuid_short_charset_column = 4,
+    uuid_short_collation_column = 5,
+    uuid_short_coercibility_column = 6,
+    uuid_short_warning_count_column = 7,
+    uuid_short_row_count_column = 8,
     uuid_generated_scalar_column_count = 5,
+    uuid_short_generated_scalar_column_count = 4,
     uuid_is_uuid_column = 5,
     uuid_length_column = 6,
     uuid_char_length_column = 7,
@@ -36,6 +48,7 @@ enum {
     uuid_dash_clock_sequence_index = 23,
     uuid_version_index = 14,
     uuid_variant_index = 19,
+    decimal_radix = 10,
     mysql_error_unknown_column = 1054,
     mysql_error_native_function_arity = 1582,
 };
@@ -54,6 +67,7 @@ struct uuid_distinct_values {
 
 static int test_no_source_dual_and_do_uuid(void);
 static int test_table_backed_uuid_rows_and_file_safety(void);
+static int test_uuid_short_function(void);
 static int test_uuid_errors_and_identifier_compatibility(void);
 static int test_independent_handles(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -61,6 +75,12 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
 static int expect_uuid_shape(const char *actual, const char *context);
 static int expect_uuid_metadata(const mylite_result *result, size_t column, const char *context);
 static int expect_distinct_uuid_values(struct uuid_distinct_values values, const char *context);
+static int expect_uuid_short_metadata(
+    const mylite_result *result,
+    size_t column,
+    const char *context
+);
+static int expect_uuid_short_value(const char *actual, uint64_t *out_value, const char *context);
 static int make_test_path(char *path, size_t path_size, const char *name);
 static int current_process_id(void);
 static void remove_related_files(const char *path);
@@ -85,6 +105,7 @@ int main(void) {
 
     failures += test_no_source_dual_and_do_uuid();
     failures += test_table_backed_uuid_rows_and_file_safety();
+    failures += test_uuid_short_function();
     failures += test_uuid_errors_and_identifier_compatibility();
     failures += test_independent_handles();
 
@@ -357,6 +378,170 @@ static int test_table_backed_uuid_rows_and_file_safety(void) {
     return failures;
 }
 
+static int test_uuid_short_function(void) {
+    static const char *const expected_columns[] = {
+        "UUID_SHORT()",
+        "uuid_short()",
+        "Uuid_Short()",
+        "UUID_SHORT ()",
+        "CHARSET(UUID_SHORT())",
+        "COLLATION(UUID_SHORT())",
+        "COERCIBILITY(UUID_SHORT())",
+        "@@warning_count",
+        "ROW_COUNT()",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    uint64_t values[uuid_short_generated_scalar_column_count] = {0};
+    uint64_t table_values[3] = {0};
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "short") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open UUID_SHORT file");
+    failures += execute_ok(database, "CREATE DATABASE app", NULL);
+    failures += execute_ok(database, "USE app", NULL);
+    failures += execute_ok(database, "DO 0", NULL);
+    failures += execute_ok(
+        database,
+        "SELECT UUID_SHORT(),uuid_short(),Uuid_Short(),UUID_SHORT (),"
+        "CHARSET(UUID_SHORT()),COLLATION(UUID_SHORT()),COERCIBILITY(UUID_SHORT()),"
+        "@@warning_count,ROW_COUNT()",
+        &result
+    );
+    if (failures == 0) {
+        failures += expect_size(
+            mylite_result_column_count(result),
+            sizeof(expected_columns) / sizeof(expected_columns[0]),
+            "UUID_SHORT no-source column count"
+        );
+        failures += expect_size(mylite_result_row_count(result), 1U, "UUID_SHORT no-source rows");
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            0,
+            "UUID_SHORT no-source affected rows"
+        );
+        failures +=
+            expect_size(mylite_result_warning_count(result), 0U, "UUID_SHORT no-source warnings");
+    }
+    for (size_t column = 0U;
+         failures == 0 && column < sizeof(expected_columns) / sizeof(expected_columns[0]);
+         ++column) {
+        failures += expect_text(
+            mylite_result_column_name(result, column),
+            expected_columns[column],
+            "UUID_SHORT no-source column name"
+        );
+    }
+    for (size_t column = 0U; failures == 0 && column < uuid_short_generated_scalar_column_count;
+         ++column) {
+        failures += expect_uuid_short_value(
+            mylite_result_value_text(result, 0U, column),
+            &values[column],
+            "UUID_SHORT no-source value"
+        );
+        failures += expect_uuid_short_metadata(result, column, "UUID_SHORT no-source metadata");
+        if (column > 0U) {
+            failures += expect_uint64(
+                values[column],
+                values[column - 1U] + 1U,
+                "UUID_SHORT no-source sequence"
+            );
+        }
+    }
+    if (failures == 0) {
+        failures += expect_text(
+            mylite_result_value_text(result, 0U, uuid_short_charset_column),
+            "binary",
+            "UUID_SHORT charset"
+        );
+        failures += expect_text(
+            mylite_result_value_text(result, 0U, uuid_short_collation_column),
+            "binary",
+            "UUID_SHORT collation"
+        );
+        failures += expect_text(
+            mylite_result_value_text(result, 0U, uuid_short_coercibility_column),
+            "5",
+            "UUID_SHORT coercibility"
+        );
+        failures += expect_text(
+            mylite_result_value_text(result, 0U, uuid_short_warning_count_column),
+            "0",
+            "UUID_SHORT warning count"
+        );
+        failures += expect_text(
+            mylite_result_value_text(result, 0U, uuid_short_row_count_column),
+            "0",
+            "UUID_SHORT row count"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "SELECT UUID_SHORT() AS u FROM DUAL", &result);
+    if (failures == 0) {
+        failures +=
+            expect_size(mylite_result_column_count(result), 1U, "UUID_SHORT DUAL column count");
+        failures +=
+            expect_text(mylite_result_column_name(result, 0U), "u", "UUID_SHORT DUAL alias");
+        failures += expect_size(mylite_result_row_count(result), 1U, "UUID_SHORT DUAL rows");
+        failures += expect_uuid_short_value(
+            mylite_result_value_text(result, 0U, 0U),
+            &values[0],
+            "UUID_SHORT DUAL value"
+        );
+        failures += expect_uuid_short_metadata(result, 0U, "UUID_SHORT DUAL metadata");
+    }
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "DO UUID_SHORT()", &result);
+    if (failures == 0) {
+        failures += expect_size(mylite_result_column_count(result), 0U, "UUID_SHORT DO columns");
+        failures += expect_size(mylite_result_row_count(result), 0U, "UUID_SHORT DO rows");
+        failures += expect_int64(mylite_result_affected_rows(result), 0, "UUID_SHORT DO affected");
+        failures += expect_size(mylite_result_warning_count(result), 0U, "UUID_SHORT DO warnings");
+    }
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "CREATE TABLE t(id INT)", NULL);
+    failures += execute_ok(database, "INSERT INTO t VALUES (1),(2),(3)", NULL);
+    failures += execute_ok(database, "SELECT id, UUID_SHORT() AS u FROM t ORDER BY id", &result);
+    if (failures == 0) {
+        failures += expect_size(mylite_result_column_count(result), 2U, "UUID_SHORT table columns");
+        failures += expect_size(mylite_result_row_count(result), 3U, "UUID_SHORT table rows");
+        failures += expect_text(mylite_result_value_text(result, 0U, 0U), "1", "UUID_SHORT id 1");
+        failures += expect_text(mylite_result_value_text(result, 1U, 0U), "2", "UUID_SHORT id 2");
+        failures += expect_text(mylite_result_value_text(result, 2U, 0U), "3", "UUID_SHORT id 3");
+        failures += expect_uuid_short_metadata(result, 1U, "UUID_SHORT table metadata");
+    }
+    for (size_t row = 0U; failures == 0 && row < 3U; ++row) {
+        failures += expect_uuid_short_value(
+            mylite_result_value_text(result, row, 1U),
+            &table_values[row],
+            "UUID_SHORT table value"
+        );
+        if (row > 0U) {
+            failures += expect_uint64(
+                table_values[row],
+                table_values[row - 1U] + 1U,
+                "UUID_SHORT table sequence"
+            );
+        }
+    }
+    mylite_result_free(result);
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_uuid_errors_and_identifier_compatibility(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -391,11 +576,38 @@ static int test_uuid_errors_and_identifier_compatibility(void) {
     );
     failures += execute_error(
         database,
+        "SELECT UUID_SHORT(NULL)",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_arity,
+            .sqlstate = "42000",
+            .message_part = "Incorrect parameter count",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT UUID_SHORT(1, 2)",
+        (struct expected_sql_error){
+            .code = mysql_error_native_function_arity,
+            .sqlstate = "42000",
+            .message_part = "Incorrect parameter count",
+        }
+    );
+    failures += execute_error(
+        database,
         "SELECT UUID",
         (struct expected_sql_error){
             .code = mysql_error_unknown_column,
             .sqlstate = "42S22",
             .message_part = "Unknown column 'UUID'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT UUID_SHORT",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_column,
+            .sqlstate = "42S22",
+            .message_part = "Unknown column 'UUID_SHORT'",
         }
     );
     failures += execute_ok(database, "CREATE TABLE uuid (uuid INT)", NULL);
@@ -404,6 +616,17 @@ static int test_uuid_errors_and_identifier_compatibility(void) {
     if (failures == 0) {
         failures += expect_size(mylite_result_row_count(result), 1U, "UUID identifier row count");
         failures += expect_text(mylite_result_value_text(result, 0U, 0U), "7", "UUID identifier");
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "CREATE TABLE uuid_short (uuid_short INT)", NULL);
+    failures += execute_ok(database, "INSERT INTO uuid_short VALUES (9)", NULL);
+    failures += execute_ok(database, "SELECT uuid_short FROM uuid_short", &result);
+    if (failures == 0) {
+        failures +=
+            expect_size(mylite_result_row_count(result), 1U, "UUID_SHORT identifier row count");
+        failures +=
+            expect_text(mylite_result_value_text(result, 0U, 0U), "9", "UUID_SHORT identifier");
     }
     mylite_result_free(result);
     mylite_close(database);
@@ -547,6 +770,67 @@ static int expect_distinct_uuid_values(struct uuid_distinct_values values, const
         strcmp(values.second, values.third) == 0) {
         fprintf(stderr, "%s: expected distinct UUID values\n", context);
         return 1;
+    }
+    return 0;
+}
+
+static int expect_uuid_short_metadata(
+    const mylite_result *result,
+    size_t column,
+    const char *context
+) {
+    int failures = 0;
+
+    failures += expect_int(
+        (int)mylite_result_column_type(result, column),
+        MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+        context
+    );
+    failures += expect_uint32(
+        mylite_result_column_flags(result, column),
+        uuid_short_metadata_flags,
+        context
+    );
+    failures += expect_uint32(
+        mylite_result_column_charset_id(result, column),
+        uuid_short_metadata_charset_id,
+        context
+    );
+    failures += expect_uint32(
+        mylite_result_column_collation_id(result, column),
+        uuid_short_metadata_charset_id,
+        context
+    );
+    failures += expect_uint64(
+        mylite_result_column_display_length(result, column),
+        uuid_short_display_length,
+        context
+    );
+    failures += expect_int(mylite_result_column_nullable(result, column), 0, context);
+    return failures;
+}
+
+static int expect_uuid_short_value(const char *actual, uint64_t *out_value, const char *context) {
+    char *end = NULL;
+    unsigned long long parsed = 0ULL;
+
+    if (actual == NULL || actual[0] == '\0') {
+        fprintf(
+            stderr,
+            "%s: expected UUID_SHORT integer, got [%s]\n",
+            context,
+            actual == NULL ? "(null)" : actual
+        );
+        return 1;
+    }
+    errno = 0;
+    parsed = strtoull(actual, &end, decimal_radix);
+    if (errno != 0 || end == actual || end == NULL || *end != '\0' || parsed == 0ULL) {
+        fprintf(stderr, "%s: expected UUID_SHORT integer, got [%s]\n", context, actual);
+        return 1;
+    }
+    if (out_value != NULL) {
+        *out_value = (uint64_t)parsed;
     }
     return 0;
 }

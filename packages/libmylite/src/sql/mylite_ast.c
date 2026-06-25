@@ -1520,6 +1520,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "uuid_function";
     case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
         return "uuid_argument_count_error";
+    case MYLITE_SQL_AST_UUID_SHORT_FUNCTION:
+        return "uuid_short_function";
+    case MYLITE_SQL_AST_UUID_SHORT_ARGUMENT_COUNT_ERROR:
+        return "uuid_short_argument_count_error";
     case MYLITE_SQL_AST_DEFAULT_FUNCTION:
         return "default_function";
     case MYLITE_SQL_AST_ASCII_FUNCTION:

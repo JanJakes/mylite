@@ -7,6 +7,11 @@ static bool generic_function_ip_address_kinds(
     enum mylite_sql_ast_node_kind *out_function_kind,
     enum mylite_sql_ast_node_kind *out_error_kind
 );
+static bool generic_function_uuid_short_kinds(
+    const struct mylite_sql_token *function_token,
+    enum mylite_sql_ast_node_kind *out_function_kind,
+    enum mylite_sql_ast_node_kind *out_error_kind
+);
 static bool generic_function_statistical_aggregate_kind(
     const struct mylite_sql_token *function_token,
     enum mylite_sql_ast_node_kind *out_function_kind
@@ -1400,6 +1405,27 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_generic_function(
             right_paren
         );
     }
+    if (generic_function_uuid_short_kinds(
+            &function_token,
+            &specialized_function_kind,
+            &specialized_error_kind
+        )) {
+        if (arguments != NULL && mylite_sql_ast_node_child_count(arguments) != 0U) {
+            return mylite_sql_parser_make_function_argument_count_error(
+                state,
+                function_token,
+                specialized_error_kind,
+                arguments,
+                right_paren
+            );
+        }
+        return mylite_sql_parser_make_zero_argument_function(
+            state,
+            function_token,
+            specialized_function_kind,
+            right_paren
+        );
+    }
 
     name = mylite_sql_parser_make_identifier(state, function_token);
     if (name == NULL) {
@@ -1498,6 +1524,22 @@ static bool generic_function_ip_address_kinds(
     if (mylite_sql_parser_token_text_equals(function_token, "INET_NTOA")) {
         *out_function_kind = MYLITE_SQL_AST_INET_NTOA_FUNCTION;
         *out_error_kind = MYLITE_SQL_AST_INET_NTOA_ARGUMENT_COUNT_ERROR;
+        return true;
+    }
+    return false;
+}
+
+static bool generic_function_uuid_short_kinds(
+    const struct mylite_sql_token *function_token,
+    enum mylite_sql_ast_node_kind *out_function_kind,
+    enum mylite_sql_ast_node_kind *out_error_kind
+) {
+    if (function_token == NULL || out_function_kind == NULL || out_error_kind == NULL) {
+        return false;
+    }
+    if (mylite_sql_parser_token_text_equals(function_token, "UUID_SHORT")) {
+        *out_function_kind = MYLITE_SQL_AST_UUID_SHORT_FUNCTION;
+        *out_error_kind = MYLITE_SQL_AST_UUID_SHORT_ARGUMENT_COUNT_ERROR;
         return true;
     }
     return false;

@@ -315,6 +315,7 @@ static int charset_collation_scalar_result(
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_UUID_SHORT_FUNCTION:
         return charset_collation_select_result(function_kind, charset, collation, out_result);
     case MYLITE_SQL_AST_CONVERT_USING_CHARSET_EXPRESSION:
         return charset_collation_convert_using_charset_result(
@@ -423,6 +424,9 @@ static int coercibility_non_concat_scalar_result(
         return MYLITE_OK;
     case MYLITE_SQL_AST_UUID_FUNCTION:
         *out_result = "4";
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_UUID_SHORT_FUNCTION:
+        *out_result = "5";
         return MYLITE_OK;
     case MYLITE_SQL_AST_RAND_FUNCTION:
     case MYLITE_SQL_AST_RAND_SEED_FUNCTION: {
@@ -1272,6 +1276,7 @@ static int scalar_expression_base_charset_collation_metadata(
     case MYLITE_SQL_AST_CAST_BINARY_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_BINARY_TYPE_EXPRESSION:
     case MYLITE_SQL_AST_CONVERT_USING_BINARY_EXPRESSION:
+    case MYLITE_SQL_AST_UUID_SHORT_FUNCTION:
         *out_charset = "binary";
         *out_collation = "binary";
         return MYLITE_OK;

@@ -201,7 +201,8 @@ static int reject_bare_native_function_identifier_lookup_if_needed(
         !text_equals_ascii_case_insensitive(column_name, "log2") &&
         !text_equals_ascii_case_insensitive(column_name, "pow") &&
         !text_equals_ascii_case_insensitive(column_name, "power") &&
-        !text_equals_ascii_case_insensitive(column_name, "uuid")) {
+        !text_equals_ascii_case_insensitive(column_name, "uuid") &&
+        !text_equals_ascii_case_insensitive(column_name, "uuid_short")) {
         return MYLITE_OK;
     }
 

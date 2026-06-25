@@ -316,6 +316,8 @@ static const char *argument_count_error_node_function_name(
         return "UNHEX";
     case MYLITE_SQL_AST_UUID_ARGUMENT_COUNT_ERROR:
         return "UUID";
+    case MYLITE_SQL_AST_UUID_SHORT_ARGUMENT_COUNT_ERROR:
+        return "UUID_SHORT";
     case MYLITE_SQL_AST_IS_UUID_ARGUMENT_COUNT_ERROR:
         return "IS_UUID";
     case MYLITE_SQL_AST_UUID_TO_BIN_ARGUMENT_COUNT_ERROR:

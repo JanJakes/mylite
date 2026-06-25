@@ -1,8 +1,9 @@
-# Baseline UUID Function
+# Baseline UUID Functions
 
 ## Status
 
-Planned for `baseline-uuid-function`.
+Implemented for `baseline-uuid-function`, including `UUID()` and the
+`UUID_SHORT()` baseline.
 
 ## Source Evidence
 
@@ -27,6 +28,15 @@ Observed MySQL 8.4.9 behavior for this slice:
 - `CREATE TABLE uuid (uuid INT)` succeeds; `UUID` is not reserved.
 - `UUID(NULL)` and `UUID(1, 2)` fail with native-function parameter-count error
   `1582 / 42000`.
+- `UUID_SHORT()` returns a nonzero unsigned integer exposed through protocol
+  metadata as `LONGLONG`, binary collation id `63`, display length `21`, flags
+  `NOT_NULL UNSIGNED BINARY NUM`, decimals `0`, and nullable false.
+- Consecutive `UUID_SHORT()` calls in one statement increment by one.
+- `CHARSET(UUID_SHORT())` and `COLLATION(UUID_SHORT())` return `binary`;
+  `COERCIBILITY(UUID_SHORT())` returns `5`.
+- `UUID_SHORT(NULL)` and `UUID_SHORT(1, 2)` fail with native-function
+  parameter-count error `1582 / 42000`.
+- Bare `UUID_SHORT` resolves as an identifier and is not reserved.
 
 ## Scope
 
@@ -35,20 +45,33 @@ This slice supports:
 - no-source and `FROM DUAL` scalar `SELECT UUID()`;
 - table-backed single-source row-scalar `SELECT UUID() FROM table`;
 - `DO UUID()`;
+- no-source and `FROM DUAL` scalar `SELECT UUID_SHORT()`;
+- table-backed single-source row-scalar `SELECT UUID_SHORT() FROM table`;
+- `DO UUID_SHORT()`;
 - `UUID()` as an argument where current scalar function plumbing already admits
   session scalar values, including `IS_UUID(UUID())`, string length functions,
   `CONCAT()`, `CHARSET()`, `COLLATION()`, and `COERCIBILITY()`;
-- bare `UUID` as an ordinary identifier, not a function call;
+- `UUID_SHORT()` in supported numeric and metadata scalar contexts, including
+  arithmetic argument plumbing, `CHARSET()`, `COLLATION()`, and
+  `COERCIBILITY()`;
+- bare `UUID` and `UUID_SHORT` as ordinary identifiers, not function calls;
 - MySQL-shaped arity diagnostics for any nonzero argument count admitted by the
   parser.
 
 This slice does not support:
 
-- `UUID_SHORT()`;
 - use of `UUID()` in DML assignments, defaults, generated columns, check
   constraints, indexes, predicates, grouping, ordering, joins, subqueries other
   than already supported scalar plumbing, prepared parameters, or stored
   programs unless a separate feature explicitly admits that context;
+- cross-process or cross-host uniqueness for `UUID_SHORT()`;
+- MySQL server-id configuration, real server startup-time semantics, replication
+  topology, or overflow behavior for `UUID_SHORT()`;
+- scalar comparison/IS expressions such as `UUID_SHORT() < UUID_SHORT()` and
+  `UUID_SHORT() IS NULL` until the broader scalar comparison/IS layer admits
+  function operands;
+- loaded server variables that would make `UUID_SHORT()` values match a MySQL
+  instance byte-for-byte;
 - replication safety warnings or binary-log behavior;
 - exposing or depending on a host MAC address;
 - exact byte-for-byte matching of MySQL timestamp, clock sequence, or node
@@ -72,11 +95,21 @@ expression(A) ::= UUID(T) LPAREN function_argument_list(B) RPAREN(R). {
 identifier(A) ::= UUID(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
+
+expression(A) ::= generic_function_call(B). {
+    /* generic builder specializes a case-insensitive UUID_SHORT name with
+       zero arguments to MYLITE_SQL_AST_UUID_SHORT_FUNCTION. */
+    A = B;
+}
 ```
 
 `UUID` is a nonreserved keyword. The lexer recognizes it so the parser can
 distinguish `UUID()` from an identifier, but identifier grammar preserves
 `CREATE TABLE uuid (uuid INT)` and `SELECT UUID` behavior.
+
+`UUID_SHORT` is not a keyword. MyLite recognizes it inside generic function-call
+construction by name, preserving ordinary identifier behavior for
+`CREATE TABLE uuid_short (uuid_short INT)` and `SELECT UUID_SHORT`.
 
 ## Runtime Semantics
 
@@ -99,21 +132,40 @@ MyLite does not promise global ordering, cryptographic unpredictability, real
 hardware identity, or MySQL-identical time/node fields. It promises the visible
 MySQL-compatible function shape above.
 
+`UUID_SHORT()` generates a MyLite-owned unsigned 64-bit value shaped like
+MySQL's documented component layout:
+
+- an embedded server-id component in the high 8 bits, currently fixed to `1`;
+- the connection's UUID_SHORT generator initialization time in seconds in the
+  next 32 bits;
+- a per-handle monotonically increasing 24-bit-position counter in the low bits.
+
+The counter is stored in session state and increments on every successful
+`UUID_SHORT()` evaluation. MyLite keeps the value below signed `sqlite3_int64`
+range for the fixed embedded server-id component used here, so the private
+SQLite UDF can return it as an integer while result metadata still reports an
+unsigned MySQL `LONGLONG`.
+
+MyLite does not claim MySQL's cross-server uniqueness contract. Embedded users
+that need durable, cluster-wide identity should use application-provided keys or
+`UUID()` until MyLite has a designed server-id/runtime identity model.
+
 ## SQLite Handling
 
 No SQLite fork patch is needed. MyLite owns UUID generation in
 `mylite_uuid.c`.
 
 No-source scalar statements call the MyLite runtime helper directly. Table-backed
-row-scalar statements lower `UUID()` to a private SQLite scalar function
-`_mylite_uuid()` so SQLite evaluates it once per output row. This keeps query
-execution close to SQLite and avoids materializing a table in MyLite just to
-decorate rows.
+row-scalar statements lower `UUID()` and `UUID_SHORT()` to private SQLite scalar
+functions `_mylite_uuid()` and `_mylite_uuid_short()` so SQLite evaluates them
+once per output row. This keeps query execution close to SQLite and avoids
+materializing a table in MyLite just to decorate rows.
 
 SQLite generated SQL never embeds generated UUID values for row-backed
 execution. It calls the registered function by stable private name. No physical
 schema, catalog descriptor, `.mylite` preamble, VFS, storage format, or SQLite
-schema generation state changes are made by evaluating `UUID()`.
+schema generation state changes are made by evaluating `UUID()` or
+`UUID_SHORT()`.
 
 ## Result Metadata
 
@@ -133,13 +185,30 @@ Successful `SELECT` returns a row result. Successful `DO UUID()` returns the
 existing non-row statement result convention with zero columns, zero rows,
 `affected_rows = 0`, and warning count `0`.
 
+Scalar `UUID_SHORT()` result metadata is:
+
+- logical type: `LONGLONG`;
+- display length: `21`;
+- character set/collation id: binary (`63`);
+- flags: `NOT_NULL`, `UNSIGNED`, `BINARY`, and `NUM`;
+- nullable: false;
+- decimals: `0`.
+
+`CHARSET(UUID_SHORT())`, `COLLATION(UUID_SHORT())`, and
+`COERCIBILITY(UUID_SHORT())` use MyLite-owned scalar metadata and return
+`binary`, `binary`, and `5`, respectively. Successful `DO UUID_SHORT()` follows
+the same non-row statement result convention as `DO UUID()`.
+
 ## Diagnostics
 
 - Syntax errors remain normal parser diagnostics.
 - `UUID()` with any argument count other than zero returns MySQL native function
   arity error `1582 / 42000`.
-- Bare `UUID` without parentheses resolves as an identifier and, outside a
-  matching table column scope, returns the existing unknown-column diagnostic.
+- `UUID_SHORT()` with any argument count other than zero returns MySQL native
+  function arity error `1582 / 42000`.
+- Bare `UUID` and `UUID_SHORT` without parentheses resolve as identifiers and,
+  outside a matching table column scope, return the existing unknown-column
+  diagnostic.
 - Unsupported contexts return deterministic MyLite unsupported-feature
   diagnostics until those contexts are explicitly designed.
 - Allocation failures return `MYLITE_NOMEM` and set the existing out-of-memory
@@ -161,6 +230,9 @@ The implementation must add:
   - `IS_UUID(UUID())`, string length, `CONCAT()`, charset, collation, and
     coercibility scalar composition;
   - arity diagnostics and bare identifier unknown-column behavior;
+  - `UUID_SHORT()` numeric metadata, monotonic values, `FROM DUAL`, `DO`,
+    table-backed per-row values, scalar metadata functions, arity diagnostics,
+    and identifier compatibility;
   - file preamble and catalog/schema-generation invariants;
   - close/reopen and independent handle state.
 

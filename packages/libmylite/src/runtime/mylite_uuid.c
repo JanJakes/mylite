@@ -16,6 +16,9 @@
 static const uint64_t uuid_unix_epoch_offset_100ns = 122192928000000000ULL;
 
 enum {
+    uuid_short_embedded_server_id = 1,
+    uuid_short_server_id_shift = 56U,
+    uuid_short_startup_time_shift = 24U,
     mysql_error_incorrect_string_value = 1411,
     uuid_hex_digit_count = 32,
     uuid_dashed_text_size = 36,
@@ -79,6 +82,7 @@ struct uuid_generation_fields {
 };
 
 static void uuid_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void uuid_short_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void is_uuid_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void uuid_to_bin_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void bin_to_uuid_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
@@ -97,6 +101,7 @@ static struct sqlite_value_byte_result sqlite_value_bytes(
 );
 static bool sqlite_swap_flag(sqlite3_value *value);
 static void initialize_uuid_generation_state(struct mylite_db *database);
+static void initialize_uuid_short_generation_state(struct mylite_db *database);
 static uint64_t next_uuid_timestamp_100ns(struct mylite_db *database);
 static uint64_t current_uuid_timestamp_100ns(void);
 static void populate_uuid_bytes(
@@ -270,6 +275,26 @@ int mylite_uuid_generate(struct mylite_db *database, char out_text[MYLITE_UUID_T
     return MYLITE_OK;
 }
 
+uint64_t mylite_uuid_short_generate(struct mylite_db *database) {
+    uint64_t server_component = 0U;
+    uint64_t startup_component = 0U;
+    uint64_t counter = 0U;
+
+    if (database == NULL) {
+        return 0U;
+    }
+    if (!database->session.uuid_short_state_initialized) {
+        initialize_uuid_short_generation_state(database);
+    }
+
+    server_component = ((uint64_t)uuid_short_embedded_server_id & UINT8_MAX)
+                       << uuid_short_server_id_shift;
+    startup_component = database->session.uuid_short_startup_seconds
+                        << uuid_short_startup_time_shift;
+    counter = database->session.uuid_short_counter++;
+    return server_component + startup_component + counter;
+}
+
 int mylite_sqlite_register_uuid_functions(sqlite3 *sqlite) {
     static struct mylite_sqlite_function_registration registrations[] = {
         {
@@ -279,6 +304,19 @@ int mylite_sqlite_register_uuid_functions(sqlite3 *sqlite) {
             .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
             .application_data = NULL,
             .scalar_callback = uuid_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_uuid_short",
+            .argument_count = 0,
+            .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
+            .application_data = NULL,
+            .scalar_callback = uuid_short_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
             .value_callback = NULL,
@@ -387,6 +425,26 @@ static void uuid_sqlite_callback(sqlite3_context *context, int argc, sqlite3_val
     }
 
     sqlite3_result_text(context, output, MYLITE_UUID_TEXT_SIZE, SQLITE_TRANSIENT);
+}
+
+static void uuid_short_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    struct mylite_db *database = NULL;
+    uint64_t value = 0U;
+
+    (void)argv;
+    if (context == NULL || argc != 0) {
+        sqlite3_result_error(context, "invalid MyLite UUID_SHORT callback", -1);
+        return;
+    }
+
+    database = mylite_sqlite_bootstrap_owner_from_context(context);
+    if (database == NULL) {
+        sqlite3_result_error(context, "missing MyLite UUID_SHORT owner", -1);
+        return;
+    }
+
+    value = mylite_uuid_short_generate(database);
+    sqlite3_result_int64(context, (sqlite3_int64)value);
 }
 
 static void is_uuid_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
@@ -604,6 +662,14 @@ static void initialize_uuid_generation_state(struct mylite_db *database) {
     database->session.uuid_clock_sequence = (uint16_t)(sequence & uuid_clock_sequence_mask);
     database->session.uuid_node[0] |= uuid_node_multicast_bit;
     database->session.uuid_state_initialized = true;
+}
+
+static void initialize_uuid_short_generation_state(struct mylite_db *database) {
+    time_t now = time(NULL);
+
+    database->session.uuid_short_startup_seconds = now < 0 ? 0U : (uint64_t)now;
+    database->session.uuid_short_counter = 0U;
+    database->session.uuid_short_state_initialized = true;
 }
 
 static uint64_t next_uuid_timestamp_100ns(struct mylite_db *database) {

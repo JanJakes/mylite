@@ -4035,6 +4035,137 @@ static int test_uuid_function(void) {
     failures += parser_test_expect_span_text(first_expression, "UUID", "bare uuid span");
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "SELECT UUID_SHORT(), Uuid_Short(), uuid_short() FROM DUAL;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    second_expression = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+    third_expression = parser_test_child_at(parser_test_child_at(select_list, 2U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_UUID_SHORT_FUNCTION,
+        "uuid short function"
+    );
+    failures +=
+        parser_test_expect_span_text(first_expression, "UUID_SHORT()", "uuid short function span");
+    failures += parser_test_expect_child_count(first_expression, 0U, "uuid short argument count");
+    failures += parser_test_expect_node(
+        second_expression,
+        MYLITE_SQL_AST_UUID_SHORT_FUNCTION,
+        "mixed uuid short function"
+    );
+    failures +=
+        parser_test_expect_span_text(second_expression, "Uuid_Short()", "mixed uuid short span");
+    failures += parser_test_expect_node(
+        third_expression,
+        MYLITE_SQL_AST_UUID_SHORT_FUNCTION,
+        "lower uuid short function"
+    );
+    failures +=
+        parser_test_expect_span_text(third_expression, "uuid_short()", "lower uuid short span");
+    failures += parser_test_expect_node(
+        parser_test_child_at(select, 1U),
+        MYLITE_SQL_AST_FROM_DUAL,
+        "uuid short from dual"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT UUID_SHORT (), (UUID_SHORT());",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    second_expression = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_UUID_SHORT_FUNCTION,
+        "spaced uuid short"
+    );
+    failures +=
+        parser_test_expect_span_text(first_expression, "UUID_SHORT ()", "spaced uuid short span");
+    failures += parser_test_expect_node(
+        second_expression,
+        MYLITE_SQL_AST_PARENTHESIZED_EXPRESSION,
+        "wrapped uuid short"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(second_expression, 0U),
+        MYLITE_SQL_AST_UUID_SHORT_FUNCTION,
+        "uuid short child"
+    );
+    failures += parser_test_expect_span_text(
+        second_expression,
+        "(UUID_SHORT())",
+        "parenthesized uuid short span"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT UUID_SHORT(NULL), UUID_SHORT(1, 2);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    second_expression = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_UUID_SHORT_ARGUMENT_COUNT_ERROR,
+        "uuid short one argument count error"
+    );
+    arguments = parser_test_child_at(first_expression, 0U);
+    failures += parser_test_expect_child_count(arguments, 1U, "uuid short one argument count");
+    failures += parser_test_expect_node(
+        second_expression,
+        MYLITE_SQL_AST_UUID_SHORT_ARGUMENT_COUNT_ERROR,
+        "uuid short multiple argument count error"
+    );
+    arguments = parser_test_child_at(second_expression, 0U);
+    failures += parser_test_expect_child_count(arguments, 2U, "uuid short multiple argument count");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("DO UUID_SHORT();", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    expression_list = parser_test_child_at(statement, 0U);
+    failures += parser_test_expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "uuid short do");
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression_list, 0U),
+        MYLITE_SQL_AST_UUID_SHORT_FUNCTION,
+        "do uuid short"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE uuid_short (uuid_short INT);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_CREATE_TABLE_STATEMENT,
+        "uuid short identifier"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("SELECT UUID_SHORT;", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_IDENTIFIER,
+        "bare uuid short identifier"
+    );
+    failures +=
+        parser_test_expect_span_text(first_expression, "UUID_SHORT", "bare uuid short span");
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

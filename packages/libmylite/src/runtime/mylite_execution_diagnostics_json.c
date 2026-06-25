@@ -109,6 +109,15 @@ void mylite_execution_diagnostics_set_json_path_not_allowed_error(struct mylite_
     );
 }
 
+void mylite_execution_diagnostics_set_json_path_not_array_cell_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_json_path_not_array_cell,
+        "42000",
+        "A path expression is not a path to a cell in an array."
+    );
+}
+
 void mylite_execution_diagnostics_set_invalid_json_data_type_error(
     struct mylite_db *database,
     const char *function_name

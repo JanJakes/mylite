@@ -95,6 +95,7 @@ void mylite_execution_diagnostics_set_invalid_json_path_error(
     size_t position
 );
 void mylite_execution_diagnostics_set_json_path_not_allowed_error(struct mylite_db *database);
+void mylite_execution_diagnostics_set_json_path_not_array_cell_error(struct mylite_db *database);
 void mylite_execution_diagnostics_set_invalid_json_data_type_error(
     struct mylite_db *database,
     const char *function_name
@@ -822,6 +823,8 @@ int mylite_execution_diagnostics_status_from_parse_status(enum mylite_sql_parse_
 #  define set_invalid_json_path_error mylite_execution_diagnostics_set_invalid_json_path_error
 #  define set_json_path_not_allowed_error                                                          \
       mylite_execution_diagnostics_set_json_path_not_allowed_error
+#  define set_json_path_not_array_cell_error                                                       \
+      mylite_execution_diagnostics_set_json_path_not_array_cell_error
 #  define set_invalid_json_data_type_error                                                         \
       mylite_execution_diagnostics_set_invalid_json_data_type_error
 #  define set_invalid_json_one_or_all_error                                                        \

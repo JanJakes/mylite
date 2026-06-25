@@ -10423,6 +10423,14 @@ expression(A) ::= JSON_ARRAY(T) LPAREN function_argument_list(B) RPAREN(R). {
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_JSON_ARRAY_FUNCTION, B, R);
 }
+expression(A) ::= JSON_ARRAY_APPEND(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION, B, R);
+}
+expression(A) ::= JSON_ARRAY_INSERT(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION, B, R);
+}
 expression(A) ::= JSON_OBJECT(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_JSON_OBJECT_FUNCTION, R);
@@ -11647,6 +11655,14 @@ expression(A) ::= JSON_QUOTE(T) LPAREN expression(B) COMMA function_argument_lis
     (void)B;
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_JSON_QUOTE_ARGUMENT_COUNT_ERROR, C, R);
+}
+expression(A) ::= JSON_ARRAY_APPEND(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_ARRAY_APPEND_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= JSON_ARRAY_INSERT(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_ARRAY_INSERT_ARGUMENT_COUNT_ERROR, NULL, R);
 }
 expression(A) ::= JSON_INSERT(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -13302,6 +13318,12 @@ identifier(A) ::= LEAST(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_ARRAY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= JSON_ARRAY_APPEND(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= JSON_ARRAY_INSERT(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_OBJECT(T). {

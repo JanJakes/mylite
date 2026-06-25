@@ -36,6 +36,16 @@ static int mutate_json_document(
     size_t *out_text_length,
     struct mylite_json_normalize_result *out_result
 );
+static int json_mutation_validate_before_null(
+    enum json_mutation_mode mode,
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    size_t path_count,
+    struct mylite_json_normalize_result *out_result
+);
+static bool json_array_insert_path_is_array_cell(const struct json_set_path *path);
 static int json_value_from_sql_value(
     const struct mylite_json_sql_value *sql_value,
     struct json_value *out_value,
@@ -1046,6 +1056,56 @@ int mylite_json_insert(
     );
 }
 
+int mylite_json_array_append(
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    const struct mylite_json_sql_value *values,
+    size_t pair_count,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+) {
+    return mutate_json_document(
+        text,
+        text_length,
+        paths,
+        path_lengths,
+        JSON_MUTATION_ARRAY_APPEND,
+        values,
+        pair_count,
+        out_text,
+        out_text_length,
+        out_result
+    );
+}
+
+int mylite_json_array_insert(
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    const struct mylite_json_sql_value *values,
+    size_t pair_count,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+) {
+    return mutate_json_document(
+        text,
+        text_length,
+        paths,
+        path_lengths,
+        JSON_MUTATION_ARRAY_INSERT,
+        values,
+        pair_count,
+        out_text,
+        out_text_length,
+        out_result
+    );
+}
+
 int mylite_json_remove(
     const char *text,
     size_t text_length,
@@ -1071,6 +1131,63 @@ int mylite_json_remove(
 }
 
 int mylite_json_mutation_validate_before_null(
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    size_t path_count,
+    struct mylite_json_normalize_result *out_result
+) {
+    return json_mutation_validate_before_null(
+        JSON_MUTATION_SET,
+        text,
+        text_length,
+        paths,
+        path_lengths,
+        path_count,
+        out_result
+    );
+}
+
+int mylite_json_array_insert_validate_before_null(
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    size_t path_count,
+    struct mylite_json_normalize_result *out_result
+) {
+    return json_mutation_validate_before_null(
+        JSON_MUTATION_ARRAY_INSERT,
+        text,
+        text_length,
+        paths,
+        path_lengths,
+        path_count,
+        out_result
+    );
+}
+
+int mylite_json_remove_validate_before_null(
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    size_t path_count,
+    struct mylite_json_normalize_result *out_result
+) {
+    return mylite_json_mutation_validate_before_null(
+        text,
+        text_length,
+        paths,
+        path_lengths,
+        path_count,
+        out_result
+    );
+}
+
+static int json_mutation_validate_before_null(
+    enum json_mutation_mode mode,
     const char *text,
     size_t text_length,
     const char *const *paths,
@@ -1114,29 +1231,16 @@ int mylite_json_mutation_validate_before_null(
         if (rc != MYLITE_OK && out_result->status == MYLITE_JSON_NORMALIZE_INVALID) {
             out_result->status = MYLITE_JSON_NORMALIZE_INVALID_PATH;
         }
+        if (rc == MYLITE_OK && mode == JSON_MUTATION_ARRAY_INSERT &&
+            !json_array_insert_path_is_array_cell(&path)) {
+            out_result->status = MYLITE_JSON_NORMALIZE_PATH_NOT_ARRAY_CELL;
+            rc = MYLITE_ERROR;
+        }
         mylite_json_internal_set_path_deinit(&path);
     }
 
     mylite_json_internal_value_deinit(&document);
     return rc;
-}
-
-int mylite_json_remove_validate_before_null(
-    const char *text,
-    size_t text_length,
-    const char *const *paths,
-    const size_t *path_lengths,
-    size_t path_count,
-    struct mylite_json_normalize_result *out_result
-) {
-    return mylite_json_mutation_validate_before_null(
-        text,
-        text_length,
-        paths,
-        path_lengths,
-        path_count,
-        out_result
-    );
 }
 
 static int mutate_json_document(
@@ -1195,6 +1299,11 @@ static int mutate_json_document(
             out_result->status = MYLITE_JSON_NORMALIZE_PATH_NOT_ALLOWED;
             rc = MYLITE_ERROR;
         }
+        if (rc == MYLITE_OK && mode == JSON_MUTATION_ARRAY_INSERT &&
+            !json_array_insert_path_is_array_cell(&path)) {
+            out_result->status = MYLITE_JSON_NORMALIZE_PATH_NOT_ARRAY_CELL;
+            rc = MYLITE_ERROR;
+        }
         if (rc == MYLITE_OK && mode != JSON_MUTATION_REMOVE) {
             rc = json_value_from_sql_value(&values[pair_index], &value, out_result);
         }
@@ -1210,6 +1319,13 @@ static int mutate_json_document(
 
     mylite_json_internal_value_deinit(&document);
     return rc;
+}
+
+static bool json_array_insert_path_is_array_cell(const struct json_set_path *path) {
+    if (path == NULL || path->count == 0U) {
+        return false;
+    }
+    return path->legs[path->count - 1U].kind == JSON_SET_PATH_ARRAY;
 }
 
 int mylite_json_path_validate(

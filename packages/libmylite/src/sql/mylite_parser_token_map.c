@@ -779,6 +779,8 @@ static bool map_keyword_token(
         {"LONGTEXT", MYLITE_SQL_PARSE_LONGTEXT},
         {"JSON", MYLITE_SQL_PARSE_JSON},
         {"JSON_ARRAY", MYLITE_SQL_PARSE_JSON_ARRAY},
+        {"JSON_ARRAY_APPEND", MYLITE_SQL_PARSE_JSON_ARRAY_APPEND},
+        {"JSON_ARRAY_INSERT", MYLITE_SQL_PARSE_JSON_ARRAY_INSERT},
         {"JSON_CONTAINS", MYLITE_SQL_PARSE_JSON_CONTAINS},
         {"JSON_CONTAINS_PATH", MYLITE_SQL_PARSE_JSON_CONTAINS_PATH},
         {"JSON_DEPTH", MYLITE_SQL_PARSE_JSON_DEPTH},
@@ -1548,6 +1550,8 @@ static bool map_keyword_index(unsigned int keyword_index, int *out_parser_token)
         [896U] = MYLITE_SQL_PARSE_JSON_OVERLAPS,       /* JSON_OVERLAPS */
         [897U] = MYLITE_SQL_PARSE_JSON_STORAGE_SIZE,   /* JSON_STORAGE_SIZE */
         [898U] = MYLITE_SQL_PARSE_JSON_STORAGE_FREE,   /* JSON_STORAGE_FREE */
+        [899U] = MYLITE_SQL_PARSE_JSON_ARRAY_APPEND,   /* JSON_ARRAY_APPEND */
+        [900U] = MYLITE_SQL_PARSE_JSON_ARRAY_INSERT,   /* JSON_ARRAY_INSERT */
     };
     if (keyword_index < sizeof(keyword_parser_tokens) / sizeof(keyword_parser_tokens[0]) &&
         keyword_parser_tokens[keyword_index] != 0) {

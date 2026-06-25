@@ -142,6 +142,36 @@ int mylite_execution_scalar_json_insert_function_value(
     );
 }
 
+int mylite_execution_scalar_json_array_append_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    return json_mutation_function_value(
+        database,
+        expression,
+        MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION,
+        "JSON_ARRAY_APPEND",
+        PLANNED_JSON_MUTATION_ARRAY_APPEND,
+        out_cell
+    );
+}
+
+int mylite_execution_scalar_json_array_insert_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    return json_mutation_function_value(
+        database,
+        expression,
+        MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION,
+        "JSON_ARRAY_INSERT",
+        PLANNED_JSON_MUTATION_ARRAY_INSERT,
+        out_cell
+    );
+}
+
 int mylite_execution_scalar_json_replace_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -256,14 +286,25 @@ static int json_mutation_function_value(
         goto done;
     }
     if (buffers.force_null) {
-        rc = mylite_json_mutation_validate_before_null(
-            document,
-            document_length,
-            buffers.paths,
-            buffers.path_lengths,
-            buffers.pair_count,
-            &result
-        );
+        if (mutation_kind == PLANNED_JSON_MUTATION_ARRAY_INSERT) {
+            rc = mylite_json_array_insert_validate_before_null(
+                document,
+                document_length,
+                buffers.paths,
+                buffers.path_lengths,
+                buffers.pair_count,
+                &result
+            );
+        } else {
+            rc = mylite_json_mutation_validate_before_null(
+                document,
+                document_length,
+                buffers.paths,
+                buffers.path_lengths,
+                buffers.pair_count,
+                &result
+            );
+        }
         rc = finish_json_set_scalar_result(database, rc, &result, function_name);
         if (rc == MYLITE_OK) {
             out_cell->value = NULL;
@@ -392,6 +433,32 @@ static int apply_json_mutation_scalar_function(
             out_result
         );
     }
+    if (mutation_kind == PLANNED_JSON_MUTATION_ARRAY_APPEND) {
+        return mylite_json_array_append(
+            document,
+            document_length,
+            buffers->paths,
+            buffers->path_lengths,
+            buffers->values,
+            buffers->pair_count,
+            out_result_text,
+            out_result_length,
+            out_result
+        );
+    }
+    if (mutation_kind == PLANNED_JSON_MUTATION_ARRAY_INSERT) {
+        return mylite_json_array_insert(
+            document,
+            document_length,
+            buffers->paths,
+            buffers->path_lengths,
+            buffers->values,
+            buffers->pair_count,
+            out_result_text,
+            out_result_length,
+            out_result
+        );
+    }
     if (mutation_kind == PLANNED_JSON_MUTATION_REMOVE) {
         return mylite_json_remove(
             document,
@@ -453,6 +520,14 @@ static int json_set_document_scalar_argument(
         document_message = "JSON_INSERT() supports only string and NULL documents";
         literal_message = "JSON_INSERT() supports only string document literals";
         nul_message = "JSON_INSERT() document literals do not support NUL bytes";
+    } else if (strcmp(function_name, "JSON_ARRAY_APPEND") == 0) {
+        document_message = "JSON_ARRAY_APPEND() supports only string and NULL documents";
+        literal_message = "JSON_ARRAY_APPEND() supports only string document literals";
+        nul_message = "JSON_ARRAY_APPEND() document literals do not support NUL bytes";
+    } else if (strcmp(function_name, "JSON_ARRAY_INSERT") == 0) {
+        document_message = "JSON_ARRAY_INSERT() supports only string and NULL documents";
+        literal_message = "JSON_ARRAY_INSERT() supports only string document literals";
+        nul_message = "JSON_ARRAY_INSERT() document literals do not support NUL bytes";
     } else if (strcmp(function_name, "JSON_REMOVE") == 0) {
         document_message = "JSON_REMOVE() supports only string and NULL documents";
         literal_message = "JSON_REMOVE() supports only string document literals";
@@ -662,6 +737,14 @@ static int json_set_path_scalar_argument(
         path_message = "JSON_INSERT() supports only string and NULL path literals";
         literal_message = "JSON_INSERT() supports only string path literals";
         nul_message = "JSON_INSERT() path literals do not support NUL bytes";
+    } else if (strcmp(function_name, "JSON_ARRAY_APPEND") == 0) {
+        path_message = "JSON_ARRAY_APPEND() supports only string and NULL path literals";
+        literal_message = "JSON_ARRAY_APPEND() supports only string path literals";
+        nul_message = "JSON_ARRAY_APPEND() path literals do not support NUL bytes";
+    } else if (strcmp(function_name, "JSON_ARRAY_INSERT") == 0) {
+        path_message = "JSON_ARRAY_INSERT() supports only string and NULL path literals";
+        literal_message = "JSON_ARRAY_INSERT() supports only string path literals";
+        nul_message = "JSON_ARRAY_INSERT() path literals do not support NUL bytes";
     } else if (strcmp(function_name, "JSON_REMOVE") == 0) {
         path_message = "JSON_REMOVE() supports only string and NULL path literals";
         literal_message = "JSON_REMOVE() supports only string path literals";
@@ -924,6 +1007,10 @@ static int finish_json_set_scalar_result(
             unsupported_message = "JSON_REPLACE() path or document shape is not supported";
         } else if (function_name != NULL && strcmp(function_name, "JSON_INSERT") == 0) {
             unsupported_message = "JSON_INSERT() path or document shape is not supported";
+        } else if (function_name != NULL && strcmp(function_name, "JSON_ARRAY_APPEND") == 0) {
+            unsupported_message = "JSON_ARRAY_APPEND() path or document shape is not supported";
+        } else if (function_name != NULL && strcmp(function_name, "JSON_ARRAY_INSERT") == 0) {
+            unsupported_message = "JSON_ARRAY_INSERT() path or document shape is not supported";
         } else if (function_name != NULL && strcmp(function_name, "JSON_REMOVE") == 0) {
             unsupported_message = "JSON_REMOVE() path or document shape is not supported";
         }
@@ -932,6 +1019,10 @@ static int finish_json_set_scalar_result(
     }
     if (result != NULL && result->status == MYLITE_JSON_NORMALIZE_PATH_NOT_ALLOWED) {
         mylite_execution_set_json_path_not_allowed_error(database);
+        return MYLITE_ERROR;
+    }
+    if (result != NULL && result->status == MYLITE_JSON_NORMALIZE_PATH_NOT_ARRAY_CELL) {
+        mylite_execution_set_json_path_not_array_cell_error(database);
         return MYLITE_ERROR;
     }
     if (result != NULL && result->status == MYLITE_JSON_NORMALIZE_INVALID_PATH) {

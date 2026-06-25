@@ -354,6 +354,24 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_JSON_INSERT_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "JSON_INSERT");
         return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION:
+        return mylite_execution_scalar_json_array_append_function_value(
+            database,
+            expression,
+            out_cell
+        );
+    case MYLITE_SQL_AST_JSON_ARRAY_APPEND_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_ARRAY_APPEND");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION:
+        return mylite_execution_scalar_json_array_insert_function_value(
+            database,
+            expression,
+            out_cell
+        );
+    case MYLITE_SQL_AST_JSON_ARRAY_INSERT_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_ARRAY_INSERT");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_JSON_REPLACE_FUNCTION:
         return mylite_execution_scalar_json_replace_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_JSON_REPLACE_ARGUMENT_COUNT_ERROR:

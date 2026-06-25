@@ -629,6 +629,48 @@ static bool map_json_mutation_row_scalar_step_error(
         set_unsupported_error(database, "JSON_INSERT() path or document shape is not supported");
         return true;
     }
+    if (strcmp(message, "Invalid data type for JSON data in JSON_ARRAY_APPEND()") == 0) {
+        set_invalid_json_data_type_error(database, "JSON_ARRAY_APPEND");
+        return true;
+    }
+    if (strcmp(message, "Invalid JSON path in JSON_ARRAY_APPEND()") == 0) {
+        set_invalid_json_path_error(database, 0U);
+        return true;
+    }
+    if (strcmp(message, "Invalid JSON text or JSON path in JSON_ARRAY_APPEND()") == 0) {
+        set_invalid_json_function_text_error(database, 0U);
+        return true;
+    }
+    if (strcmp(message, "Unsupported JSON path or JSON document in JSON_ARRAY_APPEND()") == 0) {
+        set_unsupported_error(
+            database,
+            "JSON_ARRAY_APPEND() path or document shape is not supported"
+        );
+        return true;
+    }
+    if (strcmp(message, "Invalid data type for JSON data in JSON_ARRAY_INSERT()") == 0) {
+        set_invalid_json_data_type_error(database, "JSON_ARRAY_INSERT");
+        return true;
+    }
+    if (strcmp(message, "Invalid JSON path in JSON_ARRAY_INSERT()") == 0) {
+        set_invalid_json_path_error(database, 0U);
+        return true;
+    }
+    if (strcmp(message, "JSON_ARRAY_INSERT path is not an array cell") == 0) {
+        set_json_path_not_array_cell_error(database);
+        return true;
+    }
+    if (strcmp(message, "Invalid JSON text or JSON path in JSON_ARRAY_INSERT()") == 0) {
+        set_invalid_json_function_text_error(database, 0U);
+        return true;
+    }
+    if (strcmp(message, "Unsupported JSON path or JSON document in JSON_ARRAY_INSERT()") == 0) {
+        set_unsupported_error(
+            database,
+            "JSON_ARRAY_INSERT() path or document shape is not supported"
+        );
+        return true;
+    }
     if (strcmp(message, "Invalid data type for JSON data in JSON_REPLACE()") == 0) {
         set_invalid_json_data_type_error(database, "JSON_REPLACE");
         return true;

@@ -1238,7 +1238,9 @@ bool mylite_sql_keyword_lookup(
         {"JSON_PRETTY", 0U},
         {"JSON_OVERLAPS", 0U},
         {"JSON_STORAGE_SIZE", 0U},
-        {"JSON_STORAGE_FREE", 0U}
+        {"JSON_STORAGE_FREE", 0U},
+        {"JSON_ARRAY_APPEND", 0U},
+        {"JSON_ARRAY_INSERT", 0U}
     };
 
     if (out_result != NULL) {
@@ -3137,6 +3139,12 @@ static unsigned int lookup_hot_keyword_index(const char *text, size_t length, un
     case 17U:
         switch (first) {
         case 'J':
+            if (compare_keyword_text(text, length, "JSON_ARRAY_APPEND") == 0) {
+                return 899U;
+            }
+            if (compare_keyword_text(text, length, "JSON_ARRAY_INSERT") == 0) {
+                return 900U;
+            }
             if (compare_keyword_text(text, length, "JSON_STORAGE_SIZE") == 0) {
                 return 897U;
             }

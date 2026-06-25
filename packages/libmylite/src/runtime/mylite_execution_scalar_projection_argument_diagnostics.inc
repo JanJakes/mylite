@@ -204,6 +204,10 @@ static const char *argument_count_error_node_function_name(
         return "JSON_PRETTY";
     case MYLITE_SQL_AST_JSON_SET_ARGUMENT_COUNT_ERROR:
         return "JSON_SET";
+    case MYLITE_SQL_AST_JSON_ARRAY_APPEND_ARGUMENT_COUNT_ERROR:
+        return "JSON_ARRAY_APPEND";
+    case MYLITE_SQL_AST_JSON_ARRAY_INSERT_ARGUMENT_COUNT_ERROR:
+        return "JSON_ARRAY_INSERT";
     case MYLITE_SQL_AST_JSON_REPLACE_ARGUMENT_COUNT_ERROR:
         return "JSON_REPLACE";
     case MYLITE_SQL_AST_JSON_REMOVE_ARGUMENT_COUNT_ERROR:

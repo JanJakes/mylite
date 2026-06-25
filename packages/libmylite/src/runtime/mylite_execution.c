@@ -955,6 +955,10 @@ void mylite_execution_set_json_path_not_allowed_error(struct mylite_db *database
     set_json_path_not_allowed_error(database);
 }
 
+void mylite_execution_set_json_path_not_array_cell_error(struct mylite_db *database) {
+    set_json_path_not_array_cell_error(database);
+}
+
 void mylite_execution_set_invalid_json_data_type_error(
     struct mylite_db *database,
     const char *function_name

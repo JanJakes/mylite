@@ -2991,6 +2991,66 @@ static int test_json_set_function(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "SELECT JSON_ARRAY_APPEND('{\"a\":1}', '$.a', 2), "
+        "json_array_append(j, '$.b', JSON_ARRAY(1)) AS changed FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    second_item = parser_test_child_at(select_list, 1U);
+    second_expression = parser_test_child_at(second_item, 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION,
+        "json_array_append function"
+    );
+    failures += parser_test_expect_span_text(
+        first_expression,
+        "JSON_ARRAY_APPEND('{\"a\":1}', '$.a', 2)",
+        "json_array_append span"
+    );
+    arguments = parser_test_child_at(first_expression, 0U);
+    failures += parser_test_expect_child_count(arguments, 3U, "json_array_append argument count");
+    failures += parser_test_expect_node(
+        second_expression,
+        MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION,
+        "lower json_array_append"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT JSON_ARRAY_INSERT('[1,2]', '$[1]', 9), "
+        "json_array_insert(j, '$.b[0]', JSON_OBJECT('k', 1)) AS changed FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    second_item = parser_test_child_at(select_list, 1U);
+    second_expression = parser_test_child_at(second_item, 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION,
+        "json_array_insert function"
+    );
+    failures += parser_test_expect_span_text(
+        first_expression,
+        "JSON_ARRAY_INSERT('[1,2]', '$[1]', 9)",
+        "json_array_insert span"
+    );
+    arguments = parser_test_child_at(first_expression, 0U);
+    failures += parser_test_expect_child_count(arguments, 3U, "json_array_insert argument count");
+    failures += parser_test_expect_node(
+        second_expression,
+        MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION,
+        "lower json_array_insert"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "SELECT JSON_REMOVE('{\"a\":1}', '$.a'), json_remove(j, '$.b') AS changed FROM t;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -3058,6 +3118,30 @@ static int test_json_set_function(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql("SELECT JSON_ARRAY_APPEND();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = parser_test_child_at(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),
+        0U
+    );
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_ARRAY_APPEND_ARGUMENT_COUNT_ERROR,
+        "json_array_append zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("SELECT JSON_ARRAY_INSERT();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = parser_test_child_at(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),
+        0U
+    );
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_ARRAY_INSERT_ARGUMENT_COUNT_ERROR,
+        "json_array_insert zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     failures += parser_test_parse_sql("SELECT JSON_REPLACE();", MYLITE_SQL_PARSE_OK, &result);
     first_expression = parser_test_child_at(
         parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),
@@ -3098,6 +3182,28 @@ static int test_json_set_function(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "DO JSON_ARRAY_APPEND('{\"a\":1}', '$.a', NULL), "
+        "JSON_ARRAY_INSERT('[1,2]', '$[1]', 9);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    expression_list = parser_test_child_at(statement, 0U);
+    failures +=
+        parser_test_expect_node(statement, MYLITE_SQL_AST_DO_STATEMENT, "json array mutation do");
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression_list, 0U),
+        MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION,
+        "do json_array_append"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression_list, 1U),
+        MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION,
+        "do json_array_insert"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "CREATE TABLE json_set (json_set INT); SELECT json_set FROM json_set;",
         MYLITE_SQL_PARSE_OK,
         &result
@@ -3106,6 +3212,22 @@ static int test_json_set_function(void) {
 
     failures += parser_test_parse_sql(
         "CREATE TABLE json_insert (json_insert INT); SELECT json_insert FROM json_insert;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE json_array_append (json_array_append INT); "
+        "SELECT json_array_append FROM json_array_append;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE json_array_insert (json_array_insert INT); "
+        "SELECT json_array_insert FROM json_array_insert;",
         MYLITE_SQL_PARSE_OK,
         &result
     );

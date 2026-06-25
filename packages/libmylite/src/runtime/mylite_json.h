@@ -11,6 +11,7 @@ enum mylite_json_normalize_status {
     MYLITE_JSON_NORMALIZE_UNSUPPORTED = 2,
     MYLITE_JSON_NORMALIZE_INVALID_PATH = 3,
     MYLITE_JSON_NORMALIZE_PATH_NOT_ALLOWED = 4,
+    MYLITE_JSON_NORMALIZE_PATH_NOT_ARRAY_CELL = 5,
 };
 
 enum mylite_json_error_detail {
@@ -188,6 +189,28 @@ int mylite_json_insert(
     size_t *out_text_length,
     struct mylite_json_normalize_result *out_result
 );
+int mylite_json_array_append(
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    const struct mylite_json_sql_value *values,
+    size_t pair_count,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+);
+int mylite_json_array_insert(
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    const struct mylite_json_sql_value *values,
+    size_t pair_count,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_normalize_result *out_result
+);
 int mylite_json_remove(
     const char *text,
     size_t text_length,
@@ -199,6 +222,14 @@ int mylite_json_remove(
     struct mylite_json_normalize_result *out_result
 );
 int mylite_json_mutation_validate_before_null(
+    const char *text,
+    size_t text_length,
+    const char *const *paths,
+    const size_t *path_lengths,
+    size_t path_count,
+    struct mylite_json_normalize_result *out_result
+);
+int mylite_json_array_insert_validate_before_null(
     const char *text,
     size_t text_length,
     const char *const *paths,

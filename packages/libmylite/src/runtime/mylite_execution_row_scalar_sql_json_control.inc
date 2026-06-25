@@ -755,6 +755,18 @@ static int json_mutation_sqlite_function_name(
         }
         *out_function_name = "_mylite_json_insert(";
         return MYLITE_OK;
+    case PLANNED_JSON_MUTATION_ARRAY_APPEND:
+        if (expression->argument_count < 3U || (expression->argument_count % 2U) == 0U) {
+            return MYLITE_ERROR;
+        }
+        *out_function_name = "_mylite_json_array_append(";
+        return MYLITE_OK;
+    case PLANNED_JSON_MUTATION_ARRAY_INSERT:
+        if (expression->argument_count < 3U || (expression->argument_count % 2U) == 0U) {
+            return MYLITE_ERROR;
+        }
+        *out_function_name = "_mylite_json_array_insert(";
+        return MYLITE_OK;
     case PLANNED_JSON_MUTATION_REPLACE:
         if (expression->argument_count < 3U || (expression->argument_count % 2U) == 0U) {
             return MYLITE_ERROR;

@@ -1750,18 +1750,33 @@ static int json_extract_scalar_argument(
         mylite_execution_set_unsupported_error(
             database,
             "JSON_EXTRACT() supports only string, NULL, JSON_SET(), JSON_INSERT(), "
-            "JSON_REPLACE(), and JSON_REMOVE() document arguments"
+            "JSON_ARRAY_APPEND(), JSON_ARRAY_INSERT(), JSON_REPLACE(), and JSON_REMOVE() "
+            "document arguments"
         );
         return MYLITE_ERROR;
     }
     if (expression->kind == MYLITE_SQL_AST_JSON_SET_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_JSON_INSERT_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_JSON_REPLACE_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_JSON_REMOVE_FUNCTION) {
         int rc_set = MYLITE_OK;
 
         if (expression->kind == MYLITE_SQL_AST_JSON_INSERT_FUNCTION) {
             rc_set = mylite_execution_scalar_json_insert_function_value(
+                database,
+                expression,
+                inout_cell
+            );
+        } else if (expression->kind == MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION) {
+            rc_set = mylite_execution_scalar_json_array_append_function_value(
+                database,
+                expression,
+                inout_cell
+            );
+        } else if (expression->kind == MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION) {
+            rc_set = mylite_execution_scalar_json_array_insert_function_value(
                 database,
                 expression,
                 inout_cell
@@ -1832,8 +1847,9 @@ static int json_extract_scalar_argument(
 
     mylite_execution_set_unsupported_error(
         database,
-        "JSON_EXTRACT() supports only string, NULL, JSON_SET(), JSON_INSERT(), JSON_REPLACE(), "
-        "and JSON_REMOVE() document arguments"
+        "JSON_EXTRACT() supports only string, NULL, JSON_SET(), JSON_INSERT(), "
+        "JSON_ARRAY_APPEND(), JSON_ARRAY_INSERT(), JSON_REPLACE(), and JSON_REMOVE() document "
+        "arguments"
     );
     return MYLITE_ERROR;
 }
@@ -1865,7 +1881,8 @@ static int json_introspection_scalar_argument(
         mylite_execution_set_unsupported_error(
             database,
             "JSON introspection supports only string, NULL, JSON_EXTRACT(), JSON_SET(), "
-            "JSON_INSERT(), JSON_REPLACE(), JSON_REMOVE(), and descriptor column arguments"
+            "JSON_INSERT(), JSON_ARRAY_APPEND(), JSON_ARRAY_INSERT(), JSON_REPLACE(), "
+            "JSON_REMOVE(), and descriptor column arguments"
         );
         return MYLITE_ERROR;
     }
@@ -1930,7 +1947,8 @@ static int json_introspection_scalar_argument(
     mylite_execution_set_unsupported_error(
         database,
         "JSON introspection supports only string, NULL, JSON_EXTRACT(), JSON_SET(), "
-        "JSON_INSERT(), JSON_REPLACE(), JSON_REMOVE(), and descriptor column arguments"
+        "JSON_INSERT(), JSON_ARRAY_APPEND(), JSON_ARRAY_INSERT(), JSON_REPLACE(), "
+        "JSON_REMOVE(), and descriptor column arguments"
     );
     return MYLITE_ERROR;
 }
@@ -1943,6 +1961,12 @@ static bool is_json_mutation_function_expression(const struct mylite_sql_ast_nod
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_JSON_INSERT_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION) {
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_JSON_REPLACE_FUNCTION) {
@@ -1966,6 +1990,18 @@ static int json_mutation_scalar_argument(
 
     if (expression->kind == MYLITE_SQL_AST_JSON_INSERT_FUNCTION) {
         rc = mylite_execution_scalar_json_insert_function_value(database, expression, inout_cell);
+    } else if (expression->kind == MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION) {
+        rc = mylite_execution_scalar_json_array_append_function_value(
+            database,
+            expression,
+            inout_cell
+        );
+    } else if (expression->kind == MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION) {
+        rc = mylite_execution_scalar_json_array_insert_function_value(
+            database,
+            expression,
+            inout_cell
+        );
     } else if (expression->kind == MYLITE_SQL_AST_JSON_REPLACE_FUNCTION) {
         rc = mylite_execution_scalar_json_replace_function_value(database, expression, inout_cell);
     } else if (expression->kind == MYLITE_SQL_AST_JSON_REMOVE_FUNCTION) {

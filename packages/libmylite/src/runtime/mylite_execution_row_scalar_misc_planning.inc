@@ -1429,6 +1429,10 @@ static bool row_scalar_expression_contains_row_function(
             current->kind == MYLITE_SQL_AST_JSON_SET_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_JSON_INSERT_FUNCTION ||
             current->kind == MYLITE_SQL_AST_JSON_INSERT_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_JSON_ARRAY_APPEND_ARGUMENT_COUNT_ERROR ||
+            current->kind == MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION ||
+            current->kind == MYLITE_SQL_AST_JSON_ARRAY_INSERT_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_JSON_REPLACE_FUNCTION ||
             current->kind == MYLITE_SQL_AST_JSON_REPLACE_ARGUMENT_COUNT_ERROR ||
             current->kind == MYLITE_SQL_AST_JSON_REMOVE_FUNCTION ||

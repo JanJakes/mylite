@@ -29,7 +29,9 @@ enum planned_json_mutation_kind {
     PLANNED_JSON_MUTATION_SET = 0,
     PLANNED_JSON_MUTATION_REPLACE = 1,
     PLANNED_JSON_MUTATION_INSERT = 2,
-    PLANNED_JSON_MUTATION_REMOVE = 3,
+    PLANNED_JSON_MUTATION_ARRAY_APPEND = 3,
+    PLANNED_JSON_MUTATION_ARRAY_INSERT = 4,
+    PLANNED_JSON_MUTATION_REMOVE = 5,
 };
 
 enum planned_string_length_function_kind {
@@ -438,6 +440,16 @@ int mylite_execution_scalar_json_insert_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+int mylite_execution_scalar_json_array_append_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+int mylite_execution_scalar_json_array_insert_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 int mylite_execution_scalar_json_replace_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -757,6 +769,7 @@ int mylite_execution_append_invalid_json_value_warning(
 );
 void mylite_execution_set_invalid_json_path_error(struct mylite_db *database, size_t position);
 void mylite_execution_set_json_path_not_allowed_error(struct mylite_db *database);
+void mylite_execution_set_json_path_not_array_cell_error(struct mylite_db *database);
 void mylite_execution_set_invalid_json_data_type_error(
     struct mylite_db *database,
     const char *function_name

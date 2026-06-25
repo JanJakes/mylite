@@ -1279,6 +1279,14 @@ static int json_mutation_kind_from_ast(
         *out_function_name = "JSON_INSERT";
         *out_mutation_kind = PLANNED_JSON_MUTATION_INSERT;
         return MYLITE_OK;
+    case MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION:
+        *out_function_name = "JSON_ARRAY_APPEND";
+        *out_mutation_kind = PLANNED_JSON_MUTATION_ARRAY_APPEND;
+        return MYLITE_OK;
+    case MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION:
+        *out_function_name = "JSON_ARRAY_INSERT";
+        *out_mutation_kind = PLANNED_JSON_MUTATION_ARRAY_INSERT;
+        return MYLITE_OK;
     case MYLITE_SQL_AST_JSON_REPLACE_FUNCTION:
         *out_function_name = "JSON_REPLACE";
         *out_mutation_kind = PLANNED_JSON_MUTATION_REPLACE;
@@ -1464,6 +1472,16 @@ static int plan_row_scalar_json_set_document_argument(
             "JSON_INSERT() supports only string, NULL, and descriptor column documents";
         column_message =
             "JSON_INSERT() supports only JSON and nonbinary string descriptor column documents";
+    } else if (strcmp(function_name, "JSON_ARRAY_APPEND") == 0) {
+        document_message =
+            "JSON_ARRAY_APPEND() supports only string, NULL, and descriptor column documents";
+        column_message = "JSON_ARRAY_APPEND() supports only JSON and nonbinary string descriptor "
+                         "column documents";
+    } else if (strcmp(function_name, "JSON_ARRAY_INSERT") == 0) {
+        document_message =
+            "JSON_ARRAY_INSERT() supports only string, NULL, and descriptor column documents";
+        column_message = "JSON_ARRAY_INSERT() supports only JSON and nonbinary string descriptor "
+                         "column documents";
     } else if (strcmp(function_name, "JSON_REMOVE") == 0) {
         document_message =
             "JSON_REMOVE() supports only string, NULL, and descriptor column documents";
@@ -1882,12 +1900,15 @@ static int plan_row_scalar_json_introspection_document_argument(
         set_unsupported_error(
             database,
             "JSON introspection supports only string, NULL, JSON_EXTRACT(), JSON_SET(), "
-            "JSON_INSERT(), JSON_REPLACE(), JSON_REMOVE(), and descriptor column documents"
+            "JSON_INSERT(), JSON_ARRAY_APPEND(), JSON_ARRAY_INSERT(), JSON_REPLACE(), "
+            "JSON_REMOVE(), and descriptor column documents"
         );
         return MYLITE_ERROR;
     }
     if (expression->kind == MYLITE_SQL_AST_JSON_SET_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_JSON_INSERT_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_JSON_REPLACE_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_JSON_REMOVE_FUNCTION) {
         return plan_row_scalar_json_set_expression(
@@ -1983,7 +2004,8 @@ static int plan_row_scalar_json_introspection_document_argument(
     set_unsupported_error(
         database,
         "JSON introspection supports only string, NULL, JSON_EXTRACT(), JSON_SET(), "
-        "JSON_INSERT(), JSON_REPLACE(), JSON_REMOVE(), and descriptor column documents"
+        "JSON_INSERT(), JSON_ARRAY_APPEND(), JSON_ARRAY_INSERT(), JSON_REPLACE(), "
+        "JSON_REMOVE(), and descriptor column documents"
     );
     return MYLITE_ERROR;
 }
@@ -2086,12 +2108,15 @@ static int plan_row_scalar_json_document_argument(
         set_unsupported_error(
             database,
             "JSON_EXTRACT() supports only string, NULL, JSON_SET(), JSON_INSERT(), "
-            "JSON_REPLACE(), JSON_REMOVE(), and descriptor column documents"
+            "JSON_ARRAY_APPEND(), JSON_ARRAY_INSERT(), JSON_REPLACE(), JSON_REMOVE(), "
+            "and descriptor column documents"
         );
         return MYLITE_ERROR;
     }
     if (expression->kind == MYLITE_SQL_AST_JSON_SET_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_JSON_INSERT_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_ARRAY_APPEND_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_JSON_ARRAY_INSERT_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_JSON_REPLACE_FUNCTION ||
         expression->kind == MYLITE_SQL_AST_JSON_REMOVE_FUNCTION) {
         return plan_row_scalar_json_set_expression(
@@ -2161,8 +2186,9 @@ static int plan_row_scalar_json_document_argument(
 
     set_unsupported_error(
         database,
-        "JSON_EXTRACT() supports only string, NULL, JSON_SET(), JSON_INSERT(), JSON_REPLACE(), "
-        "JSON_REMOVE(), and descriptor column documents"
+        "JSON_EXTRACT() supports only string, NULL, JSON_SET(), JSON_INSERT(), "
+        "JSON_ARRAY_APPEND(), JSON_ARRAY_INSERT(), JSON_REPLACE(), JSON_REMOVE(), and descriptor "
+        "column documents"
     );
     return MYLITE_ERROR;
 }
@@ -2259,6 +2285,10 @@ static int plan_row_scalar_json_set_path_argument(
         path_message = "JSON_REPLACE() supports only string and NULL path literals";
     } else if (strcmp(function_name, "JSON_INSERT") == 0) {
         path_message = "JSON_INSERT() supports only string and NULL path literals";
+    } else if (strcmp(function_name, "JSON_ARRAY_APPEND") == 0) {
+        path_message = "JSON_ARRAY_APPEND() supports only string and NULL path literals";
+    } else if (strcmp(function_name, "JSON_ARRAY_INSERT") == 0) {
+        path_message = "JSON_ARRAY_INSERT() supports only string and NULL path literals";
     } else if (strcmp(function_name, "JSON_REMOVE") == 0) {
         path_message = "JSON_REMOVE() supports only string and NULL path literals";
     }
@@ -2303,6 +2333,12 @@ static int plan_row_scalar_json_set_value_argument(
         } else if (strcmp(function_name, "JSON_INSERT") == 0) {
             message = "JSON_INSERT() values support only string, integer, boolean, NULL, JSON "
                       "functions, and descriptor column arguments";
+        } else if (strcmp(function_name, "JSON_ARRAY_APPEND") == 0) {
+            message = "JSON_ARRAY_APPEND() values support only string, integer, boolean, NULL, "
+                      "JSON functions, and descriptor column arguments";
+        } else if (strcmp(function_name, "JSON_ARRAY_INSERT") == 0) {
+            message = "JSON_ARRAY_INSERT() values support only string, integer, boolean, NULL, "
+                      "JSON functions, and descriptor column arguments";
         }
         set_unsupported_error(database, message);
         return MYLITE_ERROR;

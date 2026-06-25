@@ -323,6 +323,44 @@ static int generic_sys_function_value(
     enum mylite_sys_function_kind kind,
     struct session_scalar_cell *out_cell
 );
+static int generic_replication_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static bool generic_replication_function_name_is_supported(
+    const struct mylite_sql_ast_node *expression
+);
+static bool generic_replication_position_wait_function_name(
+    const struct mylite_sql_ast_node *expression
+);
+static bool generic_replication_async_function_name(const struct mylite_sql_ast_node *expression);
+static bool generic_replication_group_function_name(const struct mylite_sql_ast_node *expression);
+static int generic_replication_async_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    size_t argument_count,
+    struct session_scalar_cell *out_cell
+);
+struct generic_replication_async_function;
+static const struct generic_replication_async_function *generic_replication_async_function_descriptor(
+    const struct mylite_sql_ast_node *expression
+);
+static int set_gtid_wait_with_gtid_mode_off_error(struct mylite_db *database);
+static int set_group_replication_function_missing_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
+static int generic_function_identifier_nodes(
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node **out_schema_identifier,
+    const struct mylite_sql_ast_node **out_function_identifier
+);
+static int set_schema_function_missing_error(
+    struct mylite_db *database,
+    const char *schema_name,
+    const char *function_name
+);
 static bool generic_system_function_name_equals(
     const struct mylite_sql_ast_node *expression,
     const char *name

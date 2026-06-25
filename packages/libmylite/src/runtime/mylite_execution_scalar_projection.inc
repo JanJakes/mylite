@@ -188,7 +188,8 @@ static bool is_named_lock_and_info_projection_expression(
             generic_function_name_equals(expression, "NAME_CONST") ||
             generic_function_name_equals(expression, "LOAD_FILE") ||
             generic_function_name_equals(expression, "EXTRACTVALUE") ||
-            generic_function_name_equals(expression, "UPDATEXML")) != 0;
+            generic_function_name_equals(expression, "UPDATEXML") ||
+            generic_replication_function_name_is_supported(expression)) != 0;
 }
 
 static bool is_numeric_scalar_function_projection_expression(

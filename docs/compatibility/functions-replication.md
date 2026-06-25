@@ -5,23 +5,23 @@ wait functions.
 
 | Function | Status | Notes |
 | --- | --- | --- |
-| `asynchronous_connection_failover_add_managed()` | ❌ | Add managed failover source |
-| `asynchronous_connection_failover_add_source()` | ❌ | Add failover source |
-| `asynchronous_connection_failover_delete_managed()` | ❌ | Delete managed failover source |
-| `asynchronous_connection_failover_delete_source()` | ❌ | Delete failover source |
-| `asynchronous_connection_failover_reset()` | ❌ | Reset failover settings |
-| `group_replication_disable_member_action()` | ❌ | Disable member action for event specified |
-| `group_replication_enable_member_action()` | ❌ | Enable member action for event specified |
-| `group_replication_get_communication_protocol()` | ❌ | Get group protocol version |
-| `group_replication_get_write_concurrency()` | ❌ | Get write concurrency |
-| `group_replication_reset_member_actions()` | ❌ | Reset member actions |
-| `group_replication_set_as_primary()` | ❌ | Make a specific group member the primary |
-| `group_replication_set_communication_protocol()` | ❌ | Set group protocol version |
-| `group_replication_set_write_concurrency()` | ❌ | Set write concurrency |
-| `group_replication_switch_to_multi_primary_mode()` | ❌ | Switch group primary mode |
-| `group_replication_switch_to_single_primary_mode()` | ❌ | Switch group primary mode |
-| `MASTER_POS_WAIT()` | ❌ | Wait for replica position |
-| `SOURCE_POS_WAIT()` | ❌ | Wait for replica position |
-| `WAIT_FOR_EXECUTED_GTID_SET()` | ❌ | Wait until the given GTIDs have executed on the replica |
+| `asynchronous_connection_failover_add_managed()` | ⚪ | Embedded no-replication placeholder returns the MySQL 8.4.9 valid-call UDF success string; no persisted source list |
+| `asynchronous_connection_failover_add_source()` | ⚪ | Embedded no-replication placeholder returns the MySQL 8.4.9 valid-call UDF success string; no persisted source list |
+| `asynchronous_connection_failover_delete_managed()` | ⚪ | Embedded no-replication placeholder returns the MySQL 8.4.9 valid-call UDF success string; no persisted source list |
+| `asynchronous_connection_failover_delete_source()` | ⚪ | Embedded no-replication placeholder returns the MySQL 8.4.9 valid-call UDF success string; no persisted source list |
+| `asynchronous_connection_failover_reset()` | ⚪ | Embedded no-replication placeholder returns the MySQL 8.4.9 valid-call UDF success string |
+| `group_replication_disable_member_action()` | ⚪ | Target-runtime absent in the pinned MySQL 8.4.9 server; MyLite mirrors `1046`/`1305` missing-function diagnostics |
+| `group_replication_enable_member_action()` | ⚪ | Target-runtime absent in the pinned MySQL 8.4.9 server; MyLite mirrors `1046`/`1305` missing-function diagnostics |
+| `group_replication_get_communication_protocol()` | ⚪ | Target-runtime absent in the pinned MySQL 8.4.9 server; MyLite mirrors `1046`/`1305` missing-function diagnostics |
+| `group_replication_get_write_concurrency()` | ⚪ | Target-runtime absent in the pinned MySQL 8.4.9 server; MyLite mirrors `1046`/`1305` missing-function diagnostics |
+| `group_replication_reset_member_actions()` | ⚪ | Target-runtime absent in the pinned MySQL 8.4.9 server; MyLite mirrors `1046`/`1305` missing-function diagnostics |
+| `group_replication_set_as_primary()` | ⚪ | Target-runtime absent in the pinned MySQL 8.4.9 server; MyLite mirrors `1046`/`1305` missing-function diagnostics |
+| `group_replication_set_communication_protocol()` | ⚪ | Target-runtime absent in the pinned MySQL 8.4.9 server; MyLite mirrors `1046`/`1305` missing-function diagnostics |
+| `group_replication_set_write_concurrency()` | ⚪ | Target-runtime absent in the pinned MySQL 8.4.9 server; MyLite mirrors `1046`/`1305` missing-function diagnostics |
+| `group_replication_switch_to_multi_primary_mode()` | ⚪ | Target-runtime absent in the pinned MySQL 8.4.9 server; MyLite mirrors `1046`/`1305` missing-function diagnostics |
+| `group_replication_switch_to_single_primary_mode()` | ⚪ | Target-runtime absent in the pinned MySQL 8.4.9 server; MyLite mirrors `1046`/`1305` missing-function diagnostics |
+| `MASTER_POS_WAIT()` | 🟡 | MySQL 8.4.9-shaped no-replica scalar placeholder returns `NULL`; no binary-log position state or actual wait |
+| `SOURCE_POS_WAIT()` | 🟡 | MySQL 8.4.9-shaped no-replica scalar placeholder returns `NULL`; no binary-log position state or actual wait |
+| `WAIT_FOR_EXECUTED_GTID_SET()` | ⚪ | Fixed `gtid_mode=OFF` embedded diagnostic `3062 / HY000`; no GTID execution set |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

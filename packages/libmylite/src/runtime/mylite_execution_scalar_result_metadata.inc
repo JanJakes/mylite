@@ -241,6 +241,33 @@ static int populate_scalar_function_result_column_descriptor(
             );
             return MYLITE_OK;
         }
+        if (generic_replication_async_function_name(expression) ||
+            generic_replication_group_function_name(expression)) {
+            populate_scalar_connection_string_result_column_descriptor(
+                database,
+                descriptor,
+                (struct scalar_connection_string_result_column_shape){
+                    .display_length = mysql_json_document_display_length,
+                    .extra_flags = 0U,
+                    .nullable = true,
+                }
+            );
+            return MYLITE_OK;
+        }
+        if (generic_replication_position_wait_function_name(expression) ||
+            generic_system_function_name_equals(expression, "WAIT_FOR_EXECUTED_GTID_SET")) {
+            populate_scalar_binary_numeric_result_column_descriptor(
+                descriptor,
+                (struct scalar_binary_numeric_result_column_shape){
+                    .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                    .display_length = mysql_scalar_bigint_display_length,
+                    .decimals = 0U,
+                    .extra_flags = 0U,
+                    .nullable = true,
+                }
+            );
+            return MYLITE_OK;
+        }
         if (generic_system_function_name_equals(expression, "NAME_CONST")) {
             const struct mylite_sql_ast_node *arguments =
                 generic_system_function_arguments(expression);

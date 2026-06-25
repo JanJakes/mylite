@@ -97,6 +97,7 @@ enum {
     mysql_error_unknown_collation = 1273,
     mysql_error_truncated_wrong_value_for_field = 1366,
     mysql_error_invalid_argument_for_function = 3047,
+    mysql_error_gtid_wait_with_gtid_mode_off = 3062,
     mysql_error_replica_channel_does_not_exist = 3074,
     mysql_error_trigger_does_not_exist = 1360,
     mysql_error_operation_failed = 1396,

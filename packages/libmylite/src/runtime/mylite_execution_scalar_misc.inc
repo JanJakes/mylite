@@ -138,6 +138,9 @@ static int generic_system_function_value(
     if (generic_sys_function_kind(expression, &sys_function_kind)) {
         return generic_sys_function_value(database, expression, sys_function_kind, out_cell);
     }
+    if (generic_replication_function_name_is_supported(expression)) {
+        return generic_replication_function_value(database, expression, out_cell);
+    }
     if (generic_system_function_name_equals(expression, "GET_LOCK")) {
         return generic_named_lock_get_value(database, arguments, out_cell);
     }
@@ -268,6 +271,292 @@ static int generic_sys_function_value(
     result.text = NULL;
     mylite_sys_function_result_deinit(&result);
     return MYLITE_OK;
+}
+
+struct generic_replication_async_function {
+    const char *name;
+    const char *success_message;
+    size_t argument_count;
+};
+
+static int generic_replication_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *arguments = generic_system_function_arguments(expression);
+    size_t argument_count = arguments == NULL ? 0U : mylite_sql_ast_node_child_count(arguments);
+
+    if (generic_replication_async_function_name(expression)) {
+        return generic_replication_async_function_value(
+            database,
+            expression,
+            argument_count,
+            out_cell
+        );
+    }
+    if (generic_replication_position_wait_function_name(expression)) {
+        if (argument_count < 2U || argument_count > 4U) {
+            set_native_function_parameter_count_error(
+                database,
+                generic_system_function_name_equals(expression, "MASTER_POS_WAIT")
+                    ? "MASTER_POS_WAIT"
+                    : "SOURCE_POS_WAIT"
+            );
+            return MYLITE_ERROR;
+        }
+        out_cell->value = NULL;
+        return MYLITE_OK;
+    }
+    if (generic_system_function_name_equals(expression, "WAIT_FOR_EXECUTED_GTID_SET")) {
+        if (argument_count < 1U || argument_count > 2U) {
+            set_native_function_parameter_count_error(database, "WAIT_FOR_EXECUTED_GTID_SET");
+            return MYLITE_ERROR;
+        }
+        return set_gtid_wait_with_gtid_mode_off_error(database);
+    }
+    if (generic_replication_group_function_name(expression)) {
+        return set_group_replication_function_missing_error(database, expression);
+    }
+    set_unsupported_error(database, "unsupported generic scalar function");
+    return MYLITE_ERROR;
+}
+
+static int generic_replication_async_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    size_t argument_count,
+    struct session_scalar_cell *out_cell
+) {
+    const struct generic_replication_async_function *function =
+        generic_replication_async_function_descriptor(expression);
+
+    if (function == NULL) {
+        set_unsupported_error(database, "unsupported generic scalar function");
+        return MYLITE_ERROR;
+    }
+    if (argument_count != function->argument_count) {
+        set_native_function_parameter_count_error(database, function->name);
+        return MYLITE_ERROR;
+    }
+    out_cell->value = function->success_message;
+    return MYLITE_OK;
+}
+
+static const struct generic_replication_async_function *generic_replication_async_function_descriptor(
+    const struct mylite_sql_ast_node *expression
+) {
+    static const struct generic_replication_async_function functions[] = {
+        {
+            "asynchronous_connection_failover_add_managed",
+            "The UDF asynchronous_connection_failover_add_managed() executed successfully.",
+            8U,
+        },
+        {
+            "asynchronous_connection_failover_add_source",
+            "The UDF asynchronous_connection_failover_add_source() executed successfully.",
+            5U,
+        },
+        {
+            "asynchronous_connection_failover_delete_managed",
+            "The UDF asynchronous_connection_failover_delete_managed() executed successfully.",
+            2U,
+        },
+        {
+            "asynchronous_connection_failover_delete_source",
+            "The UDF asynchronous_connection_failover_delete_source() executed successfully.",
+            4U,
+        },
+        {
+            "asynchronous_connection_failover_reset",
+            "The UDF asynchronous_connection_failover_reset() executed successfully.",
+            0U,
+        },
+    };
+
+    for (size_t index = 0U; index < sizeof(functions) / sizeof(functions[0]); ++index) {
+        if (generic_system_function_name_equals(expression, functions[index].name)) {
+            return &functions[index];
+        }
+    }
+    return NULL;
+}
+
+static bool generic_replication_function_name_is_supported(
+    const struct mylite_sql_ast_node *expression
+) {
+    return (generic_replication_async_function_name(expression) ||
+            generic_replication_position_wait_function_name(expression) ||
+            generic_system_function_name_equals(expression, "WAIT_FOR_EXECUTED_GTID_SET") ||
+            generic_replication_group_function_name(expression)) != 0;
+}
+
+static bool generic_replication_position_wait_function_name(
+    const struct mylite_sql_ast_node *expression
+) {
+    return (generic_system_function_name_equals(expression, "MASTER_POS_WAIT") ||
+            generic_system_function_name_equals(expression, "SOURCE_POS_WAIT")) != 0;
+}
+
+static bool generic_replication_async_function_name(const struct mylite_sql_ast_node *expression) {
+    return generic_replication_async_function_descriptor(expression) != NULL;
+}
+
+static bool generic_replication_group_function_name(const struct mylite_sql_ast_node *expression) {
+    return (generic_system_function_name_equals(
+                expression,
+                "group_replication_disable_member_action"
+            ) ||
+            generic_system_function_name_equals(
+                expression,
+                "group_replication_enable_member_action"
+            ) ||
+            generic_system_function_name_equals(
+                expression,
+                "group_replication_get_communication_protocol"
+            ) ||
+            generic_system_function_name_equals(
+                expression,
+                "group_replication_get_write_concurrency"
+            ) ||
+            generic_system_function_name_equals(
+                expression,
+                "group_replication_reset_member_actions"
+            ) ||
+            generic_system_function_name_equals(expression, "group_replication_set_as_primary") ||
+            generic_system_function_name_equals(
+                expression,
+                "group_replication_set_communication_protocol"
+            ) ||
+            generic_system_function_name_equals(
+                expression,
+                "group_replication_set_write_concurrency"
+            ) ||
+            generic_system_function_name_equals(
+                expression,
+                "group_replication_switch_to_multi_primary_mode"
+            ) ||
+            generic_system_function_name_equals(
+                expression,
+                "group_replication_switch_to_single_primary_mode"
+            )) != 0;
+}
+
+static int set_gtid_wait_with_gtid_mode_off_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_gtid_wait_with_gtid_mode_off,
+        "HY000",
+        "Cannot use WAIT_FOR_EXECUTED_GTID_SET when GTID_MODE = OFF."
+    );
+    return MYLITE_ERROR;
+}
+
+static int set_group_replication_function_missing_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    char schema_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    char function_name[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    const struct mylite_sql_ast_node *schema_identifier = NULL;
+    const struct mylite_sql_ast_node *function_identifier = NULL;
+    int rc =
+        generic_function_identifier_nodes(expression, &schema_identifier, &function_identifier);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (function_identifier == NULL) {
+        set_unsupported_error(database, "unsupported generic scalar function");
+        return MYLITE_ERROR;
+    }
+    if (schema_identifier == NULL && !database->session.has_selected_schema) {
+        set_no_database_error(database);
+        return MYLITE_ERROR;
+    }
+    if (schema_identifier == NULL) {
+        int written =
+            snprintf(schema_name, sizeof(schema_name), "%s", database->session.selected_schema);
+
+        if (written < 0 || (size_t)written >= sizeof(schema_name)) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+    } else {
+        rc = copy_identifier_text(schema_identifier, schema_name, sizeof(schema_name), database);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    rc = copy_identifier_text(function_identifier, function_name, sizeof(function_name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return set_schema_function_missing_error(database, schema_name, function_name);
+}
+
+static int generic_function_identifier_nodes(
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node **out_schema_identifier,
+    const struct mylite_sql_ast_node **out_function_identifier
+) {
+    const struct mylite_sql_ast_node *current = NULL;
+    const struct mylite_sql_ast_node *first_identifier = NULL;
+    const struct mylite_sql_ast_node *second_identifier = NULL;
+    size_t identifier_count = 0U;
+
+    if (out_schema_identifier == NULL || out_function_identifier == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_schema_identifier = NULL;
+    *out_function_identifier = NULL;
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_GENERIC_FUNCTION) {
+        return MYLITE_OK;
+    }
+    for (current = expression->first_child; current != NULL; current = current->next_sibling) {
+        if (current->kind != MYLITE_SQL_AST_IDENTIFIER) {
+            continue;
+        }
+        if (identifier_count == 0U) {
+            first_identifier = current;
+        } else if (identifier_count == 1U) {
+            second_identifier = current;
+        }
+        ++identifier_count;
+    }
+    if (identifier_count == 1U) {
+        *out_function_identifier = first_identifier;
+    } else if (identifier_count >= 2U) {
+        *out_schema_identifier = first_identifier;
+        *out_function_identifier = second_identifier;
+    }
+    return MYLITE_OK;
+}
+
+static int set_schema_function_missing_error(
+    struct mylite_db *database,
+    const char *schema_name,
+    const char *function_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "FUNCTION %s.%s does not exist",
+        schema_name == NULL ? "" : schema_name,
+        function_name == NULL ? "" : function_name
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_routine_does_not_exist,
+        "42000",
+        message
+    );
+    return MYLITE_ERROR;
 }
 
 static bool generic_system_function_name_equals(

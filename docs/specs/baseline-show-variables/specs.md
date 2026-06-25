@@ -130,6 +130,7 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 
 | Variable | Default/session/LOCAL visibility | GLOBAL visibility | SHOW value |
 | --- | --- | --- | --- |
+| `activate_all_roles_on_login` | yes | yes | `OFF` |
 | `admin_address` | yes | yes | empty string |
 | `admin_port` | yes | yes | `33062` |
 | `admin_ssl_ca` | yes | yes | empty string |
@@ -141,6 +142,8 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `admin_ssl_key` | yes | yes | empty string |
 | `admin_tls_ciphersuites` | yes | yes | empty string |
 | `admin_tls_version` | yes | yes | `TLSv1.2,TLSv1.3` |
+| `auto_generate_certs` | yes | yes | `ON` |
+| `automatic_sp_privileges` | yes | yes | `ON` |
 | `authentication_policy` | yes | yes | `*,,` |
 | `autocommit` | yes | yes | `ON` |
 | `back_log` | yes | yes | `151` |
@@ -168,6 +171,9 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `binlog_transaction_compression` | yes | yes | `OFF` |
 | `binlog_transaction_compression_level_zstd` | yes | yes | `3` |
 | `binlog_transaction_dependency_history_size` | yes | yes | `25000` |
+| `block_encryption_mode` | yes | yes | `aes-128-ecb` |
+| `build_id` | yes | yes | `66e221b3840955d27f740799b5b2c6eb0baf3283` |
+| `bulk_insert_buffer_size` | yes | yes | `8388608` |
 | `caching_sha2_password_auto_generate_rsa_keys` | yes | yes | `ON` |
 | `caching_sha2_password_digest_rounds` | yes | yes | `5000` |
 | `caching_sha2_password_private_key_path` | yes | yes | `private_key.pem` |
@@ -179,6 +185,8 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `character_set_results` | yes | yes | current fixed session value |
 | `character_set_server` | yes | yes | `utf8mb4` |
 | `character_set_system` | yes | yes | `utf8mb3` |
+| `character_sets_dir` | yes | yes | `/usr/share/mysql-8.4/charsets/` |
+| `check_proxy_users` | yes | yes | `OFF` |
 | `collation_connection` | yes | yes | current fixed session value |
 | `collation_database` | yes | yes | `utf8mb4_0900_ai_ci` |
 | `collation_server` | yes | yes | `utf8mb4_0900_ai_ci` |

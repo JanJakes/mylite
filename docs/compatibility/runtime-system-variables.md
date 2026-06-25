@@ -29,7 +29,7 @@ state through this fallback path.
 
 | Variable | Status | Notes |
 | --- | --- | --- |
-| `activate_all_roles_on_login` | ❌ | Value, scope, SET, diagnostics |
+| `activate_all_roles_on_login` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact global no-op SET; no role activation |
 | `admin_address` | ✅ | Fixed global `NULL`/blank readback/SHOW and read-only SET diagnostics |
 | `admin_port` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
 | `admin_ssl_ca` | ✅ | Fixed global `NULL`/blank readback/SHOW and `DEFAULT` global no-op SET |
@@ -103,11 +103,11 @@ state through this fallback path.
 | `authentication_webauthn_rp_id` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `authentication_windows_log_level` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `authentication_windows_use_principal_name` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `auto_generate_certs` | ❌ | Value, scope, SET, diagnostics |
+| `auto_generate_certs` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics; no certificate generation |
 | `auto_increment_increment` | ✅ | Session/local/unscoped reads, fixed global reads, `SHOW VARIABLES`, session `SET`, clamp diagnostics, and descriptor-owned generated `AUTO_INCREMENT` allocation are MySQL-runtime verified for values `1..65535` when `auto_increment_offset <= auto_increment_increment`; no mutable global state, persisted/startup values, `SET_VAR`, replication behavior, concurrency lock-mode, or offset-greater-than-increment allocation |
 | `auto_increment_offset` | ✅ | Session/local/unscoped reads, fixed global reads, `SHOW VARIABLES`, session `SET`, clamp diagnostics, and descriptor-owned generated `AUTO_INCREMENT` allocation are MySQL-runtime verified for values `1..65535` when `auto_increment_offset <= auto_increment_increment`; no mutable global state, persisted/startup values, `SET_VAR`, replication behavior, concurrency lock-mode, or offset-greater-than-increment allocation |
 | `autocommit` | 🟡 | Session/local/unscoped scalar reads, `SHOW VARIABLES`, and `SET autocommit` are supported for the documented baseline, including current DML commit/rollback effects, `SET autocommit=1` commit, `START TRANSACTION` interaction, and savepoints while disabled; global readback is fixed `ON`, and mutable global/persisted state, protocol status flags, MVCC snapshot parity, lock semantics, privileges, and Performance Schema variable tables remain unsupported |
-| `automatic_sp_privileges` | ❌ | Value, scope, SET, diagnostics |
+| `automatic_sp_privileges` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact global no-op SET; no routine privilege side effects |
 | `back_log` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics; no listener backlog side effects |
 | `basedir` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `/usr/`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No host installation discovery, startup option handling, path probing, or filesystem behavior |
 | `big_tables` | 🟡 | Limited scalar `SELECT @@big_tables` with no scope, `session`, `local`, or fixed `global`; limited `SHOW VARIABLES` rows; and handle-local session `SET` assignment for no scope, `SESSION`, `LOCAL`, direct `@@variable`, `@@session`, and `@@local` forms using `DEFAULT`, boolean tokens, integer `0`/`1` with supported unary signs, string `ON`/`OFF`, and supported integer/string user variables, with decimal user variables rejected using MySQL-compatible diagnostics. Session/local/unscoped reads report the handle-local value; global reads remain fixed at `0`, and mutable global assignment is limited to exact no-op forms. No actual temporary-table storage, optimizer planning, row materialization, startup/persisted values, `SET_VAR` hints, privileges, or Performance Schema variable tables |
@@ -135,9 +135,9 @@ state through this fallback path.
 | `binlog_transaction_compression` | ✅ | Fixed global/session readback/SHOW and exact/default no-op SET; no transaction compression |
 | `binlog_transaction_compression_level_zstd` | ✅ | Fixed global/session readback/SHOW and exact/default no-op SET; no transaction compression |
 | `binlog_transaction_dependency_history_size` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact global no-op SET; no dependency tracking |
-| `block_encryption_mode` | ❌ | Value, scope, SET, diagnostics |
-| `build_id` | ❌ | Value, scope, SET, diagnostics |
-| `bulk_insert_buffer_size` | ❌ | Value, scope, SET, diagnostics |
+| `block_encryption_mode` | ✅ | Fixed global/session readback/SHOW and exact/default no-op SET; no AES mode effects |
+| `build_id` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics; no host build discovery |
+| `bulk_insert_buffer_size` | ✅ | Fixed global/session readback/SHOW and exact/default no-op SET; no bulk-insert buffering |
 | `caching_sha2_password_auto_generate_rsa_keys` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
 | `caching_sha2_password_digest_rounds` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
 | `caching_sha2_password_private_key_path` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
@@ -149,8 +149,8 @@ state through this fallback path.
 | `character_set_results` | 🟡 | Limited scalar `SELECT @@character_set_results` with no scope, `session`, `local`, or `global`; returns the current session result charset readback after admitted `SET NAMES` / `SET CHARACTER SET` forms for `utf8mb4`, `utf8mb3` aliases, focused WordPress legacy charsets, and `binary`, including forms with atomic tail assignments; no mutable result conversion, `NULL` results mode, or protocol charset metadata |
 | `character_set_server` | 🟡 | Limited read-only scalar `SELECT @@character_set_server` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4` embedded server default; no `SET`, startup options, mutable global state, database defaults, or protocol charset metadata |
 | `character_set_system` | 🟡 | Limited read-only scalar `SELECT @@character_set_system` with no scope or `global`; returns MyLite's fixed identifier-system charset placeholder `utf8mb3`; no `session`/`local`, `SET`, mutable state, identifier conversion, string conversion, or protocol charset metadata |
-| `character_sets_dir` | ❌ | Value, scope, SET, diagnostics |
-| `check_proxy_users` | ❌ | Value, scope, SET, diagnostics |
+| `character_sets_dir` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics; no charset file loading |
+| `check_proxy_users` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact global no-op SET; no proxy auth checks |
 | `clone_autotune_concurrency` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `clone_block_ddl` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `clone_buffer_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |

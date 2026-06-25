@@ -34,6 +34,9 @@ static int apply_set_system_variable_cell_value(
     if (mylite_execution_system_variable_is_binary_log(target->kind)) {
         return apply_set_binary_log_system_variable_cell_value(database, target);
     }
+    if (mylite_execution_system_variable_is_bootstrap_placeholder(target->kind)) {
+        return apply_set_bootstrap_system_variable_cell_value(database, target);
+    }
     if (mylite_execution_system_variable_is_fixed_global_mysqlx(target->kind)) {
         return apply_set_fixed_global_mysqlx_cell_value(database, target);
     }
@@ -438,6 +441,12 @@ static bool reject_invalid_read_only_system_variable_cell_target(
         return true;
     }
     if (mylite_execution_system_variable_is_fixed_global_server_tls(target->kind) &&
+        target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_global_variable_set_global_required_error(database, target->name);
+        return true;
+    }
+    if (mylite_execution_system_variable_is_bootstrap_placeholder(target->kind) &&
+        !mylite_execution_system_variable_allows_session_scope(target->kind) &&
         target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         set_global_variable_set_global_required_error(database, target->name);
         return true;

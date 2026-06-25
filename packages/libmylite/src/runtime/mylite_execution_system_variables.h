@@ -247,6 +247,14 @@ enum mylite_execution_system_variable_kind {
     MYLITE_EXECUTION_SYSTEM_VARIABLE_BINLOG_TRANSACTION_COMPRESSION = 238,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_BINLOG_TRANSACTION_COMPRESSION_LEVEL_ZSTD = 239,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_BINLOG_TRANSACTION_DEPENDENCY_HISTORY_SIZE = 240,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_ACTIVATE_ALL_ROLES_ON_LOGIN = 241,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTO_GENERATE_CERTS = 242,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTOMATIC_SP_PRIVILEGES = 243,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_BLOCK_ENCRYPTION_MODE = 244,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_BUILD_ID = 245,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_BULK_INSERT_BUFFER_SIZE = 246,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SETS_DIR = 247,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CHECK_PROXY_USERS = 248,
 };
 
 struct mylite_execution_system_variable_descriptor {
@@ -341,6 +349,9 @@ bool mylite_execution_system_variable_is_fixed_global_connection_system(
     enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_binary_log(enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_is_bootstrap_placeholder(
+    enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_timeout(enum mylite_execution_system_variable_kind kind);
 bool mylite_execution_system_variable_is_connection_memory(

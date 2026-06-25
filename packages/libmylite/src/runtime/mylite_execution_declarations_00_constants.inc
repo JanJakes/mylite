@@ -737,6 +737,7 @@ static const long double long_query_time_microseconds_per_second = 1000000.0L;
 static const long double long_query_time_round_half_microsecond = 0.5L;
 static const uint64_t back_log_system_variable_value = 151ULL;
 static const uint64_t host_cache_size_system_variable_value = 0ULL;
+static const uint64_t bulk_insert_buffer_size_default_value = 8388608ULL;
 static const uint64_t global_connection_memory_limit_default_value = UINT64_MAX;
 static const uint64_t connection_memory_chunk_size_default_value =
     MYLITE_SESSION_CONNECTION_MEMORY_CHUNK_SIZE_DEFAULT_VALUE;

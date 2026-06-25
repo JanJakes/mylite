@@ -110,7 +110,14 @@ run_mysql \
      SET GLOBAL binlog_stmt_cache_size = DEFAULT;
      SET GLOBAL binlog_transaction_compression = DEFAULT;
      SET GLOBAL binlog_transaction_compression_level_zstd = DEFAULT;
-     SET GLOBAL binlog_transaction_dependency_history_size = DEFAULT;" >/dev/null
+     SET GLOBAL binlog_transaction_dependency_history_size = DEFAULT;
+     SET GLOBAL activate_all_roles_on_login = DEFAULT;
+     SET GLOBAL automatic_sp_privileges = DEFAULT;
+     SET GLOBAL block_encryption_mode = DEFAULT;
+     SET SESSION block_encryption_mode = DEFAULT;
+     SET GLOBAL bulk_insert_buffer_size = DEFAULT;
+     SET SESSION bulk_insert_buffer_size = DEFAULT;
+     SET GLOBAL check_proxy_users = DEFAULT;" >/dev/null
 
 headers=$(run_mysql_with_headers "SHOW VARIABLES LIKE 'autocommit';" | sed -n '1p')
 expect_value "headers" "Variable_name${TAB}Value" "$headers"
@@ -149,8 +156,13 @@ supported_session_rows=$(run_mysql "
       'collation_database',
       'default_storage_engine',
       'character_set_system',
+      'character_sets_dir',
+      'check_proxy_users',
       'character_set_filesystem',
       'autocommit',
+      'activate_all_roles_on_login',
+      'auto_generate_certs',
+      'automatic_sp_privileges',
       'back_log',
       'bind_address',
       'binlog_cache_size',
@@ -176,6 +188,9 @@ supported_session_rows=$(run_mysql "
       'binlog_transaction_compression',
       'binlog_transaction_compression_level_zstd',
       'binlog_transaction_dependency_history_size',
+      'block_encryption_mode',
+      'build_id',
+      'bulk_insert_buffer_size',
       'sql_quote_show_create',
       'foreign_key_checks',
       'global_connection_memory_limit',
@@ -212,7 +227,10 @@ supported_session_rows=$(run_mysql "
       'super_read_only',
       'wait_timeout'
     );" | normalize_tsv)
-expect_value "supported session rows" "autocommit|ON
+expect_value "supported session rows" "activate_all_roles_on_login|OFF
+auto_generate_certs|ON
+autocommit|ON
+automatic_sp_privileges|ON
 back_log|151
 bind_address|*
 binlog_cache_size|32768
@@ -238,6 +256,9 @@ binlog_stmt_cache_size|32768
 binlog_transaction_compression|OFF
 binlog_transaction_compression_level_zstd|3
 binlog_transaction_dependency_history_size|25000
+block_encryption_mode|aes-128-ecb
+build_id|66e221b3840955d27f740799b5b2c6eb0baf3283
+bulk_insert_buffer_size|8388608
 character_set_client|utf8mb4
 character_set_connection|utf8mb4
 character_set_database|utf8mb4
@@ -245,6 +266,8 @@ character_set_filesystem|binary
 character_set_results|utf8mb4
 character_set_server|utf8mb4
 character_set_system|utf8mb3
+character_sets_dir|/usr/share/mysql-8.4/charsets/
+check_proxy_users|OFF
 collation_connection|utf8mb4_0900_ai_ci
 collation_database|utf8mb4_0900_ai_ci
 collation_server|utf8mb4_0900_ai_ci
@@ -317,8 +340,13 @@ supported_global_rows=$(run_mysql "
       'collation_database',
       'default_storage_engine',
       'character_set_system',
+      'character_sets_dir',
+      'check_proxy_users',
       'character_set_filesystem',
       'autocommit',
+      'activate_all_roles_on_login',
+      'auto_generate_certs',
+      'automatic_sp_privileges',
       'back_log',
       'bind_address',
       'binlog_cache_size',
@@ -344,6 +372,9 @@ supported_global_rows=$(run_mysql "
       'binlog_transaction_compression',
       'binlog_transaction_compression_level_zstd',
       'binlog_transaction_dependency_history_size',
+      'block_encryption_mode',
+      'build_id',
+      'bulk_insert_buffer_size',
       'sql_quote_show_create',
       'foreign_key_checks',
       'global_connection_memory_limit',
@@ -380,7 +411,10 @@ supported_global_rows=$(run_mysql "
       'super_read_only',
       'wait_timeout'
     );" | normalize_tsv)
-expect_value "supported global rows" "autocommit|ON
+expect_value "supported global rows" "activate_all_roles_on_login|OFF
+auto_generate_certs|ON
+autocommit|ON
+automatic_sp_privileges|ON
 back_log|151
 bind_address|*
 binlog_cache_size|32768
@@ -406,6 +440,9 @@ binlog_stmt_cache_size|32768
 binlog_transaction_compression|OFF
 binlog_transaction_compression_level_zstd|3
 binlog_transaction_dependency_history_size|25000
+block_encryption_mode|aes-128-ecb
+build_id|66e221b3840955d27f740799b5b2c6eb0baf3283
+bulk_insert_buffer_size|8388608
 character_set_client|utf8mb4
 character_set_connection|utf8mb4
 character_set_database|utf8mb4
@@ -413,6 +450,8 @@ character_set_filesystem|binary
 character_set_results|utf8mb4
 character_set_server|utf8mb4
 character_set_system|utf8mb3
+character_sets_dir|/usr/share/mysql-8.4/charsets/
+check_proxy_users|OFF
 collation_connection|utf8mb4_0900_ai_ci
 collation_database|utf8mb4_0900_ai_ci
 collation_server|utf8mb4_0900_ai_ci

@@ -110,6 +110,10 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc = apply_set_global_session_placeholder_assignment(database, &target, value_node, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION ||
         target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_READ_ONLY) {
         return apply_set_transaction_system_variable_value(database, &target, value_node);
@@ -1172,6 +1176,68 @@ static int apply_set_global_read_only_toggle_assignment(
         return MYLITE_ERROR;
     }
     return validate_set_fixed_boolean_value(database, value_node, false);
+}
+
+static int apply_set_global_session_placeholder_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+) {
+    const char *default_value = NULL;
+    bool expected_boolean_value = false;
+
+    if (target == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL ||
+        !set_global_session_placeholder_assignment_handles_kind(target->kind)) {
+        return MYLITE_OK;
+    }
+
+    *out_handled = true;
+    if (!mylite_execution_system_variable_allows_global_scope(target->kind)) {
+        set_session_variable_set_global_error(database, target->name);
+        return MYLITE_ERROR;
+    }
+
+    if (mylite_execution_system_variable_is_boolean_session_placeholder(target->kind)) {
+        default_value = mylite_execution_system_variable_default_value(target->kind);
+        expected_boolean_value = default_value != NULL && strcmp(default_value, "1") == 0;
+        return validate_set_fixed_boolean_value(database, value_node, expected_boolean_value);
+    }
+
+    return validate_set_fixed_text_value(
+        database,
+        value_node,
+        mylite_execution_system_variable_default_value(target->kind)
+    );
+}
+
+static bool set_global_session_placeholder_assignment_handles_kind(
+    enum mylite_execution_system_variable_kind kind
+) {
+    switch (kind) {
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_COLLATION_FOR_UTF8MB4:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_END_MARKERS_IN_JSON:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_KEEP_FILES_ON_CREATE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_OLD_ALTER_TABLE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PRINT_IDENTIFIED_WITH_AS_HEX:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REQUIRE_ROW_FORMAT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RESULTSET_METADATA:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SELECT_INTO_DISK_SYNC:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_GTIDS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_SCHEMA:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_STATE_CHANGE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_TRANSACTION_INFO:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SHOW_CREATE_TABLE_SKIP_SECONDARY_ENGINE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SHOW_CREATE_TABLE_VERBOSITY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_USE_SECONDARY_ENGINE:
+        return true;
+    default:
+        return false;
+    }
 }
 
 static int apply_set_text_session_system_variable_value(

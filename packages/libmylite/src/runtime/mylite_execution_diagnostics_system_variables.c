@@ -46,6 +46,30 @@ void mylite_execution_diagnostics_set_session_variable_only_error(
     );
 }
 
+void mylite_execution_diagnostics_set_session_variable_set_global_error(
+    struct mylite_db *database,
+    const char *variable_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Variable '%s' is a SESSION variable and can't be used with SET GLOBAL",
+        variable_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_variable_global_assignment_wrong_scope,
+        "HY000",
+        message
+    );
+}
+
 void mylite_execution_diagnostics_set_global_variable_only_error(
     struct mylite_db *database,
     const char *variable_name

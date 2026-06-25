@@ -1026,6 +1026,12 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SHOW_CREATE_TABLE_SKIP_SECONDARY_ENGINE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SHOW_CREATE_TABLE_VERBOSITY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_USE_SECONDARY_ENGINE:
+        if (mylite_execution_system_variable_is_boolean_session_placeholder(kind)) {
+            const char *value = mylite_execution_system_variable_default_value(kind);
+
+            *out_value = (value != NULL && strcmp(value, "1") == 0) ? "ON" : "OFF";
+            return MYLITE_OK;
+        }
         *out_value = mylite_execution_system_variable_default_value(kind);
         return *out_value == NULL ? MYLITE_ERROR : MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_NONE:

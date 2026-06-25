@@ -141,14 +141,28 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `collation_connection` | yes | yes | current fixed session value |
 | `collation_database` | yes | yes | `utf8mb4_0900_ai_ci` |
 | `collation_server` | yes | yes | `utf8mb4_0900_ai_ci` |
+| `default_collation_for_utf8mb4` | yes | yes | `utf8mb4_0900_ai_ci` |
 | `default_storage_engine` | yes | yes | `InnoDB` |
 | `default_tmp_storage_engine` | yes | yes | `InnoDB` |
+| `end_markers_in_json` | yes | yes | `OFF` |
 | `error_count` | yes | no | `0` |
 | `foreign_key_checks` | yes | yes | `ON` |
 | `interactive_timeout` | yes | yes | current session value or fixed global `28800` |
+| `keep_files_on_create` | yes | yes | `OFF` |
 | `lower_case_file_system` | yes | yes | `OFF` |
 | `lower_case_table_names` | yes | yes | `0` |
 | `max_allowed_packet` | yes | yes | `67108864` |
+| `old_alter_table` | yes | yes | `OFF` |
+| `print_identified_with_as_hex` | yes | yes | `OFF` |
+| `require_row_format` | yes | no | `OFF` |
+| `resultset_metadata` | yes | no | `FULL` |
+| `select_into_disk_sync` | yes | yes | `OFF` |
+| `session_track_gtids` | yes | yes | `OFF` |
+| `session_track_schema` | yes | yes | `ON` |
+| `session_track_state_change` | yes | yes | `OFF` |
+| `session_track_transaction_info` | yes | yes | `OFF` |
+| `show_create_table_skip_secondary_engine` | yes | no | `OFF` |
+| `show_create_table_verbosity` | yes | yes | `OFF` |
 | `sql_auto_is_null` | yes | yes | `OFF` |
 | `sql_big_selects` | yes | yes | `ON` |
 | `sql_buffer_result` | yes | yes | `OFF` |
@@ -168,6 +182,7 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `transaction_read_only` | yes | yes | current session value as `ON`/`OFF` or fixed global `OFF` |
 | `unique_checks` | yes | yes | `ON` |
 | `updatable_views_with_limit` | yes | yes | `YES` |
+| `use_secondary_engine` | yes | no | `ON` |
 | `version` | yes | yes | `mylite_version()` |
 | `version_comment` | yes | yes | `MyLite` |
 | `wait_timeout` | yes | yes | current session value or fixed global `28800` |

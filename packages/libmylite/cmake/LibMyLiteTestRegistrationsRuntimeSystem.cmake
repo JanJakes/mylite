@@ -577,6 +577,10 @@
     COMMAND mylite_runtime_information_schema_stats_expiry_system_variable_test
   )
   add_test(
+    NAME libmylite.runtime.session_tracking_system_variables
+    COMMAND mylite_runtime_session_tracking_system_variables_test
+  )
+  add_test(
     NAME libmylite.runtime.group_by_single_column_aggregate
     COMMAND mylite_runtime_group_by_single_column_aggregate_test
   )

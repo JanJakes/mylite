@@ -580,3 +580,91 @@ static int validate_set_fixed_boolean_value(
     }
     return MYLITE_OK;
 }
+
+static int validate_set_fixed_text_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const char *expected_value
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    char identifier[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char *decoded = NULL;
+    size_t decoded_size = 0U;
+    int rc = MYLITE_OK;
+
+    if (expected_value == NULL) {
+        set_runtime_error(database, "invalid fixed system variable value");
+        return MYLITE_ERROR;
+    }
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        rc = copy_identifier_text(value_node, identifier, sizeof(identifier), database);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (text_equals_ascii_case_insensitive(identifier, expected_value)) {
+            return MYLITE_OK;
+        }
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(value_node);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE || literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        const char *literal_text =
+            literal_kind == MYLITE_SQL_AST_LITERAL_TRUE ? "ON" : "OFF";
+
+        if (text_equals_ascii_case_insensitive(literal_text, expected_value)) {
+            return MYLITE_OK;
+        }
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        value_node,
+        "SET system variables support only string literals",
+        "SET system variable string values do not support NUL bytes",
+        &decoded,
+        &decoded_size
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!text_equals_ascii_case_insensitive(decoded, expected_value)) {
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
+        rc = MYLITE_ERROR;
+    }
+    free(decoded);
+    return rc;
+}

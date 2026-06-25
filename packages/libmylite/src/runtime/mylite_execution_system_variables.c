@@ -65,14 +65,14 @@ static const struct mylite_execution_system_variable_descriptor system_variable_
     {"datadir", MYLITE_EXECUTION_SYSTEM_VARIABLE_DATADIR, true, true},
     {"default_collation_for_utf8mb4",
      MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_COLLATION_FOR_UTF8MB4,
-     false,
-     false},
+     true,
+     true},
     {"default_storage_engine", MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE, true, true},
     {"default_tmp_storage_engine",
      MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE,
      true,
      true},
-    {"end_markers_in_json", MYLITE_EXECUTION_SYSTEM_VARIABLE_END_MARKERS_IN_JSON, false, false},
+    {"end_markers_in_json", MYLITE_EXECUTION_SYSTEM_VARIABLE_END_MARKERS_IN_JSON, true, true},
     {"error_count", MYLITE_EXECUTION_SYSTEM_VARIABLE_ERROR_COUNT, true, false},
     {"explicit_defaults_for_timestamp",
      MYLITE_EXECUTION_SYSTEM_VARIABLE_EXPLICIT_DEFAULTS_FOR_TIMESTAMP,
@@ -91,7 +91,7 @@ static const struct mylite_execution_system_variable_descriptor system_variable_
      true},
     {"innodb_read_only", MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_ONLY, true, true},
     {"interactive_timeout", MYLITE_EXECUTION_SYSTEM_VARIABLE_INTERACTIVE_TIMEOUT, true, true},
-    {"keep_files_on_create", MYLITE_EXECUTION_SYSTEM_VARIABLE_KEEP_FILES_ON_CREATE, false, false},
+    {"keep_files_on_create", MYLITE_EXECUTION_SYSTEM_VARIABLE_KEEP_FILES_ON_CREATE, true, true},
     {"license", MYLITE_EXECUTION_SYSTEM_VARIABLE_LICENSE, true, true},
     {"log_bin", MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN, true, true},
     {"log_bin_basename", MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_BASENAME, true, true},
@@ -104,41 +104,41 @@ static const struct mylite_execution_system_variable_descriptor system_variable_
     {"lower_case_table_names", MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES, true, true},
     {"max_allowed_packet", MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET, true, true},
     {"max_error_count", MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT, true, true},
-    {"old_alter_table", MYLITE_EXECUTION_SYSTEM_VARIABLE_OLD_ALTER_TABLE, false, false},
+    {"old_alter_table", MYLITE_EXECUTION_SYSTEM_VARIABLE_OLD_ALTER_TABLE, true, true},
     {"pid_file", MYLITE_EXECUTION_SYSTEM_VARIABLE_PID_FILE, true, true},
     {"plugin_dir", MYLITE_EXECUTION_SYSTEM_VARIABLE_PLUGIN_DIR, true, true},
     {"port", MYLITE_EXECUTION_SYSTEM_VARIABLE_PORT, true, true},
     {"print_identified_with_as_hex",
      MYLITE_EXECUTION_SYSTEM_VARIABLE_PRINT_IDENTIFIED_WITH_AS_HEX,
-     false,
-     false},
+     true,
+     true},
     {"protocol_version", MYLITE_EXECUTION_SYSTEM_VARIABLE_PROTOCOL_VERSION, true, true},
     {"read_only", MYLITE_EXECUTION_SYSTEM_VARIABLE_READ_ONLY, true, true},
-    {"require_row_format", MYLITE_EXECUTION_SYSTEM_VARIABLE_REQUIRE_ROW_FORMAT, false, false},
-    {"resultset_metadata", MYLITE_EXECUTION_SYSTEM_VARIABLE_RESULTSET_METADATA, false, false},
-    {"select_into_disk_sync", MYLITE_EXECUTION_SYSTEM_VARIABLE_SELECT_INTO_DISK_SYNC, false, false},
+    {"require_row_format", MYLITE_EXECUTION_SYSTEM_VARIABLE_REQUIRE_ROW_FORMAT, true, false},
+    {"resultset_metadata", MYLITE_EXECUTION_SYSTEM_VARIABLE_RESULTSET_METADATA, true, false},
+    {"select_into_disk_sync", MYLITE_EXECUTION_SYSTEM_VARIABLE_SELECT_INTO_DISK_SYNC, true, true},
     {"server_id", MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_ID, true, true},
     {"server_id_bits", MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_ID_BITS, true, true},
     {"server_uuid", MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_UUID, true, true},
     {"socket", MYLITE_EXECUTION_SYSTEM_VARIABLE_SOCKET, true, true},
-    {"session_track_gtids", MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_GTIDS, false, false},
-    {"session_track_schema", MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_SCHEMA, false, false},
+    {"session_track_gtids", MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_GTIDS, true, true},
+    {"session_track_schema", MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_SCHEMA, true, true},
     {"session_track_state_change",
      MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_STATE_CHANGE,
-     false,
-     false},
+     true,
+     true},
     {"session_track_transaction_info",
      MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_TRANSACTION_INFO,
-     false,
-     false},
+     true,
+     true},
     {"show_create_table_skip_secondary_engine",
      MYLITE_EXECUTION_SYSTEM_VARIABLE_SHOW_CREATE_TABLE_SKIP_SECONDARY_ENGINE,
-     false,
+     true,
      false},
     {"show_create_table_verbosity",
      MYLITE_EXECUTION_SYSTEM_VARIABLE_SHOW_CREATE_TABLE_VERBOSITY,
-     false,
-     false},
+     true,
+     true},
     {"sql_auto_is_null", MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_AUTO_IS_NULL, true, true},
     {"sql_big_selects", MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_BIG_SELECTS, true, true},
     {"sql_buffer_result", MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_BUFFER_RESULT, true, true},
@@ -172,7 +172,7 @@ static const struct mylite_execution_system_variable_descriptor system_variable_
      MYLITE_EXECUTION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT,
      true,
      true},
-    {"use_secondary_engine", MYLITE_EXECUTION_SYSTEM_VARIABLE_USE_SECONDARY_ENGINE, false, false},
+    {"use_secondary_engine", MYLITE_EXECUTION_SYSTEM_VARIABLE_USE_SECONDARY_ENGINE, true, false},
     {"version", MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION, true, true},
     {"version_comment", MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION_COMMENT, true, true},
     {"version_compile_machine", MYLITE_EXECUTION_SYSTEM_VARIABLE_VERSION_COMPILE_MACHINE, true, true
@@ -814,8 +814,10 @@ bool mylite_execution_system_variable_allows_global_scope(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_DATABASE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DATADIR:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_COLLATION_FOR_UTF8MB4:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_END_MARKERS_IN_JSON:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_SYSTEM:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTOCOMMIT:
@@ -844,6 +846,7 @@ bool mylite_execution_system_variable_allows_global_scope(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_HOSTNAME:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SYSTEM_TIME_ZONE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_TIME_ZONE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_KEEP_FILES_ON_CREATE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_EXECUTED:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_MODE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_OWNED:
@@ -859,14 +862,22 @@ bool mylite_execution_system_variable_allows_global_scope(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ALLOWED_PACKET:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_OLD_ALTER_TABLE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PID_FILE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PLUGIN_DIR:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PORT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PRINT_IDENTIFIED_WITH_AS_HEX:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PROTOCOL_VERSION:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_READ_ONLY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SELECT_INTO_DISK_SYNC:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_ID:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_ID_BITS:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SERVER_UUID:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_GTIDS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_SCHEMA:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_STATE_CHANGE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_TRANSACTION_INFO:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SHOW_CREATE_TABLE_VERBOSITY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SOCKET:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SUPER_READ_ONLY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_ISOLATION:
@@ -1094,11 +1105,10 @@ const char *mylite_execution_system_variable_default_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_RESULTSET_METADATA:
         return "FULL";
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_GTIDS:
-        return "OWN_GTID";
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_TRANSACTION_INFO:
-        return "STATE";
+        return "OFF";
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_USE_SECONDARY_ENGINE:
-        return "FORCED";
+        return "ON";
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTOCOMMIT:
         return "1";
     default:

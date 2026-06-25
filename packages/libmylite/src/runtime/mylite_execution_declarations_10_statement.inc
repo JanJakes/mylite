@@ -554,6 +554,15 @@ static int apply_set_global_read_only_toggle_assignment(
     const struct mylite_sql_ast_node *value_node,
     bool *out_handled
 );
+static int apply_set_global_session_placeholder_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
+static bool set_global_session_placeholder_assignment_handles_kind(
+    enum mylite_execution_system_variable_kind kind
+);
 static int apply_set_text_session_system_variable_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -805,6 +814,11 @@ static int validate_set_fixed_boolean_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     bool expected_value
+);
+static int validate_set_fixed_text_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const char *expected_value
 );
 static int apply_set_max_allowed_packet_value(
     struct mylite_db *database,

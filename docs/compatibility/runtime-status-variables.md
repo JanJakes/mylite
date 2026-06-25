@@ -2,21 +2,25 @@
 
 The exact value shape, counter lifetime, session/global visibility, optional plugin/build availability, and SHOW STATUS/performance_schema exposure must be verified per variable.
 
+Rows marked as target-runtime optional absence are intentionally absent from the
+pinned MySQL 8.4.9 runtime and from MyLite's `SHOW STATUS` registry; see
+[baseline SHOW STATUS optional absence](../specs/baseline-show-status-optional-absence/specs.md).
+
 | Variable | Status | Notes |
 | --- | --- | --- |
 | `Aborted_clients` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Aborted_connects` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Acl_cache_items_count` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Audit_log_current_size` | ❌ | Counter value or embedded zero/empty |
-| `Audit_log_direct_writes` | ❌ | Counter value or embedded zero/empty |
-| `Audit_log_event_max_drop_size` | ❌ | Counter value or embedded zero/empty |
-| `Audit_log_events` | ❌ | Counter value or embedded zero/empty |
-| `Audit_log_events_filtered` | ❌ | Counter value or embedded zero/empty |
-| `Audit_log_events_lost` | ❌ | Counter value or embedded zero/empty |
-| `Audit_log_events_written` | ❌ | Counter value or embedded zero/empty |
-| `Audit_log_total_size` | ❌ | Counter value or embedded zero/empty |
-| `Audit_log_write_waits` | ❌ | Counter value or embedded zero/empty |
-| `Authentication_ldap_sasl_supported_methods` | ❌ | Counter value or embedded zero/empty |
+| `Audit_log_current_size` | ⚪ | Target-runtime optional status absent |
+| `Audit_log_direct_writes` | ⚪ | Target-runtime optional status absent |
+| `Audit_log_event_max_drop_size` | ⚪ | Target-runtime optional status absent |
+| `Audit_log_events` | ⚪ | Target-runtime optional status absent |
+| `Audit_log_events_filtered` | ⚪ | Target-runtime optional status absent |
+| `Audit_log_events_lost` | ⚪ | Target-runtime optional status absent |
+| `Audit_log_events_written` | ⚪ | Target-runtime optional status absent |
+| `Audit_log_total_size` | ⚪ | Target-runtime optional status absent |
+| `Audit_log_write_waits` | ⚪ | Target-runtime optional status absent |
+| `Authentication_ldap_sasl_supported_methods` | ⚪ | Target-runtime optional status absent |
 | `Binlog_cache_disk_use` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Binlog_cache_use` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Binlog_stmt_cache_disk_use` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
@@ -128,13 +132,13 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_set_password` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_set_resource_group` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_set_role` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Com_show_authors` | ❌ | Counter value or embedded zero/empty |
+| `Com_show_authors` | ⚪ | Target-runtime optional status absent |
 | `Com_show_binary_log_status` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_show_binlog_events` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_show_binlogs` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_show_charsets` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_show_collations` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Com_show_contributors` | ❌ | Counter value or embedded zero/empty |
+| `Com_show_contributors` | ⚪ | Target-runtime optional status absent |
 | `Com_show_create_db` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_show_create_event` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_show_create_func` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
@@ -153,7 +157,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Com_show_function_status` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_show_grants` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_show_keys` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
-| `Com_show_ndb_status` | ❌ | Counter value or embedded zero/empty |
+| `Com_show_ndb_status` | ⚪ | Target-runtime optional status absent |
 | `Com_show_open_tables` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_show_parse_tree` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Com_show_plugins` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
@@ -226,43 +230,43 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Deprecated_use_fk_on_non_standard_key_last_timestamp` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no deprecated foreign-key usage timestamp |
 | `Deprecated_use_i_s_processlist_count` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no deprecated `INFORMATION_SCHEMA.PROCESSLIST` usage tracking |
 | `Deprecated_use_i_s_processlist_last_timestamp` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no deprecated `INFORMATION_SCHEMA.PROCESSLIST` usage timestamp |
-| `dragnet.Status` | ❌ | Counter value or embedded zero/empty |
+| `dragnet.Status` | ⚪ | Target-runtime optional status absent |
 | `Error_log_buffered_bytes` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no server error-log buffer |
 | `Error_log_buffered_events` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no server error-log buffer |
 | `Error_log_expired_events` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no server error-log expiration lifecycle |
 | `Error_log_latest_write` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no server error-log write timestamp |
-| `Firewall_access_denied` | ❌ | Counter value or embedded zero/empty |
-| `Firewall_access_granted` | ❌ | Counter value or embedded zero/empty |
-| `Firewall_access_suspicious` | ❌ | Counter value or embedded zero/empty |
-| `Firewall_cached_entries` | ❌ | Counter value or embedded zero/empty |
+| `Firewall_access_denied` | ⚪ | Target-runtime optional status absent |
+| `Firewall_access_granted` | ⚪ | Target-runtime optional status absent |
+| `Firewall_access_suspicious` | ⚪ | Target-runtime optional status absent |
+| `Firewall_cached_entries` | ⚪ | Target-runtime optional status absent |
 | `Flush_commands` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Global_connection_memory` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live memory accounting |
-| `Gr_all_consensus_proposals_count` | ❌ | Counter value or embedded zero/empty |
-| `Gr_all_consensus_time_sum` | ❌ | Counter value or embedded zero/empty |
-| `Gr_certification_garbage_collector_count` | ❌ | Counter value or embedded zero/empty |
-| `Gr_certification_garbage_collector_time_sum` | ❌ | Counter value or embedded zero/empty |
-| `Gr_consensus_bytes_received_sum` | ❌ | Counter value or embedded zero/empty |
-| `Gr_consensus_bytes_sent_sum` | ❌ | Counter value or embedded zero/empty |
-| `Gr_control_messages_sent_bytes_sum` | ❌ | Counter value or embedded zero/empty |
-| `Gr_control_messages_sent_count` | ❌ | Counter value or embedded zero/empty |
-| `Gr_control_messages_sent_roundtrip_time_sum` | ❌ | Counter value or embedded zero/empty |
-| `Gr_data_messages_sent_bytes_sum` | ❌ | Counter value or embedded zero/empty |
-| `Gr_data_messages_sent_count` | ❌ | Counter value or embedded zero/empty |
-| `Gr_data_messages_sent_roundtrip_time_sum` | ❌ | Counter value or embedded zero/empty |
-| `Gr_empty_consensus_proposals_count` | ❌ | Counter value or embedded zero/empty |
-| `Gr_extended_consensus_count` | ❌ | Counter value or embedded zero/empty |
-| `Gr_flow_control_throttle_active_count` | ❌ | Counter value or embedded zero/empty |
-| `Gr_flow_control_throttle_count` | ❌ | Counter value or embedded zero/empty |
-| `Gr_flow_control_throttle_last_throttle_timestamp` | ❌ | Counter value or embedded zero/empty |
-| `Gr_flow_control_throttle_time_sum` | ❌ | Counter value or embedded zero/empty |
-| `Gr_last_consensus_end_timestamp` | ❌ | Counter value or embedded zero/empty |
-| `Gr_total_messages_sent_count` | ❌ | Counter value or embedded zero/empty |
-| `Gr_transactions_consistency_after_sync_count` | ❌ | Counter value or embedded zero/empty |
-| `Gr_transactions_consistency_after_sync_time_sum` | ❌ | Counter value or embedded zero/empty |
-| `Gr_transactions_consistency_after_termination_count` | ❌ | Counter value or embedded zero/empty |
-| `Gr_transactions_consistency_after_termination_time_sum` | ❌ | Counter value or embedded zero/empty |
-| `Gr_transactions_consistency_before_begin_count` | ❌ | Counter value or embedded zero/empty |
-| `Gr_transactions_consistency_before_begin_time_sum` | ❌ | Counter value or embedded zero/empty |
+| `Gr_all_consensus_proposals_count` | ⚪ | Target-runtime optional status absent |
+| `Gr_all_consensus_time_sum` | ⚪ | Target-runtime optional status absent |
+| `Gr_certification_garbage_collector_count` | ⚪ | Target-runtime optional status absent |
+| `Gr_certification_garbage_collector_time_sum` | ⚪ | Target-runtime optional status absent |
+| `Gr_consensus_bytes_received_sum` | ⚪ | Target-runtime optional status absent |
+| `Gr_consensus_bytes_sent_sum` | ⚪ | Target-runtime optional status absent |
+| `Gr_control_messages_sent_bytes_sum` | ⚪ | Target-runtime optional status absent |
+| `Gr_control_messages_sent_count` | ⚪ | Target-runtime optional status absent |
+| `Gr_control_messages_sent_roundtrip_time_sum` | ⚪ | Target-runtime optional status absent |
+| `Gr_data_messages_sent_bytes_sum` | ⚪ | Target-runtime optional status absent |
+| `Gr_data_messages_sent_count` | ⚪ | Target-runtime optional status absent |
+| `Gr_data_messages_sent_roundtrip_time_sum` | ⚪ | Target-runtime optional status absent |
+| `Gr_empty_consensus_proposals_count` | ⚪ | Target-runtime optional status absent |
+| `Gr_extended_consensus_count` | ⚪ | Target-runtime optional status absent |
+| `Gr_flow_control_throttle_active_count` | ⚪ | Target-runtime optional status absent |
+| `Gr_flow_control_throttle_count` | ⚪ | Target-runtime optional status absent |
+| `Gr_flow_control_throttle_last_throttle_timestamp` | ⚪ | Target-runtime optional status absent |
+| `Gr_flow_control_throttle_time_sum` | ⚪ | Target-runtime optional status absent |
+| `Gr_last_consensus_end_timestamp` | ⚪ | Target-runtime optional status absent |
+| `Gr_total_messages_sent_count` | ⚪ | Target-runtime optional status absent |
+| `Gr_transactions_consistency_after_sync_count` | ⚪ | Target-runtime optional status absent |
+| `Gr_transactions_consistency_after_sync_time_sum` | ⚪ | Target-runtime optional status absent |
+| `Gr_transactions_consistency_after_termination_count` | ⚪ | Target-runtime optional status absent |
+| `Gr_transactions_consistency_after_termination_time_sum` | ⚪ | Target-runtime optional status absent |
+| `Gr_transactions_consistency_before_begin_count` | ⚪ | Target-runtime optional status absent |
+| `Gr_transactions_consistency_before_begin_time_sum` | ⚪ | Target-runtime optional status absent |
 | `Handler_commit` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Handler_delete` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Handler_discover` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
@@ -368,7 +372,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Max_execution_time_set_failed` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live execution-time counter lifecycle |
 | `Max_used_connections` | 🟡 | Limited `SHOW STATUS` embedded value `1`; no live connection high-water accounting |
 | `Max_used_connections_time` | 🟡 | Limited `SHOW STATUS` embedded value `1970-01-01 00:00:00`; no live connection high-water accounting |
-| `mecab_charset` | ❌ | Counter value or embedded zero/empty |
+| `mecab_charset` | ⚪ | Target-runtime optional status absent |
 | `Mysqlx_aborted_clients` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin client accounting |
 | `Mysqlx_address` | 🟡 | Limited `SHOW STATUS` embedded value `UNDEFINED`; no X Plugin listener |
 | `Mysqlx_bytes_received` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin network accounting |
@@ -416,7 +420,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Mysqlx_sessions_killed` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin session accounting |
 | `Mysqlx_sessions_rejected` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin session accounting |
 | `Mysqlx_socket` | 🟡 | Limited `SHOW STATUS` embedded empty string; no X Plugin Unix socket |
-| `Mysqlx_ssl_accept_renegotiates` | ❌ | Listed by MySQL documentation but not exposed by the pinned MySQL 8.4.9 runtime `SHOW STATUS LIKE 'Mysqlx%'` probe |
+| `Mysqlx_ssl_accept_renegotiates` | ⚪ | Target-runtime optional status absent |
 | `Mysqlx_ssl_accepts` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin SSL accounting |
 | `Mysqlx_ssl_active` | 🟡 | Limited `SHOW STATUS` embedded empty string; no X Plugin SSL state |
 | `Mysqlx_ssl_cipher` | 🟡 | Limited `SHOW STATUS` embedded empty string; no X Plugin SSL state |
@@ -448,140 +452,140 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Mysqlx_stmt_ping` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin statement accounting |
 | `Mysqlx_worker_threads` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin worker threads |
 | `Mysqlx_worker_threads_active` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no X Plugin worker threads |
-| `Ndb_api_adaptive_send_deferred_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_adaptive_send_deferred_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_adaptive_send_deferred_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_adaptive_send_deferred_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_adaptive_send_forced_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_adaptive_send_forced_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_adaptive_send_forced_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_adaptive_send_forced_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_adaptive_send_unforced_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_adaptive_send_unforced_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_adaptive_send_unforced_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_adaptive_send_unforced_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_bytes_received_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_bytes_received_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_bytes_received_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_bytes_received_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_bytes_sent_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_bytes_sent_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_bytes_sent_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_bytes_sent_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_event_bytes_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_event_bytes_count_injector` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_event_data_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_event_data_count_injector` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_event_nondata_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_event_nondata_count_injector` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_pk_op_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_pk_op_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_pk_op_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_pk_op_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_pruned_scan_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_pruned_scan_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_pruned_scan_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_pruned_scan_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_range_scan_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_range_scan_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_range_scan_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_range_scan_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_read_row_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_read_row_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_read_row_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_read_row_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_scan_batch_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_scan_batch_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_scan_batch_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_scan_batch_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_table_scan_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_table_scan_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_table_scan_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_table_scan_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_abort_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_abort_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_abort_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_abort_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_close_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_close_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_close_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_close_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_commit_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_commit_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_commit_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_commit_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_local_read_row_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_local_read_row_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_local_read_row_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_local_read_row_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_start_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_start_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_start_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_trans_start_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_uk_op_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_uk_op_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_uk_op_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_uk_op_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_wait_exec_complete_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_wait_exec_complete_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_wait_exec_complete_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_wait_exec_complete_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_wait_meta_request_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_wait_meta_request_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_wait_meta_request_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_wait_meta_request_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_wait_nanos_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_wait_nanos_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_wait_nanos_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_wait_nanos_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_wait_scan_result_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_wait_scan_result_count_replica` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_wait_scan_result_count_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_api_wait_scan_result_count_slave` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_cluster_node_id` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_config_from_host` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_config_from_port` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_config_generation` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_conflict_fn_epoch` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_conflict_fn_epoch_trans` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_conflict_fn_epoch2` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_conflict_fn_epoch2_trans` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_conflict_fn_max` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_conflict_fn_max_del_win` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_conflict_fn_max_del_win_ins` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_conflict_fn_max_ins` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_conflict_fn_old` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_conflict_last_conflict_epoch` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_conflict_last_stable_epoch` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_conflict_reflected_op_discard_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_conflict_reflected_op_prepare_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_conflict_refresh_op_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_conflict_trans_conflict_commit_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_conflict_trans_detect_iter_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_conflict_trans_reject_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_conflict_trans_row_conflict_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_conflict_trans_row_reject_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_epoch_delete_delete_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_execute_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_fetch_table_stats` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_last_commit_epoch_server` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_last_commit_epoch_session` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_metadata_detected_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_metadata_excluded_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_metadata_synced_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_number_of_data_nodes` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_pruned_scan_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_pushed_queries_defined` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_pushed_queries_dropped` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_pushed_queries_executed` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_pushed_reads` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_scan_count` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_slave_max_replicated_epoch` | ❌ | Counter value or embedded zero/empty |
-| `Ndb_trans_hint_count_session` | ❌ | Counter value or embedded zero/empty |
+| `Ndb_api_adaptive_send_deferred_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_adaptive_send_deferred_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_adaptive_send_deferred_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_adaptive_send_deferred_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_adaptive_send_forced_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_adaptive_send_forced_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_adaptive_send_forced_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_adaptive_send_forced_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_adaptive_send_unforced_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_adaptive_send_unforced_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_adaptive_send_unforced_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_adaptive_send_unforced_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_bytes_received_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_bytes_received_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_bytes_received_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_bytes_received_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_bytes_sent_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_bytes_sent_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_bytes_sent_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_bytes_sent_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_event_bytes_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_event_bytes_count_injector` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_event_data_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_event_data_count_injector` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_event_nondata_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_event_nondata_count_injector` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_pk_op_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_pk_op_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_pk_op_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_pk_op_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_pruned_scan_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_pruned_scan_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_pruned_scan_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_pruned_scan_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_range_scan_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_range_scan_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_range_scan_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_range_scan_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_read_row_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_read_row_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_read_row_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_read_row_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_scan_batch_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_scan_batch_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_scan_batch_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_scan_batch_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_table_scan_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_table_scan_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_table_scan_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_table_scan_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_abort_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_abort_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_abort_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_abort_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_close_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_close_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_close_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_close_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_commit_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_commit_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_commit_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_commit_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_local_read_row_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_local_read_row_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_local_read_row_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_local_read_row_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_start_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_start_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_start_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_trans_start_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_uk_op_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_uk_op_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_uk_op_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_uk_op_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_wait_exec_complete_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_wait_exec_complete_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_wait_exec_complete_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_wait_exec_complete_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_wait_meta_request_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_wait_meta_request_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_wait_meta_request_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_wait_meta_request_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_wait_nanos_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_wait_nanos_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_wait_nanos_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_wait_nanos_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_wait_scan_result_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_wait_scan_result_count_replica` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_wait_scan_result_count_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_api_wait_scan_result_count_slave` | ⚪ | Target-runtime optional status absent |
+| `Ndb_cluster_node_id` | ⚪ | Target-runtime optional status absent |
+| `Ndb_config_from_host` | ⚪ | Target-runtime optional status absent |
+| `Ndb_config_from_port` | ⚪ | Target-runtime optional status absent |
+| `Ndb_config_generation` | ⚪ | Target-runtime optional status absent |
+| `Ndb_conflict_fn_epoch` | ⚪ | Target-runtime optional status absent |
+| `Ndb_conflict_fn_epoch_trans` | ⚪ | Target-runtime optional status absent |
+| `Ndb_conflict_fn_epoch2` | ⚪ | Target-runtime optional status absent |
+| `Ndb_conflict_fn_epoch2_trans` | ⚪ | Target-runtime optional status absent |
+| `Ndb_conflict_fn_max` | ⚪ | Target-runtime optional status absent |
+| `Ndb_conflict_fn_max_del_win` | ⚪ | Target-runtime optional status absent |
+| `Ndb_conflict_fn_max_del_win_ins` | ⚪ | Target-runtime optional status absent |
+| `Ndb_conflict_fn_max_ins` | ⚪ | Target-runtime optional status absent |
+| `Ndb_conflict_fn_old` | ⚪ | Target-runtime optional status absent |
+| `Ndb_conflict_last_conflict_epoch` | ⚪ | Target-runtime optional status absent |
+| `Ndb_conflict_last_stable_epoch` | ⚪ | Target-runtime optional status absent |
+| `Ndb_conflict_reflected_op_discard_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_conflict_reflected_op_prepare_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_conflict_refresh_op_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_conflict_trans_conflict_commit_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_conflict_trans_detect_iter_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_conflict_trans_reject_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_conflict_trans_row_conflict_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_conflict_trans_row_reject_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_epoch_delete_delete_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_execute_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_fetch_table_stats` | ⚪ | Target-runtime optional status absent |
+| `Ndb_last_commit_epoch_server` | ⚪ | Target-runtime optional status absent |
+| `Ndb_last_commit_epoch_session` | ⚪ | Target-runtime optional status absent |
+| `Ndb_metadata_detected_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_metadata_excluded_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_metadata_synced_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_number_of_data_nodes` | ⚪ | Target-runtime optional status absent |
+| `Ndb_pruned_scan_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_pushed_queries_defined` | ⚪ | Target-runtime optional status absent |
+| `Ndb_pushed_queries_dropped` | ⚪ | Target-runtime optional status absent |
+| `Ndb_pushed_queries_executed` | ⚪ | Target-runtime optional status absent |
+| `Ndb_pushed_reads` | ⚪ | Target-runtime optional status absent |
+| `Ndb_scan_count` | ⚪ | Target-runtime optional status absent |
+| `Ndb_slave_max_replicated_epoch` | ⚪ | Target-runtime optional status absent |
+| `Ndb_trans_hint_count_session` | ⚪ | Target-runtime optional status absent |
 | `Not_flushed_delayed_rows` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live delayed-insert lifecycle |
-| `Ongoing_anonymous_gtid_violating_transaction_count` | ❌ | Counter value or embedded zero/empty |
+| `Ongoing_anonymous_gtid_violating_transaction_count` | ⚪ | Target-runtime optional status absent |
 | `Ongoing_anonymous_transaction_count` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live replication transaction lifecycle |
-| `Ongoing_automatic_gtid_violating_transaction_count` | ❌ | Counter value or embedded zero/empty |
+| `Ongoing_automatic_gtid_violating_transaction_count` | ⚪ | Target-runtime optional status absent |
 | `Open_files` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Open_streams` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Open_table_definitions` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
@@ -628,40 +632,40 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Questions` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Replica_open_temp_tables` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live replication temp-table lifecycle |
 | `Resource_group_supported` | 🟡 | Limited `SHOW STATUS` embedded value `OFF`; no resource group subsystem |
-| `Rewriter_number_loaded_rules` | ❌ | Counter value or embedded zero/empty |
-| `Rewriter_number_reloads` | ❌ | Counter value or embedded zero/empty |
-| `Rewriter_number_rewritten_queries` | ❌ | Counter value or embedded zero/empty |
-| `Rewriter_reload_error` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_master_clients` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_master_net_avg_wait_time` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_master_net_wait_time` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_master_net_waits` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_master_no_times` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_master_no_tx` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_master_status` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_master_timefunc_failures` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_master_tx_avg_wait_time` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_master_tx_wait_time` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_master_tx_waits` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_master_wait_pos_backtraverse` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_master_wait_sessions` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_master_yes_tx` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_replica_status` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_slave_status` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_source_clients` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_source_net_avg_wait_time` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_source_net_wait_time` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_source_net_waits` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_source_no_times` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_source_no_tx` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_source_status` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_source_timefunc_failures` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_source_tx_avg_wait_time` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_source_tx_wait_time` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_source_tx_waits` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_source_wait_pos_backtraverse` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_source_wait_sessions` | ❌ | Counter value or embedded zero/empty |
-| `Rpl_semi_sync_source_yes_tx` | ❌ | Counter value or embedded zero/empty |
+| `Rewriter_number_loaded_rules` | ⚪ | Target-runtime optional status absent |
+| `Rewriter_number_reloads` | ⚪ | Target-runtime optional status absent |
+| `Rewriter_number_rewritten_queries` | ⚪ | Target-runtime optional status absent |
+| `Rewriter_reload_error` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_master_clients` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_master_net_avg_wait_time` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_master_net_wait_time` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_master_net_waits` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_master_no_times` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_master_no_tx` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_master_status` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_master_timefunc_failures` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_master_tx_avg_wait_time` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_master_tx_wait_time` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_master_tx_waits` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_master_wait_pos_backtraverse` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_master_wait_sessions` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_master_yes_tx` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_replica_status` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_slave_status` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_source_clients` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_source_net_avg_wait_time` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_source_net_wait_time` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_source_net_waits` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_source_no_times` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_source_no_tx` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_source_status` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_source_timefunc_failures` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_source_tx_avg_wait_time` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_source_tx_wait_time` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_source_tx_waits` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_source_wait_pos_backtraverse` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_source_wait_sessions` | ⚪ | Target-runtime optional status absent |
+| `Rpl_semi_sync_source_yes_tx` | ⚪ | Target-runtime optional status absent |
 | `Rsa_public_key` | 🟡 | Limited `SHOW STATUS` embedded empty string; no RSA authentication key exchange |
 | `Secondary_engine_execution_count` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no secondary-engine execution lifecycle |
 | `Select_full_join` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
@@ -670,7 +674,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Select_range_check` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Select_scan` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Slave_open_temp_tables` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live replication temp-table lifecycle |
-| `Slave_rows_last_search_algorithm_used` | ❌ | Counter value or embedded zero/empty |
+| `Slave_rows_last_search_algorithm_used` | ⚪ | Target-runtime optional status absent |
 | `Slow_launch_threads` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Slow_queries` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
 | `Sort_merge_passes` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live counter lifecycle |
@@ -714,7 +718,7 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Telemetry_logs_supported` | 🟡 | Limited `SHOW STATUS` embedded value `OFF`; no telemetry subsystem |
 | `Telemetry_metrics_supported` | 🟡 | Limited `SHOW STATUS` embedded value `OFF`; no telemetry subsystem |
 | `Telemetry_traces_supported` | 🟡 | Limited `SHOW STATUS` embedded value `OFF`; no telemetry subsystem |
-| `telemetry.live_sessions` | ❌ | Counter value or embedded zero/empty |
+| `telemetry.live_sessions` | ⚪ | Target-runtime optional status absent |
 | `Threads_cached` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no server thread cache |
 | `Threads_connected` | 🟡 | Limited `SHOW STATUS` embedded value `1`; current embedded handle only |
 | `Threads_created` | 🟡 | Limited `SHOW STATUS` embedded value `1`; current embedded handle only |
@@ -723,9 +727,9 @@ The exact value shape, counter lifetime, session/global visibility, optional plu
 | `Tls_sni_server_name` | 🟡 | Limited `SHOW STATUS` session/`LOCAL` embedded empty string; omitted from `GLOBAL`; no TLS SNI state |
 | `Uptime` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no live uptime clock |
 | `Uptime_since_flush_status` | 🟡 | Limited `SHOW STATUS` embedded value `0`; no `FLUSH STATUS` lifecycle |
-| `validate_password_dictionary_file_last_parsed` | ❌ | Counter value or embedded zero/empty |
-| `validate_password_dictionary_file_words_count` | ❌ | Counter value or embedded zero/empty |
-| `validate_password.dictionary_file_last_parsed` | ❌ | Counter value or embedded zero/empty |
-| `validate_password.dictionary_file_words_count` | ❌ | Counter value or embedded zero/empty |
+| `validate_password_dictionary_file_last_parsed` | ⚪ | Target-runtime optional status absent |
+| `validate_password_dictionary_file_words_count` | ⚪ | Target-runtime optional status absent |
+| `validate_password.dictionary_file_last_parsed` | ⚪ | Target-runtime optional status absent |
+| `validate_password.dictionary_file_words_count` | ⚪ | Target-runtime optional status absent |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

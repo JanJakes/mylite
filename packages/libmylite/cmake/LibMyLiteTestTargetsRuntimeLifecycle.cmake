@@ -1024,6 +1024,17 @@
   )
   mylite_configure_c_target(mylite_runtime_show_status_test)
 
+  add_executable(mylite_runtime_show_status_optional_absence_test
+    tests/runtime_show_status_optional_absence_test.c
+  )
+  target_link_libraries(mylite_runtime_show_status_optional_absence_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_show_status_optional_absence_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_show_status_optional_absence_test)
+
   add_executable(mylite_runtime_innodb_engine_surface_test
     tests/runtime_innodb_engine_surface_test.c
   )

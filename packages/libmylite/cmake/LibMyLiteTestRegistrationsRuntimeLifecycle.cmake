@@ -427,6 +427,10 @@
     COMMAND mylite_runtime_show_status_test
   )
   add_test(
+    NAME libmylite.runtime.show_status_optional_absence
+    COMMAND mylite_runtime_show_status_optional_absence_test
+  )
+  add_test(
     NAME libmylite.runtime.innodb_engine_surface
     COMMAND mylite_runtime_innodb_engine_surface_test
   )

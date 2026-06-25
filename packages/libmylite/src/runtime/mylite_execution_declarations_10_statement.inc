@@ -540,7 +540,8 @@ static int apply_set_system_variable_assignment(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *assignment
 );
-static bool set_system_variable_target_is_read_only(enum mylite_execution_system_variable_kind kind
+static bool set_system_variable_target_is_read_only(
+    enum mylite_execution_system_variable_kind kind
 );
 static int apply_set_system_variable_user_variable_assignment(
     struct mylite_db *database,
@@ -555,6 +556,12 @@ static int apply_set_global_read_only_toggle_assignment(
     bool *out_handled
 );
 static int apply_set_global_server_security_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
+static int apply_set_global_authentication_password_assignment(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node,
@@ -665,6 +672,10 @@ static int apply_set_fixed_boolean_system_variable_cell_value(
     bool expected_value
 );
 static int apply_set_fixed_global_server_security_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target
+);
+static int apply_set_fixed_global_authentication_password_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target
 );
@@ -1057,7 +1068,8 @@ static int rebuild_sql_mode_text(
 static int set_session_sql_mode(struct mylite_db *database, uint64_t modes);
 static bool session_sql_mode_has(const struct mylite_session_state *session, uint64_t mode);
 static unsigned int lexer_modes_for_session_sql_mode(const struct mylite_session_state *session);
-static bool system_variable_expression_has_global_scope(const struct mylite_sql_ast_node *expression
+static bool system_variable_expression_has_global_scope(
+    const struct mylite_sql_ast_node *expression
 );
 static bool foreign_key_checks_system_variable_value(
     const struct mylite_db *database,
@@ -1138,7 +1150,8 @@ static int set_transaction_variable_invalid_node_value_error(
     const struct mylite_sql_ast_node *value_node
 );
 static const char *transaction_isolation_value_text(enum mylite_transaction_isolation isolation);
-static const char *transaction_read_only_scalar_text(enum mylite_transaction_access_mode access_mode
+static const char *transaction_read_only_scalar_text(
+    enum mylite_transaction_access_mode access_mode
 );
 static const char *transaction_read_only_show_text(enum mylite_transaction_access_mode access_mode);
 static const char *transaction_isolation_system_variable_value(

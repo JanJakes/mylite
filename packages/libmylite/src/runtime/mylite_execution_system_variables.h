@@ -112,7 +112,22 @@ enum mylite_execution_system_variable_kind {
     MYLITE_EXECUTION_SYSTEM_VARIABLE_TLS_CERTIFICATES_ENFORCED_VALIDATION = 103,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_TLS_VERSION = 104,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_TMPDIR = 105,
-    MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT = 106,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTHENTICATION_POLICY = 106,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CACHING_SHA2_PASSWORD_AUTO_GENERATE_RSA_KEYS = 107,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CACHING_SHA2_PASSWORD_DIGEST_ROUNDS = 108,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CACHING_SHA2_PASSWORD_PRIVATE_KEY_PATH = 109,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CACHING_SHA2_PASSWORD_PUBLIC_KEY_PATH = 110,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_PASSWORD_LIFETIME = 111,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_DISCONNECT_ON_EXPIRED_PASSWORD = 112,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQL_NATIVE_PASSWORD_PROXY_USERS = 113,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_PASSWORD_HISTORY = 114,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_PASSWORD_REQUIRE_CURRENT = 115,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_PASSWORD_REUSE_INTERVAL = 116,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SHA256_PASSWORD_AUTO_GENERATE_RSA_KEYS = 117,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SHA256_PASSWORD_PRIVATE_KEY_PATH = 118,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SHA256_PASSWORD_PROXY_USERS = 119,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SHA256_PASSWORD_PUBLIC_KEY_PATH = 120,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT = 121,
 };
 
 struct mylite_execution_system_variable_descriptor {
@@ -164,7 +179,13 @@ bool mylite_execution_system_variable_is_read_only_server_build(
 bool mylite_execution_system_variable_is_read_only_server_environment(
     enum mylite_execution_system_variable_kind kind
 );
+bool mylite_execution_system_variable_is_read_only_authentication_password(
+    enum mylite_execution_system_variable_kind kind
+);
 bool mylite_execution_system_variable_is_fixed_global_server_security(
+    enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_is_fixed_global_authentication_password(
     enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_timeout(enum mylite_execution_system_variable_kind kind);

@@ -130,7 +130,12 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 
 | Variable | Default/session/LOCAL visibility | GLOBAL visibility | SHOW value |
 | --- | --- | --- | --- |
+| `authentication_policy` | yes | yes | `*,,` |
 | `autocommit` | yes | yes | `ON` |
+| `caching_sha2_password_auto_generate_rsa_keys` | yes | yes | `ON` |
+| `caching_sha2_password_digest_rounds` | yes | yes | `5000` |
+| `caching_sha2_password_private_key_path` | yes | yes | `private_key.pem` |
+| `caching_sha2_password_public_key_path` | yes | yes | `public_key.pem` |
 | `character_set_client` | yes | yes | current fixed session value |
 | `character_set_connection` | yes | yes | current fixed session value |
 | `character_set_database` | yes | yes | `utf8mb4` |
@@ -142,8 +147,10 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `collation_database` | yes | yes | `utf8mb4_0900_ai_ci` |
 | `collation_server` | yes | yes | `utf8mb4_0900_ai_ci` |
 | `default_collation_for_utf8mb4` | yes | yes | `utf8mb4_0900_ai_ci` |
+| `default_password_lifetime` | yes | yes | `0` |
 | `default_storage_engine` | yes | yes | `InnoDB` |
 | `default_tmp_storage_engine` | yes | yes | `InnoDB` |
+| `disconnect_on_expired_password` | yes | yes | `ON` |
 | `end_markers_in_json` | yes | yes | `OFF` |
 | `error_count` | yes | no | `0` |
 | `foreign_key_checks` | yes | yes | `ON` |
@@ -152,7 +159,11 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `lower_case_file_system` | yes | yes | `OFF` |
 | `lower_case_table_names` | yes | yes | `0` |
 | `max_allowed_packet` | yes | yes | `67108864` |
+| `mysql_native_password_proxy_users` | yes | yes | `OFF` |
 | `old_alter_table` | yes | yes | `OFF` |
+| `password_history` | yes | yes | `0` |
+| `password_require_current` | yes | yes | `OFF` |
+| `password_reuse_interval` | yes | yes | `0` |
 | `print_identified_with_as_hex` | yes | yes | `OFF` |
 | `require_row_format` | yes | no | `OFF` |
 | `require_secure_transport` | yes | yes | `OFF` |
@@ -163,6 +174,10 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `session_track_schema` | yes | yes | `ON` |
 | `session_track_state_change` | yes | yes | `OFF` |
 | `session_track_transaction_info` | yes | yes | `OFF` |
+| `sha256_password_auto_generate_rsa_keys` | yes | yes | `ON` |
+| `sha256_password_private_key_path` | yes | yes | `private_key.pem` |
+| `sha256_password_proxy_users` | yes | yes | `OFF` |
+| `sha256_password_public_key_path` | yes | yes | `public_key.pem` |
 | `show_create_table_skip_secondary_engine` | yes | no | `OFF` |
 | `show_create_table_verbosity` | yes | yes | `OFF` |
 | `skip_external_locking` | yes | yes | `ON` |

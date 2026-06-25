@@ -585,6 +585,10 @@
     COMMAND mylite_runtime_server_security_system_variables_test
   )
   add_test(
+    NAME libmylite.runtime.authentication_password_system_variables
+    COMMAND mylite_runtime_authentication_password_system_variables_test
+  )
+  add_test(
     NAME libmylite.runtime.group_by_single_column_aggregate
     COMMAND mylite_runtime_group_by_single_column_aggregate_test
   )

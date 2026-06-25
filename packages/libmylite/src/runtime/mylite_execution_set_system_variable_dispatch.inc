@@ -31,6 +31,9 @@ static int apply_set_system_variable_cell_value(
     if (mylite_execution_system_variable_is_fixed_global_connection_system(target->kind)) {
         return apply_set_fixed_global_connection_system_cell_value(database, target);
     }
+    if (mylite_execution_system_variable_is_binary_log(target->kind)) {
+        return apply_set_binary_log_system_variable_cell_value(database, target);
+    }
     if (mylite_execution_system_variable_is_fixed_global_mysqlx(target->kind)) {
         return apply_set_fixed_global_mysqlx_cell_value(database, target);
     }
@@ -388,6 +391,14 @@ static bool reject_invalid_read_only_system_variable_cell_target(
         return true;
     }
     if (mylite_execution_system_variable_is_read_only_admin_listener(target->kind)) {
+        set_read_only_system_variable_error(database, target->name);
+        return true;
+    }
+    if (mylite_execution_system_variable_is_read_only_connection_listener(target->kind)) {
+        set_read_only_system_variable_error(database, target->name);
+        return true;
+    }
+    if (mylite_execution_system_variable_is_read_only_binary_log(target->kind)) {
         set_read_only_system_variable_error(database, target->name);
         return true;
     }

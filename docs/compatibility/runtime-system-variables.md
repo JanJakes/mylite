@@ -112,29 +112,29 @@ state through this fallback path.
 | `basedir` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `/usr/`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No host installation discovery, startup option handling, path probing, or filesystem behavior |
 | `big_tables` | 🟡 | Limited scalar `SELECT @@big_tables` with no scope, `session`, `local`, or fixed `global`; limited `SHOW VARIABLES` rows; and handle-local session `SET` assignment for no scope, `SESSION`, `LOCAL`, direct `@@variable`, `@@session`, and `@@local` forms using `DEFAULT`, boolean tokens, integer `0`/`1` with supported unary signs, string `ON`/`OFF`, and supported integer/string user variables, with decimal user variables rejected using MySQL-compatible diagnostics. Session/local/unscoped reads report the handle-local value; global reads remain fixed at `0`, and mutable global assignment is limited to exact no-op forms. No actual temporary-table storage, optimizer planning, row materialization, startup/persisted values, `SET_VAR` hints, privileges, or Performance Schema variable tables |
 | `bind_address` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics; no TCP listener binding side effects |
-| `binlog_cache_size` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_checksum` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_direct_non_transactional_updates` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_encryption` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_error_action` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_expire_logs_auto_purge` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_expire_logs_seconds` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_format` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_group_commit_sync_delay` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_group_commit_sync_no_delay_count` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_gtid_simple_recovery` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_max_flush_queue_time` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_order_commits` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_rotate_encryption_master_key_at_startup` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_row_event_max_size` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_row_image` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_row_metadata` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_row_value_options` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_rows_query_log_events` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_stmt_cache_size` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_transaction_compression` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_transaction_compression_level_zstd` | ❌ | Value, scope, SET, diagnostics |
-| `binlog_transaction_dependency_history_size` | ❌ | Value, scope, SET, diagnostics |
+| `binlog_cache_size` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact global no-op SET; no binary-log cache |
+| `binlog_checksum` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact global no-op SET; no event checksums |
+| `binlog_direct_non_transactional_updates` | ✅ | Fixed global/session readback/SHOW and exact no-op SET; no binary-log side effects |
+| `binlog_encryption` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact global no-op SET; no encrypted log files |
+| `binlog_error_action` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact global no-op SET; no server-abort policy |
+| `binlog_expire_logs_auto_purge` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact global no-op SET; no log expiry |
+| `binlog_expire_logs_seconds` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact global no-op SET; no log expiry |
+| `binlog_format` | ✅ | Fixed global/session readback/SHOW, deprecation warnings, and exact/default no-op SET; no mutable session format state |
+| `binlog_group_commit_sync_delay` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact global no-op SET; no group commit scheduling |
+| `binlog_group_commit_sync_no_delay_count` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact global no-op SET; no group commit scheduling |
+| `binlog_gtid_simple_recovery` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and read-only SET diagnostics |
+| `binlog_max_flush_queue_time` | ✅ | Fixed global readback/SHOW, deprecation warnings, global-only diagnostics, and exact global no-op SET |
+| `binlog_order_commits` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact global no-op SET; no commit ordering side effects |
+| `binlog_rotate_encryption_master_key_at_startup` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and read-only SET diagnostics |
+| `binlog_row_event_max_size` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and read-only SET diagnostics |
+| `binlog_row_image` | ✅ | Fixed global/session readback/SHOW and exact/default no-op SET; no mutable row-image state |
+| `binlog_row_metadata` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact global no-op SET; no row metadata events |
+| `binlog_row_value_options` | ✅ | Fixed global/session readback/SHOW and exact/default no-op SET; no mutable row-value option state |
+| `binlog_rows_query_log_events` | ✅ | Fixed global/session readback/SHOW and exact/default no-op SET; no row-query event logging |
+| `binlog_stmt_cache_size` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact global no-op SET; no statement cache |
+| `binlog_transaction_compression` | ✅ | Fixed global/session readback/SHOW and exact/default no-op SET; no transaction compression |
+| `binlog_transaction_compression_level_zstd` | ✅ | Fixed global/session readback/SHOW and exact/default no-op SET; no transaction compression |
+| `binlog_transaction_dependency_history_size` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact global no-op SET; no dependency tracking |
 | `block_encryption_mode` | ❌ | Value, scope, SET, diagnostics |
 | `build_id` | ❌ | Value, scope, SET, diagnostics |
 | `bulk_insert_buffer_size` | ❌ | Value, scope, SET, diagnostics |

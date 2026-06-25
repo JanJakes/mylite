@@ -130,6 +130,10 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc = apply_set_binary_log_system_variable_assignment(database, &target, value_node, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     rc = apply_set_global_mysqlx_assignment(database, &target, value_node, &handled);
     if (rc != MYLITE_OK || handled) {
         return rc;
@@ -218,6 +222,7 @@ static bool set_system_variable_target_is_read_only(
            mylite_execution_system_variable_is_read_only_server_capability(kind) ||
            mylite_execution_system_variable_is_read_only_admin_listener(kind) ||
            mylite_execution_system_variable_is_read_only_connection_listener(kind) ||
+           mylite_execution_system_variable_is_read_only_binary_log(kind) ||
            mylite_execution_system_variable_is_read_only_mysqlx(kind) ||
            mylite_execution_system_variable_is_read_only_server_logging(kind);
 }

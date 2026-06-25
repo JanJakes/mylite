@@ -981,6 +981,12 @@ static int apply_set_global_connection_system_assignment(
     const struct mylite_sql_ast_node *value_node,
     bool *out_handled
 );
+static int apply_set_binary_log_system_variable_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
 static int apply_set_long_query_time_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -1147,6 +1153,24 @@ static uint64_t connection_memory_system_variable_min_value_for_kind(
     enum mylite_execution_system_variable_kind kind
 );
 static uint64_t connection_memory_system_variable_max_value_for_kind(
+    enum mylite_execution_system_variable_kind kind
+);
+static int apply_set_binary_log_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target
+);
+static int validate_set_binary_log_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static bool binary_log_system_variable_is_boolean(enum mylite_execution_system_variable_kind kind);
+static bool binary_log_system_variable_is_uint64(enum mylite_execution_system_variable_kind kind);
+static uint64_t binary_log_system_variable_uint64_value(
+    enum mylite_execution_system_variable_kind kind
+);
+static int append_binary_log_set_warning_if_needed(
+    struct mylite_db *database,
     enum mylite_execution_system_variable_kind kind
 );
 static int apply_set_long_query_time_cell_value(

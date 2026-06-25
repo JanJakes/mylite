@@ -90,7 +90,27 @@ run_mysql \
      SET GLOBAL global_connection_memory_tracking = DEFAULT;
      SET GLOBAL connection_control_failed_connections_threshold = DEFAULT;
      SET GLOBAL connection_control_max_connection_delay = DEFAULT;
-     SET GLOBAL connection_control_min_connection_delay = DEFAULT;" >/dev/null
+     SET GLOBAL connection_control_min_connection_delay = DEFAULT;
+     SET GLOBAL binlog_cache_size = DEFAULT;
+     SET GLOBAL binlog_checksum = DEFAULT;
+     SET GLOBAL binlog_direct_non_transactional_updates = DEFAULT;
+     SET GLOBAL binlog_encryption = DEFAULT;
+     SET GLOBAL binlog_error_action = DEFAULT;
+     SET GLOBAL binlog_expire_logs_auto_purge = DEFAULT;
+     SET GLOBAL binlog_expire_logs_seconds = DEFAULT;
+     SET GLOBAL binlog_format = DEFAULT;
+     SET GLOBAL binlog_group_commit_sync_delay = DEFAULT;
+     SET GLOBAL binlog_group_commit_sync_no_delay_count = DEFAULT;
+     SET GLOBAL binlog_max_flush_queue_time = DEFAULT;
+     SET GLOBAL binlog_order_commits = DEFAULT;
+     SET GLOBAL binlog_row_image = DEFAULT;
+     SET GLOBAL binlog_row_metadata = DEFAULT;
+     SET GLOBAL binlog_row_value_options = DEFAULT;
+     SET GLOBAL binlog_rows_query_log_events = DEFAULT;
+     SET GLOBAL binlog_stmt_cache_size = DEFAULT;
+     SET GLOBAL binlog_transaction_compression = DEFAULT;
+     SET GLOBAL binlog_transaction_compression_level_zstd = DEFAULT;
+     SET GLOBAL binlog_transaction_dependency_history_size = DEFAULT;" >/dev/null
 
 headers=$(run_mysql_with_headers "SHOW VARIABLES LIKE 'autocommit';" | sed -n '1p')
 expect_value "headers" "Variable_name${TAB}Value" "$headers"
@@ -133,6 +153,29 @@ supported_session_rows=$(run_mysql "
       'autocommit',
       'back_log',
       'bind_address',
+      'binlog_cache_size',
+      'binlog_checksum',
+      'binlog_direct_non_transactional_updates',
+      'binlog_encryption',
+      'binlog_error_action',
+      'binlog_expire_logs_auto_purge',
+      'binlog_expire_logs_seconds',
+      'binlog_format',
+      'binlog_group_commit_sync_delay',
+      'binlog_group_commit_sync_no_delay_count',
+      'binlog_gtid_simple_recovery',
+      'binlog_max_flush_queue_time',
+      'binlog_order_commits',
+      'binlog_rotate_encryption_master_key_at_startup',
+      'binlog_row_event_max_size',
+      'binlog_row_image',
+      'binlog_row_metadata',
+      'binlog_row_value_options',
+      'binlog_rows_query_log_events',
+      'binlog_stmt_cache_size',
+      'binlog_transaction_compression',
+      'binlog_transaction_compression_level_zstd',
+      'binlog_transaction_dependency_history_size',
       'sql_quote_show_create',
       'foreign_key_checks',
       'global_connection_memory_limit',
@@ -172,6 +215,29 @@ supported_session_rows=$(run_mysql "
 expect_value "supported session rows" "autocommit|ON
 back_log|151
 bind_address|*
+binlog_cache_size|32768
+binlog_checksum|CRC32
+binlog_direct_non_transactional_updates|OFF
+binlog_encryption|OFF
+binlog_error_action|ABORT_SERVER
+binlog_expire_logs_auto_purge|ON
+binlog_expire_logs_seconds|2592000
+binlog_format|ROW
+binlog_group_commit_sync_delay|0
+binlog_group_commit_sync_no_delay_count|0
+binlog_gtid_simple_recovery|ON
+binlog_max_flush_queue_time|0
+binlog_order_commits|ON
+binlog_rotate_encryption_master_key_at_startup|OFF
+binlog_row_event_max_size|8192
+binlog_row_image|FULL
+binlog_row_metadata|MINIMAL
+binlog_row_value_options|
+binlog_rows_query_log_events|OFF
+binlog_stmt_cache_size|32768
+binlog_transaction_compression|OFF
+binlog_transaction_compression_level_zstd|3
+binlog_transaction_dependency_history_size|25000
 character_set_client|utf8mb4
 character_set_connection|utf8mb4
 character_set_database|utf8mb4
@@ -255,6 +321,29 @@ supported_global_rows=$(run_mysql "
       'autocommit',
       'back_log',
       'bind_address',
+      'binlog_cache_size',
+      'binlog_checksum',
+      'binlog_direct_non_transactional_updates',
+      'binlog_encryption',
+      'binlog_error_action',
+      'binlog_expire_logs_auto_purge',
+      'binlog_expire_logs_seconds',
+      'binlog_format',
+      'binlog_group_commit_sync_delay',
+      'binlog_group_commit_sync_no_delay_count',
+      'binlog_gtid_simple_recovery',
+      'binlog_max_flush_queue_time',
+      'binlog_order_commits',
+      'binlog_rotate_encryption_master_key_at_startup',
+      'binlog_row_event_max_size',
+      'binlog_row_image',
+      'binlog_row_metadata',
+      'binlog_row_value_options',
+      'binlog_rows_query_log_events',
+      'binlog_stmt_cache_size',
+      'binlog_transaction_compression',
+      'binlog_transaction_compression_level_zstd',
+      'binlog_transaction_dependency_history_size',
       'sql_quote_show_create',
       'foreign_key_checks',
       'global_connection_memory_limit',
@@ -294,6 +383,29 @@ supported_global_rows=$(run_mysql "
 expect_value "supported global rows" "autocommit|ON
 back_log|151
 bind_address|*
+binlog_cache_size|32768
+binlog_checksum|CRC32
+binlog_direct_non_transactional_updates|OFF
+binlog_encryption|OFF
+binlog_error_action|ABORT_SERVER
+binlog_expire_logs_auto_purge|ON
+binlog_expire_logs_seconds|2592000
+binlog_format|ROW
+binlog_group_commit_sync_delay|0
+binlog_group_commit_sync_no_delay_count|0
+binlog_gtid_simple_recovery|ON
+binlog_max_flush_queue_time|0
+binlog_order_commits|ON
+binlog_rotate_encryption_master_key_at_startup|OFF
+binlog_row_event_max_size|8192
+binlog_row_image|FULL
+binlog_row_metadata|MINIMAL
+binlog_row_value_options|
+binlog_rows_query_log_events|OFF
+binlog_stmt_cache_size|32768
+binlog_transaction_compression|OFF
+binlog_transaction_compression_level_zstd|3
+binlog_transaction_dependency_history_size|25000
 character_set_client|utf8mb4
 character_set_connection|utf8mb4
 character_set_database|utf8mb4

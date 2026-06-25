@@ -1666,6 +1666,17 @@
   )
   mylite_configure_c_target(mylite_runtime_server_capability_system_variables_test)
 
+  add_executable(mylite_runtime_admin_listener_system_variables_test
+    tests/runtime_admin_listener_system_variables_test.c
+  )
+  target_link_libraries(mylite_runtime_admin_listener_system_variables_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_admin_listener_system_variables_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_admin_listener_system_variables_test)
+
   add_executable(mylite_runtime_group_by_single_column_aggregate_test
     tests/runtime_group_by_single_column_aggregate_test.c
   )

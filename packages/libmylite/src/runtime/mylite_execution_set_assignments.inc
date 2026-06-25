@@ -114,6 +114,10 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc = apply_set_global_admin_listener_assignment(database, &target, value_node, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     rc = apply_set_global_authentication_password_assignment(
         database,
         &target,
@@ -189,7 +193,8 @@ static bool set_system_variable_target_is_read_only(
            mylite_execution_system_variable_is_read_only_server_build(kind) ||
            mylite_execution_system_variable_is_read_only_server_environment(kind) ||
            mylite_execution_system_variable_is_read_only_authentication_password(kind) ||
-           mylite_execution_system_variable_is_read_only_server_capability(kind);
+           mylite_execution_system_variable_is_read_only_server_capability(kind) ||
+           mylite_execution_system_variable_is_read_only_admin_listener(kind);
 }
 
 static int apply_set_server_identity_binary_log_system_variable_assignment(
@@ -1238,6 +1243,38 @@ static int apply_set_global_server_security_assignment(
         set_runtime_error(database, "invalid fixed server security system variable");
         return MYLITE_ERROR;
     }
+}
+
+static int apply_set_global_admin_listener_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+) {
+    const char *unsupported_message = "SET supports only fixed no-op system variable assignments";
+
+    if (target == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (!mylite_execution_system_variable_is_fixed_global_admin_listener(target->kind)) {
+        return MYLITE_OK;
+    }
+
+    *out_handled = true;
+    if (target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_global_variable_set_global_required_error(database, target->name);
+        return MYLITE_ERROR;
+    }
+
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_ADMIN_TLS_VERSION) {
+        return validate_set_fixed_text_value(
+            database,
+            value_node,
+            mylite_execution_system_variable_default_value(target->kind)
+        );
+    }
+    return validate_set_default_only_value(database, value_node, unsupported_message);
 }
 
 static int apply_set_global_authentication_password_assignment(

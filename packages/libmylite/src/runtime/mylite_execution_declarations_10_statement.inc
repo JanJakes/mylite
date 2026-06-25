@@ -561,6 +561,12 @@ static int apply_set_global_server_security_assignment(
     const struct mylite_sql_ast_node *value_node,
     bool *out_handled
 );
+static int apply_set_global_admin_listener_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
 static int apply_set_global_authentication_password_assignment(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -676,6 +682,10 @@ static int apply_set_fixed_global_server_security_cell_value(
     const struct resolved_set_system_variable_target *target
 );
 static int apply_set_fixed_global_authentication_password_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target
+);
+static int apply_set_fixed_global_admin_listener_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target
 );
@@ -840,6 +850,11 @@ static int validate_set_fixed_text_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
     const char *expected_value
+);
+static int validate_set_default_only_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const char *unsupported_message
 );
 static int apply_set_max_allowed_packet_value(
     struct mylite_db *database,

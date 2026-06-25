@@ -136,6 +136,18 @@ enum mylite_execution_system_variable_kind {
     MYLITE_EXECUTION_SYSTEM_VARIABLE_HAVE_STATEMENT_TIMEOUT = 127,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_HAVE_SYMLINK = 128,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT = 129,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_ADMIN_ADDRESS = 130,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_ADMIN_PORT = 131,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_ADMIN_SSL_CA = 132,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_ADMIN_SSL_CAPATH = 133,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_ADMIN_SSL_CERT = 134,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_ADMIN_SSL_CIPHER = 135,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_ADMIN_SSL_CRL = 136,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_ADMIN_SSL_CRLPATH = 137,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_ADMIN_SSL_KEY = 138,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_ADMIN_TLS_CIPHERSUITES = 139,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_ADMIN_TLS_VERSION = 140,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CREATE_ADMIN_LISTENER_THREAD = 141,
 };
 
 struct mylite_execution_system_variable_descriptor {
@@ -193,10 +205,16 @@ bool mylite_execution_system_variable_is_read_only_authentication_password(
 bool mylite_execution_system_variable_is_read_only_server_capability(
     enum mylite_execution_system_variable_kind kind
 );
+bool mylite_execution_system_variable_is_read_only_admin_listener(
+    enum mylite_execution_system_variable_kind kind
+);
 bool mylite_execution_system_variable_is_fixed_global_server_security(
     enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_fixed_global_authentication_password(
+    enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_is_fixed_global_admin_listener(
     enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_timeout(enum mylite_execution_system_variable_kind kind);

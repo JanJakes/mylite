@@ -30,17 +30,17 @@ state through this fallback path.
 | Variable | Status | Notes |
 | --- | --- | --- |
 | `activate_all_roles_on_login` | ❌ | Value, scope, SET, diagnostics |
-| `admin_address` | ❌ | Value, scope, SET, diagnostics |
-| `admin_port` | ❌ | Value, scope, SET, diagnostics |
-| `admin_ssl_ca` | ❌ | Value, scope, SET, diagnostics |
-| `admin_ssl_capath` | ❌ | Value, scope, SET, diagnostics |
-| `admin_ssl_cert` | ❌ | Value, scope, SET, diagnostics |
-| `admin_ssl_cipher` | ❌ | Value, scope, SET, diagnostics |
-| `admin_ssl_crl` | ❌ | Value, scope, SET, diagnostics |
-| `admin_ssl_crlpath` | ❌ | Value, scope, SET, diagnostics |
-| `admin_ssl_key` | ❌ | Value, scope, SET, diagnostics |
-| `admin_tls_ciphersuites` | ❌ | Value, scope, SET, diagnostics |
-| `admin_tls_version` | ❌ | Value, scope, SET, diagnostics |
+| `admin_address` | ✅ | Fixed global `NULL`/blank readback/SHOW and read-only SET diagnostics |
+| `admin_port` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
+| `admin_ssl_ca` | ✅ | Fixed global `NULL`/blank readback/SHOW and `DEFAULT` global no-op SET |
+| `admin_ssl_capath` | ✅ | Fixed global `NULL`/blank readback/SHOW and `DEFAULT` global no-op SET |
+| `admin_ssl_cert` | ✅ | Fixed global `NULL`/blank readback/SHOW and `DEFAULT` global no-op SET |
+| `admin_ssl_cipher` | ✅ | Fixed global `NULL`/blank readback/SHOW and `DEFAULT` global no-op SET |
+| `admin_ssl_crl` | ✅ | Fixed global `NULL`/blank readback/SHOW and `DEFAULT` global no-op SET |
+| `admin_ssl_crlpath` | ✅ | Fixed global `NULL`/blank readback/SHOW and `DEFAULT` global no-op SET |
+| `admin_ssl_key` | ✅ | Fixed global `NULL`/blank readback/SHOW and `DEFAULT` global no-op SET |
+| `admin_tls_ciphersuites` | ✅ | Fixed global `NULL`/blank readback/SHOW and `DEFAULT` global no-op SET |
+| `admin_tls_version` | ✅ | Fixed global readback/SHOW and exact global no-op SET |
 | `audit_log_buffer_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `audit_log_compression` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `audit_log_connection_policy` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
@@ -180,7 +180,7 @@ state through this fallback path.
 | `connection_memory_chunk_size` | ❌ | Value, scope, SET, diagnostics |
 | `connection_memory_limit` | ❌ | Value, scope, SET, diagnostics |
 | `core_file` | ❌ | Value, scope, SET, diagnostics |
-| `create_admin_listener_thread` | ❌ | Value, scope, SET, diagnostics |
+| `create_admin_listener_thread` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
 | `cte_max_recursion_depth` | ❌ | Value, scope, SET, diagnostics |
 | `datadir` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `/var/lib/mysql/`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No MySQL data-directory layout, startup option handling, path probing, or file placement behavior |
 | `debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |

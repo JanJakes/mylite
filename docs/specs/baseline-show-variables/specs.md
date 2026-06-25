@@ -130,6 +130,17 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 
 | Variable | Default/session/LOCAL visibility | GLOBAL visibility | SHOW value |
 | --- | --- | --- | --- |
+| `admin_address` | yes | yes | empty string |
+| `admin_port` | yes | yes | `33062` |
+| `admin_ssl_ca` | yes | yes | empty string |
+| `admin_ssl_capath` | yes | yes | empty string |
+| `admin_ssl_cert` | yes | yes | empty string |
+| `admin_ssl_cipher` | yes | yes | empty string |
+| `admin_ssl_crl` | yes | yes | empty string |
+| `admin_ssl_crlpath` | yes | yes | empty string |
+| `admin_ssl_key` | yes | yes | empty string |
+| `admin_tls_ciphersuites` | yes | yes | empty string |
+| `admin_tls_version` | yes | yes | `TLSv1.2,TLSv1.3` |
 | `authentication_policy` | yes | yes | `*,,` |
 | `autocommit` | yes | yes | `ON` |
 | `caching_sha2_password_auto_generate_rsa_keys` | yes | yes | `ON` |
@@ -146,6 +157,7 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `collation_connection` | yes | yes | current fixed session value |
 | `collation_database` | yes | yes | `utf8mb4_0900_ai_ci` |
 | `collation_server` | yes | yes | `utf8mb4_0900_ai_ci` |
+| `create_admin_listener_thread` | yes | yes | `OFF` |
 | `default_collation_for_utf8mb4` | yes | yes | `utf8mb4_0900_ai_ci` |
 | `default_password_lifetime` | yes | yes | `0` |
 | `default_storage_engine` | yes | yes | `InnoDB` |

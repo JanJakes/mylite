@@ -786,6 +786,30 @@ static bool map_json_search_row_scalar_step_error(struct mylite_db *database, co
         );
         return true;
     }
+    if (strcmp(message, "Invalid data type for JSON data in JSON_SEARCH()") == 0) {
+        set_invalid_json_data_type_error(database, "JSON_SEARCH");
+        return true;
+    }
+    if (strcmp(message, "Invalid JSON path in JSON_SEARCH()") == 0) {
+        set_invalid_json_path_error(database, 0U);
+        return true;
+    }
+    if (strcmp(message, "Invalid oneOrAll in JSON_SEARCH()") == 0) {
+        set_invalid_json_one_or_all_function_error(database, "json_search");
+        return true;
+    }
+    if (strcmp(message, "Incorrect arguments to ESCAPE") == 0) {
+        set_incorrect_arguments_to_escape_error(database);
+        return true;
+    }
+    if (strcmp(message, "Invalid JSON text or JSON path in JSON_SEARCH()") == 0) {
+        set_invalid_json_function_text_error(database, 0U);
+        return true;
+    }
+    if (strcmp(message, "Unsupported JSON path or JSON document in JSON_SEARCH()") == 0) {
+        set_unsupported_error(database, "JSON_SEARCH() path or document shape is not supported");
+        return true;
+    }
     if (strcmp(message, "Invalid data type for JSON data in JSON_OVERLAPS()") == 0) {
         set_invalid_json_data_type_error(database, "JSON_OVERLAPS");
         return true;
@@ -2341,6 +2365,7 @@ static int populate_row_scalar_expression_result_column_descriptor(
         );
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_EXTRACT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_KEYS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_PRETTY:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SET:

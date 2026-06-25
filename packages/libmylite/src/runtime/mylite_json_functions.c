@@ -18,6 +18,7 @@
 enum {
     mysql_error_invalid_json_text_in_function = 3141,
     json_storage_error_message_capacity = 128,
+    json_search_sqlite_minimum_path_argc = 5,
 };
 
 struct json_search_sqlite_result {
@@ -36,6 +37,22 @@ struct json_contains_path_sqlite_arguments {
     int document_length;
     bool require_all;
     bool force_null;
+};
+
+struct json_search_sqlite_arguments {
+    const unsigned char *document;
+    const unsigned char *pattern;
+    const char **paths;
+    size_t *path_lengths;
+    size_t path_count;
+    size_t admitted_path_count;
+    int document_length;
+    int pattern_length;
+    enum mylite_json_search_mode mode;
+    bool escape_enabled;
+    unsigned char escape;
+    bool force_null;
+    bool document_is_null;
 };
 
 struct json_keys_sqlite_arguments {
@@ -158,6 +175,7 @@ static void json_contains_path_sqlite_callback(
     int argc,
     sqlite3_value **argv
 );
+static void json_search_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_overlaps_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_member_of_sqlite_callback(
     sqlite3_context *context,
@@ -269,6 +287,46 @@ static int collect_json_contains_path_sqlite_paths(
 );
 static void json_contains_path_sqlite_arguments_deinit(
     struct json_contains_path_sqlite_arguments *arguments
+);
+static int decode_json_search_sqlite_arguments(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv,
+    struct json_search_sqlite_arguments *arguments
+);
+static int validate_json_search_sqlite_document(
+    sqlite3_context *context,
+    const struct json_search_sqlite_arguments *arguments
+);
+static int decode_json_search_sqlite_mode(
+    sqlite3_context *context,
+    sqlite3_value *value,
+    struct json_search_sqlite_arguments *arguments
+);
+static int decode_json_search_sqlite_pattern(
+    sqlite3_context *context,
+    sqlite3_value *value,
+    struct json_search_sqlite_arguments *arguments
+);
+static int decode_json_search_sqlite_escape(
+    sqlite3_context *context,
+    sqlite3_value *value,
+    struct json_search_sqlite_arguments *arguments
+);
+static int collect_json_search_sqlite_paths(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv,
+    struct json_search_sqlite_arguments *arguments
+);
+static void json_search_sqlite_arguments_deinit(struct json_search_sqlite_arguments *arguments);
+static void finish_json_search_sqlite_result(
+    sqlite3_context *context,
+    int rc,
+    char *result,
+    size_t result_length,
+    bool is_null,
+    const struct mylite_json_normalize_result *normalize_result
 );
 static void finish_json_contains_sqlite_result(
     sqlite3_context *context,
@@ -423,6 +481,20 @@ int mylite_sqlite_register_json_functions(sqlite3 *sqlite) {
                 SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
             .application_data = NULL,
             .scalar_callback = json_contains_path_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_json_search",
+            .argument_count = -1,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = NULL,
+            .scalar_callback = json_search_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
             .value_callback = NULL,
@@ -1161,6 +1233,68 @@ static void json_contains_path_sqlite_callback(
     json_contains_path_sqlite_arguments_deinit(&arguments);
 }
 
+static void json_search_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    struct json_search_sqlite_arguments arguments = {0};
+    struct mylite_json_normalize_result normalize_result = {0};
+    char *result = NULL;
+    size_t result_length = 0U;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    rc = decode_json_search_sqlite_arguments(context, argc, argv, &arguments);
+    if (rc != MYLITE_OK) {
+        return;
+    }
+    if (arguments.document_is_null) {
+        sqlite3_result_null(context);
+        json_search_sqlite_arguments_deinit(&arguments);
+        return;
+    }
+
+    rc = validate_json_search_sqlite_document(context, &arguments);
+    if (rc != MYLITE_OK) {
+        json_search_sqlite_arguments_deinit(&arguments);
+        return;
+    }
+    if (arguments.force_null && arguments.admitted_path_count == 0U) {
+        sqlite3_result_null(context);
+        json_search_sqlite_arguments_deinit(&arguments);
+        return;
+    }
+
+    rc = mylite_json_search(
+        arguments.mode,
+        (const char *)arguments.document,
+        (size_t)arguments.document_length,
+        (const char *)arguments.pattern,
+        (size_t)arguments.pattern_length,
+        arguments.escape_enabled,
+        arguments.escape,
+        arguments.paths,
+        arguments.path_lengths,
+        arguments.admitted_path_count,
+        &result,
+        &result_length,
+        &is_null,
+        &normalize_result
+    );
+    if (arguments.force_null && rc == MYLITE_OK) {
+        free(result);
+        result = NULL;
+        result_length = 0U;
+        is_null = true;
+    }
+    finish_json_search_sqlite_result(
+        context,
+        rc,
+        result,
+        result_length,
+        is_null,
+        &normalize_result
+    );
+    json_search_sqlite_arguments_deinit(&arguments);
+}
+
 static void json_overlaps_sqlite_callback(
     sqlite3_context *context,
     int argc,
@@ -1435,6 +1569,267 @@ static void json_contains_path_sqlite_arguments_deinit(
     free((void *)arguments->paths);
     free(arguments->path_lengths);
     *arguments = (struct json_contains_path_sqlite_arguments){0};
+}
+
+static int decode_json_search_sqlite_arguments(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv,
+    struct json_search_sqlite_arguments *arguments
+) {
+    int rc = MYLITE_OK;
+
+    if (arguments == NULL) {
+        sqlite3_result_error(context, "invalid MyLite JSON_SEARCH callback", -1);
+        return MYLITE_MISUSE;
+    }
+    *arguments = (struct json_search_sqlite_arguments){
+        .mode = MYLITE_JSON_SEARCH_ONE,
+        .escape_enabled = true,
+        .escape = '\\',
+    };
+
+    if (context == NULL || argc < 3 || argv == NULL || argv[0] == NULL || argv[1] == NULL ||
+        argv[2] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite JSON_SEARCH callback", -1);
+        return MYLITE_ERROR;
+    }
+    if (sqlite3_value_type(argv[0]) == SQLITE_NULL) {
+        arguments->document_is_null = true;
+        arguments->force_null = true;
+        return MYLITE_OK;
+    }
+    if (sqlite3_value_type(argv[0]) != SQLITE_TEXT) {
+        sqlite3_result_error(context, "Invalid data type for JSON data in JSON_SEARCH()", -1);
+        return MYLITE_ERROR;
+    }
+    arguments->document = sqlite3_value_text(argv[0]);
+    arguments->document_length = sqlite3_value_bytes(argv[0]);
+    if (arguments->document == NULL || arguments->document_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return MYLITE_NOMEM;
+    }
+
+    rc = decode_json_search_sqlite_mode(context, argv[1], arguments);
+    if (rc == MYLITE_OK && !arguments->force_null) {
+        rc = decode_json_search_sqlite_pattern(context, argv[2], arguments);
+    }
+    if (rc == MYLITE_OK && !arguments->force_null && argc >= 4) {
+        if (argv[3] == NULL) {
+            sqlite3_result_error(context, "invalid MyLite JSON_SEARCH callback", -1);
+            return MYLITE_ERROR;
+        }
+        rc = decode_json_search_sqlite_escape(context, argv[3], arguments);
+    }
+    if (rc == MYLITE_OK && !arguments->force_null && argc > 4) {
+        rc = collect_json_search_sqlite_paths(context, argc, argv, arguments);
+    }
+    if (rc != MYLITE_OK) {
+        json_search_sqlite_arguments_deinit(arguments);
+    }
+    return rc;
+}
+
+static int validate_json_search_sqlite_document(
+    sqlite3_context *context,
+    const struct json_search_sqlite_arguments *arguments
+) {
+    const char *type_name = NULL;
+    struct mylite_json_normalize_result normalize_result = {0};
+    int rc = MYLITE_OK;
+
+    if (arguments == NULL || arguments->document == NULL || arguments->document_length < 0) {
+        sqlite3_result_error(context, "invalid MyLite JSON_SEARCH callback", -1);
+        return MYLITE_MISUSE;
+    }
+    rc = mylite_json_type(
+        (const char *)arguments->document,
+        (size_t)arguments->document_length,
+        &type_name,
+        &normalize_result
+    );
+    (void)type_name;
+    if (rc == MYLITE_OK) {
+        return MYLITE_OK;
+    }
+    finish_json_search_sqlite_result(context, rc, NULL, 0U, false, &normalize_result);
+    return rc;
+}
+
+static int decode_json_search_sqlite_mode(
+    sqlite3_context *context,
+    sqlite3_value *value,
+    struct json_search_sqlite_arguments *arguments
+) {
+    bool require_all = false;
+
+    if (context == NULL || value == NULL || arguments == NULL) {
+        sqlite3_result_error(context, "invalid MyLite JSON_SEARCH callback", -1);
+        return MYLITE_MISUSE;
+    }
+    if (sqlite3_value_type(value) == SQLITE_NULL) {
+        arguments->force_null = true;
+        return MYLITE_OK;
+    }
+    if (!json_contains_path_mode_is_all(value, &require_all)) {
+        sqlite3_result_error(context, "Invalid oneOrAll in JSON_SEARCH()", -1);
+        return MYLITE_ERROR;
+    }
+    arguments->mode = require_all ? MYLITE_JSON_SEARCH_ALL : MYLITE_JSON_SEARCH_ONE;
+    return MYLITE_OK;
+}
+
+static int decode_json_search_sqlite_pattern(
+    sqlite3_context *context,
+    sqlite3_value *value,
+    struct json_search_sqlite_arguments *arguments
+) {
+    if (context == NULL || value == NULL || arguments == NULL) {
+        sqlite3_result_error(context, "invalid MyLite JSON_SEARCH callback", -1);
+        return MYLITE_MISUSE;
+    }
+    if (sqlite3_value_type(value) == SQLITE_NULL) {
+        arguments->force_null = true;
+        return MYLITE_OK;
+    }
+    if (sqlite3_value_type(value) != SQLITE_TEXT) {
+        sqlite3_result_error(context, "Invalid search string in JSON_SEARCH()", -1);
+        return MYLITE_ERROR;
+    }
+    arguments->pattern = sqlite3_value_text(value);
+    arguments->pattern_length = sqlite3_value_bytes(value);
+    if (arguments->pattern == NULL || arguments->pattern_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return MYLITE_NOMEM;
+    }
+    return MYLITE_OK;
+}
+
+static int decode_json_search_sqlite_escape(
+    sqlite3_context *context,
+    sqlite3_value *value,
+    struct json_search_sqlite_arguments *arguments
+) {
+    const unsigned char *text = NULL;
+    int text_length = 0;
+
+    if (context == NULL || value == NULL || arguments == NULL) {
+        sqlite3_result_error(context, "invalid MyLite JSON_SEARCH callback", -1);
+        return MYLITE_MISUSE;
+    }
+    if (sqlite3_value_type(value) == SQLITE_NULL) {
+        arguments->escape_enabled = true;
+        arguments->escape = '\\';
+        return MYLITE_OK;
+    }
+    if (sqlite3_value_type(value) != SQLITE_TEXT) {
+        sqlite3_result_error(context, "Incorrect arguments to ESCAPE", -1);
+        return MYLITE_ERROR;
+    }
+    text = sqlite3_value_text(value);
+    text_length = sqlite3_value_bytes(value);
+    if (text == NULL || text_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return MYLITE_NOMEM;
+    }
+    if (text_length == 0) {
+        arguments->escape_enabled = false;
+        arguments->escape = '\0';
+        return MYLITE_OK;
+    }
+    if (text_length != 1) {
+        sqlite3_result_error(context, "Incorrect arguments to ESCAPE", -1);
+        return MYLITE_ERROR;
+    }
+    arguments->escape_enabled = true;
+    arguments->escape = text[0];
+    return MYLITE_OK;
+}
+
+static int collect_json_search_sqlite_paths(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv,
+    struct json_search_sqlite_arguments *arguments
+) {
+    if (context == NULL || argv == NULL || arguments == NULL ||
+        argc < json_search_sqlite_minimum_path_argc) {
+        sqlite3_result_error(context, "invalid MyLite JSON_SEARCH callback", -1);
+        return MYLITE_MISUSE;
+    }
+    arguments->path_count = (size_t)argc - 4U;
+    if (arguments->path_count > SIZE_MAX / sizeof(*arguments->paths) ||
+        arguments->path_count > SIZE_MAX / sizeof(*arguments->path_lengths)) {
+        sqlite3_result_error_nomem(context);
+        return MYLITE_NOMEM;
+    }
+    arguments->paths = (const char **)calloc(arguments->path_count, sizeof(*arguments->paths));
+    arguments->path_lengths =
+        (size_t *)calloc(arguments->path_count, sizeof(*arguments->path_lengths));
+    if (arguments->paths == NULL || arguments->path_lengths == NULL) {
+        sqlite3_result_error_nomem(context);
+        return MYLITE_NOMEM;
+    }
+
+    for (size_t path_index = 0U; !arguments->force_null && path_index < arguments->path_count;
+         ++path_index) {
+        sqlite3_value *path_value = argv[path_index + 4U];
+        struct mylite_json_normalize_result normalize_result = {0};
+        int sqlite_length = 0;
+        int rc = MYLITE_OK;
+
+        if (path_value == NULL) {
+            sqlite3_result_error(context, "invalid MyLite JSON_SEARCH callback", -1);
+            return MYLITE_ERROR;
+        }
+        if (sqlite3_value_type(path_value) == SQLITE_NULL) {
+            arguments->force_null = true;
+            break;
+        }
+        if (sqlite3_value_type(path_value) != SQLITE_TEXT) {
+            sqlite3_result_error(context, "Invalid JSON path in JSON_SEARCH()", -1);
+            return MYLITE_ERROR;
+        }
+        arguments->paths[path_index] = (const char *)sqlite3_value_text(path_value);
+        sqlite_length = sqlite3_value_bytes(path_value);
+        if (arguments->paths[path_index] == NULL || sqlite_length < 0) {
+            sqlite3_result_error_nomem(context);
+            return MYLITE_NOMEM;
+        }
+        arguments->path_lengths[path_index] = (size_t)sqlite_length;
+        rc = mylite_json_path_validate(
+            arguments->paths[path_index],
+            arguments->path_lengths[path_index],
+            &normalize_result
+        );
+        if (rc == MYLITE_NOMEM) {
+            sqlite3_result_error_nomem(context);
+            return MYLITE_NOMEM;
+        }
+        if (rc != MYLITE_OK && normalize_result.status == MYLITE_JSON_NORMALIZE_UNSUPPORTED) {
+            sqlite3_result_error(
+                context,
+                "Unsupported JSON path or JSON document in JSON_SEARCH()",
+                -1
+            );
+            return MYLITE_ERROR;
+        }
+        if (rc != MYLITE_OK) {
+            sqlite3_result_error(context, "Invalid JSON path in JSON_SEARCH()", -1);
+            return MYLITE_ERROR;
+        }
+        arguments->admitted_path_count = path_index + 1U;
+    }
+    return MYLITE_OK;
+}
+
+static void json_search_sqlite_arguments_deinit(struct json_search_sqlite_arguments *arguments) {
+    if (arguments == NULL) {
+        return;
+    }
+    free(arguments->path_lengths);
+    free((void *)arguments->paths);
+    *arguments = (struct json_search_sqlite_arguments){0};
 }
 
 static void json_length_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv) {
@@ -3243,6 +3638,55 @@ static bool json_contains_path_mode_is_all(sqlite3_value *value, bool *out_is_al
         return true;
     }
     return false;
+}
+
+static void finish_json_search_sqlite_result(
+    sqlite3_context *context,
+    int rc,
+    char *result,
+    size_t result_length,
+    bool is_null,
+    const struct mylite_json_normalize_result *normalize_result
+) {
+    if (rc == MYLITE_NOMEM) {
+        free(result);
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    if (rc != MYLITE_OK) {
+        free(result);
+        if (normalize_result != NULL &&
+            normalize_result->status == MYLITE_JSON_NORMALIZE_UNSUPPORTED) {
+            sqlite3_result_error(
+                context,
+                "Unsupported JSON path or JSON document in JSON_SEARCH()",
+                -1
+            );
+            return;
+        }
+        if (normalize_result != NULL &&
+            normalize_result->status == MYLITE_JSON_NORMALIZE_INVALID_PATH) {
+            sqlite3_result_error(context, "Invalid JSON path in JSON_SEARCH()", -1);
+            return;
+        }
+        if (normalize_result != NULL && normalize_result->status == MYLITE_JSON_NORMALIZE_INVALID) {
+            sqlite3_result_error(context, "Invalid JSON text or JSON path in JSON_SEARCH()", -1);
+            return;
+        }
+        sqlite3_result_error(context, "MyLite JSON_SEARCH failed", -1);
+        return;
+    }
+    if (is_null) {
+        free(result);
+        sqlite3_result_null(context);
+        return;
+    }
+    if (result == NULL || result_length > (size_t)INT_MAX) {
+        free(result);
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    sqlite3_result_text(context, result, (int)result_length, free);
 }
 
 static void finish_json_contains_sqlite_result(

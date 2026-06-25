@@ -98,6 +98,28 @@ static int json_contains_path_one_or_all_value(
     bool *out_require_all,
     bool *out_is_null
 );
+static int json_search_one_or_all_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_json_search_mode *out_mode,
+    bool *out_is_null
+);
+static int json_search_string_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    const char *argument_description,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+);
+static int json_search_escape_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    bool *out_escape_enabled,
+    unsigned char *out_escape
+);
 static int json_member_of_scalar_value_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -111,6 +133,11 @@ static int validate_json_contains_target_document(
     size_t document_length
 );
 static int validate_json_overlaps_left_document(
+    struct mylite_db *database,
+    const char *document,
+    size_t document_length
+);
+static int validate_json_search_scalar_document(
     struct mylite_db *database,
     const char *document,
     size_t document_length
@@ -199,6 +226,11 @@ static int finish_json_contains_scalar_result(
     const struct mylite_json_normalize_result *result
 );
 static int finish_json_contains_path_scalar_result(
+    struct mylite_db *database,
+    int rc,
+    const struct mylite_json_normalize_result *result
+);
+static int finish_json_search_scalar_result(
     struct mylite_db *database,
     int rc,
     const struct mylite_json_normalize_result *result
@@ -727,6 +759,166 @@ done:
     return rc;
 }
 
+int mylite_execution_scalar_json_search_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+) {
+    const struct mylite_sql_ast_node *arguments = NULL;
+    const struct mylite_sql_ast_node *argument = NULL;
+    struct session_scalar_cell document_cell = {0};
+    struct session_scalar_cell pattern_cell = {0};
+    struct session_scalar_cell escape_cell = {0};
+    struct json_contains_path_scalar_buffers path_buffers = {0};
+    char *owned_document = NULL;
+    char *result_text = NULL;
+    const char *document = NULL;
+    const char *pattern = NULL;
+    size_t argument_count = 0U;
+    size_t document_length = 0U;
+    size_t pattern_length = 0U;
+    size_t result_length = 0U;
+    enum mylite_json_search_mode mode = MYLITE_JSON_SEARCH_ONE;
+    bool document_is_null = false;
+    bool mode_is_null = false;
+    bool pattern_is_null = false;
+    bool result_is_null = false;
+    bool escape_enabled = true;
+    unsigned char escape = '\\';
+    struct mylite_json_normalize_result result = {0};
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_JSON_SEARCH_FUNCTION) {
+        mylite_execution_set_native_function_parameter_count_error(database, "JSON_SEARCH");
+        return MYLITE_ERROR;
+    }
+    rc = mylite_execution_scalar_json_collect_function_arguments(
+        database,
+        expression,
+        "JSON_SEARCH",
+        &arguments,
+        &argument_count
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (argument_count < 3U) {
+        mylite_execution_set_native_function_parameter_count_error(database, "JSON_SEARCH");
+        return MYLITE_ERROR;
+    }
+
+    argument = mylite_execution_child_at(arguments, 0U);
+    rc = json_introspection_scalar_argument(
+        database,
+        argument,
+        &document_cell,
+        "JSON_SEARCH",
+        &owned_document,
+        &document,
+        &document_length,
+        &document_is_null
+    );
+    if (rc != MYLITE_OK || document_is_null) {
+        goto done;
+    }
+    rc = validate_json_search_scalar_document(database, document, document_length);
+    if (rc != MYLITE_OK) {
+        goto done;
+    }
+
+    argument = argument == NULL ? NULL : argument->next_sibling;
+    rc = json_search_one_or_all_value(database, argument, &mode, &mode_is_null);
+    if (rc != MYLITE_OK || mode_is_null) {
+        goto done;
+    }
+
+    argument = argument == NULL ? NULL : argument->next_sibling;
+    rc = json_search_string_scalar_argument(
+        database,
+        argument,
+        &pattern_cell,
+        "search_str",
+        &pattern,
+        &pattern_length,
+        &pattern_is_null
+    );
+    if (rc != MYLITE_OK || pattern_is_null) {
+        goto done;
+    }
+
+    argument = argument == NULL ? NULL : argument->next_sibling;
+    if (argument_count >= 4U) {
+        rc = json_search_escape_scalar_argument(
+            database,
+            argument,
+            &escape_cell,
+            &escape_enabled,
+            &escape
+        );
+        if (rc != MYLITE_OK) {
+            goto done;
+        }
+        argument = argument == NULL ? NULL : argument->next_sibling;
+    }
+
+    if (argument_count > 4U) {
+        rc = allocate_json_contains_path_scalar_buffers(
+            database,
+            argument_count - 4U,
+            &path_buffers
+        );
+        if (rc != MYLITE_OK) {
+            goto done;
+        }
+        rc = decode_json_contains_path_scalar_paths(database, argument, &path_buffers);
+        if (rc != MYLITE_OK) {
+            goto done;
+        }
+        if (path_buffers.force_null) {
+            goto done;
+        }
+    }
+
+    rc = mylite_json_search(
+        mode,
+        document,
+        document_length,
+        pattern,
+        pattern_length,
+        escape_enabled,
+        escape,
+        path_buffers.paths,
+        path_buffers.path_lengths,
+        path_buffers.admitted_path_count,
+        &result_text,
+        &result_length,
+        &result_is_null,
+        &result
+    );
+    rc = finish_json_search_scalar_result(database, rc, &result);
+    if (rc == MYLITE_OK && !result_is_null) {
+        out_cell->owned_text = result_text;
+        out_cell->value = out_cell->owned_text;
+        out_cell->value_size = result_length;
+        out_cell->has_value_size = true;
+        result_text = NULL;
+    }
+
+done:
+    free(result_text);
+    json_contains_path_scalar_buffers_deinit(&path_buffers);
+    free(owned_document);
+    mylite_execution_session_scalar_cell_deinit(&document_cell);
+    mylite_execution_session_scalar_cell_deinit(&pattern_cell);
+    mylite_execution_session_scalar_cell_deinit(&escape_cell);
+    return rc;
+}
+
 int mylite_execution_scalar_json_member_of_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -889,6 +1081,20 @@ static int validate_json_overlaps_left_document(
     rc = mylite_json_type(document, document_length, &type_name, &result);
     (void)type_name;
     return finish_json_overlaps_scalar_result(database, rc, &result);
+}
+
+static int validate_json_search_scalar_document(
+    struct mylite_db *database,
+    const char *document,
+    size_t document_length
+) {
+    const char *type_name = NULL;
+    struct mylite_json_normalize_result result = {0};
+    int rc = MYLITE_OK;
+
+    rc = mylite_json_type(document, document_length, &type_name, &result);
+    (void)type_name;
+    return finish_json_search_scalar_result(database, rc, &result);
 }
 
 static int allocate_json_contains_path_scalar_buffers(
@@ -2172,6 +2378,157 @@ static int json_contains_path_one_or_all_value(
     return rc;
 }
 
+static int json_search_one_or_all_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_json_search_mode *out_mode,
+    bool *out_is_null
+) {
+    struct session_scalar_cell cell = {0};
+    const char *text = NULL;
+    size_t text_length = 0U;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_mode == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_mode = MYLITE_JSON_SEARCH_ONE;
+    *out_is_null = false;
+
+    rc = json_search_string_scalar_argument(
+        database,
+        expression,
+        &cell,
+        "one_or_all",
+        &text,
+        &text_length,
+        &is_null
+    );
+    if (rc == MYLITE_OK && is_null) {
+        *out_is_null = true;
+    } else if (rc == MYLITE_OK && text_length == 3U &&
+               mylite_execution_text_equals_ascii_case_insensitive(text, "one")) {
+        *out_mode = MYLITE_JSON_SEARCH_ONE;
+    } else if (rc == MYLITE_OK && text_length == 3U &&
+               mylite_execution_text_equals_ascii_case_insensitive(text, "all")) {
+        *out_mode = MYLITE_JSON_SEARCH_ALL;
+    } else if (rc == MYLITE_OK) {
+        mylite_execution_set_invalid_json_one_or_all_function_error(database, "json_search");
+        rc = MYLITE_ERROR;
+    }
+
+    mylite_execution_session_scalar_cell_deinit(&cell);
+    return rc;
+}
+
+static int json_search_string_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    const char *argument_description,
+    const char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    char *owned_text = NULL;
+    size_t text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (inout_cell == NULL || out_text == NULL || out_text_length == NULL || out_is_null == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_text = NULL;
+    *out_text_length = 0U;
+    *out_is_null = false;
+
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_LITERAL) {
+        mylite_execution_set_unsupported_error(
+            database,
+            "JSON_SEARCH() supports only string and NULL scalar literals"
+        );
+        return MYLITE_ERROR;
+    }
+    literal_kind = mylite_sql_ast_node_literal_kind(expression);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        *out_is_null = true;
+        return MYLITE_OK;
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_STRING) {
+        mylite_execution_set_unsupported_error(
+            database,
+            "JSON_SEARCH() supports only string and NULL scalar literals"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_execution_decode_sql_string_literal(
+        database,
+        expression,
+        "JSON_SEARCH() supports only string scalar literals",
+        "JSON_SEARCH() scalar literals do not support NUL bytes",
+        &owned_text,
+        &text_length
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    (void)argument_description;
+    inout_cell->owned_text = owned_text;
+    inout_cell->value = inout_cell->owned_text;
+    inout_cell->value_size = text_length;
+    inout_cell->has_value_size = true;
+    *out_text = inout_cell->value;
+    *out_text_length = text_length;
+    return MYLITE_OK;
+}
+
+static int json_search_escape_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *inout_cell,
+    bool *out_escape_enabled,
+    unsigned char *out_escape
+) {
+    const char *text = NULL;
+    size_t text_length = 0U;
+    bool is_null = false;
+    int rc = MYLITE_OK;
+
+    if (out_escape_enabled == NULL || out_escape == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_escape_enabled = true;
+    *out_escape = '\\';
+
+    rc = json_search_string_scalar_argument(
+        database,
+        expression,
+        inout_cell,
+        "escape_char",
+        &text,
+        &text_length,
+        &is_null
+    );
+    if (rc != MYLITE_OK || is_null) {
+        return rc;
+    }
+    if (text_length == 0U) {
+        *out_escape_enabled = false;
+        *out_escape = '\0';
+        return MYLITE_OK;
+    }
+    if (text_length != 1U) {
+        mylite_execution_set_incorrect_arguments_to_escape_error(database);
+        return MYLITE_ERROR;
+    }
+    *out_escape_enabled = true;
+    *out_escape = (unsigned char)text[0];
+    return MYLITE_OK;
+}
+
 static int json_length_path_scalar_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -2734,6 +3091,32 @@ static int finish_json_contains_path_scalar_result(
         mylite_execution_set_unsupported_error(
             database,
             "JSON_CONTAINS_PATH() path or document shape is not supported"
+        );
+        return MYLITE_ERROR;
+    }
+    mylite_execution_set_invalid_json_function_text_error(
+        database,
+        result == NULL ? 0U : result->position
+    );
+    return MYLITE_ERROR;
+}
+
+static int finish_json_search_scalar_result(
+    struct mylite_db *database,
+    int rc,
+    const struct mylite_json_normalize_result *result
+) {
+    if (rc == MYLITE_OK) {
+        return MYLITE_OK;
+    }
+    if (rc == MYLITE_NOMEM) {
+        mylite_execution_set_nomem_error(database);
+        return rc;
+    }
+    if (result != NULL && result->status == MYLITE_JSON_NORMALIZE_UNSUPPORTED) {
+        mylite_execution_set_unsupported_error(
+            database,
+            "JSON_SEARCH() path or document shape is not supported"
         );
         return MYLITE_ERROR;
     }

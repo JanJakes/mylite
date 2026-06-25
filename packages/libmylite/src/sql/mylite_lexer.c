@@ -1243,7 +1243,8 @@ bool mylite_sql_keyword_lookup(
         {"JSON_ARRAY_INSERT", 0U},
         {"JSON_MERGE", 0U},
         {"JSON_MERGE_PATCH", 0U},
-        {"JSON_MERGE_PRESERVE", 0U}
+        {"JSON_MERGE_PRESERVE", 0U},
+        {"JSON_SEARCH", 0U}
     };
 
     if (out_result != NULL) {
@@ -3120,6 +3121,9 @@ static unsigned int lookup_hot_keyword_index(const char *text, size_t length, un
         case 'J':
             if (compare_keyword_text(text, length, "JSON_PRETTY") == 0) {
                 return 895U;
+            }
+            if (compare_keyword_text(text, length, "JSON_SEARCH") == 0) {
+                return 904U;
             }
             break;
         case 'R':

@@ -535,6 +535,7 @@ static int populate_scalar_function_result_column_descriptor(
         );
         return MYLITE_OK;
     case MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION:
+    case MYLITE_SQL_AST_JSON_SEARCH_FUNCTION:
     case MYLITE_SQL_AST_JSON_KEYS_FUNCTION:
     case MYLITE_SQL_AST_JSON_PRETTY_FUNCTION:
     case MYLITE_SQL_AST_JSON_SET_FUNCTION:

@@ -3433,6 +3433,9 @@ static int test_json_set_function(void) {
 }
 
 static int test_json_introspection_functions(void) {
+    enum {
+        json_search_parser_variadic_argument_count = 5U,
+    };
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *select = NULL;
     const struct mylite_sql_ast_node *select_list = NULL;
@@ -3617,6 +3620,78 @@ static int test_json_introspection_functions(void) {
     failures += parser_test_expect_child_count(second_expression, 2U, "member of argument count");
     failures +=
         parser_test_expect_span_text(second_expression, "2 MEMBER OF('[1,2]')", "member of span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT JSON_SEARCH('{\"a\":\"abc\"}', 'one', 'abc'), "
+        "json_search(j, 'all', '%b%', NULL, '$.a') AS found FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    second_expression = parser_test_child_at(parser_test_child_at(select_list, 1U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_SEARCH_FUNCTION,
+        "json_search function"
+    );
+    failures += parser_test_expect_span_text(
+        first_expression,
+        "JSON_SEARCH('{\"a\":\"abc\"}', 'one', 'abc')",
+        "json_search span"
+    );
+    failures +=
+        parser_test_expect_child_count(first_expression, 1U, "json_search argument-list child");
+    failures += parser_test_expect_child_count(
+        parser_test_child_at(first_expression, 0U),
+        3U,
+        "json_search argument count"
+    );
+    failures += parser_test_expect_node(
+        second_expression,
+        MYLITE_SQL_AST_JSON_SEARCH_FUNCTION,
+        "lower json_search function"
+    );
+    failures += parser_test_expect_child_count(
+        parser_test_child_at(second_expression, 0U),
+        json_search_parser_variadic_argument_count,
+        "lower json_search argument count"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("SELECT JSON_SEARCH();", MYLITE_SQL_PARSE_OK, &result);
+    first_expression = parser_test_child_at(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 0U), 0U),
+        0U
+    );
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_JSON_SEARCH_ARGUMENT_COUNT_ERROR,
+        "json_search zero argument marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "DO JSON_SEARCH('{\"a\":\"abc\"}', 'one', 'abc');",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    statement = parser_test_child_at(result.root, 0U);
+    expression_list = parser_test_child_at(statement, 0U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(expression_list, 0U),
+        MYLITE_SQL_AST_JSON_SEARCH_FUNCTION,
+        "do json_search"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "CREATE TABLE json_search (json_search INT); SELECT json_search FROM json_search;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql("SELECT JSON_OVERLAPS();", MYLITE_SQL_PARSE_OK, &result);

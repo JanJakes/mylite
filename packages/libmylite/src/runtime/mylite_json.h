@@ -19,6 +19,11 @@ enum mylite_json_error_detail {
     MYLITE_JSON_ERROR_MISSING_OBJECT_MEMBER_NAME = 1,
 };
 
+enum mylite_json_search_mode {
+    MYLITE_JSON_SEARCH_ONE = 0,
+    MYLITE_JSON_SEARCH_ALL = 1,
+};
+
 struct mylite_json_normalize_result {
     enum mylite_json_normalize_status status;
     size_t position;
@@ -138,6 +143,22 @@ int mylite_json_contains_path(
     size_t path_count,
     bool require_all,
     int64_t *out_contains,
+    struct mylite_json_normalize_result *out_result
+);
+int mylite_json_search(
+    enum mylite_json_search_mode mode,
+    const char *text,
+    size_t text_length,
+    const char *pattern,
+    size_t pattern_length,
+    bool escape_enabled,
+    unsigned char escape,
+    const char *const *paths,
+    const size_t *path_lengths,
+    size_t path_count,
+    char **out_text,
+    size_t *out_text_length,
+    bool *out_is_null,
     struct mylite_json_normalize_result *out_result
 );
 int mylite_json_overlaps(

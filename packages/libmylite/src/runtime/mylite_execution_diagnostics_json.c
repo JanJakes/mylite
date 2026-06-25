@@ -143,11 +143,42 @@ void mylite_execution_diagnostics_set_invalid_json_data_type_error(
 }
 
 void mylite_execution_diagnostics_set_invalid_json_one_or_all_error(struct mylite_db *database) {
+    mylite_execution_diagnostics_set_invalid_json_one_or_all_function_error(
+        database,
+        "json_contains_path"
+    );
+}
+
+void mylite_execution_diagnostics_set_invalid_json_one_or_all_function_error(
+    struct mylite_db *database,
+    const char *function_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "The oneOrAll argument to %s may take these values: 'one' or 'all'.",
+        function_name == NULL ? "json_contains_path" : function_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
     mylite_diagnostics_set_error(
         mylite_connection_diagnostics(database),
         mysql_error_invalid_json_one_or_all,
         "42000",
-        "The oneOrAll argument to json_contains_path may take these values: 'one' or 'all'."
+        message
+    );
+}
+
+void mylite_execution_diagnostics_set_incorrect_arguments_to_escape_error(struct mylite_db *database
+) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_incorrect_arguments,
+        "HY000",
+        "Incorrect arguments to ESCAPE"
     );
 }
 

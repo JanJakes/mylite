@@ -5123,6 +5123,10 @@ dml_constant_scalar_value(A) ::= JSON_EXTRACT(T) LPAREN expression(B) COMMA
     A = mylite_sql_parser_make_two_argument_function(
         state, T, MYLITE_SQL_AST_JSON_EXTRACT_FUNCTION, B, C, R);
 }
+dml_constant_scalar_value(A) ::= JSON_SEARCH(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_SEARCH_FUNCTION, B, R);
+}
 dml_constant_scalar_value(A) ::= JSON_UNQUOTE(T) LPAREN expression(B) RPAREN(R). {
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_JSON_UNQUOTE_FUNCTION, B, R);
@@ -8644,6 +8648,11 @@ row_scalar_json_predicate_expression(A) ::= JSON_QUOTE(T) LPAREN expression(B) R
     A = mylite_sql_parser_make_one_argument_function(
         state, T, MYLITE_SQL_AST_JSON_QUOTE_FUNCTION, B, R);
 }
+row_scalar_json_predicate_expression(A) ::= JSON_SEARCH(T) LPAREN function_argument_list(B)
+        RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_SEARCH_FUNCTION, B, R);
+}
 
 row_scalar_temporal_predicate_expression(A) ::= DATEDIFF(T) LPAREN expression(B) COMMA
         expression(C) RPAREN(R). {
@@ -10443,6 +10452,10 @@ expression(A) ::= JSON_MERGE_PRESERVE(T) LPAREN function_argument_list(B) RPAREN
     A = mylite_sql_parser_make_list_argument_function(
         state, T, MYLITE_SQL_AST_JSON_MERGE_PRESERVE_FUNCTION, B, R);
 }
+expression(A) ::= JSON_SEARCH(T) LPAREN function_argument_list(B) RPAREN(R). {
+    A = mylite_sql_parser_make_list_argument_function(
+        state, T, MYLITE_SQL_AST_JSON_SEARCH_FUNCTION, B, R);
+}
 expression(A) ::= JSON_OBJECT(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_zero_argument_function(
         state, T, MYLITE_SQL_AST_JSON_OBJECT_FUNCTION, R);
@@ -11687,6 +11700,10 @@ expression(A) ::= JSON_MERGE_PATCH(T) LPAREN RPAREN(R). {
 expression(A) ::= JSON_MERGE_PRESERVE(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
         state, T, MYLITE_SQL_AST_JSON_MERGE_PRESERVE_ARGUMENT_COUNT_ERROR, NULL, R);
+}
+expression(A) ::= JSON_SEARCH(T) LPAREN RPAREN(R). {
+    A = mylite_sql_parser_make_function_argument_count_error(
+        state, T, MYLITE_SQL_AST_JSON_SEARCH_ARGUMENT_COUNT_ERROR, NULL, R);
 }
 expression(A) ::= JSON_INSERT(T) LPAREN RPAREN(R). {
     A = mylite_sql_parser_make_function_argument_count_error(
@@ -13357,6 +13374,9 @@ identifier(A) ::= JSON_MERGE_PATCH(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_MERGE_PRESERVE(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= JSON_SEARCH(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= JSON_OBJECT(T). {

@@ -449,6 +449,10 @@
     COMMAND mylite_runtime_json_contains_functions_test
   )
   add_test(
+    NAME libmylite.runtime.json_search_function
+    COMMAND mylite_runtime_json_search_function_test
+  )
+  add_test(
     NAME libmylite.runtime.json_overlaps_member_functions
     COMMAND mylite_runtime_json_overlaps_member_functions_test
   )

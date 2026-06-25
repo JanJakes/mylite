@@ -101,6 +101,12 @@ void mylite_execution_diagnostics_set_invalid_json_data_type_error(
     const char *function_name
 );
 void mylite_execution_diagnostics_set_invalid_json_one_or_all_error(struct mylite_db *database);
+void mylite_execution_diagnostics_set_invalid_json_one_or_all_function_error(
+    struct mylite_db *database,
+    const char *function_name
+);
+void mylite_execution_diagnostics_set_incorrect_arguments_to_escape_error(struct mylite_db *database
+);
 void mylite_execution_diagnostics_set_json_unquote_incorrect_type_error(struct mylite_db *database);
 void mylite_execution_diagnostics_set_json_quote_incorrect_type_error(struct mylite_db *database);
 void mylite_execution_diagnostics_set_json_binary_charset_error(struct mylite_db *database);
@@ -829,6 +835,10 @@ int mylite_execution_diagnostics_status_from_parse_status(enum mylite_sql_parse_
       mylite_execution_diagnostics_set_invalid_json_data_type_error
 #  define set_invalid_json_one_or_all_error                                                        \
       mylite_execution_diagnostics_set_invalid_json_one_or_all_error
+#  define set_invalid_json_one_or_all_function_error                                               \
+      mylite_execution_diagnostics_set_invalid_json_one_or_all_function_error
+#  define set_incorrect_arguments_to_escape_error                                                  \
+      mylite_execution_diagnostics_set_incorrect_arguments_to_escape_error
 #  define set_json_unquote_incorrect_type_error                                                    \
       mylite_execution_diagnostics_set_json_unquote_incorrect_type_error
 #  define set_json_quote_incorrect_type_error                                                      \

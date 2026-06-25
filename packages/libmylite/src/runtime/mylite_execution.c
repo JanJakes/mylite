@@ -970,6 +970,17 @@ void mylite_execution_set_invalid_json_one_or_all_error(struct mylite_db *databa
     set_invalid_json_one_or_all_error(database);
 }
 
+void mylite_execution_set_invalid_json_one_or_all_function_error(
+    struct mylite_db *database,
+    const char *function_name
+) {
+    set_invalid_json_one_or_all_function_error(database, function_name);
+}
+
+void mylite_execution_set_incorrect_arguments_to_escape_error(struct mylite_db *database) {
+    set_incorrect_arguments_to_escape_error(database);
+}
+
 void mylite_execution_set_json_unquote_incorrect_type_error(struct mylite_db *database) {
     set_json_unquote_incorrect_type_error(database);
 }

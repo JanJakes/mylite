@@ -644,6 +644,7 @@ static int row_scalar_collate_base_charset(
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_FREE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SEARCH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OVERLAPS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_MEMBER_OF:
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
@@ -3485,6 +3486,8 @@ static bool is_row_scalar_json_expression(const struct mylite_sql_ast_node *expr
     case MYLITE_SQL_AST_JSON_CONTAINS_FUNCTION:
     case MYLITE_SQL_AST_JSON_CONTAINS_PATH_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_CONTAINS_PATH_FUNCTION:
+    case MYLITE_SQL_AST_JSON_SEARCH_ARGUMENT_COUNT_ERROR:
+    case MYLITE_SQL_AST_JSON_SEARCH_FUNCTION:
     case MYLITE_SQL_AST_JSON_OVERLAPS_ARGUMENT_COUNT_ERROR:
     case MYLITE_SQL_AST_JSON_OVERLAPS_FUNCTION:
     case MYLITE_SQL_AST_JSON_MEMBER_OF_FUNCTION:
@@ -3615,6 +3618,20 @@ static int plan_row_scalar_json_expression(
         return MYLITE_ERROR;
     case MYLITE_SQL_AST_JSON_CONTAINS_PATH_FUNCTION:
         return plan_row_scalar_json_contains_path_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            column_diagnostic_context,
+            out_expression
+        );
+    case MYLITE_SQL_AST_JSON_SEARCH_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_SEARCH");
+        return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_SEARCH_FUNCTION:
+        return plan_row_scalar_json_search_expression(
             database,
             expression,
             has_source,

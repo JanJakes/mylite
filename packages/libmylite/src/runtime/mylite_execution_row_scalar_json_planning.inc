@@ -569,6 +569,206 @@ static int plan_row_scalar_json_contains_path_mode_argument(
     return plan_row_scalar_literal_value(database, expression, out_expression);
 }
 
+static int plan_row_scalar_json_search_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *arguments = NULL;
+    const struct mylite_sql_ast_node *argument = NULL;
+    size_t argument_count = 0U;
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_JSON_SEARCH_FUNCTION) {
+        set_native_function_parameter_count_error(database, "JSON_SEARCH");
+        return MYLITE_ERROR;
+    }
+    rc = mylite_execution_scalar_json_collect_function_arguments(
+        database,
+        expression,
+        "JSON_SEARCH",
+        &arguments,
+        &argument_count
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (argument_count < 3U) {
+        set_native_function_parameter_count_error(database, "JSON_SEARCH");
+        return MYLITE_ERROR;
+    }
+    if (argument_count > SIZE_MAX / sizeof(*out_expression->arguments)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(argument_count, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_JSON_SEARCH;
+    out_expression->argument_count = argument_count;
+
+    argument = child_at(arguments, 0U);
+    rc = plan_row_scalar_json_introspection_document_argument(
+        database,
+        argument,
+        "JSON_SEARCH",
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        column_diagnostic_context,
+        &out_expression->arguments[0]
+    );
+    argument = argument == NULL ? NULL : argument->next_sibling;
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_json_search_mode_argument(
+            database,
+            argument,
+            &out_expression->arguments[1]
+        );
+    }
+    argument = argument == NULL ? NULL : argument->next_sibling;
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_json_search_scalar_argument(
+            database,
+            argument,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            column_diagnostic_context,
+            "JSON_SEARCH() supports only string, NULL, and descriptor column search_str arguments",
+            &out_expression->arguments[2]
+        );
+    }
+    argument = argument == NULL ? NULL : argument->next_sibling;
+    if (rc == MYLITE_OK && argument_count >= 4U) {
+        rc = plan_row_scalar_json_search_scalar_argument(
+            database,
+            argument,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            column_diagnostic_context,
+            "JSON_SEARCH() supports only string, NULL, and descriptor column escape_char arguments",
+            &out_expression->arguments[3]
+        );
+        argument = argument == NULL ? NULL : argument->next_sibling;
+    }
+    for (size_t argument_index = 4U;
+         rc == MYLITE_OK && argument_index < argument_count && argument != NULL;
+         ++argument_index) {
+        rc = plan_row_scalar_json_search_path_argument(
+            database,
+            argument,
+            &out_expression->arguments[argument_index]
+        );
+        argument = argument->next_sibling;
+    }
+    if (rc == MYLITE_OK && argument != NULL) {
+        set_parse_error(database, NULL);
+        rc = MYLITE_ERROR;
+    }
+    return rc;
+}
+
+static int plan_row_scalar_json_search_mode_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    struct planned_row_scalar_expression planned = {0};
+    int rc = MYLITE_OK;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "JSON_SEARCH() supports only string and NULL one_or_all arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    literal_kind = mylite_sql_ast_node_literal_kind(expression);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+        return plan_row_scalar_literal_value(database, expression, out_expression);
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_STRING) {
+        set_invalid_json_one_or_all_function_error(database, "json_search");
+        return MYLITE_ERROR;
+    }
+    rc = plan_row_scalar_literal_value(database, expression, &planned);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!mylite_execution_text_equals_ascii_case_insensitive(planned.value.text, "one") &&
+        !mylite_execution_text_equals_ascii_case_insensitive(planned.value.text, "all")) {
+        planned_row_scalar_expression_deinit(&planned);
+        set_invalid_json_one_or_all_function_error(database, "json_search");
+        return MYLITE_ERROR;
+    }
+    *out_expression = planned;
+    return MYLITE_OK;
+}
+
+static int plan_row_scalar_json_search_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    const char *unsupported_message,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            return mylite_execution_set_unknown_column_reference_error(database, expression);
+        }
+        return plan_row_scalar_json_text_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            column_diagnostic_context,
+            unsupported_message,
+            out_expression
+        );
+    }
+    if (expression->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    literal_kind = mylite_sql_ast_node_literal_kind(expression);
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_STRING &&
+        literal_kind != MYLITE_SQL_AST_LITERAL_NULL) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+    return plan_row_scalar_literal_value(database, expression, out_expression);
+}
+
 static int plan_row_scalar_json_extract_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

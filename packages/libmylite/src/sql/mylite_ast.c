@@ -1742,6 +1742,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "json_merge_preserve_function";
     case MYLITE_SQL_AST_JSON_MERGE_PRESERVE_ARGUMENT_COUNT_ERROR:
         return "json_merge_preserve_argument_count_error";
+    case MYLITE_SQL_AST_JSON_SEARCH_FUNCTION:
+        return "json_search_function";
+    case MYLITE_SQL_AST_JSON_SEARCH_ARGUMENT_COUNT_ERROR:
+        return "json_search_argument_count_error";
     case MYLITE_SQL_AST_JSON_OBJECT_FUNCTION:
         return "json_object_function";
     case MYLITE_SQL_AST_JSON_CONTAINS_FUNCTION:

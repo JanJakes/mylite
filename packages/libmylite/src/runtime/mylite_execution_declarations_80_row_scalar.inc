@@ -1346,9 +1346,35 @@ static int plan_row_scalar_json_contains_path_expression(
     enum column_reference_diagnostic_context column_diagnostic_context,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_json_search_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_json_contains_path_mode_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_json_search_mode_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_json_search_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    enum column_reference_diagnostic_context column_diagnostic_context,
+    const char *unsupported_message,
     struct planned_row_scalar_expression *out_expression
 );
 static bool is_row_scalar_json_expression(const struct mylite_sql_ast_node *expression);

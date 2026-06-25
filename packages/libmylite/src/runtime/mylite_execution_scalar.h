@@ -368,6 +368,11 @@ int mylite_execution_scalar_json_contains_path_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+int mylite_execution_scalar_json_search_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
 int mylite_execution_scalar_json_overlaps_function_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -798,6 +803,11 @@ void mylite_execution_set_invalid_json_data_type_error(
     const char *function_name
 );
 void mylite_execution_set_invalid_json_one_or_all_error(struct mylite_db *database);
+void mylite_execution_set_invalid_json_one_or_all_function_error(
+    struct mylite_db *database,
+    const char *function_name
+);
+void mylite_execution_set_incorrect_arguments_to_escape_error(struct mylite_db *database);
 void mylite_execution_set_json_unquote_incorrect_type_error(struct mylite_db *database);
 void mylite_execution_set_json_quote_incorrect_type_error(struct mylite_db *database);
 void mylite_execution_set_json_binary_charset_error(struct mylite_db *database);

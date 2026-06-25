@@ -294,6 +294,11 @@ static int session_scalar_value(
     case MYLITE_SQL_AST_JSON_CONTAINS_PATH_ARGUMENT_COUNT_ERROR:
         set_native_function_parameter_count_error(database, "JSON_CONTAINS_PATH");
         return MYLITE_ERROR;
+    case MYLITE_SQL_AST_JSON_SEARCH_FUNCTION:
+        return mylite_execution_scalar_json_search_function_value(database, expression, out_cell);
+    case MYLITE_SQL_AST_JSON_SEARCH_ARGUMENT_COUNT_ERROR:
+        set_native_function_parameter_count_error(database, "JSON_SEARCH");
+        return MYLITE_ERROR;
     case MYLITE_SQL_AST_JSON_OVERLAPS_FUNCTION:
         return mylite_execution_scalar_json_overlaps_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_JSON_OVERLAPS_ARGUMENT_COUNT_ERROR:

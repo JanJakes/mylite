@@ -9,7 +9,8 @@ static enum placeholder_statement_kind classify_create_placeholder_statement(
     if (foreign_server_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
     }
-    if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE")) {
+    if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE") ||
+        logfile_group_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
     }
     if (undo_tablespace_placeholder_statement_is_supported(scan)) {
@@ -55,7 +56,8 @@ static enum placeholder_statement_kind classify_alter_placeholder_statement(
     if (foreign_server_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
     }
-    if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE")) {
+    if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE") ||
+        logfile_group_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
     }
     if (undo_tablespace_placeholder_statement_is_supported(scan)) {
@@ -385,6 +387,15 @@ static bool undo_tablespace_placeholder_statement_is_supported(
     return scan != NULL && scan->token_count > 3U &&
            placeholder_scan_token_text_equals(scan, 1U, "UNDO") &&
            placeholder_scan_token_text_equals(scan, 2U, "TABLESPACE") &&
+           !placeholder_scan_statement_tail_is_obviously_incomplete(scan);
+}
+
+static bool logfile_group_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    return scan != NULL && scan->token_count > 3U &&
+           placeholder_scan_token_text_equals(scan, 1U, "LOGFILE") &&
+           placeholder_scan_token_text_equals(scan, 2U, "GROUP") &&
            !placeholder_scan_statement_tail_is_obviously_incomplete(scan);
 }
 
@@ -1039,7 +1050,8 @@ static enum placeholder_statement_kind classify_drop_placeholder_statement(
     if (foreign_server_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
     }
-    if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE")) {
+    if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE") ||
+        logfile_group_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
     }
     if (undo_tablespace_placeholder_statement_is_supported(scan)) {

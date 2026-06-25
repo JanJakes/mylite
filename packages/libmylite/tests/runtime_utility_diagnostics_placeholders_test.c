@@ -73,6 +73,9 @@ static int test_utility_noop_warning_surface(void) {
         "UNINSTALL PLUGIN validate_password",
         "CREATE TABLESPACE ts1 ADD DATAFILE 'ts1.ibd' ENGINE=InnoDB",
         "DROP TABLESPACE ts1",
+        "CREATE LOGFILE GROUP lg1 ADD UNDOFILE 'undo.dat' ENGINE=InnoDB",
+        "ALTER LOGFILE GROUP lg1 ADD UNDOFILE 'undo2.dat' ENGINE=NDB",
+        "DROP LOGFILE GROUP lg1 ENGINE=NDB",
         "SET GLOBAL max_allowed_packet=4*1024",
     };
     static const char *const warning_rows[] = {
@@ -132,7 +135,7 @@ static int test_utility_noop_preserves_user_transaction(void) {
     failures += execute_statement_ok(database, "CREATE TABLE t (id INT)");
     failures += execute_statement_ok(database, "START TRANSACTION");
     failures += execute_statement_ok(database, "INSERT INTO t VALUES (1)");
-    failures += expect_utility_noop(database, "DROP TABLESPACE ts1");
+    failures += expect_utility_noop(database, "DROP LOGFILE GROUP lg1 ENGINE=NDB");
     failures += execute_statement_ok(database, "ROLLBACK");
     failures += expect_query_values(
         database,

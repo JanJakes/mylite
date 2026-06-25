@@ -53,6 +53,15 @@ static int test_utility_noop_statement_forms(void) {
         {.sql = "ALTER TABLESPACE ts1 RENAME TO ts2", .kind = MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT
         },
         {.sql = "DROP TABLESPACE ts1", .kind = MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT},
+        {
+            .sql = "CREATE LOGFILE GROUP lg1 ADD UNDOFILE 'undo.dat' ENGINE=InnoDB",
+            .kind = MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT,
+        },
+        {
+            .sql = "ALTER LOGFILE GROUP lg1 ADD UNDOFILE 'undo2.dat' ENGINE=NDB",
+            .kind = MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT,
+        },
+        {.sql = "DROP LOGFILE GROUP lg1 ENGINE=NDB", .kind = MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT},
         {.sql = "SET GLOBAL max_allowed_packet=4*1024",
          .kind = MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT},
         {.sql = "SET @@GLOBAL.max_allowed_packet=1024*1024",

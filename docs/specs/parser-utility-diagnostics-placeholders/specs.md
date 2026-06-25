@@ -38,7 +38,8 @@ fails:
   `ANALYZE TABLE ... DROP HISTOGRAM ...`;
 - `INSTALL COMPONENT`, `UNINSTALL COMPONENT`, `INSTALL PLUGIN`, and
   `UNINSTALL PLUGIN`;
-- `CREATE TABLESPACE`, `ALTER TABLESPACE`, and `DROP TABLESPACE`;
+- `CREATE TABLESPACE`, `ALTER TABLESPACE`, `DROP TABLESPACE`, and
+  `CREATE` / `ALTER` / `DROP LOGFILE GROUP`;
 - unsupported server-global or parser-admitted system-variable `SET` variants
   such as broad `SET GLOBAL ...`, `SET @@GLOBAL...`, and unsupported
   persisted/session/global assignments not handled by the normal `SET` runtime.
@@ -50,14 +51,16 @@ The runtime behavior is:
 - set `ROW_COUNT()` to `0`;
 - append one warning, code `1105`, SQLSTATE `HY000`, message
   `MyLite accepted this utility statement as an embedded no-op`;
-- leave catalogs, optimizer state, component/plugin registries, tablespace
-  metadata, system variables, user data, and user transactions unchanged.
+- leave catalogs, optimizer state, component/plugin registries, tablespace and
+  logfile-group metadata, system variables, user data, and user transactions
+  unchanged.
 
 This intentionally differs from MySQL server side effects. MyLite has no
-loadable component/plugin mechanism, physical tablespaces, histogram optimizer
-statistics, mutable server-global variable store, binary logging, or shared
-server lifecycle. Committing an active user transaction for these placeholders
-would be more surprising than useful, so no implicit commit is performed.
+loadable component/plugin mechanism, physical tablespaces or NDB logfile
+groups, histogram optimizer statistics, mutable server-global variable store,
+binary logging, or shared server lifecycle. Committing an active user
+transaction for these placeholders would be more surprising than useful, so no
+implicit commit is performed.
 
 Existing supported behavior remains separate:
 
@@ -166,6 +169,9 @@ utility_noop_statement:
   | CREATE TABLESPACE ...
   | ALTER TABLESPACE ...
   | DROP TABLESPACE ...
+  | CREATE LOGFILE GROUP ...
+  | ALTER LOGFILE GROUP ...
+  | DROP LOGFILE GROUP ...
   | SET GLOBAL ...
   | SET @@GLOBAL...
   | SET SESSION ... unsupported-value-shape
@@ -187,8 +193,8 @@ unsupported_utility_statement:
 Coverage added:
 
 - parser acceptance for histogram `ANALYZE TABLE`, component/plugin lifecycle,
-  tablespace lifecycle, broad system-variable `SET` variants, XA, HANDLER,
-  diagnostics/profile statements, unsupported `LOAD DATA`, and
+  tablespace/logfile-group lifecycle, broad system-variable `SET` variants,
+  XA, HANDLER, diagnostics/profile statements, unsupported `LOAD DATA`, and
   routine-code `SHOW` statements;
 - runtime no-op result shape, warning, `ROW_COUNT()`, and transaction
   preservation for utility no-ops;
@@ -203,7 +209,8 @@ Coverage added:
 - no histogram statistics storage or optimizer integration;
 - no component/plugin loading, unloading, registries, services, or loadable
   function lifecycle;
-- no physical tablespaces, datafiles, undo tablespaces, or NDB tablespaces;
+- no physical tablespaces, datafiles, undo tablespaces, NDB tablespaces, or
+  logfile groups;
 - no XA state machine, XA recovery records, two-phase commit, or distributed
   transaction integration;
 - no HANDLER cursor state or direct index cursor access;

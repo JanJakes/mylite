@@ -1724,6 +1724,9 @@ static bool view_placeholder_statement_has_query_body(
 static bool undo_tablespace_placeholder_statement_is_supported(
     const struct placeholder_statement_scan *scan
 );
+static bool logfile_group_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
 static bool ddl_zerofill_placeholder_statement_is_supported(
     const struct placeholder_statement_scan *scan
 );

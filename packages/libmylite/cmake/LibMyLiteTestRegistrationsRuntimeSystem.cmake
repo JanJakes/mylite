@@ -597,6 +597,10 @@
     COMMAND mylite_runtime_admin_listener_system_variables_test
   )
   add_test(
+    NAME libmylite.runtime.mysqlx_system_variables
+    COMMAND mylite_runtime_mysqlx_system_variables_test
+  )
+  add_test(
     NAME libmylite.runtime.group_by_single_column_aggregate
     COMMAND mylite_runtime_group_by_single_column_aggregate_test
   )

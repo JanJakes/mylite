@@ -180,6 +180,35 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `lower_case_table_names` | yes | yes | `0` |
 | `max_allowed_packet` | yes | yes | `67108864` |
 | `mysql_native_password_proxy_users` | yes | yes | `OFF` |
+| `mysqlx_bind_address` | yes | yes | `*` |
+| `mysqlx_compression_algorithms` | yes | yes | `DEFLATE_STREAM,LZ4_MESSAGE,ZSTD_STREAM` |
+| `mysqlx_connect_timeout` | yes | yes | `30` |
+| `mysqlx_deflate_default_compression_level` | yes | yes | `3` |
+| `mysqlx_deflate_max_client_compression_level` | yes | yes | `5` |
+| `mysqlx_document_id_unique_prefix` | yes | yes | `0` |
+| `mysqlx_enable_hello_notice` | yes | yes | `ON` |
+| `mysqlx_idle_worker_thread_timeout` | yes | yes | `60` |
+| `mysqlx_interactive_timeout` | yes | yes | `28800` |
+| `mysqlx_lz4_default_compression_level` | yes | yes | `2` |
+| `mysqlx_lz4_max_client_compression_level` | yes | yes | `8` |
+| `mysqlx_max_allowed_packet` | yes | yes | `67108864` |
+| `mysqlx_max_connections` | yes | yes | `100` |
+| `mysqlx_min_worker_threads` | yes | yes | `2` |
+| `mysqlx_port` | yes | yes | `33060` |
+| `mysqlx_port_open_timeout` | yes | yes | `0` |
+| `mysqlx_read_timeout` | yes | yes | current session value or fixed global `30` |
+| `mysqlx_socket` | yes | yes | `/var/run/mysqld/mysqlx.sock` |
+| `mysqlx_ssl_ca` | yes | yes | empty string |
+| `mysqlx_ssl_capath` | yes | yes | empty string |
+| `mysqlx_ssl_cert` | yes | yes | empty string |
+| `mysqlx_ssl_cipher` | yes | yes | empty string |
+| `mysqlx_ssl_crl` | yes | yes | empty string |
+| `mysqlx_ssl_crlpath` | yes | yes | empty string |
+| `mysqlx_ssl_key` | yes | yes | empty string |
+| `mysqlx_wait_timeout` | yes | yes | current session value or fixed global `28800` |
+| `mysqlx_write_timeout` | yes | yes | current session value or fixed global `60` |
+| `mysqlx_zstd_default_compression_level` | yes | yes | `3` |
+| `mysqlx_zstd_max_client_compression_level` | yes | yes | `11` |
 | `old_alter_table` | yes | yes | `OFF` |
 | `password_history` | yes | yes | `0` |
 | `password_require_current` | yes | yes | `OFF` |

@@ -584,35 +584,35 @@ state through this fallback path.
 | `mysql_firewall_reload_interval_seconds` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `mysql_firewall_trace` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `mysql_native_password_proxy_users` | ✅ | Fixed global readback/SHOW and exact global no-op SET |
-| `mysqlx_bind_address` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_compression_algorithms` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_connect_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_deflate_default_compression_level` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_deflate_max_client_compression_level` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_document_id_unique_prefix` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_enable_hello_notice` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_idle_worker_thread_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_interactive_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_lz4_default_compression_level` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_lz4_max_client_compression_level` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_max_allowed_packet` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_max_connections` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_min_worker_threads` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_port` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_port_open_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_read_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_socket` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_ssl_ca` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_ssl_capath` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_ssl_cert` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_ssl_cipher` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_ssl_crl` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_ssl_crlpath` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_ssl_key` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_wait_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_write_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_zstd_default_compression_level` | ❌ | Value, scope, SET, diagnostics |
-| `mysqlx_zstd_max_client_compression_level` | ❌ | Value, scope, SET, diagnostics |
+| `mysqlx_bind_address` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
+| `mysqlx_compression_algorithms` | ✅ | Fixed global readback/SHOW and `DEFAULT` global no-op SET |
+| `mysqlx_connect_timeout` | ✅ | Fixed global readback/SHOW and `DEFAULT` global no-op SET |
+| `mysqlx_deflate_default_compression_level` | ✅ | Fixed global readback/SHOW and `DEFAULT` global no-op SET |
+| `mysqlx_deflate_max_client_compression_level` | ✅ | Fixed global readback/SHOW and `DEFAULT` global no-op SET |
+| `mysqlx_document_id_unique_prefix` | ✅ | Fixed global readback/SHOW and `DEFAULT` global no-op SET |
+| `mysqlx_enable_hello_notice` | ✅ | Fixed global scalar `1`/SHOW `ON` and `DEFAULT` global no-op SET |
+| `mysqlx_idle_worker_thread_timeout` | ✅ | Fixed global readback/SHOW and `DEFAULT` global no-op SET |
+| `mysqlx_interactive_timeout` | ✅ | Fixed global readback/SHOW and `DEFAULT` global no-op SET |
+| `mysqlx_lz4_default_compression_level` | ✅ | Fixed global readback/SHOW and `DEFAULT` global no-op SET |
+| `mysqlx_lz4_max_client_compression_level` | ✅ | Fixed global readback/SHOW and `DEFAULT` global no-op SET |
+| `mysqlx_max_allowed_packet` | ✅ | Fixed global readback/SHOW and `DEFAULT` global no-op SET |
+| `mysqlx_max_connections` | ✅ | Fixed global readback/SHOW and `DEFAULT` global no-op SET |
+| `mysqlx_min_worker_threads` | ✅ | Fixed global readback/SHOW and `DEFAULT` global no-op SET |
+| `mysqlx_port` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
+| `mysqlx_port_open_timeout` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
+| `mysqlx_read_timeout` | ✅ | Fixed global readback plus session/local readback and handle-local SET subset |
+| `mysqlx_socket` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
+| `mysqlx_ssl_ca` | ✅ | Fixed global `NULL`/blank readback/SHOW and read-only SET diagnostics |
+| `mysqlx_ssl_capath` | ✅ | Fixed global `NULL`/blank readback/SHOW and read-only SET diagnostics |
+| `mysqlx_ssl_cert` | ✅ | Fixed global `NULL`/blank readback/SHOW and read-only SET diagnostics |
+| `mysqlx_ssl_cipher` | ✅ | Fixed global `NULL`/blank readback/SHOW and read-only SET diagnostics |
+| `mysqlx_ssl_crl` | ✅ | Fixed global `NULL`/blank readback/SHOW and read-only SET diagnostics |
+| `mysqlx_ssl_crlpath` | ✅ | Fixed global `NULL`/blank readback/SHOW and read-only SET diagnostics |
+| `mysqlx_ssl_key` | ✅ | Fixed global `NULL`/blank readback/SHOW and read-only SET diagnostics |
+| `mysqlx_wait_timeout` | ✅ | Fixed global readback plus session/local readback and handle-local SET subset |
+| `mysqlx_write_timeout` | ✅ | Fixed global readback plus session/local readback and handle-local SET subset |
+| `mysqlx_zstd_default_compression_level` | ✅ | Fixed global readback/SHOW and `DEFAULT` global no-op SET |
+| `mysqlx_zstd_max_client_compression_level` | ✅ | Fixed global readback/SHOW and `DEFAULT` global no-op SET |
 | `named_pipe` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `named_pipe_full_access_group` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `ndb_allow_copying_alter_table` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |

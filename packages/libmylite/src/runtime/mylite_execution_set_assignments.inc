@@ -118,6 +118,10 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc = apply_set_global_mysqlx_assignment(database, &target, value_node, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     rc = apply_set_global_authentication_password_assignment(
         database,
         &target,
@@ -194,7 +198,8 @@ static bool set_system_variable_target_is_read_only(
            mylite_execution_system_variable_is_read_only_server_environment(kind) ||
            mylite_execution_system_variable_is_read_only_authentication_password(kind) ||
            mylite_execution_system_variable_is_read_only_server_capability(kind) ||
-           mylite_execution_system_variable_is_read_only_admin_listener(kind);
+           mylite_execution_system_variable_is_read_only_admin_listener(kind) ||
+           mylite_execution_system_variable_is_read_only_mysqlx(kind);
 }
 
 static int apply_set_server_identity_binary_log_system_variable_assignment(
@@ -1277,6 +1282,36 @@ static int apply_set_global_admin_listener_assignment(
     return validate_set_default_only_value(database, value_node, unsupported_message);
 }
 
+static int apply_set_global_mysqlx_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+) {
+    if (target == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (!mylite_execution_system_variable_is_fixed_global_mysqlx(target->kind)) {
+        return MYLITE_OK;
+    }
+
+    *out_handled = true;
+    if (target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_global_variable_set_global_required_error(database, target->name);
+        return MYLITE_ERROR;
+    }
+
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQLX_ENABLE_HELLO_NOTICE) {
+        return validate_set_fixed_boolean_value(database, value_node, true);
+    }
+    return validate_set_fixed_text_value(
+        database,
+        value_node,
+        mylite_execution_system_variable_default_value(target->kind)
+    );
+}
+
 static int apply_set_global_authentication_password_assignment(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -1375,6 +1410,9 @@ static bool set_global_session_placeholder_assignment_handles_kind(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_TRANSACTION_INFO:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SHOW_CREATE_TABLE_SKIP_SECONDARY_ENGINE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SHOW_CREATE_TABLE_VERBOSITY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQLX_READ_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQLX_WAIT_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQLX_WRITE_TIMEOUT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_USE_SECONDARY_ENGINE:
         return true;
     default:

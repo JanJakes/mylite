@@ -155,7 +155,9 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `old_alter_table` | yes | yes | `OFF` |
 | `print_identified_with_as_hex` | yes | yes | `OFF` |
 | `require_row_format` | yes | no | `OFF` |
+| `require_secure_transport` | yes | yes | `OFF` |
 | `resultset_metadata` | yes | no | `FULL` |
+| `secure_file_priv` | yes | yes | `/var/lib/mysql-files/` |
 | `select_into_disk_sync` | yes | yes | `OFF` |
 | `session_track_gtids` | yes | yes | `OFF` |
 | `session_track_schema` | yes | yes | `ON` |
@@ -163,6 +165,10 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `session_track_transaction_info` | yes | yes | `OFF` |
 | `show_create_table_skip_secondary_engine` | yes | no | `OFF` |
 | `show_create_table_verbosity` | yes | yes | `OFF` |
+| `skip_external_locking` | yes | yes | `ON` |
+| `skip_name_resolve` | yes | yes | `ON` |
+| `skip_networking` | yes | yes | `OFF` |
+| `skip_show_database` | yes | yes | `OFF` |
 | `sql_auto_is_null` | yes | yes | `OFF` |
 | `sql_big_selects` | yes | yes | `ON` |
 | `sql_buffer_result` | yes | yes | `OFF` |
@@ -178,6 +184,13 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `sql_select_limit` | yes | yes | `18446744073709551615` |
 | `sql_slave_skip_counter` | yes | yes | `0` |
 | `sql_warnings` | yes | yes | `OFF` |
+| `ssl_fips_mode` | yes | yes | `OFF` |
+| `ssl_session_cache_mode` | yes | yes | `ON` |
+| `ssl_session_cache_timeout` | yes | yes | `300` |
+| `thread_handling` | yes | yes | `one-thread-per-connection` |
+| `tls_certificates_enforced_validation` | yes | yes | `OFF` |
+| `tls_version` | yes | yes | `TLSv1.2,TLSv1.3` |
+| `tmpdir` | yes | yes | `/tmp` |
 | `transaction_isolation` | yes | yes | current session value or fixed global `REPEATABLE-READ` |
 | `transaction_read_only` | yes | yes | current session value as `ON`/`OFF` or fixed global `OFF` |
 | `unique_checks` | yes | yes | `ON` |

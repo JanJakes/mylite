@@ -99,7 +99,20 @@ enum mylite_execution_system_variable_kind {
     MYLITE_EXECUTION_SYSTEM_VARIABLE_SHOW_CREATE_TABLE_SKIP_SECONDARY_ENGINE = 90,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_SHOW_CREATE_TABLE_VERBOSITY = 91,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_USE_SECONDARY_ENGINE = 92,
-    MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT = 93,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_REQUIRE_SECURE_TRANSPORT = 93,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SECURE_FILE_PRIV = 94,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SKIP_EXTERNAL_LOCKING = 95,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SKIP_NAME_RESOLVE = 96,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SKIP_NETWORKING = 97,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SKIP_SHOW_DATABASE = 98,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_FIPS_MODE = 99,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_SESSION_CACHE_MODE = 100,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_SESSION_CACHE_TIMEOUT = 101,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_THREAD_HANDLING = 102,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_TLS_CERTIFICATES_ENFORCED_VALIDATION = 103,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_TLS_VERSION = 104,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_TMPDIR = 105,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_ERROR_COUNT = 106,
 };
 
 struct mylite_execution_system_variable_descriptor {
@@ -149,6 +162,9 @@ bool mylite_execution_system_variable_is_read_only_server_build(
     enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_read_only_server_environment(
+    enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_is_fixed_global_server_security(
     enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_timeout(enum mylite_execution_system_variable_kind kind);

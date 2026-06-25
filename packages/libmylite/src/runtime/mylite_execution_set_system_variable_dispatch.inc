@@ -19,6 +19,9 @@ static int apply_set_system_variable_cell_value(
     if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TIME_ZONE) {
         return apply_set_time_zone_cell_value(database, value);
     }
+    if (mylite_execution_system_variable_is_fixed_global_server_security(target->kind)) {
+        return apply_set_fixed_global_server_security_cell_value(database, target);
+    }
     if (set_system_variable_is_text_session_state(target->kind)) {
         return apply_set_text_session_system_variable_cell_value(database, target, value);
     }
@@ -146,6 +149,24 @@ static int apply_set_fixed_boolean_system_variable_cell_value(
     return MYLITE_OK;
 }
 
+static int apply_set_fixed_global_server_security_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target
+) {
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_global_variable_set_global_required_error(database, target->name);
+        return MYLITE_ERROR;
+    }
+    set_unsupported_error(
+        database,
+        "SET server security system variables from user variables are not supported"
+    );
+    return MYLITE_ERROR;
+}
+
 static int apply_set_sql_mode_cell_value(
     struct mylite_db *database,
     const struct session_scalar_cell *value
@@ -211,6 +232,11 @@ static bool reject_invalid_read_only_system_variable_cell_target(
         return true;
     }
     if (mylite_execution_system_variable_is_global_read_only_toggle(target->kind) &&
+        target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_global_variable_set_global_required_error(database, target->name);
+        return true;
+    }
+    if (mylite_execution_system_variable_is_fixed_global_server_security(target->kind) &&
         target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         set_global_variable_set_global_required_error(database, target->name);
         return true;

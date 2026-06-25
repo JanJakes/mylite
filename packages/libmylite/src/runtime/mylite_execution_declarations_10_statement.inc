@@ -554,6 +554,12 @@ static int apply_set_global_read_only_toggle_assignment(
     const struct mylite_sql_ast_node *value_node,
     bool *out_handled
 );
+static int apply_set_global_server_security_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
 static int apply_set_global_session_placeholder_assignment(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -657,6 +663,10 @@ static int apply_set_fixed_boolean_system_variable_cell_value(
     const struct resolved_set_system_variable_target *target,
     const struct session_scalar_cell *value,
     bool expected_value
+);
+static int apply_set_fixed_global_server_security_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target
 );
 static int apply_set_sql_mode_cell_value(
     struct mylite_db *database,

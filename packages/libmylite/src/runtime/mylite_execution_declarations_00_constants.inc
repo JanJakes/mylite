@@ -729,6 +729,7 @@ static const uint64_t server_id_bits_system_variable_value = 32ULL;
 static const char server_uuid_system_variable_value[] = "4d796c69-7465-4000-8000-000000000001";
 static const char log_bin_basename_system_variable_value[] = "binlog";
 static const char log_bin_index_system_variable_value[] = "binlog.index";
+static const uint64_t ssl_session_cache_timeout_system_variable_value = 300ULL;
 static const uint64_t timeout_system_variable_default_value = MYLITE_SESSION_TIMEOUT_DEFAULT_VALUE;
 static const uint64_t timeout_system_variable_max_value = 31536000ULL;
 static const uint64_t scalar_integer_cast_int64_min_magnitude = 9223372036854775808ULL;

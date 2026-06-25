@@ -820,7 +820,7 @@ state through this fallback path.
 | `report_port` | ❌ | Value, scope, SET, diagnostics |
 | `report_user` | ❌ | Value, scope, SET, diagnostics |
 | `require_row_format` | ✅ | Fixed default/session/local scalar `0`, `SHOW VARIABLES` `OFF`, and MySQL-style global-scope diagnostics; session placeholder `SET` readback is supported. No row-format enforcement, global value, startup options, persisted state, or Performance Schema variable tables |
-| `require_secure_transport` | ❌ | Value, scope, SET, diagnostics |
+| `require_secure_transport` | ✅ | Fixed global scalar `0`, `SHOW VARIABLES` `OFF`, global-only diagnostics, and exact no-op global `SET`; no transport enforcement, TLS state, startup options, persisted state, or Performance Schema variable tables |
 | `restrict_fk_on_non_standard_key` | ❌ | Value, scope, SET, diagnostics |
 | `resultset_metadata` | ✅ | Fixed default/session/local scalar and `SHOW VARIABLES` value `FULL`, plus MySQL-style global-scope diagnostics; session placeholder `SET` readback is supported. No protocol metadata negotiation, global value, persisted state, or Performance Schema variable tables |
 | `rewriter_enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
@@ -847,7 +847,7 @@ state through this fallback path.
 | `rpl_stop_slave_timeout` | ❌ | Value, scope, SET, diagnostics |
 | `schema_definition_cache` | ❌ | Value, scope, SET, diagnostics |
 | `secondary_engine_cost_threshold` | ❌ | Value, scope, SET, diagnostics |
-| `secure_file_priv` | ❌ | Value, scope, SET, diagnostics |
+| `secure_file_priv` | ✅ | Fixed global read-only scalar and `SHOW VARIABLES` value `/var/lib/mysql-files/`; no file import/export enforcement, path probing, startup options, persisted state, or Performance Schema variable tables |
 | `select_into_buffer_size` | ❌ | Value, scope, SET, diagnostics |
 | `select_into_disk_sync` | ✅ | Fixed default/session/global scalar `0` and `SHOW VARIABLES` `OFF`; session placeholder `SET` readback and fixed global no-op assignments are supported. No server-side file output fsync behavior, startup options, persisted state, or Performance Schema variable tables |
 | `select_into_disk_sync_delay` | ❌ | Value, scope, SET, diagnostics |
@@ -869,11 +869,11 @@ state through this fallback path.
 | `show_create_table_skip_secondary_engine` | ✅ | Fixed default/session/local scalar `0`, `SHOW VARIABLES` `OFF`, and MySQL-style global-scope diagnostics; session placeholder `SET` readback is supported. No secondary-engine SHOW CREATE rewriting, global value, persisted state, or Performance Schema variable tables |
 | `show_create_table_verbosity` | ✅ | Fixed default/session/global scalar `0` and `SHOW VARIABLES` `OFF`; session placeholder `SET` readback and fixed global no-op assignments are supported. No extended SHOW CREATE verbosity changes, startup options, persisted state, or Performance Schema variable tables |
 | `show_gipk_in_create_table_and_information_schema` | ❌ | Value, scope, SET, diagnostics |
-| `skip_external_locking` | ❌ | Value, scope, SET, diagnostics |
-| `skip_name_resolve` | ❌ | Value, scope, SET, diagnostics |
-| `skip_networking` | ❌ | Value, scope, SET, diagnostics |
+| `skip_external_locking` | ✅ | Fixed global read-only scalar `1`, `SHOW VARIABLES` `ON`, and MySQL-style scope/SET diagnostics; no external-locking behavior or startup/persisted state |
+| `skip_name_resolve` | ✅ | Fixed global read-only scalar `1`, `SHOW VARIABLES` `ON`, and MySQL-style scope/SET diagnostics; no DNS or host-cache behavior |
+| `skip_networking` | ✅ | Fixed global read-only scalar `0`, `SHOW VARIABLES` `OFF`, and MySQL-style scope/SET diagnostics; no TCP listener behavior |
 | `skip_replica_start` | ❌ | Value, scope, SET, diagnostics |
-| `skip_show_database` | ❌ | Value, scope, SET, diagnostics |
+| `skip_show_database` | ✅ | Fixed global read-only scalar `0`, `SHOW VARIABLES` `OFF`, and MySQL-style scope/SET diagnostics; no privilege-driven `SHOW DATABASES` filtering |
 | `skip_slave_start` | ❌ | Value, scope, SET, diagnostics |
 | `slave_allow_batching` | ❌ | Value, scope, SET, diagnostics |
 | `slave_checkpoint_group` | ❌ | Value, scope, SET, diagnostics |
@@ -918,10 +918,10 @@ state through this fallback path.
 | `ssl_cipher` | ❌ | Value, scope, SET, diagnostics |
 | `ssl_crl` | ❌ | Value, scope, SET, diagnostics |
 | `ssl_crlpath` | ❌ | Value, scope, SET, diagnostics |
-| `ssl_fips_mode` | ❌ | Value, scope, SET, diagnostics |
+| `ssl_fips_mode` | ✅ | Fixed global read-only scalar and `SHOW VARIABLES` value `OFF`; no FIPS/TLS runtime behavior |
 | `ssl_key` | ❌ | Value, scope, SET, diagnostics |
-| `ssl_session_cache_mode` | ❌ | Value, scope, SET, diagnostics |
-| `ssl_session_cache_timeout` | ❌ | Value, scope, SET, diagnostics |
+| `ssl_session_cache_mode` | ✅ | Fixed global scalar `1`, `SHOW VARIABLES` `ON`, global-only diagnostics, and exact no-op global `SET`; no SSL session cache |
+| `ssl_session_cache_timeout` | ✅ | Fixed global scalar and `SHOW VARIABLES` value `300`, global-only diagnostics, and exact no-op global `SET`; no SSL session cache |
 | `statement_id` | ❌ | Value, scope, SET, diagnostics |
 | `stored_program_cache` | ❌ | Value, scope, SET, diagnostics |
 | `stored_program_definition_cache` | ❌ | Value, scope, SET, diagnostics |
@@ -996,11 +996,11 @@ state through this fallback path.
 | `thread_stack` | ❌ | Value, scope, SET, diagnostics |
 | `time_zone` | 🟡 | Limited fixed global value `SYSTEM`, session-local scalar reads and `SHOW VARIABLES`, and session/local `SET time_zone` forms for `DEFAULT`, `SYSTEM`, `UTC`, and signed UTC offsets. Current date/time/timestamp materialization uses the session offset; `mysql.time_zone*` tables are metadata-only empty placeholders with no mutable global value, loaded named-zone rows, named-zone conversion beyond `UTC`, daylight-saving behavior, leap-second handling, or TIMESTAMP row storage/retrieval conversion |
 | `timestamp` | 🟡 | Limited session-only `@@timestamp`, `@@SESSION.timestamp`, `SHOW VARIABLES LIKE 'timestamp'`, and `SET timestamp` / `SET SESSION timestamp` / `SET @@SESSION.timestamp` for integer, signed integer reset, `DEFAULT`, and `@@timestamp` plus integer arithmetic inside `SET timestamp`. The value controls the current statement date/time/timestamp used by `CURDATE()` / `CURRENT_DATE`, `CURTIME()` / `CURRENT_TIME`, `NOW()` / `CURRENT_TIMESTAMP`, and automatic temporal defaults, with materialization adjusted by the limited session `time_zone`; no global scope, nonzero fractional assignment values, general system-variable scalar arithmetic, TIMESTAMP row storage/retrieval conversion, persisted state, or broader temporal-variable behavior |
-| `tls_certificates_enforced_validation` | ❌ | Value, scope, SET, diagnostics |
+| `tls_certificates_enforced_validation` | ✅ | Fixed global read-only scalar `0`, `SHOW VARIABLES` `OFF`, and MySQL-style scope/SET diagnostics; no TLS certificate validation behavior |
 | `tls_ciphersuites` | ❌ | Value, scope, SET, diagnostics |
-| `tls_version` | ❌ | Value, scope, SET, diagnostics |
+| `tls_version` | ✅ | Fixed global scalar and `SHOW VARIABLES` value `TLSv1.2,TLSv1.3`, global-only diagnostics, and exact no-op global `SET`; no TLS negotiation |
 | `tmp_table_size` | ❌ | Value, scope, SET, diagnostics |
-| `tmpdir` | ❌ | Value, scope, SET, diagnostics |
+| `tmpdir` | ✅ | Fixed global read-only scalar and `SHOW VARIABLES` value `/tmp`; no temp-file routing, startup options, persisted state, or Performance Schema variable tables |
 | `transaction_alloc_block_size` | ❌ | Value, scope, SET, diagnostics |
 | `transaction_allow_batching` | ❌ | Value, scope, SET, diagnostics |
 | `transaction_isolation` | 🟡 | Limited scalar reads and `SHOW VARIABLES` rows expose fixed global `REPEATABLE-READ` and connection-local session/default/local values. Direct session/local assignments update the session default; direct `SET @@transaction_isolation = ...` updates the next transaction characteristic; exact fixed-global no-op assignments may preserve the default. No mutable global default, privilege checks, persisted variables, or added MVCC/isolation behavior |

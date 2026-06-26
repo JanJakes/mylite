@@ -2216,6 +2216,18 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_BUILD_ID:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_BULK_INSERT_BUFFER_SIZE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SETS_DIR:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_DELAYED_THREADS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_EXECUTION_TIME:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_HEAP_TABLE_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_INSERT_DELAYED_THREADS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_JOIN_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_LENGTH_FOR_SORT_DATA:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_POINTS_IN_GEOMETRY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_SEEKS_FOR_KEY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_SORT_LENGTH:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_SP_RECURSION_DEPTH:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_USER_CONNECTIONS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MIN_EXAMINED_ROW_LIMIT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_BINLOG_CACHE_SIZE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_BINLOG_CHECKSUM:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_BINLOG_ERROR_ACTION:
@@ -3642,6 +3654,30 @@ static int append_system_variable_read_warning(
             mysql_warning_deprecated_system_variable,
             "HY000",
             "'@@delayed_queue_size' is deprecated and will be removed in a future release."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_DELAYED_THREADS) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@max_delayed_threads' is deprecated and will be removed in a future release."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_INSERT_DELAYED_THREADS) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@max_insert_delayed_threads' is deprecated and will be removed in a future release."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_LENGTH_FOR_SORT_DATA) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@max_length_for_sort_data' is deprecated and will be removed in a future release."
         );
     }
     if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER) {

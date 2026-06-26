@@ -515,6 +515,18 @@ enum mylite_execution_system_variable_kind {
     MYLITE_EXECUTION_SYSTEM_VARIABLE_PERFORMANCE_SCHEMA_SETUP_OBJECTS_SIZE = 506,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_PERFORMANCE_SCHEMA_SHOW_PROCESSLIST = 507,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_PERFORMANCE_SCHEMA_USERS_SIZE = 508,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_DELAYED_THREADS = 509,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_EXECUTION_TIME = 510,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_HEAP_TABLE_SIZE = 511,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_INSERT_DELAYED_THREADS = 512,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_JOIN_SIZE = 513,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_LENGTH_FOR_SORT_DATA = 514,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_POINTS_IN_GEOMETRY = 515,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_SEEKS_FOR_KEY = 516,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_SORT_LENGTH = 517,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_SP_RECURSION_DEPTH = 518,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_USER_CONNECTIONS = 519,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MIN_EXAMINED_ROW_LIMIT = 520,
 };
 
 struct mylite_execution_system_variable_descriptor {
@@ -630,6 +642,9 @@ bool mylite_execution_system_variable_is_compatibility_placeholder(
 );
 bool mylite_execution_system_variable_is_timeout(enum mylite_execution_system_variable_kind kind);
 bool mylite_execution_system_variable_is_connection_memory(
+    enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_is_m_session_limit(
     enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_session_placeholder(

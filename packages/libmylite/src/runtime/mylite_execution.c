@@ -1186,6 +1186,8 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_set_limit_size_expiry_variables.inc"
 
+#include "mylite_execution_set_m_session_limit_system_variables.inc"
+
 #include "mylite_execution_set_timeout_variables.inc"
 
 #include "mylite_execution_set_last_insert_id_variables.inc"

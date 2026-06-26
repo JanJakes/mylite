@@ -554,24 +554,24 @@ state through this fallback path.
 | `max_binlog_stmt_cache_size` | ✅ | Fixed global scalar/SHOW value `18446744073709547520`, global-only diagnostics, and exact/default global no-op SET; no statement-cache sizing effects |
 | `max_connect_errors` | ✅ | Fixed global scalar/SHOW value `100`, global-only diagnostics, and exact/default global no-op SET; no host-cache blocking or connection admission effects |
 | `max_connections` | ✅ | Fixed global scalar/SHOW value `151`, global-only diagnostics, and exact/default global no-op SET; no connection admission or thread scheduling effects |
-| `max_delayed_threads` | ❌ | Value, scope, SET, diagnostics |
+| `max_delayed_threads` | ✅ | Deprecated scalar/SHOW value `20`, zero/default session SET, fixed global no-op, warnings, and diagnostics; no delayed-insert threads |
 | `max_digest_length` | ✅ | Fixed global scalar/SHOW value `1024`, global-only diagnostics, and read-only SET diagnostics; no digest truncation side effects |
 | `max_error_count` | 🟡 | Limited scalar `SELECT @@max_error_count` with no scope, `session`, `local`, or fixed `global`; `SHOW VARIABLES` rows; handle-local session `SET` assignment for no scope, `SESSION`, `LOCAL`, direct `@@variable`, `@@session`, and `@@local` forms using `DEFAULT`, unsigned integer, unary-signed integer, `TRUE`/`FALSE`, and integer user-variable values; values clamp to `0..65535` with warning `1292`; retained diagnostics rows are capped while total warning counts are preserved for current warning/note producers. Global reads remain fixed at `1024`, exact default global no-op assignments may be accepted, and there is no mutable shared global state, persisted/startup value, privilege model, Performance Schema variable table, diagnostics stack, or broader warning producer coverage |
-| `max_execution_time` | ❌ | Value, scope, SET, diagnostics |
-| `max_heap_table_size` | ❌ | Value, scope, SET, diagnostics |
-| `max_insert_delayed_threads` | ❌ | Value, scope, SET, diagnostics |
-| `max_join_size` | ❌ | Value, scope, SET, diagnostics |
-| `max_length_for_sort_data` | ❌ | Value, scope, SET, diagnostics |
-| `max_points_in_geometry` | ❌ | Value, scope, SET, diagnostics |
+| `max_execution_time` | ✅ | Session/global scalar/SHOW, session SET, fixed global no-op, and diagnostics; no query timeout enforcement |
+| `max_heap_table_size` | ✅ | Session/global scalar/SHOW, clamped session SET, fixed global no-op, and diagnostics; no MEMORY/TEMP table sizing effects |
+| `max_insert_delayed_threads` | ✅ | Deprecated scalar/SHOW value `20`, zero/default session SET, fixed global no-op, warnings, and diagnostics; no delayed-insert threads |
+| `max_join_size` | ✅ | Session/global scalar/SHOW, session SET, `sql_big_selects` interaction, fixed global no-op, and diagnostics; no optimizer row-estimate aborts |
+| `max_length_for_sort_data` | ✅ | Deprecated session/global scalar/SHOW, clamped session SET, fixed global no-op, warnings, and diagnostics; no sort-layout effects |
+| `max_points_in_geometry` | ✅ | Session/global scalar/SHOW, clamped session SET, fixed global no-op, and diagnostics; no geometry parsing limit effects |
 | `max_prepared_stmt_count` | ✅ | Fixed global scalar/SHOW value `16382`, global-only diagnostics, and exact/default global no-op SET; no prepared-statement count enforcement |
 | `max_relay_log_size` | ✅ | Fixed global scalar/SHOW value `0`, global-only diagnostics, and exact/default global no-op SET; no relay-log file sizing effects |
-| `max_seeks_for_key` | ❌ | Value, scope, SET, diagnostics |
-| `max_sort_length` | ❌ | Value, scope, SET, diagnostics |
-| `max_sp_recursion_depth` | ❌ | Value, scope, SET, diagnostics |
-| `max_user_connections` | ❌ | Value, scope, SET, diagnostics |
+| `max_seeks_for_key` | ✅ | Session/global scalar/SHOW, clamped session SET, fixed global no-op, and diagnostics; no optimizer costing effects |
+| `max_sort_length` | ✅ | Session/global scalar/SHOW, clamped session SET, fixed global no-op, and diagnostics; no sort-prefix effects |
+| `max_sp_recursion_depth` | ✅ | Session/global scalar/SHOW, clamped session SET, fixed global no-op, and diagnostics; no stored-program recursion effects |
+| `max_user_connections` | ✅ | Session/global scalar/SHOW, session read-only diagnostics, and default/zero global no-op; no account connection limit effects |
 | `max_write_lock_count` | ✅ | Fixed global scalar/SHOW value `18446744073709551615`, global-only diagnostics, and exact/default global no-op SET; no write-lock scheduling effects |
 | `mecab_rc_file` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `min_examined_row_limit` | ❌ | Value, scope, SET, diagnostics |
+| `min_examined_row_limit` | ✅ | Session/global scalar/SHOW, session SET, fixed global no-op, and diagnostics; no slow-log filtering effects |
 | `myisam_data_pointer_size` | ✅ | Fixed global scalar/SHOW value `6`, global-only diagnostics, and exact/default global no-op SET; no MyISAM storage effects |
 | `myisam_max_sort_file_size` | ✅ | Fixed global scalar/SHOW value `9223372036853727232`, global-only diagnostics, and exact/default global no-op SET; no MyISAM sort-file sizing effects |
 | `myisam_mmap_size` | ✅ | Fixed global scalar/SHOW value `18446744073709551615`, global-only and read-only diagnostics; no MyISAM mmap behavior |

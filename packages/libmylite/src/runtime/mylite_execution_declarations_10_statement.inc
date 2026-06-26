@@ -809,6 +809,57 @@ static int apply_set_max_error_count_cell_value(
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind
 );
+static int apply_set_m_session_limit_system_variable_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
+static int apply_set_m_session_limit_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    bool *out_handled
+);
+static int parse_set_m_session_limit_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+);
+static int parse_set_m_session_limit_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    uint64_t *out_value
+);
+static int parse_m_session_limit_system_variable_integer(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_source_span *unsigned_span,
+    bool negative,
+    const char *value_text,
+    uint64_t *out_value
+);
+static int apply_m_session_limit_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    uint64_t value
+);
+static uint64_t m_session_limit_system_variable_default_value(
+    enum mylite_execution_system_variable_kind kind
+);
+static uint64_t m_session_limit_system_variable_min_value(
+    enum mylite_execution_system_variable_kind kind
+);
+static uint64_t m_session_limit_system_variable_max_value(
+    enum mylite_execution_system_variable_kind kind
+);
+static bool m_session_limit_system_variable_is_zero_or_default_only(
+    enum mylite_execution_system_variable_kind kind
+);
 static int apply_set_big_tables_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,

@@ -28,6 +28,14 @@ static int apply_set_innodb_storage_system_variable_assignment(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DOUBLEWRITE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_EXTEND_AND_INITIALIZE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FAST_SHUTDOWN:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FILE_PER_TABLE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FILL_FACTOR:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_LOG_AT_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_LOG_AT_TRX_COMMIT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_NEIGHBORS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_SYNC:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSHING_AVG_LOOPS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FSYNC_THRESHOLD:
         *out_handled = true;
         return validate_set_innodb_storage_fixed_value(database, target, value_node);
     default:
@@ -66,6 +74,14 @@ static int apply_set_innodb_storage_system_variable_cell_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DOUBLEWRITE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_EXTEND_AND_INITIALIZE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FAST_SHUTDOWN:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FILE_PER_TABLE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FILL_FACTOR:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_LOG_AT_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_LOG_AT_TRX_COMMIT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_NEIGHBORS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_SYNC:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSHING_AVG_LOOPS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FSYNC_THRESHOLD:
         *out_handled = true;
         return validate_set_innodb_storage_fixed_cell_value(
             database,
@@ -170,6 +186,52 @@ static int validate_set_innodb_storage_fixed_value(
             database,
             value_node,
             innodb_fast_shutdown_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FILE_PER_TABLE:
+        return validate_set_fixed_boolean_value(database, value_node, true);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FILL_FACTOR:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_fill_factor_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_LOG_AT_TIMEOUT:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_flush_log_at_timeout_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_LOG_AT_TRX_COMMIT:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_flush_log_at_trx_commit_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_NEIGHBORS:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_flush_neighbors_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_SYNC:
+        return validate_set_fixed_boolean_value(database, value_node, true);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSHING_AVG_LOOPS:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_flushing_avg_loops_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FSYNC_THRESHOLD:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_fsync_threshold_default_value,
             "SET supports only fixed no-op system variable assignments"
         );
     default:
@@ -287,6 +349,58 @@ static int validate_set_innodb_storage_fixed_cell_value(
             database,
             target,
             innodb_fast_shutdown_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FILE_PER_TABLE:
+        return apply_set_fixed_boolean_system_variable_cell_value(database, target, value, true);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FILL_FACTOR:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_fill_factor_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_LOG_AT_TIMEOUT:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_flush_log_at_timeout_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_LOG_AT_TRX_COMMIT:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_flush_log_at_trx_commit_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_NEIGHBORS:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_flush_neighbors_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_SYNC:
+        return apply_set_fixed_boolean_system_variable_cell_value(database, target, value, true);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSHING_AVG_LOOPS:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_flushing_avg_loops_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FSYNC_THRESHOLD:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_fsync_threshold_default_value,
             value,
             value_kind
         );

@@ -817,6 +817,17 @@ static const uint64_t innodb_doublewrite_files_default_value = 2ULL;
 static const uint64_t innodb_doublewrite_pages_default_value = 128ULL;
 static const uint64_t innodb_extend_and_initialize_default_value = 1ULL;
 static const uint64_t innodb_fast_shutdown_default_value = 1ULL;
+static const uint64_t innodb_file_per_table_default_value = 1ULL;
+static const uint64_t innodb_fill_factor_default_value = 100ULL;
+static const uint64_t innodb_flush_log_at_timeout_default_value = 1ULL;
+static const uint64_t innodb_flush_log_at_trx_commit_default_value = 1ULL;
+static const char innodb_flush_method_default_value[] = "O_DIRECT";
+static const uint64_t innodb_flush_neighbors_default_value = 0ULL;
+static const uint64_t innodb_flush_sync_default_value = 1ULL;
+static const uint64_t innodb_flushing_avg_loops_default_value = 30ULL;
+static const uint64_t innodb_force_load_corrupted_default_value = 0ULL;
+static const uint64_t innodb_force_recovery_default_value = 0ULL;
+static const uint64_t innodb_fsync_threshold_default_value = 0ULL;
 static const uint64_t sort_buffer_size_default_value =
     MYLITE_SESSION_SORT_BUFFER_SIZE_DEFAULT_VALUE;
 static const uint64_t sort_buffer_size_min_value = MYLITE_SESSION_SORT_BUFFER_SIZE_MIN_VALUE;

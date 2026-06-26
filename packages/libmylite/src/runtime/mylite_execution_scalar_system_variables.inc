@@ -513,6 +513,69 @@ static int system_variable_value(
             innodb_fast_shutdown_default_value,
             out_cell
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FILE_PER_TABLE:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_file_per_table_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FILL_FACTOR:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_fill_factor_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_LOG_AT_TIMEOUT:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_flush_log_at_timeout_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_LOG_AT_TRX_COMMIT:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_flush_log_at_trx_commit_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_METHOD:
+        out_cell->value = innodb_flush_method_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_NEIGHBORS:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_flush_neighbors_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_SYNC:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_flush_sync_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSHING_AVG_LOOPS:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_flushing_avg_loops_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FORCE_LOAD_CORRUPTED:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_force_load_corrupted_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FORCE_RECOVERY:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_force_recovery_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FSYNC_THRESHOLD:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_fsync_threshold_default_value,
+            out_cell
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_TRACKING:
         return format_session_scalar_uint64_value(
             database,
@@ -1817,6 +1880,74 @@ static int show_system_variable_value(
         return format_show_system_variable_uint64_value(
             database,
             innodb_fast_shutdown_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FILE_PER_TABLE:
+        *out_value = "ON";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FILL_FACTOR:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_fill_factor_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_LOG_AT_TIMEOUT:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_flush_log_at_timeout_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_LOG_AT_TRX_COMMIT:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_flush_log_at_trx_commit_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_METHOD:
+        *out_value = innodb_flush_method_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_NEIGHBORS:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_flush_neighbors_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSH_SYNC:
+        *out_value = "ON";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FLUSHING_AVG_LOOPS:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_flushing_avg_loops_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FORCE_LOAD_CORRUPTED:
+        *out_value = "OFF";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FORCE_RECOVERY:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_force_recovery_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FSYNC_THRESHOLD:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_fsync_threshold_default_value,
             integer_buffer,
             integer_buffer_size,
             out_value

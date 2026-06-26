@@ -359,17 +359,17 @@ state through this fallback path.
 | `innodb_extend_and_initialize` | ✅ | Fixed global scalar `1`/SHOW `ON`, global-only diagnostics, and exact/default global no-op SET; no file initialization behavior |
 | `innodb_fast_shutdown` | ✅ | Fixed global scalar/SHOW value `1`, global-only diagnostics, and exact/default global no-op SET; no shutdown behavior |
 | `innodb_fil_make_page_dirty_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `innodb_file_per_table` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_fill_factor` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_flush_log_at_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_flush_log_at_trx_commit` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_flush_method` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_flush_neighbors` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_flush_sync` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_flushing_avg_loops` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_force_load_corrupted` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_force_recovery` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_fsync_threshold` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_file_per_table` | ✅ | Fixed global scalar `1`/SHOW `ON`, global-only diagnostics, and exact/default global no-op SET; no file-per-table routing |
+| `innodb_fill_factor` | ✅ | Fixed global scalar/SHOW value `100`, global-only diagnostics, and exact/default global no-op SET; no index page fill-factor behavior |
+| `innodb_flush_log_at_timeout` | ✅ | Fixed global scalar/SHOW value `1`, global-only diagnostics, and exact/default global no-op SET; no redo-log flush scheduling |
+| `innodb_flush_log_at_trx_commit` | ✅ | Fixed global scalar/SHOW value `1`, global-only diagnostics, and exact/default global no-op SET; no redo-log durability policy effects |
+| `innodb_flush_method` | ✅ | Fixed global read-only scalar/SHOW value `O_DIRECT`; no file I/O method selection |
+| `innodb_flush_neighbors` | ✅ | Fixed global scalar/SHOW value `0`, global-only diagnostics, and exact/default global no-op SET; no neighbor page flushing |
+| `innodb_flush_sync` | ✅ | Fixed global scalar `1`/SHOW `ON`, global-only diagnostics, and exact/default global no-op SET; no adaptive flushing side effects |
+| `innodb_flushing_avg_loops` | ✅ | Fixed global scalar/SHOW value `30`, global-only diagnostics, and exact/default global no-op SET; no page-cleaner heuristics |
+| `innodb_force_load_corrupted` | ✅ | Fixed global read-only scalar `0`/SHOW `OFF`; no corrupted-page loading mode |
+| `innodb_force_recovery` | ✅ | Fixed global read-only scalar/SHOW value `0`; no InnoDB recovery mode behavior |
+| `innodb_fsync_threshold` | ✅ | Fixed global scalar/SHOW value `0`, global-only diagnostics, and exact/default global no-op SET; no fsync threshold scheduling |
 | `innodb_ft_aux_table` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_ft_cache_size` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_ft_enable_diag_print` | ❌ | Value, scope, SET, diagnostics |

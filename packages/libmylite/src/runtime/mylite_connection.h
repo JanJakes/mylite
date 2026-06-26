@@ -37,6 +37,9 @@ enum {
     MYLITE_SESSION_NET_READ_TIMEOUT_DEFAULT_VALUE = 30,
     MYLITE_SESSION_NET_RETRY_COUNT_DEFAULT_VALUE = 10,
     MYLITE_SESSION_NET_WRITE_TIMEOUT_DEFAULT_VALUE = 60,
+    MYLITE_SESSION_INNODB_PARALLEL_READ_THREADS_DEFAULT_VALUE = 4,
+    MYLITE_SESSION_INNODB_PARALLEL_READ_THREADS_MIN_VALUE = 1,
+    MYLITE_SESSION_INNODB_PARALLEL_READ_THREADS_MAX_VALUE = 256,
     MYLITE_SESSION_CONNECTION_MEMORY_CHUNK_SIZE_DEFAULT_VALUE = 8192,
     MYLITE_SESSION_JOIN_BUFFER_SIZE_DEFAULT_VALUE = 262144,
     MYLITE_SESSION_JOIN_BUFFER_SIZE_MIN_VALUE = 128,
@@ -202,6 +205,7 @@ struct mylite_session_state {
     uint64_t net_read_timeout;
     uint64_t net_retry_count;
     uint64_t net_write_timeout;
+    uint64_t innodb_parallel_read_threads;
     uint64_t connection_memory_chunk_size;
     uint64_t connection_memory_limit;
     uint64_t join_buffer_size;

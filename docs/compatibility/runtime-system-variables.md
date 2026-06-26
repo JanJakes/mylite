@@ -412,22 +412,22 @@ state through this fallback path.
 | `innodb_monitor_reset` | ✅ | Fixed global scalar `NULL`/empty SHOW value, global-only diagnostics, and no-op global monitor switch assignments; no metrics side effects |
 | `innodb_monitor_reset_all` | ✅ | Fixed global scalar `NULL`/empty SHOW value, global-only diagnostics, and no-op global monitor switch assignments; no metrics side effects |
 | `innodb_numa_interleave` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `innodb_old_blocks_pct` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_old_blocks_time` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_online_alter_log_max_size` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_open_files` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_optimize_fulltext_only` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_page_cleaners` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_page_size` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_parallel_read_threads` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_print_all_deadlocks` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_print_ddl_logs` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_purge_batch_size` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_purge_rseg_truncate_frequency` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_purge_threads` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_random_read_ahead` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_read_ahead_threshold` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_read_io_threads` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_old_blocks_pct` | ✅ | Fixed scalar/SHOW value `37`, global-only diagnostics, and exact/default global no-op SET; no buffer-pool aging side effects |
+| `innodb_old_blocks_time` | ✅ | Fixed scalar/SHOW value `1000`, global-only diagnostics, and exact/default global no-op SET; no buffer-pool aging side effects |
+| `innodb_online_alter_log_max_size` | ✅ | Fixed scalar/SHOW value `134217728`, global-only diagnostics, and exact/default global no-op SET; no online-DDL log sizing side effects |
+| `innodb_open_files` | ✅ | Fixed scalar/SHOW value `4000` and read-only diagnostics; no file-handle allocation side effects |
+| `innodb_optimize_fulltext_only` | ✅ | Fixed scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no full-text optimize side effects |
+| `innodb_page_cleaners` | ✅ | Fixed scalar/SHOW value `1` and read-only diagnostics; no cleaner-thread allocation side effects |
+| `innodb_page_size` | ✅ | Fixed scalar/SHOW value `16384` and read-only diagnostics; no page-size storage-format change |
+| `innodb_parallel_read_threads` | ✅ | Fixed global value `4`, handle-local session value/clamping, SHOW readback, and exact/default global no-op SET; no parallel read execution side effects |
+| `innodb_print_all_deadlocks` | ✅ | Fixed scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no deadlock logging side effects |
+| `innodb_print_ddl_logs` | ✅ | Fixed scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no DDL logging side effects |
+| `innodb_purge_batch_size` | ✅ | Fixed scalar/SHOW value `300`, global-only diagnostics, and exact/default global no-op SET; no purge scheduling side effects |
+| `innodb_purge_rseg_truncate_frequency` | ✅ | Fixed scalar/SHOW value `128`, global-only diagnostics, and exact/default global no-op SET; no rollback-segment truncation side effects |
+| `innodb_purge_threads` | ✅ | Fixed scalar/SHOW value `4` and read-only diagnostics; no purge-thread allocation side effects |
+| `innodb_random_read_ahead` | ✅ | Fixed scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no read-ahead side effects |
+| `innodb_read_ahead_threshold` | ✅ | Fixed scalar/SHOW value `56`, global-only diagnostics, and exact/default global no-op SET; no read-ahead side effects |
+| `innodb_read_io_threads` | ✅ | Fixed scalar/SHOW value `9` and read-only diagnostics; no IO-thread allocation side effects |
 | `innodb_read_only` | 🟡 | Limited fixed global read-only disabled placeholder: scalar default/global reads return `0`, `SHOW VARIABLES` rows report `OFF`, session/local scalar reads return MySQL-style global-variable diagnostics, and every `SET` form returns MySQL-style read-only diagnostics; no startup option, mutable value, InnoDB read-only mode, write blocking, or data-dictionary effects |
 | `innodb_redo_log_archive_dirs` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_redo_log_capacity` | ❌ | Value, scope, SET, diagnostics |

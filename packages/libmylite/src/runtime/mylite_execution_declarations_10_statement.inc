@@ -1294,6 +1294,38 @@ static int validate_set_innodb_storage_fixed_text_cell_value(
 static bool innodb_storage_system_variable_allows_session_assignment(
     enum mylite_execution_system_variable_kind kind
 );
+static int apply_set_innodb_parallel_read_threads_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int apply_set_innodb_parallel_read_threads_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int parse_set_innodb_parallel_read_threads_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+);
+static int parse_set_innodb_parallel_read_threads_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    uint64_t *out_value
+);
+static int parse_innodb_parallel_read_threads_integer(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_source_span *unsigned_span,
+    bool negative,
+    const char *value_text,
+    uint64_t *out_value
+);
 static int validate_set_innodb_storage_nullable_table_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,

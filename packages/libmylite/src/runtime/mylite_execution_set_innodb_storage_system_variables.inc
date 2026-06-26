@@ -64,6 +64,17 @@ static int apply_set_innodb_storage_system_variable_assignment(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_ENABLE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET_ALL:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OLD_BLOCKS_PCT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OLD_BLOCKS_TIME:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_ONLINE_ALTER_LOG_MAX_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OPTIMIZE_FULLTEXT_ONLY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PARALLEL_READ_THREADS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PRINT_ALL_DEADLOCKS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PRINT_DDL_LOGS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PURGE_BATCH_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PURGE_RSEG_TRUNCATE_FREQUENCY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_RANDOM_READ_AHEAD:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_AHEAD_THRESHOLD:
         *out_handled = true;
         return validate_set_innodb_storage_fixed_value(database, target, value_node);
     default:
@@ -138,6 +149,17 @@ static int apply_set_innodb_storage_system_variable_cell_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_ENABLE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET_ALL:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OLD_BLOCKS_PCT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OLD_BLOCKS_TIME:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_ONLINE_ALTER_LOG_MAX_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OPTIMIZE_FULLTEXT_ONLY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PARALLEL_READ_THREADS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PRINT_ALL_DEADLOCKS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PRINT_DDL_LOGS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PURGE_BATCH_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PURGE_RSEG_TRUNCATE_FREQUENCY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_RANDOM_READ_AHEAD:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_AHEAD_THRESHOLD:
         *out_handled = true;
         return validate_set_innodb_storage_fixed_cell_value(
             database,
@@ -417,6 +439,65 @@ static int validate_set_innodb_storage_fixed_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET_ALL:
         return validate_set_innodb_storage_monitor_switch_value(database, target, value_node);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OLD_BLOCKS_PCT:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_old_blocks_pct_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OLD_BLOCKS_TIME:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_old_blocks_time_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_ONLINE_ALTER_LOG_MAX_SIZE:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_online_alter_log_max_size_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OPTIMIZE_FULLTEXT_ONLY:
+        return validate_set_fixed_boolean_value(database, value_node, false);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PARALLEL_READ_THREADS:
+        if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+            return validate_set_fixed_uint64_value(
+                database,
+                value_node,
+                innodb_parallel_read_threads_default_value,
+                "SET supports only fixed no-op system variable assignments"
+            );
+        }
+        return apply_set_innodb_parallel_read_threads_value(database, target, value_node);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PRINT_ALL_DEADLOCKS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PRINT_DDL_LOGS:
+        return validate_set_fixed_boolean_value(database, value_node, false);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PURGE_BATCH_SIZE:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_purge_batch_size_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PURGE_RSEG_TRUNCATE_FREQUENCY:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_purge_rseg_truncate_frequency_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_RANDOM_READ_AHEAD:
+        return validate_set_fixed_boolean_value(database, value_node, false);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_AHEAD_THRESHOLD:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_read_ahead_threshold_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
     default:
         return MYLITE_OK;
     }
@@ -749,6 +830,77 @@ static int validate_set_innodb_storage_fixed_cell_value(
             value,
             value_kind
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OLD_BLOCKS_PCT:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_old_blocks_pct_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OLD_BLOCKS_TIME:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_old_blocks_time_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_ONLINE_ALTER_LOG_MAX_SIZE:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_online_alter_log_max_size_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OPTIMIZE_FULLTEXT_ONLY:
+        return apply_set_fixed_boolean_system_variable_cell_value(database, target, value, false);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PARALLEL_READ_THREADS:
+        if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+            return validate_set_innodb_storage_fixed_uint64_cell_value(
+                database,
+                target,
+                innodb_parallel_read_threads_default_value,
+                value,
+                value_kind
+            );
+        }
+        return apply_set_innodb_parallel_read_threads_cell_value(
+            database,
+            target,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PRINT_ALL_DEADLOCKS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PRINT_DDL_LOGS:
+        return apply_set_fixed_boolean_system_variable_cell_value(database, target, value, false);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PURGE_BATCH_SIZE:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_purge_batch_size_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PURGE_RSEG_TRUNCATE_FREQUENCY:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_purge_rseg_truncate_frequency_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_RANDOM_READ_AHEAD:
+        return apply_set_fixed_boolean_system_variable_cell_value(database, target, value, false);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_AHEAD_THRESHOLD:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_read_ahead_threshold_default_value,
+            value,
+            value_kind
+        );
     default:
         return MYLITE_OK;
     }
@@ -760,7 +912,216 @@ static bool innodb_storage_system_variable_allows_session_assignment(
     return kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DDL_BUFFER_SIZE ||
            kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DDL_THREADS ||
            kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_ENABLE_STOPWORD ||
-           kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_USER_STOPWORD_TABLE;
+           kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_USER_STOPWORD_TABLE ||
+           kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PARALLEL_READ_THREADS;
+}
+
+static int apply_set_innodb_parallel_read_threads_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+) {
+    uint64_t value = innodb_parallel_read_threads_default_value;
+    int rc = MYLITE_OK;
+
+    if (database == NULL || target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = parse_set_innodb_parallel_read_threads_value(database, target, value_node, &value);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    database->session.innodb_parallel_read_threads = value;
+    database->session.system_variables_are_placeholder = false;
+    return MYLITE_OK;
+}
+
+static int apply_set_innodb_parallel_read_threads_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+) {
+    uint64_t integer_value = innodb_parallel_read_threads_default_value;
+    int rc = MYLITE_OK;
+
+    if (database == NULL || target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = parse_set_innodb_parallel_read_threads_cell_value(
+        database,
+        target,
+        value,
+        value_kind,
+        &integer_value
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    database->session.innodb_parallel_read_threads = integer_value;
+    database->session.system_variables_are_placeholder = false;
+    return MYLITE_OK;
+}
+
+static int parse_set_innodb_parallel_read_threads_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+) {
+    const struct mylite_sql_ast_node *literal_node = NULL;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    bool negative = false;
+    char value_text[integer_text_capacity];
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target == NULL) {
+        set_runtime_error(database, "invalid innodb_parallel_read_threads target");
+        return MYLITE_ERROR;
+    }
+    *out_value = innodb_parallel_read_threads_default_value;
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+
+    literal_node = unwrap_auto_increment_step_value_literal(value_node, &negative);
+    if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL) {
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal_node);
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_TRUE) {
+        *out_value = 1U;
+        return MYLITE_OK;
+    }
+    if (literal_kind == MYLITE_SQL_AST_LITERAL_FALSE) {
+        *out_value = MYLITE_SESSION_INNODB_PARALLEL_READ_THREADS_MIN_VALUE;
+        return append_truncated_incorrect_system_variable_warning(database, target->name, "0");
+    }
+    if (literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) {
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
+    }
+
+    copy_auto_increment_step_value_text(value_node, value_text, sizeof(value_text));
+    return parse_innodb_parallel_read_threads_integer(
+        database,
+        target,
+        &literal_node->span,
+        negative,
+        value_text,
+        out_value
+    );
+}
+
+static int parse_set_innodb_parallel_read_threads_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    uint64_t *out_value
+) {
+    struct mylite_sql_source_span unsigned_span = {0};
+    const char *text = value == NULL ? NULL : value->value;
+    size_t text_size = 0U;
+    bool negative = false;
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target == NULL) {
+        set_runtime_error(database, "invalid innodb_parallel_read_threads target");
+        return MYLITE_ERROR;
+    }
+    *out_value = innodb_parallel_read_threads_default_value;
+    if (value == NULL || text == NULL || value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER) {
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
+    }
+
+    text_size = value->has_value_size ? value->value_size : strlen(text);
+    if (text_size == 0U) {
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
+    }
+    if (text[0] == '+' || text[0] == '-') {
+        negative = text[0] == '-';
+        ++text;
+        --text_size;
+    }
+    if (text_size == 0U) {
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
+    }
+
+    unsigned_span = (struct mylite_sql_source_span){.text = text, .length = text_size};
+    return parse_innodb_parallel_read_threads_integer(
+        database,
+        target,
+        &unsigned_span,
+        negative,
+        value->value,
+        out_value
+    );
+}
+
+static int parse_innodb_parallel_read_threads_integer(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_source_span *unsigned_span,
+    bool negative,
+    const char *value_text,
+    uint64_t *out_value
+) {
+    uint64_t magnitude = 0U;
+
+    if (out_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (target == NULL) {
+        set_runtime_error(database, "invalid innodb_parallel_read_threads target");
+        return MYLITE_ERROR;
+    }
+    if (negative) {
+        *out_value = MYLITE_SESSION_INNODB_PARALLEL_READ_THREADS_MIN_VALUE;
+        return append_truncated_incorrect_system_variable_warning(
+            database,
+            target->name,
+            value_text
+        );
+    }
+    if (unsigned_span == NULL ||
+        parse_unsigned_integer_literal(unsigned_span, &magnitude) != MYLITE_OK) {
+        *out_value = MYLITE_SESSION_INNODB_PARALLEL_READ_THREADS_MAX_VALUE;
+        return append_truncated_incorrect_system_variable_warning(
+            database,
+            target->name,
+            value_text
+        );
+    }
+    if (magnitude > MYLITE_SESSION_INNODB_PARALLEL_READ_THREADS_MAX_VALUE) {
+        *out_value = MYLITE_SESSION_INNODB_PARALLEL_READ_THREADS_MAX_VALUE;
+        return append_truncated_incorrect_system_variable_warning(
+            database,
+            target->name,
+            value_text
+        );
+    }
+    if (magnitude < MYLITE_SESSION_INNODB_PARALLEL_READ_THREADS_MIN_VALUE) {
+        *out_value = MYLITE_SESSION_INNODB_PARALLEL_READ_THREADS_MIN_VALUE;
+        return append_truncated_incorrect_system_variable_warning(
+            database,
+            target->name,
+            value_text
+        );
+    }
+
+    *out_value = magnitude;
+    return MYLITE_OK;
 }
 
 static int validate_set_innodb_storage_nullable_table_value(

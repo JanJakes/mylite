@@ -752,6 +752,82 @@ static int system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET_ALL:
         out_cell->value = NULL;
         return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OLD_BLOCKS_PCT:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_old_blocks_pct_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OLD_BLOCKS_TIME:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_old_blocks_time_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_ONLINE_ALTER_LOG_MAX_SIZE:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_online_alter_log_max_size_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OPEN_FILES:
+        return format_session_scalar_uint64_value(database, innodb_open_files_default_value, out_cell);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OPTIMIZE_FULLTEXT_ONLY:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_optimize_fulltext_only_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PAGE_CLEANERS:
+        return format_session_scalar_uint64_value(database, innodb_page_cleaners_default_value, out_cell);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PAGE_SIZE:
+        return format_session_scalar_uint64_value(database, innodb_page_size_default_value, out_cell);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PARALLEL_READ_THREADS:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_parallel_read_threads_system_variable_value(database, global_scope),
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PRINT_ALL_DEADLOCKS:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_print_all_deadlocks_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PRINT_DDL_LOGS:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_print_ddl_logs_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PURGE_BATCH_SIZE:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_purge_batch_size_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PURGE_RSEG_TRUNCATE_FREQUENCY:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_purge_rseg_truncate_frequency_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PURGE_THREADS:
+        return format_session_scalar_uint64_value(database, innodb_purge_threads_default_value, out_cell);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_RANDOM_READ_AHEAD:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_random_read_ahead_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_AHEAD_THRESHOLD:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_read_ahead_threshold_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_IO_THREADS:
+        return format_session_scalar_uint64_value(database, innodb_read_io_threads_default_value, out_cell);
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_TRACKING:
         return format_session_scalar_uint64_value(
             database,
@@ -1241,6 +1317,16 @@ static uint64_t timeout_system_variable_max_value_for_kind(
         return UINT64_MAX;
     }
     return timeout_system_variable_max_value;
+}
+
+static uint64_t innodb_parallel_read_threads_system_variable_value(
+    const struct mylite_db *database,
+    bool global_scope
+) {
+    if (global_scope || database == NULL) {
+        return innodb_parallel_read_threads_default_value;
+    }
+    return database->session.innodb_parallel_read_threads;
 }
 
 static uint64_t connection_memory_system_variable_value(
@@ -2333,6 +2419,112 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET_ALL:
         *out_value = "";
         return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OLD_BLOCKS_PCT:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_old_blocks_pct_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OLD_BLOCKS_TIME:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_old_blocks_time_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_ONLINE_ALTER_LOG_MAX_SIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_online_alter_log_max_size_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OPEN_FILES:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_open_files_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OPTIMIZE_FULLTEXT_ONLY:
+        *out_value = "OFF";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PAGE_CLEANERS:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_page_cleaners_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PAGE_SIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_page_size_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PARALLEL_READ_THREADS:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_parallel_read_threads_system_variable_value(database, global_scope),
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PRINT_ALL_DEADLOCKS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PRINT_DDL_LOGS:
+        *out_value = "OFF";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PURGE_BATCH_SIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_purge_batch_size_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PURGE_RSEG_TRUNCATE_FREQUENCY:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_purge_rseg_truncate_frequency_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PURGE_THREADS:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_purge_threads_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_RANDOM_READ_AHEAD:
+        *out_value = "OFF";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_AHEAD_THRESHOLD:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_read_ahead_threshold_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_IO_THREADS:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_read_io_threads_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_LIMIT:
         return format_show_system_variable_uint64_value(
             database,

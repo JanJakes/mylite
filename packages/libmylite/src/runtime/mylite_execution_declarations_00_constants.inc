@@ -858,6 +858,23 @@ static const uint64_t innodb_max_dirty_pages_pct_lwm_integral_default_value = 10
 static const char innodb_max_dirty_pages_pct_lwm_default_value[] = "10.000000";
 static const uint64_t innodb_max_purge_lag_default_value = 0ULL;
 static const uint64_t innodb_max_undo_log_size_default_value = 1073741824ULL;
+static const uint64_t innodb_old_blocks_pct_default_value = 37ULL;
+static const uint64_t innodb_old_blocks_time_default_value = 1000ULL;
+static const uint64_t innodb_online_alter_log_max_size_default_value = 134217728ULL;
+static const uint64_t innodb_open_files_default_value = 4000ULL;
+static const uint64_t innodb_optimize_fulltext_only_default_value = 0ULL;
+static const uint64_t innodb_page_cleaners_default_value = 1ULL;
+static const uint64_t innodb_page_size_default_value = 16384ULL;
+static const uint64_t innodb_parallel_read_threads_default_value =
+    MYLITE_SESSION_INNODB_PARALLEL_READ_THREADS_DEFAULT_VALUE;
+static const uint64_t innodb_print_all_deadlocks_default_value = 0ULL;
+static const uint64_t innodb_print_ddl_logs_default_value = 0ULL;
+static const uint64_t innodb_purge_batch_size_default_value = 300ULL;
+static const uint64_t innodb_purge_rseg_truncate_frequency_default_value = 128ULL;
+static const uint64_t innodb_purge_threads_default_value = 4ULL;
+static const uint64_t innodb_random_read_ahead_default_value = 0ULL;
+static const uint64_t innodb_read_ahead_threshold_default_value = 56ULL;
+static const uint64_t innodb_read_io_threads_default_value = 9ULL;
 static const uint64_t sort_buffer_size_default_value =
     MYLITE_SESSION_SORT_BUFFER_SIZE_DEFAULT_VALUE;
 static const uint64_t sort_buffer_size_min_value = MYLITE_SESSION_SORT_BUFFER_SIZE_MIN_VALUE;

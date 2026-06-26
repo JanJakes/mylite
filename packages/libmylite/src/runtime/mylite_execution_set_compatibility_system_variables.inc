@@ -4,6 +4,9 @@ static const uint64_t delayed_insert_limit_default_value = 100ULL;
 static const uint64_t delayed_insert_timeout_default_value = 300ULL;
 static const uint64_t delayed_queue_size_default_value = 1000ULL;
 static const uint64_t div_precision_increment_default_value = 4ULL;
+static const uint64_t eq_range_index_dive_limit_default_value = 200ULL;
+static const uint64_t explain_json_format_version_default_value = 1ULL;
+static const uint64_t flush_time_default_value = 0ULL;
 
 static int apply_set_compatibility_system_variable_assignment(
     struct mylite_db *database,
@@ -90,6 +93,7 @@ static bool compatibility_system_variable_is_boolean(
 ) {
     switch (kind) {
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_TABLE_ENCRYPTION:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_FLUSH:
         return true;
     default:
         return false;
@@ -106,6 +110,9 @@ static bool compatibility_system_variable_is_uint64(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DELAYED_INSERT_TIMEOUT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DELAYED_QUEUE_SIZE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DIV_PRECISION_INCREMENT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_EQ_RANGE_INDEX_DIVE_LIMIT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_EXPLAIN_JSON_FORMAT_VERSION:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_FLUSH_TIME:
         return true;
     default:
         return false;
@@ -128,6 +135,12 @@ static uint64_t compatibility_system_variable_uint64_value(
         return delayed_queue_size_default_value;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DIV_PRECISION_INCREMENT:
         return div_precision_increment_default_value;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_EQ_RANGE_INDEX_DIVE_LIMIT:
+        return eq_range_index_dive_limit_default_value;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_EXPLAIN_JSON_FORMAT_VERSION:
+        return explain_json_format_version_default_value;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_FLUSH_TIME:
+        return flush_time_default_value;
     default:
         return 0ULL;
     }

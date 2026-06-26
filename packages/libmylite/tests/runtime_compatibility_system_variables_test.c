@@ -48,6 +48,7 @@ static int expect_values(
     const char *context
 );
 static int expect_show_value(mylite_db *database, struct expected_show_value expected);
+static int expect_empty_result(mylite_db *database, const char *sql, const char *context);
 static int expect_warning(mylite_db *database, struct expected_warning expected);
 static int execute_statement_ok(mylite_db *database, const char *sql);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
@@ -69,6 +70,18 @@ static const struct compatibility_variable compatibility_variables[] = {
     {"delayed_queue_size", "1000", "1000", false, true},
     {"disabled_storage_engines", "", "", false, false},
     {"div_precision_increment", "4", "4", true, false},
+    {"enforce_gtid_consistency", "OFF", "OFF", false, false},
+    {"eq_range_index_dive_limit", "200", "200", true, false},
+    {"event_scheduler", "ON", "ON", false, false},
+    {"explain_format", "TRADITIONAL", "TRADITIONAL", true, false},
+    {"explain_json_format_version", "1", "1", true, false},
+    {"flush", "0", "OFF", false, false},
+    {"flush_time", "0", "0", false, false},
+    {"ft_boolean_syntax", "+ -><()~*:\"\"&|", "+ -><()~*:\"\"&|", false, false},
+    {"ft_max_word_len", "84", "84", false, false},
+    {"ft_min_word_len", "4", "4", false, false},
+    {"ft_query_expansion_limit", "20", "20", false, false},
+    {"ft_stopword_file", "(built-in)", "(built-in)", false, false},
 };
 
 int main(void) {
@@ -152,6 +165,41 @@ static int test_compatibility_values_show_scope_and_warnings(void) {
             failures += execute_error(database, sql, global_only_read);
         }
     }
+
+    failures += expect_values(
+        database,
+        "SELECT @@external_user, @@SESSION.external_user",
+        (const char *[]){NULL, NULL},
+        2U,
+        "external_user scalar/session"
+    );
+    failures += execute_error(
+        database,
+        "SELECT @@GLOBAL.external_user",
+        (struct expected_sql_error){.code = mysql_error_session_variable_only,
+                                    .sqlstate = "HY000",
+                                    .message_part = "Variable 'external_user' is a SESSION variable"
+        }
+    );
+    failures += expect_show_value(
+        database,
+        (struct expected_show_value){.sql = "SHOW VARIABLES LIKE 'external_user'",
+                                     .name = "external_user",
+                                     .value = "",
+                                     .context = "external_user show"}
+    );
+    failures += expect_show_value(
+        database,
+        (struct expected_show_value){.sql = "SHOW SESSION VARIABLES LIKE 'external_user'",
+                                     .name = "external_user",
+                                     .value = "",
+                                     .context = "external_user show session"}
+    );
+    failures += expect_empty_result(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'external_user'",
+        "external_user show global"
+    );
 
     mylite_close(database);
     return failures;
@@ -248,6 +296,61 @@ static int test_compatibility_set_and_diagnostics(void) {
     failures += execute_statement_ok(database, "SET GLOBAL div_precision_increment = 4");
     failures += execute_error(database, "SET div_precision_increment = 5", unsupported_set);
 
+    failures += execute_error(database, "SET enforce_gtid_consistency = DEFAULT", global_only_set);
+    failures += execute_statement_ok(database, "SET GLOBAL enforce_gtid_consistency = DEFAULT");
+    failures += execute_statement_ok(database, "SET GLOBAL enforce_gtid_consistency = OFF");
+    failures +=
+        execute_error(database, "SET GLOBAL enforce_gtid_consistency = WARN", unsupported_set);
+
+    failures += execute_statement_ok(database, "SET eq_range_index_dive_limit = DEFAULT");
+    failures += execute_statement_ok(database, "SET SESSION eq_range_index_dive_limit = 200");
+    failures += execute_statement_ok(database, "SET GLOBAL eq_range_index_dive_limit = 200");
+    failures += execute_error(database, "SET eq_range_index_dive_limit = 201", unsupported_set);
+
+    failures += execute_error(database, "SET event_scheduler = DEFAULT", global_only_set);
+    failures += execute_statement_ok(database, "SET GLOBAL event_scheduler = DEFAULT");
+    failures += execute_statement_ok(database, "SET GLOBAL event_scheduler = ON");
+    failures += execute_error(database, "SET GLOBAL event_scheduler = OFF", unsupported_set);
+
+    failures += execute_statement_ok(database, "SET explain_format = DEFAULT");
+    failures += execute_statement_ok(database, "SET SESSION explain_format = TRADITIONAL");
+    failures += execute_statement_ok(database, "SET GLOBAL explain_format = 'TRADITIONAL'");
+    failures += execute_error(database, "SET explain_format = TREE", unsupported_set);
+
+    failures += execute_statement_ok(database, "SET explain_json_format_version = DEFAULT");
+    failures += execute_statement_ok(database, "SET SESSION explain_json_format_version = 1");
+    failures += execute_statement_ok(database, "SET GLOBAL explain_json_format_version = 1");
+    failures += execute_error(database, "SET explain_json_format_version = 2", unsupported_set);
+
+    failures += execute_error(database, "SET external_user = DEFAULT", read_only_set);
+    failures += execute_error(database, "SET GLOBAL external_user = DEFAULT", read_only_set);
+
+    failures += execute_error(database, "SET flush = DEFAULT", global_only_set);
+    failures += execute_statement_ok(database, "SET GLOBAL flush = DEFAULT");
+    failures += execute_statement_ok(database, "SET GLOBAL flush = OFF");
+    failures += execute_statement_ok(database, "SET GLOBAL flush = 0");
+    failures += execute_error(database, "SET GLOBAL flush = ON", unsupported_set);
+
+    failures += execute_error(database, "SET flush_time = DEFAULT", global_only_set);
+    failures += execute_statement_ok(database, "SET GLOBAL flush_time = DEFAULT");
+    failures += execute_statement_ok(database, "SET GLOBAL flush_time = 0");
+    failures += execute_error(database, "SET GLOBAL flush_time = 1", unsupported_set);
+
+    failures += execute_error(database, "SET ft_boolean_syntax = DEFAULT", global_only_set);
+    failures += execute_statement_ok(database, "SET GLOBAL ft_boolean_syntax = DEFAULT");
+    failures += execute_statement_ok(database, "SET GLOBAL ft_boolean_syntax = '+ -><()~*:\"\"&|'");
+    failures += execute_error(
+        database,
+        "SET GLOBAL ft_boolean_syntax = '+ -><()~*:\"\"&?'",
+        unsupported_set
+    );
+
+    failures += execute_error(database, "SET GLOBAL ft_max_word_len = DEFAULT", read_only_set);
+    failures += execute_error(database, "SET GLOBAL ft_min_word_len = DEFAULT", read_only_set);
+    failures +=
+        execute_error(database, "SET GLOBAL ft_query_expansion_limit = DEFAULT", read_only_set);
+    failures += execute_error(database, "SET GLOBAL ft_stopword_file = DEFAULT", read_only_set);
+
     failures += execute_statement_ok(database, "SET @compatibility_value = 'NO_CHAIN'");
     failures += execute_error(
         database,
@@ -293,6 +396,16 @@ static int expect_show_value(mylite_db *database, struct expected_show_value exp
         2U,
         expected.context
     );
+}
+
+static int expect_empty_result(mylite_db *database, const char *sql, const char *context) {
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    failures += expect_int(mylite_execute(database, sql, strlen(sql), &result), MYLITE_OK, context);
+    failures += expect_size(mylite_result_row_count(result), 0U, context);
+    mylite_result_free(result);
+    return failures;
 }
 
 static int expect_warning(mylite_db *database, struct expected_warning expected) {

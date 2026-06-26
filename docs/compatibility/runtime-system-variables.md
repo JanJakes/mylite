@@ -200,24 +200,24 @@ state through this fallback path.
 | `div_precision_increment` | ✅ | Fixed global/session readback/SHOW and exact/default no-op SET; no arithmetic precision side effects |
 | `dragnet.log_error_filter_rules` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `end_markers_in_json` | ✅ | Fixed default/session/global scalar `0` and `SHOW VARIABLES` `OFF`; session placeholder `SET` readback and fixed global no-op assignments are supported. No JSON output end-marker behavior, startup options, persisted state, or Performance Schema variable tables |
-| `enforce_gtid_consistency` | ❌ | Value, scope, SET, diagnostics |
+| `enforce_gtid_consistency` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact/default global no-op SET; no GTID enforcement |
 | `enterprise_encryption.maximum_rsa_key_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `enterprise_encryption.rsa_support_legacy_padding` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `eq_range_index_dive_limit` | ❌ | Value, scope, SET, diagnostics |
+| `eq_range_index_dive_limit` | ✅ | Fixed global/session readback/SHOW and exact/default no-op SET; no optimizer planning effect |
 | `error_count` | ✅ | Read-only session/local/unscoped scalar reads and simple expression reads over the previous diagnostics snapshot are MySQL-runtime verified, including retained error rows, nondiagnostic `SELECT` clearing, and current `max_error_count=0` parse-error snapshot behavior; global scope and `SET` are rejected as in MySQL, with no diagnostics stacks or broader stored-program diagnostics |
-| `event_scheduler` | ❌ | Value, scope, SET, diagnostics |
-| `explain_format` | ❌ | Value, scope, SET, diagnostics |
-| `explain_json_format_version` | ❌ | Value, scope, SET, diagnostics |
+| `event_scheduler` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact/default global no-op SET; no scheduler thread |
+| `explain_format` | ✅ | Fixed global/session readback/SHOW and exact/default no-op SET; no EXPLAIN output selection |
+| `explain_json_format_version` | ✅ | Fixed global/session readback/SHOW and exact/default no-op SET; no EXPLAIN JSON versioning |
 | `explicit_defaults_for_timestamp` | ✅ | Fixed modern timestamp-default value `1`/`ON` for session/local/unscoped/global scalar reads and `SHOW VARIABLES`; no-op `SET` forms accepting `DEFAULT`, `ON`, `TRUE`, and `1` preserve the fixed value. Deprecated `OFF` timestamp semantics, mutable global/session state, startup options, implicit first-`TIMESTAMP` defaults, automatic legacy timestamp updates, changed temporal DDL/DML behavior, and Performance Schema variable tables remain unsupported |
-| `external_user` | ❌ | Value, scope, SET, diagnostics |
-| `flush` | ❌ | Value, scope, SET, diagnostics |
-| `flush_time` | ❌ | Value, scope, SET, diagnostics |
+| `external_user` | ✅ | Fixed session `NULL` scalar, blank session SHOW row, no global row, and read-only SET diagnostics; no external auth state |
+| `flush` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact/default global no-op SET; no table/log flushing |
+| `flush_time` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact/default global no-op SET; no periodic table close |
 | `foreign_key_checks` | ✅ | Session/local/unscoped scalar and expression reads, fixed global reads, `SHOW VARIABLES`, and handle-local session `SET` forms are MySQL-runtime verified for boolean/default values. Disabled checks bypass descriptor-owned FK DML checks/actions and `INSERT IGNORE` FK warnings without retrovalidation. No mutable global state, privileges, startup/persisted values, `SET_VAR`, Performance Schema variable tables, parent-drop bypass, malformed-definition bypass, required-index drop bypass, or broader dependency toggling |
-| `ft_boolean_syntax` | ❌ | Value, scope, SET, diagnostics |
-| `ft_max_word_len` | ❌ | Value, scope, SET, diagnostics |
-| `ft_min_word_len` | ❌ | Value, scope, SET, diagnostics |
-| `ft_query_expansion_limit` | ❌ | Value, scope, SET, diagnostics |
-| `ft_stopword_file` | ❌ | Value, scope, SET, diagnostics |
+| `ft_boolean_syntax` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact/default global no-op SET; no full-text parser effect |
+| `ft_max_word_len` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and read-only SET diagnostics; no full-text indexing effect |
+| `ft_min_word_len` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and read-only SET diagnostics; no full-text indexing effect |
+| `ft_query_expansion_limit` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and read-only SET diagnostics; no query-expansion effect |
+| `ft_stopword_file` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and read-only SET diagnostics; no stopword-file loading |
 | `general_log` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/OFF global no-op SET; no general-query logging side effects |
 | `general_log_file` | ✅ | Fixed global path readback/SHOW, global-only diagnostics, and default/path global no-op SET; no log file creation |
 | `generated_random_password_length` | ❌ | Mutable session/global value, range SET, diagnostics |

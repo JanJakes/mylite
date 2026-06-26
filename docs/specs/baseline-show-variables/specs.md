@@ -215,8 +215,21 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `disabled_storage_engines` | yes | yes | empty string |
 | `div_precision_increment` | yes | yes | `4` |
 | `end_markers_in_json` | yes | yes | `OFF` |
+| `enforce_gtid_consistency` | yes | yes | `OFF` |
+| `eq_range_index_dive_limit` | yes | yes | `200` |
 | `error_count` | yes | no | `0` |
+| `event_scheduler` | yes | yes | `ON` |
+| `explain_format` | yes | yes | `TRADITIONAL` |
+| `explain_json_format_version` | yes | yes | `1` |
+| `external_user` | yes | no | empty string |
+| `flush` | yes | yes | `OFF` |
+| `flush_time` | yes | yes | `0` |
 | `foreign_key_checks` | yes | yes | `ON` |
+| `ft_boolean_syntax` | yes | yes | `+ -><()~*:""&|` |
+| `ft_max_word_len` | yes | yes | `84` |
+| `ft_min_word_len` | yes | yes | `4` |
+| `ft_query_expansion_limit` | yes | yes | `20` |
+| `ft_stopword_file` | yes | yes | `(built-in)` |
 | `global_connection_memory_limit` | yes | yes | `18446744073709551615` |
 | `global_connection_memory_tracking` | yes | yes | current session value or fixed global `OFF` |
 | `have_compress` | yes | yes | `YES` |

@@ -132,7 +132,18 @@ run_mysql \
      SET GLOBAL delayed_insert_timeout = DEFAULT;
      SET GLOBAL delayed_queue_size = DEFAULT;
      SET GLOBAL div_precision_increment = DEFAULT;
-     SET SESSION div_precision_increment = DEFAULT;" >/dev/null
+     SET SESSION div_precision_increment = DEFAULT;
+     SET GLOBAL enforce_gtid_consistency = DEFAULT;
+     SET GLOBAL eq_range_index_dive_limit = DEFAULT;
+     SET SESSION eq_range_index_dive_limit = DEFAULT;
+     SET GLOBAL event_scheduler = DEFAULT;
+     SET GLOBAL explain_format = DEFAULT;
+     SET SESSION explain_format = DEFAULT;
+     SET GLOBAL explain_json_format_version = DEFAULT;
+     SET SESSION explain_json_format_version = DEFAULT;
+     SET GLOBAL flush = DEFAULT;
+     SET GLOBAL flush_time = DEFAULT;
+     SET GLOBAL ft_boolean_syntax = DEFAULT;" >/dev/null
 
 headers=$(run_mysql_with_headers "SHOW VARIABLES LIKE 'autocommit';" | sed -n '1p')
 expect_value "headers" "Variable_name${TAB}Value" "$headers"
@@ -186,6 +197,19 @@ supported_session_rows=$(run_mysql "
       'delayed_queue_size',
       'disabled_storage_engines',
       'div_precision_increment',
+      'enforce_gtid_consistency',
+      'eq_range_index_dive_limit',
+      'event_scheduler',
+      'explain_format',
+      'explain_json_format_version',
+      'external_user',
+      'flush',
+      'flush_time',
+      'ft_boolean_syntax',
+      'ft_max_word_len',
+      'ft_min_word_len',
+      'ft_query_expansion_limit',
+      'ft_stopword_file',
       'autocommit',
       'activate_all_roles_on_login',
       'auto_generate_certs',
@@ -317,8 +341,21 @@ delayed_insert_timeout|300
 delayed_queue_size|1000
 disabled_storage_engines|
 div_precision_increment|4
+enforce_gtid_consistency|OFF
+eq_range_index_dive_limit|200
 error_count|0
+event_scheduler|ON
+explain_format|TRADITIONAL
+explain_json_format_version|1
+external_user|
+flush|OFF
+flush_time|0
 foreign_key_checks|ON
+ft_boolean_syntax|+ -><()~*:\"\"&|
+ft_max_word_len|84
+ft_min_word_len|4
+ft_query_expansion_limit|20
+ft_stopword_file|(built-in)
 global_connection_memory_limit|18446744073709551615
 global_connection_memory_tracking|OFF
 group_concat_max_len|1024
@@ -394,6 +431,18 @@ supported_global_rows=$(run_mysql "
       'delayed_queue_size',
       'disabled_storage_engines',
       'div_precision_increment',
+      'enforce_gtid_consistency',
+      'eq_range_index_dive_limit',
+      'event_scheduler',
+      'explain_format',
+      'explain_json_format_version',
+      'flush',
+      'flush_time',
+      'ft_boolean_syntax',
+      'ft_max_word_len',
+      'ft_min_word_len',
+      'ft_query_expansion_limit',
+      'ft_stopword_file',
       'autocommit',
       'activate_all_roles_on_login',
       'auto_generate_certs',
@@ -525,7 +574,19 @@ delayed_insert_timeout|300
 delayed_queue_size|1000
 disabled_storage_engines|
 div_precision_increment|4
+enforce_gtid_consistency|OFF
+eq_range_index_dive_limit|200
+event_scheduler|ON
+explain_format|TRADITIONAL
+explain_json_format_version|1
+flush|OFF
+flush_time|0
 foreign_key_checks|ON
+ft_boolean_syntax|+ -><()~*:\"\"&|
+ft_max_word_len|84
+ft_min_word_len|4
+ft_query_expansion_limit|20
+ft_stopword_file|(built-in)
 global_connection_memory_limit|18446744073709551615
 global_connection_memory_tracking|OFF
 group_concat_max_len|1024

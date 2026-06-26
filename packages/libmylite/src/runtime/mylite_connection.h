@@ -40,6 +40,8 @@ enum {
     MYLITE_SESSION_JOIN_BUFFER_SIZE_DEFAULT_VALUE = 262144,
     MYLITE_SESSION_JOIN_BUFFER_SIZE_MIN_VALUE = 128,
     MYLITE_SESSION_JOIN_BUFFER_SIZE_BLOCK_SIZE = 128,
+    MYLITE_SESSION_MYISAM_SORT_BUFFER_SIZE_DEFAULT_VALUE = 8388608,
+    MYLITE_SESSION_MYISAM_SORT_BUFFER_SIZE_MIN_VALUE = 4096,
     MYLITE_SESSION_SORT_BUFFER_SIZE_DEFAULT_VALUE = 262144,
     MYLITE_SESSION_SORT_BUFFER_SIZE_MIN_VALUE = 32768,
     MYLITE_SESSION_UUID_NODE_SIZE = 6,
@@ -172,6 +174,12 @@ enum mylite_session_internal_tmp_mem_storage_engine {
     MYLITE_SESSION_INTERNAL_TMP_MEM_STORAGE_ENGINE_MEMORY = 1,
 };
 
+enum mylite_session_myisam_stats_method {
+    MYLITE_SESSION_MYISAM_STATS_METHOD_NULLS_UNEQUAL = 0,
+    MYLITE_SESSION_MYISAM_STATS_METHOD_NULLS_EQUAL = 1,
+    MYLITE_SESSION_MYISAM_STATS_METHOD_NULLS_IGNORED = 2,
+};
+
 struct mylite_session_state {
     uint64_t sql_mode;
     uint64_t connection_id;
@@ -195,6 +203,7 @@ struct mylite_session_state {
     uint64_t connection_memory_chunk_size;
     uint64_t connection_memory_limit;
     uint64_t join_buffer_size;
+    uint64_t myisam_sort_buffer_size;
     uint64_t sort_buffer_size;
     uint64_t catalog_generation;
     uint64_t sqlite_schema_generation;
@@ -235,6 +244,7 @@ struct mylite_session_state {
     enum mylite_transaction_access_mode next_transaction_access_mode;
     enum mylite_transaction_isolation active_transaction_isolation;
     enum mylite_session_internal_tmp_mem_storage_engine internal_tmp_mem_storage_engine;
+    enum mylite_session_myisam_stats_method myisam_stats_method;
     bool has_selected_schema;
     bool sql_mode_is_placeholder;
     bool time_zone_is_placeholder;

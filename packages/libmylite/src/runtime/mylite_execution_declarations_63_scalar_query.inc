@@ -1727,6 +1727,14 @@ static uint64_t join_buffer_size_system_variable_value(
     const struct mylite_db *database,
     bool global_scope
 );
+static uint64_t myisam_sort_buffer_size_system_variable_value(
+    const struct mylite_db *database,
+    bool global_scope
+);
+static const char *myisam_stats_method_system_variable_value(
+    const struct mylite_db *database,
+    bool global_scope
+);
 static uint64_t sort_buffer_size_system_variable_value(
     const struct mylite_db *database,
     bool global_scope

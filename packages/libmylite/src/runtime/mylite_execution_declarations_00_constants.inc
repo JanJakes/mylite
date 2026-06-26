@@ -770,6 +770,13 @@ static const uint64_t key_buffer_size_default_value = 8388608U;
 static const uint64_t key_cache_age_threshold_default_value = 300U;
 static const uint64_t key_cache_block_size_default_value = 1024U;
 static const uint64_t key_cache_division_limit_default_value = 100U;
+static const uint64_t myisam_data_pointer_size_default_value = 6ULL;
+static const uint64_t myisam_max_sort_file_size_default_value = 9223372036853727232ULL;
+static const uint64_t myisam_mmap_size_default_value = UINT64_MAX;
+static const uint64_t myisam_sort_buffer_size_default_value =
+    MYLITE_SESSION_MYISAM_SORT_BUFFER_SIZE_DEFAULT_VALUE;
+static const uint64_t myisam_sort_buffer_size_min_value =
+    MYLITE_SESSION_MYISAM_SORT_BUFFER_SIZE_MIN_VALUE;
 static const uint64_t sort_buffer_size_default_value =
     MYLITE_SESSION_SORT_BUFFER_SIZE_DEFAULT_VALUE;
 static const uint64_t sort_buffer_size_min_value = MYLITE_SESSION_SORT_BUFFER_SIZE_MIN_VALUE;

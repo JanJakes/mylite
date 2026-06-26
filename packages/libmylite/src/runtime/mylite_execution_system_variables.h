@@ -317,6 +317,13 @@ enum mylite_execution_system_variable_kind {
     MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_PREPARED_STMT_COUNT = 308,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_RELAY_LOG_SIZE = 309,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_WRITE_LOCK_COUNT = 310,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_DATA_POINTER_SIZE = 311,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_MAX_SORT_FILE_SIZE = 312,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_MMAP_SIZE = 313,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_RECOVER_OPTIONS = 314,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_SORT_BUFFER_SIZE = 315,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_STATS_METHOD = 316,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_USE_MMAP = 317,
 };
 
 struct mylite_execution_system_variable_descriptor {
@@ -384,6 +391,9 @@ bool mylite_execution_system_variable_is_read_only_binary_log(
     enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_read_only_mysqlx(
+    enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_is_read_only_myisam(
     enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_read_only_server_logging(

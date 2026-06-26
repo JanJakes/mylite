@@ -572,13 +572,13 @@ state through this fallback path.
 | `max_write_lock_count` | ✅ | Fixed global scalar/SHOW value `18446744073709551615`, global-only diagnostics, and exact/default global no-op SET; no write-lock scheduling effects |
 | `mecab_rc_file` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `min_examined_row_limit` | ❌ | Value, scope, SET, diagnostics |
-| `myisam_data_pointer_size` | ❌ | Value, scope, SET, diagnostics |
-| `myisam_max_sort_file_size` | ❌ | Value, scope, SET, diagnostics |
-| `myisam_mmap_size` | ❌ | Value, scope, SET, diagnostics |
-| `myisam_recover_options` | ❌ | Value, scope, SET, diagnostics |
-| `myisam_sort_buffer_size` | ❌ | Value, scope, SET, diagnostics |
-| `myisam_stats_method` | ❌ | Value, scope, SET, diagnostics |
-| `myisam_use_mmap` | ❌ | Value, scope, SET, diagnostics |
+| `myisam_data_pointer_size` | ✅ | Fixed global scalar/SHOW value `6`, global-only diagnostics, and exact/default global no-op SET; no MyISAM storage effects |
+| `myisam_max_sort_file_size` | ✅ | Fixed global scalar/SHOW value `9223372036853727232`, global-only diagnostics, and exact/default global no-op SET; no MyISAM sort-file sizing effects |
+| `myisam_mmap_size` | ✅ | Fixed global scalar/SHOW value `18446744073709551615`, global-only and read-only diagnostics; no MyISAM mmap behavior |
+| `myisam_recover_options` | ✅ | Fixed global scalar/SHOW value `OFF`, global-only and read-only diagnostics; no MyISAM recovery behavior |
+| `myisam_sort_buffer_size` | ✅ | Session/global readback, SHOW, session SET, clamp warnings, and default global no-op; no MyISAM sort-buffer allocation effects |
+| `myisam_stats_method` | ✅ | Session/global readback, SHOW, enum/integer/boolean session SET, diagnostics, and default global no-op; no MyISAM statistics effects |
+| `myisam_use_mmap` | ✅ | Fixed global scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no MyISAM mmap behavior |
 | `mysql_firewall_database` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `mysql_firewall_mode` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `mysql_firewall_reload_interval_seconds` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |

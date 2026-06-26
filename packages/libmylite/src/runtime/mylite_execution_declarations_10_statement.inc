@@ -816,6 +816,19 @@ static int apply_set_jl_system_variable_cell_value(
     enum mylite_session_user_variable_value_kind value_kind,
     bool *out_handled
 );
+static int apply_set_myisam_system_variable_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
+static int apply_set_myisam_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    bool *out_handled
+);
 static int apply_set_internal_tmp_mem_storage_engine_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -1195,6 +1208,94 @@ static int parse_set_sort_buffer_size_value(
     const struct mylite_sql_ast_node *value_node,
     uint64_t *out_value
 );
+static int validate_set_myisam_fixed_global_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int validate_set_myisam_fixed_global_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int validate_set_myisam_fixed_uint64_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    uint64_t expected_value,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int apply_set_myisam_sort_buffer_size_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int apply_set_myisam_sort_buffer_size_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int parse_set_myisam_sort_buffer_size_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+);
+static int parse_set_myisam_sort_buffer_size_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    uint64_t *out_value
+);
+static int parse_myisam_sort_buffer_size_integer(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_source_span *unsigned_span,
+    bool negative,
+    const char *value_text,
+    uint64_t *out_value
+);
+static int apply_set_myisam_stats_method_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int apply_set_myisam_stats_method_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int parse_set_myisam_stats_method_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    enum mylite_session_myisam_stats_method *out_value
+);
+static int parse_set_myisam_stats_method_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    enum mylite_session_myisam_stats_method *out_value
+);
+static int parse_myisam_stats_method_text(
+    struct mylite_db *database,
+    const char *variable_name,
+    const char *text,
+    enum mylite_session_myisam_stats_method *out_value
+);
+static int parse_myisam_stats_method_integer(
+    struct mylite_db *database,
+    const char *variable_name,
+    uint64_t magnitude,
+    const char *value_text,
+    enum mylite_session_myisam_stats_method *out_value
+);
+static const char *myisam_stats_method_text(enum mylite_session_myisam_stats_method value);
 static int parse_sort_buffer_size_integer(
     struct mylite_db *database,
     const char *variable_name,

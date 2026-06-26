@@ -290,6 +290,13 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `max_prepared_stmt_count` | yes | yes | `16382` |
 | `max_relay_log_size` | yes | yes | `0` |
 | `max_write_lock_count` | yes | yes | `18446744073709551615` |
+| `myisam_data_pointer_size` | yes | yes | `6` |
+| `myisam_max_sort_file_size` | yes | yes | `9223372036853727232` |
+| `myisam_mmap_size` | yes | yes | `18446744073709551615` |
+| `myisam_recover_options` | yes | yes | `OFF` |
+| `myisam_sort_buffer_size` | yes | yes | current session value or fixed global `8388608` |
+| `myisam_stats_method` | yes | yes | current session value or fixed global `nulls_unequal` |
+| `myisam_use_mmap` | yes | yes | `OFF` |
 | `mysql_native_password_proxy_users` | yes | yes | `OFF` |
 | `mysqlx_bind_address` | yes | yes | `*` |
 | `mysqlx_compression_algorithms` | yes | yes | `DEFLATE_STREAM,LZ4_MESSAGE,ZSTD_STREAM` |

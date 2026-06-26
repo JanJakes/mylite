@@ -38,6 +38,7 @@ static int copy_set_session_snapshot(
     out_snapshot->connection_memory_chunk_size = session->connection_memory_chunk_size;
     out_snapshot->connection_memory_limit = session->connection_memory_limit;
     out_snapshot->join_buffer_size = session->join_buffer_size;
+    out_snapshot->myisam_sort_buffer_size = session->myisam_sort_buffer_size;
     out_snapshot->sort_buffer_size = session->sort_buffer_size;
     out_snapshot->timestamp_override = session->timestamp_override;
     out_snapshot->time_zone_offset_minutes = session->time_zone_offset_minutes;
@@ -46,6 +47,7 @@ static int copy_set_session_snapshot(
     out_snapshot->next_transaction_isolation = session->next_transaction_isolation;
     out_snapshot->next_transaction_access_mode = session->next_transaction_access_mode;
     out_snapshot->internal_tmp_mem_storage_engine = session->internal_tmp_mem_storage_engine;
+    out_snapshot->myisam_stats_method = session->myisam_stats_method;
     out_snapshot->sql_mode_is_placeholder = session->sql_mode_is_placeholder;
     out_snapshot->time_zone_is_placeholder = session->time_zone_is_placeholder;
     out_snapshot->character_set_state_is_placeholder = session->character_set_state_is_placeholder;
@@ -229,6 +231,7 @@ static void restore_set_session_snapshot(
     session->connection_memory_chunk_size = snapshot->connection_memory_chunk_size;
     session->connection_memory_limit = snapshot->connection_memory_limit;
     session->join_buffer_size = snapshot->join_buffer_size;
+    session->myisam_sort_buffer_size = snapshot->myisam_sort_buffer_size;
     session->sort_buffer_size = snapshot->sort_buffer_size;
     session->timestamp_override = snapshot->timestamp_override;
     session->time_zone_offset_minutes = snapshot->time_zone_offset_minutes;
@@ -237,6 +240,7 @@ static void restore_set_session_snapshot(
     session->next_transaction_isolation = snapshot->next_transaction_isolation;
     session->next_transaction_access_mode = snapshot->next_transaction_access_mode;
     session->internal_tmp_mem_storage_engine = snapshot->internal_tmp_mem_storage_engine;
+    session->myisam_stats_method = snapshot->myisam_stats_method;
     session->sql_mode_is_placeholder = snapshot->sql_mode_is_placeholder;
     session->time_zone_is_placeholder = snapshot->time_zone_is_placeholder;
     session->character_set_state_is_placeholder = snapshot->character_set_state_is_placeholder;

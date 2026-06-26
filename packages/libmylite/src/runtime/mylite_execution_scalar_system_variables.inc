@@ -254,6 +254,34 @@ static int system_variable_value(
             join_buffer_size_system_variable_value(database, global_scope),
             out_cell
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_DATA_POINTER_SIZE:
+        return format_session_scalar_uint64_value(
+            database,
+            myisam_data_pointer_size_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_MAX_SORT_FILE_SIZE:
+        return format_session_scalar_uint64_value(
+            database,
+            myisam_max_sort_file_size_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_MMAP_SIZE:
+        return format_session_scalar_uint64_value(database, myisam_mmap_size_default_value, out_cell);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_RECOVER_OPTIONS:
+        out_cell->value = "OFF";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_SORT_BUFFER_SIZE:
+        return format_session_scalar_uint64_value(
+            database,
+            myisam_sort_buffer_size_system_variable_value(database, global_scope),
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_STATS_METHOD:
+        out_cell->value = myisam_stats_method_system_variable_value(database, global_scope);
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_USE_MMAP:
+        return format_session_scalar_uint64_value(database, 0U, out_cell);
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_TRACKING:
         return format_session_scalar_uint64_value(
             database,
@@ -798,6 +826,26 @@ static uint64_t join_buffer_size_system_variable_value(
     return database->session.join_buffer_size;
 }
 
+static uint64_t myisam_sort_buffer_size_system_variable_value(
+    const struct mylite_db *database,
+    bool global_scope
+) {
+    if (global_scope || database == NULL) {
+        return myisam_sort_buffer_size_default_value;
+    }
+    return database->session.myisam_sort_buffer_size;
+}
+
+static const char *myisam_stats_method_system_variable_value(
+    const struct mylite_db *database,
+    bool global_scope
+) {
+    if (global_scope || database == NULL) {
+        return "nulls_unequal";
+    }
+    return myisam_stats_method_text(database->session.myisam_stats_method);
+}
+
 static uint64_t sort_buffer_size_system_variable_value(
     const struct mylite_db *database,
     bool global_scope
@@ -1271,6 +1319,47 @@ static int show_system_variable_value(
             integer_buffer_size,
             out_value
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_DATA_POINTER_SIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            myisam_data_pointer_size_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_MAX_SORT_FILE_SIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            myisam_max_sort_file_size_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_MMAP_SIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            myisam_mmap_size_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_RECOVER_OPTIONS:
+        *out_value = "OFF";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_SORT_BUFFER_SIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            myisam_sort_buffer_size_system_variable_value(database, global_scope),
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_STATS_METHOD:
+        *out_value = myisam_stats_method_system_variable_value(database, global_scope);
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_USE_MMAP:
+        *out_value = "OFF";
+        return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_LIMIT:
         return format_show_system_variable_uint64_value(
             database,

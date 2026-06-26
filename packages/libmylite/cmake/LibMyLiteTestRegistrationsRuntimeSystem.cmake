@@ -621,6 +621,10 @@
     COMMAND mylite_runtime_innodb_file_flush_system_variables_test
   )
   add_test(
+    NAME libmylite.runtime.innodb_fulltext_system_variables
+    COMMAND mylite_runtime_innodb_fulltext_system_variables_test
+  )
+  add_test(
     NAME libmylite.runtime.network_timeout_system_variables
     COMMAND mylite_runtime_network_timeout_system_variables_test
   )

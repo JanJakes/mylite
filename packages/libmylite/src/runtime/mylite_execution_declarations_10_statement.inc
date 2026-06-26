@@ -1284,6 +1284,20 @@ static int validate_set_innodb_storage_fixed_text_cell_value(
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind
 );
+static bool innodb_storage_system_variable_allows_session_assignment(
+    enum mylite_execution_system_variable_kind kind
+);
+static int validate_set_innodb_storage_nullable_table_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int validate_set_innodb_storage_nullable_table_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
 static int validate_set_myisam_fixed_global_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,

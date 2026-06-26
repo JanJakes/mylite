@@ -370,18 +370,18 @@ state through this fallback path.
 | `innodb_force_load_corrupted` | ✅ | Fixed global read-only scalar `0`/SHOW `OFF`; no corrupted-page loading mode |
 | `innodb_force_recovery` | ✅ | Fixed global read-only scalar/SHOW value `0`; no InnoDB recovery mode behavior |
 | `innodb_fsync_threshold` | ✅ | Fixed global scalar/SHOW value `0`, global-only diagnostics, and exact/default global no-op SET; no fsync threshold scheduling |
-| `innodb_ft_aux_table` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_ft_cache_size` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_ft_enable_diag_print` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_ft_enable_stopword` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_ft_max_token_size` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_ft_min_token_size` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_ft_num_word_optimize` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_ft_result_cache_limit` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_ft_server_stopword_table` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_ft_sort_pll_degree` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_ft_total_cache_size` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_ft_user_stopword_table` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_ft_aux_table` | ✅ | Fixed global scalar `NULL`/empty SHOW, global-only diagnostics, and `DEFAULT`/`NULL` global no-op SET; no auxiliary table selection |
+| `innodb_ft_cache_size` | ✅ | Fixed global read-only scalar/SHOW value `8000000`; no full-text cache allocation |
+| `innodb_ft_enable_diag_print` | ✅ | Fixed global scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no diagnostic printing |
+| `innodb_ft_enable_stopword` | ✅ | Fixed global scalar `1`/SHOW `ON`, session-local boolean SET/readback, and exact/default global no-op SET; no stopword index effects |
+| `innodb_ft_max_token_size` | ✅ | Fixed global read-only scalar/SHOW value `84`; no token parser limit |
+| `innodb_ft_min_token_size` | ✅ | Fixed global read-only scalar/SHOW value `3`; no token parser limit |
+| `innodb_ft_num_word_optimize` | ✅ | Fixed global scalar/SHOW value `2000`, global-only diagnostics, and exact/default global no-op SET; no optimize batch behavior |
+| `innodb_ft_result_cache_limit` | ✅ | Fixed global scalar/SHOW value `2000000000`, global-only diagnostics, and exact/default global no-op SET; no result-cache sizing |
+| `innodb_ft_server_stopword_table` | ✅ | Fixed global scalar `NULL`/empty SHOW, global-only diagnostics, and `DEFAULT`/`NULL` global no-op SET; no server stopword table loading |
+| `innodb_ft_sort_pll_degree` | ✅ | Fixed global read-only scalar/SHOW value `2`; no full-text sort parallelism |
+| `innodb_ft_total_cache_size` | ✅ | Fixed global read-only scalar/SHOW value `640000000`; no total full-text cache allocation |
+| `innodb_ft_user_stopword_table` | ✅ | Fixed scalar `NULL`/empty SHOW, session/global `DEFAULT`/`NULL` no-op SET, and non-null table-name diagnostics; no user stopword table loading |
 | `innodb_idle_flush_pct` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_io_capacity` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_io_capacity_max` | ❌ | Value, scope, SET, diagnostics |

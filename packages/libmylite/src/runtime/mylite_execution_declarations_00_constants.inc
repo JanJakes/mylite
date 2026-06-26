@@ -828,6 +828,15 @@ static const uint64_t innodb_flushing_avg_loops_default_value = 30ULL;
 static const uint64_t innodb_force_load_corrupted_default_value = 0ULL;
 static const uint64_t innodb_force_recovery_default_value = 0ULL;
 static const uint64_t innodb_fsync_threshold_default_value = 0ULL;
+static const uint64_t innodb_ft_cache_size_default_value = 8000000ULL;
+static const uint64_t innodb_ft_enable_diag_print_default_value = 0ULL;
+static const uint64_t innodb_ft_enable_stopword_default_value = 1ULL;
+static const uint64_t innodb_ft_max_token_size_default_value = 84ULL;
+static const uint64_t innodb_ft_min_token_size_default_value = 3ULL;
+static const uint64_t innodb_ft_num_word_optimize_default_value = 2000ULL;
+static const uint64_t innodb_ft_result_cache_limit_default_value = 2000000000ULL;
+static const uint64_t innodb_ft_sort_pll_degree_default_value = 2ULL;
+static const uint64_t innodb_ft_total_cache_size_default_value = 640000000ULL;
 static const uint64_t sort_buffer_size_default_value =
     MYLITE_SESSION_SORT_BUFFER_SIZE_DEFAULT_VALUE;
 static const uint64_t sort_buffer_size_min_value = MYLITE_SESSION_SORT_BUFFER_SIZE_MIN_VALUE;

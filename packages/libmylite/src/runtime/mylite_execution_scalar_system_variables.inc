@@ -576,6 +576,69 @@ static int system_variable_value(
             innodb_fsync_threshold_default_value,
             out_cell
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_AUX_TABLE:
+        out_cell->value = NULL;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_CACHE_SIZE:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_ft_cache_size_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_ENABLE_DIAG_PRINT:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_ft_enable_diag_print_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_ENABLE_STOPWORD:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_ft_enable_stopword_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_MAX_TOKEN_SIZE:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_ft_max_token_size_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_MIN_TOKEN_SIZE:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_ft_min_token_size_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_NUM_WORD_OPTIMIZE:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_ft_num_word_optimize_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_RESULT_CACHE_LIMIT:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_ft_result_cache_limit_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_SERVER_STOPWORD_TABLE:
+        out_cell->value = NULL;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_SORT_PLL_DEGREE:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_ft_sort_pll_degree_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_TOTAL_CACHE_SIZE:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_ft_total_cache_size_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_USER_STOPWORD_TABLE:
+        out_cell->value = NULL;
+        return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_TRACKING:
         return format_session_scalar_uint64_value(
             database,
@@ -1952,6 +2015,77 @@ static int show_system_variable_value(
             integer_buffer_size,
             out_value
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_AUX_TABLE:
+        *out_value = "";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_CACHE_SIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_ft_cache_size_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_ENABLE_DIAG_PRINT:
+        *out_value = "OFF";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_ENABLE_STOPWORD:
+        *out_value = "ON";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_MAX_TOKEN_SIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_ft_max_token_size_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_MIN_TOKEN_SIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_ft_min_token_size_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_NUM_WORD_OPTIMIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_ft_num_word_optimize_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_RESULT_CACHE_LIMIT:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_ft_result_cache_limit_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_SERVER_STOPWORD_TABLE:
+        *out_value = "";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_SORT_PLL_DEGREE:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_ft_sort_pll_degree_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_TOTAL_CACHE_SIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_ft_total_cache_size_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_USER_STOPWORD_TABLE:
+        *out_value = "";
+        return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_LIMIT:
         return format_show_system_variable_uint64_value(
             database,

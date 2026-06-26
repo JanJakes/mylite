@@ -278,8 +278,18 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `locked_in_memory` | yes | yes | `OFF` |
 | `lower_case_file_system` | yes | yes | `OFF` |
 | `lower_case_table_names` | yes | yes | `0` |
-| `max_allowed_packet` | yes | yes | `67108864` |
 | `mandatory_roles` | yes | yes | empty string |
+| `master_verify_checksum` | yes | yes | `OFF` |
+| `max_allowed_packet` | yes | yes | `67108864` |
+| `max_binlog_cache_size` | yes | yes | `18446744073709547520` |
+| `max_binlog_size` | yes | yes | `1073741824` |
+| `max_binlog_stmt_cache_size` | yes | yes | `18446744073709547520` |
+| `max_connect_errors` | yes | yes | `100` |
+| `max_connections` | yes | yes | `151` |
+| `max_digest_length` | yes | yes | `1024` |
+| `max_prepared_stmt_count` | yes | yes | `16382` |
+| `max_relay_log_size` | yes | yes | `0` |
+| `max_write_lock_count` | yes | yes | `18446744073709551615` |
 | `mysql_native_password_proxy_users` | yes | yes | `OFF` |
 | `mysqlx_bind_address` | yes | yes | `*` |
 | `mysqlx_compression_algorithms` | yes | yes | `DEFLATE_STREAM,LZ4_MESSAGE,ZSTD_STREAM` |

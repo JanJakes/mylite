@@ -547,15 +547,15 @@ state through this fallback path.
 | `lower_case_file_system` | 🟡 | Limited fixed global read-only scalar value `0`; `SHOW VARIABLES` displays `OFF`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; no host filesystem probing, startup option handling, value `1`, or changed identifier behavior |
 | `lower_case_table_names` | 🟡 | Limited fixed global read-only scalar value `0`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; no startup option handling, values `1`/`2`, case-insensitive schema/table lookup, catalog collation changes, or coupling to `lower_case_file_system` |
 | `mandatory_roles` | ✅ | Fixed global empty scalar/SHOW value, global-only diagnostics, and exact/default global no-op SET; no role activation or privilege effects |
-| `master_verify_checksum` | ❌ | Value, scope, SET, diagnostics |
+| `master_verify_checksum` | ✅ | Fixed deprecated global scalar `0`/SHOW `OFF`, global-only diagnostics, default/OFF global no-op SET, and deprecation warning; no replication checksum effects |
 | `max_allowed_packet` | 🟡 | Limited fixed scalar value `67108864`; default/global/session/local scalar reads and `SHOW VARIABLES` rows are supported; non-global `SET` targets return MySQL-style session-read-only diagnostics; exact no-op global `SET` forms may preserve the fixed value; no mutable state, packet-size enforcement, string/result-buffer limits, rounding warnings, or privilege semantics |
-| `max_binlog_cache_size` | ❌ | Value, scope, SET, diagnostics |
-| `max_binlog_size` | ❌ | Value, scope, SET, diagnostics |
-| `max_binlog_stmt_cache_size` | ❌ | Value, scope, SET, diagnostics |
-| `max_connect_errors` | ❌ | Value, scope, SET, diagnostics |
-| `max_connections` | ❌ | Value, scope, SET, diagnostics |
+| `max_binlog_cache_size` | ✅ | Fixed global scalar/SHOW value `18446744073709547520`, global-only diagnostics, and exact/default global no-op SET; no binary-log cache sizing effects |
+| `max_binlog_size` | ✅ | Fixed global scalar/SHOW value `1073741824`, global-only diagnostics, and exact/default global no-op SET; no binary-log file sizing effects |
+| `max_binlog_stmt_cache_size` | ✅ | Fixed global scalar/SHOW value `18446744073709547520`, global-only diagnostics, and exact/default global no-op SET; no statement-cache sizing effects |
+| `max_connect_errors` | ✅ | Fixed global scalar/SHOW value `100`, global-only diagnostics, and exact/default global no-op SET; no host-cache blocking or connection admission effects |
+| `max_connections` | ✅ | Fixed global scalar/SHOW value `151`, global-only diagnostics, and exact/default global no-op SET; no connection admission or thread scheduling effects |
 | `max_delayed_threads` | ❌ | Value, scope, SET, diagnostics |
-| `max_digest_length` | ❌ | Value, scope, SET, diagnostics |
+| `max_digest_length` | ✅ | Fixed global scalar/SHOW value `1024`, global-only diagnostics, and read-only SET diagnostics; no digest truncation side effects |
 | `max_error_count` | 🟡 | Limited scalar `SELECT @@max_error_count` with no scope, `session`, `local`, or fixed `global`; `SHOW VARIABLES` rows; handle-local session `SET` assignment for no scope, `SESSION`, `LOCAL`, direct `@@variable`, `@@session`, and `@@local` forms using `DEFAULT`, unsigned integer, unary-signed integer, `TRUE`/`FALSE`, and integer user-variable values; values clamp to `0..65535` with warning `1292`; retained diagnostics rows are capped while total warning counts are preserved for current warning/note producers. Global reads remain fixed at `1024`, exact default global no-op assignments may be accepted, and there is no mutable shared global state, persisted/startup value, privilege model, Performance Schema variable table, diagnostics stack, or broader warning producer coverage |
 | `max_execution_time` | ❌ | Value, scope, SET, diagnostics |
 | `max_heap_table_size` | ❌ | Value, scope, SET, diagnostics |
@@ -563,13 +563,13 @@ state through this fallback path.
 | `max_join_size` | ❌ | Value, scope, SET, diagnostics |
 | `max_length_for_sort_data` | ❌ | Value, scope, SET, diagnostics |
 | `max_points_in_geometry` | ❌ | Value, scope, SET, diagnostics |
-| `max_prepared_stmt_count` | ❌ | Value, scope, SET, diagnostics |
-| `max_relay_log_size` | ❌ | Value, scope, SET, diagnostics |
+| `max_prepared_stmt_count` | ✅ | Fixed global scalar/SHOW value `16382`, global-only diagnostics, and exact/default global no-op SET; no prepared-statement count enforcement |
+| `max_relay_log_size` | ✅ | Fixed global scalar/SHOW value `0`, global-only diagnostics, and exact/default global no-op SET; no relay-log file sizing effects |
 | `max_seeks_for_key` | ❌ | Value, scope, SET, diagnostics |
 | `max_sort_length` | ❌ | Value, scope, SET, diagnostics |
 | `max_sp_recursion_depth` | ❌ | Value, scope, SET, diagnostics |
 | `max_user_connections` | ❌ | Value, scope, SET, diagnostics |
-| `max_write_lock_count` | ❌ | Value, scope, SET, diagnostics |
+| `max_write_lock_count` | ✅ | Fixed global scalar/SHOW value `18446744073709551615`, global-only diagnostics, and exact/default global no-op SET; no write-lock scheduling effects |
 | `mecab_rc_file` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `min_examined_row_limit` | ❌ | Value, scope, SET, diagnostics |
 | `myisam_data_pointer_size` | ❌ | Value, scope, SET, diagnostics |

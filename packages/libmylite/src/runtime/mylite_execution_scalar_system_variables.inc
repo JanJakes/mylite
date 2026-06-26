@@ -1592,6 +1592,16 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LC_MESSAGES:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LC_MESSAGES_DIR:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MANDATORY_ROLES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MASTER_VERIFY_CHECKSUM:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_BINLOG_CACHE_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_BINLOG_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_BINLOG_STMT_CACHE_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_CONNECT_ERRORS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_CONNECTIONS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_DIGEST_LENGTH:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_PREPARED_STMT_COUNT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_RELAY_LOG_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_WRITE_LOCK_COUNT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTHENTICATION_POLICY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_CACHING_SHA2_PASSWORD_DIGEST_ROUNDS:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_CACHING_SHA2_PASSWORD_PRIVATE_KEY_PATH:
@@ -1819,6 +1829,15 @@ static int append_system_variable_read_warning(
             "HY000",
             "'@@log_statements_unsafe_for_binlog' is deprecated and will be removed in a future "
             "release."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_MASTER_VERIFY_CHECKSUM) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@master_verify_checksum' is deprecated and will be removed in a future release. "
+            "Please use source_verify_checksum instead."
         );
     }
 

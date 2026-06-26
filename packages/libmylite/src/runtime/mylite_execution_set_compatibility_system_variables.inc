@@ -11,6 +11,11 @@ static const uint64_t generated_random_password_length_default_value = 20ULL;
 static const uint64_t gtid_executed_compression_period_default_value = 0ULL;
 static const uint64_t histogram_generation_max_mem_size_default_value = 20000000ULL;
 static const uint64_t immediate_server_version_default_value = 999999ULL;
+static const uint64_t max_binlog_cache_size_default_value = 18446744073709547520ULL;
+static const uint64_t max_binlog_size_default_value = 1073741824ULL;
+static const uint64_t max_connect_errors_default_value = 100ULL;
+static const uint64_t max_connections_default_value = 151ULL;
+static const uint64_t max_prepared_stmt_count_default_value = 16382ULL;
 
 static int apply_set_compatibility_system_variable_assignment(
     struct mylite_db *database,
@@ -108,6 +113,7 @@ static bool compatibility_system_variable_is_boolean(
     switch (kind) {
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_TABLE_ENCRYPTION:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_FLUSH:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MASTER_VERIFY_CHECKSUM:
         return true;
     default:
         return false;
@@ -131,6 +137,14 @@ static bool compatibility_system_variable_is_uint64(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_EXECUTED_COMPRESSION_PERIOD:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_HISTOGRAM_GENERATION_MAX_MEM_SIZE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_IMMEDIATE_SERVER_VERSION:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_BINLOG_CACHE_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_BINLOG_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_BINLOG_STMT_CACHE_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_CONNECT_ERRORS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_CONNECTIONS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_PREPARED_STMT_COUNT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_RELAY_LOG_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_WRITE_LOCK_COUNT:
         return true;
     default:
         return false;
@@ -167,6 +181,21 @@ static uint64_t compatibility_system_variable_uint64_value(
         return histogram_generation_max_mem_size_default_value;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_IMMEDIATE_SERVER_VERSION:
         return immediate_server_version_default_value;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_BINLOG_CACHE_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_BINLOG_STMT_CACHE_SIZE:
+        return max_binlog_cache_size_default_value;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_BINLOG_SIZE:
+        return max_binlog_size_default_value;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_CONNECT_ERRORS:
+        return max_connect_errors_default_value;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_CONNECTIONS:
+        return max_connections_default_value;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_PREPARED_STMT_COUNT:
+        return max_prepared_stmt_count_default_value;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_RELAY_LOG_SIZE:
+        return 0ULL;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_WRITE_LOCK_COUNT:
+        return UINT64_MAX;
     default:
         return 0ULL;
     }
@@ -181,6 +210,7 @@ static int append_compatibility_system_variable_set_warning_if_needed(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DELAYED_INSERT_TIMEOUT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DELAYED_QUEUE_SIZE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INIT_SLAVE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MASTER_VERIFY_CHECKSUM:
         return append_system_variable_read_warning(database, kind);
     default:
         return MYLITE_OK;

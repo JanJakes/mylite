@@ -601,6 +601,10 @@
     COMMAND mylite_runtime_jl_system_variables_test
   )
   add_test(
+    NAME libmylite.runtime.m_server_limit_system_variables
+    COMMAND mylite_runtime_m_server_limit_system_variables_test
+  )
+  add_test(
     NAME libmylite.runtime.network_timeout_system_variables
     COMMAND mylite_runtime_network_timeout_system_variables_test
   )

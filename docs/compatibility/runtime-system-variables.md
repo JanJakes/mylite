@@ -472,13 +472,13 @@ state through this fallback path.
 | `innodb_write_io_threads` | ❌ | Value, scope, SET, diagnostics |
 | `insert_id` | ❌ | Next AUTO_INCREMENT allocation semantics, scalar/SHOW value, SET behavior, and diagnostics |
 | `interactive_timeout` | 🟡 | Limited handle-local session scalar reads, `SHOW VARIABLES` rows, and session/local/unqualified `SET` assignment with MySQL-compatible integer range `1..31536000`, `DEFAULT = 28800`, boolean conversion, clamp warnings, and integer user-variable assignment. Global reads expose fixed `28800` and mutable global assignment is limited to exact no-op `DEFAULT`/`28800` forms; no idle timeout enforcement, protocol behavior, startup options, persisted state, privileges, or Performance Schema rows |
-| `internal_tmp_mem_storage_engine` | ❌ | Value, scope, SET, diagnostics |
-| `join_buffer_size` | ❌ | Value, scope, SET, diagnostics |
+| `internal_tmp_mem_storage_engine` | ✅ | Session/global scalar and `SHOW VARIABLES` readback, session `SET` for `DEFAULT`/`TempTable`/`MEMORY`/`1`/`0`, invalid-value diagnostics, and fixed global no-op forms; no temp-table engine routing or mutable shared global state |
+| `join_buffer_size` | ✅ | Session/global scalar and `SHOW VARIABLES` readback, session integer/user-variable `SET`, 128-byte rounding and clamp warnings, type diagnostics, and fixed global no-op forms; no join-buffer allocation or optimizer side effects |
 | `keep_files_on_create` | ✅ | Fixed default/session/global scalar `0` and `SHOW VARIABLES` `OFF`; session placeholder `SET` readback and fixed global no-op assignments are supported. No temporary-file retention behavior, startup options, persisted state, or Performance Schema variable tables |
-| `key_buffer_size` | ❌ | Value, scope, SET, diagnostics |
-| `key_cache_age_threshold` | ❌ | Value, scope, SET, diagnostics |
-| `key_cache_block_size` | ❌ | Value, scope, SET, diagnostics |
-| `key_cache_division_limit` | ❌ | Value, scope, SET, diagnostics |
+| `key_buffer_size` | ✅ | Fixed global scalar/SHOW value `8388608`, global-only diagnostics, and exact/default global no-op SET; no MyISAM key cache allocation |
+| `key_cache_age_threshold` | ✅ | Fixed global scalar/SHOW value `300`, global-only diagnostics, and exact/default global no-op SET; no MyISAM key cache behavior |
+| `key_cache_block_size` | ✅ | Fixed global scalar/SHOW value `1024`, global-only diagnostics, and exact/default global no-op SET; no MyISAM key cache behavior |
+| `key_cache_division_limit` | ✅ | Fixed global scalar/SHOW value `100`, global-only diagnostics, and exact/default global no-op SET; no MyISAM key cache behavior |
 | `keyring_aws_cmk_id` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `keyring_aws_conf_file` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `keyring_aws_data_file` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
@@ -497,16 +497,16 @@ state through this fallback path.
 | `keyring_hashicorp_server_url` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `keyring_hashicorp_store_path` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `keyring_okv_conf_dir` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `keyring_operations` | ❌ | Value, scope, SET, diagnostics |
-| `large_files_support` | ❌ | Value, scope, SET, diagnostics |
-| `large_page_size` | ❌ | Value, scope, SET, diagnostics |
-| `large_pages` | ❌ | Value, scope, SET, diagnostics |
+| `keyring_operations` | ✅ | Fixed global scalar `1`/SHOW `ON`, global-only diagnostics, and exact/default global no-op SET; no keyring service effects |
+| `large_files_support` | ✅ | Fixed global scalar `1`/SHOW `ON` with read-only diagnostics; no host capability probing |
+| `large_page_size` | ✅ | Fixed global scalar/SHOW value `0` with read-only diagnostics; no large-page allocation |
+| `large_pages` | ✅ | Fixed global scalar `0`/SHOW `OFF` with read-only diagnostics; no large-page allocation |
 | `last_insert_id` | ✅ | Session-only alias for MyLite's handle-local last-insert-id state; scalar reads, `SHOW VARIABLES`, integer/boolean/user-variable SET, default/global diagnostics, and negative clamp warning are MySQL-runtime verified |
-| `lc_messages` | ❌ | Value, scope, SET, diagnostics |
-| `lc_messages_dir` | ❌ | Value, scope, SET, diagnostics |
+| `lc_messages` | ✅ | Fixed English scalar/SHOW readback with `DEFAULT`/`en_US` no-op SET and unknown-locale diagnostics; no localized diagnostics or message-file loading |
+| `lc_messages_dir` | ✅ | Fixed global scalar/SHOW path `/usr/share/mysql-8.4/` with read-only diagnostics; no message-file loading |
 | `lc_time_names` | ❌ | Value, scope, SET, diagnostics |
 | `license` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` compatibility placeholder `GPL`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. The placeholder is not a project license notice; no server-build license discovery or startup option behavior |
-| `local_infile` | ❌ | Value, scope, SET, diagnostics |
+| `local_infile` | ✅ | Fixed global scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no client/server `LOAD DATA LOCAL` transport toggling |
 | `lock_order` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `lock_order_debug_loop` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `lock_order_debug_missing_arc` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
@@ -521,7 +521,7 @@ state through this fallback path.
 | `lock_order_trace_missing_key` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `lock_order_trace_missing_unlock` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `lock_wait_timeout` | ✅ | Session/global readback, SHOW, session SET, clamp warnings, and default global no-op; no metadata-lock timeout side effects |
-| `locked_in_memory` | ❌ | Value, scope, SET, diagnostics |
+| `locked_in_memory` | ✅ | Fixed global scalar `0`/SHOW `OFF` with read-only diagnostics; no process memory locking |
 | `log_bin` | 🟡 | Limited fixed global scalar value `1`; `SHOW VARIABLES` displays `ON`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; assignment returns MySQL-style read-only diagnostics; no binary log files, GTID recovery, replication side effects, startup option handling, or mutable state |
 | `log_bin_basename` | 🟡 | Limited fixed global scalar and `SHOW VARIABLES` value `binlog`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; assignment returns MySQL-style read-only diagnostics; no configured data directory, binary log files, path expansion, rotation, or startup option handling |
 | `log_bin_index` | 🟡 | Limited fixed global scalar and `SHOW VARIABLES` value `binlog.index`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; assignment returns MySQL-style read-only diagnostics; no binary log index file, configured path, rotation, or startup option handling |
@@ -546,7 +546,7 @@ state through this fallback path.
 | `low_priority_updates` | ✅ | Session/global readback, SHOW, session SET, and default global no-op; no low-priority scheduling side effects |
 | `lower_case_file_system` | 🟡 | Limited fixed global read-only scalar value `0`; `SHOW VARIABLES` displays `OFF`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; no host filesystem probing, startup option handling, value `1`, or changed identifier behavior |
 | `lower_case_table_names` | 🟡 | Limited fixed global read-only scalar value `0`; default/global scalar reads and `SHOW VARIABLES` rows are supported; session/local scalar reads return MySQL-style global-variable diagnostics; no startup option handling, values `1`/`2`, case-insensitive schema/table lookup, catalog collation changes, or coupling to `lower_case_file_system` |
-| `mandatory_roles` | ❌ | Value, scope, SET, diagnostics |
+| `mandatory_roles` | ✅ | Fixed global empty scalar/SHOW value, global-only diagnostics, and exact/default global no-op SET; no role activation or privilege effects |
 | `master_verify_checksum` | ❌ | Value, scope, SET, diagnostics |
 | `max_allowed_packet` | 🟡 | Limited fixed scalar value `67108864`; default/global/session/local scalar reads and `SHOW VARIABLES` rows are supported; non-global `SET` targets return MySQL-style session-read-only diagnostics; exact no-op global `SET` forms may preserve the fixed value; no mutable state, packet-size enforcement, string/result-buffer limits, rounding warnings, or privilege semantics |
 | `max_binlog_cache_size` | ❌ | Value, scope, SET, diagnostics |

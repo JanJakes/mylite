@@ -244,6 +244,16 @@ static int system_variable_value(
             connection_memory_system_variable_value(database, variable, global_scope),
             out_cell
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INTERNAL_TMP_MEM_STORAGE_ENGINE:
+        out_cell->value =
+            internal_tmp_mem_storage_engine_system_variable_value(database, global_scope);
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_JOIN_BUFFER_SIZE:
+        return format_session_scalar_uint64_value(
+            database,
+            join_buffer_size_system_variable_value(database, global_scope),
+            out_cell
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_TRACKING:
         return format_session_scalar_uint64_value(
             database,
@@ -764,6 +774,30 @@ static uint64_t global_connection_memory_tracking_system_variable_value(
     return 0U;
 }
 
+static const char *internal_tmp_mem_storage_engine_system_variable_value(
+    const struct mylite_db *database,
+    bool global_scope
+) {
+    if (global_scope || database == NULL) {
+        return "TempTable";
+    }
+    if (database->session.internal_tmp_mem_storage_engine ==
+        MYLITE_SESSION_INTERNAL_TMP_MEM_STORAGE_ENGINE_MEMORY) {
+        return "MEMORY";
+    }
+    return "TempTable";
+}
+
+static uint64_t join_buffer_size_system_variable_value(
+    const struct mylite_db *database,
+    bool global_scope
+) {
+    if (global_scope || database == NULL) {
+        return join_buffer_size_default_value;
+    }
+    return database->session.join_buffer_size;
+}
+
 static uint64_t sort_buffer_size_system_variable_value(
     const struct mylite_db *database,
     bool global_scope
@@ -1226,6 +1260,17 @@ static int show_system_variable_value(
             integer_buffer_size,
             out_value
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INTERNAL_TMP_MEM_STORAGE_ENGINE:
+        *out_value = internal_tmp_mem_storage_engine_system_variable_value(database, global_scope);
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_JOIN_BUFFER_SIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            join_buffer_size_system_variable_value(database, global_scope),
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_LIMIT:
         return format_show_system_variable_uint64_value(
             database,
@@ -1539,6 +1584,14 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INIT_FILE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INIT_REPLICA:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INIT_SLAVE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_KEY_BUFFER_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_KEY_CACHE_AGE_THRESHOLD:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_KEY_CACHE_BLOCK_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_KEY_CACHE_DIVISION_LIMIT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LARGE_PAGE_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LC_MESSAGES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LC_MESSAGES_DIR:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_MANDATORY_ROLES:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTHENTICATION_POLICY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_CACHING_SHA2_PASSWORD_DIGEST_ROUNDS:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_CACHING_SHA2_PASSWORD_PRIVATE_KEY_PATH:
@@ -1546,6 +1599,11 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_PASSWORD_LIFETIME:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_END_MARKERS_IN_JSON:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_KEEP_FILES_ON_CREATE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_KEYRING_OPERATIONS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LARGE_FILES_SUPPORT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LARGE_PAGES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOCAL_INFILE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOCKED_IN_MEMORY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQLX_BIND_ADDRESS:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQLX_COMPRESSION_ALGORITHMS:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQLX_CONNECT_TIMEOUT:

@@ -259,12 +259,27 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `init_file` | yes | yes | empty string |
 | `init_replica` | yes | yes | empty string |
 | `init_slave` | yes | yes | empty string |
+| `internal_tmp_mem_storage_engine` | yes | yes | current session value or fixed global `TempTable` |
 | `interactive_timeout` | yes | yes | current session value or fixed global `28800` |
+| `join_buffer_size` | yes | yes | current session value or fixed global `262144` |
 | `keep_files_on_create` | yes | yes | `OFF` |
+| `key_buffer_size` | yes | yes | `8388608` |
+| `key_cache_age_threshold` | yes | yes | `300` |
+| `key_cache_block_size` | yes | yes | `1024` |
+| `key_cache_division_limit` | yes | yes | `100` |
+| `keyring_operations` | yes | yes | `ON` |
+| `large_files_support` | yes | yes | `ON` |
+| `large_page_size` | yes | yes | `0` |
+| `large_pages` | yes | yes | `OFF` |
 | `last_insert_id` | yes | no | current last insert id |
+| `lc_messages` | yes | yes | `en_US` |
+| `lc_messages_dir` | yes | yes | `/usr/share/mysql-8.4/` |
+| `local_infile` | yes | yes | `OFF` |
+| `locked_in_memory` | yes | yes | `OFF` |
 | `lower_case_file_system` | yes | yes | `OFF` |
 | `lower_case_table_names` | yes | yes | `0` |
 | `max_allowed_packet` | yes | yes | `67108864` |
+| `mandatory_roles` | yes | yes | empty string |
 | `mysql_native_password_proxy_users` | yes | yes | `OFF` |
 | `mysqlx_bind_address` | yes | yes | `*` |
 | `mysqlx_compression_algorithms` | yes | yes | `DEFLATE_STREAM,LZ4_MESSAGE,ZSTD_STREAM` |

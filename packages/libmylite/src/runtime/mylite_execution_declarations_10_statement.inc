@@ -803,6 +803,123 @@ static int apply_set_last_insert_id_system_variable_cell_value(
 static bool set_system_variable_is_last_insert_id(
     enum mylite_execution_system_variable_kind kind
 );
+static int apply_set_jl_system_variable_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
+static int apply_set_jl_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    bool *out_handled
+);
+static int apply_set_internal_tmp_mem_storage_engine_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int apply_set_internal_tmp_mem_storage_engine_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int parse_set_internal_tmp_mem_storage_engine_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    enum mylite_session_internal_tmp_mem_storage_engine *out_value
+);
+static int parse_set_internal_tmp_mem_storage_engine_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    enum mylite_session_internal_tmp_mem_storage_engine *out_value
+);
+static int parse_internal_tmp_mem_storage_engine_text(
+    struct mylite_db *database,
+    const char *variable_name,
+    const char *text,
+    enum mylite_session_internal_tmp_mem_storage_engine *out_value
+);
+static int parse_internal_tmp_mem_storage_engine_integer(
+    struct mylite_db *database,
+    const char *variable_name,
+    uint64_t magnitude,
+    const char *value_text,
+    enum mylite_session_internal_tmp_mem_storage_engine *out_value
+);
+static int apply_set_join_buffer_size_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int apply_set_join_buffer_size_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int parse_set_join_buffer_size_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+);
+static int parse_set_join_buffer_size_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    uint64_t *out_value
+);
+static int parse_join_buffer_size_integer(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_source_span *unsigned_span,
+    bool negative,
+    const char *value_text,
+    uint64_t *out_value
+);
+static int validate_set_jl_fixed_placeholder_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int validate_set_jl_fixed_placeholder_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int validate_set_jl_fixed_uint64_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    uint64_t expected_value,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int validate_set_jl_fixed_text_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    const char *expected_value
+);
+static int validate_set_lc_messages_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node
+);
+static int validate_set_lc_messages_cell_value(
+    struct mylite_db *database,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static void set_unknown_locale_error(struct mylite_db *database, const char *value_text);
 static int parse_set_last_insert_id_system_variable_value(
     struct mylite_db *database,
     const char *variable_name,

@@ -3186,6 +3186,7 @@ struct set_session_snapshot {
     uint64_t net_write_timeout;
     uint64_t connection_memory_chunk_size;
     uint64_t connection_memory_limit;
+    uint64_t join_buffer_size;
     uint64_t sort_buffer_size;
     int64_t timestamp_override;
     int time_zone_offset_minutes;
@@ -3193,6 +3194,7 @@ struct set_session_snapshot {
     enum mylite_transaction_access_mode session_transaction_access_mode;
     enum mylite_transaction_isolation next_transaction_isolation;
     enum mylite_transaction_access_mode next_transaction_access_mode;
+    enum mylite_session_internal_tmp_mem_storage_engine internal_tmp_mem_storage_engine;
     bool sql_mode_is_placeholder;
     bool time_zone_is_placeholder;
     bool character_set_state_is_placeholder;

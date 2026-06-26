@@ -762,6 +762,14 @@ static const uint64_t net_read_timeout_default_value =
 static const uint64_t net_retry_count_default_value = MYLITE_SESSION_NET_RETRY_COUNT_DEFAULT_VALUE;
 static const uint64_t net_write_timeout_default_value =
     MYLITE_SESSION_NET_WRITE_TIMEOUT_DEFAULT_VALUE;
+static const uint64_t join_buffer_size_default_value =
+    MYLITE_SESSION_JOIN_BUFFER_SIZE_DEFAULT_VALUE;
+static const uint64_t join_buffer_size_min_value = MYLITE_SESSION_JOIN_BUFFER_SIZE_MIN_VALUE;
+static const uint64_t join_buffer_size_block_size = MYLITE_SESSION_JOIN_BUFFER_SIZE_BLOCK_SIZE;
+static const uint64_t key_buffer_size_default_value = 8388608U;
+static const uint64_t key_cache_age_threshold_default_value = 300U;
+static const uint64_t key_cache_block_size_default_value = 1024U;
+static const uint64_t key_cache_division_limit_default_value = 100U;
 static const uint64_t sort_buffer_size_default_value =
     MYLITE_SESSION_SORT_BUFFER_SIZE_DEFAULT_VALUE;
 static const uint64_t sort_buffer_size_min_value = MYLITE_SESSION_SORT_BUFFER_SIZE_MIN_VALUE;

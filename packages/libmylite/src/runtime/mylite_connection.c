@@ -540,6 +540,7 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->connection_memory_chunk_size =
         MYLITE_SESSION_CONNECTION_MEMORY_CHUNK_SIZE_DEFAULT_VALUE;
     session->connection_memory_limit = MYLITE_SESSION_CONNECTION_MEMORY_LIMIT_DEFAULT_VALUE;
+    session->join_buffer_size = MYLITE_SESSION_JOIN_BUFFER_SIZE_DEFAULT_VALUE;
     session->sort_buffer_size = MYLITE_SESSION_SORT_BUFFER_SIZE_DEFAULT_VALUE;
     session->catalog_generation = 0U;
     session->sqlite_schema_generation = 0U;
@@ -555,6 +556,8 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->next_transaction_access_mode_from_system_variable = false;
     session->active_transaction_read_only = false;
     session->active_transaction_isolation = MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ;
+    session->internal_tmp_mem_storage_engine =
+        MYLITE_SESSION_INTERNAL_TMP_MEM_STORAGE_ENGINE_TEMPTABLE;
     session->savepoints = NULL;
     session->savepoint_count = 0U;
     session->savepoint_capacity = 0U;

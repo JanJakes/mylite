@@ -78,6 +78,7 @@ enum {
     mysql_error_session_variable_read_only = 1621,
     mysql_error_table_comment_too_long = 1628,
     mysql_error_column_comment_too_long = 1629,
+    mysql_error_unknown_locale = 1649,
     mysql_error_index_comment_too_long = 1688,
     mysql_error_spatial_index_non_geometric = 1687,
     mysql_error_collation_not_valid_for_character_set = 1253,

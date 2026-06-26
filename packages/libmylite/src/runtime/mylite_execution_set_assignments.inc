@@ -100,6 +100,10 @@ static int apply_set_system_variable_assignment(
     if (set_system_variable_is_last_insert_id(target.kind)) {
         return apply_set_last_insert_id_system_variable_value(database, &target, value_node);
     }
+    rc = apply_set_jl_system_variable_assignment(database, &target, value_node, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     rc = apply_set_server_identity_binary_log_system_variable_assignment(
         database,
         &target,

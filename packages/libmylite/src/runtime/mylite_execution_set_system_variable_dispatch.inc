@@ -4,6 +4,7 @@ static int apply_set_system_variable_cell_value(
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind
 ) {
+    bool handled = false;
     bool boolean_value = false;
     int rc = MYLITE_OK;
 
@@ -26,6 +27,10 @@ static int apply_set_system_variable_cell_value(
             value,
             value_kind
         );
+    }
+    rc = apply_set_jl_system_variable_cell_value(database, target, value, value_kind, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
     }
     if (mylite_execution_system_variable_is_fixed_global_server_security(target->kind)) {
         return apply_set_fixed_global_server_security_cell_value(database, target);

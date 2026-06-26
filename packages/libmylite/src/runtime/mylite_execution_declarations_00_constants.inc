@@ -777,6 +777,7 @@ static const uint64_t myisam_sort_buffer_size_default_value =
     MYLITE_SESSION_MYISAM_SORT_BUFFER_SIZE_DEFAULT_VALUE;
 static const uint64_t myisam_sort_buffer_size_min_value =
     MYLITE_SESSION_MYISAM_SORT_BUFFER_SIZE_MIN_VALUE;
+static const uint64_t performance_schema_max_digest_sample_age_default_value = 60ULL;
 static const uint64_t innodb_adaptive_flushing_default_value = 1ULL;
 static const uint64_t innodb_adaptive_flushing_lwm_default_value = 10ULL;
 static const uint64_t innodb_adaptive_hash_index_default_value = 0ULL;

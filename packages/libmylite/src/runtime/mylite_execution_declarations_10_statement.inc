@@ -584,6 +584,12 @@ static int apply_set_global_server_logging_assignment(
     const struct mylite_sql_ast_node *value_node,
     bool *out_handled
 );
+static int apply_set_performance_schema_system_variable_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
 static int apply_set_global_authentication_password_assignment(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -705,6 +711,13 @@ static int apply_set_fixed_boolean_system_variable_cell_value(
     const struct resolved_set_system_variable_target *target,
     const struct session_scalar_cell *value,
     bool expected_value
+);
+static int apply_set_performance_schema_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    bool *out_handled
 );
 static int apply_set_innodb_core_system_variable_cell_value(
     struct mylite_db *database,
@@ -1307,6 +1320,13 @@ static int validate_set_innodb_storage_fixed_text_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
     const char *expected_value,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int validate_set_performance_schema_fixed_uint64_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    uint64_t expected_value,
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind
 );

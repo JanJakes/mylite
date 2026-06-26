@@ -516,8 +516,7 @@ static int scalar_concat_operator_result(
     char **out_text,
     size_t *out_text_length
 );
-static bool concat_operator_scalar_argument_is_admitted(
-    const struct mylite_sql_ast_node *expression
+static bool concat_operator_scalar_argument_is_admitted(const struct mylite_sql_ast_node *expression
 );
 static bool concat_operator_scalar_argument_is_nested_scalar_value(
     const struct mylite_sql_ast_node *expression
@@ -1652,6 +1651,9 @@ static int system_variable_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static const char *performance_schema_scalar_system_variable_value(
+    enum mylite_execution_system_variable_kind kind
+);
 static uint64_t information_schema_stats_expiry_system_variable_value(
     const struct mylite_db *database,
     bool global_scope
@@ -1776,6 +1778,9 @@ static int show_system_variable_value(
     char *integer_buffer,
     size_t integer_buffer_size,
     const char **out_value
+);
+static const char *performance_schema_show_system_variable_value(
+    enum mylite_execution_system_variable_kind kind
 );
 static int format_show_system_variable_uint64_value(
     struct mylite_db *database,

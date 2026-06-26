@@ -716,53 +716,53 @@ state through this fallback path.
 | `password_history` | ✅ | Fixed global readback/SHOW and exact global no-op SET |
 | `password_require_current` | ✅ | Fixed global readback/SHOW and exact global no-op SET |
 | `password_reuse_interval` | ✅ | Fixed global readback/SHOW and exact global no-op SET |
-| `performance_schema` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_accounts_size` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_digests_size` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_error_size` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_events_stages_history_long_size` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_events_stages_history_size` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_events_statements_history_long_size` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_events_statements_history_size` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_events_transactions_history_long_size` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_events_transactions_history_size` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_events_waits_history_long_size` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_events_waits_history_size` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_hosts_size` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_cond_classes` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_cond_instances` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_digest_length` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_digest_sample_age` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_file_classes` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_file_handles` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_file_instances` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_index_stat` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_memory_classes` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_metadata_locks` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_meter_classes` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_metric_classes` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_mutex_classes` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_mutex_instances` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_prepared_statements_instances` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_program_instances` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_rwlock_classes` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_rwlock_instances` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_socket_classes` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_socket_instances` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_sql_text_length` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_stage_classes` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_statement_classes` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_statement_stack` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_table_handles` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_table_instances` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_table_lock_stat` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_thread_classes` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_max_thread_instances` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_session_connect_attrs_size` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_setup_actors_size` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_setup_objects_size` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_show_processlist` | ❌ | Value, scope, SET, diagnostics |
-| `performance_schema_users_size` | ❌ | Value, scope, SET, diagnostics |
+| `performance_schema` | ✅ | Fixed scalar `1`/SHOW `ON` and read-only diagnostics; no instrumentation runtime |
+| `performance_schema_accounts_size` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no instrumentation sizing |
+| `performance_schema_digests_size` | ✅ | Fixed scalar/SHOW value `10000` and read-only diagnostics; no digest storage |
+| `performance_schema_error_size` | ✅ | Fixed scalar/SHOW value `5556` and read-only diagnostics; no error instrumentation |
+| `performance_schema_events_stages_history_long_size` | ✅ | Fixed scalar/SHOW value `10000` and read-only diagnostics; no stage history storage |
+| `performance_schema_events_stages_history_size` | ✅ | Fixed scalar/SHOW value `10` and read-only diagnostics; no stage history storage |
+| `performance_schema_events_statements_history_long_size` | ✅ | Fixed scalar/SHOW value `10000` and read-only diagnostics; no statement history storage |
+| `performance_schema_events_statements_history_size` | ✅ | Fixed scalar/SHOW value `10` and read-only diagnostics; no statement history storage |
+| `performance_schema_events_transactions_history_long_size` | ✅ | Fixed scalar/SHOW value `10000` and read-only diagnostics; no transaction history storage |
+| `performance_schema_events_transactions_history_size` | ✅ | Fixed scalar/SHOW value `10` and read-only diagnostics; no transaction history storage |
+| `performance_schema_events_waits_history_long_size` | ✅ | Fixed scalar/SHOW value `10000` and read-only diagnostics; no wait history storage |
+| `performance_schema_events_waits_history_size` | ✅ | Fixed scalar/SHOW value `10` and read-only diagnostics; no wait history storage |
+| `performance_schema_hosts_size` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no host instrumentation |
+| `performance_schema_max_cond_classes` | ✅ | Fixed scalar/SHOW value `150` and read-only diagnostics; no condition instrumentation |
+| `performance_schema_max_cond_instances` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no condition instrumentation |
+| `performance_schema_max_digest_length` | ✅ | Fixed scalar/SHOW value `1024` and read-only diagnostics; no digest collection |
+| `performance_schema_max_digest_sample_age` | ✅ | Fixed scalar/SHOW value `60`, global-only diagnostics, and exact/default global no-op SET; no digest sampling side effects |
+| `performance_schema_max_file_classes` | ✅ | Fixed scalar/SHOW value `80` and read-only diagnostics; no file instrumentation |
+| `performance_schema_max_file_handles` | ✅ | Fixed scalar/SHOW value `32768` and read-only diagnostics; no file instrumentation |
+| `performance_schema_max_file_instances` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no file instrumentation |
+| `performance_schema_max_index_stat` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no index statistics |
+| `performance_schema_max_memory_classes` | ✅ | Fixed scalar/SHOW value `470` and read-only diagnostics; no memory instrumentation |
+| `performance_schema_max_metadata_locks` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no metadata lock instrumentation |
+| `performance_schema_max_meter_classes` | ✅ | Fixed scalar/SHOW value `30` and read-only diagnostics; no meter instrumentation |
+| `performance_schema_max_metric_classes` | ✅ | Fixed scalar/SHOW value `600` and read-only diagnostics; no metric instrumentation |
+| `performance_schema_max_mutex_classes` | ✅ | Fixed scalar/SHOW value `350` and read-only diagnostics; no mutex instrumentation |
+| `performance_schema_max_mutex_instances` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no mutex instrumentation |
+| `performance_schema_max_prepared_statements_instances` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no prepared-statement instrumentation |
+| `performance_schema_max_program_instances` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no stored-program instrumentation |
+| `performance_schema_max_rwlock_classes` | ✅ | Fixed scalar/SHOW value `100` and read-only diagnostics; no rwlock instrumentation |
+| `performance_schema_max_rwlock_instances` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no rwlock instrumentation |
+| `performance_schema_max_socket_classes` | ✅ | Fixed scalar/SHOW value `10` and read-only diagnostics; no socket instrumentation |
+| `performance_schema_max_socket_instances` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no socket instrumentation |
+| `performance_schema_max_sql_text_length` | ✅ | Fixed scalar/SHOW value `1024` and read-only diagnostics; no statement text capture |
+| `performance_schema_max_stage_classes` | ✅ | Fixed scalar/SHOW value `175` and read-only diagnostics; no stage instrumentation |
+| `performance_schema_max_statement_classes` | ✅ | Fixed scalar/SHOW value `220` and read-only diagnostics; no statement instrumentation |
+| `performance_schema_max_statement_stack` | ✅ | Fixed scalar/SHOW value `10` and read-only diagnostics; no statement stack tracking |
+| `performance_schema_max_table_handles` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no table instrumentation |
+| `performance_schema_max_table_instances` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no table instrumentation |
+| `performance_schema_max_table_lock_stat` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no table lock statistics |
+| `performance_schema_max_thread_classes` | ✅ | Fixed scalar/SHOW value `100` and read-only diagnostics; no thread instrumentation |
+| `performance_schema_max_thread_instances` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no thread instrumentation |
+| `performance_schema_session_connect_attrs_size` | ✅ | Fixed scalar/SHOW value `512` and read-only diagnostics; no connection-attribute capture |
+| `performance_schema_setup_actors_size` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no setup actor storage |
+| `performance_schema_setup_objects_size` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no setup object storage |
+| `performance_schema_show_processlist` | ✅ | Fixed scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no Performance Schema process-list routing |
+| `performance_schema_users_size` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no user instrumentation |
 | `persist_only_admin_x509_subject` | ❌ | Value, scope, SET, diagnostics |
 | `persist_sensitive_variables_in_plaintext` | ❌ | Value, scope, SET, diagnostics |
 | `persisted_globals_load` | ❌ | Value, scope, SET, diagnostics |

@@ -97,6 +97,15 @@ static int apply_set_system_variable_assignment(
         set_read_only_system_variable_error(database, target.name);
         return MYLITE_ERROR;
     }
+    rc = apply_set_performance_schema_system_variable_assignment(
+        database,
+        &target,
+        value_node,
+        &handled
+    );
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     if (set_system_variable_is_last_insert_id(target.kind)) {
         return apply_set_last_insert_id_system_variable_value(database, &target, value_node);
     }
@@ -108,12 +117,7 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
-    rc = apply_set_innodb_core_system_variable_assignment(
-        database,
-        &target,
-        value_node,
-        &handled
-    );
+    rc = apply_set_innodb_core_system_variable_assignment(database, &target, value_node, &handled);
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
@@ -248,8 +252,7 @@ static int apply_set_system_variable_assignment(
     return MYLITE_ERROR;
 }
 
-static bool set_system_variable_target_is_read_only(
-    enum mylite_execution_system_variable_kind kind
+static bool set_system_variable_target_is_read_only(enum mylite_execution_system_variable_kind kind
 ) {
     return kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM ||
            kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES ||
@@ -265,7 +268,41 @@ static bool set_system_variable_target_is_read_only(
            mylite_execution_system_variable_is_read_only_myisam(kind) ||
            mylite_execution_system_variable_is_read_only_innodb_core(kind) ||
            mylite_execution_system_variable_is_read_only_innodb_storage(kind) ||
+           mylite_execution_system_variable_is_read_only_performance_schema(kind) ||
            mylite_execution_system_variable_is_read_only_server_logging(kind);
+}
+
+static int apply_set_performance_schema_system_variable_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+) {
+    const char *unsupported_message = "SET supports only fixed no-op system variable assignments";
+
+    if (target == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (target->kind != MYLITE_EXECUTION_SYSTEM_VARIABLE_PERFORMANCE_SCHEMA_MAX_DIGEST_SAMPLE_AGE &&
+        target->kind != MYLITE_EXECUTION_SYSTEM_VARIABLE_PERFORMANCE_SCHEMA_SHOW_PROCESSLIST) {
+        return MYLITE_OK;
+    }
+
+    *out_handled = true;
+    if (target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_global_variable_set_global_required_error(database, target->name);
+        return MYLITE_ERROR;
+    }
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_PERFORMANCE_SCHEMA_MAX_DIGEST_SAMPLE_AGE) {
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            performance_schema_max_digest_sample_age_default_value,
+            unsupported_message
+        );
+    }
+    return validate_set_fixed_boolean_value(database, value_node, false);
 }
 
 static int apply_set_server_identity_binary_log_system_variable_assignment(
@@ -417,7 +454,11 @@ static int apply_set_global_server_logging_assignment(
         }
         return rc;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GENERAL_LOG_FILE:
-        return validate_set_fixed_text_value(database, value_node, general_log_file_system_variable_value);
+        return validate_set_fixed_text_value(
+            database,
+            value_node,
+            general_log_file_system_variable_value
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_ERROR_SERVICES:
         return validate_set_fixed_text_value(
             database,

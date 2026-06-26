@@ -14,6 +14,16 @@ static int apply_set_system_variable_cell_value(
     if (reject_invalid_read_only_system_variable_cell_target(database, target)) {
         return MYLITE_ERROR;
     }
+    rc = apply_set_performance_schema_system_variable_cell_value(
+        database,
+        target,
+        value,
+        value_kind,
+        &handled
+    );
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_MODE) {
         return apply_set_sql_mode_cell_value(database, value);
     }
@@ -32,13 +42,7 @@ static int apply_set_system_variable_cell_value(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
-    rc = apply_set_myisam_system_variable_cell_value(
-        database,
-        target,
-        value,
-        value_kind,
-        &handled
-    );
+    rc = apply_set_myisam_system_variable_cell_value(database, target, value, value_kind, &handled);
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
@@ -238,6 +242,72 @@ static int apply_set_fixed_boolean_system_variable_cell_value(
         return rc;
     }
     if (actual != expected_value) {
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int apply_set_performance_schema_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    bool *out_handled
+) {
+    if (target == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (target->kind != MYLITE_EXECUTION_SYSTEM_VARIABLE_PERFORMANCE_SCHEMA_MAX_DIGEST_SAMPLE_AGE &&
+        target->kind != MYLITE_EXECUTION_SYSTEM_VARIABLE_PERFORMANCE_SCHEMA_SHOW_PROCESSLIST) {
+        return MYLITE_OK;
+    }
+
+    *out_handled = true;
+    if (target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_global_variable_set_global_required_error(database, target->name);
+        return MYLITE_ERROR;
+    }
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_PERFORMANCE_SCHEMA_MAX_DIGEST_SAMPLE_AGE) {
+        return validate_set_performance_schema_fixed_uint64_cell_value(
+            database,
+            target,
+            performance_schema_max_digest_sample_age_default_value,
+            value,
+            value_kind
+        );
+    }
+    return apply_set_fixed_boolean_system_variable_cell_value(database, target, value, false);
+}
+
+static int validate_set_performance_schema_fixed_uint64_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    uint64_t expected_value,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+) {
+    const char *text = value == NULL ? NULL : value->value;
+    struct mylite_sql_source_span value_span = {0};
+    size_t text_size = 0U;
+
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (value == NULL || text == NULL ||
+        (value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER &&
+         value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_DECIMAL)) {
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
+    }
+
+    text_size = value->has_value_size ? value->value_size : strlen(text);
+    value_span = (struct mylite_sql_source_span){.text = text, .length = text_size};
+    if (text_size == 0U || text[0] == '-' || text[0] == '+' ||
+        !fixed_decimal_text_matches_uint64(value_span, expected_value)) {
         set_unsupported_error(
             database,
             "SET supports only fixed no-op system variable assignments"
@@ -464,6 +534,10 @@ static bool reject_invalid_read_only_system_variable_cell_target(
         return true;
     }
     if (mylite_execution_system_variable_is_read_only_innodb_storage(target->kind)) {
+        set_read_only_system_variable_error(database, target->name);
+        return true;
+    }
+    if (mylite_execution_system_variable_is_read_only_performance_schema(target->kind)) {
         set_read_only_system_variable_error(database, target->name);
         return true;
     }
@@ -845,10 +919,8 @@ static int validate_set_fixed_boolean_value(
         if (text_equals_ascii_case_insensitive(decoded, "ON") ||
             text_equals_ascii_case_insensitive(decoded, "TRUE")) {
             actual_value = true;
-        } else if (
-            text_equals_ascii_case_insensitive(decoded, "OFF") ||
-            text_equals_ascii_case_insensitive(decoded, "FALSE")
-        ) {
+        } else if (text_equals_ascii_case_insensitive(decoded, "OFF") ||
+                   text_equals_ascii_case_insensitive(decoded, "FALSE")) {
             actual_value = false;
         } else {
             free(decoded);

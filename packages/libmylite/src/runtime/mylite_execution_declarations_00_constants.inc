@@ -777,6 +777,26 @@ static const uint64_t myisam_sort_buffer_size_default_value =
     MYLITE_SESSION_MYISAM_SORT_BUFFER_SIZE_DEFAULT_VALUE;
 static const uint64_t myisam_sort_buffer_size_min_value =
     MYLITE_SESSION_MYISAM_SORT_BUFFER_SIZE_MIN_VALUE;
+static const uint64_t innodb_adaptive_flushing_default_value = 1ULL;
+static const uint64_t innodb_adaptive_flushing_lwm_default_value = 10ULL;
+static const uint64_t innodb_adaptive_hash_index_default_value = 0ULL;
+static const uint64_t innodb_adaptive_hash_index_parts_default_value = 8ULL;
+static const uint64_t innodb_adaptive_max_sleep_delay_default_value = 150000ULL;
+static const uint64_t innodb_autoextend_increment_default_value = 64ULL;
+static const uint64_t innodb_autoinc_lock_mode_default_value = 2ULL;
+static const uint64_t innodb_buffer_pool_chunk_size_default_value = 134217728ULL;
+static const uint64_t innodb_buffer_pool_dump_at_shutdown_default_value = 1ULL;
+static const uint64_t innodb_buffer_pool_dump_now_default_value = 0ULL;
+static const uint64_t innodb_buffer_pool_dump_pct_default_value = 25ULL;
+static const char innodb_buffer_pool_filename_default_value[] = "ib_buffer_pool";
+static const uint64_t innodb_buffer_pool_in_core_file_default_value = 0ULL;
+static const uint64_t innodb_buffer_pool_instances_default_value = 1ULL;
+static const uint64_t innodb_buffer_pool_load_abort_default_value = 0ULL;
+static const uint64_t innodb_buffer_pool_load_at_startup_default_value = 1ULL;
+static const uint64_t innodb_buffer_pool_load_now_default_value = 0ULL;
+static const uint64_t innodb_buffer_pool_size_default_value = 134217728ULL;
+static const uint64_t innodb_change_buffer_max_size_default_value = 25ULL;
+static const char innodb_change_buffering_default_value[] = "none";
 static const uint64_t sort_buffer_size_default_value =
     MYLITE_SESSION_SORT_BUFFER_SIZE_DEFAULT_VALUE;
 static const uint64_t sort_buffer_size_min_value = MYLITE_SESSION_SORT_BUFFER_SIZE_MIN_VALUE;

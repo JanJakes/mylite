@@ -678,6 +678,12 @@ static int apply_set_server_identity_binary_log_system_variable_assignment(
     const struct mylite_sql_ast_node *value_node,
     bool *out_handled
 );
+static int apply_set_innodb_core_system_variable_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
 static int apply_set_system_variable_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -694,6 +700,13 @@ static int apply_set_fixed_boolean_system_variable_cell_value(
     const struct resolved_set_system_variable_target *target,
     const struct session_scalar_cell *value,
     bool expected_value
+);
+static int apply_set_innodb_core_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    bool *out_handled
 );
 static int apply_set_fixed_global_server_security_cell_value(
     struct mylite_db *database,
@@ -1207,6 +1220,31 @@ static int parse_set_sort_buffer_size_value(
     const char *variable_name,
     const struct mylite_sql_ast_node *value_node,
     uint64_t *out_value
+);
+static int validate_set_innodb_core_fixed_global_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int validate_set_innodb_core_fixed_global_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int validate_set_innodb_core_fixed_uint64_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    uint64_t expected_value,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int validate_set_innodb_core_fixed_text_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const char *expected_value,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
 );
 static int validate_set_myisam_fixed_global_value(
     struct mylite_db *database,

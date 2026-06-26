@@ -309,28 +309,28 @@ state through this fallback path.
 | `init_file` | ✅ | Fixed global scalar SQL `NULL` with empty `SHOW VARIABLES` value; session reads use global-only diagnostics and SET forms return read-only diagnostics. No startup-file execution |
 | `init_replica` | ✅ | Fixed global scalar/SHOW empty string; session reads and non-global SET use MySQL-shaped global-only diagnostics, and exact/default global no-op SET forms are supported. No replication init SQL execution |
 | `init_slave` | ✅ | Deprecated fixed global scalar/SHOW empty string with MySQL-style deprecation warnings on scalar reads and accepted SET forms; no replication init SQL execution |
-| `innodb_adaptive_flushing` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_adaptive_flushing_lwm` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_adaptive_hash_index` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_adaptive_hash_index_parts` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_adaptive_max_sleep_delay` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_autoextend_increment` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_autoinc_lock_mode` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_adaptive_flushing` | ✅ | Fixed global scalar `1`/SHOW `ON`, global-only diagnostics, and exact/default global no-op SET; no adaptive flushing effects |
+| `innodb_adaptive_flushing_lwm` | ✅ | Fixed global scalar/SHOW value `10`, global-only diagnostics, and exact/default global no-op SET; no adaptive flushing effects |
+| `innodb_adaptive_hash_index` | ✅ | Fixed global scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no adaptive hash index effects |
+| `innodb_adaptive_hash_index_parts` | ✅ | Fixed global scalar/SHOW value `8`, global-only and read-only diagnostics; no adaptive hash index effects |
+| `innodb_adaptive_max_sleep_delay` | ✅ | Fixed global scalar/SHOW value `150000`, global-only diagnostics, and exact/default global no-op SET; no adaptive flushing thread effects |
+| `innodb_autoextend_increment` | ✅ | Fixed global scalar/SHOW value `64`, global-only diagnostics, and exact/default global no-op SET; no tablespace autoextend effects |
+| `innodb_autoinc_lock_mode` | ✅ | Fixed global scalar/SHOW value `2`, global-only and read-only diagnostics; no InnoDB autoincrement lock-mode effects |
 | `innodb_background_drop_list_empty` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `innodb_buffer_pool_chunk_size` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_buffer_pool_chunk_size` | ✅ | Fixed global scalar/SHOW value `134217728`, global-only and read-only diagnostics; no buffer-pool resizing effects |
 | `innodb_buffer_pool_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `innodb_buffer_pool_dump_at_shutdown` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_buffer_pool_dump_now` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_buffer_pool_dump_pct` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_buffer_pool_filename` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_buffer_pool_in_core_file` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_buffer_pool_instances` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_buffer_pool_load_abort` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_buffer_pool_load_at_startup` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_buffer_pool_load_now` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_buffer_pool_size` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_change_buffer_max_size` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_change_buffering` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_buffer_pool_dump_at_shutdown` | ✅ | Fixed global scalar `1`/SHOW `ON`, global-only diagnostics, and exact/default global no-op SET; no buffer-pool dump side effects |
+| `innodb_buffer_pool_dump_now` | ✅ | Fixed global scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no buffer-pool dump side effects |
+| `innodb_buffer_pool_dump_pct` | ✅ | Fixed global scalar/SHOW value `25`, global-only diagnostics, and exact/default global no-op SET; no buffer-pool dump side effects |
+| `innodb_buffer_pool_filename` | ✅ | Fixed global scalar/SHOW value `ib_buffer_pool`, global-only diagnostics, and exact/default global no-op SET; no buffer-pool file side effects |
+| `innodb_buffer_pool_in_core_file` | ✅ | Fixed global scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no core-file filtering effects |
+| `innodb_buffer_pool_instances` | ✅ | Fixed global scalar/SHOW value `1`, global-only and read-only diagnostics; no buffer-pool partitioning effects |
+| `innodb_buffer_pool_load_abort` | ✅ | Fixed global scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no buffer-pool load side effects |
+| `innodb_buffer_pool_load_at_startup` | ✅ | Fixed global scalar `1`/SHOW `ON`, global-only and read-only diagnostics; no startup buffer-pool load effects |
+| `innodb_buffer_pool_load_now` | ✅ | Fixed global scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no buffer-pool load side effects |
+| `innodb_buffer_pool_size` | ✅ | Fixed global scalar/SHOW value `134217728`, global-only diagnostics, and exact/default global no-op SET; no buffer-pool sizing effects |
+| `innodb_change_buffer_max_size` | ✅ | Fixed global scalar/SHOW value `25`, global-only diagnostics, and exact/default global no-op SET; no change-buffer sizing effects |
+| `innodb_change_buffering` | ✅ | Fixed global scalar/SHOW value `none`, global-only diagnostics, and exact/default global no-op SET; no change-buffering effects |
 | `innodb_change_buffering_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_checkpoint_disabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_checksum_algorithm` | ❌ | Value, scope, SET, diagnostics |

@@ -1,0 +1,375 @@
+#include <mylite/mylite.h>
+
+#include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
+
+enum {
+    mysql_error_parse = 1064,
+    mysql_error_global_variable_scope = 1229,
+    mysql_error_incorrect_argument_type = 1232,
+    mysql_error_session_variable_only = 1238,
+    sql_buffer_capacity = 256,
+};
+
+struct expected_sql_error {
+    int code;
+    const char *sqlstate;
+    const char *message_part;
+};
+
+struct innodb_variable {
+    const char *name;
+    const char *scalar_value;
+    const char *show_value;
+    const char *exact_assignment;
+    const char *unsupported_assignment;
+    bool read_only;
+    bool text_value;
+    bool boolean_value;
+};
+
+static const struct innodb_variable innodb_variables[] = {
+    {"innodb_adaptive_flushing", "1", "ON", "ON", "OFF", false, false, true},
+    {"innodb_adaptive_flushing_lwm", "10", "10", "10", "11", false, false, false},
+    {"innodb_adaptive_hash_index", "0", "OFF", "OFF", "ON", false, false, true},
+    {"innodb_adaptive_hash_index_parts", "8", "8", "8", "9", true, false, false},
+    {"innodb_adaptive_max_sleep_delay", "150000", "150000", "150000", "150001", false, false, false
+    },
+    {"innodb_autoextend_increment", "64", "64", "64", "65", false, false, false},
+    {"innodb_autoinc_lock_mode", "2", "2", "2", "1", true, false, false},
+    {"innodb_buffer_pool_chunk_size",
+     "134217728",
+     "134217728",
+     "134217728",
+     "134217729",
+     true,
+     false,
+     false},
+    {"innodb_buffer_pool_dump_at_shutdown", "1", "ON", "ON", "OFF", false, false, true},
+    {"innodb_buffer_pool_dump_now", "0", "OFF", "OFF", "ON", false, false, true},
+    {"innodb_buffer_pool_dump_pct", "25", "25", "25", "26", false, false, false},
+    {"innodb_buffer_pool_filename",
+     "ib_buffer_pool",
+     "ib_buffer_pool",
+     "'ib_buffer_pool'",
+     "'other'",
+     false,
+     true,
+     false},
+    {"innodb_buffer_pool_in_core_file", "0", "OFF", "OFF", "ON", false, false, true},
+    {"innodb_buffer_pool_instances", "1", "1", "1", "2", true, false, false},
+    {"innodb_buffer_pool_load_abort", "0", "OFF", "OFF", "ON", false, false, true},
+    {"innodb_buffer_pool_load_at_startup", "1", "ON", "ON", "OFF", true, false, true},
+    {"innodb_buffer_pool_load_now", "0", "OFF", "OFF", "ON", false, false, true},
+    {"innodb_buffer_pool_size",
+     "134217728",
+     "134217728",
+     "134217728",
+     "134217729",
+     false,
+     false,
+     false},
+    {"innodb_change_buffer_max_size", "25", "25", "25", "26", false, false, false},
+    {"innodb_change_buffering", "none", "none", "'none'", "'all'", false, true, false},
+};
+
+static int test_values_show_and_scope(void);
+static int test_set_diagnostics(void);
+static int test_user_variable_assignments(void);
+static int expect_values(
+    mylite_db *database,
+    const char *sql,
+    const char *const *expected,
+    size_t expected_count,
+    const char *context
+);
+static int execute_statement_ok(mylite_db *database, const char *sql);
+static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
+static int expect_int(int actual, int expected, const char *context);
+static int expect_size(size_t actual, size_t expected, const char *context);
+static int expect_text(const char *actual, const char *expected, const char *context);
+static int expect_contains(const char *actual, const char *needle, const char *context);
+
+int main(void) {
+    int failures = 0;
+
+    failures += test_values_show_and_scope();
+    failures += test_set_diagnostics();
+    failures += test_user_variable_assignments();
+
+    return failures == 0 ? 0 : 1;
+}
+
+static int test_values_show_and_scope(void) {
+    struct expected_sql_error global_only_read = {
+        .code = mysql_error_session_variable_only,
+        .sqlstate = "HY000",
+        .message_part = "is a GLOBAL variable",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+    char sql[sql_buffer_capacity];
+
+    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open InnoDB core db");
+    for (size_t index = 0U; index < sizeof(innodb_variables) / sizeof(innodb_variables[0]);
+         ++index) {
+        const struct innodb_variable *variable = &innodb_variables[index];
+
+        snprintf(sql, sizeof(sql), "SELECT @@%s, @@GLOBAL.%s", variable->name, variable->name);
+        failures += expect_values(
+            database,
+            sql,
+            (const char *[]){variable->scalar_value, variable->scalar_value},
+            2U,
+            variable->name
+        );
+
+        snprintf(sql, sizeof(sql), "SHOW VARIABLES LIKE '%s'", variable->name);
+        failures += expect_values(
+            database,
+            sql,
+            (const char *[]){variable->name, variable->show_value},
+            2U,
+            variable->name
+        );
+        snprintf(sql, sizeof(sql), "SHOW GLOBAL VARIABLES LIKE '%s'", variable->name);
+        failures += expect_values(
+            database,
+            sql,
+            (const char *[]){variable->name, variable->show_value},
+            2U,
+            variable->name
+        );
+        snprintf(sql, sizeof(sql), "SHOW SESSION VARIABLES LIKE '%s'", variable->name);
+        failures += expect_values(
+            database,
+            sql,
+            (const char *[]){variable->name, variable->show_value},
+            2U,
+            variable->name
+        );
+
+        snprintf(sql, sizeof(sql), "SELECT @@SESSION.%s", variable->name);
+        failures += execute_error(database, sql, global_only_read);
+        snprintf(sql, sizeof(sql), "SELECT @@LOCAL.%s", variable->name);
+        failures += execute_error(database, sql, global_only_read);
+    }
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_set_diagnostics(void) {
+    struct expected_sql_error global_only_set = {
+        .code = mysql_error_global_variable_scope,
+        .sqlstate = "HY000",
+        .message_part = "is a GLOBAL variable and should be set with SET GLOBAL",
+    };
+    struct expected_sql_error read_only_set = {
+        .code = mysql_error_session_variable_only,
+        .sqlstate = "HY000",
+        .message_part = "is a read only variable",
+    };
+    struct expected_sql_error unsupported_fixed_noop = {
+        .code = mysql_error_parse,
+        .sqlstate = "42000",
+        .message_part = "fixed no-op",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+    char sql[sql_buffer_capacity];
+
+    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open InnoDB SET db");
+    for (size_t index = 0U; index < sizeof(innodb_variables) / sizeof(innodb_variables[0]);
+         ++index) {
+        const struct innodb_variable *variable = &innodb_variables[index];
+
+        snprintf(sql, sizeof(sql), "SET %s = DEFAULT", variable->name);
+        failures +=
+            execute_error(database, sql, variable->read_only ? read_only_set : global_only_set);
+        snprintf(sql, sizeof(sql), "SET SESSION %s = DEFAULT", variable->name);
+        failures +=
+            execute_error(database, sql, variable->read_only ? read_only_set : global_only_set);
+
+        if (variable->read_only) {
+            snprintf(sql, sizeof(sql), "SET GLOBAL %s = DEFAULT", variable->name);
+            failures += execute_error(database, sql, read_only_set);
+            continue;
+        }
+
+        snprintf(sql, sizeof(sql), "SET GLOBAL %s = DEFAULT", variable->name);
+        failures += execute_statement_ok(database, sql);
+        snprintf(
+            sql,
+            sizeof(sql),
+            "SET GLOBAL %s = %s",
+            variable->name,
+            variable->exact_assignment
+        );
+        failures += execute_statement_ok(database, sql);
+        snprintf(
+            sql,
+            sizeof(sql),
+            "SET GLOBAL %s = %s",
+            variable->name,
+            variable->unsupported_assignment
+        );
+        failures += execute_error(database, sql, unsupported_fixed_noop);
+    }
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_user_variable_assignments(void) {
+    struct expected_sql_error unsupported_fixed_noop = {
+        .code = mysql_error_parse,
+        .sqlstate = "42000",
+        .message_part = "fixed no-op",
+    };
+    struct expected_sql_error incorrect_argument_type = {
+        .code = mysql_error_incorrect_argument_type,
+        .sqlstate = "42000",
+        .message_part = "Incorrect argument type",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+    char sql[sql_buffer_capacity];
+
+    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open InnoDB user-var db");
+    for (size_t index = 0U; index < sizeof(innodb_variables) / sizeof(innodb_variables[0]);
+         ++index) {
+        const struct innodb_variable *variable = &innodb_variables[index];
+
+        if (variable->read_only) {
+            continue;
+        }
+
+        snprintf(sql, sizeof(sql), "SET @innodb_core_value = %s", variable->exact_assignment);
+        failures += execute_statement_ok(database, sql);
+        snprintf(sql, sizeof(sql), "SET GLOBAL %s = @innodb_core_value", variable->name);
+        failures += execute_statement_ok(database, sql);
+
+        snprintf(sql, sizeof(sql), "SET @innodb_core_value = %s", variable->unsupported_assignment);
+        failures += execute_statement_ok(database, sql);
+        snprintf(sql, sizeof(sql), "SET GLOBAL %s = @innodb_core_value", variable->name);
+        failures += execute_error(database, sql, unsupported_fixed_noop);
+
+        if (!variable->text_value && !variable->boolean_value) {
+            failures += execute_statement_ok(database, "SET @innodb_core_value = 'not_numeric'");
+            snprintf(sql, sizeof(sql), "SET GLOBAL %s = @innodb_core_value", variable->name);
+            failures += execute_error(database, sql, incorrect_argument_type);
+        }
+    }
+
+    mylite_close(database);
+    return failures;
+}
+
+static int expect_values(
+    mylite_db *database,
+    const char *sql,
+    const char *const *expected,
+    size_t expected_count,
+    const char *context
+) {
+    mylite_result *result = NULL;
+    int rc = mylite_execute(database, sql, strlen(sql), &result);
+    int failures = 0;
+
+    if (rc != MYLITE_OK) {
+        fprintf(
+            stderr,
+            "%s: expected OK for [%s], got %d %s\n",
+            context,
+            sql,
+            rc,
+            mylite_errmsg(database)
+        );
+        mylite_result_free(result);
+        return 1;
+    }
+    failures += expect_size(mylite_result_column_count(result), expected_count, context);
+    failures += expect_size(mylite_result_row_count(result), 1U, context);
+    for (size_t column = 0U; column < expected_count; ++column) {
+        failures +=
+            expect_text(mylite_result_value_text(result, 0U, column), expected[column], context);
+    }
+    mylite_result_free(result);
+    return failures;
+}
+
+static int execute_statement_ok(mylite_db *database, const char *sql) {
+    mylite_result *result = NULL;
+    int rc = mylite_execute(database, sql, strlen(sql), &result);
+
+    if (rc != MYLITE_OK) {
+        fprintf(stderr, "expected OK for [%s], got %d %s\n", sql, rc, mylite_errmsg(database));
+        mylite_result_free(result);
+        return 1;
+    }
+    mylite_result_free(result);
+    return 0;
+}
+
+static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected) {
+    mylite_result *result = NULL;
+    int rc = mylite_execute(database, sql, strlen(sql), &result);
+    int failures = 0;
+
+    mylite_result_free(result);
+    if (rc == MYLITE_OK) {
+        fprintf(stderr, "%s: expected error, got success\n", sql);
+        return 1;
+    }
+
+    failures += expect_int(mylite_errcode(database), expected.code, sql);
+    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
+    return failures;
+}
+
+static int expect_int(int actual, int expected, const char *context) {
+    if (actual != expected) {
+        fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_size(size_t actual, size_t expected, const char *context) {
+    if (actual != expected) {
+        fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_text(const char *actual, const char *expected, const char *context) {
+    if (actual == NULL || expected == NULL || strcmp(actual, expected) != 0) {
+        fprintf(
+            stderr,
+            "%s: expected [%s], got [%s]\n",
+            context,
+            expected == NULL ? "NULL" : expected,
+            actual == NULL ? "NULL" : actual
+        );
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_contains(const char *actual, const char *needle, const char *context) {
+    if (actual == NULL || needle == NULL || strstr(actual, needle) == NULL) {
+        fprintf(
+            stderr,
+            "%s: expected [%s] to contain [%s]\n",
+            context,
+            actual == NULL ? "NULL" : actual,
+            needle == NULL ? "NULL" : needle
+        );
+        return 1;
+    }
+    return 0;
+}

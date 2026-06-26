@@ -42,6 +42,16 @@ static int apply_set_system_variable_cell_value(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc = apply_set_innodb_core_system_variable_cell_value(
+        database,
+        target,
+        value,
+        value_kind,
+        &handled
+    );
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     if (mylite_execution_system_variable_is_fixed_global_server_security(target->kind)) {
         return apply_set_fixed_global_server_security_cell_value(database, target);
     }
@@ -436,6 +446,10 @@ static bool reject_invalid_read_only_system_variable_cell_target(
         return true;
     }
     if (mylite_execution_system_variable_is_read_only_myisam(target->kind)) {
+        set_read_only_system_variable_error(database, target->name);
+        return true;
+    }
+    if (mylite_execution_system_variable_is_read_only_innodb_core(target->kind)) {
         set_read_only_system_variable_error(database, target->name);
         return true;
     }

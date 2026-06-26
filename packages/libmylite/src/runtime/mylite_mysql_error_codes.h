@@ -55,6 +55,7 @@ enum {
     mysql_error_binlog_command_failed = 1220,
     mysql_error_wrong_usage = 1221,
     mysql_error_variable_global_assignment_wrong_scope = 1228,
+    mysql_error_variable_no_default = 1230,
     mysql_error_load_data_row_missing = 1261,
     mysql_error_load_data_row_truncated = 1262,
     mysql_error_load_data_null_to_not_null = 1263,

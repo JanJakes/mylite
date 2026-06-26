@@ -97,6 +97,9 @@ static int apply_set_system_variable_assignment(
         set_read_only_system_variable_error(database, target.name);
         return MYLITE_ERROR;
     }
+    if (set_system_variable_is_last_insert_id(target.kind)) {
+        return apply_set_last_insert_id_system_variable_value(database, &target, value_node);
+    }
     rc = apply_set_server_identity_binary_log_system_variable_assignment(
         database,
         &target,

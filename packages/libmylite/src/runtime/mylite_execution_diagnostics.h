@@ -58,6 +58,10 @@ void mylite_execution_diagnostics_set_session_variable_set_global_error(
     struct mylite_db *database,
     const char *variable_name
 );
+void mylite_execution_diagnostics_set_variable_no_default_error(
+    struct mylite_db *database,
+    const char *variable_name
+);
 void mylite_execution_diagnostics_set_global_variable_only_error(
     struct mylite_db *database,
     const char *variable_name
@@ -815,6 +819,7 @@ int mylite_execution_diagnostics_status_from_parse_status(enum mylite_sql_parse_
       mylite_execution_diagnostics_set_session_variable_only_error
 #  define set_session_variable_set_global_error                                                    \
       mylite_execution_diagnostics_set_session_variable_set_global_error
+#  define set_variable_no_default_error mylite_execution_diagnostics_set_variable_no_default_error
 #  define set_global_variable_only_error mylite_execution_diagnostics_set_global_variable_only_error
 #  define set_global_variable_set_global_required_error                                            \
       mylite_execution_diagnostics_set_global_variable_set_global_required_error

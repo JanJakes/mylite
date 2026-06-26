@@ -220,7 +220,7 @@ state through this fallback path.
 | `ft_stopword_file` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and read-only SET diagnostics; no stopword-file loading |
 | `general_log` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/OFF global no-op SET; no general-query logging side effects |
 | `general_log_file` | ✅ | Fixed global path readback/SHOW, global-only diagnostics, and default/path global no-op SET; no log file creation |
-| `generated_random_password_length` | ❌ | Mutable session/global value, range SET, diagnostics |
+| `generated_random_password_length` | ✅ | Fixed default/session/global scalar and `SHOW VARIABLES` value `20`; exact/default no-op SET forms are supported, with no password-generation side effects or mutable global state |
 | `global_connection_memory_limit` | ✅ | Fixed global readback/SHOW and exact global no-op SET; no global memory limiter side effects |
 | `global_connection_memory_tracking` | ✅ | Session/local/unscoped boolean readback, fixed global readback, SHOW, session SET, and DEFAULT reset; no global memory accounting side effects |
 | `group_concat_max_len` | ✅ | Session/local/unscoped scalar reads, fixed global reads, `SHOW VARIABLES`, and handle-local session `SET` forms are MySQL-runtime verified, including `DEFAULT`, integer/user-variable assignment, minimum clamp warning `1292`, unsupported-value diagnostics, byte-capped output, UTF-8-safe truncation, and warning `1260` for supported `GROUP_CONCAT()` forms. No mutable global state, startup/persisted values, `SET_VAR`, Performance Schema variable tables, binary metadata threshold behavior, or broader aggregate syntax |
@@ -235,7 +235,7 @@ state through this fallback path.
 | `group_replication_communication_stack` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `group_replication_components_stop_timeout` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `group_replication_compression_threshold` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `group_replication_consistency` | ❌ | Value, scope, SET, diagnostics |
+| `group_replication_consistency` | ✅ | Fixed default/session/global scalar and `SHOW VARIABLES` value `BEFORE_ON_PRIMARY_FAILOVER`; exact/default no-op SET forms are supported, with no Group Replication behavior or mutable global state |
 | `group_replication_enforce_update_everywhere_checks` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `group_replication_exit_state_action` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `group_replication_flow_control_applier_threshold` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
@@ -286,9 +286,9 @@ state through this fallback path.
 | `group_replication_unreachable_majority_timeout` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `group_replication_view_change_uuid` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `gtid_executed` | 🟡 | Limited empty-string scalar placeholder for default/global reads and `SHOW VARIABLES`; session/local scalar reads return MySQL-style global-variable diagnostics; no GTID set tracking, replication, privileges, or mutable state |
-| `gtid_executed_compression_period` | ❌ | Value, scope, SET, diagnostics |
+| `gtid_executed_compression_period` | ✅ | Fixed global scalar and `SHOW VARIABLES` value `0`; session-scope reads and non-global SET use MySQL-shaped diagnostics, and exact/default global no-op SET forms are supported. No GTID compression or replication state |
 | `gtid_mode` | 🟡 | Limited fixed `OFF` scalar placeholder for default/global reads and `SHOW VARIABLES`; session/local scalar reads return MySQL-style global-variable diagnostics; no GTID enforcement, mode changes, replication, privileges, or mutable state |
-| `gtid_next` | ❌ | Value, scope, SET, diagnostics |
+| `gtid_next` | ✅ | Fixed session scalar and `SHOW VARIABLES` value `AUTOMATIC`; global reads/SHOW and `SET GLOBAL` use MySQL-shaped session-only behavior, and exact/default session no-op SET forms are supported. No explicit GTID ownership |
 | `gtid_owned` | 🟡 | Limited empty-string scalar placeholder for default/global/session/local reads and `SHOW VARIABLES`; read-only; no owned-GTID tracking, replication, privileges, or mutable state |
 | `gtid_purged` | 🟡 | Limited empty-string scalar placeholder for default/global reads and `SHOW VARIABLES`; session/local scalar reads return MySQL-style global-variable diagnostics; read-only; no GTID set parsing, `SET GLOBAL gtid_purged`, replication, privileges, or mutable state |
 | `have_compress` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
@@ -299,16 +299,16 @@ state through this fallback path.
 | `have_rtree_keys` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
 | `have_statement_timeout` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
 | `have_symlink` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
-| `histogram_generation_max_mem_size` | ❌ | Value, scope, SET, diagnostics |
+| `histogram_generation_max_mem_size` | ✅ | Fixed default/session/global scalar and `SHOW VARIABLES` value `20000000`; exact/default no-op SET forms are supported, with no histogram memory budgeting or mutable global state |
 | `host_cache_size` | ✅ | Fixed embedded host-cache-disabled global readback/SHOW and exact global no-op SET; no host cache or Performance Schema host-cache side effects |
 | `hostname` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `mylite`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No host-name probing, DNS behavior, startup option handling, or replication identity behavior |
-| `identity` | ❌ | Value, scope, SET, diagnostics |
-| `immediate_server_version` | ❌ | Value, scope, SET, diagnostics |
+| `identity` | ✅ | Session-only alias for MyLite's handle-local last-insert-id state; scalar reads, `SHOW VARIABLES`, integer/boolean/user-variable SET, default/global diagnostics, and negative clamp warning are MySQL-runtime verified |
+| `immediate_server_version` | ✅ | Fixed session scalar and `SHOW VARIABLES` value `999999`; global reads/SHOW and `SET GLOBAL` use MySQL-shaped session-only behavior, and exact/default session no-op SET forms are supported |
 | `information_schema_stats_expiry` | 🟡 | Limited handle-local session scalar reads and `SHOW VARIABLES` rows; session/local/unqualified `SET` assignment for `DEFAULT`, integer literals with optional unary sign, booleans, and integer user variables; values below `0` clamp to `0`, values above `31536000` clamp to `31536000`, and clamping emits warning `1292`. Global reads expose fixed `86400` and mutable global assignment is limited to exact no-op `DEFAULT`/`86400` forms; no actual information-schema statistics cache, shared cross-session statistics state, `ANALYZE TABLE` interaction, startup options, persisted variables, privileges, `SET_VAR` hints, or Performance Schema variable tables |
-| `init_connect` | ❌ | Value, scope, SET, diagnostics |
-| `init_file` | ❌ | Value, scope, SET, diagnostics |
-| `init_replica` | ❌ | Value, scope, SET, diagnostics |
-| `init_slave` | ❌ | Value, scope, SET, diagnostics |
+| `init_connect` | ✅ | Fixed global scalar/SHOW empty string; session reads and non-global SET use MySQL-shaped global-only diagnostics, and exact/default global no-op SET forms are supported. No connection-init SQL execution |
+| `init_file` | ✅ | Fixed global scalar SQL `NULL` with empty `SHOW VARIABLES` value; session reads use global-only diagnostics and SET forms return read-only diagnostics. No startup-file execution |
+| `init_replica` | ✅ | Fixed global scalar/SHOW empty string; session reads and non-global SET use MySQL-shaped global-only diagnostics, and exact/default global no-op SET forms are supported. No replication init SQL execution |
+| `init_slave` | ✅ | Deprecated fixed global scalar/SHOW empty string with MySQL-style deprecation warnings on scalar reads and accepted SET forms; no replication init SQL execution |
 | `innodb_adaptive_flushing` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_adaptive_flushing_lwm` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_adaptive_hash_index` | ❌ | Value, scope, SET, diagnostics |
@@ -470,7 +470,7 @@ state through this fallback path.
 | `innodb_validate_tablespace_paths` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_version` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_write_io_threads` | ❌ | Value, scope, SET, diagnostics |
-| `insert_id` | ❌ | Value, scope, SET, diagnostics |
+| `insert_id` | ❌ | Next AUTO_INCREMENT allocation semantics, scalar/SHOW value, SET behavior, and diagnostics |
 | `interactive_timeout` | 🟡 | Limited handle-local session scalar reads, `SHOW VARIABLES` rows, and session/local/unqualified `SET` assignment with MySQL-compatible integer range `1..31536000`, `DEFAULT = 28800`, boolean conversion, clamp warnings, and integer user-variable assignment. Global reads expose fixed `28800` and mutable global assignment is limited to exact no-op `DEFAULT`/`28800` forms; no idle timeout enforcement, protocol behavior, startup options, persisted state, privileges, or Performance Schema rows |
 | `internal_tmp_mem_storage_engine` | ❌ | Value, scope, SET, diagnostics |
 | `join_buffer_size` | ❌ | Value, scope, SET, diagnostics |
@@ -501,7 +501,7 @@ state through this fallback path.
 | `large_files_support` | ❌ | Value, scope, SET, diagnostics |
 | `large_page_size` | ❌ | Value, scope, SET, diagnostics |
 | `large_pages` | ❌ | Value, scope, SET, diagnostics |
-| `last_insert_id` | ❌ | Value, scope, SET, diagnostics |
+| `last_insert_id` | ✅ | Session-only alias for MyLite's handle-local last-insert-id state; scalar reads, `SHOW VARIABLES`, integer/boolean/user-variable SET, default/global diagnostics, and negative clamp warning are MySQL-runtime verified |
 | `lc_messages` | ❌ | Value, scope, SET, diagnostics |
 | `lc_messages_dir` | ❌ | Value, scope, SET, diagnostics |
 | `lc_time_names` | ❌ | Value, scope, SET, diagnostics |

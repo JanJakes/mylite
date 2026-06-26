@@ -7,7 +7,10 @@
 enum {
     sql_capacity = 384,
     mysql_error_parse = 1064,
+    mysql_error_session_variable_global_assignment = 1228,
     mysql_error_global_variable_scope = 1229,
+    mysql_error_variable_no_default = 1230,
+    mysql_error_incorrect_argument_type = 1232,
     mysql_error_session_variable_only = 1238,
 };
 
@@ -40,6 +43,8 @@ struct expected_warning {
 
 static int test_compatibility_values_show_scope_and_warnings(void);
 static int test_compatibility_set_and_diagnostics(void);
+static int test_session_only_compatibility_system_variables(void);
+static int test_last_insert_id_system_variables(void);
 static int expect_values(
     mylite_db *database,
     const char *sql,
@@ -82,6 +87,18 @@ static const struct compatibility_variable compatibility_variables[] = {
     {"ft_min_word_len", "4", "4", false, false},
     {"ft_query_expansion_limit", "20", "20", false, false},
     {"ft_stopword_file", "(built-in)", "(built-in)", false, false},
+    {"generated_random_password_length", "20", "20", true, false},
+    {"group_replication_consistency",
+     "BEFORE_ON_PRIMARY_FAILOVER",
+     "BEFORE_ON_PRIMARY_FAILOVER",
+     true,
+     false},
+    {"gtid_executed_compression_period", "0", "0", false, false},
+    {"histogram_generation_max_mem_size", "20000000", "20000000", true, false},
+    {"init_connect", "", "", false, false},
+    {"init_file", NULL, "", false, false},
+    {"init_replica", "", "", false, false},
+    {"init_slave", "", "", false, true},
 };
 
 int main(void) {
@@ -89,6 +106,8 @@ int main(void) {
 
     failures += test_compatibility_values_show_scope_and_warnings();
     failures += test_compatibility_set_and_diagnostics();
+    failures += test_session_only_compatibility_system_variables();
+    failures += test_last_insert_id_system_variables();
 
     return failures == 0 ? 0 : 1;
 }
@@ -351,6 +370,71 @@ static int test_compatibility_set_and_diagnostics(void) {
         execute_error(database, "SET GLOBAL ft_query_expansion_limit = DEFAULT", read_only_set);
     failures += execute_error(database, "SET GLOBAL ft_stopword_file = DEFAULT", read_only_set);
 
+    failures += execute_statement_ok(database, "SET generated_random_password_length = DEFAULT");
+    failures += execute_statement_ok(database, "SET SESSION generated_random_password_length = 20");
+    failures += execute_statement_ok(database, "SET GLOBAL generated_random_password_length = 20");
+    failures +=
+        execute_error(database, "SET generated_random_password_length = 21", unsupported_set);
+
+    failures += execute_statement_ok(database, "SET group_replication_consistency = DEFAULT");
+    failures += execute_statement_ok(
+        database,
+        "SET SESSION group_replication_consistency = 'BEFORE_ON_PRIMARY_FAILOVER'"
+    );
+    failures += execute_statement_ok(
+        database,
+        "SET GLOBAL group_replication_consistency = BEFORE_ON_PRIMARY_FAILOVER"
+    );
+    failures +=
+        execute_error(database, "SET group_replication_consistency = EVENTUAL", unsupported_set);
+
+    failures +=
+        execute_error(database, "SET gtid_executed_compression_period = DEFAULT", global_only_set);
+    failures +=
+        execute_statement_ok(database, "SET GLOBAL gtid_executed_compression_period = DEFAULT");
+    failures += execute_statement_ok(database, "SET GLOBAL gtid_executed_compression_period = 0");
+    failures +=
+        execute_error(database, "SET GLOBAL gtid_executed_compression_period = 1", unsupported_set);
+
+    failures += execute_statement_ok(database, "SET histogram_generation_max_mem_size = DEFAULT");
+    failures +=
+        execute_statement_ok(database, "SET SESSION histogram_generation_max_mem_size = 20000000");
+    failures +=
+        execute_statement_ok(database, "SET GLOBAL histogram_generation_max_mem_size = 20000000");
+    failures += execute_error(
+        database,
+        "SET histogram_generation_max_mem_size = 20000001",
+        unsupported_set
+    );
+
+    failures += execute_error(database, "SET init_connect = DEFAULT", global_only_set);
+    failures += execute_statement_ok(database, "SET GLOBAL init_connect = DEFAULT");
+    failures += execute_statement_ok(database, "SET GLOBAL init_connect = ''");
+    failures += execute_error(database, "SET GLOBAL init_connect = 'SELECT 1'", unsupported_set);
+
+    failures += execute_error(database, "SET GLOBAL init_file = DEFAULT", read_only_set);
+    failures += execute_error(database, "SET SESSION init_file = DEFAULT", read_only_set);
+
+    failures += execute_error(database, "SET init_replica = DEFAULT", global_only_set);
+    failures += execute_statement_ok(database, "SET GLOBAL init_replica = DEFAULT");
+    failures += execute_statement_ok(database, "SET GLOBAL init_replica = ''");
+    failures += execute_error(database, "SET GLOBAL init_replica = 'SELECT 1'", unsupported_set);
+
+    failures += execute_error(database, "SET init_slave = DEFAULT", global_only_set);
+    failures += execute_statement_ok(database, "SET GLOBAL init_slave = DEFAULT");
+    failures += expect_warning(
+        database,
+        (struct expected_warning
+        ){.code = "1287", .message_part = "init_slave", .context = "init_slave default SET"}
+    );
+    failures += execute_statement_ok(database, "SET GLOBAL init_slave = ''");
+    failures += expect_warning(
+        database,
+        (struct expected_warning
+        ){.code = "1287", .message_part = "init_slave", .context = "init_slave exact SET"}
+    );
+    failures += execute_error(database, "SET GLOBAL init_slave = 'SELECT 1'", unsupported_set);
+
     failures += execute_statement_ok(database, "SET @compatibility_value = 'NO_CHAIN'");
     failures += execute_error(
         database,
@@ -362,6 +446,232 @@ static int test_compatibility_set_and_diagnostics(void) {
         "SET GLOBAL concurrent_insert = @compatibility_value",
         unsupported_user_variable_set
     );
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_session_only_compatibility_system_variables(void) {
+    struct expected_sql_error session_only_read = {
+        .code = mysql_error_session_variable_only,
+        .sqlstate = "HY000",
+        .message_part = "is a SESSION variable",
+    };
+    struct expected_sql_error session_only_global_set = {
+        .code = mysql_error_session_variable_global_assignment,
+        .sqlstate = "HY000",
+        .message_part = "can't be used with SET GLOBAL",
+    };
+    struct expected_sql_error unsupported_set = {
+        .code = mysql_error_parse,
+        .sqlstate = "42000",
+        .message_part = "fixed no-op",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open session-only db");
+
+    failures += expect_values(
+        database,
+        "SELECT @@gtid_next, @@SESSION.gtid_next",
+        (const char *[]){"AUTOMATIC", "AUTOMATIC"},
+        2U,
+        "gtid_next scalar/session"
+    );
+    failures += execute_error(database, "SELECT @@GLOBAL.gtid_next", session_only_read);
+    failures += expect_show_value(
+        database,
+        (struct expected_show_value){.sql = "SHOW VARIABLES LIKE 'gtid_next'",
+                                     .name = "gtid_next",
+                                     .value = "AUTOMATIC",
+                                     .context = "gtid_next show"}
+    );
+    failures += expect_show_value(
+        database,
+        (struct expected_show_value){.sql = "SHOW SESSION VARIABLES LIKE 'gtid_next'",
+                                     .name = "gtid_next",
+                                     .value = "AUTOMATIC",
+                                     .context = "gtid_next show session"}
+    );
+    failures +=
+        expect_empty_result(database, "SHOW GLOBAL VARIABLES LIKE 'gtid_next'", "gtid_next global");
+    failures += execute_statement_ok(database, "SET gtid_next = DEFAULT");
+    failures += execute_statement_ok(database, "SET SESSION gtid_next = AUTOMATIC");
+    failures += execute_error(database, "SET GLOBAL gtid_next = DEFAULT", session_only_global_set);
+    failures += execute_error(database, "SET gtid_next = ANONYMOUS", unsupported_set);
+
+    failures += expect_values(
+        database,
+        "SELECT @@immediate_server_version, @@SESSION.immediate_server_version",
+        (const char *[]){"999999", "999999"},
+        2U,
+        "immediate_server_version scalar/session"
+    );
+    failures +=
+        execute_error(database, "SELECT @@GLOBAL.immediate_server_version", session_only_read);
+    failures += expect_show_value(
+        database,
+        (struct expected_show_value){.sql = "SHOW VARIABLES LIKE 'immediate_server_version'",
+                                     .name = "immediate_server_version",
+                                     .value = "999999",
+                                     .context = "immediate_server_version show"}
+    );
+    failures += expect_show_value(
+        database,
+        (struct expected_show_value){.sql =
+                                         "SHOW SESSION VARIABLES LIKE 'immediate_server_version'",
+                                     .name = "immediate_server_version",
+                                     .value = "999999",
+                                     .context = "immediate_server_version show session"}
+    );
+    failures += expect_empty_result(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'immediate_server_version'",
+        "immediate_server_version global"
+    );
+    failures += execute_statement_ok(database, "SET immediate_server_version = DEFAULT");
+    failures += execute_statement_ok(database, "SET SESSION immediate_server_version = 999999");
+    failures += execute_error(
+        database,
+        "SET GLOBAL immediate_server_version = DEFAULT",
+        session_only_global_set
+    );
+    failures += execute_error(database, "SET immediate_server_version = 80000", unsupported_set);
+
+    mylite_close(database);
+    return failures;
+}
+
+static int test_last_insert_id_system_variables(void) {
+    const size_t last_insert_id_initial_projection_count = 5U;
+    struct expected_sql_error session_only_read = {
+        .code = mysql_error_session_variable_only,
+        .sqlstate = "HY000",
+        .message_part = "is a SESSION variable",
+    };
+    struct expected_sql_error session_only_global_set = {
+        .code = mysql_error_session_variable_global_assignment,
+        .sqlstate = "HY000",
+        .message_part = "can't be used with SET GLOBAL",
+    };
+    struct expected_sql_error no_default_set = {
+        .code = mysql_error_variable_no_default,
+        .sqlstate = "42000",
+        .message_part = "doesn't have a default value",
+    };
+    struct expected_sql_error incorrect_type_set = {
+        .code = mysql_error_incorrect_argument_type,
+        .sqlstate = "42000",
+        .message_part = "Incorrect argument type",
+    };
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    failures += expect_int(mylite_open_memory(&database), MYLITE_OK, "open last insert id db");
+
+    failures += expect_values(
+        database,
+        "SELECT @@identity, @@SESSION.identity, @@last_insert_id, @@SESSION.last_insert_id, "
+        "LAST_INSERT_ID()",
+        (const char *[]){"0", "0", "0", "0", "0"},
+        last_insert_id_initial_projection_count,
+        "initial identity/last_insert_id"
+    );
+    failures += execute_error(database, "SELECT @@GLOBAL.identity", session_only_read);
+    failures += execute_error(database, "SELECT @@GLOBAL.last_insert_id", session_only_read);
+    failures += expect_show_value(
+        database,
+        (struct expected_show_value){.sql = "SHOW VARIABLES LIKE 'identity'",
+                                     .name = "identity",
+                                     .value = "0",
+                                     .context = "identity show"}
+    );
+    failures += expect_show_value(
+        database,
+        (struct expected_show_value){.sql = "SHOW SESSION VARIABLES LIKE 'last_insert_id'",
+                                     .name = "last_insert_id",
+                                     .value = "0",
+                                     .context = "last_insert_id show session"}
+    );
+    failures +=
+        expect_empty_result(database, "SHOW GLOBAL VARIABLES LIKE 'identity'", "identity global");
+    failures += expect_empty_result(
+        database,
+        "SHOW GLOBAL VARIABLES LIKE 'last_insert_id'",
+        "last_insert_id global"
+    );
+
+    failures += execute_statement_ok(database, "SET last_insert_id = 9");
+    failures += expect_values(
+        database,
+        "SELECT @@identity, @@last_insert_id, LAST_INSERT_ID()",
+        (const char *[]){"9", "9", "9"},
+        3U,
+        "last_insert_id updates shared state"
+    );
+    failures += execute_statement_ok(database, "SET identity = 7");
+    failures += expect_values(
+        database,
+        "SELECT @@identity, @@last_insert_id, LAST_INSERT_ID()",
+        (const char *[]){"7", "7", "7"},
+        3U,
+        "identity updates shared state"
+    );
+    failures += execute_statement_ok(database, "SET last_insert_id = +9");
+    failures += expect_values(
+        database,
+        "SELECT LAST_INSERT_ID()",
+        (const char *[]){"9"},
+        1U,
+        "positive last_insert_id"
+    );
+    failures += execute_statement_ok(database, "SET last_insert_id = -1");
+    failures += expect_warning(
+        database,
+        (struct expected_warning){.code = "1292",
+                                  .message_part = "last_insert_id value: '-1'",
+                                  .context = "negative last_insert_id warning"}
+    );
+    failures += expect_values(
+        database,
+        "SELECT @@identity, @@last_insert_id, LAST_INSERT_ID()",
+        (const char *[]){"0", "0", "0"},
+        3U,
+        "negative last_insert_id clamps"
+    );
+    failures += execute_statement_ok(database, "SET identity = TRUE");
+    failures += execute_statement_ok(database, "SET last_insert_id = FALSE");
+    failures += expect_values(
+        database,
+        "SELECT @@identity, @@last_insert_id, LAST_INSERT_ID()",
+        (const char *[]){"0", "0", "0"},
+        3U,
+        "boolean last_insert_id"
+    );
+
+    failures += execute_statement_ok(database, "SET @compatibility_integer = 12");
+    failures += execute_statement_ok(database, "SET last_insert_id = @compatibility_integer");
+    failures += expect_values(
+        database,
+        "SELECT @@identity, @@last_insert_id, LAST_INSERT_ID()",
+        (const char *[]){"12", "12", "12"},
+        3U,
+        "user variable integer last_insert_id"
+    );
+    failures += execute_statement_ok(database, "SET @compatibility_string = '13'");
+    failures +=
+        execute_error(database, "SET last_insert_id = @compatibility_string", incorrect_type_set);
+    failures += execute_statement_ok(database, "SET @compatibility_null = NULL");
+    failures += execute_error(database, "SET identity = @compatibility_null", incorrect_type_set);
+
+    failures += execute_error(database, "SET identity = DEFAULT", no_default_set);
+    failures += execute_error(database, "SET last_insert_id = DEFAULT", no_default_set);
+    failures += execute_error(database, "SET GLOBAL identity = DEFAULT", session_only_global_set);
+    failures +=
+        execute_error(database, "SET GLOBAL last_insert_id = DEFAULT", session_only_global_set);
+    failures += execute_error(database, "SET identity = '14'", incorrect_type_set);
+    failures += execute_error(database, "SET last_insert_id = NULL", incorrect_type_set);
 
     mylite_close(database);
     return failures;

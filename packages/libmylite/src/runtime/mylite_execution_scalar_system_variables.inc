@@ -72,6 +72,7 @@ static int system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_ADMIN_SSL_KEY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_ADMIN_TLS_CIPHERSUITES:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_EXTERNAL_USER:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INIT_FILE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQLX_SSL_CA:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQLX_SSL_CAPATH:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQLX_SSL_CERT:
@@ -268,6 +269,9 @@ static int system_variable_value(
                          : database->session.group_concat_max_len,
             out_cell
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_IDENTITY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LAST_INSERT_ID:
+        return format_session_scalar_uint64_value(database, database->session.last_insert_id, out_cell);
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY:
         return format_session_scalar_uint64_value(
             database,
@@ -1457,6 +1461,15 @@ static int show_system_variable_value(
         }
         return rc;
     }
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_IDENTITY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LAST_INSERT_ID:
+        return format_show_system_variable_uint64_value(
+            database,
+            database->session.last_insert_id,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_TIMESTAMP: {
         int rc =
             format_timestamp_system_variable_value(database, integer_buffer, integer_buffer_size);
@@ -1516,6 +1529,16 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_FT_MIN_WORD_LEN:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_FT_QUERY_EXPANSION_LIMIT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_FT_STOPWORD_FILE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GENERATED_RANDOM_PASSWORD_LENGTH:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GROUP_REPLICATION_CONSISTENCY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_EXECUTED_COMPRESSION_PERIOD:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_NEXT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_HISTOGRAM_GENERATION_MAX_MEM_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_IMMEDIATE_SERVER_VERSION:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INIT_CONNECT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INIT_FILE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INIT_REPLICA:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INIT_SLAVE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTHENTICATION_POLICY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_CACHING_SHA2_PASSWORD_DIGEST_ROUNDS:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_CACHING_SHA2_PASSWORD_PRIVATE_KEY_PATH:
@@ -1693,6 +1716,15 @@ static int append_system_variable_read_warning(
             "HY000",
             "'@@sql_slave_skip_counter' is deprecated and will be removed in a future release. "
             "Please use sql_replica_skip_counter instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INIT_SLAVE) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@init_slave' is deprecated and will be removed in a future release. Please use "
+            "init_replica instead."
         );
     }
     if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS) {

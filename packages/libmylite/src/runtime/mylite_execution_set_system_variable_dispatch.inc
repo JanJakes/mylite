@@ -19,6 +19,14 @@ static int apply_set_system_variable_cell_value(
     if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TIME_ZONE) {
         return apply_set_time_zone_cell_value(database, value);
     }
+    if (set_system_variable_is_last_insert_id(target->kind)) {
+        return apply_set_last_insert_id_system_variable_cell_value(
+            database,
+            target,
+            value,
+            value_kind
+        );
+    }
     if (mylite_execution_system_variable_is_fixed_global_server_security(target->kind)) {
         return apply_set_fixed_global_server_security_cell_value(database, target);
     }

@@ -789,6 +789,41 @@ static int apply_set_timeout_system_variable_cell_value(
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind
 );
+static int apply_set_last_insert_id_system_variable_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int apply_set_last_insert_id_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static bool set_system_variable_is_last_insert_id(
+    enum mylite_execution_system_variable_kind kind
+);
+static int parse_set_last_insert_id_system_variable_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t *out_value
+);
+static int parse_set_last_insert_id_system_variable_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    uint64_t *out_value
+);
+static int parse_last_insert_id_system_variable_integer(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_source_span *unsigned_span,
+    bool negative,
+    const char *value_text,
+    uint64_t *out_value
+);
 static int parse_set_boolean_cell_value(
     struct mylite_db *database,
     const char *variable_name,

@@ -7,6 +7,10 @@ static const uint64_t div_precision_increment_default_value = 4ULL;
 static const uint64_t eq_range_index_dive_limit_default_value = 200ULL;
 static const uint64_t explain_json_format_version_default_value = 1ULL;
 static const uint64_t flush_time_default_value = 0ULL;
+static const uint64_t generated_random_password_length_default_value = 20ULL;
+static const uint64_t gtid_executed_compression_period_default_value = 0ULL;
+static const uint64_t histogram_generation_max_mem_size_default_value = 20000000ULL;
+static const uint64_t immediate_server_version_default_value = 999999ULL;
 
 static int apply_set_compatibility_system_variable_assignment(
     struct mylite_db *database,
@@ -25,6 +29,11 @@ static int apply_set_compatibility_system_variable_assignment(
     }
 
     *out_handled = true;
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL &&
+        !mylite_execution_system_variable_allows_global_scope(target->kind)) {
+        set_session_variable_set_global_error(database, target->name);
+        return MYLITE_ERROR;
+    }
     if (!mylite_execution_system_variable_allows_session_scope(target->kind) &&
         target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         set_global_variable_set_global_required_error(database, target->name);
@@ -44,6 +53,11 @@ static int apply_set_compatibility_system_variable_cell_value(
 ) {
     if (target == NULL) {
         return MYLITE_MISUSE;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL &&
+        !mylite_execution_system_variable_allows_global_scope(target->kind)) {
+        set_session_variable_set_global_error(database, target->name);
+        return MYLITE_ERROR;
     }
     if (!mylite_execution_system_variable_allows_session_scope(target->kind) &&
         target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
@@ -113,6 +127,10 @@ static bool compatibility_system_variable_is_uint64(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_EQ_RANGE_INDEX_DIVE_LIMIT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_EXPLAIN_JSON_FORMAT_VERSION:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_FLUSH_TIME:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GENERATED_RANDOM_PASSWORD_LENGTH:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_EXECUTED_COMPRESSION_PERIOD:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_HISTOGRAM_GENERATION_MAX_MEM_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_IMMEDIATE_SERVER_VERSION:
         return true;
     default:
         return false;
@@ -141,6 +159,14 @@ static uint64_t compatibility_system_variable_uint64_value(
         return explain_json_format_version_default_value;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_FLUSH_TIME:
         return flush_time_default_value;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GENERATED_RANDOM_PASSWORD_LENGTH:
+        return generated_random_password_length_default_value;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_GTID_EXECUTED_COMPRESSION_PERIOD:
+        return gtid_executed_compression_period_default_value;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_HISTOGRAM_GENERATION_MAX_MEM_SIZE:
+        return histogram_generation_max_mem_size_default_value;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_IMMEDIATE_SERVER_VERSION:
+        return immediate_server_version_default_value;
     default:
         return 0ULL;
     }
@@ -154,6 +180,7 @@ static int append_compatibility_system_variable_set_warning_if_needed(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DELAYED_INSERT_LIMIT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DELAYED_INSERT_TIMEOUT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DELAYED_QUEUE_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INIT_SLAVE:
         return append_system_variable_read_warning(database, kind);
     default:
         return MYLITE_OK;

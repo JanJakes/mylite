@@ -70,6 +70,30 @@ void mylite_execution_diagnostics_set_session_variable_set_global_error(
     );
 }
 
+void mylite_execution_diagnostics_set_variable_no_default_error(
+    struct mylite_db *database,
+    const char *variable_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Variable '%s' doesn't have a default value",
+        variable_name
+    );
+
+    if (written < 0) {
+        message[0] = '\0';
+    }
+
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_variable_no_default,
+        "42000",
+        message
+    );
+}
+
 void mylite_execution_diagnostics_set_global_variable_only_error(
     struct mylite_db *database,
     const char *variable_name

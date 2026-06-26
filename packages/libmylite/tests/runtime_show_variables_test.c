@@ -25,13 +25,13 @@ enum {
     test_path_suffix_capacity = 16,
     row_count_text_capacity = 32,
     variable_column_count = 2,
-    session_variable_row_count = 273,
-    global_variable_row_count = 264,
+    session_variable_row_count = 285,
+    global_variable_row_count = 272,
     sql_log_variable_row_count = 2,
     on_variable_row_count = 2,
-    gtid_default_variable_row_count = 5,
-    gtid_global_variable_row_count = 4,
-    gtid_session_variable_row_count = 6,
+    gtid_default_variable_row_count = 7,
+    gtid_global_variable_row_count = 5,
+    gtid_session_variable_row_count = 8,
     empty_gtid_variable_row_count = 3,
     mysql_error_parse = 1064,
     mysql_error_unknown_column = 1054,
@@ -223,11 +223,15 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"ft_min_word_len", "4"},
         {"ft_query_expansion_limit", "20"},
         {"ft_stopword_file", "(built-in)"},
+        {"generated_random_password_length", "20"},
         {"general_log", "OFF"},
         {"general_log_file", "/var/lib/mysql/mylite.log"},
         {"group_concat_max_len", "1024"},
+        {"group_replication_consistency", "BEFORE_ON_PRIMARY_FAILOVER"},
         {"gtid_executed", ""},
+        {"gtid_executed_compression_period", "0"},
         {"gtid_mode", "OFF"},
+        {"gtid_next", "AUTOMATIC"},
         {"gtid_owned", ""},
         {"gtid_purged", ""},
         {"global_connection_memory_limit", "18446744073709551615"},
@@ -240,12 +244,20 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"have_rtree_keys", "YES"},
         {"have_statement_timeout", "YES"},
         {"have_symlink", "DISABLED"},
+        {"histogram_generation_max_mem_size", "20000000"},
         {"host_cache_size", "0"},
         {"hostname", "mylite"},
+        {"identity", "0"},
+        {"immediate_server_version", "999999"},
         {"information_schema_stats_expiry", "86400"},
+        {"init_connect", ""},
+        {"init_file", ""},
+        {"init_replica", ""},
+        {"init_slave", ""},
         {"innodb_read_only", "OFF"},
         {"interactive_timeout", "28800"},
         {"keep_files_on_create", "OFF"},
+        {"last_insert_id", "0"},
         {"license", "GPL"},
         {"log_bin", "ON"},
         {"log_bin_basename", "binlog"},
@@ -496,10 +508,13 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"ft_min_word_len", "4"},
         {"ft_query_expansion_limit", "20"},
         {"ft_stopword_file", "(built-in)"},
+        {"generated_random_password_length", "20"},
         {"general_log", "OFF"},
         {"general_log_file", "/var/lib/mysql/mylite.log"},
         {"group_concat_max_len", "1024"},
+        {"group_replication_consistency", "BEFORE_ON_PRIMARY_FAILOVER"},
         {"gtid_executed", ""},
+        {"gtid_executed_compression_period", "0"},
         {"gtid_mode", "OFF"},
         {"gtid_owned", ""},
         {"gtid_purged", ""},
@@ -513,9 +528,14 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"have_rtree_keys", "YES"},
         {"have_statement_timeout", "YES"},
         {"have_symlink", "DISABLED"},
+        {"histogram_generation_max_mem_size", "20000000"},
         {"host_cache_size", "0"},
         {"hostname", "mylite"},
         {"information_schema_stats_expiry", "86400"},
+        {"init_connect", ""},
+        {"init_file", ""},
+        {"init_replica", ""},
+        {"init_slave", ""},
         {"innodb_read_only", "OFF"},
         {"interactive_timeout", "28800"},
         {"keep_files_on_create", "OFF"},
@@ -669,13 +689,16 @@ static int test_show_variables_values_scopes_and_filters(void) {
                                                 [variable_column_count] = {
                                                     {"autocommit", "ON"},
                                                     {"gtid_executed", ""},
+                                                    {"gtid_executed_compression_period", "0"},
                                                     {"gtid_mode", "OFF"},
+                                                    {"gtid_next", "AUTOMATIC"},
                                                     {"gtid_owned", ""},
                                                     {"gtid_purged", ""},
                                                 };
     const char
         *const expected_gtid_global_rows[gtid_global_variable_row_count][variable_column_count] = {
             {"gtid_executed", ""},
+            {"gtid_executed_compression_period", "0"},
             {"gtid_mode", "OFF"},
             {"gtid_owned", ""},
             {"gtid_purged", ""},
@@ -683,7 +706,9 @@ static int test_show_variables_values_scopes_and_filters(void) {
     const char *const expected_gtid_session_rows[gtid_session_variable_row_count]
                                                 [variable_column_count] = {
                                                     {"gtid_executed", ""},
+                                                    {"gtid_executed_compression_period", "0"},
                                                     {"gtid_mode", "OFF"},
+                                                    {"gtid_next", "AUTOMATIC"},
                                                     {"gtid_owned", ""},
                                                     {"gtid_purged", ""},
                                                     {"sql_log_bin", "ON"},
@@ -1031,7 +1056,8 @@ static int test_show_variables_values_scopes_and_filters(void) {
     failures += expect_query_rows(
         database,
         "SHOW VARIABLES WHERE Variable_name IN "
-        "('autocommit','gtid_purged','gtid_executed','gtid_owned','gtid_mode')",
+        "('autocommit','gtid_purged','gtid_executed','gtid_executed_compression_period',"
+        "'gtid_next','gtid_owned','gtid_mode')",
         expected_gtid_default_rows,
         gtid_default_variable_row_count,
         "show variables where default gtid rows"
@@ -1039,7 +1065,8 @@ static int test_show_variables_values_scopes_and_filters(void) {
     failures += expect_query_rows(
         database,
         "SHOW GLOBAL VARIABLES WHERE Variable_name IN "
-        "('sql_log_bin','warning_count','gtid_purged','gtid_executed','gtid_owned','gtid_mode')",
+        "('sql_log_bin','warning_count','gtid_purged','gtid_executed',"
+        "'gtid_executed_compression_period','gtid_next','gtid_owned','gtid_mode')",
         expected_gtid_global_rows,
         gtid_global_variable_row_count,
         "show global variables where gtid rows"
@@ -1047,7 +1074,8 @@ static int test_show_variables_values_scopes_and_filters(void) {
     failures += expect_query_rows(
         database,
         "SHOW SESSION VARIABLES WHERE Variable_name IN "
-        "('sql_log_bin','warning_count','gtid_purged','gtid_executed','gtid_owned','gtid_mode')",
+        "('sql_log_bin','warning_count','gtid_purged','gtid_executed',"
+        "'gtid_executed_compression_period','gtid_next','gtid_owned','gtid_mode')",
         expected_gtid_session_rows,
         gtid_session_variable_row_count,
         "show session variables where gtid rows"

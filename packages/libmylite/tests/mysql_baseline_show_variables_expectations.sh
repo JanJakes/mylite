@@ -143,7 +143,20 @@ run_mysql \
      SET SESSION explain_json_format_version = DEFAULT;
      SET GLOBAL flush = DEFAULT;
      SET GLOBAL flush_time = DEFAULT;
-     SET GLOBAL ft_boolean_syntax = DEFAULT;" >/dev/null
+     SET GLOBAL ft_boolean_syntax = DEFAULT;
+     SET GLOBAL generated_random_password_length = DEFAULT;
+     SET SESSION generated_random_password_length = DEFAULT;
+     SET GLOBAL group_replication_consistency = DEFAULT;
+     SET SESSION group_replication_consistency = DEFAULT;
+     SET GLOBAL gtid_executed_compression_period = DEFAULT;
+     SET gtid_next = DEFAULT;
+     SET GLOBAL histogram_generation_max_mem_size = DEFAULT;
+     SET SESSION histogram_generation_max_mem_size = DEFAULT;
+     SET immediate_server_version = DEFAULT;
+     SET GLOBAL init_connect = DEFAULT;
+     SET GLOBAL init_replica = DEFAULT;
+     SET GLOBAL init_slave = DEFAULT;
+     SET last_insert_id = 0;" >/dev/null
 
 headers=$(run_mysql_with_headers "SHOW VARIABLES LIKE 'autocommit';" | sed -n '1p')
 expect_value "headers" "Variable_name${TAB}Value" "$headers"
@@ -210,6 +223,18 @@ supported_session_rows=$(run_mysql "
       'ft_min_word_len',
       'ft_query_expansion_limit',
       'ft_stopword_file',
+      'generated_random_password_length',
+      'group_replication_consistency',
+      'gtid_executed_compression_period',
+      'gtid_next',
+      'histogram_generation_max_mem_size',
+      'identity',
+      'immediate_server_version',
+      'init_connect',
+      'init_file',
+      'init_replica',
+      'init_slave',
+      'last_insert_id',
       'autocommit',
       'activate_all_roles_on_login',
       'auto_generate_certs',
@@ -356,12 +381,24 @@ ft_max_word_len|84
 ft_min_word_len|4
 ft_query_expansion_limit|20
 ft_stopword_file|(built-in)
+generated_random_password_length|20
 global_connection_memory_limit|18446744073709551615
 global_connection_memory_tracking|OFF
 group_concat_max_len|1024
+group_replication_consistency|BEFORE_ON_PRIMARY_FAILOVER
+gtid_executed_compression_period|0
+gtid_next|AUTOMATIC
+histogram_generation_max_mem_size|20000000
 host_cache_size|0
+identity|0
+immediate_server_version|999999
+init_connect|
+init_file|
+init_replica|
+init_slave|
 innodb_read_only|OFF
 interactive_timeout|28800
+last_insert_id|0
 lower_case_file_system|OFF
 lower_case_table_names|0
 max_allowed_packet|67108864
@@ -443,6 +480,18 @@ supported_global_rows=$(run_mysql "
       'ft_min_word_len',
       'ft_query_expansion_limit',
       'ft_stopword_file',
+      'generated_random_password_length',
+      'group_replication_consistency',
+      'gtid_executed_compression_period',
+      'gtid_next',
+      'histogram_generation_max_mem_size',
+      'identity',
+      'immediate_server_version',
+      'init_connect',
+      'init_file',
+      'init_replica',
+      'init_slave',
+      'last_insert_id',
       'autocommit',
       'activate_all_roles_on_login',
       'auto_generate_certs',
@@ -587,10 +636,18 @@ ft_max_word_len|84
 ft_min_word_len|4
 ft_query_expansion_limit|20
 ft_stopword_file|(built-in)
+generated_random_password_length|20
 global_connection_memory_limit|18446744073709551615
 global_connection_memory_tracking|OFF
 group_concat_max_len|1024
+group_replication_consistency|BEFORE_ON_PRIMARY_FAILOVER
+gtid_executed_compression_period|0
+histogram_generation_max_mem_size|20000000
 host_cache_size|0
+init_connect|
+init_file|
+init_replica|
+init_slave|
 innodb_read_only|OFF
 interactive_timeout|28800
 lower_case_file_system|OFF

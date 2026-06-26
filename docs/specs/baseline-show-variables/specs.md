@@ -230,8 +230,17 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `ft_min_word_len` | yes | yes | `4` |
 | `ft_query_expansion_limit` | yes | yes | `20` |
 | `ft_stopword_file` | yes | yes | `(built-in)` |
+| `generated_random_password_length` | yes | yes | `20` |
 | `global_connection_memory_limit` | yes | yes | `18446744073709551615` |
 | `global_connection_memory_tracking` | yes | yes | current session value or fixed global `OFF` |
+| `group_concat_max_len` | yes | yes | current session value or fixed global `1024` |
+| `group_replication_consistency` | yes | yes | `BEFORE_ON_PRIMARY_FAILOVER` |
+| `gtid_executed` | yes | yes | empty string |
+| `gtid_executed_compression_period` | yes | yes | `0` |
+| `gtid_mode` | yes | yes | `OFF` |
+| `gtid_next` | yes | no | `AUTOMATIC` |
+| `gtid_owned` | yes | yes | empty string |
+| `gtid_purged` | yes | yes | empty string |
 | `have_compress` | yes | yes | `YES` |
 | `have_dynamic_loading` | yes | yes | `YES` |
 | `have_geometry` | yes | yes | `YES` |
@@ -240,9 +249,19 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `have_rtree_keys` | yes | yes | `YES` |
 | `have_statement_timeout` | yes | yes | `YES` |
 | `have_symlink` | yes | yes | `DISABLED` |
+| `histogram_generation_max_mem_size` | yes | yes | `20000000` |
 | `host_cache_size` | yes | yes | `0` |
+| `hostname` | yes | yes | `mylite` |
+| `identity` | yes | no | current last insert id |
+| `immediate_server_version` | yes | no | `999999` |
+| `information_schema_stats_expiry` | yes | yes | current session value or fixed global `86400` |
+| `init_connect` | yes | yes | empty string |
+| `init_file` | yes | yes | empty string |
+| `init_replica` | yes | yes | empty string |
+| `init_slave` | yes | yes | empty string |
 | `interactive_timeout` | yes | yes | current session value or fixed global `28800` |
 | `keep_files_on_create` | yes | yes | `OFF` |
+| `last_insert_id` | yes | no | current last insert id |
 | `lower_case_file_system` | yes | yes | `OFF` |
 | `lower_case_table_names` | yes | yes | `0` |
 | `max_allowed_packet` | yes | yes | `67108864` |

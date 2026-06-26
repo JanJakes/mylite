@@ -75,6 +75,14 @@ static int apply_set_innodb_storage_system_variable_assignment(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PURGE_RSEG_TRUNCATE_FREQUENCY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_RANDOM_READ_AHEAD:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_AHEAD_THRESHOLD:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REDO_LOG_ARCHIVE_DIRS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REDO_LOG_CAPACITY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REDO_LOG_ENCRYPT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REPLICATION_DELAY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_ROLLBACK_SEGMENTS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SEGMENT_RESERVE_FACTOR:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SPIN_WAIT_DELAY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SPIN_WAIT_PAUSE_MULTIPLIER:
         *out_handled = true;
         return validate_set_innodb_storage_fixed_value(database, target, value_node);
     default:
@@ -160,6 +168,14 @@ static int apply_set_innodb_storage_system_variable_cell_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PURGE_RSEG_TRUNCATE_FREQUENCY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_RANDOM_READ_AHEAD:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_AHEAD_THRESHOLD:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REDO_LOG_ARCHIVE_DIRS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REDO_LOG_CAPACITY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REDO_LOG_ENCRYPT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REPLICATION_DELAY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_ROLLBACK_SEGMENTS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SEGMENT_RESERVE_FACTOR:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SPIN_WAIT_DELAY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SPIN_WAIT_PAUSE_MULTIPLIER:
         *out_handled = true;
         return validate_set_innodb_storage_fixed_cell_value(
             database,
@@ -496,6 +512,55 @@ static int validate_set_innodb_storage_fixed_value(
             database,
             value_node,
             innodb_read_ahead_threshold_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REDO_LOG_ARCHIVE_DIRS:
+        return validate_set_fixed_null_value(
+            database,
+            value_node,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REDO_LOG_CAPACITY:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_redo_log_capacity_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REDO_LOG_ENCRYPT:
+        return validate_set_fixed_boolean_value(database, value_node, false);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REPLICATION_DELAY:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_replication_delay_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_ROLLBACK_SEGMENTS:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_rollback_segments_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SEGMENT_RESERVE_FACTOR:
+        return validate_set_innodb_storage_fixed_decimal_text_value(
+            database,
+            value_node,
+            innodb_segment_reserve_factor_exact_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SPIN_WAIT_DELAY:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_spin_wait_delay_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SPIN_WAIT_PAUSE_MULTIPLIER:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_spin_wait_pause_multiplier_default_value,
             "SET supports only fixed no-op system variable assignments"
         );
     default:
@@ -898,6 +963,63 @@ static int validate_set_innodb_storage_fixed_cell_value(
             database,
             target,
             innodb_read_ahead_threshold_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REDO_LOG_ARCHIVE_DIRS:
+        return validate_set_innodb_storage_fixed_null_cell_value(
+            database,
+            target,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REDO_LOG_CAPACITY:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_redo_log_capacity_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REDO_LOG_ENCRYPT:
+        return apply_set_fixed_boolean_system_variable_cell_value(database, target, value, false);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REPLICATION_DELAY:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_replication_delay_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_ROLLBACK_SEGMENTS:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_rollback_segments_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SEGMENT_RESERVE_FACTOR:
+        return validate_set_innodb_storage_fixed_decimal_text_cell_value(
+            database,
+            target,
+            innodb_segment_reserve_factor_exact_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SPIN_WAIT_DELAY:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_spin_wait_delay_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SPIN_WAIT_PAUSE_MULTIPLIER:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_spin_wait_pause_multiplier_default_value,
             value,
             value_kind
         );
@@ -1309,6 +1431,75 @@ static int validate_set_innodb_storage_fixed_uint64_cell_value(
     return MYLITE_OK;
 }
 
+static int validate_set_innodb_storage_fixed_null_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+) {
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (value == NULL || value_kind == MYLITE_SESSION_USER_VARIABLE_VALUE_NULL) {
+        return MYLITE_OK;
+    }
+
+    set_unsupported_error(
+        database,
+        "SET supports only fixed no-op system variable assignments"
+    );
+    return MYLITE_ERROR;
+}
+
+static int validate_set_innodb_storage_fixed_decimal_text_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const char *expected_value
+) {
+    const struct mylite_sql_ast_node *literal_node = unwrap_parenthesized_expression(value_node);
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (value_node == NULL || expected_value == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+    if (literal_node != NULL && literal_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(literal_node);
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(
+                database,
+                "SET supports only fixed no-op system variable assignments"
+            );
+            return MYLITE_ERROR;
+        }
+        literal_node = unwrap_parenthesized_expression(child_at(literal_node, 0U));
+    }
+    if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal_node);
+    if ((literal_kind != MYLITE_SQL_AST_LITERAL_DECIMAL &&
+         literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER) ||
+        !fixed_decimal_text_matches_ascii(literal_node->span, expected_value)) {
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
 static int validate_set_innodb_storage_fixed_decimal_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -1340,6 +1531,61 @@ static int validate_set_innodb_storage_fixed_decimal_cell_value(
         return MYLITE_ERROR;
     }
     return MYLITE_OK;
+}
+
+static int validate_set_innodb_storage_fixed_decimal_text_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const char *expected_value,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+) {
+    const char *text = value == NULL ? NULL : value->value;
+    struct mylite_sql_source_span value_span = {0};
+    size_t text_size = 0U;
+
+    if (target == NULL || expected_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (value == NULL || text == NULL ||
+        (value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER &&
+         value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_DECIMAL)) {
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
+    }
+
+    text_size = value->has_value_size ? value->value_size : strlen(text);
+    value_span = (struct mylite_sql_source_span){.text = text, .length = text_size};
+    if (text_size == 0U || text[0] == '-' || text[0] == '+' ||
+        !fixed_decimal_text_matches_ascii(value_span, expected_value)) {
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static bool fixed_decimal_text_matches_ascii(
+    struct mylite_sql_source_span text,
+    const char *expected_value
+) {
+    size_t expected_size = 0U;
+
+    if (text.text == NULL || text.length == 0U || expected_value == NULL) {
+        return false;
+    }
+    expected_size = strlen(expected_value);
+    if (text.length < expected_size ||
+        strncmp(text.text, expected_value, expected_size) != 0) {
+        return false;
+    }
+    for (size_t index = expected_size; index < text.length; ++index) {
+        if (text.text[index] != '0') {
+            return false;
+        }
+    }
+    return true;
 }
 
 static int validate_set_innodb_storage_fixed_text_cell_value(

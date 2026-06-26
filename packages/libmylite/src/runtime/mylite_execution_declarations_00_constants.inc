@@ -875,6 +875,16 @@ static const uint64_t innodb_purge_threads_default_value = 4ULL;
 static const uint64_t innodb_random_read_ahead_default_value = 0ULL;
 static const uint64_t innodb_read_ahead_threshold_default_value = 56ULL;
 static const uint64_t innodb_read_io_threads_default_value = 9ULL;
+static const uint64_t innodb_redo_log_capacity_default_value = 104857600ULL;
+static const uint64_t innodb_redo_log_encrypt_default_value = 0ULL;
+static const uint64_t innodb_replication_delay_default_value = 0ULL;
+static const uint64_t innodb_rollback_on_timeout_default_value = 0ULL;
+static const uint64_t innodb_rollback_segments_default_value = 128ULL;
+static const char innodb_segment_reserve_factor_exact_value[] = "12.5";
+static const char innodb_segment_reserve_factor_default_value[] = "12.500000";
+static const uint64_t innodb_sort_buffer_size_default_value = 1048576ULL;
+static const uint64_t innodb_spin_wait_delay_default_value = 6ULL;
+static const uint64_t innodb_spin_wait_pause_multiplier_default_value = 50ULL;
 static const uint64_t sort_buffer_size_default_value =
     MYLITE_SESSION_SORT_BUFFER_SIZE_DEFAULT_VALUE;
 static const uint64_t sort_buffer_size_min_value = MYLITE_SESSION_SORT_BUFFER_SIZE_MIN_VALUE;

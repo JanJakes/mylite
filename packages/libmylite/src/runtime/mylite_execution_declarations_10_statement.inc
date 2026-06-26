@@ -1277,12 +1277,34 @@ static int validate_set_innodb_storage_fixed_uint64_cell_value(
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind
 );
+static int validate_set_innodb_storage_fixed_null_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int validate_set_innodb_storage_fixed_decimal_text_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    const char *expected_value
+);
 static int validate_set_innodb_storage_fixed_decimal_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
     uint64_t expected_integral_value,
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind
+);
+static int validate_set_innodb_storage_fixed_decimal_text_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const char *expected_value,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static bool fixed_decimal_text_matches_ascii(
+    struct mylite_sql_source_span text,
+    const char *expected_value
 );
 static int validate_set_innodb_storage_fixed_text_cell_value(
     struct mylite_db *database,

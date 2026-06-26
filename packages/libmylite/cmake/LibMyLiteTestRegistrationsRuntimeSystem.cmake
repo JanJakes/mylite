@@ -641,6 +641,10 @@
     COMMAND mylite_runtime_innodb_page_read_purge_system_variables_test
   )
   add_test(
+    NAME libmylite.runtime.innodb_redo_rollback_spin_system_variables
+    COMMAND mylite_runtime_innodb_redo_rollback_spin_system_variables_test
+  )
+  add_test(
     NAME libmylite.runtime.network_timeout_system_variables
     COMMAND mylite_runtime_network_timeout_system_variables_test
   )

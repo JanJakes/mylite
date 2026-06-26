@@ -429,17 +429,17 @@ state through this fallback path.
 | `innodb_read_ahead_threshold` | ✅ | Fixed scalar/SHOW value `56`, global-only diagnostics, and exact/default global no-op SET; no read-ahead side effects |
 | `innodb_read_io_threads` | ✅ | Fixed scalar/SHOW value `9` and read-only diagnostics; no IO-thread allocation side effects |
 | `innodb_read_only` | 🟡 | Limited fixed global read-only disabled placeholder: scalar default/global reads return `0`, `SHOW VARIABLES` rows report `OFF`, session/local scalar reads return MySQL-style global-variable diagnostics, and every `SET` form returns MySQL-style read-only diagnostics; no startup option, mutable value, InnoDB read-only mode, write blocking, or data-dictionary effects |
-| `innodb_redo_log_archive_dirs` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_redo_log_capacity` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_redo_log_encrypt` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_replication_delay` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_rollback_on_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_rollback_segments` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_redo_log_archive_dirs` | ✅ | Fixed scalar `NULL`/empty SHOW value, global-only diagnostics, and `DEFAULT`/`NULL` global no-op SET; no redo-log archive configuration |
+| `innodb_redo_log_capacity` | ✅ | Fixed scalar/SHOW value `104857600`, global-only diagnostics, and exact/default global no-op SET; no redo-log capacity change |
+| `innodb_redo_log_encrypt` | ✅ | Fixed scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no redo-log encryption side effects |
+| `innodb_replication_delay` | ✅ | Fixed scalar/SHOW value `0`, global-only diagnostics, and exact/default global no-op SET; no replication throttling side effects |
+| `innodb_rollback_on_timeout` | ✅ | Fixed scalar `0`/SHOW `OFF` and read-only diagnostics; no timeout rollback policy side effects |
+| `innodb_rollback_segments` | ✅ | Fixed scalar/SHOW value `128`, global-only diagnostics, and exact/default global no-op SET; no rollback-segment allocation side effects |
 | `innodb_saved_page_number_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `innodb_segment_reserve_factor` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_sort_buffer_size` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_spin_wait_delay` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_spin_wait_pause_multiplier` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_segment_reserve_factor` | ✅ | Fixed scalar/SHOW value `12.500000`, global-only diagnostics, and exact/default global no-op SET; no segment page-reservation side effects |
+| `innodb_sort_buffer_size` | ✅ | Fixed scalar/SHOW value `1048576` and read-only diagnostics; no sorted-index build buffer allocation side effects |
+| `innodb_spin_wait_delay` | ✅ | Fixed scalar/SHOW value `6`, global-only diagnostics, and exact/default global no-op SET; no spin-wait tuning side effects |
+| `innodb_spin_wait_pause_multiplier` | ✅ | Fixed scalar/SHOW value `50`, global-only diagnostics, and exact/default global no-op SET; no spin-wait tuning side effects |
 | `innodb_stats_auto_recalc` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_stats_include_delete_marked` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_stats_method` | ❌ | Value, scope, SET, diagnostics |

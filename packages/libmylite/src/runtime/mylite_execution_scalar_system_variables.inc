@@ -828,6 +828,60 @@ static int system_variable_value(
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_IO_THREADS:
         return format_session_scalar_uint64_value(database, innodb_read_io_threads_default_value, out_cell);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REDO_LOG_ARCHIVE_DIRS:
+        out_cell->value = NULL;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REDO_LOG_CAPACITY:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_redo_log_capacity_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REDO_LOG_ENCRYPT:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_redo_log_encrypt_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REPLICATION_DELAY:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_replication_delay_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_ROLLBACK_ON_TIMEOUT:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_rollback_on_timeout_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_ROLLBACK_SEGMENTS:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_rollback_segments_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SEGMENT_RESERVE_FACTOR:
+        out_cell->value = innodb_segment_reserve_factor_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SORT_BUFFER_SIZE:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_sort_buffer_size_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SPIN_WAIT_DELAY:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_spin_wait_delay_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SPIN_WAIT_PAUSE_MULTIPLIER:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_spin_wait_pause_multiplier_default_value,
+            out_cell
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_TRACKING:
         return format_session_scalar_uint64_value(
             database,
@@ -2521,6 +2575,66 @@ static int show_system_variable_value(
         return format_show_system_variable_uint64_value(
             database,
             innodb_read_io_threads_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REDO_LOG_ARCHIVE_DIRS:
+        *out_value = "";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REDO_LOG_CAPACITY:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_redo_log_capacity_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REDO_LOG_ENCRYPT:
+        *out_value = "OFF";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REPLICATION_DELAY:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_replication_delay_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_ROLLBACK_ON_TIMEOUT:
+        *out_value = "OFF";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_ROLLBACK_SEGMENTS:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_rollback_segments_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SEGMENT_RESERVE_FACTOR:
+        *out_value = innodb_segment_reserve_factor_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SORT_BUFFER_SIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_sort_buffer_size_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SPIN_WAIT_DELAY:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_spin_wait_delay_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SPIN_WAIT_PAUSE_MULTIPLIER:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_spin_wait_pause_multiplier_default_value,
             integer_buffer,
             integer_buffer_size,
             out_value

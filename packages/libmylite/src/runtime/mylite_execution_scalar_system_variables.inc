@@ -2266,6 +2266,27 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_TRACE_MAX_MEM_SIZE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_TRACE_OFFSET:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PARSER_MAX_MEM_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_LC_TIME_NAMES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_BUFFER_LENGTH:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PRELOAD_BUFFER_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PROFILING_HISTORY_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_QUERY_ALLOC_BLOCK_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_QUERY_PREALLOC_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RANGE_ALLOC_BLOCK_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RANGE_OPTIMIZER_MAX_MEM_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_READ_BUFFER_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_READ_RND_BUFFER_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REGEXP_STACK_LIMIT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REGEXP_TIME_LIMIT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SECONDARY_ENGINE_COST_THRESHOLD:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SELECT_INTO_BUFFER_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SELECT_INTO_DISK_SYNC_DELAY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_SYSTEM_VARIABLES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SET_OPERATIONS_BUFFER_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TERMINOLOGY_USE_PREVIOUS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TMP_TABLE_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_ALLOC_BLOCK_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_PREALLOC_SIZE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_BINLOG_CACHE_SIZE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_BINLOG_CHECKSUM:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_BINLOG_ERROR_ACTION:
@@ -3268,6 +3289,19 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_BIG_TABLES:
         *out_value = big_tables_system_variable_show_value(database, global_scope);
         return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PROFILING:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RESTRICT_FK_ON_NON_STANDARD_KEY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SHOW_GIPK_IN_CREATE_TABLE_AND_INFORMATION_SCHEMA:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_WINDOWING_USE_HIGH_PRECISION:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_XA_DETACH_ON_PREPARE:
+        *out_value = boolean_session_placeholder_system_variable_uint64_value(
+                         database,
+                         kind,
+                         global_scope
+                     ) == 0U
+                         ? "OFF"
+                         : "ON";
+        return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTOCOMMIT:
         *out_value = global_scope || database->session.autocommit_enabled ? "ON" : "OFF";
         return MYLITE_OK;
@@ -3872,12 +3906,36 @@ static int append_system_variable_read_warning(
             "Please use source_verify_checksum instead."
         );
     }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_PROFILING) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@profiling' is deprecated and will be removed in a future release."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_PROFILING_HISTORY_SIZE) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@profiling_history_size' is deprecated and will be removed in a future release."
+        );
+    }
     if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICA_PARALLEL_TYPE) {
         return mylite_diagnostics_append_warning(
             mylite_connection_diagnostics(database),
             mysql_warning_deprecated_system_variable,
             "HY000",
             "'@@replica_parallel_type' is deprecated and will be removed in a future release."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_QUERY_PREALLOC_SIZE) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@query_prealloc_size' is deprecated and will be removed in a future release."
         );
     }
     if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_RPL_STOP_SLAVE_TIMEOUT) {
@@ -3913,6 +3971,22 @@ static int append_system_variable_read_warning(
             mysql_warning_deprecated_system_variable,
             "HY000",
             "'@@sync_relay_log_info' is deprecated and will be removed in a future release."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TERMINOLOGY_USE_PREVIOUS) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@terminology_use_previous' is deprecated and will be removed in a future release."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TRANSACTION_PREALLOC_SIZE) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@transaction_prealloc_size' is deprecated and will be removed in a future release."
         );
     }
     if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_ALLOW_BATCHING) {

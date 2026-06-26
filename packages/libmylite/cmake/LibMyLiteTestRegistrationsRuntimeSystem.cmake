@@ -593,6 +593,10 @@
     COMMAND mylite_runtime_internal_session_system_variables_test
   )
   add_test(
+    NAME libmylite.runtime.resource_tuning_system_variables
+    COMMAND mylite_runtime_resource_tuning_system_variables_test
+  )
+  add_test(
     NAME libmylite.runtime.server_tls_system_variables
     COMMAND mylite_runtime_server_tls_system_variables_test
   )

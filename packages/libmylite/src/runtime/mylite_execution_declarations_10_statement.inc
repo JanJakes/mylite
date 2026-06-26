@@ -650,6 +650,116 @@ static int append_internal_session_system_variable_set_warning_if_needed(
     struct mylite_db *database,
     enum mylite_execution_system_variable_kind kind
 );
+static int apply_set_resource_tuning_system_variable_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
+static int apply_set_resource_tuning_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    bool *out_handled
+);
+static bool resource_tuning_system_variable_handles_kind(
+    enum mylite_execution_system_variable_kind kind
+);
+static bool resource_tuning_system_variable_is_global_only(
+    enum mylite_execution_system_variable_kind kind
+);
+static bool resource_tuning_system_variable_is_session_read_only(
+    enum mylite_execution_system_variable_kind kind
+);
+static int copy_resource_tuning_system_variable_node_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    char **out_value,
+    size_t *out_value_size
+);
+static int copy_resource_tuning_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    char **out_value,
+    size_t *out_value_size
+);
+static int copy_resource_tuning_system_variable_node_text(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    char **out_value,
+    size_t *out_value_size
+);
+static int copy_resource_tuning_node_span_text(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    char **out_value,
+    size_t *out_value_size
+);
+static int canonicalize_resource_tuning_system_variable_text(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const char *text,
+    size_t text_size,
+    char **out_value,
+    size_t *out_value_size
+);
+static int copy_resource_tuning_terminology_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const char *text,
+    size_t text_size,
+    char **out_value,
+    size_t *out_value_size
+);
+static int copy_resource_tuning_decimal_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const char *text,
+    size_t text_size,
+    char **out_value,
+    size_t *out_value_size
+);
+static int copy_resource_tuning_uint64_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const char *text,
+    size_t text_size,
+    char **out_value,
+    size_t *out_value_size
+);
+static bool parse_resource_tuning_uint64_text(
+    const char *text,
+    size_t text_size,
+    uint64_t *out_value
+);
+static int validate_resource_tuning_fixed_global_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const char *value,
+    size_t value_size
+);
+static int append_resource_tuning_system_variable_set_warning_if_needed(
+    struct mylite_db *database,
+    enum mylite_execution_system_variable_kind kind
+);
+static int copy_resource_tuning_static_text(
+    struct mylite_db *database,
+    const char *text,
+    char **out_value,
+    size_t *out_value_size
+);
+static int copy_resource_tuning_text(
+    struct mylite_db *database,
+    const char *text,
+    size_t text_size,
+    char **out_value,
+    size_t *out_value_size
+);
 static int apply_set_global_session_placeholder_assignment(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,

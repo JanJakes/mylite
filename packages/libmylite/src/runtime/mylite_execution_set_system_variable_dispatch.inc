@@ -130,6 +130,16 @@ static int apply_set_system_variable_cell_value(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc = apply_set_resource_tuning_system_variable_cell_value(
+        database,
+        target,
+        value,
+        value_kind,
+        &handled
+    );
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     if (set_system_variable_is_text_session_state(target->kind)) {
         return apply_set_text_session_system_variable_cell_value(database, target, value);
     }
@@ -635,6 +645,16 @@ static bool reject_invalid_read_only_system_variable_cell_target(
         !mylite_execution_system_variable_allows_session_scope(target->kind) &&
         target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         set_global_variable_set_global_required_error(database, target->name);
+        return true;
+    }
+    if (resource_tuning_system_variable_is_global_only(target->kind) &&
+        target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_global_variable_set_global_required_error(database, target->name);
+        return true;
+    }
+    if (resource_tuning_system_variable_is_session_read_only(target->kind) &&
+        target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_session_read_only_system_variable_error(database, target->name);
         return true;
     }
 

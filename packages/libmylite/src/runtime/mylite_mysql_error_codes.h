@@ -115,6 +115,7 @@ enum {
     mysql_warning_json_merge_deprecated = 1287,
     mysql_warning_user_variable_assignment_deprecated = 1287,
     mysql_warning_sql_no_cache_deprecated = 1681,
+    mysql_warning_restrict_fk_deprecated = 4166,
     mysql_warning_hash_index_unsupported = 3502,
     mysql_error_invalid_default = 1067,
     mysql_error_field_no_default = 1364,

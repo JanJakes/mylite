@@ -1214,6 +1214,8 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_set_internal_session_system_variables.inc"
 
+#include "mylite_execution_set_resource_tuning_system_variables.inc"
+
 #include "mylite_execution_set_sql_mode_timestamp_time_zone.inc"
 
 #include "mylite_execution_ddl_create_table_statements.inc"

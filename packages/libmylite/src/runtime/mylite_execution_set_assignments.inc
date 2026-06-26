@@ -220,6 +220,15 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc = apply_set_resource_tuning_system_variable_assignment(
+        database,
+        &target,
+        value_node,
+        &handled
+    );
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     rc = apply_set_global_session_placeholder_assignment(database, &target, value_node, &handled);
     if (rc != MYLITE_OK || handled) {
         return rc;

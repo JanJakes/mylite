@@ -1136,7 +1136,20 @@ static int rand_function_value(
 
     child_count = mylite_sql_ast_node_child_count(expression);
     if (expression->kind == MYLITE_SQL_AST_RAND_FUNCTION && child_count == 0U) {
-        value = mylite_rand_unseeded_unit_double();
+        if (database != NULL && database->session.rand_seed_state_initialized) {
+            struct mylite_rand_state state = {0};
+
+            mylite_rand_state_init_words(
+                &state,
+                database->session.rand_seed1,
+                database->session.rand_seed2
+            );
+            value = mylite_rand_state_next_unit_double(&state);
+            database->session.rand_seed1 = state.seed1;
+            database->session.rand_seed2 = state.seed2;
+        } else {
+            value = mylite_rand_unseeded_unit_double();
+        }
     } else if (expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION && child_count == 1U) {
         rc = rand_scalar_seed_value(database, child_at(expression, 0U), &seed, &seed_warnings);
         if (rc == MYLITE_OK) {

@@ -522,8 +522,12 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->previous_row_count = -1;
     session->found_rows = 1U;
     session->last_insert_id = 0U;
+    session->insert_id = 0U;
+    session->statement_id = 0U;
     session->auto_increment_increment = 1U;
     session->auto_increment_offset = 1U;
+    session->temptable_max_ram = 0U;
+    session->temptable_max_ram_has_override = false;
     session->sql_select_limit = UINT64_MAX;
     session->group_concat_max_len = MYLITE_SESSION_GROUP_CONCAT_MAX_LEN_DEFAULT_VALUE;
     session->group_concat_value_ordinal = 0U;
@@ -560,6 +564,9 @@ static void initialize_session_state(struct mylite_session_state *session) {
     session->next_transaction_access_mode_from_system_variable = false;
     session->active_transaction_read_only = false;
     session->active_transaction_isolation = MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ;
+    session->rand_seed1 = 0U;
+    session->rand_seed2 = 0U;
+    session->rand_seed_state_initialized = false;
     session->internal_tmp_mem_storage_engine =
         MYLITE_SESSION_INTERNAL_TMP_MEM_STORAGE_ENGINE_TEMPTABLE;
     session->myisam_stats_method = MYLITE_SESSION_MYISAM_STATS_METHOD_NULLS_UNEQUAL;

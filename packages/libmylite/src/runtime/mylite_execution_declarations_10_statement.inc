@@ -1072,6 +1072,66 @@ static int apply_set_last_insert_id_system_variable_cell_value(
     enum mylite_session_user_variable_value_kind value_kind
 );
 static bool set_system_variable_is_last_insert_id(enum mylite_execution_system_variable_kind kind);
+static int apply_set_remaining_system_variable_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
+static int apply_set_remaining_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    bool *out_handled
+);
+static bool remaining_system_variable_handles_kind(
+    enum mylite_execution_system_variable_kind kind
+);
+static int apply_set_insert_id_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int apply_set_insert_id_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int apply_set_pseudo_thread_id_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int apply_set_pseudo_thread_id_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int apply_set_rand_seed_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int apply_set_rand_seed_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static int apply_set_temptable_max_ram_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int apply_set_temptable_max_ram_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
 static int apply_set_jl_system_variable_assignment(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -1221,6 +1281,35 @@ static int parse_last_insert_id_system_variable_integer(
     const struct mylite_sql_source_span *unsigned_span,
     bool negative,
     const char *value_text,
+    uint64_t *out_value
+);
+static int parse_remaining_uint64_system_variable_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_ast_node *value_node,
+    bool allow_default,
+    bool default_value,
+    uint64_t *out_value
+);
+static int parse_remaining_uint64_system_variable_cell_value(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    uint64_t *out_value
+);
+static int parse_remaining_uint64_system_variable_integer(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_source_span *unsigned_span,
+    bool negative,
+    const char *value_text,
+    uint64_t *out_value
+);
+static int finish_remaining_nonnegative_uint64_system_variable(
+    struct mylite_db *database,
+    const char *variable_name,
+    const struct mylite_sql_source_span *unsigned_span,
     uint64_t *out_value
 );
 static int parse_set_boolean_cell_value(
@@ -2012,6 +2101,9 @@ static int set_session_sql_mode(struct mylite_db *database, uint64_t modes);
 static bool session_sql_mode_has(const struct mylite_session_state *session, uint64_t mode);
 static unsigned int lexer_modes_for_session_sql_mode(const struct mylite_session_state *session);
 static bool system_variable_expression_has_global_scope(
+    const struct mylite_sql_ast_node *expression
+);
+static bool system_variable_expression_has_session_scope(
     const struct mylite_sql_ast_node *expression
 );
 static bool foreign_key_checks_system_variable_value(

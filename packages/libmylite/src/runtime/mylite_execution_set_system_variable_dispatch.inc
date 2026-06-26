@@ -38,6 +38,16 @@ static int apply_set_system_variable_cell_value(
             value_kind
         );
     }
+    rc = apply_set_remaining_system_variable_cell_value(
+        database,
+        target,
+        value,
+        value_kind,
+        &handled
+    );
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     rc = apply_set_jl_system_variable_cell_value(database, target, value, value_kind, &handled);
     if (rc != MYLITE_OK || handled) {
         return rc;

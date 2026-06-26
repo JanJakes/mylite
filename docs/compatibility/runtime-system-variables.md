@@ -470,7 +470,7 @@ state through this fallback path.
 | `innodb_validate_tablespace_paths` | ✅ | Fixed scalar `1`/SHOW `ON` and read-only diagnostics; no tablespace path validation side effects |
 | `innodb_version` | ✅ | Fixed scalar/SHOW value matching MyLite's MySQL baseline version and read-only diagnostics |
 | `innodb_write_io_threads` | ✅ | Fixed scalar/SHOW value `4` and read-only diagnostics; no write-thread allocation side effects |
-| `insert_id` | ❌ | Next AUTO_INCREMENT allocation semantics, scalar/SHOW value, SET behavior, and diagnostics |
+| `insert_id` | ✅ | Session scalar/SHOW readback, `SET`, clamp warnings, diagnostics, next generated `AUTO_INCREMENT` allocation, reset, and `LAST_INSERT_ID()` interaction are verified |
 | `interactive_timeout` | 🟡 | Limited handle-local session scalar reads, `SHOW VARIABLES` rows, and session/local/unqualified `SET` assignment with MySQL-compatible integer range `1..31536000`, `DEFAULT = 28800`, boolean conversion, clamp warnings, and integer user-variable assignment. Global reads expose fixed `28800` and mutable global assignment is limited to exact no-op `DEFAULT`/`28800` forms; no idle timeout enforcement, protocol behavior, startup options, persisted state, privileges, or Performance Schema rows |
 | `internal_tmp_mem_storage_engine` | ✅ | Session/global scalar and `SHOW VARIABLES` readback, session `SET` for `DEFAULT`/`TempTable`/`MEMORY`/`1`/`0`, invalid-value diagnostics, and fixed global no-op forms; no temp-table engine routing or mutable shared global state |
 | `join_buffer_size` | ✅ | Session/global scalar and `SHOW VARIABLES` readback, session integer/user-variable `SET`, 128-byte rounding and clamp warnings, type diagnostics, and fixed global no-op forms; no join-buffer allocation or optimizer side effects |
@@ -700,7 +700,7 @@ state through this fallback path.
 | `ngram_token_size` | ✅ | Fixed global `2`, SHOW row, global-only diagnostics, and read-only SET; no ngram parser effect |
 | `offline_mode` | ✅ | Fixed global `0`/`OFF`, SHOW row, global-only diagnostics, and exact/default global no-op SET; no connection gating |
 | `old_alter_table` | ✅ | Fixed default/session/global scalar `0` and `SHOW VARIABLES` `OFF`; session placeholder `SET` readback and fixed global no-op assignments are supported. No alternate ALTER TABLE algorithm routing, startup options, persisted state, or Performance Schema variable tables |
-| `open_files_limit` | ❌ | Value, scope, SET, diagnostics |
+| `open_files_limit` | ✅ | Fixed global readback/SHOW, session/global SHOW visibility, global-only scalar diagnostics, and read-only SET diagnostics; no real file-descriptor governance |
 | `optimizer_prune_level` | ✅ | Scalar/SHOW readback, session SET, clamp warnings, and fixed-global no-op; no optimizer effect |
 | `optimizer_search_depth` | ✅ | Scalar/SHOW readback, session SET, clamp warnings, and fixed-global no-op; no optimizer effect |
 | `optimizer_switch` | ✅ | Canonical scalar/SHOW readback, session flag SET, user-variable SET, and fixed-global no-op; no optimizer effect |
@@ -778,11 +778,11 @@ state through this fallback path.
 | `proxy_user` | ✅ | Session scalar `NULL`, blank SHOW row, read-only SET diagnostics, and MySQL-shaped global-scope diagnostics; no proxy authentication state |
 | `pseudo_replica_mode` | ✅ | Session scalar/SHOW boolean, session/local SET/readback, and MySQL-shaped global-scope diagnostics; no replication-applier side effects |
 | `pseudo_slave_mode` | ✅ | Deprecated alias with session scalar/SHOW boolean, session/local SET/readback, warning `1287`, and MySQL-shaped global-scope diagnostics; no replication-applier side effects |
-| `pseudo_thread_id` | ❌ | Value, scope, SET, diagnostics |
+| `pseudo_thread_id` | ✅ | Session scalar/SHOW readback and `SET` diagnostics share the handle-local `CONNECTION_ID()` value; no server thread identity |
 | `query_alloc_block_size` | ✅ | Resource-tuning placeholder baseline: scalar/SHOW rows, session SET, and fixed global no-op SET; no allocator tuning |
 | `query_prealloc_size` | ✅ | Resource-tuning placeholder baseline: scalar/SHOW rows, session SET, fixed global no-op SET, and deprecation warnings; no allocator tuning |
-| `rand_seed1` | ❌ | Value, scope, SET, diagnostics |
-| `rand_seed2` | ❌ | Value, scope, SET, diagnostics |
+| `rand_seed1` | ✅ | Session scalar/SHOW readback remains `0`, while `SET` seeds subsequent unseeded `RAND()` calls with MySQL-compatible warnings and diagnostics |
+| `rand_seed2` | ✅ | Session scalar/SHOW readback remains `0`, while `SET` seeds subsequent unseeded `RAND()` calls with MySQL-compatible warnings and diagnostics |
 | `range_alloc_block_size` | ✅ | Resource-tuning placeholder baseline: scalar/SHOW rows, session SET, and fixed global no-op SET; no optimizer memory effect |
 | `range_optimizer_max_mem_size` | ✅ | Resource-tuning placeholder baseline: scalar/SHOW rows, session SET, and fixed global no-op SET; no optimizer memory effect |
 | `rbr_exec_mode` | ✅ | Session and global scalar/SHOW default `STRICT`, session/local `STRICT`/`IDEMPOTENT` SET/readback, and MySQL-shaped `SET GLOBAL` rejection; no row-based replication effect |
@@ -922,7 +922,7 @@ state through this fallback path.
 | `ssl_key` | ✅ | Default-state `NULL`/blank global readback/SHOW and `DEFAULT`/`NULL` global no-op SET |
 | `ssl_session_cache_mode` | ✅ | Fixed global scalar `1`, `SHOW VARIABLES` `ON`, global-only diagnostics, and exact no-op global `SET`; no SSL session cache |
 | `ssl_session_cache_timeout` | ✅ | Fixed global scalar and `SHOW VARIABLES` value `300`, global-only diagnostics, and exact no-op global `SET`; no SSL session cache |
-| `statement_id` | ❌ | Value, scope, SET, diagnostics |
+| `statement_id` | ✅ | Read-only session scalar/SHOW exposes a handle-local monotonic statement counter with MySQL-compatible SET diagnostics; no server-global statement identity |
 | `stored_program_cache` | ✅ | Fixed global `256`, SHOW row, global-only diagnostics, and exact/default global no-op SET; no stored-program cache |
 | `stored_program_definition_cache` | ✅ | Fixed global `256`, SHOW row, global-only diagnostics, and exact/default global no-op SET; no stored-program definition cache |
 | `super_read_only` | 🟡 | Limited fixed global disabled placeholder: scalar default/global reads return `0`, `SHOW VARIABLES` rows report `OFF`, session/local scalar reads and non-global `SET` forms use MySQL-shaped global-variable diagnostics, and exact no-op global `SET` forms may preserve `OFF`; no mutable global state, write blocking, privileges, startup option, or implication of `read_only` |
@@ -976,7 +976,7 @@ state through this fallback path.
 | `telemetry.query_text_enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `telemetry.trace_enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `temptable_max_mmap` | ✅ | Fixed global `0`, SHOW row, global-only diagnostics, and exact/default global no-op SET; no TempTable mmap sizing |
-| `temptable_max_ram` | ❌ | Value, scope, SET, diagnostics |
+| `temptable_max_ram` | ✅ | Computed global default, session/global SHOW visibility, global-only scalar diagnostics, handle-local `SET GLOBAL`/`DEFAULT`, and diagnostics are verified; no real temp-table memory governance |
 | `temptable_use_mmap` | ✅ | Fixed global `0`/`OFF`, SHOW row, global-only diagnostics, exact/default global no-op SET, and SET deprecation warning; no mmap policy |
 | `terminology_use_previous` | ✅ | Resource-tuning placeholder baseline: scalar/SHOW rows, session SET, fixed global no-op SET, and deprecation warnings; no terminology rendering effect |
 | `thread_cache_size` | ✅ | Fixed global `9`, SHOW row, global-only diagnostics, and exact/default global no-op SET; no thread cache |

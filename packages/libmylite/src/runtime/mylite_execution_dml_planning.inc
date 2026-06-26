@@ -251,6 +251,14 @@ static int initialize_insert_auto_increment_plan(
     if (auto_increment_count == 0U) {
         return MYLITE_OK;
     }
+    if (database != NULL && database->session.insert_id != 0U) {
+        if (database->session.insert_id > (uint64_t)INT64_MAX) {
+            set_failed_read_auto_increment_error(database);
+            return MYLITE_ERROR;
+        }
+        plan->auto_increment_next = (int64_t)database->session.insert_id;
+        plan->auto_increment_next_after_statement = plan->auto_increment_next;
+    }
     if (auto_increment_count > 1U || !insert_auto_increment_column_is_indexed(plan)) {
         set_unsupported_error(database, "INSERT supports only indexed AUTO_INCREMENT tables");
         return MYLITE_ERROR;

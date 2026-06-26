@@ -25,8 +25,8 @@ enum {
     test_path_suffix_capacity = 16,
     row_count_text_capacity = 32,
     variable_column_count = 2,
-    session_variable_row_count = 636,
-    global_variable_row_count = 617,
+    session_variable_row_count = 643,
+    global_variable_row_count = 619,
     sql_log_variable_row_count = 2,
     on_variable_row_count = 2,
     gtid_default_variable_row_count = 7,
@@ -254,6 +254,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"init_file", ""},
         {"init_replica", ""},
         {"init_slave", ""},
+        {"insert_id", "0"},
         {"innodb_adaptive_flushing", "ON"},
         {"innodb_adaptive_flushing_lwm", "10"},
         {"innodb_adaptive_hash_index", "OFF"},
@@ -512,6 +513,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"ngram_token_size", "2"},
         {"offline_mode", "OFF"},
         {"old_alter_table", "OFF"},
+        {"open_files_limit", "8161"},
         {"optimizer_prune_level", "1"},
         {"optimizer_search_depth", "62"},
         {"optimizer_switch",
@@ -598,10 +600,13 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"proxy_user", ""},
         {"pseudo_replica_mode", "OFF"},
         {"pseudo_slave_mode", "OFF"},
+        {"pseudo_thread_id", NULL},
         {"query_alloc_block_size", "8192"},
         {"query_prealloc_size", "8192"},
         {"range_alloc_block_size", "4096"},
         {"range_optimizer_max_mem_size", "8388608"},
+        {"rand_seed1", "0"},
+        {"rand_seed2", "0"},
         {"rbr_exec_mode", "STRICT"},
         {"read_buffer_size", "131072"},
         {"read_only", "OFF"},
@@ -720,6 +725,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"slow_query_log_file", "/var/lib/mysql/mylite-slow.log"},
         {"sort_buffer_size", "262144"},
         {"source_verify_checksum", "OFF"},
+        {"statement_id", NULL},
         {"stored_program_cache", "256"},
         {"stored_program_definition_cache", "256"},
         {"super_read_only", "OFF"},
@@ -734,6 +740,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"table_open_cache", "4000"},
         {"table_open_cache_instances", "16"},
         {"tablespace_definition_cache", "256"},
+        {"temptable_max_ram", NULL},
         {"temptable_max_mmap", "0"},
         {"temptable_use_mmap", "OFF"},
         {"terminology_use_previous", "NONE"},
@@ -1155,6 +1162,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"ngram_token_size", "2"},
         {"offline_mode", "OFF"},
         {"old_alter_table", "OFF"},
+        {"open_files_limit", "8161"},
         {"optimizer_prune_level", "1"},
         {"optimizer_search_depth", "62"},
         {"optimizer_switch",
@@ -1368,6 +1376,7 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"table_open_cache", "4000"},
         {"table_open_cache_instances", "16"},
         {"tablespace_definition_cache", "256"},
+        {"temptable_max_ram", NULL},
         {"temptable_max_mmap", "0"},
         {"temptable_use_mmap", "OFF"},
         {"terminology_use_previous", "NONE"},
@@ -2291,11 +2300,17 @@ static int expect_query_rows(
     failures += expect_int64(mylite_result_affected_rows(result), 0, context);
     for (size_t row = 0U; row < expected_row_count; ++row) {
         for (size_t column = 0U; column < variable_column_count; ++column) {
-            failures += expect_text_or_null(
-                mylite_result_value_text(result, row, column),
-                expected_rows[row][column],
-                context
-            );
+            const char *actual = mylite_result_value_text(result, row, column);
+            const char *expected = expected_rows[row][column];
+
+            if (expected == NULL) {
+                if (actual == NULL) {
+                    fprintf(stderr, "%s: expected dynamic value, got NULL\n", context);
+                    failures += 1;
+                }
+                continue;
+            }
+            failures += expect_text_or_null(actual, expected, context);
         }
     }
 

@@ -22,8 +22,10 @@ static int copy_set_session_snapshot(
     }
 
     out_snapshot->sql_mode = session->sql_mode;
+    out_snapshot->insert_id = session->insert_id;
     out_snapshot->auto_increment_increment = session->auto_increment_increment;
     out_snapshot->auto_increment_offset = session->auto_increment_offset;
+    out_snapshot->temptable_max_ram = session->temptable_max_ram;
     out_snapshot->sql_select_limit = session->sql_select_limit;
     out_snapshot->group_concat_max_len = session->group_concat_max_len;
     out_snapshot->information_schema_stats_expiry = session->information_schema_stats_expiry;
@@ -53,6 +55,8 @@ static int copy_set_session_snapshot(
     out_snapshot->time_zone_is_placeholder = session->time_zone_is_placeholder;
     out_snapshot->character_set_state_is_placeholder = session->character_set_state_is_placeholder;
     out_snapshot->system_variables_are_placeholder = session->system_variables_are_placeholder;
+    out_snapshot->temptable_max_ram_has_override = session->temptable_max_ram_has_override;
+    out_snapshot->rand_seed_state_initialized = session->rand_seed_state_initialized;
     out_snapshot->big_tables = session->big_tables;
     out_snapshot->foreign_key_checks_enabled = session->foreign_key_checks_enabled;
     out_snapshot->sql_require_primary_key = session->sql_require_primary_key;
@@ -91,6 +95,8 @@ static int copy_set_session_snapshot(
         session->sql_mode_text,
         sizeof(out_snapshot->sql_mode_text)
     );
+    out_snapshot->rand_seed1 = session->rand_seed1;
+    out_snapshot->rand_seed2 = session->rand_seed2;
     out_snapshot->user_variables = variables;
     out_snapshot->user_variable_count = session->user_variable_count;
     out_snapshot->user_variable_capacity = session->user_variable_capacity;
@@ -216,8 +222,10 @@ static void restore_set_session_snapshot(
     current_override_count = session->system_variable_override_count;
 
     session->sql_mode = snapshot->sql_mode;
+    session->insert_id = snapshot->insert_id;
     session->auto_increment_increment = snapshot->auto_increment_increment;
     session->auto_increment_offset = snapshot->auto_increment_offset;
+    session->temptable_max_ram = snapshot->temptable_max_ram;
     session->sql_select_limit = snapshot->sql_select_limit;
     session->group_concat_max_len = snapshot->group_concat_max_len;
     session->information_schema_stats_expiry = snapshot->information_schema_stats_expiry;
@@ -247,6 +255,8 @@ static void restore_set_session_snapshot(
     session->time_zone_is_placeholder = snapshot->time_zone_is_placeholder;
     session->character_set_state_is_placeholder = snapshot->character_set_state_is_placeholder;
     session->system_variables_are_placeholder = snapshot->system_variables_are_placeholder;
+    session->temptable_max_ram_has_override = snapshot->temptable_max_ram_has_override;
+    session->rand_seed_state_initialized = snapshot->rand_seed_state_initialized;
     session->big_tables = snapshot->big_tables;
     session->foreign_key_checks_enabled = snapshot->foreign_key_checks_enabled;
     session->sql_require_primary_key = snapshot->sql_require_primary_key;
@@ -281,6 +291,8 @@ static void restore_set_session_snapshot(
         sizeof(session->collation_connection)
     );
     memcpy(session->sql_mode_text, snapshot->sql_mode_text, sizeof(session->sql_mode_text));
+    session->rand_seed1 = snapshot->rand_seed1;
+    session->rand_seed2 = snapshot->rand_seed2;
     session->user_variables = snapshot->user_variables;
     session->user_variable_count = snapshot->user_variable_count;
     session->user_variable_capacity = snapshot->user_variable_capacity;

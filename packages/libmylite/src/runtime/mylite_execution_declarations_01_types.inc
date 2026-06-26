@@ -3171,8 +3171,10 @@ struct resolved_set_system_variable_target {
 
 struct set_session_snapshot {
     uint64_t sql_mode;
+    uint64_t insert_id;
     uint64_t auto_increment_increment;
     uint64_t auto_increment_offset;
+    uint64_t temptable_max_ram;
     uint64_t sql_select_limit;
     uint64_t group_concat_max_len;
     uint64_t information_schema_stats_expiry;
@@ -3202,6 +3204,8 @@ struct set_session_snapshot {
     bool time_zone_is_placeholder;
     bool character_set_state_is_placeholder;
     bool system_variables_are_placeholder;
+    bool temptable_max_ram_has_override;
+    bool rand_seed_state_initialized;
     bool big_tables;
     bool foreign_key_checks_enabled;
     bool sql_require_primary_key;
@@ -3218,6 +3222,8 @@ struct set_session_snapshot {
     char character_set_results[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
     char collation_connection[MYLITE_SESSION_CHARSET_NAME_CAPACITY];
     char sql_mode_text[MYLITE_SESSION_SQL_MODE_TEXT_CAPACITY];
+    uint32_t rand_seed1;
+    uint32_t rand_seed2;
     struct mylite_session_user_variable *user_variables;
     size_t user_variable_count;
     size_t user_variable_capacity;

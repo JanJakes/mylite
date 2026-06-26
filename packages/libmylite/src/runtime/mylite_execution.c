@@ -151,6 +151,9 @@ int mylite_execute(
         return MYLITE_MISUSE;
     }
 
+    if (database->session.statement_id != UINT64_MAX) {
+        ++database->session.statement_id;
+    }
     normalized_sql = (struct mylite_execution_normalized_sql){0};
     rc = mylite_execution_normalize_mysql_compat_sql(database, sql, sql_size, &normalized_sql);
     if (rc != MYLITE_OK) {
@@ -1193,6 +1196,8 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_set_timeout_variables.inc"
 
 #include "mylite_execution_set_last_insert_id_variables.inc"
+
+#include "mylite_execution_set_remaining_system_variables.inc"
 
 #include "mylite_execution_set_jl_system_variables.inc"
 

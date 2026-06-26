@@ -15,6 +15,15 @@ static int system_variable_value(
         return rc;
     }
     global_scope = system_variable_expression_has_global_scope(expression);
+    if (system_variable_expression_has_session_scope(expression) &&
+        (variable == MYLITE_EXECUTION_SYSTEM_VARIABLE_OPEN_FILES_LIMIT ||
+         variable == MYLITE_EXECUTION_SYSTEM_VARIABLE_TEMPTABLE_MAX_RAM)) {
+        const struct mylite_execution_system_variable_descriptor *descriptor =
+            mylite_execution_system_variable_descriptor_by_kind(variable);
+
+        set_global_variable_only_error(database, descriptor == NULL ? "" : descriptor->name);
+        return MYLITE_ERROR;
+    }
     if (!global_scope && variable != MYLITE_EXECUTION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT &&
         variable != MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_TMPDIR) {
         override_value = session_system_variable_override_value(database, variable);
@@ -1160,10 +1169,39 @@ static int system_variable_value(
             database->session.last_insert_id,
             out_cell
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INSERT_ID:
+        return format_session_scalar_uint64_value(database, database->session.insert_id, out_cell);
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY:
         return format_session_scalar_uint64_value(
             database,
             information_schema_stats_expiry_system_variable_value(database, global_scope),
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_OPEN_FILES_LIMIT:
+        return format_session_scalar_uint64_value(
+            database,
+            open_files_limit_system_variable_value(),
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PSEUDO_THREAD_ID:
+        return format_session_scalar_uint64_value(
+            database,
+            database->session.connection_id,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RAND_SEED1:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RAND_SEED2:
+        return format_session_scalar_uint64_value(database, 0U, out_cell);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_STATEMENT_ID:
+        return format_session_scalar_uint64_value(
+            database,
+            database->session.statement_id,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TEMPTABLE_MAX_RAM:
+        return format_session_scalar_uint64_value(
+            database,
+            temptable_max_ram_system_variable_value(database),
             out_cell
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LONG_QUERY_TIME:
@@ -1797,6 +1835,60 @@ static uint64_t sort_buffer_size_system_variable_value(
     return database->session.sort_buffer_size;
 }
 
+static uint64_t open_files_limit_system_variable_value(void) {
+    enum {
+        open_files_limit_base_files = 10,
+        open_files_limit_default_max_connections = 151,
+        open_files_limit_default_table_open_cache = 4000,
+    };
+
+    return open_files_limit_base_files + open_files_limit_default_max_connections +
+           (2U * open_files_limit_default_table_open_cache);
+}
+
+static uint64_t temptable_max_ram_default_value(void) {
+    enum {
+        temptable_max_ram_percent = 3,
+        temptable_max_ram_percent_denominator = 100,
+    };
+    const uint64_t minimum = UINT64_C(1073741824);
+
+#ifdef _WIN32
+    return minimum;
+#else
+    const uint64_t maximum = UINT64_C(4294967296);
+    long pages = sysconf(_SC_PHYS_PAGES);
+    long page_size = sysconf(_SC_PAGE_SIZE);
+    uint64_t physical_memory = 0U;
+    uint64_t value = 0U;
+
+    if (pages <= 0 || page_size <= 0) {
+        return minimum;
+    }
+    if ((uint64_t)pages > UINT64_MAX / (uint64_t)page_size) {
+        physical_memory = UINT64_MAX;
+    } else {
+        physical_memory = (uint64_t)pages * (uint64_t)page_size;
+    }
+    value = (physical_memory / temptable_max_ram_percent_denominator) *
+            temptable_max_ram_percent;
+    if (value < minimum) {
+        return minimum;
+    }
+    if (value > maximum) {
+        return maximum;
+    }
+    return value;
+#endif
+}
+
+static uint64_t temptable_max_ram_system_variable_value(const struct mylite_db *database) {
+    if (database != NULL && database->session.temptable_max_ram_has_override) {
+        return database->session.temptable_max_ram;
+    }
+    return temptable_max_ram_default_value();
+}
+
 static uint64_t low_priority_updates_system_variable_uint64_value(
     const struct mylite_db *database,
     bool global_scope
@@ -1858,6 +1950,32 @@ static bool system_variable_expression_has_global_scope(
 
     scope_length = offset - scope_start;
     return sql_mode_token_matches(&span->text[scope_start], scope_length, "global");
+}
+
+static bool system_variable_expression_has_session_scope(
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_source_span *span = expression == NULL ? NULL : &expression->span;
+    size_t offset = system_variable_body_offset;
+    size_t scope_start = offset;
+    size_t scope_length = 0U;
+
+    if (span == NULL || span->text == NULL || span->length <= offset) {
+        return false;
+    }
+    if (span->text[offset] == '`') {
+        return false;
+    }
+    while (offset < span->length && span->text[offset] != '.') {
+        ++offset;
+    }
+    if (offset == span->length) {
+        return false;
+    }
+
+    scope_length = offset - scope_start;
+    return sql_mode_token_matches(&span->text[scope_start], scope_length, "session") ||
+           sql_mode_token_matches(&span->text[scope_start], scope_length, "local");
 }
 
 static bool foreign_key_checks_system_variable_value(
@@ -3453,6 +3571,55 @@ static int show_system_variable_value(
         return format_show_system_variable_uint64_value(
             database,
             database->session.last_insert_id,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INSERT_ID:
+        return format_show_system_variable_uint64_value(
+            database,
+            database->session.insert_id,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_OPEN_FILES_LIMIT:
+        return format_show_system_variable_uint64_value(
+            database,
+            open_files_limit_system_variable_value(),
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_PSEUDO_THREAD_ID:
+        return format_show_system_variable_uint64_value(
+            database,
+            database->session.connection_id,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RAND_SEED1:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RAND_SEED2:
+        return format_show_system_variable_uint64_value(
+            database,
+            0U,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_STATEMENT_ID:
+        return format_show_system_variable_uint64_value(
+            database,
+            database->session.statement_id,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TEMPTABLE_MAX_RAM:
+        return format_show_system_variable_uint64_value(
+            database,
+            temptable_max_ram_system_variable_value(database),
             integer_buffer,
             integer_buffer_size,
             out_value

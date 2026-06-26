@@ -1745,6 +1745,9 @@ static uint64_t sort_buffer_size_system_variable_value(
     const struct mylite_db *database,
     bool global_scope
 );
+static uint64_t open_files_limit_system_variable_value(void);
+static uint64_t temptable_max_ram_default_value(void);
+static uint64_t temptable_max_ram_system_variable_value(const struct mylite_db *database);
 static uint64_t low_priority_updates_system_variable_uint64_value(
     const struct mylite_db *database,
     bool global_scope

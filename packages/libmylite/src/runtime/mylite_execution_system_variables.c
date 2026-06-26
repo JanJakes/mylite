@@ -318,6 +318,7 @@ static const struct mylite_execution_system_variable_descriptor system_variable_
     {"init_file", MYLITE_EXECUTION_SYSTEM_VARIABLE_INIT_FILE, true, true},
     {"init_replica", MYLITE_EXECUTION_SYSTEM_VARIABLE_INIT_REPLICA, true, true},
     {"init_slave", MYLITE_EXECUTION_SYSTEM_VARIABLE_INIT_SLAVE, true, true},
+    {"insert_id", MYLITE_EXECUTION_SYSTEM_VARIABLE_INSERT_ID, true, false},
     {"innodb_adaptive_flushing",
      MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_ADAPTIVE_FLUSHING,
      true,
@@ -934,6 +935,7 @@ static const struct mylite_execution_system_variable_descriptor system_variable_
     {"ngram_token_size", MYLITE_EXECUTION_SYSTEM_VARIABLE_NGRAM_TOKEN_SIZE, true, true},
     {"offline_mode", MYLITE_EXECUTION_SYSTEM_VARIABLE_OFFLINE_MODE, true, true},
     {"old_alter_table", MYLITE_EXECUTION_SYSTEM_VARIABLE_OLD_ALTER_TABLE, true, true},
+    {"open_files_limit", MYLITE_EXECUTION_SYSTEM_VARIABLE_OPEN_FILES_LIMIT, true, true},
     {"optimizer_prune_level", MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_PRUNE_LEVEL, true, true},
     {"optimizer_search_depth", MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_SEARCH_DEPTH, true, true},
     {"optimizer_switch", MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_SWITCH, true, true},
@@ -1177,6 +1179,7 @@ static const struct mylite_execution_system_variable_descriptor system_variable_
     {"proxy_user", MYLITE_EXECUTION_SYSTEM_VARIABLE_PROXY_USER, true, false},
     {"pseudo_replica_mode", MYLITE_EXECUTION_SYSTEM_VARIABLE_PSEUDO_REPLICA_MODE, true, false},
     {"pseudo_slave_mode", MYLITE_EXECUTION_SYSTEM_VARIABLE_PSEUDO_SLAVE_MODE, true, false},
+    {"pseudo_thread_id", MYLITE_EXECUTION_SYSTEM_VARIABLE_PSEUDO_THREAD_ID, true, false},
     {"query_alloc_block_size", MYLITE_EXECUTION_SYSTEM_VARIABLE_QUERY_ALLOC_BLOCK_SIZE, true, true},
     {"query_prealloc_size", MYLITE_EXECUTION_SYSTEM_VARIABLE_QUERY_PREALLOC_SIZE, true, true},
     {"range_alloc_block_size", MYLITE_EXECUTION_SYSTEM_VARIABLE_RANGE_ALLOC_BLOCK_SIZE, true, true},
@@ -1184,6 +1187,8 @@ static const struct mylite_execution_system_variable_descriptor system_variable_
      MYLITE_EXECUTION_SYSTEM_VARIABLE_RANGE_OPTIMIZER_MAX_MEM_SIZE,
      true,
      true},
+    {"rand_seed1", MYLITE_EXECUTION_SYSTEM_VARIABLE_RAND_SEED1, true, false},
+    {"rand_seed2", MYLITE_EXECUTION_SYSTEM_VARIABLE_RAND_SEED2, true, false},
     {"rbr_exec_mode", MYLITE_EXECUTION_SYSTEM_VARIABLE_RBR_EXEC_MODE, true, true},
     {"read_buffer_size", MYLITE_EXECUTION_SYSTEM_VARIABLE_READ_BUFFER_SIZE, true, true},
     {"read_only", MYLITE_EXECUTION_SYSTEM_VARIABLE_READ_ONLY, true, true},
@@ -1415,6 +1420,7 @@ static const struct mylite_execution_system_variable_descriptor system_variable_
     {"slow_query_log_file", MYLITE_EXECUTION_SYSTEM_VARIABLE_SLOW_QUERY_LOG_FILE, true, true},
     {"sort_buffer_size", MYLITE_EXECUTION_SYSTEM_VARIABLE_SORT_BUFFER_SIZE, true, true},
     {"source_verify_checksum", MYLITE_EXECUTION_SYSTEM_VARIABLE_SOURCE_VERIFY_CHECKSUM, true, true},
+    {"statement_id", MYLITE_EXECUTION_SYSTEM_VARIABLE_STATEMENT_ID, true, false},
     {"stored_program_cache", MYLITE_EXECUTION_SYSTEM_VARIABLE_STORED_PROGRAM_CACHE, true, true},
     {"stored_program_definition_cache",
      MYLITE_EXECUTION_SYSTEM_VARIABLE_STORED_PROGRAM_DEFINITION_CACHE,
@@ -1441,6 +1447,7 @@ static const struct mylite_execution_system_variable_descriptor system_variable_
      MYLITE_EXECUTION_SYSTEM_VARIABLE_TABLESPACE_DEFINITION_CACHE,
      true,
      true},
+    {"temptable_max_ram", MYLITE_EXECUTION_SYSTEM_VARIABLE_TEMPTABLE_MAX_RAM, true, true},
     {"temptable_max_mmap", MYLITE_EXECUTION_SYSTEM_VARIABLE_TEMPTABLE_MAX_MMAP, true, true},
     {"temptable_use_mmap", MYLITE_EXECUTION_SYSTEM_VARIABLE_TEMPTABLE_USE_MMAP, true, true},
     {"terminology_use_previous",
@@ -2522,6 +2529,7 @@ bool mylite_execution_system_variable_allows_global_scope(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQLX_ZSTD_DEFAULT_COMPRESSION_LEVEL:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQLX_ZSTD_MAX_CLIENT_COMPRESSION_LEVEL:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_OLD_ALTER_TABLE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_OPEN_FILES_LIMIT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_PRUNE_LEVEL:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_SEARCH_DEPTH:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_SWITCH:
@@ -2709,6 +2717,7 @@ bool mylite_execution_system_variable_allows_global_scope(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_TABLE_OPEN_CACHE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_TABLE_OPEN_CACHE_INSTANCES:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_TABLESPACE_DEFINITION_CACHE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TEMPTABLE_MAX_RAM:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_TERMINOLOGY_USE_PREVIOUS:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_TEMPTABLE_MAX_MMAP:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_TEMPTABLE_USE_MMAP:

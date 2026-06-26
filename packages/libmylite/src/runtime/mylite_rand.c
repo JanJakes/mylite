@@ -1,5 +1,7 @@
 #include "mylite_rand.h"
 
+#include "mylite_connection.h"
+#include "mylite_sqlite_bootstrap.h"
 #include "mylite_sqlite_registration.h"
 
 #include <math.h>
@@ -109,6 +111,10 @@ double mylite_rand_seeded_unit_double(uint32_t seed) {
     return mylite_rand_state_next_unit_double(&state);
 }
 
+uint32_t mylite_rand_canonical_state_word(uint64_t value) {
+    return (uint32_t)(value % rand_seed_state_modulus);
+}
+
 void mylite_rand_state_init(struct mylite_rand_state *state, uint32_t seed) {
     if (state == NULL) {
         return;
@@ -116,6 +122,15 @@ void mylite_rand_state_init(struct mylite_rand_state *state, uint32_t seed) {
 
     state->seed1 = rand_seed_initial_word(seed, rand_seed_first_multiplier, rand_seed_first_addend);
     state->seed2 = rand_seed_initial_word(seed, rand_seed_second_multiplier, 0U);
+}
+
+void mylite_rand_state_init_words(struct mylite_rand_state *state, uint32_t seed1, uint32_t seed2) {
+    if (state == NULL) {
+        return;
+    }
+
+    state->seed1 = mylite_rand_canonical_state_word(seed1);
+    state->seed2 = mylite_rand_canonical_state_word(seed2);
 }
 
 double mylite_rand_state_next_unit_double(struct mylite_rand_state *state) {
@@ -139,6 +154,8 @@ static void rand_unseeded_sqlite_callback(
     int argc,
     sqlite3_value **argv
 ) {
+    struct mylite_db *database = NULL;
+    struct mylite_rand_state state = {0};
     (void)argv;
 
     if (context == NULL) {
@@ -146,6 +163,19 @@ static void rand_unseeded_sqlite_callback(
     }
     if (argc != 0) {
         sqlite3_result_error(context, "invalid MyLite RAND callback", -1);
+        return;
+    }
+
+    database = mylite_sqlite_bootstrap_owner_from_context(context);
+    if (database != NULL && database->session.rand_seed_state_initialized) {
+        mylite_rand_state_init_words(
+            &state,
+            database->session.rand_seed1,
+            database->session.rand_seed2
+        );
+        sqlite3_result_double(context, mylite_rand_state_next_unit_double(&state));
+        database->session.rand_seed1 = state.seed1;
+        database->session.rand_seed2 = state.seed2;
         return;
     }
 

@@ -339,6 +339,10 @@
     COMMAND mylite_runtime_auto_increment_step_system_variables_test
   )
   add_test(
+    NAME libmylite.runtime.remaining_system_variables
+    COMMAND mylite_runtime_remaining_system_variables_test
+  )
+  add_test(
     NAME libmylite.runtime.sql_notes_system_variable
     COMMAND mylite_runtime_sql_notes_system_variable_test
   )

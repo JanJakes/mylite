@@ -215,6 +215,7 @@ static int finish_insert_select_table_result(
         );
         database->session.last_insert_id =
             (uint64_t)execution->counters.first_inserted_generated_auto_increment;
+        database->session.insert_id = 0U;
     } else if (execution->counters.inserted_explicit_auto_increment) {
         mylite_result_set_insert_id(
             result,

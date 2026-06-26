@@ -190,8 +190,11 @@ struct mylite_session_state {
     int64_t previous_row_count;
     uint64_t found_rows;
     uint64_t last_insert_id;
+    uint64_t insert_id;
+    uint64_t statement_id;
     uint64_t auto_increment_increment;
     uint64_t auto_increment_offset;
+    uint64_t temptable_max_ram;
     uint64_t sql_select_limit;
     uint64_t group_concat_max_len;
     uint64_t group_concat_value_ordinal;
@@ -244,6 +247,8 @@ struct mylite_session_state {
     int time_zone_offset_minutes;
     unsigned char uuid_node[MYLITE_SESSION_UUID_NODE_SIZE];
     uint16_t uuid_clock_sequence;
+    uint32_t rand_seed1;
+    uint32_t rand_seed2;
     enum mylite_transaction_isolation session_transaction_isolation;
     enum mylite_transaction_access_mode session_transaction_access_mode;
     enum mylite_transaction_isolation next_transaction_isolation;
@@ -256,6 +261,8 @@ struct mylite_session_state {
     bool time_zone_is_placeholder;
     bool character_set_state_is_placeholder;
     bool system_variables_are_placeholder;
+    bool temptable_max_ram_has_override;
+    bool rand_seed_state_initialized;
     bool big_tables;
     bool foreign_key_checks_enabled;
     bool sql_require_primary_key;

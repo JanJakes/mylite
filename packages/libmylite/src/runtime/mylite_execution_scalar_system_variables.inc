@@ -396,6 +396,123 @@ static int system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_CHANGE_BUFFERING:
         out_cell->value = innodb_change_buffering_default_value;
         return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_CHECKSUM_ALGORITHM:
+        out_cell->value = innodb_checksum_algorithm_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_CMP_PER_INDEX_ENABLED:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_cmp_per_index_enabled_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_COMMIT_CONCURRENCY:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_commit_concurrency_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_COMPRESSION_FAILURE_THRESHOLD_PCT:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_compression_failure_threshold_pct_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_COMPRESSION_LEVEL:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_compression_level_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_COMPRESSION_PAD_PCT_MAX:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_compression_pad_pct_max_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_CONCURRENCY_TICKETS:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_concurrency_tickets_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DATA_FILE_PATH:
+        out_cell->value = innodb_data_file_path_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DATA_HOME_DIR:
+        out_cell->value = NULL;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DDL_BUFFER_SIZE:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_ddl_buffer_size_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DDL_THREADS:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_ddl_threads_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DEADLOCK_DETECT:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_deadlock_detect_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DEDICATED_SERVER:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_dedicated_server_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DEFAULT_ROW_FORMAT:
+        out_cell->value = innodb_default_row_format_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DIRECTORIES:
+        out_cell->value = NULL;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DISABLE_SORT_FILE_CACHE:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_disable_sort_file_cache_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DOUBLEWRITE:
+        out_cell->value = innodb_doublewrite_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DOUBLEWRITE_BATCH_SIZE:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_doublewrite_batch_size_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DOUBLEWRITE_DIR:
+        out_cell->value = NULL;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DOUBLEWRITE_FILES:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_doublewrite_files_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DOUBLEWRITE_PAGES:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_doublewrite_pages_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_EXTEND_AND_INITIALIZE:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_extend_and_initialize_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FAST_SHUTDOWN:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_fast_shutdown_default_value,
+            out_cell
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_TRACKING:
         return format_session_scalar_uint64_value(
             database,
@@ -1584,6 +1701,126 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_CHANGE_BUFFERING:
         *out_value = innodb_change_buffering_default_value;
         return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_CHECKSUM_ALGORITHM:
+        *out_value = innodb_checksum_algorithm_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_CMP_PER_INDEX_ENABLED:
+        *out_value = "OFF";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_COMMIT_CONCURRENCY:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_commit_concurrency_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_COMPRESSION_FAILURE_THRESHOLD_PCT:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_compression_failure_threshold_pct_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_COMPRESSION_LEVEL:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_compression_level_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_COMPRESSION_PAD_PCT_MAX:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_compression_pad_pct_max_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_CONCURRENCY_TICKETS:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_concurrency_tickets_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DATA_FILE_PATH:
+        *out_value = innodb_data_file_path_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DATA_HOME_DIR:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DIRECTORIES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DOUBLEWRITE_DIR:
+        *out_value = "";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DDL_BUFFER_SIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_ddl_buffer_size_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DDL_THREADS:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_ddl_threads_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DEADLOCK_DETECT:
+        *out_value = "ON";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DEDICATED_SERVER:
+        *out_value = "OFF";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DEFAULT_ROW_FORMAT:
+        *out_value = innodb_default_row_format_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DISABLE_SORT_FILE_CACHE:
+        *out_value = "OFF";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DOUBLEWRITE:
+        *out_value = innodb_doublewrite_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DOUBLEWRITE_BATCH_SIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_doublewrite_batch_size_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DOUBLEWRITE_FILES:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_doublewrite_files_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_DOUBLEWRITE_PAGES:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_doublewrite_pages_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_EXTEND_AND_INITIALIZE:
+        *out_value = "ON";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FAST_SHUTDOWN:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_fast_shutdown_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_LIMIT:
         return format_show_system_variable_uint64_value(
             database,

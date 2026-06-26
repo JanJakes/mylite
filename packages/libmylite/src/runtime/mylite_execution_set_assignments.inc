@@ -117,6 +117,15 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc = apply_set_innodb_storage_system_variable_assignment(
+        database,
+        &target,
+        value_node,
+        &handled
+    );
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     rc = apply_set_server_identity_binary_log_system_variable_assignment(
         database,
         &target,
@@ -255,6 +264,7 @@ static bool set_system_variable_target_is_read_only(
            mylite_execution_system_variable_is_read_only_mysqlx(kind) ||
            mylite_execution_system_variable_is_read_only_myisam(kind) ||
            mylite_execution_system_variable_is_read_only_innodb_core(kind) ||
+           mylite_execution_system_variable_is_read_only_innodb_storage(kind) ||
            mylite_execution_system_variable_is_read_only_server_logging(kind);
 }
 

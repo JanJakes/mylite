@@ -1196,6 +1196,8 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_set_innodb_core_system_variables.inc"
 
+#include "mylite_execution_set_innodb_storage_system_variables.inc"
+
 #include "mylite_execution_set_connection_system_variables.inc"
 
 #include "mylite_execution_set_binary_log_system_variables.inc"

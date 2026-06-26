@@ -333,31 +333,31 @@ state through this fallback path.
 | `innodb_change_buffering` | ✅ | Fixed global scalar/SHOW value `none`, global-only diagnostics, and exact/default global no-op SET; no change-buffering effects |
 | `innodb_change_buffering_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_checkpoint_disabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `innodb_checksum_algorithm` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_cmp_per_index_enabled` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_commit_concurrency` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_checksum_algorithm` | ✅ | Fixed global scalar/SHOW value `crc32`, global-only diagnostics, and exact/default global no-op SET; no checksum behavior |
+| `innodb_cmp_per_index_enabled` | ✅ | Fixed global scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no InnoDB CMP stats |
+| `innodb_commit_concurrency` | ✅ | Fixed global scalar/SHOW value `0`, global-only diagnostics, and exact/default global no-op SET; no commit scheduler |
 | `innodb_compress_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `innodb_compression_failure_threshold_pct` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_compression_level` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_compression_pad_pct_max` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_concurrency_tickets` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_data_file_path` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_data_home_dir` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_ddl_buffer_size` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_compression_failure_threshold_pct` | ✅ | Fixed global scalar/SHOW value `5`, global-only diagnostics, and exact/default global no-op SET; no compression effects |
+| `innodb_compression_level` | ✅ | Fixed global scalar/SHOW value `6`, global-only diagnostics, and exact/default global no-op SET; no compression effects |
+| `innodb_compression_pad_pct_max` | ✅ | Fixed global scalar/SHOW value `50`, global-only diagnostics, and exact/default global no-op SET; no compression effects |
+| `innodb_concurrency_tickets` | ✅ | Fixed global scalar/SHOW value `5000`, global-only diagnostics, and exact/default global no-op SET; no InnoDB thread scheduler |
+| `innodb_data_file_path` | ✅ | Fixed global read-only scalar/SHOW value `ibdata1:12M:autoextend`; no InnoDB data-file layout |
+| `innodb_data_home_dir` | ✅ | Fixed global read-only SQL `NULL` scalar and empty SHOW value; no data-home directory handling |
+| `innodb_ddl_buffer_size` | ✅ | Fixed session/global scalar/SHOW value `1048576` and exact/default no-op SET for all MySQL scopes; no DDL buffer sizing |
 | `innodb_ddl_log_crash_reset_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `innodb_ddl_threads` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_deadlock_detect` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_dedicated_server` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_default_row_format` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_directories` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_disable_sort_file_cache` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_doublewrite` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_doublewrite_batch_size` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_doublewrite_dir` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_doublewrite_files` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_doublewrite_pages` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_extend_and_initialize` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_fast_shutdown` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_ddl_threads` | ✅ | Fixed session/global scalar/SHOW value `4` and exact/default no-op SET for all MySQL scopes; no parallel DDL worker behavior |
+| `innodb_deadlock_detect` | ✅ | Fixed global scalar `1`/SHOW `ON`, global-only diagnostics, and exact/default global no-op SET; no InnoDB lock manager |
+| `innodb_dedicated_server` | ✅ | Fixed global read-only scalar `0`/SHOW `OFF`; no server sizing |
+| `innodb_default_row_format` | ✅ | Fixed global scalar/SHOW value `dynamic`, global-only diagnostics, and exact/default global no-op SET; no row-format routing |
+| `innodb_directories` | ✅ | Fixed global read-only SQL `NULL` scalar and empty SHOW value; no external directory scan |
+| `innodb_disable_sort_file_cache` | ✅ | Fixed global scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no sort-file cache behavior |
+| `innodb_doublewrite` | ✅ | Fixed global scalar/SHOW value `ON`, global-only diagnostics, and exact/default global no-op SET; no doublewrite buffer |
+| `innodb_doublewrite_batch_size` | ✅ | Fixed global read-only scalar/SHOW value `0`; no doublewrite batching |
+| `innodb_doublewrite_dir` | ✅ | Fixed global read-only SQL `NULL` scalar and empty SHOW value; no doublewrite directory |
+| `innodb_doublewrite_files` | ✅ | Fixed global read-only scalar/SHOW value `2`; no doublewrite files |
+| `innodb_doublewrite_pages` | ✅ | Fixed global read-only scalar/SHOW value `128`; no doublewrite pages |
+| `innodb_extend_and_initialize` | ✅ | Fixed global scalar `1`/SHOW `ON`, global-only diagnostics, and exact/default global no-op SET; no file initialization behavior |
+| `innodb_fast_shutdown` | ✅ | Fixed global scalar/SHOW value `1`, global-only diagnostics, and exact/default global no-op SET; no shutdown behavior |
 | `innodb_fil_make_page_dirty_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_file_per_table` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_fill_factor` | ❌ | Value, scope, SET, diagnostics |

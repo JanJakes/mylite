@@ -211,6 +211,15 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc = apply_set_internal_session_system_variable_assignment(
+        database,
+        &target,
+        value_node,
+        &handled
+    );
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     rc = apply_set_global_session_placeholder_assignment(database, &target, value_node, &handled);
     if (rc != MYLITE_OK || handled) {
         return rc;
@@ -280,6 +289,7 @@ static bool set_system_variable_target_is_read_only(
     return kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM ||
            kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES ||
            kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_ONLY ||
+           kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_PROXY_USER ||
            mylite_execution_system_variable_is_read_only_server_build(kind) ||
            mylite_execution_system_variable_is_read_only_server_environment(kind) ||
            mylite_execution_system_variable_is_read_only_authentication_password(kind) ||

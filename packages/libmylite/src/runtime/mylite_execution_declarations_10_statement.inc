@@ -603,6 +603,53 @@ static int apply_set_global_authentication_password_assignment(
     const struct mylite_sql_ast_node *value_node,
     bool *out_handled
 );
+static int apply_set_internal_session_system_variable_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
+static int apply_set_internal_session_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    bool *out_handled
+);
+static bool internal_session_system_variable_handles_kind(
+    enum mylite_execution_system_variable_kind kind
+);
+static int apply_set_internal_session_system_variable_text(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const char *value,
+    size_t value_size
+);
+static int apply_set_internal_session_system_variable_uint64(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const char *value,
+    size_t value_size
+);
+static int apply_set_internal_session_system_variable_rbr_exec_mode(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const char *value
+);
+static bool parse_internal_session_system_variable_uint64_text(
+    const char *text,
+    size_t text_size,
+    uint64_t *out_value
+);
+static int set_internal_session_system_variable_uint64_override(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    uint64_t value
+);
+static int append_internal_session_system_variable_set_warning_if_needed(
+    struct mylite_db *database,
+    enum mylite_execution_system_variable_kind kind
+);
 static int apply_set_global_session_placeholder_assignment(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,

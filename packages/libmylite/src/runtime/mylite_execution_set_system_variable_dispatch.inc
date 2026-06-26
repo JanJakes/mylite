@@ -120,6 +120,16 @@ static int apply_set_system_variable_cell_value(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc = apply_set_internal_session_system_variable_cell_value(
+        database,
+        target,
+        value,
+        value_kind,
+        &handled
+    );
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     if (set_system_variable_is_text_session_state(target->kind)) {
         return apply_set_text_session_system_variable_cell_value(database, target, value);
     }
@@ -510,6 +520,10 @@ static bool reject_invalid_read_only_system_variable_cell_target(
     const struct resolved_set_system_variable_target *target
 ) {
     if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_ONLY) {
+        set_read_only_system_variable_error(database, target->name);
+        return true;
+    }
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_PROXY_USER) {
         set_read_only_system_variable_error(database, target->name);
         return true;
     }

@@ -401,11 +401,11 @@ state through this fallback path.
 | `innodb_log_write_ahead_size` | ✅ | Fixed global scalar/SHOW value `8192`, global-only diagnostics, and exact/default global no-op SET; no redo write-ahead sizing |
 | `innodb_log_writer_threads` | ✅ | Fixed global scalar `1`/SHOW `ON`, global-only diagnostics, and exact/default global no-op SET; no log writer thread scheduling |
 | `innodb_lru_scan_depth` | ✅ | Fixed global scalar/SHOW value `1024`, global-only diagnostics, and exact/default global no-op SET; no LRU scan scheduling |
-| `innodb_max_dirty_pages_pct` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_max_dirty_pages_pct_lwm` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_max_purge_lag` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_max_purge_lag_delay` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_max_undo_log_size` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_max_dirty_pages_pct` | ✅ | Fixed global scalar/SHOW value `90.000000`, global-only diagnostics, and exact/default global no-op SET; no dirty-page flushing behavior |
+| `innodb_max_dirty_pages_pct_lwm` | ✅ | Fixed global scalar/SHOW value `10.000000`, global-only diagnostics, and exact/default global no-op SET; no dirty-page preflushing behavior |
+| `innodb_max_purge_lag` | ✅ | Fixed global scalar/SHOW value `0`, global-only diagnostics, and exact/default global no-op SET; no purge lag throttling |
+| `innodb_max_purge_lag_delay` | ✅ | Fixed global scalar/SHOW value `0`, global-only diagnostics, and exact/default global no-op SET; no purge delay scheduling |
+| `innodb_max_undo_log_size` | ✅ | Fixed global scalar/SHOW value `1073741824`, global-only diagnostics, and exact/default global no-op SET; no undo tablespace truncation |
 | `innodb_merge_threshold_set_all_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_monitor_disable` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_monitor_enable` | ❌ | Value, scope, SET, diagnostics |

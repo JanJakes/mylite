@@ -55,6 +55,11 @@ static int apply_set_innodb_storage_system_variable_assignment(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_WRITE_AHEAD_SIZE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_WRITER_THREADS:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LRU_SCAN_DEPTH:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_DIRTY_PAGES_PCT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_DIRTY_PAGES_PCT_LWM:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_PURGE_LAG:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_PURGE_LAG_DELAY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_UNDO_LOG_SIZE:
         *out_handled = true;
         return validate_set_innodb_storage_fixed_value(database, target, value_node);
     default:
@@ -120,6 +125,11 @@ static int apply_set_innodb_storage_system_variable_cell_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_WRITE_AHEAD_SIZE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_WRITER_THREADS:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LRU_SCAN_DEPTH:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_DIRTY_PAGES_PCT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_DIRTY_PAGES_PCT_LWM:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_PURGE_LAG:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_PURGE_LAG_DELAY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_UNDO_LOG_SIZE:
         *out_handled = true;
         return validate_set_innodb_storage_fixed_cell_value(
             database,
@@ -363,6 +373,35 @@ static int validate_set_innodb_storage_fixed_value(
             database,
             value_node,
             innodb_lru_scan_depth_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_DIRTY_PAGES_PCT:
+        return validate_set_fixed_decimal_value(
+            database,
+            value_node,
+            innodb_max_dirty_pages_pct_integral_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_DIRTY_PAGES_PCT_LWM:
+        return validate_set_fixed_decimal_value(
+            database,
+            value_node,
+            innodb_max_dirty_pages_pct_lwm_integral_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_PURGE_LAG_DELAY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_PURGE_LAG:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_max_purge_lag_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_UNDO_LOG_SIZE:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_max_undo_log_size_default_value,
             "SET supports only fixed no-op system variable assignments"
         );
     default:
@@ -654,6 +693,39 @@ static int validate_set_innodb_storage_fixed_cell_value(
             value,
             value_kind
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_DIRTY_PAGES_PCT:
+        return validate_set_innodb_storage_fixed_decimal_cell_value(
+            database,
+            target,
+            innodb_max_dirty_pages_pct_integral_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_DIRTY_PAGES_PCT_LWM:
+        return validate_set_innodb_storage_fixed_decimal_cell_value(
+            database,
+            target,
+            innodb_max_dirty_pages_pct_lwm_integral_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_PURGE_LAG_DELAY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_PURGE_LAG:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_max_purge_lag_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_UNDO_LOG_SIZE:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_max_undo_log_size_default_value,
+            value,
+            value_kind
+        );
     default:
         return MYLITE_OK;
     }
@@ -741,6 +813,39 @@ static int validate_set_innodb_storage_fixed_uint64_cell_value(
     unsigned_span = (struct mylite_sql_source_span){.text = text, .length = text_size};
     if (parse_unsigned_integer_literal(&unsigned_span, &actual) != MYLITE_OK ||
         actual != expected_value) {
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
+}
+
+static int validate_set_innodb_storage_fixed_decimal_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    uint64_t expected_integral_value,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+) {
+    const char *text = value == NULL ? NULL : value->value;
+    struct mylite_sql_source_span value_span = {0};
+    size_t text_size = 0U;
+
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (value == NULL || text == NULL ||
+        (value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER &&
+         value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_DECIMAL)) {
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
+    }
+
+    text_size = value->has_value_size ? value->value_size : strlen(text);
+    value_span = (struct mylite_sql_source_span){.text = text, .length = text_size};
+    if (text_size == 0U || text[0] == '-' || text[0] == '+' ||
+        !fixed_decimal_text_matches_uint64(value_span, expected_integral_value)) {
         set_unsupported_error(
             database,
             "SET supports only fixed no-op system variable assignments"

@@ -727,6 +727,25 @@ static int system_variable_value(
             innodb_lru_scan_depth_default_value,
             out_cell
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_DIRTY_PAGES_PCT:
+        out_cell->value = innodb_max_dirty_pages_pct_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_DIRTY_PAGES_PCT_LWM:
+        out_cell->value = innodb_max_dirty_pages_pct_lwm_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_PURGE_LAG_DELAY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_PURGE_LAG:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_max_purge_lag_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_UNDO_LOG_SIZE:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_max_undo_log_size_default_value,
+            out_cell
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_TRACKING:
         return format_session_scalar_uint64_value(
             database,
@@ -2275,6 +2294,29 @@ static int show_system_variable_value(
         return format_show_system_variable_uint64_value(
             database,
             innodb_lru_scan_depth_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_DIRTY_PAGES_PCT:
+        *out_value = innodb_max_dirty_pages_pct_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_DIRTY_PAGES_PCT_LWM:
+        *out_value = innodb_max_dirty_pages_pct_lwm_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_PURGE_LAG_DELAY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_PURGE_LAG:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_max_purge_lag_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_UNDO_LOG_SIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_max_undo_log_size_default_value,
             integer_buffer,
             integer_buffer_size,
             out_value

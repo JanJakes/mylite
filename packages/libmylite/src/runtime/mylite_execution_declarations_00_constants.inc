@@ -852,6 +852,12 @@ static const uint64_t innodb_log_wait_for_flush_spin_hwm_default_value = 400ULL;
 static const uint64_t innodb_log_write_ahead_size_default_value = 8192ULL;
 static const uint64_t innodb_log_writer_threads_default_value = 1ULL;
 static const uint64_t innodb_lru_scan_depth_default_value = 1024ULL;
+static const uint64_t innodb_max_dirty_pages_pct_integral_default_value = 90ULL;
+static const char innodb_max_dirty_pages_pct_default_value[] = "90.000000";
+static const uint64_t innodb_max_dirty_pages_pct_lwm_integral_default_value = 10ULL;
+static const char innodb_max_dirty_pages_pct_lwm_default_value[] = "10.000000";
+static const uint64_t innodb_max_purge_lag_default_value = 0ULL;
+static const uint64_t innodb_max_undo_log_size_default_value = 1073741824ULL;
 static const uint64_t sort_buffer_size_default_value =
     MYLITE_SESSION_SORT_BUFFER_SIZE_DEFAULT_VALUE;
 static const uint64_t sort_buffer_size_min_value = MYLITE_SESSION_SORT_BUFFER_SIZE_MIN_VALUE;

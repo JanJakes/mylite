@@ -62,6 +62,90 @@ static int validate_set_fixed_uint64_value(
     return MYLITE_OK;
 }
 
+static int validate_set_fixed_decimal_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node,
+    uint64_t expected_integral_value,
+    const char *unsupported_message
+) {
+    const struct mylite_sql_ast_node *literal_node = unwrap_parenthesized_expression(value_node);
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+    if (literal_node != NULL && literal_node->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(literal_node);
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_unsupported_error(database, unsupported_message);
+            return MYLITE_ERROR;
+        }
+        literal_node = unwrap_parenthesized_expression(child_at(literal_node, 0U));
+    }
+    if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+
+    literal_kind = mylite_sql_ast_node_literal_kind(literal_node);
+    if ((literal_kind != MYLITE_SQL_AST_LITERAL_INTEGER &&
+         literal_kind != MYLITE_SQL_AST_LITERAL_DECIMAL) ||
+        !fixed_decimal_text_matches_uint64(literal_node->span, expected_integral_value)) {
+        set_unsupported_error(database, unsupported_message);
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
+}
+
+static bool fixed_decimal_text_matches_uint64(
+    struct mylite_sql_source_span text,
+    uint64_t expected_value
+) {
+    struct mylite_sql_source_span integer_span = {0};
+    size_t index = 0U;
+    uint64_t actual_value = 0U;
+
+    if (text.text == NULL || text.length == 0U) {
+        return false;
+    }
+    while (index < text.length) {
+        unsigned char byte = (unsigned char)text.text[index];
+
+        if (byte < '0' || byte > '9') {
+            break;
+        }
+        ++index;
+    }
+    if (index == 0U) {
+        return false;
+    }
+    integer_span = (struct mylite_sql_source_span){.text = text.text, .length = index};
+    if (parse_unsigned_integer_literal(&integer_span, &actual_value) != MYLITE_OK ||
+        actual_value != expected_value) {
+        return false;
+    }
+    if (index == text.length) {
+        return true;
+    }
+    if (text.text[index] != '.') {
+        return false;
+    }
+    ++index;
+    while (index < text.length) {
+        if (text.text[index] != '0') {
+            return false;
+        }
+        ++index;
+    }
+    return true;
+}
+
 static int apply_set_transaction_system_variable_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,

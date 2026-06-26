@@ -557,7 +557,9 @@ static int apply_set_timeout_system_variable_cell_value(
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind
 ) {
-    uint64_t timeout = timeout_system_variable_default_value;
+    uint64_t timeout = timeout_system_variable_default_value_for_kind(
+        target == NULL ? MYLITE_EXECUTION_SYSTEM_VARIABLE_NONE : target->kind
+    );
     int rc = MYLITE_OK;
 
     if (target == NULL) {
@@ -568,18 +570,20 @@ static int apply_set_timeout_system_variable_cell_value(
         set_global_variable_set_global_required_error(database, target->name);
         return MYLITE_ERROR;
     }
-    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
-        set_unsupported_error(
-            database,
-            "SET GLOBAL timeout system variable assignment is not supported"
-        );
-        return MYLITE_ERROR;
-    }
-
     rc =
         parse_set_timeout_system_variable_cell_value(database, target, value, value_kind, &timeout);
     if (rc != MYLITE_OK) {
         return rc;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        if (timeout == timeout_system_variable_default_value_for_kind(target->kind)) {
+            return MYLITE_OK;
+        }
+        set_unsupported_error(
+            database,
+            "SET timeout system variable supports only fixed no-op global assignments"
+        );
+        return MYLITE_ERROR;
     }
     return apply_timeout_system_variable_value(database, target, timeout);
 }

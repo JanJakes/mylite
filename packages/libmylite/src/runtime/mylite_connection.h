@@ -33,6 +33,7 @@ enum {
     MYLITE_SESSION_MAX_ERROR_COUNT_DEFAULT_VALUE = 1024,
     MYLITE_SESSION_MAX_ERROR_COUNT_MAX_VALUE = 65535,
     MYLITE_SESSION_LOCK_WAIT_TIMEOUT_DEFAULT_VALUE = 31536000,
+    MYLITE_SESSION_INNODB_LOCK_WAIT_TIMEOUT_DEFAULT_VALUE = 50,
     MYLITE_SESSION_NET_READ_TIMEOUT_DEFAULT_VALUE = 30,
     MYLITE_SESSION_NET_RETRY_COUNT_DEFAULT_VALUE = 10,
     MYLITE_SESSION_NET_WRITE_TIMEOUT_DEFAULT_VALUE = 60,
@@ -197,6 +198,7 @@ struct mylite_session_state {
     uint64_t interactive_timeout;
     uint64_t long_query_time_microseconds;
     uint64_t lock_wait_timeout;
+    uint64_t innodb_lock_wait_timeout;
     uint64_t net_read_timeout;
     uint64_t net_retry_count;
     uint64_t net_write_timeout;

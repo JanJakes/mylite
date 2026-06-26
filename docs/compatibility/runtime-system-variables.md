@@ -382,25 +382,25 @@ state through this fallback path.
 | `innodb_ft_sort_pll_degree` | ✅ | Fixed global read-only scalar/SHOW value `2`; no full-text sort parallelism |
 | `innodb_ft_total_cache_size` | ✅ | Fixed global read-only scalar/SHOW value `640000000`; no total full-text cache allocation |
 | `innodb_ft_user_stopword_table` | ✅ | Fixed scalar `NULL`/empty SHOW, session/global `DEFAULT`/`NULL` no-op SET, and non-null table-name diagnostics; no user stopword table loading |
-| `innodb_idle_flush_pct` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_io_capacity` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_io_capacity_max` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_idle_flush_pct` | ✅ | Fixed global scalar/SHOW value `100`, global-only diagnostics, and exact/default global no-op SET; no idle flushing behavior |
+| `innodb_io_capacity` | ✅ | Fixed global scalar/SHOW value `10000`, global-only diagnostics, and exact/default global no-op SET; no IO capacity scheduling |
+| `innodb_io_capacity_max` | ✅ | Fixed global scalar/SHOW value `20000`, global-only diagnostics, and exact/default global no-op SET; no IO capacity scheduling |
 | `innodb_limit_optimistic_insert_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `innodb_lock_wait_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_log_buffer_size` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_lock_wait_timeout` | ✅ | Fixed global/session default `50`, handle-local session SET/readback, and exact/default global no-op SET; no InnoDB row-lock wait enforcement |
+| `innodb_log_buffer_size` | ✅ | Fixed global scalar/SHOW value `67108864`, global-only diagnostics, and exact/default global no-op SET; no redo-log buffer allocation |
 | `innodb_log_checkpoint_fuzzy_now` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_log_checkpoint_now` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `innodb_log_checksums` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_log_compressed_pages` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_log_file_size` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_log_files_in_group` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_log_group_home_dir` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_log_spin_cpu_abs_lwm` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_log_spin_cpu_pct_hwm` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_log_wait_for_flush_spin_hwm` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_log_write_ahead_size` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_log_writer_threads` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_lru_scan_depth` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_log_checksums` | ✅ | Fixed global scalar `1`/SHOW `ON`, global-only diagnostics, and exact/default global no-op SET; no redo-log checksum behavior |
+| `innodb_log_compressed_pages` | ✅ | Fixed global scalar `1`/SHOW `ON`, global-only diagnostics, and exact/default global no-op SET; no compressed page redo behavior |
+| `innodb_log_file_size` | ✅ | Fixed global read-only scalar/SHOW value `50331648`; no redo-log file sizing |
+| `innodb_log_files_in_group` | ✅ | Fixed global read-only scalar/SHOW value `2`; no redo-log file group layout |
+| `innodb_log_group_home_dir` | ✅ | Fixed global read-only scalar/SHOW value `./`; no redo-log directory layout |
+| `innodb_log_spin_cpu_abs_lwm` | ✅ | Fixed global scalar/SHOW value `80`, global-only diagnostics, and exact/default global no-op SET; no spin threshold scheduling |
+| `innodb_log_spin_cpu_pct_hwm` | ✅ | Fixed global scalar/SHOW value `50`, global-only diagnostics, and exact/default global no-op SET; no spin threshold scheduling |
+| `innodb_log_wait_for_flush_spin_hwm` | ✅ | Fixed global scalar/SHOW value `400`, global-only diagnostics, and exact/default global no-op SET; no flush spin scheduling |
+| `innodb_log_write_ahead_size` | ✅ | Fixed global scalar/SHOW value `8192`, global-only diagnostics, and exact/default global no-op SET; no redo write-ahead sizing |
+| `innodb_log_writer_threads` | ✅ | Fixed global scalar `1`/SHOW `ON`, global-only diagnostics, and exact/default global no-op SET; no log writer thread scheduling |
+| `innodb_lru_scan_depth` | ✅ | Fixed global scalar/SHOW value `1024`, global-only diagnostics, and exact/default global no-op SET; no LRU scan scheduling |
 | `innodb_max_dirty_pages_pct` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_max_dirty_pages_pct_lwm` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_max_purge_lag` | ❌ | Value, scope, SET, diagnostics |

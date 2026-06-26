@@ -43,6 +43,18 @@ static int apply_set_innodb_storage_system_variable_assignment(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_RESULT_CACHE_LIMIT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_SERVER_STOPWORD_TABLE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_USER_STOPWORD_TABLE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_IDLE_FLUSH_PCT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_IO_CAPACITY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_IO_CAPACITY_MAX:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_BUFFER_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_CHECKSUMS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_COMPRESSED_PAGES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_SPIN_CPU_ABS_LWM:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_SPIN_CPU_PCT_HWM:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_WAIT_FOR_FLUSH_SPIN_HWM:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_WRITE_AHEAD_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_WRITER_THREADS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LRU_SCAN_DEPTH:
         *out_handled = true;
         return validate_set_innodb_storage_fixed_value(database, target, value_node);
     default:
@@ -96,6 +108,18 @@ static int apply_set_innodb_storage_system_variable_cell_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_RESULT_CACHE_LIMIT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_SERVER_STOPWORD_TABLE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_USER_STOPWORD_TABLE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_IDLE_FLUSH_PCT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_IO_CAPACITY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_IO_CAPACITY_MAX:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_BUFFER_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_CHECKSUMS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_COMPRESSED_PAGES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_SPIN_CPU_ABS_LWM:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_SPIN_CPU_PCT_HWM:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_WAIT_FOR_FLUSH_SPIN_HWM:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_WRITE_AHEAD_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_WRITER_THREADS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LRU_SCAN_DEPTH:
         *out_handled = true;
         return validate_set_innodb_storage_fixed_cell_value(
             database,
@@ -273,6 +297,74 @@ static int validate_set_innodb_storage_fixed_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_SERVER_STOPWORD_TABLE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_FT_USER_STOPWORD_TABLE:
         return validate_set_innodb_storage_nullable_table_value(database, target, value_node);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_IDLE_FLUSH_PCT:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_idle_flush_pct_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_IO_CAPACITY:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_io_capacity_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_IO_CAPACITY_MAX:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_io_capacity_max_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_BUFFER_SIZE:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_log_buffer_size_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_COMPRESSED_PAGES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_CHECKSUMS:
+        return validate_set_fixed_boolean_value(database, value_node, true);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_SPIN_CPU_ABS_LWM:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_log_spin_cpu_abs_lwm_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_SPIN_CPU_PCT_HWM:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_log_spin_cpu_pct_hwm_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_WAIT_FOR_FLUSH_SPIN_HWM:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_log_wait_for_flush_spin_hwm_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_WRITE_AHEAD_SIZE:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_log_write_ahead_size_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_WRITER_THREADS:
+        return validate_set_fixed_boolean_value(database, value_node, true);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LRU_SCAN_DEPTH:
+        return validate_set_fixed_uint64_value(
+            database,
+            value_node,
+            innodb_lru_scan_depth_default_value,
+            "SET supports only fixed no-op system variable assignments"
+        );
     default:
         return MYLITE_OK;
     }
@@ -482,6 +574,83 @@ static int validate_set_innodb_storage_fixed_cell_value(
         return validate_set_innodb_storage_nullable_table_cell_value(
             database,
             target,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_IDLE_FLUSH_PCT:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_idle_flush_pct_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_IO_CAPACITY:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_io_capacity_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_IO_CAPACITY_MAX:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_io_capacity_max_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_BUFFER_SIZE:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_log_buffer_size_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_COMPRESSED_PAGES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_CHECKSUMS:
+        return apply_set_fixed_boolean_system_variable_cell_value(database, target, value, true);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_SPIN_CPU_ABS_LWM:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_log_spin_cpu_abs_lwm_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_SPIN_CPU_PCT_HWM:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_log_spin_cpu_pct_hwm_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_WAIT_FOR_FLUSH_SPIN_HWM:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_log_wait_for_flush_spin_hwm_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_WRITE_AHEAD_SIZE:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_log_write_ahead_size_default_value,
+            value,
+            value_kind
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOG_WRITER_THREADS:
+        return apply_set_fixed_boolean_system_variable_cell_value(database, target, value, true);
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LRU_SCAN_DEPTH:
+        return validate_set_innodb_storage_fixed_uint64_cell_value(
+            database,
+            target,
+            innodb_lru_scan_depth_default_value,
             value,
             value_kind
         );

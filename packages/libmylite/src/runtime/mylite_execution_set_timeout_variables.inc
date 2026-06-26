@@ -45,6 +45,8 @@ static int apply_timeout_system_variable_value(
         database->session.interactive_timeout = value;
     } else if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOCK_WAIT_TIMEOUT) {
         database->session.lock_wait_timeout = value;
+    } else if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_LOCK_WAIT_TIMEOUT) {
+        database->session.innodb_lock_wait_timeout = value;
     } else if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_READ_TIMEOUT) {
         database->session.net_read_timeout = value;
     } else if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_NET_RETRY_COUNT) {

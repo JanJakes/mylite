@@ -32,6 +32,7 @@ static int copy_set_session_snapshot(
     out_snapshot->interactive_timeout = session->interactive_timeout;
     out_snapshot->long_query_time_microseconds = session->long_query_time_microseconds;
     out_snapshot->lock_wait_timeout = session->lock_wait_timeout;
+    out_snapshot->innodb_lock_wait_timeout = session->innodb_lock_wait_timeout;
     out_snapshot->net_read_timeout = session->net_read_timeout;
     out_snapshot->net_retry_count = session->net_retry_count;
     out_snapshot->net_write_timeout = session->net_write_timeout;
@@ -225,6 +226,7 @@ static void restore_set_session_snapshot(
     session->interactive_timeout = snapshot->interactive_timeout;
     session->long_query_time_microseconds = snapshot->long_query_time_microseconds;
     session->lock_wait_timeout = snapshot->lock_wait_timeout;
+    session->innodb_lock_wait_timeout = snapshot->innodb_lock_wait_timeout;
     session->net_read_timeout = snapshot->net_read_timeout;
     session->net_retry_count = snapshot->net_retry_count;
     session->net_write_timeout = snapshot->net_write_timeout;

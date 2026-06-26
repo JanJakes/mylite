@@ -697,8 +697,8 @@ state through this fallback path.
 | `net_read_timeout` | ✅ | Session/global readback, SHOW, session SET, clamp warnings, and default global no-op; no socket read timeout side effects |
 | `net_retry_count` | ✅ | Session/global readback, SHOW, session SET through `UINT64_MAX`, clamp warnings, and default global no-op; no interrupted-port retry side effects |
 | `net_write_timeout` | ✅ | Session/global readback, SHOW, session SET, clamp warnings, and default global no-op; no socket write timeout side effects |
-| `ngram_token_size` | ❌ | Value, scope, SET, diagnostics |
-| `offline_mode` | ❌ | Value, scope, SET, diagnostics |
+| `ngram_token_size` | ✅ | Fixed global `2`, SHOW row, global-only diagnostics, and read-only SET; no ngram parser effect |
+| `offline_mode` | ✅ | Fixed global `0`/`OFF`, SHOW row, global-only diagnostics, and exact/default global no-op SET; no connection gating |
 | `old_alter_table` | ✅ | Fixed default/session/global scalar `0` and `SHOW VARIABLES` `OFF`; session placeholder `SET` readback and fixed global no-op assignments are supported. No alternate ALTER TABLE algorithm routing, startup options, persisted state, or Performance Schema variable tables |
 | `open_files_limit` | ❌ | Value, scope, SET, diagnostics |
 | `optimizer_prune_level` | ✅ | Scalar/SHOW readback, session SET, clamp warnings, and fixed-global no-op; no optimizer effect |
@@ -763,9 +763,9 @@ state through this fallback path.
 | `performance_schema_setup_objects_size` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no setup object storage |
 | `performance_schema_show_processlist` | ✅ | Fixed scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no Performance Schema process-list routing |
 | `performance_schema_users_size` | ✅ | Fixed scalar/SHOW value `-1` and read-only diagnostics; no user instrumentation |
-| `persist_only_admin_x509_subject` | ❌ | Value, scope, SET, diagnostics |
-| `persist_sensitive_variables_in_plaintext` | ❌ | Value, scope, SET, diagnostics |
-| `persisted_globals_load` | ❌ | Value, scope, SET, diagnostics |
+| `persist_only_admin_x509_subject` | ✅ | Fixed blank global/SHOW value and read-only SET; no persisted-variable X.509 policy |
+| `persist_sensitive_variables_in_plaintext` | ✅ | Fixed global `1`/`ON`, SHOW row, and read-only SET; no persisted-variable file writes |
+| `persisted_globals_load` | ✅ | Fixed global `1`/`ON`, SHOW row, and read-only SET; no persisted-variable loading |
 | `pid_file` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `/var/run/mysqld/mysqld.pid`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No PID file is created or read |
 | `plugin_dir` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `/usr/lib64/mysql/plugin/`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No plugin loading or path probing |
 | `port` | 🟡 | Limited fixed global read-only numeric scalar and `SHOW VARIABLES` placeholder `3306`; default/global scalar reads and numeric scalar contexts such as `HEX(@@port)` are supported, `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No network listener, socket binding, startup option handling, or mutable port state |
@@ -773,7 +773,7 @@ state through this fallback path.
 | `print_identified_with_as_hex` | ✅ | Fixed default/session/global scalar `0` and `SHOW VARIABLES` `OFF`; session placeholder `SET` readback and fixed global no-op assignments are supported. No account-authentication formatting behavior, startup options, persisted state, or Performance Schema variable tables |
 | `profiling` | ❌ | Value, scope, SET, diagnostics |
 | `profiling_history_size` | ❌ | Value, scope, SET, diagnostics |
-| `protocol_compression_algorithms` | ❌ | Value, scope, SET, diagnostics |
+| `protocol_compression_algorithms` | ✅ | Fixed `zlib,zstd,uncompressed`, SHOW row, global-only diagnostics, and exact/default global no-op SET; no compression negotiation |
 | `protocol_version` | 🟡 | Limited fixed global read-only numeric scalar and `SHOW VARIABLES` placeholder `10`; default/global scalar reads and numeric scalar contexts such as `HEX(@@protocol_version)` are supported, `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No wire-protocol handshake metadata, startup option handling, or mutable protocol state |
 | `proxy_user` | ❌ | Value, scope, SET, diagnostics |
 | `pseudo_replica_mode` | ❌ | Value, scope, SET, diagnostics |
@@ -845,7 +845,7 @@ state through this fallback path.
 | `rpl_semi_sync_source_wait_point` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `rpl_stop_replica_timeout` | ✅ | Fixed scalar/SHOW value `31536000`, global-only diagnostics, and default/exact global no-op SET; no replica stop wait |
 | `rpl_stop_slave_timeout` | ✅ | Fixed scalar/SHOW value `31536000`, deprecation warnings, global-only diagnostics, and default/exact global no-op SET; no replica stop wait |
-| `schema_definition_cache` | ❌ | Value, scope, SET, diagnostics |
+| `schema_definition_cache` | ✅ | Fixed global `256`, SHOW row, global-only diagnostics, and exact/default global no-op SET; no schema-definition cache |
 | `secondary_engine_cost_threshold` | ❌ | Value, scope, SET, diagnostics |
 | `secure_file_priv` | ✅ | Fixed global read-only scalar and `SHOW VARIABLES` value `/var/lib/mysql-files/`; no file import/export enforcement, path probing, startup options, persisted state, or Performance Schema variable tables |
 | `select_into_buffer_size` | ❌ | Value, scope, SET, diagnostics |
@@ -923,10 +923,10 @@ state through this fallback path.
 | `ssl_session_cache_mode` | ✅ | Fixed global scalar `1`, `SHOW VARIABLES` `ON`, global-only diagnostics, and exact no-op global `SET`; no SSL session cache |
 | `ssl_session_cache_timeout` | ✅ | Fixed global scalar and `SHOW VARIABLES` value `300`, global-only diagnostics, and exact no-op global `SET`; no SSL session cache |
 | `statement_id` | ❌ | Value, scope, SET, diagnostics |
-| `stored_program_cache` | ❌ | Value, scope, SET, diagnostics |
-| `stored_program_definition_cache` | ❌ | Value, scope, SET, diagnostics |
+| `stored_program_cache` | ✅ | Fixed global `256`, SHOW row, global-only diagnostics, and exact/default global no-op SET; no stored-program cache |
+| `stored_program_definition_cache` | ✅ | Fixed global `256`, SHOW row, global-only diagnostics, and exact/default global no-op SET; no stored-program definition cache |
 | `super_read_only` | 🟡 | Limited fixed global disabled placeholder: scalar default/global reads return `0`, `SHOW VARIABLES` rows report `OFF`, session/local scalar reads and non-global `SET` forms use MySQL-shaped global-variable diagnostics, and exact no-op global `SET` forms may preserve `OFF`; no mutable global state, write blocking, privileges, startup option, or implication of `read_only` |
-| `sync_binlog` | ❌ | Value, scope, SET, diagnostics |
+| `sync_binlog` | ✅ | Fixed global `1`, SHOW row, global-only diagnostics, and exact/default global no-op SET; no binlog fsync policy |
 | `sync_master_info` | ✅ | Fixed scalar/SHOW value `10000`, deprecation warnings, global-only diagnostics, and default/exact global no-op SET; no source-info syncing |
 | `sync_relay_log` | ✅ | Fixed scalar/SHOW value `10000`, global-only diagnostics, and default/exact global no-op SET; no relay-log syncing |
 | `sync_relay_log_info` | ✅ | Fixed scalar/SHOW value `10000`, deprecation warnings, global-only diagnostics, and default/exact global no-op SET; no relay-info syncing |
@@ -935,11 +935,11 @@ state through this fallback path.
 | `syseventlog.include_pid` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `syseventlog.tag` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `system_time_zone` | 🟡 | Limited fixed global-only readback value `UTC` through scalar reads and `SHOW VARIABLES`; no host-local time zone discovery, loaded named time-zone rows, or mutable state |
-| `table_definition_cache` | ❌ | Value, scope, SET, diagnostics |
-| `table_encryption_privilege_check` | ❌ | Value, scope, SET, diagnostics |
-| `table_open_cache` | ❌ | Value, scope, SET, diagnostics |
-| `table_open_cache_instances` | ❌ | Value, scope, SET, diagnostics |
-| `tablespace_definition_cache` | ❌ | Value, scope, SET, diagnostics |
+| `table_definition_cache` | ✅ | Fixed global `2000`, SHOW row, global-only diagnostics, and exact/default global no-op SET; no table-definition cache |
+| `table_encryption_privilege_check` | ✅ | Fixed global `0`/`OFF`, SHOW row, global-only diagnostics, and exact/default global no-op SET; no encryption privilege check |
+| `table_open_cache` | ✅ | Fixed global `4000`, SHOW row, global-only diagnostics, and exact/default global no-op SET; no table-open cache |
+| `table_open_cache_instances` | ✅ | Fixed global `16`, SHOW row, global-only diagnostics, and read-only SET; no cache sharding |
+| `tablespace_definition_cache` | ✅ | Fixed global `256`, SHOW row, global-only diagnostics, and exact/default global no-op SET; no tablespace-definition cache |
 | `telemetry.metrics_enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `telemetry.metrics_reader_frequency_1` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `telemetry.metrics_reader_frequency_2` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
@@ -975,12 +975,12 @@ state through this fallback path.
 | `telemetry.otel_resource_attributes` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `telemetry.query_text_enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `telemetry.trace_enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `temptable_max_mmap` | ❌ | Value, scope, SET, diagnostics |
+| `temptable_max_mmap` | ✅ | Fixed global `0`, SHOW row, global-only diagnostics, and exact/default global no-op SET; no TempTable mmap sizing |
 | `temptable_max_ram` | ❌ | Value, scope, SET, diagnostics |
-| `temptable_use_mmap` | ❌ | Value, scope, SET, diagnostics |
+| `temptable_use_mmap` | ✅ | Fixed global `0`/`OFF`, SHOW row, global-only diagnostics, exact/default global no-op SET, and SET deprecation warning; no mmap policy |
 | `terminology_use_previous` | ❌ | Value, scope, SET, diagnostics |
-| `thread_cache_size` | ❌ | Value, scope, SET, diagnostics |
-| `thread_handling` | ❌ | Value, scope, SET, diagnostics |
+| `thread_cache_size` | ✅ | Fixed global `9`, SHOW row, global-only diagnostics, and exact/default global no-op SET; no thread cache |
+| `thread_handling` | ✅ | Fixed global `one-thread-per-connection`, SHOW row, global-only diagnostics, and read-only SET; no thread scheduler |
 | `thread_pool_algorithm` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `thread_pool_dedicated_listeners` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `thread_pool_high_priority_connection` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
@@ -993,7 +993,7 @@ state through this fallback path.
 | `thread_pool_size` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `thread_pool_stall_limit` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `thread_pool_transaction_delay` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `thread_stack` | ❌ | Value, scope, SET, diagnostics |
+| `thread_stack` | ✅ | Fixed global `1048576`, SHOW row, global-only diagnostics, and read-only SET; no thread-stack sizing |
 | `time_zone` | 🟡 | Limited fixed global value `SYSTEM`, session-local scalar reads and `SHOW VARIABLES`, and session/local `SET time_zone` forms for `DEFAULT`, `SYSTEM`, `UTC`, and signed UTC offsets. Current date/time/timestamp materialization uses the session offset; `mysql.time_zone*` tables are metadata-only empty placeholders with no mutable global value, loaded named-zone rows, named-zone conversion beyond `UTC`, daylight-saving behavior, leap-second handling, or TIMESTAMP row storage/retrieval conversion |
 | `timestamp` | 🟡 | Limited session-only `@@timestamp`, `@@SESSION.timestamp`, `SHOW VARIABLES LIKE 'timestamp'`, and `SET timestamp` / `SET SESSION timestamp` / `SET @@SESSION.timestamp` for integer, signed integer reset, `DEFAULT`, and `@@timestamp` plus integer arithmetic inside `SET timestamp`. The value controls the current statement date/time/timestamp used by `CURDATE()` / `CURRENT_DATE`, `CURTIME()` / `CURRENT_TIME`, `NOW()` / `CURRENT_TIMESTAMP`, and automatic temporal defaults, with materialization adjusted by the limited session `time_zone`; no global scope, nonzero fractional assignment values, general system-variable scalar arithmetic, TIMESTAMP row storage/retrieval conversion, persisted state, or broader temporal-variable behavior |
 | `tls_certificates_enforced_validation` | ✅ | Fixed global read-only scalar `0`, `SHOW VARIABLES` `OFF`, and MySQL-style scope/SET diagnostics; no TLS certificate validation behavior |

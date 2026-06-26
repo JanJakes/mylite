@@ -16,6 +16,12 @@ static const uint64_t max_binlog_size_default_value = 1073741824ULL;
 static const uint64_t max_connect_errors_default_value = 100ULL;
 static const uint64_t max_connections_default_value = 151ULL;
 static const uint64_t max_prepared_stmt_count_default_value = 16382ULL;
+static const uint64_t schema_definition_cache_default_value = 256ULL;
+static const uint64_t sync_binlog_default_value = 1ULL;
+static const uint64_t table_definition_cache_default_value = 2000ULL;
+static const uint64_t table_open_cache_default_value = 4000ULL;
+static const uint64_t temptable_max_mmap_default_value = 0ULL;
+static const uint64_t thread_cache_size_default_value = 9ULL;
 
 static int apply_set_compatibility_system_variable_assignment(
     struct mylite_db *database,
@@ -114,6 +120,9 @@ static bool compatibility_system_variable_is_boolean(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_TABLE_ENCRYPTION:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_FLUSH:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MASTER_VERIFY_CHECKSUM:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_OFFLINE_MODE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TABLE_ENCRYPTION_PRIVILEGE_CHECK:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TEMPTABLE_USE_MMAP:
         return true;
     default:
         return false;
@@ -145,6 +154,15 @@ static bool compatibility_system_variable_is_uint64(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_PREPARED_STMT_COUNT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_RELAY_LOG_SIZE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_WRITE_LOCK_COUNT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SCHEMA_DEFINITION_CACHE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_STORED_PROGRAM_CACHE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_STORED_PROGRAM_DEFINITION_CACHE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SYNC_BINLOG:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TABLE_DEFINITION_CACHE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TABLE_OPEN_CACHE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TABLESPACE_DEFINITION_CACHE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TEMPTABLE_MAX_MMAP:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_THREAD_CACHE_SIZE:
         return true;
     default:
         return false;
@@ -196,6 +214,21 @@ static uint64_t compatibility_system_variable_uint64_value(
         return 0ULL;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_WRITE_LOCK_COUNT:
         return UINT64_MAX;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SCHEMA_DEFINITION_CACHE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_STORED_PROGRAM_CACHE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_STORED_PROGRAM_DEFINITION_CACHE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TABLESPACE_DEFINITION_CACHE:
+        return schema_definition_cache_default_value;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SYNC_BINLOG:
+        return sync_binlog_default_value;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TABLE_DEFINITION_CACHE:
+        return table_definition_cache_default_value;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TABLE_OPEN_CACHE:
+        return table_open_cache_default_value;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TEMPTABLE_MAX_MMAP:
+        return temptable_max_mmap_default_value;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_THREAD_CACHE_SIZE:
+        return thread_cache_size_default_value;
     default:
         return 0ULL;
     }
@@ -211,6 +244,7 @@ static int append_compatibility_system_variable_set_warning_if_needed(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DELAYED_QUEUE_SIZE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INIT_SLAVE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MASTER_VERIFY_CHECKSUM:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_TEMPTABLE_USE_MMAP:
         return append_system_variable_read_warning(database, kind);
     default:
         return MYLITE_OK;

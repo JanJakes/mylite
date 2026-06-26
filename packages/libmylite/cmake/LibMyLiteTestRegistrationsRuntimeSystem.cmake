@@ -613,6 +613,10 @@
     COMMAND mylite_runtime_o_optimizer_system_variables_test
   )
   add_test(
+    NAME libmylite.runtime.replication_global_system_variables
+    COMMAND mylite_runtime_replication_global_system_variables_test
+  )
+  add_test(
     NAME libmylite.runtime.myisam_system_variables
     COMMAND mylite_runtime_myisam_system_variables_test
   )

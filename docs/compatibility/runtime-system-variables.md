@@ -791,12 +791,12 @@ state through this fallback path.
 | `read_rnd_buffer_size` | ❌ | Value, scope, SET, diagnostics |
 | `regexp_stack_limit` | ❌ | Value, scope, SET, diagnostics |
 | `regexp_time_limit` | ❌ | Value, scope, SET, diagnostics |
-| `relay_log` | ❌ | Value, scope, SET, diagnostics |
-| `relay_log_basename` | ❌ | Value, scope, SET, diagnostics |
-| `relay_log_index` | ❌ | Value, scope, SET, diagnostics |
-| `relay_log_purge` | ❌ | Value, scope, SET, diagnostics |
-| `relay_log_recovery` | ❌ | Value, scope, SET, diagnostics |
-| `relay_log_space_limit` | ❌ | Value, scope, SET, diagnostics |
+| `relay_log` | ✅ | Fixed global path placeholder, SHOW rows, global-only diagnostics, and read-only SET; no relay logs |
+| `relay_log_basename` | ✅ | Fixed global path placeholder, SHOW rows, global-only diagnostics, and read-only SET; no relay-log files |
+| `relay_log_index` | ✅ | Fixed global path placeholder, SHOW rows, global-only diagnostics, and read-only SET; no relay-log index file |
+| `relay_log_purge` | ✅ | Fixed scalar/SHOW value `1`/`ON`, global-only diagnostics, and default/exact global no-op SET; no relay-log purge behavior |
+| `relay_log_recovery` | ✅ | Fixed scalar/SHOW value `0`/`OFF`, global-only diagnostics, and read-only SET; no relay-log recovery |
+| `relay_log_space_limit` | ✅ | Fixed scalar/SHOW value `0`, global-only diagnostics, and read-only SET; no relay-log space limit |
 | `replica_allow_batching` | ❌ | Value, scope, SET, diagnostics |
 | `replica_checkpoint_group` | ❌ | Value, scope, SET, diagnostics |
 | `replica_checkpoint_period` | ❌ | Value, scope, SET, diagnostics |
@@ -813,12 +813,12 @@ state through this fallback path.
 | `replica_sql_verify_checksum` | ❌ | Value, scope, SET, diagnostics |
 | `replica_transaction_retries` | ❌ | Value, scope, SET, diagnostics |
 | `replica_type_conversions` | ❌ | Value, scope, SET, diagnostics |
-| `replication_optimize_for_static_plugin_config` | ❌ | Value, scope, SET, diagnostics |
-| `replication_sender_observe_commit_only` | ❌ | Value, scope, SET, diagnostics |
-| `report_host` | ❌ | Value, scope, SET, diagnostics |
-| `report_password` | ❌ | Value, scope, SET, diagnostics |
-| `report_port` | ❌ | Value, scope, SET, diagnostics |
-| `report_user` | ❌ | Value, scope, SET, diagnostics |
+| `replication_optimize_for_static_plugin_config` | ✅ | Fixed scalar/SHOW value `0`/`OFF`, global-only diagnostics, and default/exact global no-op SET; no plugin-config behavior |
+| `replication_sender_observe_commit_only` | ✅ | Fixed scalar/SHOW value `0`/`OFF`, global-only diagnostics, and default/exact global no-op SET; no sender observation |
+| `report_host` | ✅ | Fixed scalar `NULL` and blank SHOW row, global-only diagnostics, and read-only SET; no report identity |
+| `report_password` | ✅ | Fixed scalar `NULL` and blank SHOW row, global-only diagnostics, and read-only SET; no credential reporting |
+| `report_port` | ✅ | Fixed scalar/SHOW value `3306`, global-only diagnostics, and read-only SET; no report listener |
+| `report_user` | ✅ | Fixed scalar `NULL` and blank SHOW row, global-only diagnostics, and read-only SET; no credential reporting |
 | `require_row_format` | ✅ | Fixed default/session/local scalar `0`, `SHOW VARIABLES` `OFF`, and MySQL-style global-scope diagnostics; session placeholder `SET` readback is supported. No row-format enforcement, global value, startup options, persisted state, or Performance Schema variable tables |
 | `require_secure_transport` | ✅ | Fixed global scalar `0`, `SHOW VARIABLES` `OFF`, global-only diagnostics, and exact no-op global `SET`; no transport enforcement, TLS state, startup options, persisted state, or Performance Schema variable tables |
 | `restrict_fk_on_non_standard_key` | ❌ | Value, scope, SET, diagnostics |
@@ -826,7 +826,7 @@ state through this fallback path.
 | `rewriter_enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `rewriter_enabled_for_threads_without_privilege_checks` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `rewriter_verbose` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `rpl_read_size` | ❌ | Value, scope, SET, diagnostics |
+| `rpl_read_size` | ✅ | Fixed scalar/SHOW value `8192`, global-only diagnostics, and default/exact global no-op SET; no replication reads |
 | `rpl_semi_sync_master_enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `rpl_semi_sync_master_timeout` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `rpl_semi_sync_master_trace_level` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
@@ -843,8 +843,8 @@ state through this fallback path.
 | `rpl_semi_sync_source_wait_for_replica_count` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `rpl_semi_sync_source_wait_no_replica` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `rpl_semi_sync_source_wait_point` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `rpl_stop_replica_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `rpl_stop_slave_timeout` | ❌ | Value, scope, SET, diagnostics |
+| `rpl_stop_replica_timeout` | ✅ | Fixed scalar/SHOW value `31536000`, global-only diagnostics, and default/exact global no-op SET; no replica stop wait |
+| `rpl_stop_slave_timeout` | ✅ | Fixed scalar/SHOW value `31536000`, deprecation warnings, global-only diagnostics, and default/exact global no-op SET; no replica stop wait |
 | `schema_definition_cache` | ❌ | Value, scope, SET, diagnostics |
 | `secondary_engine_cost_threshold` | ❌ | Value, scope, SET, diagnostics |
 | `secure_file_priv` | ✅ | Fixed global read-only scalar and `SHOW VARIABLES` value `/var/lib/mysql-files/`; no file import/export enforcement, path probing, startup options, persisted state, or Performance Schema variable tables |
@@ -872,9 +872,9 @@ state through this fallback path.
 | `skip_external_locking` | ✅ | Fixed global read-only scalar `1`, `SHOW VARIABLES` `ON`, and MySQL-style scope/SET diagnostics; no external-locking behavior or startup/persisted state |
 | `skip_name_resolve` | ✅ | Fixed global read-only scalar `1`, `SHOW VARIABLES` `ON`, and MySQL-style scope/SET diagnostics; no DNS or host-cache behavior |
 | `skip_networking` | ✅ | Fixed global read-only scalar `0`, `SHOW VARIABLES` `OFF`, and MySQL-style scope/SET diagnostics; no TCP listener behavior |
-| `skip_replica_start` | ❌ | Value, scope, SET, diagnostics |
+| `skip_replica_start` | ✅ | Fixed scalar/SHOW value `0`/`OFF`, global-only diagnostics, and read-only SET; no replica startup |
 | `skip_show_database` | ✅ | Fixed global read-only scalar `0`, `SHOW VARIABLES` `OFF`, and MySQL-style scope/SET diagnostics; no privilege-driven `SHOW DATABASES` filtering |
-| `skip_slave_start` | ❌ | Value, scope, SET, diagnostics |
+| `skip_slave_start` | ✅ | Fixed scalar/SHOW value `0`/`OFF`, deprecation warnings, global-only diagnostics, and read-only SET; no replica startup |
 | `slave_allow_batching` | ❌ | Value, scope, SET, diagnostics |
 | `slave_checkpoint_group` | ❌ | Value, scope, SET, diagnostics |
 | `slave_checkpoint_period` | ❌ | Value, scope, SET, diagnostics |
@@ -896,7 +896,7 @@ state through this fallback path.
 | `slow_query_log_file` | ✅ | Fixed global path readback/SHOW, global-only diagnostics, and default/path global no-op SET; no log file creation |
 | `socket` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `/var/run/mysqld/mysqld.sock`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No socket file is created or used |
 | `sort_buffer_size` | ✅ | Session/global readback, SHOW, session SET, clamp warnings, and default global no-op; no sort-buffer allocation effects |
-| `source_verify_checksum` | ❌ | Value, scope, SET, diagnostics |
+| `source_verify_checksum` | ✅ | Fixed scalar/SHOW value `0`/`OFF`, global-only diagnostics, and default/exact global no-op SET; no checksum verification |
 | `sql_auto_is_null` | ✅ | Session/local/unscoped scalar reads and `SHOW VARIABLES` default to `0`/`OFF`, Boolean session `SET` forms are connection-local, global reads and `SHOW GLOBAL VARIABLES` remain fixed `0`/`OFF`, and supported `AUTO_INCREMENT` `IS NULL` predicates use `LAST_INSERT_ID()` when enabled. No server-global mutation, persisted state, Performance Schema variable tables, or `ISNULL()` special lookup |
 | `sql_big_selects` | ✅ | Session/local/unscoped scalar reads and `SHOW VARIABLES` default to `1`/`ON`, Boolean session `SET` forms are connection-local, global reads and `SHOW GLOBAL VARIABLES` remain fixed `1`/`ON`, and descriptor-backed `SELECT` behavior is unchanged. No server-global mutation, persisted state, Performance Schema variable tables, `max_join_size`, optimizer row-estimate aborts, or changed `SELECT` diagnostics |
 | `sql_buffer_result` | ✅ | Session/local/unscoped scalar reads and `SHOW VARIABLES` default to `0`/`OFF`, Boolean session `SET` forms are connection-local, global reads and `SHOW GLOBAL VARIABLES` remain fixed `0`/`OFF`, and descriptor-backed `SELECT` behavior is unchanged. No server-global mutation, persisted state, Performance Schema variable tables, physical result buffering, lock-release behavior, or optimizer effects |
@@ -927,10 +927,10 @@ state through this fallback path.
 | `stored_program_definition_cache` | ❌ | Value, scope, SET, diagnostics |
 | `super_read_only` | 🟡 | Limited fixed global disabled placeholder: scalar default/global reads return `0`, `SHOW VARIABLES` rows report `OFF`, session/local scalar reads and non-global `SET` forms use MySQL-shaped global-variable diagnostics, and exact no-op global `SET` forms may preserve `OFF`; no mutable global state, write blocking, privileges, startup option, or implication of `read_only` |
 | `sync_binlog` | ❌ | Value, scope, SET, diagnostics |
-| `sync_master_info` | ❌ | Value, scope, SET, diagnostics |
-| `sync_relay_log` | ❌ | Value, scope, SET, diagnostics |
-| `sync_relay_log_info` | ❌ | Value, scope, SET, diagnostics |
-| `sync_source_info` | ❌ | Value, scope, SET, diagnostics |
+| `sync_master_info` | ✅ | Fixed scalar/SHOW value `10000`, deprecation warnings, global-only diagnostics, and default/exact global no-op SET; no source-info syncing |
+| `sync_relay_log` | ✅ | Fixed scalar/SHOW value `10000`, global-only diagnostics, and default/exact global no-op SET; no relay-log syncing |
+| `sync_relay_log_info` | ✅ | Fixed scalar/SHOW value `10000`, deprecation warnings, global-only diagnostics, and default/exact global no-op SET; no relay-info syncing |
+| `sync_source_info` | ✅ | Fixed scalar/SHOW value `10000`, global-only diagnostics, and default/exact global no-op SET; no source-info syncing |
 | `syseventlog.facility` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `syseventlog.include_pid` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `syseventlog.tag` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |

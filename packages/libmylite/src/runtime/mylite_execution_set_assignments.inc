@@ -168,6 +168,15 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc = apply_set_replication_global_system_variable_assignment(
+        database,
+        &target,
+        value_node,
+        &handled
+    );
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     rc = apply_set_global_admin_listener_assignment(database, &target, value_node, &handled);
     if (rc != MYLITE_OK || handled) {
         return rc;
@@ -265,7 +274,8 @@ static int apply_set_system_variable_assignment(
     return MYLITE_ERROR;
 }
 
-static bool set_system_variable_target_is_read_only(enum mylite_execution_system_variable_kind kind
+static bool set_system_variable_target_is_read_only(
+    enum mylite_execution_system_variable_kind kind
 ) {
     return kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_FILE_SYSTEM ||
            kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOWER_CASE_TABLE_NAMES ||
@@ -282,7 +292,8 @@ static bool set_system_variable_target_is_read_only(enum mylite_execution_system
            mylite_execution_system_variable_is_read_only_innodb_core(kind) ||
            mylite_execution_system_variable_is_read_only_innodb_storage(kind) ||
            mylite_execution_system_variable_is_read_only_performance_schema(kind) ||
-           mylite_execution_system_variable_is_read_only_server_logging(kind);
+           mylite_execution_system_variable_is_read_only_server_logging(kind) ||
+           mylite_execution_system_variable_is_read_only_replication_global(kind);
 }
 
 static int apply_set_performance_schema_system_variable_assignment(

@@ -130,6 +130,9 @@ static int system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQLX_SSL_CRL:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQLX_SSL_CRLPATH:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYSQLX_SSL_KEY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPORT_HOST:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPORT_PASSWORD:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPORT_USER:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_CA:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_CAPATH:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_CERT:
@@ -207,6 +210,15 @@ static int system_variable_value(
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_INDEX:
         out_cell->value = log_bin_index_system_variable_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RELAY_LOG:
+        out_cell->value = relay_log_system_variable_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RELAY_LOG_BASENAME:
+        out_cell->value = relay_log_basename_system_variable_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RELAY_LOG_INDEX:
+        out_cell->value = relay_log_index_system_variable_value;
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PID_FILE:
         out_cell->value = pid_file_system_variable_value;
@@ -1822,7 +1834,8 @@ static const char *transaction_read_only_system_variable_value(
     return transaction_read_only_scalar_text(database->session.session_transaction_access_mode);
 }
 
-static bool system_variable_expression_has_global_scope(const struct mylite_sql_ast_node *expression
+static bool system_variable_expression_has_global_scope(
+    const struct mylite_sql_ast_node *expression
 ) {
     const struct mylite_sql_source_span *span = expression == NULL ? NULL : &expression->span;
     size_t offset = system_variable_body_offset;
@@ -2187,6 +2200,20 @@ static int show_system_variable_value(
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_INDEX:
         *out_value = log_bin_index_system_variable_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RELAY_LOG:
+        *out_value = relay_log_system_variable_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RELAY_LOG_BASENAME:
+        *out_value = relay_log_basename_system_variable_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RELAY_LOG_INDEX:
+        *out_value = relay_log_index_system_variable_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPORT_HOST:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPORT_PASSWORD:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPORT_USER:
+        *out_value = "";
         return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PID_FILE:
         *out_value = pid_file_system_variable_value;
@@ -3524,8 +3551,17 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PASSWORD_HISTORY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PASSWORD_REUSE_INTERVAL:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_PRINT_IDENTIFIED_WITH_AS_HEX:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RELAY_LOG_PURGE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RELAY_LOG_RECOVERY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RELAY_LOG_SPACE_LIMIT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICATION_OPTIMIZE_FOR_STATIC_PLUGIN_CONFIG:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICATION_SENDER_OBSERVE_COMMIT_ONLY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPORT_PORT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_REQUIRE_ROW_FORMAT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_RESULTSET_METADATA:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RPL_READ_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RPL_STOP_REPLICA_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_RPL_STOP_SLAVE_TIMEOUT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SECURE_FILE_PRIV:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SELECT_INTO_DISK_SYNC:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SESSION_TRACK_GTIDS:
@@ -3536,6 +3572,9 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SHA256_PASSWORD_PUBLIC_KEY_PATH:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SHOW_CREATE_TABLE_SKIP_SECONDARY_ENGINE:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SHOW_CREATE_TABLE_VERBOSITY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SKIP_REPLICA_START:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SKIP_SLAVE_START:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SOURCE_VERIFY_CHECKSUM:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_CA:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_CAPATH:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_CERT:
@@ -3544,6 +3583,10 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_CRLPATH:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_KEY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_SESSION_CACHE_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SYNC_MASTER_INFO:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SYNC_RELAY_LOG:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SYNC_RELAY_LOG_INFO:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SYNC_SOURCE_INFO:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_THREAD_HANDLING:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_TLS_CIPHERSUITES:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_TLS_VERSION:
@@ -3751,6 +3794,41 @@ static int append_system_variable_read_warning(
             "HY000",
             "'@@master_verify_checksum' is deprecated and will be removed in a future release. "
             "Please use source_verify_checksum instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_RPL_STOP_SLAVE_TIMEOUT) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@rpl_stop_slave_timeout' is deprecated and will be removed in a future release. "
+            "Please use rpl_stop_replica_timeout instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SKIP_SLAVE_START) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@skip_slave_start' is deprecated and will be removed in a future release. Please "
+            "use skip_replica_start instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SYNC_MASTER_INFO) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@sync_master_info' is deprecated and will be removed in a future release. Please "
+            "use sync_source_info instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SYNC_RELAY_LOG_INFO) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@sync_relay_log_info' is deprecated and will be removed in a future release."
         );
     }
 

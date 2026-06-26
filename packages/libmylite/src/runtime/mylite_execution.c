@@ -1206,6 +1206,8 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_set_binary_log_system_variables.inc"
 
+#include "mylite_execution_set_replication_global_system_variables.inc"
+
 #include "mylite_execution_set_bootstrap_system_variables.inc"
 
 #include "mylite_execution_set_compatibility_system_variables.inc"

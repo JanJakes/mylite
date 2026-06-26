@@ -116,6 +116,10 @@ static int apply_set_system_variable_cell_value(
     if (mylite_execution_system_variable_is_fixed_global_server_logging(target->kind)) {
         return apply_set_fixed_global_server_logging_cell_value(database, target);
     }
+    rc = apply_set_replication_global_system_variable_cell_value(database, target, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     if (set_system_variable_is_text_session_state(target->kind)) {
         return apply_set_text_session_system_variable_cell_value(database, target, value);
     }
@@ -561,6 +565,10 @@ static bool reject_invalid_read_only_system_variable_cell_target(
         set_read_only_system_variable_error(database, target->name);
         return true;
     }
+    if (mylite_execution_system_variable_is_read_only_replication_global(target->kind)) {
+        set_read_only_system_variable_error(database, target->name);
+        return true;
+    }
     if ((fixed_global_uint64_server_identity_system_variable_value(target->kind, NULL, NULL) ||
          target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_LOG_BIN_TRUST_FUNCTION_CREATORS) &&
         target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
@@ -593,6 +601,12 @@ static bool reject_invalid_read_only_system_variable_cell_target(
         return true;
     }
     if (mylite_execution_system_variable_is_fixed_global_server_tls(target->kind) &&
+        target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        set_global_variable_set_global_required_error(database, target->name);
+        return true;
+    }
+    if (mylite_execution_system_variable_is_replication_global(target->kind) &&
+        !mylite_execution_system_variable_is_read_only_replication_global(target->kind) &&
         target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         set_global_variable_set_global_required_error(database, target->name);
         return true;
@@ -939,8 +953,10 @@ static int validate_set_fixed_boolean_value(
         if (text_equals_ascii_case_insensitive(decoded, "ON") ||
             text_equals_ascii_case_insensitive(decoded, "TRUE")) {
             actual_value = true;
-        } else if (text_equals_ascii_case_insensitive(decoded, "OFF") ||
-                   text_equals_ascii_case_insensitive(decoded, "FALSE")) {
+        } else if (
+            text_equals_ascii_case_insensitive(decoded, "OFF") ||
+            text_equals_ascii_case_insensitive(decoded, "FALSE")
+        ) {
             actual_value = false;
         } else {
             free(decoded);

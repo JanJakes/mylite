@@ -440,36 +440,36 @@ state through this fallback path.
 | `innodb_sort_buffer_size` | ✅ | Fixed scalar/SHOW value `1048576` and read-only diagnostics; no sorted-index build buffer allocation side effects |
 | `innodb_spin_wait_delay` | ✅ | Fixed scalar/SHOW value `6`, global-only diagnostics, and exact/default global no-op SET; no spin-wait tuning side effects |
 | `innodb_spin_wait_pause_multiplier` | ✅ | Fixed scalar/SHOW value `50`, global-only diagnostics, and exact/default global no-op SET; no spin-wait tuning side effects |
-| `innodb_stats_auto_recalc` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_stats_include_delete_marked` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_stats_method` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_stats_on_metadata` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_stats_persistent` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_stats_persistent_sample_pages` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_stats_transient_sample_pages` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_status_output` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_status_output_locks` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_strict_mode` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_sync_array_size` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_stats_auto_recalc` | ✅ | Fixed scalar `1`/SHOW `ON`, global-only diagnostics, and exact/default global no-op SET; no stats recalculation side effects |
+| `innodb_stats_include_delete_marked` | ✅ | Fixed scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no delete-marked stats side effects |
+| `innodb_stats_method` | ✅ | Fixed scalar/SHOW value `nulls_equal`, global-only diagnostics, and exact/default global no-op SET; no optimizer stats method side effects |
+| `innodb_stats_on_metadata` | ✅ | Fixed scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no metadata-triggered stats side effects |
+| `innodb_stats_persistent` | ✅ | Fixed scalar `1`/SHOW `ON`, global-only diagnostics, and exact/default global no-op SET; no persistent-stats side effects |
+| `innodb_stats_persistent_sample_pages` | ✅ | Fixed scalar/SHOW value `20`, global-only diagnostics, and exact/default global no-op SET; no persistent-stats sampling side effects |
+| `innodb_stats_transient_sample_pages` | ✅ | Fixed scalar/SHOW value `8`, global-only diagnostics, and exact/default global no-op SET; no transient-stats sampling side effects |
+| `innodb_status_output` | ✅ | Fixed scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no monitor output side effects |
+| `innodb_status_output_locks` | ✅ | Fixed scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no lock monitor output side effects |
+| `innodb_strict_mode` | ✅ | Handle-local Boolean session readback/SET plus fixed global `ON` no-op; no InnoDB strict DDL side effects |
+| `innodb_sync_array_size` | ✅ | Fixed scalar/SHOW value `1` and read-only diagnostics; no mutex array allocation side effects |
 | `innodb_sync_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `innodb_sync_spin_loops` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_table_locks` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_temp_data_file_path` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_temp_tablespaces_dir` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_thread_concurrency` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_thread_sleep_delay` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_tmpdir` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_sync_spin_loops` | ✅ | Fixed scalar/SHOW value `30`, global-only diagnostics, and exact/default global no-op SET; no spin-loop tuning side effects |
+| `innodb_table_locks` | ✅ | Handle-local Boolean session readback/SET plus fixed global `ON` no-op; no InnoDB table-lock side effects |
+| `innodb_temp_data_file_path` | ✅ | Fixed scalar/SHOW value `ibtmp1:12M:autoextend` and read-only diagnostics; no temp tablespace file side effects |
+| `innodb_temp_tablespaces_dir` | ✅ | Fixed scalar/SHOW value `./#innodb_temp/` and read-only diagnostics; no temp tablespace directory side effects |
+| `innodb_thread_concurrency` | ✅ | Fixed scalar/SHOW value `0`, global-only diagnostics, and exact/default global no-op SET; no thread concurrency side effects |
+| `innodb_thread_sleep_delay` | ✅ | Fixed scalar/SHOW value `10000`, global-only diagnostics, and exact/default global no-op SET; no thread sleep tuning side effects |
+| `innodb_tmpdir` | ✅ | Nullable handle-local session string readback/SET plus fixed global `NULL` no-op; no temp-file routing side effects |
 | `innodb_trx_purge_view_update_only_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_trx_rseg_n_slots_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `innodb_undo_directory` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_undo_log_encrypt` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_undo_log_truncate` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_undo_tablespaces` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_use_fdatasync` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_use_native_aio` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_validate_tablespace_paths` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_version` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_write_io_threads` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_undo_directory` | ✅ | Fixed scalar/SHOW value `./` and read-only diagnostics; no undo directory side effects |
+| `innodb_undo_log_encrypt` | ✅ | Fixed scalar `0`/SHOW `OFF`, global-only diagnostics, and exact/default global no-op SET; no undo encryption side effects |
+| `innodb_undo_log_truncate` | ✅ | Fixed scalar `1`/SHOW `ON`, global-only diagnostics, and exact/default global no-op SET; no undo truncate side effects |
+| `innodb_undo_tablespaces` | ✅ | Fixed scalar/SHOW value `2`, global-only diagnostics, and exact/default global no-op SET; no undo tablespace allocation side effects |
+| `innodb_use_fdatasync` | ✅ | Fixed scalar `1`/SHOW `ON`, global-only diagnostics, and exact/default global no-op SET; no fsync mode side effects |
+| `innodb_use_native_aio` | ✅ | Fixed scalar `1`/SHOW `ON` and read-only diagnostics; no native AIO side effects |
+| `innodb_validate_tablespace_paths` | ✅ | Fixed scalar `1`/SHOW `ON` and read-only diagnostics; no tablespace path validation side effects |
+| `innodb_version` | ✅ | Fixed scalar/SHOW value matching MyLite's MySQL baseline version and read-only diagnostics |
+| `innodb_write_io_threads` | ✅ | Fixed scalar/SHOW value `4` and read-only diagnostics; no write-thread allocation side effects |
 | `insert_id` | ❌ | Next AUTO_INCREMENT allocation semantics, scalar/SHOW value, SET behavior, and diagnostics |
 | `interactive_timeout` | 🟡 | Limited handle-local session scalar reads, `SHOW VARIABLES` rows, and session/local/unqualified `SET` assignment with MySQL-compatible integer range `1..31536000`, `DEFAULT = 28800`, boolean conversion, clamp warnings, and integer user-variable assignment. Global reads expose fixed `28800` and mutable global assignment is limited to exact no-op `DEFAULT`/`28800` forms; no idle timeout enforcement, protocol behavior, startup options, persisted state, privileges, or Performance Schema rows |
 | `internal_tmp_mem_storage_engine` | ✅ | Session/global scalar and `SHOW VARIABLES` readback, session `SET` for `DEFAULT`/`TempTable`/`MEMORY`/`1`/`0`, invalid-value diagnostics, and fixed global no-op forms; no temp-table engine routing or mutable shared global state |

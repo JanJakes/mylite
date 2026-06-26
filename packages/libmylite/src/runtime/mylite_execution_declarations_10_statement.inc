@@ -540,8 +540,7 @@ static int apply_set_system_variable_assignment(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *assignment
 );
-static bool set_system_variable_target_is_read_only(
-    enum mylite_execution_system_variable_kind kind
+static bool set_system_variable_target_is_read_only(enum mylite_execution_system_variable_kind kind
 );
 static int apply_set_system_variable_user_variable_assignment(
     struct mylite_db *database,
@@ -826,9 +825,7 @@ static int apply_set_last_insert_id_system_variable_cell_value(
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind
 );
-static bool set_system_variable_is_last_insert_id(
-    enum mylite_execution_system_variable_kind kind
-);
+static bool set_system_variable_is_last_insert_id(enum mylite_execution_system_variable_kind kind);
 static int apply_set_jl_system_variable_assignment(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -1327,6 +1324,17 @@ static int apply_set_innodb_parallel_read_threads_cell_value(
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind
 );
+static int apply_set_innodb_tmpdir_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
+static int apply_set_innodb_tmpdir_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
 static int parse_set_innodb_parallel_read_threads_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -1348,6 +1356,7 @@ static int parse_innodb_parallel_read_threads_integer(
     const char *value_text,
     uint64_t *out_value
 );
+static bool innodb_tmpdir_text_is_supported(const char *text, size_t text_size);
 static int validate_set_innodb_storage_nullable_table_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -1601,8 +1610,7 @@ static int apply_set_bootstrap_system_variable_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target
 );
-static bool bootstrap_system_variable_is_global_only(
-    enum mylite_execution_system_variable_kind kind
+static bool bootstrap_system_variable_is_global_only(enum mylite_execution_system_variable_kind kind
 );
 static int validate_set_bootstrap_system_variable_value(
     struct mylite_db *database,
@@ -1618,11 +1626,9 @@ static int validate_set_compatibility_system_variable_value(
     const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node
 );
-static bool compatibility_system_variable_is_boolean(
-    enum mylite_execution_system_variable_kind kind
+static bool compatibility_system_variable_is_boolean(enum mylite_execution_system_variable_kind kind
 );
-static bool compatibility_system_variable_is_uint64(
-    enum mylite_execution_system_variable_kind kind
+static bool compatibility_system_variable_is_uint64(enum mylite_execution_system_variable_kind kind
 );
 static uint64_t compatibility_system_variable_uint64_value(
     enum mylite_execution_system_variable_kind kind
@@ -1749,8 +1755,7 @@ static int rebuild_sql_mode_text(
 static int set_session_sql_mode(struct mylite_db *database, uint64_t modes);
 static bool session_sql_mode_has(const struct mylite_session_state *session, uint64_t mode);
 static unsigned int lexer_modes_for_session_sql_mode(const struct mylite_session_state *session);
-static bool system_variable_expression_has_global_scope(
-    const struct mylite_sql_ast_node *expression
+static bool system_variable_expression_has_global_scope(const struct mylite_sql_ast_node *expression
 );
 static bool foreign_key_checks_system_variable_value(
     const struct mylite_db *database,
@@ -1831,8 +1836,7 @@ static int set_transaction_variable_invalid_node_value_error(
     const struct mylite_sql_ast_node *value_node
 );
 static const char *transaction_isolation_value_text(enum mylite_transaction_isolation isolation);
-static const char *transaction_read_only_scalar_text(
-    enum mylite_transaction_access_mode access_mode
+static const char *transaction_read_only_scalar_text(enum mylite_transaction_access_mode access_mode
 );
 static const char *transaction_read_only_show_text(enum mylite_transaction_access_mode access_mode);
 static const char *transaction_isolation_system_variable_value(

@@ -15,7 +15,8 @@ static int system_variable_value(
         return rc;
     }
     global_scope = system_variable_expression_has_global_scope(expression);
-    if (!global_scope && variable != MYLITE_EXECUTION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT) {
+    if (!global_scope && variable != MYLITE_EXECUTION_SYSTEM_VARIABLE_UPDATABLE_VIEWS_WITH_LIMIT &&
+        variable != MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_TMPDIR) {
         override_value = session_system_variable_override_value(database, variable);
         if (override_value != NULL) {
             out_cell->value = override_value;
@@ -268,7 +269,11 @@ static int system_variable_value(
             out_cell
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_MMAP_SIZE:
-        return format_session_scalar_uint64_value(database, myisam_mmap_size_default_value, out_cell);
+        return format_session_scalar_uint64_value(
+            database,
+            myisam_mmap_size_default_value,
+            out_cell
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_MYISAM_RECOVER_OPTIONS:
         out_cell->value = "OFF";
         return MYLITE_OK;
@@ -771,7 +776,11 @@ static int system_variable_value(
             out_cell
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OPEN_FILES:
-        return format_session_scalar_uint64_value(database, innodb_open_files_default_value, out_cell);
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_open_files_default_value,
+            out_cell
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_OPTIMIZE_FULLTEXT_ONLY:
         return format_session_scalar_uint64_value(
             database,
@@ -779,9 +788,17 @@ static int system_variable_value(
             out_cell
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PAGE_CLEANERS:
-        return format_session_scalar_uint64_value(database, innodb_page_cleaners_default_value, out_cell);
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_page_cleaners_default_value,
+            out_cell
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PAGE_SIZE:
-        return format_session_scalar_uint64_value(database, innodb_page_size_default_value, out_cell);
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_page_size_default_value,
+            out_cell
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PARALLEL_READ_THREADS:
         return format_session_scalar_uint64_value(
             database,
@@ -813,7 +830,11 @@ static int system_variable_value(
             out_cell
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_PURGE_THREADS:
-        return format_session_scalar_uint64_value(database, innodb_purge_threads_default_value, out_cell);
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_purge_threads_default_value,
+            out_cell
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_RANDOM_READ_AHEAD:
         return format_session_scalar_uint64_value(
             database,
@@ -827,7 +848,11 @@ static int system_variable_value(
             out_cell
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_READ_IO_THREADS:
-        return format_session_scalar_uint64_value(database, innodb_read_io_threads_default_value, out_cell);
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_read_io_threads_default_value,
+            out_cell
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_REDO_LOG_ARCHIVE_DIRS:
         out_cell->value = NULL;
         return MYLITE_OK;
@@ -882,6 +907,165 @@ static int system_variable_value(
             innodb_spin_wait_pause_multiplier_default_value,
             out_cell
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STATS_AUTO_RECALC:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_stats_auto_recalc_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STATS_INCLUDE_DELETE_MARKED:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_stats_include_delete_marked_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STATS_METHOD:
+        out_cell->value = innodb_stats_method_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STATS_ON_METADATA:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_stats_on_metadata_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STATS_PERSISTENT:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_stats_persistent_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STATS_PERSISTENT_SAMPLE_PAGES:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_stats_persistent_sample_pages_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STATS_TRANSIENT_SAMPLE_PAGES:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_stats_transient_sample_pages_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STATUS_OUTPUT:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_status_output_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STATUS_OUTPUT_LOCKS:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_status_output_locks_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STRICT_MODE:
+        return format_session_scalar_uint64_value(
+            database,
+            boolean_session_placeholder_system_variable_uint64_value(
+                database,
+                variable,
+                global_scope
+            ),
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SYNC_ARRAY_SIZE:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_sync_array_size_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SYNC_SPIN_LOOPS:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_sync_spin_loops_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_TABLE_LOCKS:
+        return format_session_scalar_uint64_value(
+            database,
+            boolean_session_placeholder_system_variable_uint64_value(
+                database,
+                variable,
+                global_scope
+            ),
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_TEMP_DATA_FILE_PATH:
+        out_cell->value = innodb_temp_data_file_path_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_TEMP_TABLESPACES_DIR:
+        out_cell->value = innodb_temp_tablespaces_dir_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_THREAD_CONCURRENCY:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_thread_concurrency_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_THREAD_SLEEP_DELAY:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_thread_sleep_delay_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_TMPDIR:
+        if (!global_scope) {
+            override_value = session_system_variable_override_value(database, variable);
+            if (override_value != NULL) {
+                out_cell->value = override_value[0] == '\0' ? NULL : override_value;
+                return MYLITE_OK;
+            }
+        }
+        out_cell->value = NULL;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_UNDO_DIRECTORY:
+        out_cell->value = innodb_undo_directory_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_UNDO_LOG_ENCRYPT:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_undo_log_encrypt_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_UNDO_LOG_TRUNCATE:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_undo_log_truncate_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_UNDO_TABLESPACES:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_undo_tablespaces_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_USE_FDATASYNC:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_use_fdatasync_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_USE_NATIVE_AIO:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_use_native_aio_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_VALIDATE_TABLESPACE_PATHS:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_validate_tablespace_paths_default_value,
+            out_cell
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_VERSION:
+        out_cell->value = MYLITE_MYSQL_SERVER_VERSION_STRING;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_WRITE_IO_THREADS:
+        return format_session_scalar_uint64_value(
+            database,
+            innodb_write_io_threads_default_value,
+            out_cell
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_TRACKING:
         return format_session_scalar_uint64_value(
             database,
@@ -909,7 +1093,11 @@ static int system_variable_value(
         );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_IDENTITY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_LAST_INSERT_ID:
-        return format_session_scalar_uint64_value(database, database->session.last_insert_id, out_cell);
+        return format_session_scalar_uint64_value(
+            database,
+            database->session.last_insert_id,
+            out_cell
+        );
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INFORMATION_SCHEMA_STATS_EXPIRY:
         return format_session_scalar_uint64_value(
             database,
@@ -1510,8 +1698,7 @@ static const char *transaction_read_only_system_variable_value(
     return transaction_read_only_scalar_text(database->session.session_transaction_access_mode);
 }
 
-static bool system_variable_expression_has_global_scope(
-    const struct mylite_sql_ast_node *expression
+static bool system_variable_expression_has_global_scope(const struct mylite_sql_ast_node *expression
 ) {
     const struct mylite_sql_source_span *span = expression == NULL ? NULL : &expression->span;
     size_t offset = system_variable_body_offset;
@@ -2635,6 +2822,133 @@ static int show_system_variable_value(
         return format_show_system_variable_uint64_value(
             database,
             innodb_spin_wait_pause_multiplier_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STATS_AUTO_RECALC:
+        *out_value = "ON";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STATS_INCLUDE_DELETE_MARKED:
+        *out_value = "OFF";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STATS_METHOD:
+        *out_value = innodb_stats_method_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STATS_ON_METADATA:
+        *out_value = "OFF";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STATS_PERSISTENT:
+        *out_value = "ON";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STATS_PERSISTENT_SAMPLE_PAGES:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_stats_persistent_sample_pages_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STATS_TRANSIENT_SAMPLE_PAGES:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_stats_transient_sample_pages_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STATUS_OUTPUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STATUS_OUTPUT_LOCKS:
+        *out_value = "OFF";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_STRICT_MODE:
+        *out_value = boolean_session_placeholder_system_variable_uint64_value(
+                         database,
+                         kind,
+                         global_scope
+                     ) == 0U
+                         ? "OFF"
+                         : "ON";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SYNC_ARRAY_SIZE:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_sync_array_size_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_SYNC_SPIN_LOOPS:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_sync_spin_loops_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_TABLE_LOCKS:
+        *out_value = boolean_session_placeholder_system_variable_uint64_value(
+                         database,
+                         kind,
+                         global_scope
+                     ) == 0U
+                         ? "OFF"
+                         : "ON";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_TEMP_DATA_FILE_PATH:
+        *out_value = innodb_temp_data_file_path_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_TEMP_TABLESPACES_DIR:
+        *out_value = innodb_temp_tablespaces_dir_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_THREAD_CONCURRENCY:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_thread_concurrency_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_THREAD_SLEEP_DELAY:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_thread_sleep_delay_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_TMPDIR:
+        *out_value = "";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_UNDO_DIRECTORY:
+        *out_value = innodb_undo_directory_default_value;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_UNDO_LOG_ENCRYPT:
+        *out_value = "OFF";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_UNDO_LOG_TRUNCATE:
+        *out_value = "ON";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_UNDO_TABLESPACES:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_undo_tablespaces_default_value,
+            integer_buffer,
+            integer_buffer_size,
+            out_value
+        );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_USE_FDATASYNC:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_USE_NATIVE_AIO:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_VALIDATE_TABLESPACE_PATHS:
+        *out_value = "ON";
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_VERSION:
+        *out_value = MYLITE_MYSQL_SERVER_VERSION_STRING;
+        return MYLITE_OK;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_WRITE_IO_THREADS:
+        return format_show_system_variable_uint64_value(
+            database,
+            innodb_write_io_threads_default_value,
             integer_buffer,
             integer_buffer_size,
             out_value

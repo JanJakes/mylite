@@ -1721,6 +1721,17 @@
   )
   mylite_configure_c_target(mylite_runtime_bootstrap_system_variables_test)
 
+  add_executable(mylite_runtime_compatibility_system_variables_test
+    tests/runtime_compatibility_system_variables_test.c
+  )
+  target_link_libraries(mylite_runtime_compatibility_system_variables_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_compatibility_system_variables_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_compatibility_system_variables_test)
+
   add_executable(mylite_runtime_authentication_password_system_variables_test
     tests/runtime_authentication_password_system_variables_test.c
   )

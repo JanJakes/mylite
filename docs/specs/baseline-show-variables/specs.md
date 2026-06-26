@@ -190,18 +190,30 @@ The `SHOW` result uses MySQL display strings where those differ from scalar
 | `collation_connection` | yes | yes | current fixed session value |
 | `collation_database` | yes | yes | `utf8mb4_0900_ai_ci` |
 | `collation_server` | yes | yes | `utf8mb4_0900_ai_ci` |
+| `completion_type` | yes | yes | `NO_CHAIN` |
+| `concurrent_insert` | yes | yes | `AUTO` |
 | `connect_timeout` | yes | yes | `10` |
 | `connection_control_failed_connections_threshold` | yes | yes | `3` |
 | `connection_control_max_connection_delay` | yes | yes | `2147483647` |
 | `connection_control_min_connection_delay` | yes | yes | `1000` |
 | `connection_memory_chunk_size` | yes | yes | current session value or fixed global `8192` |
 | `connection_memory_limit` | yes | yes | current session value or fixed global `18446744073709551615` |
+| `core_file` | yes | yes | `OFF` |
 | `create_admin_listener_thread` | yes | yes | `OFF` |
+| `cte_max_recursion_depth` | yes | yes | `1000` |
 | `default_collation_for_utf8mb4` | yes | yes | `utf8mb4_0900_ai_ci` |
 | `default_password_lifetime` | yes | yes | `0` |
 | `default_storage_engine` | yes | yes | `InnoDB` |
+| `default_table_encryption` | yes | yes | `OFF` |
 | `default_tmp_storage_engine` | yes | yes | `InnoDB` |
+| `default_week_format` | yes | yes | `0` |
+| `delay_key_write` | yes | yes | `ON` |
+| `delayed_insert_limit` | yes | yes | `100` |
+| `delayed_insert_timeout` | yes | yes | `300` |
+| `delayed_queue_size` | yes | yes | `1000` |
 | `disconnect_on_expired_password` | yes | yes | `ON` |
+| `disabled_storage_engines` | yes | yes | empty string |
+| `div_precision_increment` | yes | yes | `4` |
 | `end_markers_in_json` | yes | yes | `OFF` |
 | `error_count` | yes | no | `0` |
 | `foreign_key_checks` | yes | yes | `ON` |

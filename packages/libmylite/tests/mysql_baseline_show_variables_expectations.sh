@@ -117,7 +117,22 @@ run_mysql \
      SET SESSION block_encryption_mode = DEFAULT;
      SET GLOBAL bulk_insert_buffer_size = DEFAULT;
      SET SESSION bulk_insert_buffer_size = DEFAULT;
-     SET GLOBAL check_proxy_users = DEFAULT;" >/dev/null
+     SET GLOBAL check_proxy_users = DEFAULT;
+     SET GLOBAL completion_type = DEFAULT;
+     SET SESSION completion_type = DEFAULT;
+     SET GLOBAL concurrent_insert = DEFAULT;
+     SET GLOBAL cte_max_recursion_depth = DEFAULT;
+     SET SESSION cte_max_recursion_depth = DEFAULT;
+     SET GLOBAL default_table_encryption = DEFAULT;
+     SET SESSION default_table_encryption = DEFAULT;
+     SET GLOBAL default_week_format = DEFAULT;
+     SET SESSION default_week_format = DEFAULT;
+     SET GLOBAL delay_key_write = DEFAULT;
+     SET GLOBAL delayed_insert_limit = DEFAULT;
+     SET GLOBAL delayed_insert_timeout = DEFAULT;
+     SET GLOBAL delayed_queue_size = DEFAULT;
+     SET GLOBAL div_precision_increment = DEFAULT;
+     SET SESSION div_precision_increment = DEFAULT;" >/dev/null
 
 headers=$(run_mysql_with_headers "SHOW VARIABLES LIKE 'autocommit';" | sed -n '1p')
 expect_value "headers" "Variable_name${TAB}Value" "$headers"
@@ -146,19 +161,31 @@ supported_session_rows=$(run_mysql "
       'version_comment',
       'character_set_server',
       'collation_server',
+      'completion_type',
+      'concurrent_insert',
       'connect_timeout',
       'connection_control_failed_connections_threshold',
       'connection_control_max_connection_delay',
       'connection_control_min_connection_delay',
       'connection_memory_chunk_size',
       'connection_memory_limit',
+      'core_file',
+      'cte_max_recursion_depth',
       'character_set_database',
       'collation_database',
       'default_storage_engine',
+      'default_table_encryption',
       'character_set_system',
       'character_sets_dir',
       'check_proxy_users',
       'character_set_filesystem',
+      'default_week_format',
+      'delay_key_write',
+      'delayed_insert_limit',
+      'delayed_insert_timeout',
+      'delayed_queue_size',
+      'disabled_storage_engines',
+      'div_precision_increment',
       'autocommit',
       'activate_all_roles_on_login',
       'auto_generate_certs',
@@ -271,13 +298,25 @@ check_proxy_users|OFF
 collation_connection|utf8mb4_0900_ai_ci
 collation_database|utf8mb4_0900_ai_ci
 collation_server|utf8mb4_0900_ai_ci
+completion_type|NO_CHAIN
+concurrent_insert|AUTO
 connect_timeout|10
 connection_control_failed_connections_threshold|3
 connection_control_max_connection_delay|2147483647
 connection_control_min_connection_delay|1000
 connection_memory_chunk_size|8192
 connection_memory_limit|18446744073709551615
+core_file|OFF
+cte_max_recursion_depth|1000
 default_storage_engine|InnoDB
+default_table_encryption|OFF
+default_week_format|0
+delay_key_write|ON
+delayed_insert_limit|100
+delayed_insert_timeout|300
+delayed_queue_size|1000
+disabled_storage_engines|
+div_precision_increment|4
 error_count|0
 foreign_key_checks|ON
 global_connection_memory_limit|18446744073709551615
@@ -330,19 +369,31 @@ supported_global_rows=$(run_mysql "
       'version_comment',
       'character_set_server',
       'collation_server',
+      'completion_type',
+      'concurrent_insert',
       'connect_timeout',
       'connection_control_failed_connections_threshold',
       'connection_control_max_connection_delay',
       'connection_control_min_connection_delay',
       'connection_memory_chunk_size',
       'connection_memory_limit',
+      'core_file',
+      'cte_max_recursion_depth',
       'character_set_database',
       'collation_database',
       'default_storage_engine',
+      'default_table_encryption',
       'character_set_system',
       'character_sets_dir',
       'check_proxy_users',
       'character_set_filesystem',
+      'default_week_format',
+      'delay_key_write',
+      'delayed_insert_limit',
+      'delayed_insert_timeout',
+      'delayed_queue_size',
+      'disabled_storage_engines',
+      'div_precision_increment',
       'autocommit',
       'activate_all_roles_on_login',
       'auto_generate_certs',
@@ -455,13 +506,25 @@ check_proxy_users|OFF
 collation_connection|utf8mb4_0900_ai_ci
 collation_database|utf8mb4_0900_ai_ci
 collation_server|utf8mb4_0900_ai_ci
+completion_type|NO_CHAIN
+concurrent_insert|AUTO
 connect_timeout|10
 connection_control_failed_connections_threshold|3
 connection_control_max_connection_delay|2147483647
 connection_control_min_connection_delay|1000
 connection_memory_chunk_size|8192
 connection_memory_limit|18446744073709551615
+core_file|OFF
+cte_max_recursion_depth|1000
 default_storage_engine|InnoDB
+default_table_encryption|OFF
+default_week_format|0
+delay_key_write|ON
+delayed_insert_limit|100
+delayed_insert_timeout|300
+delayed_queue_size|1000
+disabled_storage_engines|
+div_precision_increment|4
 foreign_key_checks|ON
 global_connection_memory_limit|18446744073709551615
 global_connection_memory_tracking|OFF

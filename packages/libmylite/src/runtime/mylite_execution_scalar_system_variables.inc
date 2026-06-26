@@ -1489,7 +1489,19 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_ADMIN_SSL_KEY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_ADMIN_TLS_CIPHERSUITES:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_ADMIN_TLS_VERSION:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_COMPLETION_TYPE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CONCURRENT_INSERT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CORE_FILE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_CTE_MAX_RECURSION_DEPTH:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_COLLATION_FOR_UTF8MB4:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_TABLE_ENCRYPTION:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_WEEK_FORMAT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_DELAY_KEY_WRITE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_DELAYED_INSERT_LIMIT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_DELAYED_INSERT_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_DELAYED_QUEUE_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_DISABLED_STORAGE_ENGINES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_DIV_PRECISION_INCREMENT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTHENTICATION_POLICY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_CACHING_SHA2_PASSWORD_DIGEST_ROUNDS:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_CACHING_SHA2_PASSWORD_PRIVATE_KEY_PATH:
@@ -1634,6 +1646,30 @@ static int append_system_variable_read_warning(
             "HY000",
             "'@@binlog_max_flush_queue_time' is deprecated and will be removed in a future "
             "release."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_DELAYED_INSERT_LIMIT) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@delayed_insert_limit' is deprecated and will be removed in a future release."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_DELAYED_INSERT_TIMEOUT) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@delayed_insert_timeout' is deprecated and will be removed in a future release."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_DELAYED_QUEUE_SIZE) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@delayed_queue_size' is deprecated and will be removed in a future release."
         );
     }
     if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER) {

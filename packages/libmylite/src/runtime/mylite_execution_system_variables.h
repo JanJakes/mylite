@@ -255,6 +255,18 @@ enum mylite_execution_system_variable_kind {
     MYLITE_EXECUTION_SYSTEM_VARIABLE_BULK_INSERT_BUFFER_SIZE = 246,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SETS_DIR = 247,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_CHECK_PROXY_USERS = 248,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_COMPLETION_TYPE = 249,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CONCURRENT_INSERT = 250,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CORE_FILE = 251,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_CTE_MAX_RECURSION_DEPTH = 252,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_TABLE_ENCRYPTION = 253,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_WEEK_FORMAT = 254,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_DELAY_KEY_WRITE = 255,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_DELAYED_INSERT_LIMIT = 256,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_DELAYED_INSERT_TIMEOUT = 257,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_DELAYED_QUEUE_SIZE = 258,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_DISABLED_STORAGE_ENGINES = 259,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_DIV_PRECISION_INCREMENT = 260,
 };
 
 struct mylite_execution_system_variable_descriptor {
@@ -351,6 +363,9 @@ bool mylite_execution_system_variable_is_fixed_global_connection_system(
 bool mylite_execution_system_variable_is_binary_log(enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_bootstrap_placeholder(
+    enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_is_compatibility_placeholder(
     enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_timeout(enum mylite_execution_system_variable_kind kind);

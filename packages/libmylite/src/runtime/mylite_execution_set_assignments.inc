@@ -138,6 +138,11 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc =
+        apply_set_compatibility_system_variable_assignment(database, &target, value_node, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     rc = apply_set_global_mysqlx_assignment(database, &target, value_node, &handled);
     if (rc != MYLITE_OK || handled) {
         return rc;

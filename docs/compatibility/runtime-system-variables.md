@@ -168,36 +168,36 @@ state through this fallback path.
 | `collation_connection` | 🟡 | Limited scalar `SELECT @@collation_connection` with no scope, `session`, `local`, or `global`; returns the current session connection collation readback, supports admitted `SET NAMES ... COLLATE ...` collations for `utf8mb4`, `utf8mb3` aliases, focused WordPress legacy defaults, and `binary`, supports atomic tail assignments after connection charset statements, and resets to the charset default for `SET CHARACTER SET`; no mutable collation coercibility, string comparison semantics, or protocol collation metadata |
 | `collation_database` | 🟡 | Limited read-only scalar `SELECT @@collation_database` with no scope, `session`, `local`, or `global`; session/local reads return the selected MyLite schema descriptor default, fixed server fallback default, or synthetic `information_schema` value, while global reads return the fixed server default; no `SET`, string comparison semantics, conversion, or protocol collation metadata |
 | `collation_server` | 🟡 | Limited read-only scalar `SELECT @@collation_server` with no scope, `session`, `local`, or `global`; returns MyLite's fixed `utf8mb4_0900_ai_ci` embedded server default; no `SET`, startup options, mutable global state, database defaults, string comparison semantics, or protocol collation metadata |
-| `completion_type` | ❌ | Value, scope, SET, diagnostics |
+| `completion_type` | ✅ | Fixed global/session readback/SHOW and exact/default no-op SET; no transaction-completion side effects |
 | `component_masking.dictionaries_flush_interval_seconds` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `component_masking.masking_database` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `component_scheduler.enabled` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `concurrent_insert` | ❌ | Value, scope, SET, diagnostics |
+| `concurrent_insert` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact/default global no-op SET; no concurrent MyISAM insert behavior |
 | `connect_timeout` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/`10` global no-op SET; no connection timeout side effects |
 | `connection_control_failed_connections_threshold` | ✅ | Fixed global readback/SHOW and exact global no-op SET; no failed-login delay enforcement or status reset side effects |
 | `connection_control_max_connection_delay` | ✅ | Fixed global readback/SHOW and exact global no-op SET; no failed-login delay enforcement |
 | `connection_control_min_connection_delay` | ✅ | Fixed global readback/SHOW and exact global no-op SET; no failed-login delay enforcement |
 | `connection_memory_chunk_size` | ✅ | Session/local/unscoped readback, fixed global readback, SHOW, session SET, clamp diagnostics, and DEFAULT reset; no connection-memory accounting side effects |
 | `connection_memory_limit` | ✅ | Session/local/unscoped readback, fixed global readback, SHOW, session SET, clamp diagnostics, and DEFAULT reset; no connection-memory enforcement side effects |
-| `core_file` | ❌ | Value, scope, SET, diagnostics |
+| `core_file` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and read-only SET diagnostics; no core-file startup option behavior |
 | `create_admin_listener_thread` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
-| `cte_max_recursion_depth` | ❌ | Value, scope, SET, diagnostics |
+| `cte_max_recursion_depth` | ✅ | Fixed global/session readback/SHOW and exact/default no-op SET; no recursive CTE limit enforcement |
 | `datadir` | 🟡 | Limited fixed global read-only scalar and `SHOW VARIABLES` placeholder `/var/lib/mysql/`; default/global scalar reads and `SHOW VARIABLES` rows are supported, session/local scalar reads return MySQL-style global-variable diagnostics, and assignment returns MySQL-style read-only diagnostics. No MySQL data-directory layout, startup option handling, path probing, or file placement behavior |
 | `debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `debug_sync` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `default_collation_for_utf8mb4` | ✅ | Fixed default/session/global scalar and `SHOW VARIABLES` value `utf8mb4_0900_ai_ci`; session placeholder `SET` readback and fixed global no-op assignments are supported. No mutable collation policy, startup options, persisted state, or Performance Schema variable tables |
 | `default_password_lifetime` | ✅ | Fixed global readback/SHOW and exact global no-op SET |
 | `default_storage_engine` | 🟡 | Limited read-only scalar `SELECT @@default_storage_engine` with no scope, `session`, `local`, or `global`, plus `SHOW VARIABLES` rows; returns MyLite's fixed embedded permanent-table default `InnoDB`; current unavailable-engine substitution is controlled only by `@@sql_mode` during explicit `CREATE TABLE` / `CREATE TEMPORARY TABLE` `ENGINE` validation. No `SET`, mutable global/session state, alternate engines, plugins |
-| `default_table_encryption` | ❌ | Value, scope, SET, diagnostics |
+| `default_table_encryption` | ✅ | Fixed global/session readback/SHOW and exact/default no-op SET; no table-encryption behavior |
 | `default_tmp_storage_engine` | 🟡 | Limited read-only scalar `SELECT @@default_tmp_storage_engine` with no scope, `session`, `local`, or `global`, plus `SHOW VARIABLES` rows; returns MyLite's fixed embedded temporary-table default `InnoDB`, and implicit temporary table creation continues to render `ENGINE=InnoDB`. No `SET`, mutable global/session state, MEMORY/MyISAM temporary engines, default-engine routing, startup/persisted values, or plugins |
-| `default_week_format` | ❌ | Value, scope, SET, diagnostics; the limited one-argument `WEEK()` function currently uses MySQL mode 0 rather than a mutable session value |
-| `delay_key_write` | ❌ | Value, scope, SET, diagnostics |
-| `delayed_insert_limit` | ❌ | Value, scope, SET, diagnostics |
-| `delayed_insert_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `delayed_queue_size` | ❌ | Value, scope, SET, diagnostics |
-| `disabled_storage_engines` | ❌ | Value, scope, SET, diagnostics |
+| `default_week_format` | ✅ | Fixed global/session readback/SHOW and exact/default no-op SET; no date/week function side effects |
+| `delay_key_write` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and exact/default global no-op SET; no MyISAM delay-key-write behavior |
+| `delayed_insert_limit` | ✅ | Fixed deprecated global readback/SHOW, warning `1287`, global-only diagnostics, and exact/default global no-op SET; no delayed-insert queue |
+| `delayed_insert_timeout` | ✅ | Fixed deprecated global readback/SHOW, warning `1287`, global-only diagnostics, and exact/default global no-op SET; no delayed-insert queue |
+| `delayed_queue_size` | ✅ | Fixed deprecated global readback/SHOW, warning `1287`, global-only diagnostics, and exact/default global no-op SET; no delayed-insert queue |
+| `disabled_storage_engines` | ✅ | Fixed empty global readback/SHOW, global-only diagnostics, and read-only SET diagnostics; no storage-engine/plugin filtering |
 | `disconnect_on_expired_password` | ✅ | Fixed global readback/SHOW and read-only SET diagnostics |
-| `div_precision_increment` | ❌ | Value, scope, SET, diagnostics |
+| `div_precision_increment` | ✅ | Fixed global/session readback/SHOW and exact/default no-op SET; no arithmetic precision side effects |
 | `dragnet.log_error_filter_rules` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `end_markers_in_json` | ✅ | Fixed default/session/global scalar `0` and `SHOW VARIABLES` `OFF`; session placeholder `SET` readback and fixed global no-op assignments are supported. No JSON output end-marker behavior, startup options, persisted state, or Performance Schema variable tables |
 | `enforce_gtid_consistency` | ❌ | Value, scope, SET, diagnostics |

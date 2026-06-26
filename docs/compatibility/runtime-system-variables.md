@@ -701,18 +701,18 @@ state through this fallback path.
 | `offline_mode` | ❌ | Value, scope, SET, diagnostics |
 | `old_alter_table` | ✅ | Fixed default/session/global scalar `0` and `SHOW VARIABLES` `OFF`; session placeholder `SET` readback and fixed global no-op assignments are supported. No alternate ALTER TABLE algorithm routing, startup options, persisted state, or Performance Schema variable tables |
 | `open_files_limit` | ❌ | Value, scope, SET, diagnostics |
-| `optimizer_prune_level` | ❌ | Value, scope, SET, diagnostics |
-| `optimizer_search_depth` | ❌ | Value, scope, SET, diagnostics |
-| `optimizer_switch` | ❌ | Value, scope, SET, diagnostics |
-| `optimizer_trace` | ❌ | Value, scope, SET, diagnostics |
-| `optimizer_trace_features` | ❌ | Value, scope, SET, diagnostics |
-| `optimizer_trace_limit` | ❌ | Value, scope, SET, diagnostics |
-| `optimizer_trace_max_mem_size` | ❌ | Value, scope, SET, diagnostics |
-| `optimizer_trace_offset` | ❌ | Value, scope, SET, diagnostics |
+| `optimizer_prune_level` | ✅ | Scalar/SHOW readback, session SET, clamp warnings, and fixed-global no-op; no optimizer effect |
+| `optimizer_search_depth` | ✅ | Scalar/SHOW readback, session SET, clamp warnings, and fixed-global no-op; no optimizer effect |
+| `optimizer_switch` | ✅ | Canonical scalar/SHOW readback, session flag SET, user-variable SET, and fixed-global no-op; no optimizer effect |
+| `optimizer_trace` | ✅ | Canonical scalar/SHOW readback, session flag SET, user-variable SET, and fixed-global no-op; no trace production |
+| `optimizer_trace_features` | ✅ | Canonical scalar/SHOW readback, session flag SET, user-variable SET, and fixed-global no-op; no trace production |
+| `optimizer_trace_limit` | ✅ | Scalar/SHOW readback, session SET, signed-range clamp warnings, and fixed-global no-op; no trace production |
+| `optimizer_trace_max_mem_size` | ✅ | Scalar/SHOW readback, session SET through `UINT64_MAX`, and fixed-global no-op; no trace memory budgeting |
+| `optimizer_trace_offset` | ✅ | Scalar/SHOW readback, signed session SET, clamp warnings, and fixed-global no-op; no trace production |
 | `original_commit_timestamp` | ❌ | Value, scope, SET, diagnostics |
 | `original_server_version` | ❌ | Value, scope, SET, diagnostics |
-| `parser_max_mem_size` | ❌ | Value, scope, SET, diagnostics |
-| `partial_revokes` | ❌ | Value, scope, SET, diagnostics |
+| `parser_max_mem_size` | ✅ | Scalar/SHOW readback, session SET, minimum clamp warnings, and fixed-global no-op; no parser memory budgeting |
+| `partial_revokes` | ✅ | Fixed global scalar/readback, SHOW rows, global-only diagnostics, and fixed disabled no-op SET; no privilege-policy effect |
 | `password_history` | ✅ | Fixed global readback/SHOW and exact global no-op SET |
 | `password_require_current` | ✅ | Fixed global readback/SHOW and exact global no-op SET |
 | `password_reuse_interval` | ✅ | Fixed global readback/SHOW and exact global no-op SET |

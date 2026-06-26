@@ -527,6 +527,16 @@ enum mylite_execution_system_variable_kind {
     MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_SP_RECURSION_DEPTH = 518,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_MAX_USER_CONNECTIONS = 519,
     MYLITE_EXECUTION_SYSTEM_VARIABLE_MIN_EXAMINED_ROW_LIMIT = 520,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_PRUNE_LEVEL = 521,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_SEARCH_DEPTH = 522,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_SWITCH = 523,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_TRACE = 524,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_TRACE_FEATURES = 525,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_TRACE_LIMIT = 526,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_TRACE_MAX_MEM_SIZE = 527,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_OPTIMIZER_TRACE_OFFSET = 528,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_PARSER_MAX_MEM_SIZE = 529,
+    MYLITE_EXECUTION_SYSTEM_VARIABLE_PARTIAL_REVOKES = 530,
 };
 
 struct mylite_execution_system_variable_descriptor {
@@ -646,6 +656,8 @@ bool mylite_execution_system_variable_is_connection_memory(
 );
 bool mylite_execution_system_variable_is_m_session_limit(
     enum mylite_execution_system_variable_kind kind
+);
+bool mylite_execution_system_variable_is_o_optimizer(enum mylite_execution_system_variable_kind kind
 );
 bool mylite_execution_system_variable_is_session_placeholder(
     enum mylite_execution_system_variable_kind kind

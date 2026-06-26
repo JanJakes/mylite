@@ -25,8 +25,8 @@ enum {
     test_path_suffix_capacity = 16,
     row_count_text_capacity = 32,
     variable_column_count = 2,
-    session_variable_row_count = 520,
-    global_variable_row_count = 507,
+    session_variable_row_count = 530,
+    global_variable_row_count = 517,
     sql_log_variable_row_count = 2,
     on_variable_row_count = 2,
     gtid_default_variable_row_count = 7,
@@ -508,6 +508,25 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"net_retry_count", "10"},
         {"net_write_timeout", "60"},
         {"old_alter_table", "OFF"},
+        {"optimizer_prune_level", "1"},
+        {"optimizer_search_depth", "62"},
+        {"optimizer_switch",
+         "index_merge=on,index_merge_union=on,index_merge_sort_union=on,"
+         "index_merge_intersection=on,engine_condition_pushdown=on,index_condition_pushdown=on,"
+         "mrr=on,mrr_cost_based=on,block_nested_loop=on,batched_key_access=off,"
+         "materialization=on,semijoin=on,loosescan=on,firstmatch=on,duplicateweedout=on,"
+         "subquery_materialization_cost_based=on,use_index_extensions=on,"
+         "condition_fanout_filter=on,derived_merge=on,use_invisible_indexes=off,skip_scan=on,"
+         "hash_join=on,subquery_to_derived=off,prefer_ordering_index=on,"
+         "hypergraph_optimizer=off,derived_condition_pushdown=on,hash_set_operations=on"},
+        {"optimizer_trace", "enabled=off,one_line=off"},
+        {"optimizer_trace_features",
+         "greedy_search=on,range_optimizer=on,dynamic_range=on,repeated_subselect=on"},
+        {"optimizer_trace_limit", "1"},
+        {"optimizer_trace_max_mem_size", "1048576"},
+        {"optimizer_trace_offset", "-1"},
+        {"parser_max_mem_size", "18446744073709551615"},
+        {"partial_revokes", "OFF"},
         {"password_history", "0"},
         {"password_require_current", "OFF"},
         {"password_reuse_interval", "0"},
@@ -1024,6 +1043,25 @@ static int test_show_variables_values_scopes_and_filters(void) {
         {"net_retry_count", "10"},
         {"net_write_timeout", "60"},
         {"old_alter_table", "OFF"},
+        {"optimizer_prune_level", "1"},
+        {"optimizer_search_depth", "62"},
+        {"optimizer_switch",
+         "index_merge=on,index_merge_union=on,index_merge_sort_union=on,"
+         "index_merge_intersection=on,engine_condition_pushdown=on,index_condition_pushdown=on,"
+         "mrr=on,mrr_cost_based=on,block_nested_loop=on,batched_key_access=off,"
+         "materialization=on,semijoin=on,loosescan=on,firstmatch=on,duplicateweedout=on,"
+         "subquery_materialization_cost_based=on,use_index_extensions=on,"
+         "condition_fanout_filter=on,derived_merge=on,use_invisible_indexes=off,skip_scan=on,"
+         "hash_join=on,subquery_to_derived=off,prefer_ordering_index=on,"
+         "hypergraph_optimizer=off,derived_condition_pushdown=on,hash_set_operations=on"},
+        {"optimizer_trace", "enabled=off,one_line=off"},
+        {"optimizer_trace_features",
+         "greedy_search=on,range_optimizer=on,dynamic_range=on,repeated_subselect=on"},
+        {"optimizer_trace_limit", "1"},
+        {"optimizer_trace_max_mem_size", "1048576"},
+        {"optimizer_trace_offset", "-1"},
+        {"parser_max_mem_size", "18446744073709551615"},
+        {"partial_revokes", "OFF"},
         {"password_history", "0"},
         {"password_require_current", "OFF"},
         {"password_reuse_interval", "0"},

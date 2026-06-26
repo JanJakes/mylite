@@ -1299,12 +1299,24 @@ static int validate_set_innodb_storage_nullable_table_value(
     const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node
 );
+static int validate_set_innodb_storage_monitor_switch_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+);
 static int validate_set_innodb_storage_nullable_table_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
     const struct session_scalar_cell *value,
     enum mylite_session_user_variable_value_kind value_kind
 );
+static int validate_set_innodb_storage_monitor_switch_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+);
+static bool innodb_monitor_switch_text_is_supported(const char *text);
 static int validate_set_myisam_fixed_global_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,

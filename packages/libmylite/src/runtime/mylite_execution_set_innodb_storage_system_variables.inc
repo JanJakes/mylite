@@ -60,6 +60,10 @@ static int apply_set_innodb_storage_system_variable_assignment(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_PURGE_LAG:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_PURGE_LAG_DELAY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_UNDO_LOG_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_DISABLE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_ENABLE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET_ALL:
         *out_handled = true;
         return validate_set_innodb_storage_fixed_value(database, target, value_node);
     default:
@@ -130,6 +134,10 @@ static int apply_set_innodb_storage_system_variable_cell_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_PURGE_LAG:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_PURGE_LAG_DELAY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MAX_UNDO_LOG_SIZE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_DISABLE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_ENABLE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET_ALL:
         *out_handled = true;
         return validate_set_innodb_storage_fixed_cell_value(
             database,
@@ -404,6 +412,11 @@ static int validate_set_innodb_storage_fixed_value(
             innodb_max_undo_log_size_default_value,
             "SET supports only fixed no-op system variable assignments"
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_DISABLE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_ENABLE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET_ALL:
+        return validate_set_innodb_storage_monitor_switch_value(database, target, value_node);
     default:
         return MYLITE_OK;
     }
@@ -726,6 +739,16 @@ static int validate_set_innodb_storage_fixed_cell_value(
             value,
             value_kind
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_DISABLE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_ENABLE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET_ALL:
+        return validate_set_innodb_storage_monitor_switch_cell_value(
+            database,
+            target,
+            value,
+            value_kind
+        );
     default:
         return MYLITE_OK;
     }
@@ -764,6 +787,79 @@ static int validate_set_innodb_storage_nullable_table_value(
     return MYLITE_ERROR;
 }
 
+static int validate_set_innodb_storage_monitor_switch_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node
+) {
+    const struct mylite_sql_ast_node *literal_node = unwrap_parenthesized_expression(value_node);
+    char switch_identifier[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char *switch_text = NULL;
+    size_t switch_text_size = 0U;
+    int rc = MYLITE_OK;
+
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+    if (literal_node != NULL && literal_node->kind == MYLITE_SQL_AST_IDENTIFIER) {
+        rc = copy_identifier_text(
+            literal_node,
+            switch_identifier,
+            sizeof(switch_identifier),
+            database
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (innodb_monitor_switch_text_is_supported(switch_identifier)) {
+            return MYLITE_OK;
+        }
+        set_system_variable_cant_be_set_value_error(database, target->name, switch_identifier);
+        return MYLITE_ERROR;
+    }
+    if (literal_node == NULL || literal_node->kind != MYLITE_SQL_AST_LITERAL) {
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_literal_kind(literal_node) == MYLITE_SQL_AST_LITERAL_NULL) {
+        set_system_variable_cant_be_set_value_error(database, target->name, "NULL");
+        return MYLITE_ERROR;
+    }
+    if (mylite_sql_ast_node_literal_kind(literal_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
+    }
+
+    rc = decode_sql_string_literal(
+        database,
+        literal_node,
+        "SET system variables support only string literals",
+        "SET system variable string values do not support NUL bytes",
+        &switch_text,
+        &switch_text_size
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (innodb_monitor_switch_text_is_supported(switch_text)) {
+        free(switch_text);
+        return MYLITE_OK;
+    }
+
+    set_system_variable_cant_be_set_value_error(database, target->name, switch_text);
+    free(switch_text);
+    return MYLITE_ERROR;
+}
+
 static int validate_set_innodb_storage_nullable_table_cell_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -781,6 +877,36 @@ static int validate_set_innodb_storage_nullable_table_cell_value(
 
     set_system_variable_cant_be_set_value_error(database, target->name, text);
     return MYLITE_ERROR;
+}
+
+static int validate_set_innodb_storage_monitor_switch_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind
+) {
+    const char *text = value == NULL ? NULL : value->value;
+
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (value == NULL || text == NULL ||
+        value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_STRING) {
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
+    }
+    if (innodb_monitor_switch_text_is_supported(text)) {
+        return MYLITE_OK;
+    }
+
+    set_system_variable_cant_be_set_value_error(database, target->name, text);
+    return MYLITE_ERROR;
+}
+
+static bool innodb_monitor_switch_text_is_supported(const char *text) {
+    return text_equals_ascii_case_insensitive(text, "all") ||
+           text_equals_ascii_case_insensitive(text, "latch") ||
+           text_equals_ascii_case_insensitive(text, "module_buffer") ||
+           text_equals_ascii_case_insensitive(text, "buffer%");
 }
 
 static int validate_set_innodb_storage_fixed_uint64_cell_value(

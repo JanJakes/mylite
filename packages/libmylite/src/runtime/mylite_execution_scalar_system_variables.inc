@@ -746,6 +746,12 @@ static int system_variable_value(
             innodb_max_undo_log_size_default_value,
             out_cell
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_DISABLE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_ENABLE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET_ALL:
+        out_cell->value = NULL;
+        return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_TRACKING:
         return format_session_scalar_uint64_value(
             database,
@@ -2321,6 +2327,12 @@ static int show_system_variable_value(
             integer_buffer_size,
             out_value
         );
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_DISABLE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_ENABLE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_INNODB_MONITOR_RESET_ALL:
+        *out_value = "";
+        return MYLITE_OK;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_GLOBAL_CONNECTION_MEMORY_LIMIT:
         return format_show_system_variable_uint64_value(
             database,

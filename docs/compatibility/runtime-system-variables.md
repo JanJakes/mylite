@@ -407,10 +407,10 @@ state through this fallback path.
 | `innodb_max_purge_lag_delay` | ✅ | Fixed global scalar/SHOW value `0`, global-only diagnostics, and exact/default global no-op SET; no purge delay scheduling |
 | `innodb_max_undo_log_size` | ✅ | Fixed global scalar/SHOW value `1073741824`, global-only diagnostics, and exact/default global no-op SET; no undo tablespace truncation |
 | `innodb_merge_threshold_set_all_debug` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
-| `innodb_monitor_disable` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_monitor_enable` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_monitor_reset` | ❌ | Value, scope, SET, diagnostics |
-| `innodb_monitor_reset_all` | ❌ | Value, scope, SET, diagnostics |
+| `innodb_monitor_disable` | ✅ | Fixed global scalar `NULL`/empty SHOW value, global-only diagnostics, and no-op global monitor switch assignments; no metrics side effects |
+| `innodb_monitor_enable` | ✅ | Fixed global scalar `NULL`/empty SHOW value, global-only diagnostics, and no-op global monitor switch assignments; no metrics side effects |
+| `innodb_monitor_reset` | ✅ | Fixed global scalar `NULL`/empty SHOW value, global-only diagnostics, and no-op global monitor switch assignments; no metrics side effects |
+| `innodb_monitor_reset_all` | ✅ | Fixed global scalar `NULL`/empty SHOW value, global-only diagnostics, and no-op global monitor switch assignments; no metrics side effects |
 | `innodb_numa_interleave` | ⚪ | Target-runtime optional absence; no `SHOW VARIABLES` rows; scalar `1193/HY000` |
 | `innodb_old_blocks_pct` | ❌ | Value, scope, SET, diagnostics |
 | `innodb_old_blocks_time` | ❌ | Value, scope, SET, diagnostics |

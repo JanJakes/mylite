@@ -3556,6 +3556,22 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_RELAY_LOG_SPACE_LIMIT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICATION_OPTIMIZE_FOR_STATIC_PLUGIN_CONFIG:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICATION_SENDER_OBSERVE_COMMIT_ONLY:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICA_ALLOW_BATCHING:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICA_CHECKPOINT_GROUP:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICA_CHECKPOINT_PERIOD:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICA_COMPRESSED_PROTOCOL:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICA_EXEC_MODE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICA_LOAD_TMPDIR:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICA_MAX_ALLOWED_PACKET:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICA_NET_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICA_PARALLEL_TYPE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICA_PARALLEL_WORKERS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICA_PENDING_JOBS_SIZE_MAX:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICA_PRESERVE_COMMIT_ORDER:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICA_SKIP_ERRORS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICA_SQL_VERIFY_CHECKSUM:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICA_TRANSACTION_RETRIES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICA_TYPE_CONVERSIONS:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_REPORT_PORT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_REQUIRE_ROW_FORMAT:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_RESULTSET_METADATA:
@@ -3574,6 +3590,22 @@ static int show_system_variable_value(
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SHOW_CREATE_TABLE_VERBOSITY:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SKIP_REPLICA_START:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SKIP_SLAVE_START:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_ALLOW_BATCHING:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_CHECKPOINT_GROUP:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_CHECKPOINT_PERIOD:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_COMPRESSED_PROTOCOL:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_EXEC_MODE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_LOAD_TMPDIR:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_MAX_ALLOWED_PACKET:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_NET_TIMEOUT:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_PARALLEL_TYPE:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_PARALLEL_WORKERS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_PENDING_JOBS_SIZE_MAX:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_PRESERVE_COMMIT_ORDER:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_SKIP_ERRORS:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_SQL_VERIFY_CHECKSUM:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_TRANSACTION_RETRIES:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_TYPE_CONVERSIONS:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SOURCE_VERIFY_CHECKSUM:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_CA:
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_SSL_CAPATH:
@@ -3796,6 +3828,14 @@ static int append_system_variable_read_warning(
             "Please use source_verify_checksum instead."
         );
     }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_REPLICA_PARALLEL_TYPE) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@replica_parallel_type' is deprecated and will be removed in a future release."
+        );
+    }
     if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_RPL_STOP_SLAVE_TIMEOUT) {
         return mylite_diagnostics_append_warning(
             mylite_connection_diagnostics(database),
@@ -3829,6 +3869,150 @@ static int append_system_variable_read_warning(
             mysql_warning_deprecated_system_variable,
             "HY000",
             "'@@sync_relay_log_info' is deprecated and will be removed in a future release."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_ALLOW_BATCHING) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@slave_allow_batching' is deprecated and will be removed in a future release. "
+            "Please use replica_allow_batching instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_CHECKPOINT_GROUP) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@slave_checkpoint_group' is deprecated and will be removed in a future release. "
+            "Please use replica_checkpoint_group instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_CHECKPOINT_PERIOD) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@slave_checkpoint_period' is deprecated and will be removed in a future release. "
+            "Please use replica_checkpoint_period instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_COMPRESSED_PROTOCOL) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@slave_compressed_protocol' is deprecated and will be removed in a future release. "
+            "Please use replica_compressed_protocol instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_EXEC_MODE) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@slave_exec_mode' is deprecated and will be removed in a future release. Please "
+            "use replica_exec_mode instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_LOAD_TMPDIR) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@slave_load_tmpdir' is deprecated and will be removed in a future release. Please "
+            "use replica_load_tmpdir instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_MAX_ALLOWED_PACKET) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@slave_max_allowed_packet' is deprecated and will be removed in a future release. "
+            "Please use replica_max_allowed_packet instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_NET_TIMEOUT) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@slave_net_timeout' is deprecated and will be removed in a future release. Please "
+            "use replica_net_timeout instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_PARALLEL_TYPE) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@slave_parallel_type' is deprecated and will be removed in a future release. "
+            "Please use replica_parallel_type instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_PARALLEL_WORKERS) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@slave_parallel_workers' is deprecated and will be removed in a future release. "
+            "Please use replica_parallel_workers instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_PENDING_JOBS_SIZE_MAX) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@slave_pending_jobs_size_max' is deprecated and will be removed in a future "
+            "release. Please use replica_pending_jobs_size_max instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_PRESERVE_COMMIT_ORDER) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@slave_preserve_commit_order' is deprecated and will be removed in a future "
+            "release. Please use replica_preserve_commit_order instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_SKIP_ERRORS) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@slave_skip_errors' is deprecated and will be removed in a future release. Please "
+            "use replica_skip_errors instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_SQL_VERIFY_CHECKSUM) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@slave_sql_verify_checksum' is deprecated and will be removed in a future release. "
+            "Please use replica_sql_verify_checksum instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_TRANSACTION_RETRIES) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@slave_transaction_retries' is deprecated and will be removed in a future release. "
+            "Please use replica_transaction_retries instead."
+        );
+    }
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SLAVE_TYPE_CONVERSIONS) {
+        return mylite_diagnostics_append_warning(
+            mylite_connection_diagnostics(database),
+            mysql_warning_deprecated_system_variable,
+            "HY000",
+            "'@@slave_type_conversions' is deprecated and will be removed in a future release. "
+            "Please use replica_type_conversions instead."
         );
     }
 

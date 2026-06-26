@@ -797,22 +797,22 @@ state through this fallback path.
 | `relay_log_purge` | ✅ | Fixed scalar/SHOW value `1`/`ON`, global-only diagnostics, and default/exact global no-op SET; no relay-log purge behavior |
 | `relay_log_recovery` | ✅ | Fixed scalar/SHOW value `0`/`OFF`, global-only diagnostics, and read-only SET; no relay-log recovery |
 | `relay_log_space_limit` | ✅ | Fixed scalar/SHOW value `0`, global-only diagnostics, and read-only SET; no relay-log space limit |
-| `replica_allow_batching` | ❌ | Value, scope, SET, diagnostics |
-| `replica_checkpoint_group` | ❌ | Value, scope, SET, diagnostics |
-| `replica_checkpoint_period` | ❌ | Value, scope, SET, diagnostics |
-| `replica_compressed_protocol` | ❌ | Value, scope, SET, diagnostics |
-| `replica_exec_mode` | ❌ | Value, scope, SET, diagnostics |
-| `replica_load_tmpdir` | ❌ | Value, scope, SET, diagnostics |
-| `replica_max_allowed_packet` | ❌ | Value, scope, SET, diagnostics |
-| `replica_net_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `replica_parallel_type` | ❌ | Value, scope, SET, diagnostics |
-| `replica_parallel_workers` | ❌ | Value, scope, SET, diagnostics |
-| `replica_pending_jobs_size_max` | ❌ | Value, scope, SET, diagnostics |
-| `replica_preserve_commit_order` | ❌ | Value, scope, SET, diagnostics |
-| `replica_skip_errors` | ❌ | Value, scope, SET, diagnostics |
-| `replica_sql_verify_checksum` | ❌ | Value, scope, SET, diagnostics |
-| `replica_transaction_retries` | ❌ | Value, scope, SET, diagnostics |
-| `replica_type_conversions` | ❌ | Value, scope, SET, diagnostics |
+| `replica_allow_batching` | ✅ | Fixed scalar/SHOW `1`/`ON`, global-only diagnostics, exact/default global no-op SET; no applier batching |
+| `replica_checkpoint_group` | ✅ | Fixed scalar/SHOW `512`, global-only diagnostics, exact/default global no-op SET; no checkpoints |
+| `replica_checkpoint_period` | ✅ | Fixed scalar/SHOW `300`, global-only diagnostics, exact/default global no-op SET; no checkpoints |
+| `replica_compressed_protocol` | ✅ | Fixed scalar/SHOW `0`/`OFF`, global-only diagnostics, exact/default global no-op SET; no protocol compression |
+| `replica_exec_mode` | ✅ | Fixed scalar/SHOW `STRICT`, global-only diagnostics, exact/default global no-op SET; no applier execution mode |
+| `replica_load_tmpdir` | ✅ | Fixed scalar/SHOW `/tmp`, global-only diagnostics, read-only SET; no load temp files |
+| `replica_max_allowed_packet` | ✅ | Fixed scalar/SHOW `1073741824`, global-only diagnostics, exact/default global no-op SET; no packet sizing |
+| `replica_net_timeout` | ✅ | Fixed scalar/SHOW `60`, global-only diagnostics, exact/default global no-op SET; no replica network timeout |
+| `replica_parallel_type` | ✅ | Fixed scalar/SHOW `LOGICAL_CLOCK`, deprecation warnings, global-only diagnostics, exact/default global no-op SET; no applier workers |
+| `replica_parallel_workers` | ✅ | Fixed scalar/SHOW `4`, global-only diagnostics, exact/default global no-op SET; no applier workers |
+| `replica_pending_jobs_size_max` | ✅ | Fixed scalar/SHOW `134217728`, global-only diagnostics, exact/default global no-op SET; no worker queue |
+| `replica_preserve_commit_order` | ✅ | Fixed scalar/SHOW `1`/`ON`, global-only diagnostics, exact/default global no-op SET; no commit ordering |
+| `replica_skip_errors` | ✅ | Fixed scalar/SHOW `OFF`, global-only diagnostics, read-only SET; no event skipping |
+| `replica_sql_verify_checksum` | ✅ | Fixed scalar/SHOW `1`/`ON`, global-only diagnostics, exact/default global no-op SET; no checksum verification |
+| `replica_transaction_retries` | ✅ | Fixed scalar/SHOW `10`, global-only diagnostics, exact/default global no-op SET; no retry loop |
+| `replica_type_conversions` | ✅ | Fixed empty scalar/SHOW value, global-only diagnostics, exact/default global no-op SET; no type conversion policy |
 | `replication_optimize_for_static_plugin_config` | ✅ | Fixed scalar/SHOW value `0`/`OFF`, global-only diagnostics, and default/exact global no-op SET; no plugin-config behavior |
 | `replication_sender_observe_commit_only` | ✅ | Fixed scalar/SHOW value `0`/`OFF`, global-only diagnostics, and default/exact global no-op SET; no sender observation |
 | `report_host` | ✅ | Fixed scalar `NULL` and blank SHOW row, global-only diagnostics, and read-only SET; no report identity |
@@ -875,22 +875,22 @@ state through this fallback path.
 | `skip_replica_start` | ✅ | Fixed scalar/SHOW value `0`/`OFF`, global-only diagnostics, and read-only SET; no replica startup |
 | `skip_show_database` | ✅ | Fixed global read-only scalar `0`, `SHOW VARIABLES` `OFF`, and MySQL-style scope/SET diagnostics; no privilege-driven `SHOW DATABASES` filtering |
 | `skip_slave_start` | ✅ | Fixed scalar/SHOW value `0`/`OFF`, deprecation warnings, global-only diagnostics, and read-only SET; no replica startup |
-| `slave_allow_batching` | ❌ | Value, scope, SET, diagnostics |
-| `slave_checkpoint_group` | ❌ | Value, scope, SET, diagnostics |
-| `slave_checkpoint_period` | ❌ | Value, scope, SET, diagnostics |
-| `slave_compressed_protocol` | ❌ | Value, scope, SET, diagnostics |
-| `slave_exec_mode` | ❌ | Value, scope, SET, diagnostics |
-| `slave_load_tmpdir` | ❌ | Value, scope, SET, diagnostics |
-| `slave_max_allowed_packet` | ❌ | Value, scope, SET, diagnostics |
-| `slave_net_timeout` | ❌ | Value, scope, SET, diagnostics |
-| `slave_parallel_type` | ❌ | Value, scope, SET, diagnostics |
-| `slave_parallel_workers` | ❌ | Value, scope, SET, diagnostics |
-| `slave_pending_jobs_size_max` | ❌ | Value, scope, SET, diagnostics |
-| `slave_preserve_commit_order` | ❌ | Value, scope, SET, diagnostics |
-| `slave_skip_errors` | ❌ | Value, scope, SET, diagnostics |
-| `slave_sql_verify_checksum` | ❌ | Value, scope, SET, diagnostics |
-| `slave_transaction_retries` | ❌ | Value, scope, SET, diagnostics |
-| `slave_type_conversions` | ❌ | Value, scope, SET, diagnostics |
+| `slave_allow_batching` | ✅ | Deprecated alias for `replica_allow_batching`; fixed scalar/SHOW `1`/`ON`, warnings, global-only diagnostics, exact/default global no-op SET |
+| `slave_checkpoint_group` | ✅ | Deprecated alias for `replica_checkpoint_group`; fixed scalar/SHOW `512`, warnings, global-only diagnostics, exact/default global no-op SET |
+| `slave_checkpoint_period` | ✅ | Deprecated alias for `replica_checkpoint_period`; fixed scalar/SHOW `300`, warnings, global-only diagnostics, exact/default global no-op SET |
+| `slave_compressed_protocol` | ✅ | Deprecated alias for `replica_compressed_protocol`; fixed scalar/SHOW `0`/`OFF`, warnings, global-only diagnostics, exact/default global no-op SET |
+| `slave_exec_mode` | ✅ | Deprecated alias for `replica_exec_mode`; fixed scalar/SHOW `STRICT`, warnings, global-only diagnostics, exact/default global no-op SET |
+| `slave_load_tmpdir` | ✅ | Deprecated alias for `replica_load_tmpdir`; fixed scalar/SHOW `/tmp`, scalar warnings, global-only diagnostics, read-only SET |
+| `slave_max_allowed_packet` | ✅ | Deprecated alias for `replica_max_allowed_packet`; fixed scalar/SHOW `1073741824`, warnings, global-only diagnostics, exact/default global no-op SET |
+| `slave_net_timeout` | ✅ | Deprecated alias for `replica_net_timeout`; fixed scalar/SHOW `60`, warnings, global-only diagnostics, exact/default global no-op SET |
+| `slave_parallel_type` | ✅ | Deprecated alias for `replica_parallel_type`; fixed scalar/SHOW `LOGICAL_CLOCK`, warnings, global-only diagnostics, exact/default global no-op SET |
+| `slave_parallel_workers` | ✅ | Deprecated alias for `replica_parallel_workers`; fixed scalar/SHOW `4`, warnings, global-only diagnostics, exact/default global no-op SET |
+| `slave_pending_jobs_size_max` | ✅ | Deprecated alias for `replica_pending_jobs_size_max`; fixed scalar/SHOW `134217728`, warnings, global-only diagnostics, exact/default global no-op SET |
+| `slave_preserve_commit_order` | ✅ | Deprecated alias for `replica_preserve_commit_order`; fixed scalar/SHOW `1`/`ON`, warnings, global-only diagnostics, exact/default global no-op SET |
+| `slave_skip_errors` | ✅ | Deprecated alias for `replica_skip_errors`; fixed scalar/SHOW `OFF`, scalar warnings, global-only diagnostics, read-only SET |
+| `slave_sql_verify_checksum` | ✅ | Deprecated alias for `replica_sql_verify_checksum`; fixed scalar/SHOW `1`/`ON`, warnings, global-only diagnostics, exact/default global no-op SET |
+| `slave_transaction_retries` | ✅ | Deprecated alias for `replica_transaction_retries`; fixed scalar/SHOW `10`, warnings, global-only diagnostics, exact/default global no-op SET |
+| `slave_type_conversions` | ✅ | Deprecated alias for `replica_type_conversions`; fixed empty scalar/SHOW value, warnings, global-only diagnostics, exact/default global no-op SET |
 | `slow_launch_time` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/exact global no-op SET; no thread-launch accounting |
 | `slow_query_log` | ✅ | Fixed global readback/SHOW, global-only diagnostics, and default/OFF global no-op SET; no slow-query logging |
 | `slow_query_log_file` | ✅ | Fixed global path readback/SHOW, global-only diagnostics, and default/path global no-op SET; no log file creation |

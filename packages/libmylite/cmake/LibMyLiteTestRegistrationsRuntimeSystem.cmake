@@ -617,6 +617,10 @@
     COMMAND mylite_runtime_replication_global_system_variables_test
   )
   add_test(
+    NAME libmylite.runtime.replica_applier_system_variables
+    COMMAND mylite_runtime_replica_applier_system_variables_test
+  )
+  add_test(
     NAME libmylite.runtime.myisam_system_variables
     COMMAND mylite_runtime_myisam_system_variables_test
   )

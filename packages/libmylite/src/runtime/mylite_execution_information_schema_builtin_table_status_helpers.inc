@@ -262,6 +262,14 @@ static const char *builtin_schema_table_rows(
         return "100";
     }
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "socket_summary_by_event_name") == 0) {
+        return "10";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "socket_summary_by_instance") == 0) {
+        return "256";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
         strcmp(table_name, "user_variables_by_thread") == 0) {
         return "2560";
     }

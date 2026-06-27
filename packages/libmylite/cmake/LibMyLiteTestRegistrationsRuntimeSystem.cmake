@@ -709,6 +709,10 @@
     COMMAND mylite_runtime_performance_schema_file_summary_placeholders_test
   )
   add_test(
+    NAME libmylite.runtime.performance_schema_socket_summary_placeholders
+    COMMAND mylite_runtime_performance_schema_socket_summary_placeholders_test
+  )
+  add_test(
     NAME libmylite.runtime.performance_schema_stage_wait_summary_placeholders
     COMMAND mylite_runtime_performance_schema_stage_wait_summary_placeholders_test
   )

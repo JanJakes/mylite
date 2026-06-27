@@ -31,9 +31,9 @@ MyLite metadata and return MySQL-shaped missing-table diagnostics.
 Event current/history placeholders for stage and wait tables, statement
 history-long, and stored-program statement summaries expose MySQL-shaped
 metadata with empty read-only rows; live event instrumentation remains
-unsupported. Error, file, stage, and wait summary placeholders expose
-MySQL-shaped metadata with empty read-only rows; live error/file/stage/wait
-aggregation remains unsupported.
+unsupported. Error, file, socket, stage, and wait summary placeholders expose
+MySQL-shaped metadata with empty read-only rows; live aggregation for those
+summary families remains unsupported.
 `user_defined_functions` exposes MySQL 8.4.9-shaped loadable-function registry
 rows, and `user_variables_by_thread` exposes MyLite session user variables for
 the current connection. The remaining tables are metadata-only and unsupported
@@ -150,8 +150,8 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.setup_objects` | 🟡 | Read-only MySQL 8.4.9 default object-filter rows and multi-column `OBJECT` unique-index metadata; no mutable instrumentation filters |
 | `performance_schema.setup_threads` | 🟡 | Read-only MySQL 8.4.9 default setup-thread class rows and HASH primary-key metadata; no mutable thread instrumentation setup |
 | `performance_schema.socket_instances` | 🟡 | Empty read-only socket-instance placeholder with MySQL-shaped columns, HASH primary/secondary index metadata, table metadata, selected-schema reads, and write protection; no live socket instrumentation |
-| `performance_schema.socket_summary_by_event_name` | ❌ | Socket waits and I/O per event name |
-| `performance_schema.socket_summary_by_instance` | ❌ | Socket waits and I/O per instance |
+| `performance_schema.socket_summary_by_event_name` | 🟡 | Empty read-only socket-summary placeholder with MySQL-shaped metadata; no live socket I/O aggregation |
+| `performance_schema.socket_summary_by_instance` | 🟡 | Empty read-only socket-summary placeholder with MySQL-shaped metadata; no live socket I/O aggregation |
 | `performance_schema.status_by_account` | 🟡 | Limited current-handle account status rows for embedded `root@%`, backed by MyLite's supported status registry; no disconnected aggregate storage or cross-handle Performance Schema accounting |
 | `performance_schema.status_by_host` | 🟡 | Limited current-handle host status rows for embedded `%`, backed by MyLite's supported status registry; no disconnected aggregate storage or cross-handle Performance Schema accounting |
 | `performance_schema.status_by_thread` | 🟡 | Limited current-handle thread status rows keyed by the MyLite connection id and backed by MyLite's supported status registry; no cross-handle foreground-thread visibility or instrumentation filtering |

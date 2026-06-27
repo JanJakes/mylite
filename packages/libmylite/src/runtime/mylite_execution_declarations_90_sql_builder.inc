@@ -446,6 +446,14 @@ static int append_show_index_mysql_system_table_secondary_rows(
     const struct mylite_sql_ast_node *where_clause,
     const struct mylite_execution_catalog_mysql_system_table *definition
 );
+static size_t mysql_system_table_secondary_index_sequence(
+    const struct mylite_execution_catalog_mysql_system_table *definition,
+    size_t secondary_index_index
+);
+static bool mysql_system_table_secondary_index_name_seen_before(
+    const struct mylite_execution_catalog_mysql_system_table *definition,
+    size_t secondary_index_index
+);
 static int append_show_index_mysql_system_table_row_if_matches(
     struct mylite_db *database,
     mylite_result *result,

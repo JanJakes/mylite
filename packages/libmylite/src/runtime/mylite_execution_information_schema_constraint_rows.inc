@@ -310,6 +310,9 @@ static int append_information_schema_table_constraints_mysql_system_table_row(
         if (!secondary_index->is_unique) {
             continue;
         }
+        if (mysql_system_table_secondary_index_name_seen_before(definition, index)) {
+            continue;
+        }
         const char *values[information_schema_table_constraints_column_count] = {
             "def",
             definition->schema_name,
@@ -528,6 +531,10 @@ static int append_information_schema_table_constraints_extensions_mysql_system_t
     for (size_t index = 0U; rc == MYLITE_OK && index < definition->secondary_index_count; ++index) {
         const struct mylite_execution_catalog_mysql_system_secondary_index *secondary_index =
             &definition->secondary_indexes[index];
+
+        if (mysql_system_table_secondary_index_name_seen_before(definition, index)) {
+            continue;
+        }
         const char *values[information_schema_table_constraints_extensions_column_count] = {
             "def",
             definition->schema_name,

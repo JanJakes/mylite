@@ -406,7 +406,7 @@ static const char *const mysql_help_category_column_privileges[] = {
 
 static const struct mylite_execution_catalog_mysql_system_secondary_index
     mysql_help_category_secondary_indexes[] = {
-        {"name", 1U, "53", "0", true},
+        {"name", 1U, "53", "0", true, "A", "BTREE"},
 };
 
 static const struct mylite_execution_catalog_column_definition mysql_help_keyword_columns[] = {
@@ -442,7 +442,7 @@ static const char *const mysql_help_keyword_column_privileges[] = {
 
 static const struct mylite_execution_catalog_mysql_system_secondary_index
     mysql_help_keyword_secondary_indexes[] = {
-        {"name", 1U, "551", "0", true},
+        {"name", 1U, "551", "0", true, "A", "BTREE"},
 };
 
 static const struct mylite_execution_catalog_column_definition mysql_help_relation_columns[] = {
@@ -563,7 +563,7 @@ static const char *const mysql_help_topic_column_privileges[] = {
 
 static const struct mylite_execution_catalog_mysql_system_secondary_index
     mysql_help_topic_secondary_indexes[] = {
-        {"name", 1U, "596", "0", true},
+        {"name", 1U, "596", "0", true, "A", "BTREE"},
 };
 
 static const struct mylite_execution_catalog_column_definition mysql_ndb_binlog_index_columns[] = {

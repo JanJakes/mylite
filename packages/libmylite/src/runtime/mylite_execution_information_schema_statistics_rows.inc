@@ -92,19 +92,24 @@ static int append_information_schema_statistics_mysql_system_table_rows(
             secondary_index->name,
             sequence_text,
             column->name,
-            "A",
+            secondary_index->collation,
             secondary_index->cardinality,
             NULL,
             NULL,
             "",
-            "BTREE",
+            secondary_index->index_type,
             "",
             "",
             "YES",
             NULL,
         };
 
-        rc = information_schema_format_i64(database, 1, sequence_text, sizeof(sequence_text));
+        rc = information_schema_format_i64(
+            database,
+            (int64_t)mysql_system_table_secondary_index_sequence(definition, index),
+            sequence_text,
+            sizeof(sequence_text)
+        );
         if (rc == MYLITE_OK) {
             rc = append_information_schema_row(database, rows, values);
         }

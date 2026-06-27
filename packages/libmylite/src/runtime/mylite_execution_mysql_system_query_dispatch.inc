@@ -145,6 +145,9 @@ static int append_performance_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "setup_consumers") == 0) {
         return append_performance_schema_setup_consumer_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "setup_objects") == 0) {
+        return append_performance_schema_setup_object_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "session_status") == 0) {
         return append_performance_schema_status_rows(database, rows, false);
     }
@@ -303,6 +306,47 @@ static int append_performance_schema_setup_consumer_rows(
          rc == MYLITE_OK && index < sizeof(consumer_rows) / sizeof(consumer_rows[0]);
          ++index) {
         rc = append_information_schema_row(database, rows, consumer_rows[index]);
+    }
+    return rc;
+}
+
+static int append_performance_schema_setup_object_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_setup_object_column_count = 5 };
+    static const char *const object_rows[][performance_schema_setup_object_column_count] = {
+        {"EVENT", "%", "%", "YES", "YES"},
+        {"EVENT", "information_schema", "%", "NO", "NO"},
+        {"EVENT", "mysql", "%", "NO", "NO"},
+        {"EVENT", "performance_schema", "%", "NO", "NO"},
+        {"FUNCTION", "%", "%", "YES", "YES"},
+        {"FUNCTION", "information_schema", "%", "NO", "NO"},
+        {"FUNCTION", "mysql", "%", "NO", "NO"},
+        {"FUNCTION", "performance_schema", "%", "NO", "NO"},
+        {"PROCEDURE", "%", "%", "YES", "YES"},
+        {"PROCEDURE", "information_schema", "%", "NO", "NO"},
+        {"PROCEDURE", "mysql", "%", "NO", "NO"},
+        {"PROCEDURE", "performance_schema", "%", "NO", "NO"},
+        {"TABLE", "%", "%", "YES", "YES"},
+        {"TABLE", "information_schema", "%", "NO", "NO"},
+        {"TABLE", "mysql", "%", "NO", "NO"},
+        {"TABLE", "performance_schema", "%", "NO", "NO"},
+        {"TRIGGER", "%", "%", "YES", "YES"},
+        {"TRIGGER", "information_schema", "%", "NO", "NO"},
+        {"TRIGGER", "mysql", "%", "NO", "NO"},
+        {"TRIGGER", "performance_schema", "%", "NO", "NO"},
+    };
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != performance_schema_setup_object_column_count) {
+        set_runtime_error(database, "invalid performance_schema setup_objects columns");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(object_rows) / sizeof(object_rows[0]);
+         ++index) {
+        rc = append_information_schema_row(database, rows, object_rows[index]);
     }
     return rc;
 }

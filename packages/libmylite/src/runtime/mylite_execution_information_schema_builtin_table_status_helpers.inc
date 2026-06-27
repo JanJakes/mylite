@@ -166,6 +166,10 @@ static const char *builtin_schema_table_rows(
         return "16";
     }
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "setup_objects") == 0) {
+        return "128";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
         strcmp(table_name, "performance_timers") == 0) {
         return "5";
     }

@@ -1105,7 +1105,12 @@ static int append_show_index_mysql_system_table_secondary_rows(
             return MYLITE_ERROR;
         }
 
-        rc = information_schema_format_i64(database, 1, sequence_text, sizeof(sequence_text));
+        rc = information_schema_format_i64(
+            database,
+            (int64_t)mysql_system_table_secondary_index_sequence(definition, index),
+            sequence_text,
+            sizeof(sequence_text)
+        );
         if (rc == MYLITE_OK) {
             const struct mylite_execution_catalog_column_definition *column =
                 &definition->query_definition.columns[secondary_index->column_index];
@@ -1115,12 +1120,12 @@ static int append_show_index_mysql_system_table_secondary_rows(
                 secondary_index->name,
                 sequence_text,
                 column->name,
-                "A",
+                secondary_index->collation,
                 secondary_index->cardinality,
                 NULL,
                 NULL,
                 "",
-                "BTREE",
+                secondary_index->index_type,
                 "",
                 "",
                 "YES",
@@ -1137,6 +1142,43 @@ static int append_show_index_mysql_system_table_secondary_rows(
     }
 
     return rc;
+}
+
+static size_t mysql_system_table_secondary_index_sequence(
+    const struct mylite_execution_catalog_mysql_system_table *definition,
+    size_t secondary_index_index
+) {
+    const struct mylite_execution_catalog_mysql_system_secondary_index *secondary_index = NULL;
+    size_t sequence = 1U;
+
+    if (definition == NULL || secondary_index_index >= definition->secondary_index_count) {
+        return sequence;
+    }
+    secondary_index = &definition->secondary_indexes[secondary_index_index];
+    for (size_t index = 0U; index < secondary_index_index; ++index) {
+        if (strcmp(definition->secondary_indexes[index].name, secondary_index->name) == 0) {
+            ++sequence;
+        }
+    }
+    return sequence;
+}
+
+static bool mysql_system_table_secondary_index_name_seen_before(
+    const struct mylite_execution_catalog_mysql_system_table *definition,
+    size_t secondary_index_index
+) {
+    const struct mylite_execution_catalog_mysql_system_secondary_index *secondary_index = NULL;
+
+    if (definition == NULL || secondary_index_index >= definition->secondary_index_count) {
+        return false;
+    }
+    secondary_index = &definition->secondary_indexes[secondary_index_index];
+    for (size_t index = 0U; index < secondary_index_index; ++index) {
+        if (strcmp(definition->secondary_indexes[index].name, secondary_index->name) == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static int append_show_index_mysql_system_table_row_if_matches(

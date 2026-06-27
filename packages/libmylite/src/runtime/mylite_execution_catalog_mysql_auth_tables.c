@@ -904,7 +904,7 @@ static const size_t mysql_db_primary_key_column_indexes[] = {
 
 static const struct mylite_execution_catalog_mysql_system_secondary_index
     mysql_db_secondary_indexes[] = {
-        {"User", 2U, "2", "1", false},
+        {"User", 2U, "2", "1", false, "A", "BTREE"},
 };
 
 static const struct mylite_execution_catalog_column_definition mysql_tables_priv_columns[] = {
@@ -1027,7 +1027,7 @@ static const size_t mysql_tables_priv_primary_key_column_indexes[] = {
 
 static const struct mylite_execution_catalog_mysql_system_secondary_index
     mysql_tables_priv_secondary_indexes[] = {
-        {"Grantor", 4U, "2", "1", false},
+        {"Grantor", 4U, "2", "1", false, "A", "BTREE"},
 };
 
 static const struct mylite_execution_catalog_column_definition mysql_columns_priv_columns[] = {
@@ -1253,7 +1253,7 @@ static const size_t mysql_procs_priv_primary_key_column_indexes[] = {
 
 static const struct mylite_execution_catalog_mysql_system_secondary_index
     mysql_procs_priv_secondary_indexes[] = {
-        {"Grantor", 5U, "0", "1", false},
+        {"Grantor", 5U, "0", "1", false, "A", "BTREE"},
 };
 
 static const struct mylite_execution_catalog_column_definition mysql_proxies_priv_columns[] = {
@@ -1360,7 +1360,7 @@ static const size_t mysql_proxies_priv_primary_key_column_indexes[] = {
 
 static const struct mylite_execution_catalog_mysql_system_secondary_index
     mysql_proxies_priv_secondary_indexes[] = {
-        {"Grantor", 5U, "1", "1", false},
+        {"Grantor", 5U, "1", "1", false, "A", "BTREE"},
 };
 
 static const struct mylite_execution_catalog_column_definition mysql_default_roles_columns[] = {

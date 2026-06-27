@@ -8,8 +8,8 @@ target runtime's Performance Schema table names are exposed as metadata rows
 through `INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`, `SHOW FULL TABLES`, and
 `SHOW TABLE STATUS`. The variable/status tables listed below are queryable for
 MyLite's supported registries, `performance_timers` exposes deterministic timer
-placeholder rows, and setup actor/consumer tables expose read-only default
-configuration rows; the remaining tables are metadata-only and unsupported
+placeholder rows, and setup actor/consumer/object tables expose read-only
+default configuration rows; the remaining tables are metadata-only and unsupported
 unless listed otherwise. MyLite rejects schema, table, index,
 rename, truncate, and single-table DML writes targeting `performance_schema`
 with `1044 / 42000` access-denied diagnostics.
@@ -117,7 +117,7 @@ with `1044 / 42000` access-denied diagnostics.
 | `performance_schema.setup_actors` | 🟡 | Read-only MySQL-shaped default actor row and primary-key metadata; no mutable foreground-thread instrumentation setup |
 | `performance_schema.setup_consumers` | 🟡 | Read-only MySQL 8.4.9 default consumer rows and primary-key metadata; no mutable consumer state |
 | `performance_schema.setup_instruments` | ❌ | Table shape and diagnostics |
-| `performance_schema.setup_objects` | ❌ | Which objects should be monitored |
+| `performance_schema.setup_objects` | 🟡 | Read-only MySQL 8.4.9 default object-filter rows and multi-column `OBJECT` unique-index metadata; no mutable instrumentation filters |
 | `performance_schema.setup_threads` | ❌ | Instrumented thread names and attributes |
 | `performance_schema.socket_instances` | ❌ | Active connection instances |
 | `performance_schema.socket_summary_by_event_name` | ❌ | Socket waits and I/O per event name |

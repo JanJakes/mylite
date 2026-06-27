@@ -241,6 +241,101 @@ static const size_t performance_schema_setup_consumer_primary_key_columns[] = {
     0U,
 };
 
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_setup_object_columns[] = {
+        {"OBJECT_TYPE",
+         "TABLE",
+         "NO",
+         "enum",
+         "9",
+         "36",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "enum('EVENT','FUNCTION','PROCEDURE','TABLE','TRIGGER')"},
+        {"OBJECT_SCHEMA",
+         "%",
+         "YES",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"OBJECT_NAME",
+         "%",
+         "NO",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"ENABLED",
+         "YES",
+         "NO",
+         "enum",
+         "3",
+         "12",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "enum('YES','NO')"},
+        {"TIMED",
+         "YES",
+         "NO",
+         "enum",
+         "3",
+         "12",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "enum('YES','NO')"},
+};
+
+static const char *const performance_schema_setup_object_column_keys[] = {
+    "MUL",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_setup_object_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_setup_object_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct mylite_execution_catalog_mysql_system_secondary_index
+    performance_schema_setup_object_secondary_indexes[] = {
+        {"OBJECT", 0U, NULL, "0", true, NULL, "HASH"},
+        {"OBJECT", 1U, NULL, "0", true, NULL, "HASH"},
+        {"OBJECT", 2U, NULL, "0", true, NULL, "HASH"},
+};
+
 static const struct mylite_execution_catalog_mysql_system_table
     performance_schema_system_table_definitions[] = {
         {"performance_schema",
@@ -322,6 +417,22 @@ static const struct mylite_execution_catalog_mysql_system_table
          NULL,
          NULL,
          0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_SETUP_OBJECTS,
+          "setup_objects",
+          performance_schema_setup_object_columns,
+          sizeof(performance_schema_setup_object_columns) /
+              sizeof(performance_schema_setup_object_columns[0])},
+         performance_schema_setup_object_column_keys,
+         performance_schema_setup_object_column_extras,
+         performance_schema_setup_object_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         performance_schema_setup_object_secondary_indexes,
+         sizeof(performance_schema_setup_object_secondary_indexes) /
+             sizeof(performance_schema_setup_object_secondary_indexes[0])},
         {"performance_schema",
          {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_SESSION_STATUS,
           "session_status",

@@ -225,6 +225,7 @@ enum mylite_execution_catalog_information_schema_table_kind {
     MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_PERFORMANCE_TIMERS = 216,
     MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_SETUP_ACTORS = 217,
     MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_SETUP_CONSUMERS = 218,
+    MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_SETUP_OBJECTS = 219,
 };
 
 struct mylite_execution_catalog_character_set {
@@ -283,6 +284,8 @@ struct mylite_execution_catalog_mysql_system_secondary_index {
     const char *cardinality;
     const char *non_unique;
     bool is_unique;
+    const char *collation;
+    const char *index_type;
 };
 
 struct mylite_execution_catalog_mysql_system_table {

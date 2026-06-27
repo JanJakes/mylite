@@ -2173,6 +2173,17 @@
   )
   mylite_configure_c_target(mylite_runtime_performance_schema_metadata_locks_test)
 
+  add_executable(mylite_runtime_performance_schema_object_tls_placeholders_test
+    tests/runtime_performance_schema_object_tls_placeholders_test.c
+  )
+  target_link_libraries(mylite_runtime_performance_schema_object_tls_placeholders_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_performance_schema_object_tls_placeholders_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_performance_schema_object_tls_placeholders_test)
+
   add_executable(mylite_runtime_performance_schema_table_handles_table_test
     tests/runtime_performance_schema_table_handles_table_test.c
   )

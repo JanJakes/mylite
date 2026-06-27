@@ -256,6 +256,10 @@ static const char *builtin_schema_table_rows(
         return "1024";
     }
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "objects_summary_global_by_type") == 0) {
+        return "4096";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
         strcmp(table_name, "setup_consumers") == 0) {
         return "16";
     }
@@ -278,6 +282,10 @@ static const char *builtin_schema_table_rows(
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
         strcmp(table_name, "setup_threads") == 0) {
         return "100";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "tls_channel_status") == 0) {
+        return "96";
     }
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
         strcmp(table_name, "socket_summary_by_event_name") == 0) {

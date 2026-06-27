@@ -294,7 +294,9 @@ static int append_performance_schema_system_table_rows(
         return append_performance_schema_connection_attribute_rows(database, rows);
     }
     if (strcmp(definition->query_definition.name, "metadata_locks") == 0 ||
-        strcmp(definition->query_definition.name, "table_handles") == 0) {
+        strcmp(definition->query_definition.name, "objects_summary_global_by_type") == 0 ||
+        strcmp(definition->query_definition.name, "table_handles") == 0 ||
+        strcmp(definition->query_definition.name, "tls_channel_status") == 0) {
         return MYLITE_OK;
     }
     if (strcmp(definition->query_definition.name, "threads") == 0) {

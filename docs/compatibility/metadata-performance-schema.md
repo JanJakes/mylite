@@ -17,11 +17,12 @@ current-handle registry snapshots. `variables_info` exposes MyLite's supported
 system-variable registry with embedded source/range placeholders, and
 `persisted_variables` is an empty persisted-global placeholder.
 `metadata_locks` exposes MySQL-shaped read-only empty metadata-lock
-instrumentation metadata. Connection summary, processlist, and thread tables
-expose limited rows from MyLite's open-connection registry. Connection
-attribute tables expose deterministic embedded MyLite attributes for open
-handles. Instance tables for synchronization objects, files, and sockets expose
-empty read-only metadata placeholders.
+instrumentation metadata. Object summary and TLS-channel tables expose
+MySQL-shaped read-only empty metadata placeholders. Connection summary,
+processlist, and thread tables expose limited rows from MyLite's open-connection
+registry. Connection attribute tables expose deterministic embedded MyLite
+attributes for open handles. Instance tables for synchronization objects, files,
+and sockets expose empty read-only metadata placeholders.
 Binary-log compression, data-lock, data-lock-wait, and prepared-statement
 instrumentation tables expose empty read-only metadata placeholders.
 Host-cache and keyring tables expose empty read-only metadata placeholders.
@@ -118,7 +119,7 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.mutex_instances` | 🟡 | Empty read-only mutex-instance placeholder with MySQL-shaped columns, HASH primary/secondary index metadata, table metadata, selected-schema reads, and write protection; no live mutex instrumentation |
 | `performance_schema.ndb_sync_excluded_objects` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
 | `performance_schema.ndb_sync_pending_objects` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
-| `performance_schema.objects_summary_global_by_type` | ❌ | Object summaries |
+| `performance_schema.objects_summary_global_by_type` | 🟡 | Empty read-only object-summary placeholder with MySQL-shaped metadata; no live object wait aggregation |
 | `performance_schema.performance_timers` | 🟡 | Queryable MySQL-shaped timer-name rows with deterministic non-NULL placeholder timer values; live timer calibration and event timing remain unsupported |
 | `performance_schema.persisted_variables` | 🟡 | Empty read-only persisted-global variable placeholder with MySQL-shaped columns, HASH primary-key metadata, table metadata, selected-schema reads, and write protection; no `mysqld-auto.cnf`, `SET PERSIST`, or persisted-global load path |
 | `performance_schema.prepared_statements_instances` | 🟡 | Empty read-only prepared-statement instrumentation placeholder with MySQL-shaped metadata and HASH index introspection; no live prepared-statement statistics |
@@ -163,7 +164,7 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.table_io_waits_summary_by_table` | 🟡 | Empty read-only table I/O summary placeholder with MySQL-shaped metadata; no live table I/O aggregation |
 | `performance_schema.table_lock_waits_summary_by_table` | 🟡 | Empty read-only table-lock summary placeholder with MySQL-shaped metadata; no live table-lock aggregation |
 | `performance_schema.threads` | 🟡 | Limited foreground thread rows from MyLite's processlist registry with MySQL-shaped metadata and deterministic instrumentation placeholders; no OS thread ids, resource groups, memory accounting, or event instrumentation |
-| `performance_schema.tls_channel_status` | ❌ | TLS status for each connection interface |
+| `performance_schema.tls_channel_status` | 🟡 | Empty read-only TLS-channel placeholder with MySQL-shaped metadata; no live connection-interface TLS state |
 | `performance_schema.tp_thread_group_state` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
 | `performance_schema.tp_thread_group_stats` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
 | `performance_schema.tp_thread_state` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |

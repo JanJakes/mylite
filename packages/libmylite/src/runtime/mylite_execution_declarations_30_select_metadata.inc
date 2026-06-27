@@ -482,6 +482,10 @@ static int append_performance_schema_threads_rows(
     const struct mylite_statement_context *context,
     struct information_schema_row_set *rows
 );
+static int append_performance_schema_connection_attribute_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
 static int append_performance_schema_connection_count_row(
     struct mylite_db *database,
     struct information_schema_row_set *rows,

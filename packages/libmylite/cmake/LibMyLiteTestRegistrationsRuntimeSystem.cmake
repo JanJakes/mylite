@@ -689,6 +689,10 @@
     COMMAND mylite_runtime_performance_schema_connection_tables_test
   )
   add_test(
+    NAME libmylite.runtime.performance_schema_connection_attribute_tables
+    COMMAND mylite_runtime_performance_schema_connection_attribute_tables_test
+  )
+  add_test(
     NAME libmylite.runtime.performance_schema_thread_status_variable_tables
     COMMAND mylite_runtime_performance_schema_thread_status_variable_tables_test
   )

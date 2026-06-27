@@ -14,7 +14,9 @@ telemetry setup rows, and `setup_metrics` exposes the read-only default metric
 catalog. `table_handles` exposes MySQL-shaped read-only empty lock-handle
 metadata. Thread/account/host/user status and variable tables expose limited
 current-handle registry snapshots. Connection summary, processlist, and thread
-tables expose limited rows from MyLite's open-connection registry.
+tables expose limited rows from MyLite's open-connection registry. Connection
+attribute tables expose deterministic embedded MyLite attributes for open
+handles.
 `user_defined_functions` exposes MySQL 8.4.9-shaped loadable-function registry
 rows, and `user_variables_by_thread` exposes MyLite session user variables for
 the current connection. The remaining tables are metadata-only and unsupported
@@ -118,8 +120,8 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.replication_group_member_stats` | ❌ | Replication group member statistics |
 | `performance_schema.replication_group_members` | ❌ | Replication group member network and status |
 | `performance_schema.rwlock_instances` | ❌ | Lock synchronization object instances |
-| `performance_schema.session_account_connect_attrs` | ❌ | Connection attributes per for current session |
-| `performance_schema.session_connect_attrs` | ❌ | Connection attributes for all sessions |
+| `performance_schema.session_account_connect_attrs` | 🟡 | Limited current-account rows from MyLite's open-connection registry with deterministic `_client_name`, `_client_version`, and `program_name` attributes; no arbitrary connector attributes, truncation accounting, or account filtering beyond embedded `root@%` |
+| `performance_schema.session_connect_attrs` | 🟡 | Limited open-connection rows with deterministic embedded MyLite attributes and MySQL-shaped primary-key metadata; no arbitrary connector attributes, wire-protocol attribute ingestion, or truncation accounting |
 | `performance_schema.session_status` | 🟡 | Queryable current-session rows from MyLite's supported status registry, including observed session-only status rows and Performance Schema command-counter filtering; live per-thread accounting remains unsupported |
 | `performance_schema.session_variables` | 🟡 | Queryable current-session rows from MyLite's supported system-variable registry, including session overrides; thread-specific variable tables remain unsupported |
 | `performance_schema.setup_actors` | 🟡 | Read-only MySQL-shaped default actor row and primary-key metadata; no mutable foreground-thread instrumentation setup |

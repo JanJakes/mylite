@@ -757,6 +757,73 @@ static const struct mylite_execution_catalog_mysql_system_secondary_index
 };
 
 static const struct mylite_execution_catalog_column_definition
+    performance_schema_connection_attribute_columns[] = {
+        {"PROCESSLIST_ID",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"ATTR_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "32",
+         "128",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_bin",
+         "varchar(32)"},
+        {"ATTR_VALUE",
+         NULL,
+         "YES",
+         "varchar",
+         "1024",
+         "4096",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_bin",
+         "varchar(1024)"},
+        {"ORDINAL_POSITION", NULL, "YES", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
+};
+
+static const char *const performance_schema_connection_attribute_column_keys[] = {
+    "PRI",
+    "PRI",
+    "",
+    "",
+};
+
+static const char *const performance_schema_connection_attribute_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_connection_attribute_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const size_t performance_schema_connection_attribute_primary_key_columns[] = {
+    0U,
+    1U,
+};
+
+static const struct mylite_execution_catalog_column_definition
     performance_schema_variable_status_columns[] = {
         {"VARIABLE_NAME",
          NULL,
@@ -2196,6 +2263,38 @@ static const struct mylite_execution_catalog_mysql_system_table
          performance_schema_setup_thread_primary_key_columns,
          sizeof(performance_schema_setup_thread_primary_key_columns) /
              sizeof(performance_schema_setup_thread_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_SESSION_ACCOUNT_CONNECT_ATTRS,
+          "session_account_connect_attrs",
+          performance_schema_connection_attribute_columns,
+          sizeof(performance_schema_connection_attribute_columns) /
+              sizeof(performance_schema_connection_attribute_columns[0])},
+         performance_schema_connection_attribute_column_keys,
+         performance_schema_connection_attribute_column_extras,
+         performance_schema_connection_attribute_column_privileges,
+         NULL,
+         performance_schema_connection_attribute_primary_key_columns,
+         sizeof(performance_schema_connection_attribute_primary_key_columns) /
+             sizeof(performance_schema_connection_attribute_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_SESSION_CONNECT_ATTRS,
+          "session_connect_attrs",
+          performance_schema_connection_attribute_columns,
+          sizeof(performance_schema_connection_attribute_columns) /
+              sizeof(performance_schema_connection_attribute_columns[0])},
+         performance_schema_connection_attribute_column_keys,
+         performance_schema_connection_attribute_column_extras,
+         performance_schema_connection_attribute_column_privileges,
+         NULL,
+         performance_schema_connection_attribute_primary_key_columns,
+         sizeof(performance_schema_connection_attribute_primary_key_columns) /
+             sizeof(performance_schema_connection_attribute_primary_key_columns[0]),
          NULL,
          NULL,
          0U},

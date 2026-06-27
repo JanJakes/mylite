@@ -139,6 +139,12 @@ static int append_performance_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "performance_timers") == 0) {
         return append_performance_schema_performance_timer_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "setup_actors") == 0) {
+        return append_performance_schema_setup_actor_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "setup_consumers") == 0) {
+        return append_performance_schema_setup_consumer_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "session_status") == 0) {
         return append_performance_schema_status_rows(database, rows, false);
     }
@@ -239,6 +245,64 @@ static int append_performance_schema_performance_timer_rows(
     for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(timer_rows) / sizeof(timer_rows[0]);
          ++index) {
         rc = append_information_schema_row(database, rows, timer_rows[index]);
+    }
+    return rc;
+}
+
+static int append_performance_schema_setup_actor_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_setup_actor_column_count = 5 };
+    static const char *const default_actor_row[performance_schema_setup_actor_column_count] = {
+        "%",
+        "%",
+        "%",
+        "YES",
+        "YES",
+    };
+
+    if (rows->definition->column_count != performance_schema_setup_actor_column_count) {
+        set_runtime_error(database, "invalid performance_schema setup_actors columns");
+        return MYLITE_ERROR;
+    }
+    return append_information_schema_row(database, rows, default_actor_row);
+}
+
+static int append_performance_schema_setup_consumer_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_setup_consumer_column_count = 2 };
+    static const char *const consumer_rows[][performance_schema_setup_consumer_column_count] = {
+        {"events_stages_current", "NO"},
+        {"events_stages_history", "NO"},
+        {"events_stages_history_long", "NO"},
+        {"events_statements_cpu", "NO"},
+        {"events_statements_current", "YES"},
+        {"events_statements_history", "YES"},
+        {"events_statements_history_long", "NO"},
+        {"events_transactions_current", "YES"},
+        {"events_transactions_history", "YES"},
+        {"events_transactions_history_long", "NO"},
+        {"events_waits_current", "NO"},
+        {"events_waits_history", "NO"},
+        {"events_waits_history_long", "NO"},
+        {"global_instrumentation", "YES"},
+        {"statements_digest", "YES"},
+        {"thread_instrumentation", "YES"},
+    };
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != performance_schema_setup_consumer_column_count) {
+        set_runtime_error(database, "invalid performance_schema setup_consumers columns");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < sizeof(consumer_rows) / sizeof(consumer_rows[0]);
+         ++index) {
+        rc = append_information_schema_row(database, rows, consumer_rows[index]);
     }
     return rc;
 }

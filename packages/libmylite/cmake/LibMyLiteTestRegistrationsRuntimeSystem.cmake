@@ -689,6 +689,10 @@
     COMMAND mylite_runtime_performance_schema_performance_timers_test
   )
   add_test(
+    NAME libmylite.runtime.performance_schema_setup_actor_consumer_tables
+    COMMAND mylite_runtime_performance_schema_setup_actor_consumer_tables_test
+  )
+  add_test(
     NAME libmylite.runtime.network_timeout_system_variables
     COMMAND mylite_runtime_network_timeout_system_variables_test
   )

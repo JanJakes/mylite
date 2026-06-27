@@ -1942,6 +1942,17 @@
   )
   mylite_configure_c_target(mylite_runtime_performance_schema_performance_timers_test)
 
+  add_executable(mylite_runtime_performance_schema_setup_actor_consumer_tables_test
+    tests/runtime_performance_schema_setup_actor_consumer_tables_test.c
+  )
+  target_link_libraries(mylite_runtime_performance_schema_setup_actor_consumer_tables_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_performance_schema_setup_actor_consumer_tables_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_performance_schema_setup_actor_consumer_tables_test)
+
   add_executable(mylite_runtime_network_timeout_system_variables_test
     tests/runtime_network_timeout_system_variables_test.c
   )

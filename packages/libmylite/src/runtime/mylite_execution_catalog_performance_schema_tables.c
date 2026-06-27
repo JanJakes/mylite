@@ -100,6 +100,147 @@ static const char *const performance_schema_performance_timer_column_privileges[
     "select,insert,update,references",
 };
 
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_setup_actor_columns[] = {
+        {"HOST",
+         "%",
+         "NO",
+         "char",
+         "255",
+         "255",
+         NULL,
+         NULL,
+         NULL,
+         "ascii",
+         "ascii_general_ci",
+         "char(255)"},
+        {"USER",
+         "%",
+         "NO",
+         "char",
+         "32",
+         "128",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_bin",
+         "char(32)"},
+        {"ROLE",
+         "%",
+         "NO",
+         "char",
+         "32",
+         "128",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_bin",
+         "char(32)"},
+        {"ENABLED",
+         "YES",
+         "NO",
+         "enum",
+         "3",
+         "12",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "enum('YES','NO')"},
+        {"HISTORY",
+         "YES",
+         "NO",
+         "enum",
+         "3",
+         "12",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "enum('YES','NO')"},
+};
+
+static const char *const performance_schema_setup_actor_column_keys[] = {
+    "PRI",
+    "PRI",
+    "PRI",
+    "",
+    "",
+};
+
+static const char *const performance_schema_setup_actor_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_setup_actor_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const size_t performance_schema_setup_actor_primary_key_columns[] = {
+    0U,
+    1U,
+    2U,
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_setup_consumer_columns[] = {
+        {"NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"ENABLED",
+         NULL,
+         "NO",
+         "enum",
+         "3",
+         "12",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "enum('YES','NO')"},
+};
+
+static const char *const performance_schema_setup_consumer_column_keys[] = {
+    "PRI",
+    "",
+};
+
+static const char *const performance_schema_setup_consumer_column_extras[] = {
+    "",
+    "",
+};
+
+static const char *const performance_schema_setup_consumer_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const size_t performance_schema_setup_consumer_primary_key_columns[] = {
+    0U,
+};
+
 static const struct mylite_execution_catalog_mysql_system_table
     performance_schema_system_table_definitions[] = {
         {"performance_schema",
@@ -146,6 +287,38 @@ static const struct mylite_execution_catalog_mysql_system_table
          NULL,
          NULL,
          0U,
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_SETUP_ACTORS,
+          "setup_actors",
+          performance_schema_setup_actor_columns,
+          sizeof(performance_schema_setup_actor_columns) /
+              sizeof(performance_schema_setup_actor_columns[0])},
+         performance_schema_setup_actor_column_keys,
+         performance_schema_setup_actor_column_extras,
+         performance_schema_setup_actor_column_privileges,
+         NULL,
+         performance_schema_setup_actor_primary_key_columns,
+         sizeof(performance_schema_setup_actor_primary_key_columns) /
+             sizeof(performance_schema_setup_actor_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_SETUP_CONSUMERS,
+          "setup_consumers",
+          performance_schema_setup_consumer_columns,
+          sizeof(performance_schema_setup_consumer_columns) /
+              sizeof(performance_schema_setup_consumer_columns[0])},
+         performance_schema_setup_consumer_column_keys,
+         performance_schema_setup_consumer_column_extras,
+         performance_schema_setup_consumer_column_privileges,
+         NULL,
+         performance_schema_setup_consumer_primary_key_columns,
+         sizeof(performance_schema_setup_consumer_primary_key_columns) /
+             sizeof(performance_schema_setup_consumer_primary_key_columns[0]),
          NULL,
          NULL,
          0U},

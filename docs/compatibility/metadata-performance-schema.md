@@ -7,8 +7,9 @@ catalog and can be selected with `USE performance_schema`. The MySQL 8.4.9
 target runtime's Performance Schema table names are exposed as metadata rows
 through `INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`, `SHOW FULL TABLES`, and
 `SHOW TABLE STATUS`. The variable/status tables listed below are queryable for
-MyLite's supported registries, and `performance_timers` exposes deterministic
-timer placeholder rows; the remaining tables are metadata-only and unsupported
+MyLite's supported registries, `performance_timers` exposes deterministic timer
+placeholder rows, and setup actor/consumer tables expose read-only default
+configuration rows; the remaining tables are metadata-only and unsupported
 unless listed otherwise. MyLite rejects schema, table, index,
 rename, truncate, and single-table DML writes targeting `performance_schema`
 with `1044 / 42000` access-denied diagnostics.
@@ -113,8 +114,8 @@ with `1044 / 42000` access-denied diagnostics.
 | `performance_schema.session_connect_attrs` | ❌ | Connection attributes for all sessions |
 | `performance_schema.session_status` | 🟡 | Queryable current-session rows from MyLite's supported status registry, including observed session-only status rows and Performance Schema command-counter filtering; live per-thread accounting remains unsupported |
 | `performance_schema.session_variables` | 🟡 | Queryable current-session rows from MyLite's supported system-variable registry, including session overrides; thread-specific variable tables remain unsupported |
-| `performance_schema.setup_actors` | ❌ | How to initialize monitoring for new foreground threads |
-| `performance_schema.setup_consumers` | ❌ | Consumers for which event information can be stored |
+| `performance_schema.setup_actors` | 🟡 | Read-only MySQL-shaped default actor row and primary-key metadata; no mutable foreground-thread instrumentation setup |
+| `performance_schema.setup_consumers` | 🟡 | Read-only MySQL 8.4.9 default consumer rows and primary-key metadata; no mutable consumer state |
 | `performance_schema.setup_instruments` | ❌ | Table shape and diagnostics |
 | `performance_schema.setup_objects` | ❌ | Which objects should be monitored |
 | `performance_schema.setup_threads` | ❌ | Instrumented thread names and attributes |

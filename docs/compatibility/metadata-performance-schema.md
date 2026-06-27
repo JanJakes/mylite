@@ -80,14 +80,14 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.events_statements_summary_by_thread_by_event_name` | 🟡 | Empty read-only statement-summary placeholder with MySQL-shaped metadata; no live statement aggregation |
 | `performance_schema.events_statements_summary_by_user_by_event_name` | 🟡 | Empty read-only statement-summary placeholder with MySQL-shaped metadata; no live statement aggregation |
 | `performance_schema.events_statements_summary_global_by_event_name` | 🟡 | Empty read-only statement-summary placeholder with MySQL-shaped metadata; no live statement aggregation |
-| `performance_schema.events_transactions_current` | ❌ | Current transaction events |
-| `performance_schema.events_transactions_history` | ❌ | Most recent transaction events per thread |
-| `performance_schema.events_transactions_history_long` | ❌ | Most recent transaction events overall |
-| `performance_schema.events_transactions_summary_by_account_by_event_name` | ❌ | Transaction events per account and event name |
-| `performance_schema.events_transactions_summary_by_host_by_event_name` | ❌ | Transaction events per host name and event name |
-| `performance_schema.events_transactions_summary_by_thread_by_event_name` | ❌ | Transaction events per thread and event name |
-| `performance_schema.events_transactions_summary_by_user_by_event_name` | ❌ | Transaction events per user name and event name |
-| `performance_schema.events_transactions_summary_global_by_event_name` | ❌ | Transaction events per event name |
+| `performance_schema.events_transactions_current` | 🟡 | Empty read-only current-transaction placeholder with MySQL-shaped metadata; no live transaction instrumentation |
+| `performance_schema.events_transactions_history` | 🟡 | Empty read-only per-thread transaction-history placeholder with MySQL-shaped metadata; no live transaction instrumentation |
+| `performance_schema.events_transactions_history_long` | 🟡 | Empty read-only global transaction-history placeholder with MySQL-shaped metadata; no live transaction instrumentation |
+| `performance_schema.events_transactions_summary_by_account_by_event_name` | 🟡 | Empty read-only transaction-summary placeholder with MySQL-shaped metadata; no live transaction aggregation |
+| `performance_schema.events_transactions_summary_by_host_by_event_name` | 🟡 | Empty read-only transaction-summary placeholder with MySQL-shaped metadata; no live transaction aggregation |
+| `performance_schema.events_transactions_summary_by_thread_by_event_name` | 🟡 | Empty read-only transaction-summary placeholder with MySQL-shaped metadata; no live transaction aggregation |
+| `performance_schema.events_transactions_summary_by_user_by_event_name` | 🟡 | Empty read-only transaction-summary placeholder with MySQL-shaped metadata; no live transaction aggregation |
+| `performance_schema.events_transactions_summary_global_by_event_name` | 🟡 | Empty read-only transaction-summary placeholder with MySQL-shaped metadata; no live transaction aggregation |
 | `performance_schema.events_waits_current` | 🟡 | Empty read-only current-wait placeholder with MySQL-shaped metadata; no live wait instrumentation |
 | `performance_schema.events_waits_history` | 🟡 | Empty read-only per-thread wait-history placeholder with MySQL-shaped metadata; no live wait instrumentation |
 | `performance_schema.events_waits_history_long` | 🟡 | Empty read-only global wait-history placeholder with MySQL-shaped metadata; no live wait instrumentation |

@@ -187,6 +187,29 @@ static int append_performance_schema_system_table_rows(
             definition->query_definition.name,
             "events_statements_summary_global_by_event_name"
         ) == 0 ||
+        strcmp(definition->query_definition.name, "events_transactions_current") == 0 ||
+        strcmp(definition->query_definition.name, "events_transactions_history") == 0 ||
+        strcmp(definition->query_definition.name, "events_transactions_history_long") == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "events_transactions_summary_by_account_by_event_name"
+        ) == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "events_transactions_summary_by_host_by_event_name"
+        ) == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "events_transactions_summary_by_thread_by_event_name"
+        ) == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "events_transactions_summary_by_user_by_event_name"
+        ) == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "events_transactions_summary_global_by_event_name"
+        ) == 0 ||
         strcmp(definition->query_definition.name, "events_waits_current") == 0 ||
         strcmp(definition->query_definition.name, "events_waits_history") == 0 ||
         strcmp(definition->query_definition.name, "events_waits_history_long") == 0 ||

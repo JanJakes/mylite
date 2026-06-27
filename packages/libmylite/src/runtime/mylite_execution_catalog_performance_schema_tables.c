@@ -3614,6 +3614,9 @@ static const struct mylite_execution_catalog_column_definition
 #define MYLITE_PERFORMANCE_SCHEMA_INT_UNSIGNED_COLUMN(name_, nullable_)                            \
     {name_, NULL, nullable_, "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"}
 
+#define MYLITE_PERFORMANCE_SCHEMA_INT_COLUMN(name_, nullable_)                                     \
+    {name_, NULL, nullable_, "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"}
+
 #define MYLITE_PERFORMANCE_SCHEMA_DOUBLE_COLUMN(name_, nullable_, precision_, scale_)              \
     {name_,                                                                                        \
      NULL,                                                                                         \
@@ -3932,6 +3935,328 @@ static const struct mylite_execution_catalog_mysql_system_secondary_index
     performance_schema_events_statements_summary_by_digest_secondary_indexes[] = {
         {"SCHEMA_NAME", 0U, NULL, "0", true, NULL, "HASH"},
         {"SCHEMA_NAME", 1U, NULL, "0", true, NULL, "HASH"},
+};
+
+#define MYLITE_PERFORMANCE_SCHEMA_TRANSACTION_SUMMARY_METRIC_COLUMNS                               \
+    MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("COUNT_STAR", "NO"),                          \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_TIMER_WAIT", "NO"),                  \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("MIN_TIMER_WAIT", "NO"),                  \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("AVG_TIMER_WAIT", "NO"),                  \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("MAX_TIMER_WAIT", "NO"),                  \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("COUNT_READ_WRITE", "NO"),                \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_TIMER_READ_WRITE", "NO"),            \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("MIN_TIMER_READ_WRITE", "NO"),            \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("AVG_TIMER_READ_WRITE", "NO"),            \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("MAX_TIMER_READ_WRITE", "NO"),            \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("COUNT_READ_ONLY", "NO"),                 \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_TIMER_READ_ONLY", "NO"),             \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("MIN_TIMER_READ_ONLY", "NO"),             \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("AVG_TIMER_READ_ONLY", "NO"),             \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("MAX_TIMER_READ_ONLY", "NO")
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_events_transactions_event_columns[] = {
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("THREAD_ID", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("EVENT_ID", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("END_EVENT_ID", "YES"),
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "EVENT_NAME",
+            "NO",
+            "128",
+            "512",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        {"STATE",
+         NULL,
+         "YES",
+         "enum",
+         "11",
+         "44",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "enum('ACTIVE','COMMITTED','ROLLED BACK')"},
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("TRX_ID", "YES"),
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "GTID",
+            "YES",
+            "90",
+            "360",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_INT_COLUMN("XID_FORMAT_ID", "YES"),
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "XID_GTRID",
+            "YES",
+            "130",
+            "520",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "XID_BQUAL",
+            "YES",
+            "130",
+            "520",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "XA_STATE",
+            "YES",
+            "64",
+            "256",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "SOURCE",
+            "YES",
+            "64",
+            "256",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("TIMER_START", "YES"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("TIMER_END", "YES"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("TIMER_WAIT", "YES"),
+        {"ACCESS_MODE",
+         NULL,
+         "YES",
+         "enum",
+         "10",
+         "40",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "enum('READ ONLY','READ WRITE')"},
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "ISOLATION_LEVEL",
+            "YES",
+            "64",
+            "256",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        {"AUTOCOMMIT",
+         NULL,
+         "NO",
+         "enum",
+         "3",
+         "12",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "enum('YES','NO')"},
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("NUMBER_OF_SAVEPOINTS", "YES"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("NUMBER_OF_ROLLBACK_TO_SAVEPOINT", "YES"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("NUMBER_OF_RELEASE_SAVEPOINT", "YES"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("OBJECT_INSTANCE_BEGIN", "YES"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("NESTING_EVENT_ID", "YES"),
+        {"NESTING_EVENT_TYPE",
+         NULL,
+         "YES",
+         "enum",
+         "11",
+         "44",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "enum('TRANSACTION','STATEMENT','STAGE','WAIT')"},
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_events_transactions_summary_by_account_columns[] = {
+        MYLITE_PERFORMANCE_SCHEMA_CHAR_COLUMN("USER", "YES", "32", "128", "utf8mb4", "utf8mb4_bin"),
+        MYLITE_PERFORMANCE_SCHEMA_CHAR_COLUMN(
+            "HOST",
+            "YES",
+            "255",
+            "255",
+            "ascii",
+            "ascii_general_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "EVENT_NAME",
+            "NO",
+            "128",
+            "512",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_TRANSACTION_SUMMARY_METRIC_COLUMNS,
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_events_transactions_summary_by_host_columns[] = {
+        MYLITE_PERFORMANCE_SCHEMA_CHAR_COLUMN(
+            "HOST",
+            "YES",
+            "255",
+            "255",
+            "ascii",
+            "ascii_general_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "EVENT_NAME",
+            "NO",
+            "128",
+            "512",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_TRANSACTION_SUMMARY_METRIC_COLUMNS,
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_events_transactions_summary_by_thread_columns[] = {
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("THREAD_ID", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "EVENT_NAME",
+            "NO",
+            "128",
+            "512",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_TRANSACTION_SUMMARY_METRIC_COLUMNS,
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_events_transactions_summary_by_user_columns[] = {
+        MYLITE_PERFORMANCE_SCHEMA_CHAR_COLUMN("USER", "YES", "32", "128", "utf8mb4", "utf8mb4_bin"),
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "EVENT_NAME",
+            "NO",
+            "128",
+            "512",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_TRANSACTION_SUMMARY_METRIC_COLUMNS,
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_events_transactions_summary_global_columns[] = {
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "EVENT_NAME",
+            "NO",
+            "128",
+            "512",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_TRANSACTION_SUMMARY_METRIC_COLUMNS,
+};
+
+static const char *const performance_schema_events_transactions_summary_by_account_column_keys[] = {
+    "MUL",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_events_transactions_summary_by_host_column_keys[] = {
+    "MUL",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_events_transactions_summary_by_thread_column_keys[] = {
+    "PRI",
+    "PRI",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_events_transactions_summary_by_user_column_keys[] = {
+    "MUL",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_events_transactions_summary_global_column_keys[] = {
+    "PRI",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
 };
 
 static const struct mylite_execution_catalog_column_definition
@@ -11705,6 +12030,133 @@ static const struct mylite_execution_catalog_mysql_system_table
          performance_schema_first_column_primary_key_columns,
          sizeof(performance_schema_first_column_primary_key_columns) /
              sizeof(performance_schema_first_column_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_TRANSACTIONS_CURRENT,
+          "events_transactions_current",
+          performance_schema_events_transactions_event_columns,
+          sizeof(performance_schema_events_transactions_event_columns) /
+              sizeof(performance_schema_events_transactions_event_columns[0])},
+         performance_schema_event_thread_event_column_keys,
+         performance_schema_event_column_extras,
+         performance_schema_event_column_privileges,
+         NULL,
+         performance_schema_event_thread_event_primary_key_columns,
+         sizeof(performance_schema_event_thread_event_primary_key_columns) /
+             sizeof(performance_schema_event_thread_event_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_TRANSACTIONS_HISTORY,
+          "events_transactions_history",
+          performance_schema_events_transactions_event_columns,
+          sizeof(performance_schema_events_transactions_event_columns) /
+              sizeof(performance_schema_events_transactions_event_columns[0])},
+         performance_schema_event_thread_event_column_keys,
+         performance_schema_event_column_extras,
+         performance_schema_event_column_privileges,
+         NULL,
+         performance_schema_event_thread_event_primary_key_columns,
+         sizeof(performance_schema_event_thread_event_primary_key_columns) /
+             sizeof(performance_schema_event_thread_event_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_TRANSACTIONS_HISTORY_LONG,
+          "events_transactions_history_long",
+          performance_schema_events_transactions_event_columns,
+          sizeof(performance_schema_events_transactions_event_columns) /
+              sizeof(performance_schema_events_transactions_event_columns[0])},
+         performance_schema_event_no_column_keys,
+         performance_schema_event_column_extras,
+         performance_schema_event_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_TRANSACTIONS_SUMMARY_BY_ACCOUNT_BY_EVENT_NAME,
+          "events_transactions_summary_by_account_by_event_name",
+          performance_schema_events_transactions_summary_by_account_columns,
+          sizeof(performance_schema_events_transactions_summary_by_account_columns) /
+              sizeof(performance_schema_events_transactions_summary_by_account_columns[0])},
+         performance_schema_events_transactions_summary_by_account_column_keys,
+         performance_schema_event_column_extras,
+         performance_schema_event_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         performance_schema_event_summary_account_secondary_indexes,
+         sizeof(performance_schema_event_summary_account_secondary_indexes) /
+             sizeof(performance_schema_event_summary_account_secondary_indexes[0])},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_TRANSACTIONS_SUMMARY_BY_HOST_BY_EVENT_NAME,
+          "events_transactions_summary_by_host_by_event_name",
+          performance_schema_events_transactions_summary_by_host_columns,
+          sizeof(performance_schema_events_transactions_summary_by_host_columns) /
+              sizeof(performance_schema_events_transactions_summary_by_host_columns[0])},
+         performance_schema_events_transactions_summary_by_host_column_keys,
+         performance_schema_event_column_extras,
+         performance_schema_event_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         performance_schema_event_summary_host_secondary_indexes,
+         sizeof(performance_schema_event_summary_host_secondary_indexes) /
+             sizeof(performance_schema_event_summary_host_secondary_indexes[0])},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_TRANSACTIONS_SUMMARY_BY_THREAD_BY_EVENT_NAME,
+          "events_transactions_summary_by_thread_by_event_name",
+          performance_schema_events_transactions_summary_by_thread_columns,
+          sizeof(performance_schema_events_transactions_summary_by_thread_columns) /
+              sizeof(performance_schema_events_transactions_summary_by_thread_columns[0])},
+         performance_schema_events_transactions_summary_by_thread_column_keys,
+         performance_schema_event_column_extras,
+         performance_schema_event_column_privileges,
+         NULL,
+         performance_schema_event_summary_thread_primary_key_columns,
+         sizeof(performance_schema_event_summary_thread_primary_key_columns) /
+             sizeof(performance_schema_event_summary_thread_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_TRANSACTIONS_SUMMARY_BY_USER_BY_EVENT_NAME,
+          "events_transactions_summary_by_user_by_event_name",
+          performance_schema_events_transactions_summary_by_user_columns,
+          sizeof(performance_schema_events_transactions_summary_by_user_columns) /
+              sizeof(performance_schema_events_transactions_summary_by_user_columns[0])},
+         performance_schema_events_transactions_summary_by_user_column_keys,
+         performance_schema_event_column_extras,
+         performance_schema_event_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         performance_schema_event_summary_user_secondary_indexes,
+         sizeof(performance_schema_event_summary_user_secondary_indexes) /
+             sizeof(performance_schema_event_summary_user_secondary_indexes[0])},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_TRANSACTIONS_SUMMARY_GLOBAL_BY_EVENT_NAME,
+          "events_transactions_summary_global_by_event_name",
+          performance_schema_events_transactions_summary_global_columns,
+          sizeof(performance_schema_events_transactions_summary_global_columns) /
+              sizeof(performance_schema_events_transactions_summary_global_columns[0])},
+         performance_schema_events_transactions_summary_global_column_keys,
+         performance_schema_event_column_extras,
+         performance_schema_event_column_privileges,
+         NULL,
+         performance_schema_event_summary_global_primary_key_columns,
+         sizeof(performance_schema_event_summary_global_primary_key_columns) /
+             sizeof(performance_schema_event_summary_global_primary_key_columns[0]),
          NULL,
          NULL,
          0U},

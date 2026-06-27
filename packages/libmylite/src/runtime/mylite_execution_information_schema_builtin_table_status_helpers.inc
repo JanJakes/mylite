@@ -232,6 +232,32 @@ static const char *builtin_schema_table_rows(
         return "220";
     }
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "events_transactions_current") == 0) {
+        return "256";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "events_transactions_history") == 0) {
+        return "2560";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "events_transactions_history_long") == 0) {
+        return "10000";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        (strcmp(table_name, "events_transactions_summary_by_account_by_event_name") == 0 ||
+         strcmp(table_name, "events_transactions_summary_by_host_by_event_name") == 0 ||
+         strcmp(table_name, "events_transactions_summary_by_user_by_event_name") == 0)) {
+        return "128";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "events_transactions_summary_by_thread_by_event_name") == 0) {
+        return "256";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "events_transactions_summary_global_by_event_name") == 0) {
+        return "1";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
         strcmp(table_name, "events_waits_current") == 0) {
         return "1536";
     }

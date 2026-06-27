@@ -242,6 +242,141 @@ static const size_t performance_schema_setup_consumer_primary_key_columns[] = {
 };
 
 static const struct mylite_execution_catalog_column_definition
+    performance_schema_setup_logger_columns[] = {
+        {"NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "128",
+         "512",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(128)"},
+        {"LEVEL",
+         NULL,
+         "NO",
+         "enum",
+         "5",
+         "20",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "enum('none','error','warn','info','debug')"},
+        {"DESCRIPTION",
+         NULL,
+         "YES",
+         "varchar",
+         "1023",
+         "4092",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(1023)"},
+};
+
+static const char *const performance_schema_setup_logger_column_keys[] = {
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_setup_logger_column_extras[] = {
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_setup_logger_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_setup_meter_columns[] = {
+        {"NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "63",
+         "252",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(63)"},
+        {"FREQUENCY",
+         NULL,
+         "NO",
+         "mediumint",
+         NULL,
+         NULL,
+         "7",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "mediumint unsigned"},
+        {"ENABLED",
+         NULL,
+         "NO",
+         "enum",
+         "3",
+         "12",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "enum('YES','NO')"},
+        {"DESCRIPTION",
+         NULL,
+         "YES",
+         "varchar",
+         "1023",
+         "4092",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(1023)"},
+};
+
+static const char *const performance_schema_setup_meter_column_keys[] = {
+    "PRI",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_setup_meter_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_setup_meter_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const size_t performance_schema_setup_meter_primary_key_columns[] = {
+    0U,
+};
+
+static const struct mylite_execution_catalog_column_definition
     performance_schema_setup_object_columns[] = {
         {"OBJECT_TYPE",
          "TABLE",
@@ -655,6 +790,37 @@ static const struct mylite_execution_catalog_mysql_system_table
          performance_schema_setup_consumer_primary_key_columns,
          sizeof(performance_schema_setup_consumer_primary_key_columns) /
              sizeof(performance_schema_setup_consumer_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_SETUP_LOGGERS,
+          "setup_loggers",
+          performance_schema_setup_logger_columns,
+          sizeof(performance_schema_setup_logger_columns) /
+              sizeof(performance_schema_setup_logger_columns[0])},
+         performance_schema_setup_logger_column_keys,
+         performance_schema_setup_logger_column_extras,
+         performance_schema_setup_logger_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_SETUP_METERS,
+          "setup_meters",
+          performance_schema_setup_meter_columns,
+          sizeof(performance_schema_setup_meter_columns) /
+              sizeof(performance_schema_setup_meter_columns[0])},
+         performance_schema_setup_meter_column_keys,
+         performance_schema_setup_meter_column_extras,
+         performance_schema_setup_meter_column_privileges,
+         NULL,
+         performance_schema_setup_meter_primary_key_columns,
+         sizeof(performance_schema_setup_meter_primary_key_columns) /
+             sizeof(performance_schema_setup_meter_primary_key_columns[0]),
          NULL,
          NULL,
          0U},

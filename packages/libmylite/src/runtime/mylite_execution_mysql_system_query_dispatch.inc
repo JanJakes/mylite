@@ -145,6 +145,12 @@ static int append_performance_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "setup_consumers") == 0) {
         return append_performance_schema_setup_consumer_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "setup_loggers") == 0) {
+        return append_performance_schema_setup_logger_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "setup_meters") == 0) {
+        return append_performance_schema_setup_meter_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "setup_objects") == 0) {
         return append_performance_schema_setup_object_rows(database, rows);
     }
@@ -315,6 +321,61 @@ static int append_performance_schema_setup_consumer_rows(
          rc == MYLITE_OK && index < sizeof(consumer_rows) / sizeof(consumer_rows[0]);
          ++index) {
         rc = append_information_schema_row(database, rows, consumer_rows[index]);
+    }
+    return rc;
+}
+
+static int append_performance_schema_setup_logger_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_setup_logger_column_count = 3 };
+    static const char *const logger_rows[][performance_schema_setup_logger_column_count] = {
+        {"logger/error/error_log", "info", "MySQL error logger"},
+    };
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != performance_schema_setup_logger_column_count) {
+        set_runtime_error(database, "invalid performance_schema setup_loggers columns");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(logger_rows) / sizeof(logger_rows[0]);
+         ++index) {
+        rc = append_information_schema_row(database, rows, logger_rows[index]);
+    }
+    return rc;
+}
+
+static int append_performance_schema_setup_meter_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_setup_meter_column_count = 4 };
+    static const char *const meter_rows[][performance_schema_setup_meter_column_count] = {
+        {"mysql.inno", "10", "YES", "MySql InnoDB metrics"},
+        {"mysql.inno.buffer_pool", "10", "YES", "MySql InnoDB buffer pool metrics"},
+        {"mysql.inno.data", "10", "YES", "MySql InnoDB data metrics"},
+        {"mysql.myisam", "10", "YES", "MySql MyISAM storage engine stats"},
+        {"mysql.perf_schema", "10", "YES", "MySql performance_schema lost instruments"},
+        {"mysql.stats", "10", "YES", "MySql core metrics"},
+        {"mysql.stats.com", "10", "YES", "MySql command stats"},
+        {"mysql.stats.connection", "10", "YES", "MySql connection stats"},
+        {"mysql.stats.handler", "10", "YES", "MySql handler stats"},
+        {"mysql.stats.ssl", "10", "YES", "MySql TLS related stats"},
+        {"mysql.x", "10", "YES", "MySql X plugin metrics"},
+        {"mysql.x.stmt", "10", "YES", "MySql X plugin statement statistics"},
+    };
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != performance_schema_setup_meter_column_count) {
+        set_runtime_error(database, "invalid performance_schema setup_meters columns");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(meter_rows) / sizeof(meter_rows[0]);
+         ++index) {
+        rc = append_information_schema_row(database, rows, meter_rows[index]);
     }
     return rc;
 }

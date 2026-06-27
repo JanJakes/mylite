@@ -166,6 +166,14 @@ static const char *builtin_schema_table_rows(
         return "16";
     }
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "setup_loggers") == 0) {
+        return "1";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "setup_meters") == 0) {
+        return "12";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
         strcmp(table_name, "setup_objects") == 0) {
         return "128";
     }

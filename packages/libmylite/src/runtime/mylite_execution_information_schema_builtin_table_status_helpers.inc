@@ -170,6 +170,20 @@ static const char *builtin_schema_table_rows(
         return "2560";
     }
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        (strcmp(table_name, "events_stages_summary_by_account_by_event_name") == 0 ||
+         strcmp(table_name, "events_stages_summary_by_host_by_event_name") == 0 ||
+         strcmp(table_name, "events_stages_summary_by_user_by_event_name") == 0)) {
+        return "22400";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "events_stages_summary_by_thread_by_event_name") == 0) {
+        return "44800";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "events_stages_summary_global_by_event_name") == 0) {
+        return "175";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
         (strcmp(table_name, "events_stages_history_long") == 0 ||
          strcmp(table_name, "events_statements_history_long") == 0 ||
          strcmp(table_name, "events_waits_history_long") == 0)) {
@@ -182,6 +196,24 @@ static const char *builtin_schema_table_rows(
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
         strcmp(table_name, "events_waits_history") == 0) {
         return "2560";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        (strcmp(table_name, "events_waits_summary_by_account_by_event_name") == 0 ||
+         strcmp(table_name, "events_waits_summary_by_host_by_event_name") == 0 ||
+         strcmp(table_name, "events_waits_summary_by_user_by_event_name") == 0)) {
+        return "88832";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "events_waits_summary_by_instance") == 0) {
+        return "10752";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "events_waits_summary_by_thread_by_event_name") == 0) {
+        return "177664";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "events_waits_summary_global_by_event_name") == 0) {
+        return "694";
     }
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
         strcmp(table_name, "setup_consumers") == 0) {

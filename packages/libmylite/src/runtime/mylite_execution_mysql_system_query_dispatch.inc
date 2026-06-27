@@ -139,11 +139,48 @@ static int append_performance_schema_system_table_rows(
         strcmp(definition->query_definition.name, "events_stages_current") == 0 ||
         strcmp(definition->query_definition.name, "events_stages_history") == 0 ||
         strcmp(definition->query_definition.name, "events_stages_history_long") == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "events_stages_summary_by_account_by_event_name"
+        ) == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "events_stages_summary_by_host_by_event_name"
+        ) == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "events_stages_summary_by_thread_by_event_name"
+        ) == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "events_stages_summary_by_user_by_event_name"
+        ) == 0 ||
+        strcmp(definition->query_definition.name, "events_stages_summary_global_by_event_name") ==
+            0 ||
         strcmp(definition->query_definition.name, "events_statements_history_long") == 0 ||
         strcmp(definition->query_definition.name, "events_statements_summary_by_program") == 0 ||
         strcmp(definition->query_definition.name, "events_waits_current") == 0 ||
         strcmp(definition->query_definition.name, "events_waits_history") == 0 ||
         strcmp(definition->query_definition.name, "events_waits_history_long") == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "events_waits_summary_by_account_by_event_name"
+        ) == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "events_waits_summary_by_host_by_event_name"
+        ) == 0 ||
+        strcmp(definition->query_definition.name, "events_waits_summary_by_instance") == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "events_waits_summary_by_thread_by_event_name"
+        ) == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "events_waits_summary_by_user_by_event_name"
+        ) == 0 ||
+        strcmp(definition->query_definition.name, "events_waits_summary_global_by_event_name") ==
+            0 ||
         strcmp(definition->query_definition.name, "file_instances") == 0 ||
         strcmp(definition->query_definition.name, "host_cache") == 0 ||
         strcmp(definition->query_definition.name, "keyring_component_status") == 0 ||

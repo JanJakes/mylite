@@ -769,6 +769,22 @@ static int apply_set_global_session_placeholder_assignment(
 static bool set_global_session_placeholder_assignment_handles_kind(
     enum mylite_execution_system_variable_kind kind
 );
+static int apply_set_default_engine_system_variable_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
+static int apply_set_default_engine_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    bool *out_handled
+);
+static bool set_system_variable_is_default_engine(
+    enum mylite_execution_system_variable_kind kind
+);
 static int apply_set_text_session_system_variable_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -1417,6 +1433,13 @@ static int validate_set_fixed_boolean_value(
 static int validate_set_fixed_text_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,
+    const char *expected_value
+);
+static int validate_set_fixed_text_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
     const char *expected_value
 );
 static int validate_set_default_only_value(

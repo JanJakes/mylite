@@ -234,6 +234,15 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc = apply_set_default_engine_system_variable_assignment(
+        database,
+        &target,
+        value_node,
+        &handled
+    );
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     rc = apply_set_global_session_placeholder_assignment(database, &target, value_node, &handled);
     if (rc != MYLITE_OK || handled) {
         return rc;
@@ -1690,6 +1699,50 @@ static bool set_global_session_placeholder_assignment_handles_kind(
     default:
         return false;
     }
+}
+
+static int apply_set_default_engine_system_variable_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+) {
+    if (target == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (!set_system_variable_is_default_engine(target->kind)) {
+        return MYLITE_OK;
+    }
+
+    *out_handled = true;
+    return validate_set_fixed_text_value(database, value_node, "InnoDB");
+}
+
+static int apply_set_default_engine_system_variable_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    bool *out_handled
+) {
+    if (target == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (!set_system_variable_is_default_engine(target->kind)) {
+        return MYLITE_OK;
+    }
+
+    *out_handled = true;
+    return validate_set_fixed_text_cell_value(database, target, value, value_kind, "InnoDB");
+}
+
+static bool set_system_variable_is_default_engine(
+    enum mylite_execution_system_variable_kind kind
+) {
+    return kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE ||
+           kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE;
 }
 
 static int apply_set_text_session_system_variable_value(

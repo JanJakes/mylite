@@ -150,6 +150,16 @@ static int apply_set_system_variable_cell_value(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc = apply_set_default_engine_system_variable_cell_value(
+        database,
+        target,
+        value,
+        value_kind,
+        &handled
+    );
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     if (set_system_variable_is_text_session_state(target->kind)) {
         return apply_set_text_session_system_variable_cell_value(database, target, value);
     }
@@ -1125,6 +1135,31 @@ static int validate_set_fixed_text_value(
     }
     free(decoded);
     return rc;
+}
+
+static int validate_set_fixed_text_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    const char *expected_value
+) {
+    const char *text = value == NULL ? NULL : value->value;
+
+    if (target == NULL || expected_value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (value == NULL || text == NULL || value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_STRING) {
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
+    }
+    if (!text_equals_ascii_case_insensitive(text, expected_value)) {
+        set_unsupported_error(
+            database,
+            "SET supports only fixed no-op system variable assignments"
+        );
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
 }
 
 static int validate_set_default_only_value(

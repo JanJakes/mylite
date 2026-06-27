@@ -11,9 +11,12 @@ InnoDB-only engine surface. MyLite does not implement multiple storage engines,
 so this variable exposes the fixed permanent-table default engine used by the
 current table lifecycle.
 
-This is not full storage-engine or system-variable management. It does not
-implement mutable `SET` behavior, startup options, engine substitution, storage
-engine plugins, or `SHOW VARIABLES`.
+This is not full storage-engine or system-variable management. It supports
+fixed `InnoDB`/`DEFAULT` no-op assignments so dump and application setup code
+can restate the default, but it does not implement alternate mutable engine
+state, startup options, engine substitution policy beyond explicit table
+`ENGINE` validation, storage engine plugins, or Performance Schema variable
+tables.
 
 ## Sources
 
@@ -83,6 +86,8 @@ The implementation must add:
 - backtick-quoted final variable-name components;
 - one-row scalar result sets with existing source-span column labels;
 - fixed value `InnoDB` for all supported scopes;
+- fixed no-op `SET` handling for `DEFAULT` and exact `InnoDB` values across
+  supported scopes, including user-variable values that evaluate to `InnoDB`;
 - MySQL-compatible unknown-variable diagnostics for unsupported names;
 - deterministic rejection of quoted scopes;
 - fast C tests and a MySQL 8.4.9 expectation artifact.
@@ -96,14 +101,17 @@ SELECT @@session.default_storage_engine, @@local.default_storage_engine
 SELECT @@global.default_storage_engine
 SELECT @@session.`default_storage_engine`, @@`default_storage_engine`
 SELECT @@default_storage_engine, @@warning_count, ROW_COUNT()
+SET default_storage_engine = DEFAULT
+SET SESSION default_storage_engine = InnoDB
+SET GLOBAL default_storage_engine = 'InnoDB'
 ```
 
 ## Non-Goals
 
 This feature must not implement:
 
-- `SET`, startup options, persisted variables, `SET_VAR` hints, or mutable
-  global/session default-engine state;
+- startup options, persisted variables, `SET_VAR` hints, or mutable
+  global/session default-engine state beyond exact fixed no-op assignments;
 - variables other than `default_storage_engine`;
 - `default_tmp_storage_engine`, `disabled_storage_engines`, or
   engine-substitution SQL-mode behavior;
@@ -222,9 +230,10 @@ This slice uses existing diagnostics for:
 - allocation failures through existing MyLite allocation diagnostics.
 
 Supported reads of `@@default_storage_engine` do not emit warnings. This slice
-does not implement MySQL's mutable `SET SESSION default_storage_engine=...`
-surface, so engine-substitution warnings and dynamic assignment diagnostics are
-out of scope.
+accepts exact fixed no-op assignments to `DEFAULT` or `InnoDB`. Other values,
+including known MySQL engines such as `MEMORY`, are rejected with MyLite's
+fixed no-op system-variable diagnostic because the embedded runtime cannot make
+the reported default diverge from the actual table storage path.
 
 ## Tests
 
@@ -243,6 +252,10 @@ Tests must cover:
 - unsupported wider expressions;
 - selected schema, close/reopen, and independent handles do not change the
   fixed value;
+- exact/default `InnoDB` no-op assignments do not change scalar, global, or SHOW
+  values;
+- alternate direct and user-variable engine assignments are rejected without
+  leaving stale system-variable overrides;
 - `.mylite` preamble preservation and unchanged catalog/SQLite generation;
 - existing parser/runtime/engine/system-variable tests still pass.
 

@@ -33,6 +33,7 @@ enum {
     mysql_error_table_exists = 1050,
     mysql_error_no_database_selected = 1046,
     mysql_error_unknown_system_variable = 1193,
+    mysql_error_incorrect_argument_type = 1232,
     mysql_error_unknown_storage_engine = 1286,
     mysql_warning_using_storage_engine = 1266,
 };
@@ -591,6 +592,78 @@ static int test_default_storage_engine_system_variable_values_and_diagnostics(vo
             .column_count = sizeof(temp_mixed_columns) / sizeof(temp_mixed_columns[0]),
         },
         "mixed default and temporary storage engine variable values"
+    );
+    failures += execute_statement_ok(database, "SET default_storage_engine = InnoDB");
+    failures += execute_statement_ok(database, "SET SESSION default_storage_engine = DEFAULT");
+    failures += execute_statement_ok(database, "SET GLOBAL default_storage_engine = 'InnoDB'");
+    failures += execute_statement_ok(database, "SET LOCAL default_tmp_storage_engine = innodb");
+    failures += execute_statement_ok(database, "SET @@default_tmp_storage_engine = DEFAULT");
+    failures +=
+        execute_statement_ok(database, "SET @@global.default_tmp_storage_engine = 'InnoDB'");
+    failures += execute_statement_ok(database, "SET @engine_name = 'InnoDB'");
+    failures += execute_statement_ok(database, "SET default_storage_engine = @engine_name");
+    failures += execute_statement_ok(database, "SET default_tmp_storage_engine = @engine_name");
+    failures += expect_single_row_result(
+        database,
+        "SELECT @@default_storage_engine, @@global.default_storage_engine, "
+        "@@default_tmp_storage_engine, @@global.default_tmp_storage_engine",
+        (struct expected_single_row_result){
+            .columns = (const char *const[]){"@@default_storage_engine",
+                                             "@@global.default_storage_engine",
+                                             "@@default_tmp_storage_engine",
+                                             "@@global.default_tmp_storage_engine"},
+            .values = (const char *const[]){"InnoDB", "InnoDB", "InnoDB", "InnoDB"},
+            .column_count = scoped_default_storage_engine_variable_column_count,
+        },
+        "fixed default engine SET leaves values unchanged"
+    );
+    failures += execute_error(
+        database,
+        "SET default_storage_engine = MEMORY",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SET supports only fixed no-op system variable assignments",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET SESSION default_tmp_storage_engine = MEMORY",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SET supports only fixed no-op system variable assignments",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @engine_name = 'MEMORY'");
+    failures += execute_error(
+        database,
+        "SET default_tmp_storage_engine = @engine_name",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SET supports only fixed no-op system variable assignments",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @engine_name = 1");
+    failures += execute_error(
+        database,
+        "SET default_storage_engine = @engine_name",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_argument_type,
+            .sqlstate = "42000",
+            .message_part = "Incorrect argument type to variable 'default_storage_engine'",
+        }
+    );
+    failures += expect_single_row_result(
+        database,
+        "SELECT @@default_storage_engine, @@default_tmp_storage_engine",
+        (struct expected_single_row_result){
+            .columns = temp_mixed_columns,
+            .values = temp_mixed_values,
+            .column_count = sizeof(temp_mixed_columns) / sizeof(temp_mixed_columns[0]),
+        },
+        "rejected default engine SET leaves values unchanged"
     );
 
     failures += execute_statement_ok(database, "SHOW PROCESSLIST");

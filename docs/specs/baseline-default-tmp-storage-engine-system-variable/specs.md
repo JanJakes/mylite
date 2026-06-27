@@ -89,6 +89,8 @@ The implementation must add:
 - `SHOW VARIABLES` and `SHOW GLOBAL VARIABLES` rows through the existing
   descriptor-driven system-variable list;
 - fixed value `InnoDB` for every supported scope and SHOW row;
+- fixed no-op `SET` handling for `DEFAULT` and exact `InnoDB` values across
+  supported scopes, including user-variable values that evaluate to `InnoDB`;
 - one-row scalar result sets with existing source-span column labels;
 - MySQL-compatible unknown-variable diagnostics for unsupported names and
   deterministic quoted-scope rejection through the existing parser;
@@ -104,14 +106,17 @@ SELECT @@global.default_tmp_storage_engine
 SELECT @@session.`default_tmp_storage_engine`, @@`default_tmp_storage_engine`
 SHOW VARIABLES LIKE 'default_tmp_storage_engine'
 SHOW GLOBAL VARIABLES LIKE 'default_tmp_storage_engine'
+SET default_tmp_storage_engine = DEFAULT
+SET SESSION default_tmp_storage_engine = InnoDB
+SET GLOBAL default_tmp_storage_engine = 'InnoDB'
 ```
 
 ## Non-Goals
 
 This feature must not implement:
 
-- mutable `SET default_tmp_storage_engine`, startup options, persisted
-  variables, `SET_VAR` hints, or shared mutable global engine state;
+- startup options, persisted variables, `SET_VAR` hints, or shared mutable
+  global engine state beyond exact fixed no-op assignments;
 - real MEMORY, MyISAM, CSV, ARCHIVE, or other alternate temporary storage
   engines;
 - default temporary engine routing that changes physical table storage;
@@ -138,6 +143,8 @@ This feature must not implement:
   names.
 - SHOW-variable execution owns descriptor enumeration, scope filtering, LIKE
   filtering, and row construction.
+- SET execution accepts only exact fixed no-op `DEFAULT`/`InnoDB` assignments
+  and rejects alternate values before they can become session overrides.
 - Temporary table descriptors remain authoritative for session-local table
   metadata. This feature does not change temporary table creation, shadowing,
   cleanup, row storage, or generated SQLite SQL.
@@ -213,9 +220,10 @@ This feature reuses existing diagnostics:
 | Allocation failure | existing `MYLITE_NOMEM` path and public diagnostics |
 | Public API misuse | existing `MYLITE_MISUSE` handling |
 
-This slice deliberately does not add `SET default_tmp_storage_engine`
-diagnostics. Existing fixed-variable SET handling remains authoritative for
-what MyLite currently accepts or rejects outside this feature.
+This slice accepts exact fixed no-op assignments to `DEFAULT` or `InnoDB`.
+Other values, including `MEMORY` and `MyISAM`, are rejected with MyLite's fixed
+no-op system-variable diagnostic because the embedded runtime cannot make the
+reported default diverge from actual temporary table storage.
 
 ## Testing
 
@@ -230,6 +238,10 @@ Runtime tests must cover:
 - `.mylite` preamble preservation;
 - close/reopen readback and independent handles;
 - no change to implicit temporary table `SHOW CREATE TABLE` rendering.
+- exact/default `InnoDB` no-op assignments do not change scalar, global, or SHOW
+  values;
+- alternate direct and user-variable engine assignments are rejected without
+  leaving stale system-variable overrides.
 
 The MySQL expectation script must record MySQL 8.4.9 values, SHOW rows,
 session mutability evidence, temporary-table effect evidence, invalid-engine
@@ -237,9 +249,9 @@ SET diagnostics, quoted-name behavior, and diagnostics lifecycle behavior.
 
 ## Compatibility Notes
 
-The supported behavior is useful for applications that inspect the current
-temporary default engine. It is intentionally not full MySQL variable
+The supported behavior is useful for applications that inspect or restate the
+current temporary default engine. It is intentionally not full MySQL variable
 management. Applications that set `default_tmp_storage_engine` to `MEMORY` or
 `MyISAM` still require a later feature that either implements compatible
-alternate temporary storage behavior or returns a precise embedded-design
-diagnostic.
+alternate temporary storage behavior or returns a more specific
+embedded-design diagnostic.

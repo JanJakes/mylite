@@ -194,6 +194,11 @@ static int append_performance_schema_system_table_rows(
         strcmp(definition->query_definition.name, "host_cache") == 0 ||
         strcmp(definition->query_definition.name, "keyring_component_status") == 0 ||
         strcmp(definition->query_definition.name, "keyring_keys") == 0 ||
+        strcmp(definition->query_definition.name, "memory_summary_by_account_by_event_name") == 0 ||
+        strcmp(definition->query_definition.name, "memory_summary_by_host_by_event_name") == 0 ||
+        strcmp(definition->query_definition.name, "memory_summary_by_thread_by_event_name") == 0 ||
+        strcmp(definition->query_definition.name, "memory_summary_by_user_by_event_name") == 0 ||
+        strcmp(definition->query_definition.name, "memory_summary_global_by_event_name") == 0 ||
         strcmp(definition->query_definition.name, "mutex_instances") == 0 ||
         strcmp(definition->query_definition.name, "prepared_statements_instances") == 0 ||
         strcmp(definition->query_definition.name, "replication_applier_configuration") == 0 ||

@@ -238,6 +238,20 @@ static const char *builtin_schema_table_rows(
         return "4096";
     }
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        (strcmp(table_name, "memory_summary_by_account_by_event_name") == 0 ||
+         strcmp(table_name, "memory_summary_by_host_by_event_name") == 0 ||
+         strcmp(table_name, "memory_summary_by_user_by_event_name") == 0)) {
+        return "60160";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "memory_summary_by_thread_by_event_name") == 0) {
+        return "120320";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "memory_summary_global_by_event_name") == 0) {
+        return "470";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
         strcmp(table_name, "setup_consumers") == 0) {
         return "16";
     }

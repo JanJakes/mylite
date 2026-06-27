@@ -31,7 +31,7 @@ MyLite metadata and return MySQL-shaped missing-table diagnostics.
 Event current/history placeholders for stage and wait tables, statement
 history-long, and stored-program statement summaries expose MySQL-shaped
 metadata with empty read-only rows; live event instrumentation remains
-unsupported. Error, file, socket, stage, and wait summary placeholders expose
+unsupported. Error, file, memory, socket, stage, and wait summary placeholders expose
 MySQL-shaped metadata with empty read-only rows; live aggregation for those
 summary families remains unsupported.
 `user_defined_functions` exposes MySQL 8.4.9-shaped loadable-function registry
@@ -107,11 +107,11 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.keyring_component_status` | 🟡 | Empty read-only keyring component status placeholder with MySQL-shaped metadata; no keyring service state |
 | `performance_schema.keyring_keys` | 🟡 | Empty read-only keyring key placeholder with MySQL-shaped metadata; no key inventory |
 | `performance_schema.log_status` | ❌ | Information about server logs for backup purposes |
-| `performance_schema.memory_summary_by_account_by_event_name` | ❌ | Memory operations per account and event name |
-| `performance_schema.memory_summary_by_host_by_event_name` | ❌ | Memory operations per host and event name |
-| `performance_schema.memory_summary_by_thread_by_event_name` | ❌ | Memory operations per thread and event name |
-| `performance_schema.memory_summary_by_user_by_event_name` | ❌ | Memory operations per user and event name |
-| `performance_schema.memory_summary_global_by_event_name` | ❌ | Memory operations globally per event name |
+| `performance_schema.memory_summary_by_account_by_event_name` | 🟡 | Empty read-only memory-summary placeholder with MySQL-shaped metadata; no live memory aggregation |
+| `performance_schema.memory_summary_by_host_by_event_name` | 🟡 | Empty read-only memory-summary placeholder with MySQL-shaped metadata; no live memory aggregation |
+| `performance_schema.memory_summary_by_thread_by_event_name` | 🟡 | Empty read-only memory-summary placeholder with MySQL-shaped metadata; no live memory aggregation |
+| `performance_schema.memory_summary_by_user_by_event_name` | 🟡 | Empty read-only memory-summary placeholder with MySQL-shaped metadata; no live memory aggregation |
+| `performance_schema.memory_summary_global_by_event_name` | 🟡 | Empty read-only memory-summary placeholder with MySQL-shaped metadata; no live memory aggregation |
 | `performance_schema.metadata_locks` | ❌ | Metadata locks and lock requests |
 | `performance_schema.mutex_instances` | 🟡 | Empty read-only mutex-instance placeholder with MySQL-shaped columns, HASH primary/secondary index metadata, table metadata, selected-schema reads, and write protection; no live mutex instrumentation |
 | `performance_schema.ndb_sync_excluded_objects` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |

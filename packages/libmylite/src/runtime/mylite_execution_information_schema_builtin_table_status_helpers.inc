@@ -252,6 +252,10 @@ static const char *builtin_schema_table_rows(
         return "470";
     }
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "metadata_locks") == 0) {
+        return "1024";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
         strcmp(table_name, "setup_consumers") == 0) {
         return "16";
     }

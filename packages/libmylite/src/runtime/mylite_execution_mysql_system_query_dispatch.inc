@@ -293,7 +293,8 @@ static int append_performance_schema_system_table_rows(
         strcmp(definition->query_definition.name, "session_connect_attrs") == 0) {
         return append_performance_schema_connection_attribute_rows(database, rows);
     }
-    if (strcmp(definition->query_definition.name, "table_handles") == 0) {
+    if (strcmp(definition->query_definition.name, "metadata_locks") == 0 ||
+        strcmp(definition->query_definition.name, "table_handles") == 0) {
         return MYLITE_OK;
     }
     if (strcmp(definition->query_definition.name, "threads") == 0) {

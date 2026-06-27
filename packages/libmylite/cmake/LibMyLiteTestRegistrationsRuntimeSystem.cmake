@@ -769,6 +769,10 @@
     COMMAND mylite_runtime_performance_schema_setup_threads_test
   )
   add_test(
+    NAME libmylite.runtime.performance_schema_metadata_locks
+    COMMAND mylite_runtime_performance_schema_metadata_locks_test
+  )
+  add_test(
     NAME libmylite.runtime.performance_schema_table_handles_table
     COMMAND mylite_runtime_performance_schema_table_handles_table_test
   )

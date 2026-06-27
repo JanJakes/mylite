@@ -15,11 +15,13 @@ catalog. `table_handles` exposes MySQL-shaped read-only empty lock-handle
 metadata. Thread/account/host/user status and variable tables expose limited
 current-handle registry snapshots. `variables_info` exposes MyLite's supported
 system-variable registry with embedded source/range placeholders, and
-`persisted_variables` is an empty persisted-global placeholder. Connection
-summary, processlist, and thread tables expose limited rows from MyLite's
-open-connection registry. Connection attribute tables expose deterministic
-embedded MyLite attributes for open handles. Instance tables for synchronization
-objects, files, and sockets expose empty read-only metadata placeholders.
+`persisted_variables` is an empty persisted-global placeholder.
+`metadata_locks` exposes MySQL-shaped read-only empty metadata-lock
+instrumentation metadata. Connection summary, processlist, and thread tables
+expose limited rows from MyLite's open-connection registry. Connection
+attribute tables expose deterministic embedded MyLite attributes for open
+handles. Instance tables for synchronization objects, files, and sockets expose
+empty read-only metadata placeholders.
 Binary-log compression, data-lock, data-lock-wait, and prepared-statement
 instrumentation tables expose empty read-only metadata placeholders.
 Host-cache and keyring tables expose empty read-only metadata placeholders.
@@ -112,7 +114,7 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.memory_summary_by_thread_by_event_name` | 🟡 | Empty read-only memory-summary placeholder with MySQL-shaped metadata; no live memory aggregation |
 | `performance_schema.memory_summary_by_user_by_event_name` | 🟡 | Empty read-only memory-summary placeholder with MySQL-shaped metadata; no live memory aggregation |
 | `performance_schema.memory_summary_global_by_event_name` | 🟡 | Empty read-only memory-summary placeholder with MySQL-shaped metadata; no live memory aggregation |
-| `performance_schema.metadata_locks` | ❌ | Metadata locks and lock requests |
+| `performance_schema.metadata_locks` | 🟡 | Empty read-only metadata-lock placeholder with MySQL-shaped metadata; no live metadata-lock instrumentation |
 | `performance_schema.mutex_instances` | 🟡 | Empty read-only mutex-instance placeholder with MySQL-shaped columns, HASH primary/secondary index metadata, table metadata, selected-schema reads, and write protection; no live mutex instrumentation |
 | `performance_schema.ndb_sync_excluded_objects` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
 | `performance_schema.ndb_sync_pending_objects` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |

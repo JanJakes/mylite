@@ -2041,7 +2041,10 @@ static int copy_show_columns_target_schema_and_table(
     char *table_name,
     bool *out_has_target
 );
-static bool mysql_system_table_directory_contains(const char *table_name);
+static bool builtin_system_schema_table_directory_contains(
+    const char *schema_name,
+    const char *table_name
+);
 static int execute_show_columns_mysql_system_table_statement(
     struct mylite_db *database,
     const struct show_columns_filter_nodes *nodes,

@@ -123,10 +123,9 @@ static int execute_show_columns_statement(
         }
         if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
-        } else if (
-            rc != MYLITE_OK &&
-            mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
-        ) {
+        } else if (rc != MYLITE_OK &&
+                   mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) ==
+                       MYLITE_OK) {
             set_runtime_error(database, "failed to build SHOW COLUMNS result");
         }
     }
@@ -179,7 +178,10 @@ static int resolve_show_columns_mysql_system_table(
         *out_mysql_system_target = true;
         return MYLITE_OK;
     }
-    if (!schema_name_is_mysql_system_schema(schema_name)) {
+    if (schema_name_is_information_schema(schema_name)) {
+        return MYLITE_OK;
+    }
+    if (mylite_execution_catalog_builtin_schema_by_name(schema_name) == NULL) {
         return MYLITE_OK;
     }
 
@@ -188,12 +190,13 @@ static int resolve_show_columns_mysql_system_table(
         set_reserved_name_error(database, "table", table_name);
         return MYLITE_ERROR;
     }
-    if (mysql_data_dictionary_table_is_hidden(table_name)) {
+    if (schema_name_is_mysql_system_schema(schema_name) &&
+        mysql_data_dictionary_table_is_hidden(table_name)) {
         set_mysql_data_dictionary_table_access_error(database, table_name);
         return MYLITE_ERROR;
     }
 
-    if (mysql_system_table_directory_contains(table_name)) {
+    if (builtin_system_schema_table_directory_contains(schema_name, table_name)) {
         return MYLITE_OK;
     }
 
@@ -300,13 +303,16 @@ static int copy_show_columns_target_schema_and_table(
     return MYLITE_ERROR;
 }
 
-static bool mysql_system_table_directory_contains(const char *table_name) {
+static bool builtin_system_schema_table_directory_contains(
+    const char *schema_name,
+    const char *table_name
+) {
     const struct mylite_execution_catalog_builtin_schema_table_directory *directory = NULL;
 
-    if (table_name == NULL) {
+    if (schema_name == NULL || table_name == NULL) {
         return false;
     }
-    directory = find_builtin_schema_table_directory("mysql");
+    directory = find_builtin_schema_table_directory(schema_name);
     if (directory == NULL) {
         return false;
     }
@@ -361,10 +367,9 @@ static int execute_show_columns_mysql_system_table_statement(
         );
         if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
-        } else if (
-            rc != MYLITE_OK &&
-            mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
-        ) {
+        } else if (rc != MYLITE_OK &&
+                   mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) ==
+                       MYLITE_OK) {
             set_runtime_error(database, "failed to build SHOW COLUMNS result");
         }
     }
@@ -750,10 +755,8 @@ static int evaluate_show_columns_where_frame(
             return MYLITE_ERROR;
         }
         truth = negate_show_variables_where_truth(child_truth);
-    } else if (
-        predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
-        predicate->kind == MYLITE_SQL_AST_OR_PREDICATE
-    ) {
+    } else if (predicate->kind == MYLITE_SQL_AST_AND_PREDICATE ||
+               predicate->kind == MYLITE_SQL_AST_OR_PREDICATE) {
         rc = evaluate_show_variables_where_logical_frame(database, predicate, truth_stack, &truth);
     } else if (predicate->kind == MYLITE_SQL_AST_XOR_PREDICATE) {
         set_unsupported_error(database, "SHOW COLUMNS WHERE does not support XOR predicates");
@@ -939,7 +942,10 @@ static int resolve_show_index_mysql_system_table(
         *out_mysql_system_target = true;
         return MYLITE_OK;
     }
-    if (!schema_name_is_mysql_system_schema(schema_name)) {
+    if (schema_name_is_information_schema(schema_name)) {
+        return MYLITE_OK;
+    }
+    if (mylite_execution_catalog_builtin_schema_by_name(schema_name) == NULL) {
         return MYLITE_OK;
     }
 
@@ -948,12 +954,13 @@ static int resolve_show_index_mysql_system_table(
         set_reserved_name_error(database, "table", table_name);
         return MYLITE_ERROR;
     }
-    if (mysql_data_dictionary_table_is_hidden(table_name)) {
+    if (schema_name_is_mysql_system_schema(schema_name) &&
+        mysql_data_dictionary_table_is_hidden(table_name)) {
         set_mysql_data_dictionary_table_access_error(database, table_name);
         return MYLITE_ERROR;
     }
 
-    if (mysql_system_table_directory_contains(table_name)) {
+    if (builtin_system_schema_table_directory_contains(schema_name, table_name)) {
         return MYLITE_OK;
     }
 
@@ -987,10 +994,9 @@ static int execute_show_index_mysql_system_table_statement(
         rc = append_show_index_mysql_system_table_rows(database, result, where_clause, definition);
         if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
-        } else if (
-            rc != MYLITE_OK &&
-            mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK
-        ) {
+        } else if (rc != MYLITE_OK &&
+                   mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) ==
+                       MYLITE_OK) {
             set_runtime_error(database, "failed to build SHOW INDEX result");
         }
     }

@@ -1125,6 +1125,10 @@
     COMMAND mylite_runtime_mysql_enterprise_table_absence_test
   )
   add_test(
+    NAME libmylite.runtime.performance_schema_optional_absence
+    COMMAND mylite_runtime_performance_schema_optional_absence_test
+  )
+  add_test(
     NAME libmylite.runtime.mysql_data_dictionary_table_diagnostics
     COMMAND mylite_runtime_mysql_data_dictionary_table_diagnostics_test
   )

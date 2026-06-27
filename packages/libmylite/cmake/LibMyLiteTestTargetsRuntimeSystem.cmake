@@ -3142,6 +3142,17 @@
   )
   mylite_configure_c_target(mylite_runtime_mysql_enterprise_table_absence_test)
 
+  add_executable(mylite_runtime_performance_schema_optional_absence_test
+    tests/runtime_performance_schema_optional_absence_test.c
+  )
+  target_link_libraries(mylite_runtime_performance_schema_optional_absence_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_performance_schema_optional_absence_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_performance_schema_optional_absence_test)
+
   add_executable(mylite_runtime_mysql_data_dictionary_table_diagnostics_test
     tests/runtime_mysql_data_dictionary_table_diagnostics_test.c
   )

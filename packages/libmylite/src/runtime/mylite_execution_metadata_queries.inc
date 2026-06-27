@@ -95,13 +95,18 @@ static int execute_select_statement(
     bool is_mysql_data_dictionary_table_query = false;
     bool is_absent_mysql_enterprise_table_query = false;
     bool is_mysql_system_table_query = false;
+    bool is_absent_builtin_schema_table_query = false;
     bool projected_statement_handled = false;
     char mysql_data_dictionary_table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char absent_mysql_enterprise_table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char absent_builtin_schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char absent_builtin_table_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     int rc = MYLITE_OK;
 
     memset(mysql_data_dictionary_table_name, 0, sizeof(mysql_data_dictionary_table_name));
     memset(absent_mysql_enterprise_table_name, 0, sizeof(absent_mysql_enterprise_table_name));
+    memset(absent_builtin_schema_name, 0, sizeof(absent_builtin_schema_name));
+    memset(absent_builtin_table_name, 0, sizeof(absent_builtin_table_name));
     argument_count_error_function = select_statement_argument_count_error_function(statement);
     if (argument_count_error_function != NULL) {
         set_native_function_parameter_count_error(database, argument_count_error_function);
@@ -176,6 +181,26 @@ static int execute_select_statement(
             apply_sql_select_limit,
             out_result
         );
+    }
+    rc = select_statement_targets_absent_builtin_schema_table(
+        database,
+        statement,
+        absent_builtin_schema_name,
+        sizeof(absent_builtin_schema_name),
+        absent_builtin_table_name,
+        sizeof(absent_builtin_table_name),
+        &is_absent_builtin_schema_table_query
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (is_absent_builtin_schema_table_query) {
+        set_table_does_not_exist_error(
+            database,
+            absent_builtin_schema_name,
+            absent_builtin_table_name
+        );
+        return MYLITE_ERROR;
     }
     if (select_statement_has_group_by_clause(statement)) {
         return execute_grouped_select_statement(
@@ -2444,6 +2469,77 @@ static int select_statement_targets_mysql_system_table(
         *out_matches = true;
     }
 
+    return MYLITE_OK;
+}
+
+static int select_statement_targets_absent_builtin_schema_table(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    char *out_schema_name,
+    size_t schema_name_size,
+    char *out_table_name,
+    size_t table_name_size,
+    bool *out_matches
+) {
+    const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
+    const struct mylite_execution_catalog_builtin_schema *schema = NULL;
+    char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    const char *schema_name = NULL;
+    const char *table_name = NULL;
+    size_t part_count = 0U;
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    if (out_schema_name == NULL || schema_name_size == 0U || out_table_name == NULL ||
+        table_name_size == 0U || out_matches == NULL) {
+        return MYLITE_MISUSE;
+    }
+    out_schema_name[0] = '\0';
+    out_table_name[0] = '\0';
+    *out_matches = false;
+    if (from_clause == NULL || from_clause->kind != MYLITE_SQL_AST_FROM_TABLE) {
+        return MYLITE_OK;
+    }
+
+    rc = collect_identifier_parts(
+        child_at(from_clause, 0U),
+        parts,
+        table_name_part_capacity,
+        &part_count,
+        database
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (part_count == 2U) {
+        schema_name = parts[0];
+        table_name = parts[1];
+    } else if (part_count == 1U && database != NULL && database->session.has_selected_schema) {
+        schema_name = database->session.selected_schema;
+        table_name = parts[0];
+    } else {
+        return MYLITE_OK;
+    }
+
+    schema = mylite_execution_catalog_builtin_schema_by_name(schema_name);
+    if (schema == NULL || schema_name_is_information_schema(schema->name)) {
+        return MYLITE_OK;
+    }
+    if (find_mysql_system_table_definition(schema->name, table_name) != NULL) {
+        return MYLITE_OK;
+    }
+
+    *out_matches = true;
+    written = snprintf(out_schema_name, schema_name_size, "%s", schema->name);
+    if (written < 0 || (size_t)written >= schema_name_size) {
+        set_runtime_error(database, "failed to format absent built-in schema name");
+        return MYLITE_ERROR;
+    }
+    written = snprintf(out_table_name, table_name_size, "%s", table_name);
+    if (written < 0 || (size_t)written >= table_name_size) {
+        set_runtime_error(database, "failed to format absent built-in table name");
+        return MYLITE_ERROR;
+    }
     return MYLITE_OK;
 }
 

@@ -410,6 +410,15 @@ static int select_statement_targets_mysql_system_table(
     const struct mylite_sql_ast_node *statement,
     bool *out_matches
 );
+static int select_statement_targets_absent_builtin_schema_table(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    char *out_schema_name,
+    size_t schema_name_size,
+    char *out_table_name,
+    size_t table_name_size,
+    bool *out_matches
+);
 static int resolve_mysql_system_table_query(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,

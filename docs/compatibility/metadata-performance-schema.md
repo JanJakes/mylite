@@ -24,7 +24,10 @@ Binary-log compression, data-lock, data-lock-wait, and prepared-statement
 instrumentation tables expose empty read-only metadata placeholders.
 Host-cache and keyring tables expose empty read-only metadata placeholders.
 The supported no-replication Performance Schema replication tables expose empty
-read-only metadata placeholders.
+read-only metadata placeholders. Optional Clone, Enterprise Firewall, NDB, Group
+Replication, component scheduler, and Enterprise Thread Pool Performance Schema
+tables that are absent from the MySQL 8.4.9 target runtime are also absent from
+MyLite metadata and return MySQL-shaped missing-table diagnostics.
 `user_defined_functions` exposes MySQL 8.4.9-shaped loadable-function registry
 rows, and `user_variables_by_thread` exposes MyLite session user variables for
 the current connection. The remaining tables are metadata-only and unsupported
@@ -36,9 +39,9 @@ and single-table DML writes targeting `performance_schema` with
 | --- | --- | --- |
 | `performance_schema.accounts` | 🟡 | Limited embedded `root@%` current-connection count row with MySQL-shaped fixed-table metadata; no disconnected account history, memory accounting, or instrumentation limits |
 | `performance_schema.binary_log_transaction_compression_stats` | 🟡 | Empty read-only binary-log compression stats placeholder with MySQL-shaped metadata; no binary/relay log instrumentation |
-| `performance_schema.clone_progress` | ❌ | Clone operation progress |
-| `performance_schema.clone_status` | ❌ | Clone operation status |
-| `performance_schema.component_scheduler_tasks` | ❌ | Status of scheduled tasks |
+| `performance_schema.clone_progress` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
+| `performance_schema.clone_status` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
+| `performance_schema.component_scheduler_tasks` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
 | `performance_schema.cond_instances` | 🟡 | Empty read-only condition-instance placeholder with MySQL-shaped columns, HASH primary/secondary index metadata, table metadata, selected-schema reads, and write protection; no live synchronization instrumentation |
 | `performance_schema.data_lock_waits` | 🟡 | Empty read-only data-lock-wait placeholder with MySQL-shaped metadata and HASH index introspection; no live wait graph |
 | `performance_schema.data_locks` | 🟡 | Empty read-only data-lock placeholder with MySQL-shaped metadata and HASH index introspection; no live data-lock instrumentation |
@@ -88,9 +91,9 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.file_instances` | 🟡 | Empty read-only file-instance placeholder with MySQL-shaped columns, HASH primary/secondary index metadata, table metadata, selected-schema reads, and write protection; no live file I/O instrumentation |
 | `performance_schema.file_summary_by_event_name` | ❌ | File events per event name |
 | `performance_schema.file_summary_by_instance` | ❌ | File events per file instance |
-| `performance_schema.firewall_group_allowlist` | ❌ | Firewall in-memory data for group profile allowlists |
-| `performance_schema.firewall_groups` | ❌ | Firewall in-memory data for group profiles |
-| `performance_schema.firewall_membership` | ❌ | Firewall in-memory data for group profile members |
+| `performance_schema.firewall_group_allowlist` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
+| `performance_schema.firewall_groups` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
+| `performance_schema.firewall_membership` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
 | `performance_schema.global_status` | 🟡 | Queryable global rows from MyLite's supported status registry, with MySQL-shaped columns and `HASH` primary-key metadata; live instrumentation and full optional status universe remain unsupported |
 | `performance_schema.global_variables` | 🟡 | Queryable global rows from MyLite's supported system-variable registry, with MySQL-shaped columns and `HASH` primary-key metadata; persisted/global mutation and full optional variable universe remain unsupported |
 | `performance_schema.host_cache` | 🟡 | Empty read-only host-cache placeholder with MySQL-shaped metadata and HASH index introspection; no live DNS/cache error state |
@@ -105,8 +108,8 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.memory_summary_global_by_event_name` | ❌ | Memory operations globally per event name |
 | `performance_schema.metadata_locks` | ❌ | Metadata locks and lock requests |
 | `performance_schema.mutex_instances` | 🟡 | Empty read-only mutex-instance placeholder with MySQL-shaped columns, HASH primary/secondary index metadata, table metadata, selected-schema reads, and write protection; no live mutex instrumentation |
-| `performance_schema.ndb_sync_excluded_objects` | ❌ | NDB objects which cannot be synchronized |
-| `performance_schema.ndb_sync_pending_objects` | ❌ | NDB objects waiting for synchronization |
+| `performance_schema.ndb_sync_excluded_objects` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
+| `performance_schema.ndb_sync_pending_objects` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
 | `performance_schema.objects_summary_global_by_type` | ❌ | Object summaries |
 | `performance_schema.performance_timers` | 🟡 | Queryable MySQL-shaped timer-name rows with deterministic non-NULL placeholder timer values; live timer calibration and event timing remain unsupported |
 | `performance_schema.persisted_variables` | 🟡 | Empty read-only persisted-global variable placeholder with MySQL-shaped columns, HASH primary-key metadata, table metadata, selected-schema reads, and write protection; no `mysqld-auto.cnf`, `SET PERSIST`, or persisted-global load path |
@@ -122,9 +125,9 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.replication_asynchronous_connection_failover_managed` | 🟡 | Empty read-only managed-failover placeholder with MySQL-shaped metadata; no managed failover configuration |
 | `performance_schema.replication_connection_configuration` | 🟡 | Empty read-only source-connection configuration placeholder with MySQL-shaped metadata and HASH primary-key introspection; no source/channel configuration |
 | `performance_schema.replication_connection_status` | 🟡 | Empty read-only source-connection status placeholder with MySQL-shaped metadata and HASH index introspection; no source connection state |
-| `performance_schema.replication_group_communication_information` | ❌ | Replication group configuration options |
-| `performance_schema.replication_group_configuration_version` | ❌ | Table shape and diagnostics |
-| `performance_schema.replication_group_member_actions` | ❌ | Table shape and diagnostics |
+| `performance_schema.replication_group_communication_information` | ✅ | Optional Group Replication table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
+| `performance_schema.replication_group_configuration_version` | ✅ | Optional Group Replication table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
+| `performance_schema.replication_group_member_actions` | ✅ | Optional Group Replication table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
 | `performance_schema.replication_group_member_stats` | 🟡 | Empty read-only group-member stats placeholder with MySQL-shaped metadata; no Group Replication statistics |
 | `performance_schema.replication_group_members` | 🟡 | Empty read-only group-member placeholder with MySQL-shaped metadata; no Group Replication membership |
 | `performance_schema.rwlock_instances` | 🟡 | Empty read-only rwlock-instance placeholder with MySQL-shaped columns, HASH primary/secondary index metadata, table metadata, selected-schema reads, and write protection; no live rwlock instrumentation |
@@ -153,14 +156,14 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.table_lock_waits_summary_by_table` | ❌ | Table lock waits per table |
 | `performance_schema.threads` | 🟡 | Limited foreground thread rows from MyLite's processlist registry with MySQL-shaped metadata and deterministic instrumentation placeholders; no OS thread ids, resource groups, memory accounting, or event instrumentation |
 | `performance_schema.tls_channel_status` | ❌ | TLS status for each connection interface |
-| `performance_schema.tp_thread_group_state` | ❌ | Thread pool thread group states |
-| `performance_schema.tp_thread_group_stats` | ❌ | Thread pool thread group statistics |
-| `performance_schema.tp_thread_state` | ❌ | Thread pool thread information |
+| `performance_schema.tp_thread_group_state` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
+| `performance_schema.tp_thread_group_stats` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
+| `performance_schema.tp_thread_state` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
 | `performance_schema.user_defined_functions` | 🟡 | Read-only MySQL 8.4.9 default component/plugin rows with MySQL-shaped metadata; no `CREATE FUNCTION` registry lifecycle |
 | `performance_schema.user_variables_by_thread` | 🟡 | Current-connection user variables with MySQL-shaped metadata and HASH primary-key introspection; no cross-connection visibility or binary-longblob fidelity in this row path |
 | `performance_schema.users` | 🟡 | Limited embedded `root` current-user count row with MySQL-shaped fixed-table metadata; no disconnected user history, memory accounting, or instrumentation limits |
 | `performance_schema.variables_by_thread` | 🟡 | Limited current-handle thread variable rows keyed by the MyLite connection id and backed by MyLite's supported session-variable registry; no cross-handle foreground-thread visibility, sensitive-variable masking, or full optional variable universe |
 | `performance_schema.variables_info` | 🟡 | Queryable rows for MyLite's supported system-variable registry with MySQL-shaped source/range columns and no indexes; source/range fields are embedded placeholders (`COMPILED`, empty path/user/host, `NULL` set time, `0..0` range) with no true last-set tracking or exact numeric ranges |
-| `performance_schema.tp_connections` | ❌ | Thread pool connection state and queue information |
+| `performance_schema.tp_connections` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

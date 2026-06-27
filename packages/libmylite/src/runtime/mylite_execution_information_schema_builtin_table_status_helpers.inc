@@ -284,6 +284,15 @@ static const char *builtin_schema_table_rows(
         return "256";
     }
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "table_io_waits_summary_by_index_usage") == 0) {
+        return "8192";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        (strcmp(table_name, "table_io_waits_summary_by_table") == 0 ||
+         strcmp(table_name, "table_lock_waits_summary_by_table") == 0)) {
+        return "4096";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
         strcmp(table_name, "user_variables_by_thread") == 0) {
         return "2560";
     }

@@ -31,9 +31,9 @@ MyLite metadata and return MySQL-shaped missing-table diagnostics.
 Event current/history placeholders for stage and wait tables, statement
 history-long, and stored-program statement summaries expose MySQL-shaped
 metadata with empty read-only rows; live event instrumentation remains
-unsupported. Error, file, memory, socket, stage, and wait summary placeholders expose
-MySQL-shaped metadata with empty read-only rows; live aggregation for those
-summary families remains unsupported.
+unsupported. Error, file, memory, socket, stage, table I/O, table lock, and wait
+summary placeholders expose MySQL-shaped metadata with empty read-only rows;
+live aggregation for those summary families remains unsupported.
 `user_defined_functions` exposes MySQL 8.4.9-shaped loadable-function registry
 rows, and `user_variables_by_thread` exposes MyLite session user variables for
 the current connection. The remaining tables are metadata-only and unsupported
@@ -157,9 +157,9 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.status_by_thread` | 🟡 | Limited current-handle thread status rows keyed by the MyLite connection id and backed by MyLite's supported status registry; no cross-handle foreground-thread visibility or instrumentation filtering |
 | `performance_schema.status_by_user` | 🟡 | Limited current-handle user status rows for embedded `root`, backed by MyLite's supported status registry; no disconnected aggregate storage or cross-handle Performance Schema accounting |
 | `performance_schema.table_handles` | 🟡 | Read-only empty MySQL 8.4.9-shaped table-handle metadata with HASH primary and secondary index introspection; no live table-lock instrumentation |
-| `performance_schema.table_io_waits_summary_by_index_usage` | ❌ | Table I/O waits per index |
-| `performance_schema.table_io_waits_summary_by_table` | ❌ | Table I/O waits per table |
-| `performance_schema.table_lock_waits_summary_by_table` | ❌ | Table lock waits per table |
+| `performance_schema.table_io_waits_summary_by_index_usage` | 🟡 | Empty read-only table I/O index-summary placeholder with MySQL-shaped metadata; no live table I/O or index-usage aggregation |
+| `performance_schema.table_io_waits_summary_by_table` | 🟡 | Empty read-only table I/O summary placeholder with MySQL-shaped metadata; no live table I/O aggregation |
+| `performance_schema.table_lock_waits_summary_by_table` | 🟡 | Empty read-only table-lock summary placeholder with MySQL-shaped metadata; no live table-lock aggregation |
 | `performance_schema.threads` | 🟡 | Limited foreground thread rows from MyLite's processlist registry with MySQL-shaped metadata and deterministic instrumentation placeholders; no OS thread ids, resource groups, memory accounting, or event instrumentation |
 | `performance_schema.tls_channel_status` | ❌ | TLS status for each connection interface |
 | `performance_schema.tp_thread_group_state` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |

@@ -223,7 +223,10 @@ static int append_performance_schema_system_table_rows(
         strcmp(definition->query_definition.name, "rwlock_instances") == 0 ||
         strcmp(definition->query_definition.name, "socket_instances") == 0 ||
         strcmp(definition->query_definition.name, "socket_summary_by_event_name") == 0 ||
-        strcmp(definition->query_definition.name, "socket_summary_by_instance") == 0) {
+        strcmp(definition->query_definition.name, "socket_summary_by_instance") == 0 ||
+        strcmp(definition->query_definition.name, "table_io_waits_summary_by_index_usage") == 0 ||
+        strcmp(definition->query_definition.name, "table_io_waits_summary_by_table") == 0 ||
+        strcmp(definition->query_definition.name, "table_lock_waits_summary_by_table") == 0) {
         return MYLITE_OK;
     }
     if (strcmp(definition->query_definition.name, "global_variables") == 0) {

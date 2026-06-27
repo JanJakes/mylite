@@ -2497,6 +2497,217 @@ static const struct mylite_execution_catalog_mysql_system_secondary_index
         {"USER", 1U, NULL, "0", true, NULL, "HASH"},
 };
 
+#define PFS_TABLE_WAIT_OBJECT_COLUMN(column_name)                                                  \
+    {column_name,                                                                                  \
+     NULL,                                                                                         \
+     "YES",                                                                                        \
+     "varchar",                                                                                    \
+     "64",                                                                                         \
+     "256",                                                                                        \
+     NULL,                                                                                         \
+     NULL,                                                                                         \
+     NULL,                                                                                         \
+     "utf8mb4",                                                                                    \
+     "utf8mb4_0900_ai_ci",                                                                         \
+     "varchar(64)"}
+
+#define PFS_TABLE_WAIT_COUNTER_COLUMN(column_name)                                                 \
+    {column_name, NULL, "NO", "bigint", NULL, NULL, "20", "0", NULL, NULL, NULL, "bigint unsigned"}
+
+#define PFS_TABLE_IO_WAIT_COUNTER_COLUMNS                                                          \
+    PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_STAR"), PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_WAIT"),  \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_WAIT"),                                           \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_WAIT"),                                           \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_WAIT"),                                           \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_READ"),                                               \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_READ"),                                           \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_READ"),                                           \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_READ"),                                           \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_READ"),                                           \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_WRITE"),                                              \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_WRITE"),                                          \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_WRITE"),                                          \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_WRITE"),                                          \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_WRITE"),                                          \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_FETCH"),                                              \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_FETCH"),                                          \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_FETCH"),                                          \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_FETCH"),                                          \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_FETCH"),                                          \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_INSERT"),                                             \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_INSERT"),                                         \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_INSERT"),                                         \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_INSERT"),                                         \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_INSERT"),                                         \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_UPDATE"),                                             \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_UPDATE"),                                         \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_UPDATE"),                                         \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_UPDATE"),                                         \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_UPDATE"),                                         \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_DELETE"),                                             \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_DELETE"),                                         \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_DELETE"),                                         \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_DELETE"),                                         \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_DELETE")
+
+#define PFS_TABLE_LOCK_WAIT_COUNTER_COLUMNS                                                        \
+    PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_STAR"), PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_WAIT"),  \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_WAIT"),                                           \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_WAIT"),                                           \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_WAIT"),                                           \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_READ"),                                               \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_READ"),                                           \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_READ"),                                           \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_READ"),                                           \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_READ"),                                           \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_WRITE"),                                              \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_WRITE"),                                          \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_WRITE"),                                          \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_WRITE"),                                          \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_WRITE"),                                          \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_READ_NORMAL"),                                        \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_READ_NORMAL"),                                    \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_READ_NORMAL"),                                    \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_READ_NORMAL"),                                    \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_READ_NORMAL"),                                    \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_READ_WITH_SHARED_LOCKS"),                             \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_READ_WITH_SHARED_LOCKS"),                         \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_READ_WITH_SHARED_LOCKS"),                         \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_READ_WITH_SHARED_LOCKS"),                         \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_READ_WITH_SHARED_LOCKS"),                         \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_READ_HIGH_PRIORITY"),                                 \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_READ_HIGH_PRIORITY"),                             \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_READ_HIGH_PRIORITY"),                             \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_READ_HIGH_PRIORITY"),                             \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_READ_HIGH_PRIORITY"),                             \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_READ_NO_INSERT"),                                     \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_READ_NO_INSERT"),                                 \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_READ_NO_INSERT"),                                 \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_READ_NO_INSERT"),                                 \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_READ_NO_INSERT"),                                 \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_READ_EXTERNAL"),                                      \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_READ_EXTERNAL"),                                  \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_READ_EXTERNAL"),                                  \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_READ_EXTERNAL"),                                  \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_READ_EXTERNAL"),                                  \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_WRITE_ALLOW_WRITE"),                                  \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_WRITE_ALLOW_WRITE"),                              \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_WRITE_ALLOW_WRITE"),                              \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_WRITE_ALLOW_WRITE"),                              \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_WRITE_ALLOW_WRITE"),                              \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_WRITE_CONCURRENT_INSERT"),                            \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_WRITE_CONCURRENT_INSERT"),                        \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_WRITE_CONCURRENT_INSERT"),                        \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_WRITE_CONCURRENT_INSERT"),                        \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_WRITE_CONCURRENT_INSERT"),                        \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_WRITE_LOW_PRIORITY"),                                 \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_WRITE_LOW_PRIORITY"),                             \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_WRITE_LOW_PRIORITY"),                             \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_WRITE_LOW_PRIORITY"),                             \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_WRITE_LOW_PRIORITY"),                             \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_WRITE_NORMAL"),                                       \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_WRITE_NORMAL"),                                   \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_WRITE_NORMAL"),                                   \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_WRITE_NORMAL"),                                   \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_WRITE_NORMAL"),                                   \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("COUNT_WRITE_EXTERNAL"),                                     \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("SUM_TIMER_WRITE_EXTERNAL"),                                 \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MIN_TIMER_WRITE_EXTERNAL"),                                 \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("AVG_TIMER_WRITE_EXTERNAL"),                                 \
+        PFS_TABLE_WAIT_COUNTER_COLUMN("MAX_TIMER_WRITE_EXTERNAL")
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_table_io_waits_summary_by_index_usage_columns[] = {
+        PFS_TABLE_WAIT_OBJECT_COLUMN("OBJECT_TYPE"),
+        PFS_TABLE_WAIT_OBJECT_COLUMN("OBJECT_SCHEMA"),
+        PFS_TABLE_WAIT_OBJECT_COLUMN("OBJECT_NAME"),
+        PFS_TABLE_WAIT_OBJECT_COLUMN("INDEX_NAME"),
+        PFS_TABLE_IO_WAIT_COUNTER_COLUMNS,
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_table_io_waits_summary_by_table_columns[] = {
+        PFS_TABLE_WAIT_OBJECT_COLUMN("OBJECT_TYPE"),
+        PFS_TABLE_WAIT_OBJECT_COLUMN("OBJECT_SCHEMA"),
+        PFS_TABLE_WAIT_OBJECT_COLUMN("OBJECT_NAME"),
+        PFS_TABLE_IO_WAIT_COUNTER_COLUMNS,
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_table_lock_waits_summary_by_table_columns[] = {
+        PFS_TABLE_WAIT_OBJECT_COLUMN("OBJECT_TYPE"),
+        PFS_TABLE_WAIT_OBJECT_COLUMN("OBJECT_SCHEMA"),
+        PFS_TABLE_WAIT_OBJECT_COLUMN("OBJECT_NAME"),
+        PFS_TABLE_LOCK_WAIT_COUNTER_COLUMNS,
+};
+
+#undef PFS_TABLE_LOCK_WAIT_COUNTER_COLUMNS
+#undef PFS_TABLE_IO_WAIT_COUNTER_COLUMNS
+#undef PFS_TABLE_WAIT_COUNTER_COLUMN
+#undef PFS_TABLE_WAIT_OBJECT_COLUMN
+
+#define PFS_TABLE_WAIT_EMPTY_8 "", "", "", "", "", "", "", ""
+#define PFS_TABLE_WAIT_EMPTY_16 PFS_TABLE_WAIT_EMPTY_8, PFS_TABLE_WAIT_EMPTY_8
+#define PFS_TABLE_WAIT_EMPTY_32 PFS_TABLE_WAIT_EMPTY_16, PFS_TABLE_WAIT_EMPTY_16
+#define PFS_TABLE_WAIT_EMPTY_64 PFS_TABLE_WAIT_EMPTY_32, PFS_TABLE_WAIT_EMPTY_32
+#define PFS_TABLE_WAIT_PRIVILEGE "select,insert,update,references"
+#define PFS_TABLE_WAIT_PRIVILEGE_8                                                                 \
+    PFS_TABLE_WAIT_PRIVILEGE, PFS_TABLE_WAIT_PRIVILEGE, PFS_TABLE_WAIT_PRIVILEGE,                  \
+        PFS_TABLE_WAIT_PRIVILEGE, PFS_TABLE_WAIT_PRIVILEGE, PFS_TABLE_WAIT_PRIVILEGE,              \
+        PFS_TABLE_WAIT_PRIVILEGE, PFS_TABLE_WAIT_PRIVILEGE
+#define PFS_TABLE_WAIT_PRIVILEGE_16 PFS_TABLE_WAIT_PRIVILEGE_8, PFS_TABLE_WAIT_PRIVILEGE_8
+#define PFS_TABLE_WAIT_PRIVILEGE_32 PFS_TABLE_WAIT_PRIVILEGE_16, PFS_TABLE_WAIT_PRIVILEGE_16
+#define PFS_TABLE_WAIT_PRIVILEGE_64 PFS_TABLE_WAIT_PRIVILEGE_32, PFS_TABLE_WAIT_PRIVILEGE_32
+
+static const char *const performance_schema_table_wait_summary_column_keys[] = {
+    "MUL",
+    PFS_TABLE_WAIT_EMPTY_64,
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_table_wait_summary_column_extras[] = {
+    PFS_TABLE_WAIT_EMPTY_64,
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_table_wait_summary_column_privileges[] = {
+    PFS_TABLE_WAIT_PRIVILEGE_64,
+    PFS_TABLE_WAIT_PRIVILEGE,
+    PFS_TABLE_WAIT_PRIVILEGE,
+    PFS_TABLE_WAIT_PRIVILEGE,
+    PFS_TABLE_WAIT_PRIVILEGE,
+};
+
+#undef PFS_TABLE_WAIT_PRIVILEGE_64
+#undef PFS_TABLE_WAIT_PRIVILEGE_32
+#undef PFS_TABLE_WAIT_PRIVILEGE_16
+#undef PFS_TABLE_WAIT_PRIVILEGE_8
+#undef PFS_TABLE_WAIT_PRIVILEGE
+#undef PFS_TABLE_WAIT_EMPTY_64
+#undef PFS_TABLE_WAIT_EMPTY_32
+#undef PFS_TABLE_WAIT_EMPTY_16
+#undef PFS_TABLE_WAIT_EMPTY_8
+
+static const struct mylite_execution_catalog_mysql_system_secondary_index
+    performance_schema_table_io_waits_summary_by_index_usage_secondary_indexes[] = {
+        {"OBJECT", 0U, NULL, "0", true, NULL, "HASH"},
+        {"OBJECT", 1U, NULL, "0", true, NULL, "HASH"},
+        {"OBJECT", 2U, NULL, "0", true, NULL, "HASH"},
+        {"OBJECT", 3U, NULL, "0", true, NULL, "HASH"},
+};
+
+static const struct mylite_execution_catalog_mysql_system_secondary_index
+    performance_schema_table_waits_summary_by_table_secondary_indexes[] = {
+        {"OBJECT", 0U, NULL, "0", true, NULL, "HASH"},
+        {"OBJECT", 1U, NULL, "0", true, NULL, "HASH"},
+        {"OBJECT", 2U, NULL, "0", true, NULL, "HASH"},
+};
+
 static const char *const performance_schema_observability_column_extras[] = {
     "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
     "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
@@ -11636,6 +11847,54 @@ static const struct mylite_execution_catalog_mysql_system_table
          performance_schema_table_handle_secondary_indexes,
          sizeof(performance_schema_table_handle_secondary_indexes) /
              sizeof(performance_schema_table_handle_secondary_indexes[0])},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_TABLE_IO_WAITS_SUMMARY_BY_INDEX_USAGE,
+          "table_io_waits_summary_by_index_usage",
+          performance_schema_table_io_waits_summary_by_index_usage_columns,
+          sizeof(performance_schema_table_io_waits_summary_by_index_usage_columns) /
+              sizeof(performance_schema_table_io_waits_summary_by_index_usage_columns[0])},
+         performance_schema_table_wait_summary_column_keys,
+         performance_schema_table_wait_summary_column_extras,
+         performance_schema_table_wait_summary_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         performance_schema_table_io_waits_summary_by_index_usage_secondary_indexes,
+         sizeof(performance_schema_table_io_waits_summary_by_index_usage_secondary_indexes) /
+             sizeof(performance_schema_table_io_waits_summary_by_index_usage_secondary_indexes[0])},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_TABLE_IO_WAITS_SUMMARY_BY_TABLE,
+          "table_io_waits_summary_by_table",
+          performance_schema_table_io_waits_summary_by_table_columns,
+          sizeof(performance_schema_table_io_waits_summary_by_table_columns) /
+              sizeof(performance_schema_table_io_waits_summary_by_table_columns[0])},
+         performance_schema_table_wait_summary_column_keys,
+         performance_schema_table_wait_summary_column_extras,
+         performance_schema_table_wait_summary_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         performance_schema_table_waits_summary_by_table_secondary_indexes,
+         sizeof(performance_schema_table_waits_summary_by_table_secondary_indexes) /
+             sizeof(performance_schema_table_waits_summary_by_table_secondary_indexes[0])},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_TABLE_LOCK_WAITS_SUMMARY_BY_TABLE,
+          "table_lock_waits_summary_by_table",
+          performance_schema_table_lock_waits_summary_by_table_columns,
+          sizeof(performance_schema_table_lock_waits_summary_by_table_columns) /
+              sizeof(performance_schema_table_lock_waits_summary_by_table_columns[0])},
+         performance_schema_table_wait_summary_column_keys,
+         performance_schema_table_wait_summary_column_extras,
+         performance_schema_table_wait_summary_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         performance_schema_table_waits_summary_by_table_secondary_indexes,
+         sizeof(performance_schema_table_waits_summary_by_table_secondary_indexes) /
+             sizeof(performance_schema_table_waits_summary_by_table_secondary_indexes[0])},
         {"performance_schema",
          {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_THREADS,
           "threads",

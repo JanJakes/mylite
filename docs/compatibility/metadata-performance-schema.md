@@ -20,6 +20,8 @@ summary, processlist, and thread tables expose limited rows from MyLite's
 open-connection registry. Connection attribute tables expose deterministic
 embedded MyLite attributes for open handles. Instance tables for synchronization
 objects, files, and sockets expose empty read-only metadata placeholders.
+Binary-log compression, data-lock, data-lock-wait, and prepared-statement
+instrumentation tables expose empty read-only metadata placeholders.
 `user_defined_functions` exposes MySQL 8.4.9-shaped loadable-function registry
 rows, and `user_variables_by_thread` exposes MyLite session user variables for
 the current connection. The remaining tables are metadata-only and unsupported
@@ -30,13 +32,13 @@ and single-table DML writes targeting `performance_schema` with
 | Table | Status | Notes |
 | --- | --- | --- |
 | `performance_schema.accounts` | 🟡 | Limited embedded `root@%` current-connection count row with MySQL-shaped fixed-table metadata; no disconnected account history, memory accounting, or instrumentation limits |
-| `performance_schema.binary_log_transaction_compression_stats` | ❌ | Binary log transaction compression |
+| `performance_schema.binary_log_transaction_compression_stats` | 🟡 | Empty read-only binary-log compression stats placeholder with MySQL-shaped metadata; no binary/relay log instrumentation |
 | `performance_schema.clone_progress` | ❌ | Clone operation progress |
 | `performance_schema.clone_status` | ❌ | Clone operation status |
 | `performance_schema.component_scheduler_tasks` | ❌ | Status of scheduled tasks |
 | `performance_schema.cond_instances` | 🟡 | Empty read-only condition-instance placeholder with MySQL-shaped columns, HASH primary/secondary index metadata, table metadata, selected-schema reads, and write protection; no live synchronization instrumentation |
-| `performance_schema.data_lock_waits` | ❌ | Data lock wait relationships |
-| `performance_schema.data_locks` | ❌ | Data locks held and requested |
+| `performance_schema.data_lock_waits` | 🟡 | Empty read-only data-lock-wait placeholder with MySQL-shaped metadata and HASH index introspection; no live wait graph |
+| `performance_schema.data_locks` | 🟡 | Empty read-only data-lock placeholder with MySQL-shaped metadata and HASH index introspection; no live data-lock instrumentation |
 | `performance_schema.error_log` | ❌ | Server error log recent entries |
 | `performance_schema.events_errors_summary_by_account_by_error` | ❌ | Errors per account and error code |
 | `performance_schema.events_errors_summary_by_host_by_error` | ❌ | Errors per host and error code |
@@ -105,7 +107,7 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.objects_summary_global_by_type` | ❌ | Object summaries |
 | `performance_schema.performance_timers` | 🟡 | Queryable MySQL-shaped timer-name rows with deterministic non-NULL placeholder timer values; live timer calibration and event timing remain unsupported |
 | `performance_schema.persisted_variables` | 🟡 | Empty read-only persisted-global variable placeholder with MySQL-shaped columns, HASH primary-key metadata, table metadata, selected-schema reads, and write protection; no `mysqld-auto.cnf`, `SET PERSIST`, or persisted-global load path |
-| `performance_schema.prepared_statements_instances` | ❌ | Prepared statement instances and statistics |
+| `performance_schema.prepared_statements_instances` | 🟡 | Empty read-only prepared-statement instrumentation placeholder with MySQL-shaped metadata and HASH index introspection; no live prepared-statement statistics |
 | `performance_schema.processlist` | 🟡 | Limited open-connection rows from MyLite's processlist registry with current SQL text for the active handle; no privilege filtering or full Performance Schema statement/wait instrumentation |
 | `performance_schema.replication_applier_configuration` | ❌ | Configuration parameters for replication applier on replica |
 | `performance_schema.replication_applier_filters` | ❌ | Channel-specific replication filters on current replica |

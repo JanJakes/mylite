@@ -616,6 +616,40 @@ const struct mylite_execution_catalog_collation *mylite_execution_catalog_mysql_
     return &mysql_collation_catalog[index];
 }
 
+const struct mylite_execution_catalog_collation *mylite_execution_catalog_mysql_collation_by_name(
+    const char *name
+) {
+    const char *lookup_name = NULL;
+
+    if (name == NULL) {
+        return NULL;
+    }
+    lookup_name = canonical_collation_name_for_lookup(name);
+    for (size_t index = 0U; index < mylite_execution_catalog_mysql_collation_count(); ++index) {
+        if (catalog_text_equals_ascii_case_insensitive(
+                lookup_name,
+                mysql_collation_catalog[index].name
+            )) {
+            return &mysql_collation_catalog[index];
+        }
+    }
+    return NULL;
+}
+
+const struct mylite_execution_catalog_collation *mylite_execution_catalog_mysql_collation_by_id(
+    const char *id
+) {
+    if (id == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < mylite_execution_catalog_mysql_collation_count(); ++index) {
+        if (strcmp(mysql_collation_catalog[index].id, id) == 0) {
+            return &mysql_collation_catalog[index];
+        }
+    }
+    return NULL;
+}
+
 bool mylite_execution_catalog_mysql_collation_index_by_name(const char *name, size_t *out_index) {
     if (name == NULL || out_index == NULL) {
         return false;

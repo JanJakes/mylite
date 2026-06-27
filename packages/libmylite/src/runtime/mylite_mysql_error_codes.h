@@ -217,6 +217,8 @@ enum {
     mysql_warning_national_character_set_deprecated = 3720,
     mysql_warning_utf8_alias = 3719,
     mysql_warning_utf8mb3_deprecated = 1287,
+    mysql_warning_database_charset_assignment_deprecated = 1681,
+    mysql_warning_utf8mb3_collation_deprecated = 3778,
     mysql_error_user_lock_wrong_name = 3057,
     mysql_warning_incorrect_count = 1411,
     mysql_error_user_lock_name_too_long = 4163,

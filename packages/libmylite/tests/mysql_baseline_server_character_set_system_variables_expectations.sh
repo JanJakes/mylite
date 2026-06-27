@@ -128,6 +128,39 @@ expect_output \
     "utf8mb4	utf8mb4_0900_ai_ci" \
     "SELECT @@character_set_server, @@collation_server FROM DUAL;"
 
+assignment_values=$(run_mysql \
+    "SET SESSION character_set_server=latin1; \
+     SELECT @@character_set_server, @@global.character_set_server, \
+            @@session.character_set_server, @@local.character_set_server, \
+            @@collation_server, @@global.collation_server, @@session.collation_server, \
+            @@local.collation_server, @@warning_count, ROW_COUNT(); \
+     SET LOCAL collation_server=utf8mb4_bin; \
+     SELECT @@character_set_server, @@global.character_set_server, \
+            @@session.character_set_server, @@local.character_set_server, \
+            @@collation_server, @@global.collation_server, @@session.collation_server, \
+            @@local.collation_server, @@warning_count, ROW_COUNT(); \
+     SET character_set_server=33; \
+     SELECT @@character_set_server, @@global.character_set_server, \
+            @@session.character_set_server, @@local.character_set_server, \
+            @@collation_server, @@global.collation_server, @@session.collation_server, \
+            @@local.collation_server, @@warning_count, ROW_COUNT(); \
+     SET @server_collation_id = 255; SET collation_server=@server_collation_id; \
+     SELECT @@character_set_server, @@global.character_set_server, \
+            @@session.character_set_server, @@local.character_set_server, \
+            @@collation_server, @@global.collation_server, @@session.collation_server, \
+            @@local.collation_server, @@warning_count, ROW_COUNT(); \
+     SET character_set_server=DEFAULT; \
+     SELECT @@character_set_server, @@global.character_set_server, \
+            @@session.character_set_server, @@local.character_set_server, \
+            @@collation_server, @@global.collation_server, @@session.collation_server, \
+            @@local.collation_server, @@warning_count, ROW_COUNT();" \
+    | tail -n 5 \
+    | tr '\n' '|')
+expect_value \
+    "server charset assignment canonicalization and collation coupling" \
+    "latin1	utf8mb4	latin1	latin1	latin1_swedish_ci	utf8mb4_0900_ai_ci	latin1_swedish_ci	latin1_swedish_ci	0	0|utf8mb4	utf8mb4	utf8mb4	utf8mb4	utf8mb4_bin	utf8mb4_0900_ai_ci	utf8mb4_bin	utf8mb4_bin	0	0|utf8mb3	utf8mb4	utf8mb3	utf8mb3	utf8mb3_general_ci	utf8mb4_0900_ai_ci	utf8mb3_general_ci	utf8mb3_general_ci	1	0|utf8mb4	utf8mb4	utf8mb4	utf8mb4	utf8mb4_0900_ai_ci	utf8mb4_0900_ai_ci	utf8mb4_0900_ai_ci	utf8mb4_0900_ai_ci	0	0|utf8mb4	utf8mb4	utf8mb4	utf8mb4	utf8mb4_0900_ai_ci	utf8mb4_0900_ai_ci	utf8mb4_0900_ai_ci	utf8mb4_0900_ai_ci	0	0|" \
+    "$assignment_values"
+
 expect_output \
     "selected database does not change server defaults" \
     "utf8mb4	utf8mb4_0900_ai_ci	${DATABASE}" \
@@ -175,6 +208,48 @@ expect_error \
     42000 \
     "syntax" \
     "SELECT @@\`session\`.character_set_server;"
+
+expect_error \
+    "unknown server charset assignment" \
+    1115 \
+    42000 \
+    "Unknown character set: 'nosuch'" \
+    "SET SESSION character_set_server=nosuch;"
+
+expect_error \
+    "string digit server charset assignment is a charset name" \
+    1115 \
+    42000 \
+    "Unknown character set: '33'" \
+    "SET SESSION character_set_server='33';"
+
+expect_error \
+    "unknown server collation assignment" \
+    1273 \
+    HY000 \
+    "Unknown collation: 'nosuch'" \
+    "SET SESSION collation_server=nosuch;"
+
+expect_error \
+    "string digit server collation assignment is a collation name" \
+    1273 \
+    HY000 \
+    "Unknown collation: '255'" \
+    "SET SESSION collation_server='255';"
+
+expect_error \
+    "unknown server collation id" \
+    1273 \
+    HY000 \
+    "Unknown collation: '999'" \
+    "SET SESSION collation_server=999;"
+
+expect_error \
+    "decimal server collation assignment type" \
+    1232 \
+    42000 \
+    "Incorrect argument type to variable 'collation_server'" \
+    "SET SESSION collation_server=33.0;"
 
 expect_output \
     "mysql accepts expressions outside this mylite slice" \

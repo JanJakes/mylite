@@ -2,21 +2,21 @@
 
 ## Status
 
-This feature specifies a narrow scalar system-variable slice for MyLite's fixed
-server character-set placeholders:
+This feature specifies a server character-set system-variable baseline for
+MyLite's embedded server defaults:
 
 - `@@character_set_server`
 - `@@collation_server`
 
 It builds on the existing `SYSTEM_VARIABLE` lexer/parser token, scalar session
-`SELECT` execution, diagnostics lifecycle, and the existing fixed
-`utf8mb4` / `utf8mb4_0900_ai_ci` baseline used by table charset/collation
-features.
+`SELECT` execution, `SHOW VARIABLES`, system-variable assignment handling,
+diagnostics lifecycle, and the fixed `utf8mb4` /
+`utf8mb4_0900_ai_ci` baseline used by table charset/collation features.
 
 This is not full server character-set state management. MyLite exposes
-read-only scalar values for the embedded server defaults and does not implement
-`SET`, startup options, mutable global state, database default inheritance, or
-collation comparison semantics.
+handle-local session/local/unscoped assignments for compatibility, but does
+not implement shared mutable global state, startup options, persisted
+variables, database default inheritance, or collation comparison semantics.
 
 ## Sources
 
@@ -57,6 +57,29 @@ Observed against the local `mysql:8.4.9` runtime with the client invoked using
   `@@local.character_set_server` return `utf8mb4`.
 - `@@global.collation_server`, `@@session.collation_server`, and
   `@@local.collation_server` return `utf8mb4_0900_ai_ci`.
+- `SHOW VARIABLES LIKE 'character_set_server'` returns the current session
+  value, while `SHOW GLOBAL VARIABLES LIKE 'character_set_server'` returns the
+  global value.
+- `SET SESSION character_set_server=latin1` changes the session
+  `character_set_server` to `latin1` and couples `collation_server` to
+  `latin1_swedish_ci`.
+- `SET LOCAL collation_server=utf8mb4_bin` changes the session
+  `collation_server` to `utf8mb4_bin` and couples
+  `character_set_server` to `utf8mb4`.
+- Integer literals are treated as collation IDs. For example,
+  `SET character_set_server=33` yields `utf8mb3` /
+  `utf8mb3_general_ci`, and `SET collation_server=255` yields `utf8mb4` /
+  `utf8mb4_0900_ai_ci`.
+- String digits are treated as names, not IDs, and fail when no matching
+  charset or collation name exists.
+- `SET character_set_server=DEFAULT` and `SET collation_server=DEFAULT`
+  restore `utf8mb4` / `utf8mb4_0900_ai_ci`.
+- Assigning the `utf8` alias emits warning `3719`; assigning a `utf8mb3`
+  charset by canonical name or integer collation ID emits warning `1287`;
+  assigning a `utf8mb3` collation emits warning `3778`.
+- Unknown charsets fail with error `1115`, SQLSTATE `42000`; unknown
+  collations fail with error `1273`, SQLSTATE `HY000`; decimal assignment
+  values fail with error `1232`, SQLSTATE `42000`.
 - Variable and scope names are case-insensitive.
 - Backtick-quoted final variable-name components are accepted.
 - Backtick-quoted scope names, such as ``@@`session`.character_set_server``,
@@ -83,11 +106,22 @@ The implementation must add:
 
 - runtime recognition of `character_set_server` and `collation_server` inside
   the existing scalar `SELECT` subset;
-- support for no scope, `session`, `local`, and `global` scope qualifiers;
+- `SHOW VARIABLES` and `SHOW GLOBAL VARIABLES` readback for both variables;
+- support for no scope, `session`, `local`, and `global` scope qualifiers on
+  reads;
+- session/local/unscoped `SET` assignment for `DEFAULT`, MySQL charset names
+  and aliases, MySQL collation names and aliases, and integer collation IDs;
+- coupled charset/collation readback after successful assignment;
+- fixed-global exact/default no-op assignment forms, with value-changing
+  global assignments rejected by MyLite's fixed no-op assignment diagnostic;
 - case-insensitive matching for unquoted scope and variable names;
 - backtick-quoted final variable-name components;
 - one-row scalar result sets with existing source-span column labels;
-- fixed values `utf8mb4` and `utf8mb4_0900_ai_ci`;
+- fixed global/default values `utf8mb4` and `utf8mb4_0900_ai_ci`;
+- MySQL-compatible alias and `utf8mb3` deprecation warnings for supported
+  assignment forms;
+- MySQL-compatible unknown charset, unknown collation, and incorrect argument
+  type diagnostics for covered assignment forms;
 - MySQL-compatible unknown-variable diagnostics for unsupported names;
 - deterministic rejection of quoted scopes;
 - fast C tests and a MySQL 8.4.9 expectation artifact.
@@ -101,26 +135,32 @@ SELECT @@session.character_set_server, @@local.collation_server
 SELECT @@global.character_set_server
 SELECT @@session.`character_set_server`, @@`collation_server`
 SELECT @@character_set_server, @@warning_count, ROW_COUNT()
+SHOW VARIABLES LIKE 'character_set_server'
+SET SESSION character_set_server=latin1
+SET LOCAL collation_server=utf8mb4_bin
+SET character_set_server=33
+SET collation_server=DEFAULT
+SET GLOBAL character_set_server=DEFAULT
 ```
 
 ## Non-Goals
 
 This feature must not implement:
 
-- `SET`, startup options, persisted variables, `SET_VAR` hints, or variable
-  assignment;
+- value-changing shared `GLOBAL` assignments, startup options, persisted
+  variables, `SET_VAR` hints, or Performance Schema variable state;
 - variables other than `character_set_server` and `collation_server`;
 - `character_set_database`, `collation_database`, `character_set_system`,
   `character_sets_dir`, `default_collation_for_utf8mb4`, or
   `character_set_client` negotiation changes;
-- `SHOW VARIABLES`, Performance Schema variable tables, or
-  `INFORMATION_SCHEMA` character-set/collation tables;
+- Performance Schema variable tables or `INFORMATION_SCHEMA`
+  character-set/collation tables;
 - client charset negotiation through a wire protocol;
 - string, text, enum, set, binary, or blob column types;
 - character-set conversion, introducer semantics, collation coercibility,
   string comparison semantics, database default propagation, or protocol
   character-set metadata;
-- table-backed variable evaluation, aliases, clauses, subqueries, arithmetic,
+- table-backed variable evaluation, clauses, subqueries, arithmetic,
   functions over variables, parameters, prepared statements, or arbitrary
   SQLite pass-through;
 - catalog mutations, storage mutations, SQLite metadata reads, or SQLite fork
@@ -140,8 +180,10 @@ This feature must not implement:
 - Runtime execution owns system-variable path parsing, scope validation, value
   lookup, and diagnostics for unsupported names.
 - Result builder owns scalar result column labels and one-row text values.
-- Catalog, storage, VFS, and SQLite physical row storage are not involved.
-  This feature must not touch `.mylite` preamble bytes or SQLite schema state.
+- The static MySQL charset/collation catalog owns name, alias, default
+  collation, and collation-ID lookup. Storage, VFS, and SQLite physical row
+  storage are not involved. This feature must not touch `.mylite` preamble
+  bytes or SQLite schema state.
 
 ## Supported SQL Grammar
 
@@ -192,23 +234,41 @@ Runtime parses the raw token as a `@@` system variable:
   `1193`, SQLSTATE `HY000`;
 - it preserves the original source text as the scalar result column label.
 
-For this slice, `global`, `session`, and `local` return the same fixed
-baseline values. This is a deliberate MyLite limitation: there is no mutable
-global server state, no per-session `SET`, and no startup configuration surface.
+For this slice, `global` reads return MyLite's fixed embedded defaults.
+Session, local, and unscoped reads return the handle-local assignment state
+when one exists, otherwise the same fixed defaults. This is a deliberate
+MyLite limitation: there is no shared mutable global server state or startup
+configuration surface.
 
 ## Runtime Semantics
 
 The supported variables return:
 
-| Variable | Value |
+| Variable | Initial/global value |
 | --- | --- |
 | `character_set_server` | `utf8mb4` |
 | `collation_server` | `utf8mb4_0900_ai_ci` |
 
-The values are MyLite server-default placeholders initialized from constants.
-Since this slice does not support charset-changing statements, they do not
-change across `CREATE DATABASE`, `USE`, table DDL, DML, or close/reopen.
-Independent handles return the same embedded baseline values.
+The initial/global values are MyLite server-default placeholders initialized
+from constants. Session/local/unscoped assignments are handle-local and
+nonpersistent. They do not alter schema defaults, table descriptors, string
+storage, protocol metadata, or any other handle. `CREATE DATABASE`, `USE`,
+table DDL, DML, and close/reopen do not mutate the fixed global defaults.
+
+Assignments resolve values as follows:
+
+- `DEFAULT` resolves to `utf8mb4` / `utf8mb4_0900_ai_ci`.
+- `character_set_server=<charset>` stores the canonical charset name and that
+  charset's default collation.
+- `character_set_server=<integer>` treats the integer as a collation ID,
+  stores that collation's charset, and uses that charset's default collation.
+- `collation_server=<collation>` stores the canonical collation name and that
+  collation's charset.
+- `collation_server=<integer>` treats the integer as a collation ID and stores
+  that collation with its charset.
+- `SET GLOBAL` accepts only exact/default no-op forms resolving to the fixed
+  embedded defaults; value-changing forms return MyLite's fixed no-op
+  assignment diagnostic.
 
 Successful scalar server-variable selects:
 
@@ -216,7 +276,8 @@ Successful scalar server-variable selects:
 - return one result column per select item;
 - use the source expression text as each column name;
 - use `affected_rows == 0` under the existing row-result convention;
-- use result `warning_count == 0`;
+- use result `warning_count == 0` unless they intentionally read a previous
+  assignment warning through `@@warning_count`;
 - make following `ROW_COUNT()` return `-1`;
 - clear diagnostics like other successful nondiagnostic scalar selects;
 - do not mutate catalog generation or SQLite schema generation.
@@ -231,6 +292,15 @@ variable errors:
 
 - unknown or unsupported system variables: error `1193`, SQLSTATE `HY000`,
   message containing `Unknown system variable`;
+- unknown charset assignment values: error `1115`, SQLSTATE `42000`;
+- unknown collation assignment values: error `1273`, SQLSTATE `HY000`;
+- decimal assignment values: error `1232`, SQLSTATE `42000`;
+- unsupported value-changing global assignments: deterministic MyLite
+  unsupported diagnostic for fixed no-op system variable assignments;
+- `utf8` charset alias assignment: warning `3719`, SQLSTATE `HY000`;
+- `utf8mb3` charset assignment by canonical name or integer collation ID:
+  warning `1287`, SQLSTATE `HY000`;
+- `utf8mb3` collation assignment: warning `3778`, SQLSTATE `HY000`;
 - quoted system-variable scope names: deterministic syntax diagnostic;
 - system variables outside the limited scalar `SELECT` subset: deterministic
   unsupported or syntax diagnostics;
@@ -259,6 +329,12 @@ Add a MySQL expectation script that runs against MySQL 8.4.9 with
 `--default-character-set=utf8mb4` and verifies:
 
 - result labels and values for no-scope, session, local, and global forms;
+- `SHOW VARIABLES` and `SHOW GLOBAL VARIABLES` readback;
+- session/local/unscoped assignment by charset name, collation name, integer
+  collation ID, user-variable integer value, and `DEFAULT`;
+- coupled charset/collation readback after assignment;
+- warnings for `utf8` aliases and `utf8mb3` charset/collation assignments;
+- unknown charset, unknown collation, and incorrect type diagnostics;
 - case-insensitive scope and variable names;
 - backtick-quoted final variable names;
 - quoted-scope rejection;
@@ -272,6 +348,12 @@ Add or extend a fast C runtime test under `packages/libmylite/tests/`,
 registered with a dotted CTest name, covering:
 
 - successful scalar values and labels;
+- `SHOW VARIABLES` readback after session assignment;
+- assignment by charset name, collation name, integer collation ID,
+  user-variable integer value, and `DEFAULT`;
+- coupled charset/collation readback after assignment;
+- assignment warnings and diagnostics;
+- exact/default fixed-global no-op forms and value-changing global rejection;
 - `FROM DUAL`;
 - mixed scalar variables with `@@warning_count`, `@@error_count`, and
   `ROW_COUNT()`;

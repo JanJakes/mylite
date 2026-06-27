@@ -390,6 +390,12 @@ size_t mylite_execution_catalog_mysql_collation_count(void);
 const struct mylite_execution_catalog_collation *mylite_execution_catalog_mysql_collation_at(
     size_t index
 );
+const struct mylite_execution_catalog_collation *mylite_execution_catalog_mysql_collation_by_name(
+    const char *name
+);
+const struct mylite_execution_catalog_collation *mylite_execution_catalog_mysql_collation_by_id(
+    const char *id
+);
 bool mylite_execution_catalog_mysql_collation_index_by_name(const char *name, size_t *out_index);
 size_t mylite_execution_catalog_keyword_count(void);
 const struct mylite_execution_catalog_keyword *mylite_execution_catalog_keyword_at(size_t index);

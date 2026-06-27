@@ -61,6 +61,11 @@ static int execute_use_statement(
         return MYLITE_ERROR;
     }
     database->session.has_selected_schema = true;
+    clear_session_system_variable_override(
+        database,
+        MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE
+    );
+    clear_session_system_variable_override(database, MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_DATABASE);
 
     return finish_successful_result(database, result, out_result);
 }

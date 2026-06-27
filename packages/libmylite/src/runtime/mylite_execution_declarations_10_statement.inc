@@ -397,6 +397,10 @@ static int set_session_system_variable_override(
     const char *value,
     size_t value_size
 );
+static void clear_session_system_variable_override(
+    struct mylite_db *database,
+    enum mylite_execution_system_variable_kind kind
+);
 static const char *session_system_variable_override_value(
     const struct mylite_db *database,
     enum mylite_execution_system_variable_kind kind
@@ -785,6 +789,75 @@ static int apply_set_default_engine_system_variable_cell_value(
 static bool set_system_variable_is_default_engine(
     enum mylite_execution_system_variable_kind kind
 );
+static int apply_set_server_database_character_set_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+);
+static int apply_set_server_database_character_set_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    bool *out_handled
+);
+static bool set_system_variable_is_server_database_character_set_pair(
+    enum mylite_execution_system_variable_kind kind
+);
+static bool set_system_variable_is_character_set_pair_variable(
+    enum mylite_execution_system_variable_kind kind
+);
+static bool set_system_variable_is_collation_pair_variable(
+    enum mylite_execution_system_variable_kind kind
+);
+static enum mylite_execution_system_variable_kind set_system_variable_pair_character_set_kind(
+    enum mylite_execution_system_variable_kind kind
+);
+static enum mylite_execution_system_variable_kind set_system_variable_pair_collation_kind(
+    enum mylite_execution_system_variable_kind kind
+);
+static int set_default_server_database_character_set_pair(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    char *charset_buffer,
+    size_t charset_buffer_size,
+    char *collation_buffer,
+    size_t collation_buffer_size,
+    const char **out_charset,
+    const char **out_collation
+);
+static int set_server_database_character_set_pair_from_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const char *value,
+    size_t value_size,
+    bool value_is_catalog_id,
+    const char **out_charset,
+    const char **out_collation
+);
+static int set_server_database_character_set_pair(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const char *charset,
+    const char *collation
+);
+static int append_server_database_character_set_pair_warnings(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const char *input_value,
+    bool value_is_catalog_id,
+    const char *charset,
+    const char *collation
+);
+static int append_utf8mb3_collation_deprecation_warning(
+    struct mylite_db *database,
+    const char *collation
+);
+static int append_database_character_set_assignment_deprecation_warning(
+    struct mylite_db *database,
+    const char *variable_name
+);
 static int apply_set_character_set_filesystem_assignment(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -805,17 +878,16 @@ static int set_session_character_set_filesystem_value(
     size_t value_size,
     bool value_is_collation_id
 );
-static bool set_character_set_filesystem_value_is_collation_id(
+static bool set_character_set_value_is_catalog_id(
     const struct mylite_sql_ast_node *value_node
 );
-static bool set_character_set_filesystem_value_is_decimal(
+static bool set_character_set_value_is_decimal(
     const struct mylite_sql_ast_node *value_node
 );
-static enum mylite_sql_ast_literal_kind set_character_set_filesystem_value_literal_kind(
+static enum mylite_sql_ast_literal_kind set_character_set_value_literal_kind(
     const struct mylite_sql_ast_node *value_node,
     bool unwrap_negative_unary
 );
-static const char *character_set_filesystem_character_set_for_collation_id(const char *value);
 static const struct mylite_execution_catalog_character_set *mysql_character_set_by_filesystem_value(
     const char *value,
     bool value_is_collation_id

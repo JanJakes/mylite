@@ -243,6 +243,15 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc = apply_set_server_database_character_set_assignment(
+        database,
+        &target,
+        value_node,
+        &handled
+    );
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     rc = apply_set_character_set_filesystem_assignment(database, &target, value_node, &handled);
     if (rc != MYLITE_OK || handled) {
         return rc;
@@ -1374,6 +1383,39 @@ static int set_session_system_variable_override(
     return MYLITE_OK;
 }
 
+static void clear_session_system_variable_override(
+    struct mylite_db *database,
+    enum mylite_execution_system_variable_kind kind
+) {
+    struct mylite_session_state *session = database == NULL ? NULL : &database->session;
+
+    if (session == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < session->system_variable_override_count; ++index) {
+        struct mylite_session_system_variable_override *override =
+            &session->system_variable_overrides[index];
+
+        if (override->kind == kind) {
+            free(override->value);
+            if (index + 1U < session->system_variable_override_count) {
+                memmove(
+                    override,
+                    override + 1U,
+                    (session->system_variable_override_count - index - 1U) * sizeof(*override)
+                );
+            }
+            --session->system_variable_override_count;
+            memset(
+                &session->system_variable_overrides[session->system_variable_override_count],
+                0,
+                sizeof(session->system_variable_overrides[0])
+            );
+            return;
+        }
+    }
+}
+
 static const char *session_system_variable_override_value(
     const struct mylite_db *database,
     enum mylite_execution_system_variable_kind kind
@@ -1749,6 +1791,444 @@ static bool set_system_variable_is_default_engine(
            kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE;
 }
 
+static int apply_set_server_database_character_set_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+) {
+    char charset_buffer[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char collation_buffer[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    const char *charset = NULL;
+    const char *collation = NULL;
+    char *value = NULL;
+    size_t value_size = 0U;
+    bool value_is_catalog_id = false;
+    int rc = MYLITE_OK;
+
+    if (target == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (!set_system_variable_is_server_database_character_set_pair(target->kind)) {
+        return MYLITE_OK;
+    }
+
+    *out_handled = true;
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        rc = set_default_server_database_character_set_pair(
+            database,
+            target,
+            charset_buffer,
+            sizeof(charset_buffer),
+            collation_buffer,
+            sizeof(collation_buffer),
+            &charset,
+            &collation
+        );
+    } else if (set_character_set_value_is_decimal(value_node)) {
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
+    } else {
+        value_is_catalog_id = set_character_set_value_is_catalog_id(value_node);
+        rc = copy_set_text_system_variable_node_value(
+            database,
+            value_node,
+            target->kind,
+            target->name,
+            &value,
+            &value_size
+        );
+        if (rc == MYLITE_OK) {
+            rc = set_server_database_character_set_pair_from_value(
+                database,
+                target,
+                value,
+                value_size,
+                value_is_catalog_id,
+                &charset,
+                &collation
+            );
+        }
+    }
+    if (rc == MYLITE_OK && target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        if (!text_equals_ascii_case_insensitive(charset, MYLITE_CATALOG_DEFAULT_TABLE_CHARSET) ||
+            !text_equals_ascii_case_insensitive(
+                collation,
+                MYLITE_CATALOG_DEFAULT_TABLE_COLLATION
+            )) {
+            set_unsupported_error(
+                database,
+                "SET supports only fixed no-op system variable assignments"
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        rc = set_server_database_character_set_pair(database, target, charset, collation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_server_database_character_set_pair_warnings(
+            database,
+            target,
+            value,
+            value_is_catalog_id,
+            charset,
+            collation
+        );
+    }
+    free(value);
+    return rc;
+}
+
+static int apply_set_server_database_character_set_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    bool *out_handled
+) {
+    const char *charset = NULL;
+    const char *collation = NULL;
+    const char *text = value == NULL ? NULL : value->value;
+    size_t text_size = 0U;
+    bool value_is_catalog_id = false;
+    int rc = MYLITE_OK;
+
+    if (target == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (!set_system_variable_is_server_database_character_set_pair(target->kind)) {
+        return MYLITE_OK;
+    }
+
+    *out_handled = true;
+    if (value == NULL || text == NULL || value_kind == MYLITE_SESSION_USER_VARIABLE_VALUE_NULL) {
+        set_system_variable_cant_be_set_value_error(database, target->name, "NULL");
+        return MYLITE_ERROR;
+    }
+    if (value_kind == MYLITE_SESSION_USER_VARIABLE_VALUE_DECIMAL) {
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
+    }
+    if (value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_STRING &&
+        value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER) {
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
+    }
+
+    text_size = value->has_value_size ? value->value_size : strlen(text);
+    value_is_catalog_id = value_kind == MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER;
+    rc = set_server_database_character_set_pair_from_value(
+        database,
+        target,
+        text,
+        text_size,
+        value_is_catalog_id,
+        &charset,
+        &collation
+    );
+    if (rc == MYLITE_OK && target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        if (!text_equals_ascii_case_insensitive(charset, MYLITE_CATALOG_DEFAULT_TABLE_CHARSET) ||
+            !text_equals_ascii_case_insensitive(
+                collation,
+                MYLITE_CATALOG_DEFAULT_TABLE_COLLATION
+            )) {
+            set_unsupported_error(
+                database,
+                "SET supports only fixed no-op system variable assignments"
+            );
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK && target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        rc = set_server_database_character_set_pair(database, target, charset, collation);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_server_database_character_set_pair_warnings(
+            database,
+            target,
+            text,
+            value_is_catalog_id,
+            charset,
+            collation
+        );
+    }
+    return rc;
+}
+
+static bool set_system_variable_is_server_database_character_set_pair(
+    enum mylite_execution_system_variable_kind kind
+) {
+    return kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_SERVER ||
+           kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_SERVER ||
+           kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE ||
+           kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_DATABASE;
+}
+
+static bool set_system_variable_is_character_set_pair_variable(
+    enum mylite_execution_system_variable_kind kind
+) {
+    return kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_SERVER ||
+           kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE;
+}
+
+static bool set_system_variable_is_collation_pair_variable(
+    enum mylite_execution_system_variable_kind kind
+) {
+    return kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_SERVER ||
+           kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_DATABASE;
+}
+
+static enum mylite_execution_system_variable_kind set_system_variable_pair_character_set_kind(
+    enum mylite_execution_system_variable_kind kind
+) {
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE ||
+        kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_DATABASE) {
+        return MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE;
+    }
+    return MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_SERVER;
+}
+
+static enum mylite_execution_system_variable_kind set_system_variable_pair_collation_kind(
+    enum mylite_execution_system_variable_kind kind
+) {
+    if (kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE ||
+        kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_DATABASE) {
+        return MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_DATABASE;
+    }
+    return MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_SERVER;
+}
+
+static int set_default_server_database_character_set_pair(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    char *charset_buffer,
+    size_t charset_buffer_size,
+    char *collation_buffer,
+    size_t collation_buffer_size,
+    const char **out_charset,
+    const char **out_collation
+) {
+    int rc = MYLITE_OK;
+
+    if (target == NULL || out_charset == NULL || out_collation == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_charset = NULL;
+    *out_collation = NULL;
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL ||
+        target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_SERVER ||
+        target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_SERVER) {
+        *out_charset = MYLITE_CATALOG_DEFAULT_TABLE_CHARSET;
+        *out_collation = MYLITE_CATALOG_DEFAULT_TABLE_COLLATION;
+        return MYLITE_OK;
+    }
+
+    rc = database_character_set_system_variable_value(
+        database,
+        false,
+        charset_buffer,
+        charset_buffer_size,
+        out_charset
+    );
+    if (rc == MYLITE_OK) {
+        rc = database_collation_system_variable_value(
+            database,
+            false,
+            collation_buffer,
+            collation_buffer_size,
+            out_collation
+        );
+    }
+    return rc;
+}
+
+static int set_server_database_character_set_pair_from_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const char *value,
+    size_t value_size,
+    bool value_is_catalog_id,
+    const char **out_charset,
+    const char **out_collation
+) {
+    const struct mylite_execution_catalog_character_set *charset = NULL;
+    const struct mylite_execution_catalog_collation *collation = NULL;
+
+    if (target == NULL || value == NULL || out_charset == NULL || out_collation == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_charset = NULL;
+    *out_collation = NULL;
+    if (memchr(value, '\0', value_size) != NULL) {
+        set_system_variable_cant_be_set_value_error(database, target->name, "");
+        return MYLITE_ERROR;
+    }
+
+    if (set_system_variable_is_character_set_pair_variable(target->kind)) {
+        if (value_is_catalog_id) {
+            collation = mylite_execution_catalog_mysql_collation_by_id(value);
+            charset = collation == NULL
+                          ? NULL
+                          : mylite_execution_catalog_mysql_character_set_by_name(
+                                collation->character_set
+                            );
+        } else {
+            charset = mylite_execution_catalog_mysql_character_set_by_name(value);
+        }
+        if (charset == NULL) {
+            set_unknown_character_set_error(database, value);
+            return MYLITE_ERROR;
+        }
+        *out_charset = charset->name;
+        *out_collation = charset->default_collation;
+        return MYLITE_OK;
+    }
+
+    if (set_system_variable_is_collation_pair_variable(target->kind)) {
+        collation = value_is_catalog_id ? mylite_execution_catalog_mysql_collation_by_id(value)
+                                        : mylite_execution_catalog_mysql_collation_by_name(value);
+        if (collation == NULL) {
+            set_unknown_collation_error(database, value);
+            return MYLITE_ERROR;
+        }
+        *out_charset = collation->character_set;
+        *out_collation = collation->name;
+        return MYLITE_OK;
+    }
+
+    return MYLITE_MISUSE;
+}
+
+static int set_server_database_character_set_pair(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const char *charset,
+    const char *collation
+) {
+    struct set_session_snapshot snapshot = {0};
+    enum mylite_execution_system_variable_kind charset_kind =
+        MYLITE_EXECUTION_SYSTEM_VARIABLE_NONE;
+    enum mylite_execution_system_variable_kind collation_kind =
+        MYLITE_EXECUTION_SYSTEM_VARIABLE_NONE;
+    int rc = MYLITE_OK;
+
+    if (target == NULL || charset == NULL || collation == NULL) {
+        return MYLITE_MISUSE;
+    }
+    charset_kind = set_system_variable_pair_character_set_kind(target->kind);
+    collation_kind = set_system_variable_pair_collation_kind(target->kind);
+    rc = copy_set_session_snapshot(database, &snapshot);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = set_session_system_variable_override(database, charset_kind, charset, strlen(charset));
+    if (rc == MYLITE_OK) {
+        rc = set_session_system_variable_override(
+            database,
+            collation_kind,
+            collation,
+            strlen(collation)
+        );
+    }
+    if (rc != MYLITE_OK) {
+        restore_set_session_snapshot(database, &snapshot);
+        return rc;
+    }
+    deinit_set_session_snapshot(&snapshot);
+    return MYLITE_OK;
+}
+
+static int append_server_database_character_set_pair_warnings(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const char *input_value,
+    bool value_is_catalog_id,
+    const char *charset,
+    const char *collation
+) {
+    int rc = MYLITE_OK;
+
+    if (target == NULL || charset == NULL || collation == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (set_system_variable_is_character_set_pair_variable(target->kind)) {
+        if (!value_is_catalog_id && input_value != NULL &&
+            text_equals_ascii_case_insensitive(input_value, "utf8")) {
+            rc = append_utf8_alias_warning(database);
+        } else if (text_equals_ascii_case_insensitive(charset, "utf8mb3")) {
+            rc = append_utf8mb3_deprecation_warning(database);
+        }
+    } else if (text_equals_ascii_case_insensitive(charset, "utf8mb3")) {
+        rc = append_utf8mb3_collation_deprecation_warning(database, collation);
+    }
+    if (rc == MYLITE_OK &&
+        (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_DATABASE ||
+         target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_COLLATION_DATABASE)) {
+        rc = append_database_character_set_assignment_deprecation_warning(
+            database,
+            target->name
+        );
+    }
+    return rc;
+}
+
+static int append_utf8mb3_collation_deprecation_warning(
+    struct mylite_db *database,
+    const char *collation
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = 0;
+
+    if (collation == NULL) {
+        return MYLITE_MISUSE;
+    }
+    written = snprintf(
+        message,
+        sizeof(message),
+        "'%s' is a collation of the deprecated character set UTF8MB3. Please consider using "
+        "UTF8MB4 with an appropriate collation instead.",
+        collation
+    );
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "failed to format utf8mb3 collation warning");
+        return MYLITE_ERROR;
+    }
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_utf8mb3_collation_deprecated,
+        "HY000",
+        message
+    );
+}
+
+static int append_database_character_set_assignment_deprecation_warning(
+    struct mylite_db *database,
+    const char *variable_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = 0;
+
+    if (variable_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    written = snprintf(
+        message,
+        sizeof(message),
+        "Updating '%s' is deprecated. It will be made read-only in a future release.",
+        variable_name
+    );
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "failed to format database charset warning");
+        return MYLITE_ERROR;
+    }
+    return mylite_diagnostics_append_warning(
+        mylite_connection_diagnostics(database),
+        mysql_warning_database_charset_assignment_deprecated,
+        "HY000",
+        message
+    );
+}
+
 static int apply_set_character_set_filesystem_assignment(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -1781,10 +2261,10 @@ static int apply_set_character_set_filesystem_assignment(
             false
         );
     }
-    if (set_character_set_filesystem_value_is_decimal(value_node)) {
+    if (set_character_set_value_is_decimal(value_node)) {
         return set_incorrect_system_variable_argument_type_error(database, target->name);
     }
-    value_is_collation_id = set_character_set_filesystem_value_is_collation_id(value_node);
+    value_is_collation_id = set_character_set_value_is_catalog_id(value_node);
 
     rc = copy_set_text_system_variable_node_value(
         database,
@@ -1892,24 +2372,23 @@ static int set_session_character_set_filesystem_value(
     );
 }
 
-static bool set_character_set_filesystem_value_is_collation_id(
+static bool set_character_set_value_is_catalog_id(
     const struct mylite_sql_ast_node *value_node
 ) {
-    return set_character_set_filesystem_value_literal_kind(value_node, false) ==
-           MYLITE_SQL_AST_LITERAL_INTEGER;
+    return set_character_set_value_literal_kind(value_node, false) == MYLITE_SQL_AST_LITERAL_INTEGER;
 }
 
-static bool set_character_set_filesystem_value_is_decimal(
+static bool set_character_set_value_is_decimal(
     const struct mylite_sql_ast_node *value_node
 ) {
     enum mylite_sql_ast_literal_kind literal_kind =
-        set_character_set_filesystem_value_literal_kind(value_node, true);
+        set_character_set_value_literal_kind(value_node, true);
 
     return literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL ||
            literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT;
 }
 
-static enum mylite_sql_ast_literal_kind set_character_set_filesystem_value_literal_kind(
+static enum mylite_sql_ast_literal_kind set_character_set_value_literal_kind(
     const struct mylite_sql_ast_node *value_node,
     bool unwrap_negative_unary
 ) {
@@ -1932,18 +2411,6 @@ static enum mylite_sql_ast_literal_kind set_character_set_filesystem_value_liter
     return mylite_sql_ast_node_literal_kind(literal);
 }
 
-static const char *character_set_filesystem_character_set_for_collation_id(const char *value) {
-    for (size_t index = 0U; index < mylite_execution_catalog_mysql_collation_count(); ++index) {
-        const struct mylite_execution_catalog_collation *collation =
-            mylite_execution_catalog_mysql_collation_at(index);
-
-        if (collation != NULL && strcmp(collation->id, value) == 0) {
-            return collation->character_set;
-        }
-    }
-    return NULL;
-}
-
 static const struct mylite_execution_catalog_character_set *mysql_character_set_by_filesystem_value(
     const char *value,
     bool value_is_collation_id
@@ -1951,7 +2418,10 @@ static const struct mylite_execution_catalog_character_set *mysql_character_set_
     const char *charset_name = value;
 
     if (value_is_collation_id) {
-        charset_name = character_set_filesystem_character_set_for_collation_id(value);
+        const struct mylite_execution_catalog_collation *collation =
+            mylite_execution_catalog_mysql_collation_by_id(value);
+
+        charset_name = collation == NULL ? NULL : collation->character_set;
     }
     return mylite_execution_catalog_mysql_character_set_by_name(charset_name);
 }

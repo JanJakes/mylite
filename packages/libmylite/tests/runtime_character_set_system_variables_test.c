@@ -33,6 +33,7 @@ enum {
     database_variable_column_count = 5,
     mysql_error_parse = 1064,
     mysql_error_unknown_character_set = 1115,
+    mysql_error_unknown_collation = 1273,
     mysql_error_session_variable_only = 1238,
     mysql_error_incorrect_argument_type = 1232,
     mysql_error_unknown_system_variable = 1193,
@@ -148,6 +149,54 @@ static int test_character_set_system_variable_values_and_persistence(void) {
         "0",
         "-1",
     };
+    static const char *const server_latin1_values[] = {
+        "latin1",
+        "utf8mb4",
+        "latin1",
+        "latin1",
+        "latin1_swedish_ci",
+        "utf8mb4_0900_ai_ci",
+        "latin1_swedish_ci",
+        "latin1_swedish_ci",
+        "0",
+        "0",
+    };
+    static const char *const server_utf8mb4_bin_values[] = {
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4_bin",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4_bin",
+        "utf8mb4_bin",
+        "0",
+        "0",
+    };
+    static const char *const server_utf8mb3_values[] = {
+        "utf8mb3",
+        "utf8mb4",
+        "utf8mb3",
+        "utf8mb3",
+        "utf8mb3_general_ci",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb3_general_ci",
+        "utf8mb3_general_ci",
+        "1",
+        "0",
+    };
+    static const char *const server_default_values[] = {
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4_0900_ai_ci",
+        "0",
+        "0",
+    };
     static const char *const database_full_columns[] = {
         "@@character_set_database",
         "@@global.character_set_database",
@@ -171,6 +220,62 @@ static int test_character_set_system_variable_values_and_persistence(void) {
         "utf8mb4_0900_ai_ci",
         "0",
         "-1",
+    };
+    static const char *const database_latin1_values[] = {
+        "latin1",
+        "utf8mb4",
+        "latin1",
+        "latin1",
+        "latin1_swedish_ci",
+        "utf8mb4_0900_ai_ci",
+        "latin1_swedish_ci",
+        "latin1_swedish_ci",
+        "1",
+        "0",
+    };
+    static const char *const database_utf8mb4_bin_values[] = {
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4_bin",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4_bin",
+        "utf8mb4_bin",
+        "1",
+        "0",
+    };
+    static const char *const database_utf8mb3_values[] = {
+        "utf8mb3",
+        "utf8mb4",
+        "utf8mb3",
+        "utf8mb3",
+        "utf8mb3_general_ci",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb3_general_ci",
+        "utf8mb3_general_ci",
+        "2",
+        "0",
+    };
+    static const char *const database_default_warning_values[] = {
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4_0900_ai_ci",
+        "utf8mb4_0900_ai_ci",
+        "1",
+        "0",
+    };
+    static const char *const show_server_latin1_values[] = {
+        "character_set_server",
+        "latin1",
+    };
+    static const char *const show_global_server_values[] = {
+        "character_set_server",
+        "utf8mb4",
     };
     static const char *const system_columns[] = {
         "@@character_set_system",
@@ -426,6 +531,211 @@ static int test_character_set_system_variable_values_and_persistence(void) {
     mylite_result_free(result);
     result = NULL;
 
+    failures += execute_statement_ok(database, "SET SESSION character_set_server=latin1");
+    failures += execute_ok(
+        database,
+        "SELECT @@character_set_server, @@global.character_set_server, "
+        "@@session.character_set_server, @@local.character_set_server, "
+        "@@collation_server, @@global.collation_server, @@session.collation_server, "
+        "@@local.collation_server, @@warning_count, ROW_COUNT() FROM DUAL",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = server_columns,
+            .values = server_latin1_values,
+            .count = server_variable_column_count,
+            .context = "server charset assignment",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "SHOW VARIABLES LIKE 'character_set_server'", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = show_filesystem_columns,
+            .values = show_server_latin1_values,
+            .count = show_variable_column_count,
+            .context = "show variables server charset session assignment",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "SHOW GLOBAL VARIABLES LIKE 'character_set_server'", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = show_filesystem_columns,
+            .values = show_global_server_values,
+            .count = show_variable_column_count,
+            .context = "show global variables server charset fixed value",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "SET LOCAL collation_server=utf8mb4_bin");
+    failures += execute_ok(
+        database,
+        "SELECT @@character_set_server, @@global.character_set_server, "
+        "@@session.character_set_server, @@local.character_set_server, "
+        "@@collation_server, @@global.collation_server, @@session.collation_server, "
+        "@@local.collation_server, @@warning_count, ROW_COUNT() FROM DUAL",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = server_columns,
+            .values = server_utf8mb4_bin_values,
+            .count = server_variable_column_count,
+            .context = "server collation assignment",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "SET character_set_server=+33");
+    failures += execute_ok(
+        database,
+        "SELECT @@character_set_server, @@global.character_set_server, "
+        "@@session.character_set_server, @@local.character_set_server, "
+        "@@collation_server, @@global.collation_server, @@session.collation_server, "
+        "@@local.collation_server, @@warning_count, ROW_COUNT() FROM DUAL",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = server_columns,
+            .values = server_utf8mb3_values,
+            .count = server_variable_column_count,
+            .context = "server charset collation id assignment",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "SET @server_collation_id = 255");
+    failures += execute_statement_ok(database, "SET collation_server=@server_collation_id");
+    failures += execute_statement_ok(database, "SET character_set_server=DEFAULT");
+    failures += execute_statement_ok(database, "SET GLOBAL character_set_server=utf8mb4");
+    failures += execute_statement_ok(database, "SET GLOBAL collation_server=255");
+    failures += execute_ok(
+        database,
+        "SELECT @@character_set_server, @@global.character_set_server, "
+        "@@session.character_set_server, @@local.character_set_server, "
+        "@@collation_server, @@global.collation_server, @@session.collation_server, "
+        "@@local.collation_server, @@warning_count, ROW_COUNT() FROM DUAL",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = server_columns,
+            .values = server_default_values,
+            .count = server_variable_column_count,
+            .context = "server charset default assignment",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "SET SESSION character_set_database=latin1");
+    failures += execute_ok(
+        database,
+        "SELECT @@character_set_database, @@global.character_set_database, "
+        "@@session.character_set_database, @@local.character_set_database, "
+        "@@collation_database, @@global.collation_database, @@session.collation_database, "
+        "@@local.collation_database, @@warning_count, ROW_COUNT() FROM DUAL",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = database_full_columns,
+            .values = database_latin1_values,
+            .count = database_variable_full_column_count,
+            .context = "database charset assignment",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "SET LOCAL collation_database=utf8mb4_bin");
+    failures += execute_ok(
+        database,
+        "SELECT @@character_set_database, @@global.character_set_database, "
+        "@@session.character_set_database, @@local.character_set_database, "
+        "@@collation_database, @@global.collation_database, @@session.collation_database, "
+        "@@local.collation_database, @@warning_count, ROW_COUNT() FROM DUAL",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = database_full_columns,
+            .values = database_utf8mb4_bin_values,
+            .count = database_variable_full_column_count,
+            .context = "database collation assignment",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "SET character_set_database=33");
+    failures += execute_ok(
+        database,
+        "SELECT @@character_set_database, @@global.character_set_database, "
+        "@@session.character_set_database, @@local.character_set_database, "
+        "@@collation_database, @@global.collation_database, @@session.collation_database, "
+        "@@local.collation_database, @@warning_count, ROW_COUNT() FROM DUAL",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = database_full_columns,
+            .values = database_utf8mb3_values,
+            .count = database_variable_full_column_count,
+            .context = "database charset collation id assignment",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "SET character_set_database=DEFAULT");
+    failures += execute_statement_ok(database, "SET collation_database=DEFAULT");
+    failures += execute_ok(
+        database,
+        "SELECT @@character_set_database, @@global.character_set_database, "
+        "@@session.character_set_database, @@local.character_set_database, "
+        "@@collation_database, @@global.collation_database, @@session.collation_database, "
+        "@@local.collation_database, @@warning_count, ROW_COUNT() FROM DUAL",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = database_full_columns,
+            .values = database_default_warning_values,
+            .count = database_variable_full_column_count,
+            .context = "database charset default assignment",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "SET character_set_database=utf8mb4");
+    failures += execute_statement_ok(database, "SET collation_database=utf8mb4_0900_ai_ci");
+    failures += execute_ok(database, "SELECT 1", &result);
+    mylite_result_free(result);
+    result = NULL;
+
     failures += execute_ok(
         database,
         "SELECT @@character_set_system, @@global.character_set_system, @@warning_count, "
@@ -656,6 +966,7 @@ static int test_character_set_system_variable_values_and_persistence(void) {
     );
 
     failures += execute_statement_ok(database, "CREATE DATABASE app");
+    failures += execute_statement_ok(database, "SET character_set_database=latin1");
     failures += execute_statement_ok(database, "USE app");
     failures += execute_ok(
         database,
@@ -961,6 +1272,88 @@ static int test_character_set_system_variable_qualifiers_and_errors(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "signed 64-bit +, binary -, and * arithmetic",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET SESSION character_set_server=nosuch",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_character_set,
+            .sqlstate = "42000",
+            .message_part = "Unknown character set: 'nosuch'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET SESSION character_set_server='33'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_character_set,
+            .sqlstate = "42000",
+            .message_part = "Unknown character set: '33'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET SESSION collation_server=nosuch",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_collation,
+            .sqlstate = "HY000",
+            .message_part = "Unknown collation: 'nosuch'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET SESSION collation_server='255'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_collation,
+            .sqlstate = "HY000",
+            .message_part = "Unknown collation: '255'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET SESSION collation_server=999",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_collation,
+            .sqlstate = "HY000",
+            .message_part = "Unknown collation: '999'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET SESSION collation_server=33.0",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_argument_type,
+            .sqlstate = "42000",
+            .message_part = "Incorrect argument type to variable 'collation_server'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET GLOBAL character_set_server=latin1",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "fixed no-op system variable assignments",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET GLOBAL collation_database=latin1_swedish_ci",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "fixed no-op system variable assignments",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @database_collation_decimal = 33.0");
+    failures += execute_error(
+        database,
+        "SET collation_database=@database_collation_decimal",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_argument_type,
+            .sqlstate = "42000",
+            .message_part = "Incorrect argument type to variable 'collation_database'",
         }
     );
     failures += execute_error(

@@ -160,6 +160,16 @@ static int apply_set_system_variable_cell_value(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc = apply_set_server_database_character_set_cell_value(
+        database,
+        target,
+        value,
+        value_kind,
+        &handled
+    );
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     rc = apply_set_character_set_filesystem_cell_value(
         database,
         target,

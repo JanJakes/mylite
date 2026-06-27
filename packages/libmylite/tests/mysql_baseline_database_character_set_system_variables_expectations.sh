@@ -128,10 +128,44 @@ expect_output \
     "utf8mb4	utf8mb4_0900_ai_ci" \
     "SELECT @@character_set_database, @@collation_database FROM DUAL;"
 
+assignment_values=$(run_mysql \
+    "SET SESSION character_set_database=latin1; \
+     SELECT @@character_set_database, @@global.character_set_database, \
+            @@session.character_set_database, @@local.character_set_database, \
+            @@collation_database, @@global.collation_database, @@session.collation_database, \
+            @@local.collation_database, @@warning_count, ROW_COUNT(); \
+     SET LOCAL collation_database=utf8mb4_bin; \
+     SELECT @@character_set_database, @@global.character_set_database, \
+            @@session.character_set_database, @@local.character_set_database, \
+            @@collation_database, @@global.collation_database, @@session.collation_database, \
+            @@local.collation_database, @@warning_count, ROW_COUNT(); \
+     SET character_set_database=33; \
+     SELECT @@character_set_database, @@global.character_set_database, \
+            @@session.character_set_database, @@local.character_set_database, \
+            @@collation_database, @@global.collation_database, @@session.collation_database, \
+            @@local.collation_database, @@warning_count, ROW_COUNT(); \
+     SET @database_collation_id = 255; SET collation_database=@database_collation_id; \
+     SELECT @@character_set_database, @@global.character_set_database, \
+            @@session.character_set_database, @@local.character_set_database, \
+            @@collation_database, @@global.collation_database, @@session.collation_database, \
+            @@local.collation_database, @@warning_count, ROW_COUNT(); \
+     SET character_set_database=DEFAULT; SET collation_database=DEFAULT; \
+     SELECT @@character_set_database, @@global.character_set_database, \
+            @@session.character_set_database, @@local.character_set_database, \
+            @@collation_database, @@global.collation_database, @@session.collation_database, \
+            @@local.collation_database, @@warning_count, ROW_COUNT();" \
+    | tail -n 5 \
+    | tr '\n' '|')
+expect_value \
+    "database charset assignment canonicalization and collation coupling" \
+    "latin1	utf8mb4	latin1	latin1	latin1_swedish_ci	utf8mb4_0900_ai_ci	latin1_swedish_ci	latin1_swedish_ci	1	0|utf8mb4	utf8mb4	utf8mb4	utf8mb4	utf8mb4_bin	utf8mb4_0900_ai_ci	utf8mb4_bin	utf8mb4_bin	1	0|utf8mb3	utf8mb4	utf8mb3	utf8mb3	utf8mb3_general_ci	utf8mb4_0900_ai_ci	utf8mb3_general_ci	utf8mb3_general_ci	2	0|utf8mb4	utf8mb4	utf8mb4	utf8mb4	utf8mb4_0900_ai_ci	utf8mb4_0900_ai_ci	utf8mb4_0900_ai_ci	utf8mb4_0900_ai_ci	1	0|utf8mb4	utf8mb4	utf8mb4	utf8mb4	utf8mb4_0900_ai_ci	utf8mb4_0900_ai_ci	utf8mb4_0900_ai_ci	utf8mb4_0900_ai_ci	1	0|" \
+    "$assignment_values"
+
 expect_output \
     "selected database exposes default charset variables" \
-    "${DATABASE}	utf8mb4	utf8mb4_0900_ai_ci	0	0" \
-    "CREATE DATABASE ${DATABASE}; USE ${DATABASE}; \
+    "${DATABASE}	ascii	ascii_general_ci	0	0" \
+    "CREATE DATABASE ${DATABASE} DEFAULT CHARACTER SET ascii COLLATE ascii_general_ci; \
+     SET SESSION character_set_database=latin1; USE ${DATABASE}; \
      SELECT DATABASE(), @@character_set_database, @@collation_database, \
      @@warning_count, ROW_COUNT();"
 
@@ -181,6 +215,48 @@ expect_error \
     42000 \
     "syntax" \
     "SELECT @@\`session\`.character_set_database;"
+
+expect_error \
+    "unknown database charset assignment" \
+    1115 \
+    42000 \
+    "Unknown character set: 'nosuch'" \
+    "SET SESSION character_set_database=nosuch;"
+
+expect_error \
+    "string digit database charset assignment is a charset name" \
+    1115 \
+    42000 \
+    "Unknown character set: '33'" \
+    "SET SESSION character_set_database='33';"
+
+expect_error \
+    "unknown database collation assignment" \
+    1273 \
+    HY000 \
+    "Unknown collation: 'nosuch'" \
+    "SET SESSION collation_database=nosuch;"
+
+expect_error \
+    "string digit database collation assignment is a collation name" \
+    1273 \
+    HY000 \
+    "Unknown collation: '255'" \
+    "SET SESSION collation_database='255';"
+
+expect_error \
+    "unknown database collation id" \
+    1273 \
+    HY000 \
+    "Unknown collation: '999'" \
+    "SET SESSION collation_database=999;"
+
+expect_error \
+    "decimal database collation assignment type" \
+    1232 \
+    42000 \
+    "Incorrect argument type to variable 'collation_database'" \
+    "SET SESSION collation_database=33.0;"
 
 expect_output \
     "mysql accepts expressions outside this mylite slice" \

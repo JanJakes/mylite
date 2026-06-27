@@ -151,6 +151,9 @@ static int append_performance_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "setup_threads") == 0) {
         return append_performance_schema_setup_thread_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "user_defined_functions") == 0) {
+        return append_performance_schema_user_defined_function_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "user_variables_by_thread") == 0) {
         return append_performance_schema_user_variable_by_thread_rows(database, rows);
     }
@@ -430,6 +433,45 @@ static int append_performance_schema_setup_thread_rows(
     for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(thread_rows) / sizeof(thread_rows[0]);
          ++index) {
         rc = append_information_schema_row(database, rows, thread_rows[index]);
+    }
+    return rc;
+}
+
+static int append_performance_schema_user_defined_function_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_user_defined_function_column_count = 5 };
+    static const char *const function_rows[][performance_schema_user_defined_function_column_count] =
+        {
+            {"asynchronous_connection_failover_add_managed", "char", "function", NULL, "1"},
+            {"asynchronous_connection_failover_add_source", "char", "function", NULL, "1"},
+            {"asynchronous_connection_failover_delete_managed", "char", "function", NULL, "1"},
+            {"asynchronous_connection_failover_delete_source", "char", "function", NULL, "1"},
+            {"asynchronous_connection_failover_reset", "char", "function", NULL, "1"},
+            {"innodb_redo_log_archive_flush", "integer", "function", NULL, "1"},
+            {"innodb_redo_log_archive_start", "integer", "function", NULL, "1"},
+            {"innodb_redo_log_archive_stop", "integer", "function", NULL, "1"},
+            {"innodb_redo_log_consumer_advance", "integer", "function", NULL, "1"},
+            {"innodb_redo_log_consumer_register", "integer", "function", NULL, "1"},
+            {"innodb_redo_log_consumer_unregister", "integer", "function", NULL, "1"},
+            {"innodb_redo_log_sharp_checkpoint", "integer", "function", NULL, "1"},
+            {"innodb_set_open_files_limit", "integer", "function", NULL, "1"},
+            {"mysqlx_error", "char", "function", NULL, "1"},
+            {"mysqlx_generate_document_id", "char", "function", NULL, "1"},
+            {"mysqlx_get_prepared_statement_id", "integer", "function", NULL, "1"},
+        };
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != performance_schema_user_defined_function_column_count) {
+        set_runtime_error(database, "invalid performance_schema user_defined_functions columns");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < sizeof(function_rows) / sizeof(function_rows[0]);
+         ++index) {
+        rc = append_information_schema_row(database, rows, function_rows[index]);
     }
     return rc;
 }

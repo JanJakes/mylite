@@ -495,6 +495,88 @@ static const size_t performance_schema_user_variable_by_thread_primary_key_colum
     1U,
 };
 
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_user_defined_function_columns[] = {
+        {"UDF_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"UDF_RETURN_TYPE",
+         NULL,
+         "NO",
+         "varchar",
+         "20",
+         "80",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(20)"},
+        {"UDF_TYPE",
+         NULL,
+         "NO",
+         "varchar",
+         "20",
+         "80",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(20)"},
+        {"UDF_LIBRARY",
+         NULL,
+         "YES",
+         "varchar",
+         "1024",
+         "4096",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(1024)"},
+        {"UDF_USAGE_COUNT", NULL, "YES", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"
+        },
+};
+
+static const char *const performance_schema_user_defined_function_column_keys[] = {
+    "PRI",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_user_defined_function_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_user_defined_function_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const size_t performance_schema_user_defined_function_primary_key_columns[] = {
+    0U,
+};
+
 static const struct mylite_execution_catalog_mysql_system_table
     performance_schema_system_table_definitions[] = {
         {"performance_schema",
@@ -605,6 +687,22 @@ static const struct mylite_execution_catalog_mysql_system_table
          performance_schema_setup_thread_primary_key_columns,
          sizeof(performance_schema_setup_thread_primary_key_columns) /
              sizeof(performance_schema_setup_thread_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_USER_DEFINED_FUNCTIONS,
+          "user_defined_functions",
+          performance_schema_user_defined_function_columns,
+          sizeof(performance_schema_user_defined_function_columns) /
+              sizeof(performance_schema_user_defined_function_columns[0])},
+         performance_schema_user_defined_function_column_keys,
+         performance_schema_user_defined_function_column_extras,
+         performance_schema_user_defined_function_column_privileges,
+         NULL,
+         performance_schema_user_defined_function_primary_key_columns,
+         sizeof(performance_schema_user_defined_function_primary_key_columns) /
+             sizeof(performance_schema_user_defined_function_primary_key_columns[0]),
          NULL,
          NULL,
          0U},

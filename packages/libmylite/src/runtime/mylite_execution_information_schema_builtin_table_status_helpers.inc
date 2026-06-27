@@ -178,6 +178,10 @@ static const char *builtin_schema_table_rows(
         return "2560";
     }
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "user_defined_functions") == 0) {
+        return "16";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
         strcmp(table_name, "performance_timers") == 0) {
         return "5";
     }

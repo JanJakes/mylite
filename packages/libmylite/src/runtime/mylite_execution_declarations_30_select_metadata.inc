@@ -489,6 +489,10 @@ static int append_performance_schema_setup_thread_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
+static int append_performance_schema_user_defined_function_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
 static int append_performance_schema_user_variable_by_thread_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows

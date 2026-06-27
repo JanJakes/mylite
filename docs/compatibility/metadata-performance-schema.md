@@ -22,6 +22,7 @@ embedded MyLite attributes for open handles. Instance tables for synchronization
 objects, files, and sockets expose empty read-only metadata placeholders.
 Binary-log compression, data-lock, data-lock-wait, and prepared-statement
 instrumentation tables expose empty read-only metadata placeholders.
+Host-cache and keyring tables expose empty read-only metadata placeholders.
 `user_defined_functions` exposes MySQL 8.4.9-shaped loadable-function registry
 rows, and `user_variables_by_thread` exposes MyLite session user variables for
 the current connection. The remaining tables are metadata-only and unsupported
@@ -90,10 +91,10 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.firewall_membership` | ❌ | Firewall in-memory data for group profile members |
 | `performance_schema.global_status` | 🟡 | Queryable global rows from MyLite's supported status registry, with MySQL-shaped columns and `HASH` primary-key metadata; live instrumentation and full optional status universe remain unsupported |
 | `performance_schema.global_variables` | 🟡 | Queryable global rows from MyLite's supported system-variable registry, with MySQL-shaped columns and `HASH` primary-key metadata; persisted/global mutation and full optional variable universe remain unsupported |
-| `performance_schema.host_cache` | ❌ | Information from internal host cache |
+| `performance_schema.host_cache` | 🟡 | Empty read-only host-cache placeholder with MySQL-shaped metadata and HASH index introspection; no live DNS/cache error state |
 | `performance_schema.hosts` | 🟡 | Limited embedded `%` current-host count row with MySQL-shaped fixed-table metadata; no disconnected host history, memory accounting, or instrumentation limits |
-| `performance_schema.keyring_component_status` | ❌ | Status information for installed keyring component |
-| `performance_schema.keyring_keys` | ❌ | Metadata for keyring keys |
+| `performance_schema.keyring_component_status` | 🟡 | Empty read-only keyring component status placeholder with MySQL-shaped metadata; no keyring service state |
+| `performance_schema.keyring_keys` | 🟡 | Empty read-only keyring key placeholder with MySQL-shaped metadata; no key inventory |
 | `performance_schema.log_status` | ❌ | Information about server logs for backup purposes |
 | `performance_schema.memory_summary_by_account_by_event_name` | ❌ | Memory operations per account and event name |
 | `performance_schema.memory_summary_by_host_by_event_name` | ❌ | Memory operations per host and event name |

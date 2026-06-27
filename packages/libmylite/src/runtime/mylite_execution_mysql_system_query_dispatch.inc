@@ -137,6 +137,9 @@ static int append_performance_schema_system_table_rows(
         strcmp(definition->query_definition.name, "data_locks") == 0 ||
         strcmp(definition->query_definition.name, "data_lock_waits") == 0 ||
         strcmp(definition->query_definition.name, "file_instances") == 0 ||
+        strcmp(definition->query_definition.name, "host_cache") == 0 ||
+        strcmp(definition->query_definition.name, "keyring_component_status") == 0 ||
+        strcmp(definition->query_definition.name, "keyring_keys") == 0 ||
         strcmp(definition->query_definition.name, "mutex_instances") == 0 ||
         strcmp(definition->query_definition.name, "prepared_statements_instances") == 0 ||
         strcmp(definition->query_definition.name, "rwlock_instances") == 0 ||

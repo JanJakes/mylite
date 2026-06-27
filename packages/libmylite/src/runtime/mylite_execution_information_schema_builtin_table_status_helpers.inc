@@ -174,6 +174,10 @@ static const char *builtin_schema_table_rows(
         return "100";
     }
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "user_variables_by_thread") == 0) {
+        return "2560";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
         strcmp(table_name, "performance_timers") == 0) {
         return "5";
     }

@@ -124,6 +124,7 @@ enum mylite_session_user_variable_value_kind {
 
 struct mylite_session_user_variable {
     char name[MYLITE_SESSION_USER_VARIABLE_NAME_CAPACITY];
+    char display_name[MYLITE_SESSION_USER_VARIABLE_NAME_CAPACITY];
     char *value;
     size_t value_size;
     enum mylite_session_user_variable_value_kind value_kind;

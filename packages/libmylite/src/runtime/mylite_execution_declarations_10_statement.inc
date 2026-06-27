@@ -333,6 +333,21 @@ static int copy_user_variable_name(
     size_t buffer_size,
     bool allow_empty_name
 );
+static int copy_user_variable_display_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    char *buffer,
+    size_t buffer_size,
+    bool allow_empty_name
+);
+static int copy_user_variable_name_with_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    char *buffer,
+    size_t buffer_size,
+    bool allow_empty_name,
+    bool fold_name
+);
 static int copy_unquoted_user_variable_name(
     struct mylite_db *database,
     const struct mylite_sql_source_span *span,

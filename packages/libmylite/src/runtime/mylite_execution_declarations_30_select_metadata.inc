@@ -489,6 +489,10 @@ static int append_performance_schema_setup_thread_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
+static int append_performance_schema_user_variable_by_thread_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
 static bool performance_schema_show_status_descriptor_visible(
     const struct mylite_execution_show_status_descriptor *descriptor,
     bool global_scope

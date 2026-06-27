@@ -839,12 +839,23 @@ static int set_session_user_variable(
     enum mylite_session_user_variable_value_kind value_kind
 ) {
     char name[MYLITE_SESSION_USER_VARIABLE_NAME_CAPACITY];
+    char display_name[MYLITE_SESSION_USER_VARIABLE_NAME_CAPACITY];
     struct mylite_session_user_variable *variable = NULL;
     const char *source_value = value == NULL ? NULL : value->value;
     size_t source_size = 0U;
     char *owned_value = NULL;
     int rc = copy_user_variable_name(database, target, name, sizeof(name), false);
 
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = copy_user_variable_display_name(
+        database,
+        target,
+        display_name,
+        sizeof(display_name),
+        false
+    );
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -858,6 +869,7 @@ static int set_session_user_variable(
         variable = &database->session.user_variables[database->session.user_variable_count];
         *variable = (struct mylite_session_user_variable){0};
         memcpy(variable->name, name, strlen(name) + 1U);
+        memcpy(variable->display_name, display_name, strlen(display_name) + 1U);
         ++database->session.user_variable_count;
     }
 
@@ -957,6 +969,41 @@ static int copy_user_variable_name(
     size_t buffer_size,
     bool allow_empty_name
 ) {
+    return copy_user_variable_name_with_options(
+        database,
+        node,
+        buffer,
+        buffer_size,
+        allow_empty_name,
+        true
+    );
+}
+
+static int copy_user_variable_display_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    char *buffer,
+    size_t buffer_size,
+    bool allow_empty_name
+) {
+    return copy_user_variable_name_with_options(
+        database,
+        node,
+        buffer,
+        buffer_size,
+        allow_empty_name,
+        false
+    );
+}
+
+static int copy_user_variable_name_with_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *node,
+    char *buffer,
+    size_t buffer_size,
+    bool allow_empty_name,
+    bool fold_name
+) {
     const struct mylite_sql_source_span *span = node == NULL ? NULL : &node->span;
     char quote = '\0';
     int rc = MYLITE_OK;
@@ -988,7 +1035,7 @@ static int copy_user_variable_name(
         rc =
             copy_unquoted_user_variable_name(database, span, buffer, buffer_size, allow_empty_name);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && fold_name) {
         fold_user_variable_name(buffer);
     }
     return rc;

@@ -9,8 +9,9 @@ through `INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`, `SHOW FULL TABLES`, and
 `SHOW TABLE STATUS`. The variable/status tables listed below are queryable for
 MyLite's supported registries, `performance_timers` exposes deterministic timer
 placeholder rows, and setup actor/consumer/object/thread tables expose read-only
-default configuration rows; the remaining tables are metadata-only and unsupported
-unless listed otherwise. MyLite rejects schema, table, index,
+default configuration rows. `user_variables_by_thread` exposes MyLite session
+user variables for the current connection. The remaining tables are metadata-only
+and unsupported unless listed otherwise. MyLite rejects schema, table, index,
 rename, truncate, and single-table DML writes targeting `performance_schema`
 with `1044 / 42000` access-denied diagnostics.
 
@@ -136,7 +137,7 @@ with `1044 / 42000` access-denied diagnostics.
 | `performance_schema.tp_thread_group_stats` | ❌ | Thread pool thread group statistics |
 | `performance_schema.tp_thread_state` | ❌ | Thread pool thread information |
 | `performance_schema.user_defined_functions` | ❌ | Registered loadable functions |
-| `performance_schema.user_variables_by_thread` | ❌ | User-defined variables per thread |
+| `performance_schema.user_variables_by_thread` | 🟡 | Current-connection user variables with MySQL-shaped metadata and HASH primary-key introspection; no cross-connection visibility or binary-longblob fidelity in this row path |
 | `performance_schema.users` | ❌ | Connection stats per user name |
 | `performance_schema.variables_by_thread` | ❌ | Session system variables per session |
 | `performance_schema.variables_info` | ❌ | How system variables were most recently set |

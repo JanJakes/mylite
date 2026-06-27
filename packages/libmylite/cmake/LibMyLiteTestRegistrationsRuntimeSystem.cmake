@@ -701,6 +701,10 @@
     COMMAND mylite_runtime_performance_schema_setup_threads_test
   )
   add_test(
+    NAME libmylite.runtime.performance_schema_user_variables_by_thread
+    COMMAND mylite_runtime_performance_schema_user_variables_by_thread_test
+  )
+  add_test(
     NAME libmylite.runtime.network_timeout_system_variables
     COMMAND mylite_runtime_network_timeout_system_variables_test
   )

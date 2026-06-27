@@ -432,6 +432,69 @@ static const size_t performance_schema_setup_thread_primary_key_columns[] = {
     0U,
 };
 
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_user_variable_by_thread_columns[] = {
+        {"THREAD_ID",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"VARIABLE_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"VARIABLE_VALUE",
+         NULL,
+         "YES",
+         "longblob",
+         "4294967295",
+         "4294967295",
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         NULL,
+         "longblob"},
+};
+
+static const char *const performance_schema_user_variable_by_thread_column_keys[] = {
+    "PRI",
+    "PRI",
+    "",
+};
+
+static const char *const performance_schema_user_variable_by_thread_column_extras[] = {
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_user_variable_by_thread_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const size_t performance_schema_user_variable_by_thread_primary_key_columns[] = {
+    0U,
+    1U,
+};
+
 static const struct mylite_execution_catalog_mysql_system_table
     performance_schema_system_table_definitions[] = {
         {"performance_schema",
@@ -542,6 +605,22 @@ static const struct mylite_execution_catalog_mysql_system_table
          performance_schema_setup_thread_primary_key_columns,
          sizeof(performance_schema_setup_thread_primary_key_columns) /
              sizeof(performance_schema_setup_thread_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_USER_VARIABLES_BY_THREAD,
+          "user_variables_by_thread",
+          performance_schema_user_variable_by_thread_columns,
+          sizeof(performance_schema_user_variable_by_thread_columns) /
+              sizeof(performance_schema_user_variable_by_thread_columns[0])},
+         performance_schema_user_variable_by_thread_column_keys,
+         performance_schema_user_variable_by_thread_column_extras,
+         performance_schema_user_variable_by_thread_column_privileges,
+         NULL,
+         performance_schema_user_variable_by_thread_primary_key_columns,
+         sizeof(performance_schema_user_variable_by_thread_primary_key_columns) /
+             sizeof(performance_schema_user_variable_by_thread_primary_key_columns[0]),
          NULL,
          NULL,
          0U},

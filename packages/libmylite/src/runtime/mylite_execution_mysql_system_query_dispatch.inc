@@ -151,6 +151,9 @@ static int append_performance_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "setup_threads") == 0) {
         return append_performance_schema_setup_thread_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "user_variables_by_thread") == 0) {
+        return append_performance_schema_user_variable_by_thread_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "session_status") == 0) {
         return append_performance_schema_status_rows(database, rows, false);
     }
@@ -427,6 +430,49 @@ static int append_performance_schema_setup_thread_rows(
     for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(thread_rows) / sizeof(thread_rows[0]);
          ++index) {
         rc = append_information_schema_row(database, rows, thread_rows[index]);
+    }
+    return rc;
+}
+
+static int append_performance_schema_user_variable_by_thread_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_user_variable_by_thread_column_count = 3 };
+    char thread_id_text[integer_text_capacity];
+    int written = 0;
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count !=
+        performance_schema_user_variable_by_thread_column_count) {
+        set_runtime_error(database, "invalid performance_schema user_variables_by_thread columns");
+        return MYLITE_ERROR;
+    }
+
+    written = snprintf(
+        thread_id_text,
+        sizeof(thread_id_text),
+        "%" PRIu64,
+        database->session.connection_id
+    );
+    if (written < 0 || (size_t)written >= sizeof(thread_id_text)) {
+        set_runtime_error(database, "failed to format user variable thread id");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < database->session.user_variable_count;
+         ++index) {
+        const struct mylite_session_user_variable *variable =
+            &database->session.user_variables[index];
+        const char *display_name =
+            variable->display_name[0] == '\0' ? variable->name : variable->display_name;
+        const char *const values[performance_schema_user_variable_by_thread_column_count] = {
+            thread_id_text,
+            display_name,
+            variable->is_null ? NULL : variable->value,
+        };
+
+        rc = append_information_schema_row(database, rows, values);
     }
     return rc;
 }

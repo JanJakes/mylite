@@ -136,6 +136,21 @@ static int append_performance_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "global_status") == 0) {
         return append_performance_schema_status_rows(database, rows, true);
     }
+    if (strcmp(definition->query_definition.name, "variables_by_thread") == 0) {
+        return append_performance_schema_variable_by_thread_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "status_by_account") == 0) {
+        return append_performance_schema_status_by_account_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "status_by_host") == 0) {
+        return append_performance_schema_status_by_host_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "status_by_thread") == 0) {
+        return append_performance_schema_status_by_thread_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "status_by_user") == 0) {
+        return append_performance_schema_status_by_user_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "performance_timers") == 0) {
         return append_performance_schema_performance_timer_rows(database, rows);
     }
@@ -242,6 +257,191 @@ static int append_performance_schema_status_rows(
 
         values[0] = descriptor->name;
         values[1] = descriptor->value;
+        rc = append_information_schema_row(database, rows, values);
+    }
+    return rc;
+}
+
+static int append_performance_schema_variable_by_thread_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_thread_variable_status_column_count = 3 };
+    char thread_id_text[integer_text_capacity];
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count !=
+        performance_schema_thread_variable_status_column_count) {
+        set_runtime_error(database, "invalid performance_schema variables_by_thread columns");
+        return MYLITE_ERROR;
+    }
+    rc = format_performance_schema_current_thread_id(
+        database,
+        thread_id_text,
+        sizeof(thread_id_text)
+    );
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < mylite_execution_system_variable_descriptor_count();
+         ++index) {
+        const struct mylite_execution_system_variable_descriptor *descriptor =
+            mylite_execution_system_variable_descriptor_at(index);
+        char integer_buffer[integer_text_capacity];
+        const char *values[performance_schema_thread_variable_status_column_count] = {
+            thread_id_text,
+            NULL,
+            NULL,
+        };
+
+        if (!show_variable_descriptor_visible(descriptor, false)) {
+            continue;
+        }
+
+        values[1] = descriptor->name;
+        rc = show_system_variable_value(
+            database,
+            descriptor->kind,
+            false,
+            integer_buffer,
+            sizeof(integer_buffer),
+            &values[2]
+        );
+        if (rc == MYLITE_OK) {
+            rc = append_information_schema_row(database, rows, values);
+        }
+    }
+    return rc;
+}
+
+static int append_performance_schema_status_by_thread_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_thread_variable_status_column_count = 3 };
+    char thread_id_text[integer_text_capacity];
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count !=
+        performance_schema_thread_variable_status_column_count) {
+        set_runtime_error(database, "invalid performance_schema status_by_thread columns");
+        return MYLITE_ERROR;
+    }
+    rc = format_performance_schema_current_thread_id(
+        database,
+        thread_id_text,
+        sizeof(thread_id_text)
+    );
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < mylite_execution_show_status_descriptor_count();
+         ++index) {
+        const struct mylite_execution_show_status_descriptor *descriptor =
+            mylite_execution_show_status_descriptor_at(index);
+        const char *const values[performance_schema_thread_variable_status_column_count] = {
+            thread_id_text,
+            descriptor == NULL ? NULL : descriptor->name,
+            descriptor == NULL ? NULL : descriptor->value,
+        };
+
+        if (!performance_schema_show_status_descriptor_visible(descriptor, false)) {
+            continue;
+        }
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+    return rc;
+}
+
+static int append_performance_schema_status_by_account_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_status_by_account_column_count = 4 };
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != performance_schema_status_by_account_column_count) {
+        set_runtime_error(database, "invalid performance_schema status_by_account columns");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < mylite_execution_show_status_descriptor_count();
+         ++index) {
+        const struct mylite_execution_show_status_descriptor *descriptor =
+            mylite_execution_show_status_descriptor_at(index);
+        const char *const values[performance_schema_status_by_account_column_count] = {
+            "root",
+            "%",
+            descriptor == NULL ? NULL : descriptor->name,
+            descriptor == NULL ? NULL : descriptor->value,
+        };
+
+        if (!performance_schema_show_status_descriptor_visible(descriptor, false)) {
+            continue;
+        }
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+    return rc;
+}
+
+static int append_performance_schema_status_by_host_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_status_by_host_column_count = 3 };
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != performance_schema_status_by_host_column_count) {
+        set_runtime_error(database, "invalid performance_schema status_by_host columns");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < mylite_execution_show_status_descriptor_count();
+         ++index) {
+        const struct mylite_execution_show_status_descriptor *descriptor =
+            mylite_execution_show_status_descriptor_at(index);
+        const char *const values[performance_schema_status_by_host_column_count] = {
+            "%",
+            descriptor == NULL ? NULL : descriptor->name,
+            descriptor == NULL ? NULL : descriptor->value,
+        };
+
+        if (!performance_schema_show_status_descriptor_visible(descriptor, false)) {
+            continue;
+        }
+
+        rc = append_information_schema_row(database, rows, values);
+    }
+    return rc;
+}
+
+static int append_performance_schema_status_by_user_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_status_by_user_column_count = 3 };
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != performance_schema_status_by_user_column_count) {
+        set_runtime_error(database, "invalid performance_schema status_by_user columns");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < mylite_execution_show_status_descriptor_count();
+         ++index) {
+        const struct mylite_execution_show_status_descriptor *descriptor =
+            mylite_execution_show_status_descriptor_at(index);
+        const char *const values[performance_schema_status_by_user_column_count] = {
+            "root",
+            descriptor == NULL ? NULL : descriptor->name,
+            descriptor == NULL ? NULL : descriptor->value,
+        };
+
+        if (!performance_schema_show_status_descriptor_visible(descriptor, false)) {
+            continue;
+        }
+
         rc = append_information_schema_row(database, rows, values);
     }
     return rc;
@@ -549,7 +749,6 @@ static int append_performance_schema_user_variable_by_thread_rows(
 ) {
     enum { performance_schema_user_variable_by_thread_column_count = 3 };
     char thread_id_text[integer_text_capacity];
-    int written = 0;
     int rc = MYLITE_OK;
 
     if (rows->definition->column_count !=
@@ -558,16 +757,11 @@ static int append_performance_schema_user_variable_by_thread_rows(
         return MYLITE_ERROR;
     }
 
-    written = snprintf(
+    rc = format_performance_schema_current_thread_id(
+        database,
         thread_id_text,
-        sizeof(thread_id_text),
-        "%" PRIu64,
-        database->session.connection_id
+        sizeof(thread_id_text)
     );
-    if (written < 0 || (size_t)written >= sizeof(thread_id_text)) {
-        set_runtime_error(database, "failed to format user variable thread id");
-        return MYLITE_ERROR;
-    }
 
     for (size_t index = 0U; rc == MYLITE_OK && index < database->session.user_variable_count;
          ++index) {
@@ -584,6 +778,31 @@ static int append_performance_schema_user_variable_by_thread_rows(
         rc = append_information_schema_row(database, rows, values);
     }
     return rc;
+}
+
+static int format_performance_schema_current_thread_id(
+    struct mylite_db *database,
+    char *thread_id_text,
+    size_t thread_id_text_size
+) {
+    int written = 0;
+
+    if (thread_id_text == NULL || thread_id_text_size == 0U) {
+        return MYLITE_MISUSE;
+    }
+
+    written = snprintf(
+        thread_id_text,
+        thread_id_text_size,
+        "%" PRIu64,
+        database->session.connection_id
+    );
+    if (written < 0 || (size_t)written >= thread_id_text_size) {
+        set_runtime_error(database, "failed to format performance_schema thread id");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static bool performance_schema_show_status_descriptor_visible(

@@ -469,6 +469,26 @@ static int append_performance_schema_status_rows(
     struct information_schema_row_set *rows,
     bool global_scope
 );
+static int append_performance_schema_variable_by_thread_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_performance_schema_status_by_thread_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_performance_schema_status_by_account_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_performance_schema_status_by_host_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_performance_schema_status_by_user_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
 static int append_performance_schema_performance_timer_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
@@ -508,6 +528,11 @@ static int append_performance_schema_user_defined_function_rows(
 static int append_performance_schema_user_variable_by_thread_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
+);
+static int format_performance_schema_current_thread_id(
+    struct mylite_db *database,
+    char *thread_id_text,
+    size_t thread_id_text_size
 );
 static bool performance_schema_show_status_descriptor_visible(
     const struct mylite_execution_show_status_descriptor *descriptor,

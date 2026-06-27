@@ -12,11 +12,12 @@ placeholder rows, and setup actor/consumer/object/thread tables expose read-only
 default configuration rows. `setup_loggers` and `setup_meters` expose read-only
 telemetry setup rows, and `setup_metrics` exposes the read-only default metric
 catalog. `table_handles` exposes MySQL-shaped read-only empty lock-handle
-metadata. `user_defined_functions` exposes MySQL 8.4.9-shaped
-loadable-function registry rows, and `user_variables_by_thread` exposes MyLite
-session user variables for the current connection. The remaining tables are
-metadata-only and unsupported unless listed otherwise. MyLite rejects schema,
-table, index, rename, truncate, and single-table DML writes targeting
+metadata. Thread/account/host/user status and variable tables expose limited
+current-handle registry snapshots. `user_defined_functions` exposes MySQL
+8.4.9-shaped loadable-function registry rows, and `user_variables_by_thread`
+exposes MyLite session user variables for the current connection. The remaining
+tables are metadata-only and unsupported unless listed otherwise. MyLite rejects
+schema, table, index, rename, truncate, and single-table DML writes targeting
 `performance_schema` with `1044 / 42000` access-denied diagnostics.
 
 | Table | Status | Notes |
@@ -130,10 +131,10 @@ table, index, rename, truncate, and single-table DML writes targeting
 | `performance_schema.socket_instances` | ❌ | Active connection instances |
 | `performance_schema.socket_summary_by_event_name` | ❌ | Socket waits and I/O per event name |
 | `performance_schema.socket_summary_by_instance` | ❌ | Socket waits and I/O per instance |
-| `performance_schema.status_by_account` | ❌ | Session status variables per account |
-| `performance_schema.status_by_host` | ❌ | Session status variables per host name |
-| `performance_schema.status_by_thread` | ❌ | Session status variables per session |
-| `performance_schema.status_by_user` | ❌ | Session status variables per user name |
+| `performance_schema.status_by_account` | 🟡 | Limited current-handle account status rows for embedded `root@%`, backed by MyLite's supported status registry; no disconnected aggregate storage or cross-handle Performance Schema accounting |
+| `performance_schema.status_by_host` | 🟡 | Limited current-handle host status rows for embedded `%`, backed by MyLite's supported status registry; no disconnected aggregate storage or cross-handle Performance Schema accounting |
+| `performance_schema.status_by_thread` | 🟡 | Limited current-handle thread status rows keyed by the MyLite connection id and backed by MyLite's supported status registry; no cross-handle foreground-thread visibility or instrumentation filtering |
+| `performance_schema.status_by_user` | 🟡 | Limited current-handle user status rows for embedded `root`, backed by MyLite's supported status registry; no disconnected aggregate storage or cross-handle Performance Schema accounting |
 | `performance_schema.table_handles` | 🟡 | Read-only empty MySQL 8.4.9-shaped table-handle metadata with HASH primary and secondary index introspection; no live table-lock instrumentation |
 | `performance_schema.table_io_waits_summary_by_index_usage` | ❌ | Table I/O waits per index |
 | `performance_schema.table_io_waits_summary_by_table` | ❌ | Table I/O waits per table |
@@ -146,7 +147,7 @@ table, index, rename, truncate, and single-table DML writes targeting
 | `performance_schema.user_defined_functions` | 🟡 | Read-only MySQL 8.4.9 default component/plugin rows with MySQL-shaped metadata; no `CREATE FUNCTION` registry lifecycle |
 | `performance_schema.user_variables_by_thread` | 🟡 | Current-connection user variables with MySQL-shaped metadata and HASH primary-key introspection; no cross-connection visibility or binary-longblob fidelity in this row path |
 | `performance_schema.users` | ❌ | Connection stats per user name |
-| `performance_schema.variables_by_thread` | ❌ | Session system variables per session |
+| `performance_schema.variables_by_thread` | 🟡 | Limited current-handle thread variable rows keyed by the MyLite connection id and backed by MyLite's supported session-variable registry; no cross-handle foreground-thread visibility, sensitive-variable masking, or full optional variable universe |
 | `performance_schema.variables_info` | ❌ | How system variables were most recently set |
 | `performance_schema.tp_connections` | ❌ | Thread pool connection state and queue information |
 

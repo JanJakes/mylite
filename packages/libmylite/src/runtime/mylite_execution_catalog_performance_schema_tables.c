@@ -48,6 +48,277 @@ static const size_t performance_schema_variable_status_primary_key_columns[] = {
 };
 
 static const struct mylite_execution_catalog_column_definition
+    performance_schema_thread_variable_status_columns[] = {
+        {"THREAD_ID",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"VARIABLE_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"VARIABLE_VALUE",
+         NULL,
+         "YES",
+         "varchar",
+         "1024",
+         "4096",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(1024)"},
+};
+
+static const char *const performance_schema_thread_variable_status_column_keys[] = {
+    "PRI",
+    "PRI",
+    "",
+};
+
+static const char *const performance_schema_thread_variable_status_column_extras[] = {
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_thread_variable_status_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const size_t performance_schema_thread_variable_status_primary_key_columns[] = {
+    0U,
+    1U,
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_status_by_account_columns[] = {
+        {"USER",
+         NULL,
+         "YES",
+         "char",
+         "32",
+         "128",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_bin",
+         "char(32)"},
+        {"HOST",
+         NULL,
+         "YES",
+         "char",
+         "255",
+         "255",
+         NULL,
+         NULL,
+         NULL,
+         "ascii",
+         "ascii_general_ci",
+         "char(255)"},
+        {"VARIABLE_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"VARIABLE_VALUE",
+         NULL,
+         "YES",
+         "varchar",
+         "1024",
+         "4096",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(1024)"},
+};
+
+static const char *const performance_schema_status_by_account_column_keys[] = {
+    "MUL",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_status_by_account_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_status_by_account_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct mylite_execution_catalog_mysql_system_secondary_index
+    performance_schema_status_by_account_secondary_indexes[] = {
+        {"ACCOUNT", 0U, NULL, "0", true, NULL, "HASH"},
+        {"ACCOUNT", 1U, NULL, "0", true, NULL, "HASH"},
+        {"ACCOUNT", 2U, NULL, "0", true, NULL, "HASH"},
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_status_by_host_columns[] = {
+        {"HOST",
+         NULL,
+         "YES",
+         "char",
+         "255",
+         "255",
+         NULL,
+         NULL,
+         NULL,
+         "ascii",
+         "ascii_general_ci",
+         "char(255)"},
+        {"VARIABLE_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"VARIABLE_VALUE",
+         NULL,
+         "YES",
+         "varchar",
+         "1024",
+         "4096",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(1024)"},
+};
+
+static const char *const performance_schema_status_by_host_column_keys[] = {
+    "MUL",
+    "",
+    "",
+};
+
+static const char *const performance_schema_status_by_host_column_extras[] = {
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_status_by_host_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct mylite_execution_catalog_mysql_system_secondary_index
+    performance_schema_status_by_host_secondary_indexes[] = {
+        {"HOST", 0U, NULL, "0", true, NULL, "HASH"},
+        {"HOST", 1U, NULL, "0", true, NULL, "HASH"},
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_status_by_user_columns[] = {
+        {"USER",
+         NULL,
+         "YES",
+         "char",
+         "32",
+         "128",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_bin",
+         "char(32)"},
+        {"VARIABLE_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"VARIABLE_VALUE",
+         NULL,
+         "YES",
+         "varchar",
+         "1024",
+         "4096",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(1024)"},
+};
+
+static const char *const performance_schema_status_by_user_column_keys[] = {
+    "MUL",
+    "",
+    "",
+};
+
+static const char *const performance_schema_status_by_user_column_extras[] = {
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_status_by_user_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct mylite_execution_catalog_mysql_system_secondary_index
+    performance_schema_status_by_user_secondary_indexes[] = {
+        {"USER", 0U, NULL, "0", true, NULL, "HASH"},
+        {"USER", 1U, NULL, "0", true, NULL, "HASH"},
+};
+
+static const struct mylite_execution_catalog_column_definition
     performance_schema_performance_timer_columns[] = {
         {"TIMER_NAME",
          NULL,
@@ -1126,6 +1397,70 @@ static const struct mylite_execution_catalog_mysql_system_table
          NULL,
          0U},
         {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_STATUS_BY_ACCOUNT,
+          "status_by_account",
+          performance_schema_status_by_account_columns,
+          sizeof(performance_schema_status_by_account_columns) /
+              sizeof(performance_schema_status_by_account_columns[0])},
+         performance_schema_status_by_account_column_keys,
+         performance_schema_status_by_account_column_extras,
+         performance_schema_status_by_account_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         performance_schema_status_by_account_secondary_indexes,
+         sizeof(performance_schema_status_by_account_secondary_indexes) /
+             sizeof(performance_schema_status_by_account_secondary_indexes[0])},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_STATUS_BY_HOST,
+          "status_by_host",
+          performance_schema_status_by_host_columns,
+          sizeof(performance_schema_status_by_host_columns) /
+              sizeof(performance_schema_status_by_host_columns[0])},
+         performance_schema_status_by_host_column_keys,
+         performance_schema_status_by_host_column_extras,
+         performance_schema_status_by_host_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         performance_schema_status_by_host_secondary_indexes,
+         sizeof(performance_schema_status_by_host_secondary_indexes) /
+             sizeof(performance_schema_status_by_host_secondary_indexes[0])},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_STATUS_BY_THREAD,
+          "status_by_thread",
+          performance_schema_thread_variable_status_columns,
+          sizeof(performance_schema_thread_variable_status_columns) /
+              sizeof(performance_schema_thread_variable_status_columns[0])},
+         performance_schema_thread_variable_status_column_keys,
+         performance_schema_thread_variable_status_column_extras,
+         performance_schema_thread_variable_status_column_privileges,
+         NULL,
+         performance_schema_thread_variable_status_primary_key_columns,
+         sizeof(performance_schema_thread_variable_status_primary_key_columns) /
+             sizeof(performance_schema_thread_variable_status_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_STATUS_BY_USER,
+          "status_by_user",
+          performance_schema_status_by_user_columns,
+          sizeof(performance_schema_status_by_user_columns) /
+              sizeof(performance_schema_status_by_user_columns[0])},
+         performance_schema_status_by_user_column_keys,
+         performance_schema_status_by_user_column_extras,
+         performance_schema_status_by_user_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         performance_schema_status_by_user_secondary_indexes,
+         sizeof(performance_schema_status_by_user_secondary_indexes) /
+             sizeof(performance_schema_status_by_user_secondary_indexes[0])},
+        {"performance_schema",
          {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_TABLE_HANDLES,
           "table_handles",
           performance_schema_table_handle_columns,
@@ -1203,6 +1538,22 @@ static const struct mylite_execution_catalog_mysql_system_table
          performance_schema_variable_status_primary_key_columns,
          sizeof(performance_schema_variable_status_primary_key_columns) /
              sizeof(performance_schema_variable_status_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_VARIABLES_BY_THREAD,
+          "variables_by_thread",
+          performance_schema_thread_variable_status_columns,
+          sizeof(performance_schema_thread_variable_status_columns) /
+              sizeof(performance_schema_thread_variable_status_columns[0])},
+         performance_schema_thread_variable_status_column_keys,
+         performance_schema_thread_variable_status_column_extras,
+         performance_schema_thread_variable_status_column_privileges,
+         NULL,
+         performance_schema_thread_variable_status_primary_key_columns,
+         sizeof(performance_schema_thread_variable_status_primary_key_columns) /
+             sizeof(performance_schema_thread_variable_status_primary_key_columns[0]),
          NULL,
          NULL,
          0U},

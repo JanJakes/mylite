@@ -685,6 +685,10 @@
     COMMAND mylite_runtime_performance_schema_variable_status_tables_test
   )
   add_test(
+    NAME libmylite.runtime.performance_schema_variable_info_tables
+    COMMAND mylite_runtime_performance_schema_variable_info_tables_test
+  )
+  add_test(
     NAME libmylite.runtime.performance_schema_connection_tables
     COMMAND mylite_runtime_performance_schema_connection_tables_test
   )

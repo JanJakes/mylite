@@ -149,6 +149,9 @@ static int append_performance_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "variables_by_thread") == 0) {
         return append_performance_schema_variable_by_thread_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "variables_info") == 0) {
+        return append_performance_schema_variables_info_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "status_by_account") == 0) {
         return append_performance_schema_status_by_account_rows(database, rows);
     }
@@ -163,6 +166,9 @@ static int append_performance_schema_system_table_rows(
     }
     if (strcmp(definition->query_definition.name, "performance_timers") == 0) {
         return append_performance_schema_performance_timer_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "persisted_variables") == 0) {
+        return MYLITE_OK;
     }
     if (strcmp(definition->query_definition.name, "setup_actors") == 0) {
         return append_performance_schema_setup_actor_rows(database, rows);
@@ -698,6 +704,39 @@ static int append_performance_schema_variable_by_thread_rows(
         if (rc == MYLITE_OK) {
             rc = append_information_schema_row(database, rows, values);
         }
+    }
+    return rc;
+}
+
+static int append_performance_schema_variables_info_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_variables_info_column_count = 8 };
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != performance_schema_variables_info_column_count) {
+        set_runtime_error(database, "invalid performance_schema variables_info columns");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < mylite_execution_system_variable_descriptor_count();
+         ++index) {
+        const struct mylite_execution_system_variable_descriptor *descriptor =
+            mylite_execution_system_variable_descriptor_at(index);
+        const char *const values[performance_schema_variables_info_column_count] = {
+            descriptor == NULL ? NULL : descriptor->name,
+            "COMPILED",
+            "",
+            "0",
+            "0",
+            NULL,
+            "",
+            "",
+        };
+
+        rc = append_information_schema_row(database, rows, values);
     }
     return rc;
 }

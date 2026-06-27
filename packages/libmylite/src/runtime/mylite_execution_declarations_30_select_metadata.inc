@@ -456,8 +456,42 @@ static int append_mysql_schema_system_table_rows(
 );
 static int append_performance_schema_system_table_rows(
     struct mylite_db *database,
+    const struct mylite_statement_context *context,
     const struct mylite_execution_catalog_mysql_system_table *definition,
     struct information_schema_row_set *rows
+);
+static int append_performance_schema_accounts_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_performance_schema_hosts_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_performance_schema_users_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_performance_schema_processlist_rows(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    struct information_schema_row_set *rows
+);
+static int append_performance_schema_threads_rows(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    struct information_schema_row_set *rows
+);
+static int append_performance_schema_connection_count_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const char *const *values,
+    size_t expected_column_count
+);
+static int format_performance_schema_session_count(
+    struct mylite_db *database,
+    char *count_text,
+    size_t count_text_size
 );
 static int append_performance_schema_variable_rows(
     struct mylite_db *database,

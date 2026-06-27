@@ -87,7 +87,7 @@ static int append_mysql_system_table_system_rows(
         return append_mysql_schema_system_table_rows(database, definition, rows);
     }
     if (strcmp(definition->schema_name, "performance_schema") == 0) {
-        return append_performance_schema_system_table_rows(database, definition, rows);
+        return append_performance_schema_system_table_rows(database, context, definition, rows);
     }
     if (strcmp(definition->schema_name, "sys") == 0) {
         return append_sys_schema_system_table_rows(database, context, definition, rows);
@@ -124,11 +124,21 @@ static int append_mysql_schema_system_table_rows(
 
 static int append_performance_schema_system_table_rows(
     struct mylite_db *database,
+    const struct mylite_statement_context *context,
     const struct mylite_execution_catalog_mysql_system_table *definition,
     struct information_schema_row_set *rows
 ) {
+    if (strcmp(definition->query_definition.name, "accounts") == 0) {
+        return append_performance_schema_accounts_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "global_variables") == 0) {
         return append_performance_schema_variable_rows(database, rows, true);
+    }
+    if (strcmp(definition->query_definition.name, "hosts") == 0) {
+        return append_performance_schema_hosts_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "processlist") == 0) {
+        return append_performance_schema_processlist_rows(database, context, rows);
     }
     if (strcmp(definition->query_definition.name, "session_variables") == 0) {
         return append_performance_schema_variable_rows(database, rows, false);
@@ -178,11 +188,17 @@ static int append_performance_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "table_handles") == 0) {
         return MYLITE_OK;
     }
+    if (strcmp(definition->query_definition.name, "threads") == 0) {
+        return append_performance_schema_threads_rows(database, context, rows);
+    }
     if (strcmp(definition->query_definition.name, "user_defined_functions") == 0) {
         return append_performance_schema_user_defined_function_rows(database, rows);
     }
     if (strcmp(definition->query_definition.name, "user_variables_by_thread") == 0) {
         return append_performance_schema_user_variable_by_thread_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "users") == 0) {
+        return append_performance_schema_users_rows(database, rows);
     }
     if (strcmp(definition->query_definition.name, "session_status") == 0) {
         return append_performance_schema_status_rows(database, rows, false);
@@ -190,6 +206,299 @@ static int append_performance_schema_system_table_rows(
 
     set_runtime_error(database, "invalid performance_schema system table");
     return MYLITE_ERROR;
+}
+
+static int append_performance_schema_accounts_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_accounts_column_count = 6 };
+    char count_text[integer_text_capacity];
+    const char *const values[performance_schema_accounts_column_count] = {
+        "root",
+        "%",
+        count_text,
+        count_text,
+        "0",
+        "0",
+    };
+    int rc = format_performance_schema_session_count(database, count_text, sizeof(count_text));
+
+    if (rc == MYLITE_OK) {
+        rc = append_performance_schema_connection_count_row(
+            database,
+            rows,
+            values,
+            performance_schema_accounts_column_count
+        );
+    }
+    return rc;
+}
+
+static int append_performance_schema_hosts_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_hosts_column_count = 5 };
+    char count_text[integer_text_capacity];
+    const char *const values[performance_schema_hosts_column_count] = {
+        "%",
+        count_text,
+        count_text,
+        "0",
+        "0",
+    };
+    int rc = format_performance_schema_session_count(database, count_text, sizeof(count_text));
+
+    if (rc == MYLITE_OK) {
+        rc = append_performance_schema_connection_count_row(
+            database,
+            rows,
+            values,
+            performance_schema_hosts_column_count
+        );
+    }
+    return rc;
+}
+
+static int append_performance_schema_users_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_users_column_count = 5 };
+    char count_text[integer_text_capacity];
+    const char *const values[performance_schema_users_column_count] = {
+        "root",
+        count_text,
+        count_text,
+        "0",
+        "0",
+    };
+    int rc = format_performance_schema_session_count(database, count_text, sizeof(count_text));
+
+    if (rc == MYLITE_OK) {
+        rc = append_performance_schema_connection_count_row(
+            database,
+            rows,
+            values,
+            performance_schema_users_column_count
+        );
+    }
+    return rc;
+}
+
+static int append_performance_schema_processlist_rows(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    struct information_schema_row_set *rows
+) {
+    enum {
+        performance_schema_processlist_column_count = 9,
+        performance_schema_processlist_info_column = 7,
+    };
+    struct mylite_processlist_session_snapshot *sessions = NULL;
+    size_t session_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != performance_schema_processlist_column_count) {
+        set_runtime_error(database, "invalid performance_schema processlist columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_connection_collect_processlist_sessions(database, &sessions, &session_count);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "failed to collect performance_schema.processlist sessions");
+        return rc;
+    }
+
+    for (size_t session_index = 0U; rc == MYLITE_OK && session_index < session_count;
+         ++session_index) {
+        const struct mylite_processlist_session_snapshot *session = &sessions[session_index];
+        char id_text[integer_text_capacity];
+        char user[MYLITE_SESSION_IDENTIFIER_CAPACITY];
+        char host[MYLITE_SESSION_IDENTIFIER_CAPACITY];
+        char *info = NULL;
+        const char *values[performance_schema_processlist_column_count] = {
+            id_text,
+            user,
+            host,
+            session->has_selected_schema ? session->selected_schema : NULL,
+            session->is_current ? "Query" : "Sleep",
+            "0",
+            session->is_current ? "executing" : NULL,
+            NULL,
+            session->is_current ? "PRIMARY" : NULL,
+        };
+        int written = snprintf(id_text, sizeof(id_text), "%" PRIu64, session->connection_id);
+
+        if (written < 0 || (size_t)written >= sizeof(id_text)) {
+            set_runtime_error(database, "failed to format performance_schema.processlist id");
+            rc = MYLITE_ERROR;
+        }
+        if (rc == MYLITE_OK) {
+            rc = format_processlist_user_host(
+                database,
+                session->client_user_identity,
+                user,
+                sizeof(user),
+                host,
+                sizeof(host)
+            );
+        }
+        if (rc == MYLITE_OK && session->is_current) {
+            rc = copy_information_schema_processlist_info(database, context, &info);
+        }
+        if (rc == MYLITE_OK) {
+            values[performance_schema_processlist_info_column] = info;
+            rc = append_information_schema_row(database, rows, values);
+        }
+        free(info);
+    }
+
+    free(sessions);
+    return rc;
+}
+
+static int append_performance_schema_threads_rows(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    struct information_schema_row_set *rows
+) {
+    enum {
+        performance_schema_threads_column_count = 24,
+        performance_schema_threads_processlist_info_column = 10,
+    };
+    struct mylite_processlist_session_snapshot *sessions = NULL;
+    size_t session_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != performance_schema_threads_column_count) {
+        set_runtime_error(database, "invalid performance_schema threads columns");
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_connection_collect_processlist_sessions(database, &sessions, &session_count);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "failed to collect performance_schema.threads sessions");
+        return rc;
+    }
+
+    for (size_t session_index = 0U; rc == MYLITE_OK && session_index < session_count;
+         ++session_index) {
+        const struct mylite_processlist_session_snapshot *session = &sessions[session_index];
+        char id_text[integer_text_capacity];
+        char user[MYLITE_SESSION_IDENTIFIER_CAPACITY];
+        char host[MYLITE_SESSION_IDENTIFIER_CAPACITY];
+        char *info = NULL;
+        const char *values[performance_schema_threads_column_count] = {
+            id_text,
+            "thread/sql/one_connection",
+            "FOREGROUND",
+            id_text,
+            user,
+            host,
+            session->has_selected_schema ? session->selected_schema : NULL,
+            session->is_current ? "Query" : "Sleep",
+            "0",
+            session->is_current ? "executing" : NULL,
+            NULL,
+            NULL,
+            NULL,
+            "YES",
+            "YES",
+            NULL,
+            NULL,
+            NULL,
+            session->is_current ? "PRIMARY" : NULL,
+            "0",
+            "0",
+            "0",
+            "0",
+            "NO",
+        };
+        int written = snprintf(id_text, sizeof(id_text), "%" PRIu64, session->connection_id);
+
+        if (written < 0 || (size_t)written >= sizeof(id_text)) {
+            set_runtime_error(database, "failed to format performance_schema.threads id");
+            rc = MYLITE_ERROR;
+        }
+        if (rc == MYLITE_OK) {
+            rc = format_processlist_user_host(
+                database,
+                session->client_user_identity,
+                user,
+                sizeof(user),
+                host,
+                sizeof(host)
+            );
+        }
+        if (rc == MYLITE_OK && session->is_current) {
+            rc = copy_information_schema_processlist_info(database, context, &info);
+        }
+        if (rc == MYLITE_OK) {
+            values[performance_schema_threads_processlist_info_column] = info;
+            rc = append_information_schema_row(database, rows, values);
+        }
+        free(info);
+    }
+
+    free(sessions);
+    return rc;
+}
+
+static int append_performance_schema_connection_count_row(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    const char *const *values,
+    size_t expected_column_count
+) {
+    if (rows->definition->column_count != expected_column_count) {
+        set_runtime_error(database, "invalid performance_schema connection count columns");
+        return MYLITE_ERROR;
+    }
+    return append_information_schema_row(database, rows, values);
+}
+
+static int format_performance_schema_session_count(
+    struct mylite_db *database,
+    char *count_text,
+    size_t count_text_size
+) {
+    struct mylite_processlist_session_snapshot *sessions = NULL;
+    size_t session_count = 0U;
+    int rc = MYLITE_OK;
+    int written = 0;
+
+    if (count_text == NULL || count_text_size == 0U) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = mylite_connection_collect_processlist_sessions(database, &sessions, &session_count);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "failed to collect performance_schema connection sessions");
+        return rc;
+    }
+
+    written = snprintf(count_text, count_text_size, "%zu", session_count);
+    free(sessions);
+    if (written < 0 || (size_t)written >= count_text_size) {
+        set_runtime_error(database, "failed to format performance_schema connection count");
+        return MYLITE_ERROR;
+    }
+
+    return MYLITE_OK;
 }
 
 static int append_performance_schema_variable_rows(

@@ -162,6 +162,28 @@ static const char *builtin_schema_table_rows(
         return "128";
     }
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "events_stages_current") == 0) {
+        return "256";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "events_stages_history") == 0) {
+        return "2560";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        (strcmp(table_name, "events_stages_history_long") == 0 ||
+         strcmp(table_name, "events_statements_history_long") == 0 ||
+         strcmp(table_name, "events_waits_history_long") == 0)) {
+        return "10000";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "events_waits_current") == 0) {
+        return "1536";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "events_waits_history") == 0) {
+        return "2560";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
         strcmp(table_name, "setup_consumers") == 0) {
         return "16";
     }

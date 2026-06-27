@@ -28,6 +28,10 @@ read-only metadata placeholders. Optional Clone, Enterprise Firewall, NDB, Group
 Replication, component scheduler, and Enterprise Thread Pool Performance Schema
 tables that are absent from the MySQL 8.4.9 target runtime are also absent from
 MyLite metadata and return MySQL-shaped missing-table diagnostics.
+Event current/history placeholders for stage and wait tables, statement
+history-long, and stored-program statement summaries expose MySQL-shaped
+metadata with empty read-only rows; live event instrumentation remains
+unsupported.
 `user_defined_functions` exposes MySQL 8.4.9-shaped loadable-function registry
 rows, and `user_variables_by_thread` exposes MyLite session user variables for
 the current connection. The remaining tables are metadata-only and unsupported
@@ -51,9 +55,9 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.events_errors_summary_by_thread_by_error` | ❌ | Errors per thread and error code |
 | `performance_schema.events_errors_summary_by_user_by_error` | ❌ | Errors per user and error code |
 | `performance_schema.events_errors_summary_global_by_error` | ❌ | Errors per error code |
-| `performance_schema.events_stages_current` | ❌ | Current stage events |
-| `performance_schema.events_stages_history` | ❌ | Most recent stage events per thread |
-| `performance_schema.events_stages_history_long` | ❌ | Most recent stage events overall |
+| `performance_schema.events_stages_current` | 🟡 | Empty read-only current-stage placeholder with MySQL-shaped metadata; no live stage instrumentation |
+| `performance_schema.events_stages_history` | 🟡 | Empty read-only per-thread stage-history placeholder with MySQL-shaped metadata; no live stage instrumentation |
+| `performance_schema.events_stages_history_long` | 🟡 | Empty read-only global stage-history placeholder with MySQL-shaped metadata; no live stage instrumentation |
 | `performance_schema.events_stages_summary_by_account_by_event_name` | ❌ | Stage events per account and event name |
 | `performance_schema.events_stages_summary_by_host_by_event_name` | ❌ | Stage events per host name and event name |
 | `performance_schema.events_stages_summary_by_thread_by_event_name` | ❌ | Stage waits per thread and event name |
@@ -63,11 +67,11 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.events_statements_histogram_by_digest` | ❌ | Statement histograms per schema and digest value |
 | `performance_schema.events_statements_histogram_global` | ❌ | Statement histogram summarized globally |
 | `performance_schema.events_statements_history` | ❌ | Most recent statement events per thread |
-| `performance_schema.events_statements_history_long` | ❌ | Most recent statement events overall |
+| `performance_schema.events_statements_history_long` | 🟡 | Empty read-only global statement-history placeholder with MySQL-shaped metadata; no live statement instrumentation |
 | `performance_schema.events_statements_summary_by_account_by_event_name` | ❌ | Statement events per account and event name |
 | `performance_schema.events_statements_summary_by_digest` | ❌ | Statement events per schema and digest value |
 | `performance_schema.events_statements_summary_by_host_by_event_name` | ❌ | Statement events per host name and event name |
-| `performance_schema.events_statements_summary_by_program` | ❌ | Statement events per stored program |
+| `performance_schema.events_statements_summary_by_program` | 🟡 | Empty read-only stored-program statement-summary placeholder with MySQL-shaped metadata; no stored-program instrumentation |
 | `performance_schema.events_statements_summary_by_thread_by_event_name` | ❌ | Statement events per thread and event name |
 | `performance_schema.events_statements_summary_by_user_by_event_name` | ❌ | Statement events per user name and event name |
 | `performance_schema.events_statements_summary_global_by_event_name` | ❌ | Statement events per event name |
@@ -79,9 +83,9 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.events_transactions_summary_by_thread_by_event_name` | ❌ | Transaction events per thread and event name |
 | `performance_schema.events_transactions_summary_by_user_by_event_name` | ❌ | Transaction events per user name and event name |
 | `performance_schema.events_transactions_summary_global_by_event_name` | ❌ | Transaction events per event name |
-| `performance_schema.events_waits_current` | ❌ | Current wait events |
-| `performance_schema.events_waits_history` | ❌ | Most recent wait events per thread |
-| `performance_schema.events_waits_history_long` | ❌ | Most recent wait events overall |
+| `performance_schema.events_waits_current` | 🟡 | Empty read-only current-wait placeholder with MySQL-shaped metadata; no live wait instrumentation |
+| `performance_schema.events_waits_history` | 🟡 | Empty read-only per-thread wait-history placeholder with MySQL-shaped metadata; no live wait instrumentation |
+| `performance_schema.events_waits_history_long` | 🟡 | Empty read-only global wait-history placeholder with MySQL-shaped metadata; no live wait instrumentation |
 | `performance_schema.events_waits_summary_by_account_by_event_name` | ❌ | Wait events per account and event name |
 | `performance_schema.events_waits_summary_by_host_by_event_name` | ❌ | Wait events per host name and event name |
 | `performance_schema.events_waits_summary_by_instance` | ❌ | Wait events per instance |

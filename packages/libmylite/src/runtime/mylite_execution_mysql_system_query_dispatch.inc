@@ -136,6 +136,13 @@ static int append_performance_schema_system_table_rows(
             0 ||
         strcmp(definition->query_definition.name, "data_locks") == 0 ||
         strcmp(definition->query_definition.name, "data_lock_waits") == 0 ||
+        strcmp(definition->query_definition.name, "events_errors_summary_by_account_by_error") ==
+            0 ||
+        strcmp(definition->query_definition.name, "events_errors_summary_by_host_by_error") == 0 ||
+        strcmp(definition->query_definition.name, "events_errors_summary_by_thread_by_error") ==
+            0 ||
+        strcmp(definition->query_definition.name, "events_errors_summary_by_user_by_error") == 0 ||
+        strcmp(definition->query_definition.name, "events_errors_summary_global_by_error") == 0 ||
         strcmp(definition->query_definition.name, "events_stages_current") == 0 ||
         strcmp(definition->query_definition.name, "events_stages_history") == 0 ||
         strcmp(definition->query_definition.name, "events_stages_history_long") == 0 ||

@@ -166,6 +166,20 @@ static const char *builtin_schema_table_rows(
         return "256";
     }
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        (strcmp(table_name, "events_errors_summary_by_account_by_error") == 0 ||
+         strcmp(table_name, "events_errors_summary_by_host_by_error") == 0 ||
+         strcmp(table_name, "events_errors_summary_by_user_by_error") == 0)) {
+        return "227456";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "events_errors_summary_by_thread_by_error") == 0) {
+        return "454912";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "events_errors_summary_global_by_error") == 0) {
+        return "5556";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
         strcmp(table_name, "events_stages_history") == 0) {
         return "2560";
     }

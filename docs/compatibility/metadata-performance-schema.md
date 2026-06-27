@@ -31,8 +31,9 @@ MyLite metadata and return MySQL-shaped missing-table diagnostics.
 Event current/history placeholders for stage and wait tables, statement
 history-long, and stored-program statement summaries expose MySQL-shaped
 metadata with empty read-only rows; live event instrumentation remains
-unsupported. Stage and wait summary placeholders expose MySQL-shaped metadata
-with empty read-only rows; live stage/wait aggregation remains unsupported.
+unsupported. Error, stage, and wait summary placeholders expose MySQL-shaped
+metadata with empty read-only rows; live error/stage/wait aggregation remains
+unsupported.
 `user_defined_functions` exposes MySQL 8.4.9-shaped loadable-function registry
 rows, and `user_variables_by_thread` exposes MyLite session user variables for
 the current connection. The remaining tables are metadata-only and unsupported
@@ -51,11 +52,11 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.data_lock_waits` | 🟡 | Empty read-only data-lock-wait placeholder with MySQL-shaped metadata and HASH index introspection; no live wait graph |
 | `performance_schema.data_locks` | 🟡 | Empty read-only data-lock placeholder with MySQL-shaped metadata and HASH index introspection; no live data-lock instrumentation |
 | `performance_schema.error_log` | ❌ | Server error log recent entries |
-| `performance_schema.events_errors_summary_by_account_by_error` | ❌ | Errors per account and error code |
-| `performance_schema.events_errors_summary_by_host_by_error` | ❌ | Errors per host and error code |
-| `performance_schema.events_errors_summary_by_thread_by_error` | ❌ | Errors per thread and error code |
-| `performance_schema.events_errors_summary_by_user_by_error` | ❌ | Errors per user and error code |
-| `performance_schema.events_errors_summary_global_by_error` | ❌ | Errors per error code |
+| `performance_schema.events_errors_summary_by_account_by_error` | 🟡 | Empty read-only error-summary placeholder with MySQL-shaped metadata; no live error aggregation |
+| `performance_schema.events_errors_summary_by_host_by_error` | 🟡 | Empty read-only error-summary placeholder with MySQL-shaped metadata; no live error aggregation |
+| `performance_schema.events_errors_summary_by_thread_by_error` | 🟡 | Empty read-only error-summary placeholder with MySQL-shaped metadata; no live error aggregation |
+| `performance_schema.events_errors_summary_by_user_by_error` | 🟡 | Empty read-only error-summary placeholder with MySQL-shaped metadata; no live error aggregation |
+| `performance_schema.events_errors_summary_global_by_error` | 🟡 | Empty read-only error-summary placeholder with MySQL-shaped metadata; no live error aggregation |
 | `performance_schema.events_stages_current` | 🟡 | Empty read-only current-stage placeholder with MySQL-shaped metadata; no live stage instrumentation |
 | `performance_schema.events_stages_history` | 🟡 | Empty read-only per-thread stage-history placeholder with MySQL-shaped metadata; no live stage instrumentation |
 | `performance_schema.events_stages_history_long` | 🟡 | Empty read-only global stage-history placeholder with MySQL-shaped metadata; no live stage instrumentation |

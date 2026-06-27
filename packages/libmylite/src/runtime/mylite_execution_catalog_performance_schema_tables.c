@@ -336,6 +336,102 @@ static const struct mylite_execution_catalog_mysql_system_secondary_index
         {"OBJECT", 2U, NULL, "0", true, NULL, "HASH"},
 };
 
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_setup_thread_columns[] = {
+        {"NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "128",
+         "512",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(128)"},
+        {"ENABLED",
+         NULL,
+         "NO",
+         "enum",
+         "3",
+         "12",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "enum('YES','NO')"},
+        {"HISTORY",
+         NULL,
+         "NO",
+         "enum",
+         "3",
+         "12",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "enum('YES','NO')"},
+        {"PROPERTIES",
+         NULL,
+         "NO",
+         "set",
+         "14",
+         "56",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "set('singleton','user')"},
+        {"VOLATILITY", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
+        {"DOCUMENTATION",
+         NULL,
+         "YES",
+         "longtext",
+         "4294967295",
+         "4294967295",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "longtext"},
+};
+
+static const char *const performance_schema_setup_thread_column_keys[] = {
+    "PRI",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_setup_thread_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_setup_thread_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const size_t performance_schema_setup_thread_primary_key_columns[] = {
+    0U,
+};
+
 static const struct mylite_execution_catalog_mysql_system_table
     performance_schema_system_table_definitions[] = {
         {"performance_schema",
@@ -433,6 +529,22 @@ static const struct mylite_execution_catalog_mysql_system_table
          performance_schema_setup_object_secondary_indexes,
          sizeof(performance_schema_setup_object_secondary_indexes) /
              sizeof(performance_schema_setup_object_secondary_indexes[0])},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_SETUP_THREADS,
+          "setup_threads",
+          performance_schema_setup_thread_columns,
+          sizeof(performance_schema_setup_thread_columns) /
+              sizeof(performance_schema_setup_thread_columns[0])},
+         performance_schema_setup_thread_column_keys,
+         performance_schema_setup_thread_column_extras,
+         performance_schema_setup_thread_column_privileges,
+         NULL,
+         performance_schema_setup_thread_primary_key_columns,
+         sizeof(performance_schema_setup_thread_primary_key_columns) /
+             sizeof(performance_schema_setup_thread_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
         {"performance_schema",
          {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_SESSION_STATUS,
           "session_status",

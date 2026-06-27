@@ -148,6 +148,9 @@ static int append_performance_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "setup_objects") == 0) {
         return append_performance_schema_setup_object_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "setup_threads") == 0) {
+        return append_performance_schema_setup_thread_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "session_status") == 0) {
         return append_performance_schema_status_rows(database, rows, false);
     }
@@ -347,6 +350,83 @@ static int append_performance_schema_setup_object_rows(
     for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(object_rows) / sizeof(object_rows[0]);
          ++index) {
         rc = append_information_schema_row(database, rows, object_rows[index]);
+    }
+    return rc;
+}
+
+static int append_performance_schema_setup_thread_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_setup_thread_column_count = 6 };
+    static const char *const thread_rows[][performance_schema_setup_thread_column_count] = {
+        {"thread/innodb/buf_dump_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/buf_pool_create_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/buf_resize_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/bulk_alloc_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/bulk_flusher_thread", "YES", "YES", "", "0", NULL},
+        {"thread/innodb/clone_ddl_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/clone_gtid_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/ddl_thread", "YES", "YES", "", "0", NULL},
+        {"thread/innodb/dict_stats_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/fts_optimize_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/fts_parallel_merge_thread", "YES", "YES", "", "0", NULL},
+        {"thread/innodb/fts_parallel_tokenization_thread", "YES", "YES", "", "0", NULL},
+        {"thread/innodb/io_ibuf_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/io_read_thread", "YES", "YES", "", "0", NULL},
+        {"thread/innodb/io_write_thread", "YES", "YES", "", "0", NULL},
+        {"thread/innodb/log_archiver_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/log_checkpointer_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/log_files_governor_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/log_flush_notifier_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/log_flusher_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/log_write_notifier_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/log_writer_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/meb::redo_log_archive_consumer_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/page_archiver_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/page_flush_coordinator_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/page_flush_thread", "YES", "YES", "", "0", NULL},
+        {"thread/innodb/parallel_read_thread", "YES", "YES", "", "0", NULL},
+        {"thread/innodb/parallel_rseg_init_thread", "YES", "YES", "", "0", NULL},
+        {"thread/innodb/recv_writer_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/srv_error_monitor_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/srv_lock_timeout_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/srv_master_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/srv_monitor_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/srv_purge_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/srv_ts_alter_encrypt_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/srv_worker_thread", "YES", "YES", "", "0", NULL},
+        {"thread/innodb/trx_recovery_rollback_thread", "YES", "YES", "", "0", NULL},
+        {"thread/myisam/find_all_keys", "YES", "YES", "", "0", NULL},
+        {"thread/mysqlx/acceptor_network", "YES", "YES", "", "0", NULL},
+        {"thread/mysqlx/worker", "YES", "YES", "user", "0", NULL},
+        {"thread/mysys/thread_timer_notifier", "YES", "YES", "singleton", "0", NULL},
+        {"thread/performance_schema/setup", "YES", "YES", "singleton", "0", NULL},
+        {"thread/sql/admin_interface", "YES", "YES", "user", "0", NULL},
+        {"thread/sql/bootstrap", "YES", "YES", "singleton", "0", NULL},
+        {"thread/sql/compress_gtid_table", "YES", "YES", "singleton", "0", NULL},
+        {"thread/sql/event_scheduler", "YES", "YES", "singleton", "0", NULL},
+        {"thread/sql/event_worker", "YES", "YES", "", "0", NULL},
+        {"thread/sql/main", "YES", "YES", "singleton", "0", NULL},
+        {"thread/sql/manager", "YES", "YES", "singleton", "0", NULL},
+        {"thread/sql/one_connection", "YES", "YES", "user", "0", NULL},
+        {"thread/sql/parser_service", "YES", "YES", "singleton", "0", NULL},
+        {"thread/sql/replica_io", "YES", "YES", "", "0", NULL},
+        {"thread/sql/replica_monitor", "YES", "YES", "singleton", "0", NULL},
+        {"thread/sql/replica_sql", "YES", "YES", "", "0", NULL},
+        {"thread/sql/replica_worker", "YES", "YES", "", "0", NULL},
+        {"thread/sql/signal_handler", "YES", "YES", "singleton", "0", NULL},
+    };
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != performance_schema_setup_thread_column_count) {
+        set_runtime_error(database, "invalid performance_schema setup_threads columns");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(thread_rows) / sizeof(thread_rows[0]);
+         ++index) {
+        rc = append_information_schema_row(database, rows, thread_rows[index]);
     }
     return rc;
 }

@@ -136,6 +136,9 @@ static int append_performance_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "global_status") == 0) {
         return append_performance_schema_status_rows(database, rows, true);
     }
+    if (strcmp(definition->query_definition.name, "performance_timers") == 0) {
+        return append_performance_schema_performance_timer_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "session_status") == 0) {
         return append_performance_schema_status_rows(database, rows, false);
     }
@@ -210,6 +213,32 @@ static int append_performance_schema_status_rows(
         values[0] = descriptor->name;
         values[1] = descriptor->value;
         rc = append_information_schema_row(database, rows, values);
+    }
+    return rc;
+}
+
+static int append_performance_schema_performance_timer_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_performance_timer_column_count = 4 };
+    static const char *const timer_rows[][performance_schema_performance_timer_column_count] = {
+        {"CYCLE", "1000000000", "1", "1"},
+        {"NANOSECOND", "1000000000", "1", "1"},
+        {"MICROSECOND", "1000000", "1", "1"},
+        {"MILLISECOND", "1000", "1", "1"},
+        {"THREAD_CPU", "1000000000", "1", "1"},
+    };
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != performance_schema_performance_timer_column_count) {
+        set_runtime_error(database, "invalid performance_schema performance_timers columns");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < sizeof(timer_rows) / sizeof(timer_rows[0]);
+         ++index) {
+        rc = append_information_schema_row(database, rows, timer_rows[index]);
     }
     return rc;
 }

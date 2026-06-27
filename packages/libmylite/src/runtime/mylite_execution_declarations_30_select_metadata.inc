@@ -469,6 +469,10 @@ static int append_performance_schema_status_rows(
     struct information_schema_row_set *rows,
     bool global_scope
 );
+static int append_performance_schema_performance_timer_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
 static bool performance_schema_show_status_descriptor_visible(
     const struct mylite_execution_show_status_descriptor *descriptor,
     bool global_scope

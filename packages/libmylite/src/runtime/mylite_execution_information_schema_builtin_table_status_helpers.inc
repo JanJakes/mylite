@@ -161,6 +161,10 @@ static const char *builtin_schema_table_rows(
         strcmp(table_name, "setup_actors") == 0) {
         return "128";
     }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "performance_timers") == 0) {
+        return "5";
+    }
     if (strcmp(directory->schema_name, "sys") == 0 && strcmp(table_name, "sys_config") == 0) {
         return "6";
     }

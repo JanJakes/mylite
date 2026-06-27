@@ -4,11 +4,12 @@ Metadata rows include base MySQL objects plus optional plugin, Enterprise, NDB C
 
 The `performance_schema` schema name is exposed in the limited built-in schema
 catalog and can be selected with `USE performance_schema`. The MySQL 8.4.9
-target runtime's Performance Schema table names are exposed as metadata-only
-rows through `INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`, `SHOW FULL TABLES`,
-and `SHOW TABLE STATUS`. The variable/status tables listed below are queryable
-for MyLite's supported registries; the remaining tables are metadata-only and
-unsupported unless listed otherwise. MyLite rejects schema, table, index,
+target runtime's Performance Schema table names are exposed as metadata rows
+through `INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`, `SHOW FULL TABLES`, and
+`SHOW TABLE STATUS`. The variable/status tables listed below are queryable for
+MyLite's supported registries, and `performance_timers` exposes deterministic
+timer placeholder rows; the remaining tables are metadata-only and unsupported
+unless listed otherwise. MyLite rejects schema, table, index,
 rename, truncate, and single-table DML writes targeting `performance_schema`
 with `1044 / 42000` access-denied diagnostics.
 
@@ -88,7 +89,7 @@ with `1044 / 42000` access-denied diagnostics.
 | `performance_schema.ndb_sync_excluded_objects` | ❌ | NDB objects which cannot be synchronized |
 | `performance_schema.ndb_sync_pending_objects` | ❌ | NDB objects waiting for synchronization |
 | `performance_schema.objects_summary_global_by_type` | ❌ | Object summaries |
-| `performance_schema.performance_timers` | ❌ | Which event timers are available |
+| `performance_schema.performance_timers` | 🟡 | Queryable MySQL-shaped timer-name rows with deterministic non-NULL placeholder timer values; live timer calibration and event timing remain unsupported |
 | `performance_schema.persisted_variables` | ❌ | Contents of mysqld-auto.cnf file |
 | `performance_schema.prepared_statements_instances` | ❌ | Prepared statement instances and statistics |
 | `performance_schema.processlist` | ❌ | Process list information |

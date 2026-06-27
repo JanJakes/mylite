@@ -47,6 +47,59 @@ static const size_t performance_schema_variable_status_primary_key_columns[] = {
     0U,
 };
 
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_performance_timer_columns[] = {
+        {"TIMER_NAME",
+         NULL,
+         "NO",
+         "enum",
+         "11",
+         "44",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "enum('CYCLE','NANOSECOND','MICROSECOND','MILLISECOND','THREAD_CPU')"},
+        {"TIMER_FREQUENCY", NULL, "YES", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"
+        },
+        {"TIMER_RESOLUTION",
+         NULL,
+         "YES",
+         "bigint",
+         NULL,
+         NULL,
+         "19",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint"},
+        {"TIMER_OVERHEAD", NULL, "YES", "bigint", NULL, NULL, "19", "0", NULL, NULL, NULL, "bigint"
+        },
+};
+
+static const char *const performance_schema_performance_timer_column_keys[] = {
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_performance_timer_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_performance_timer_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
 static const struct mylite_execution_catalog_mysql_system_table
     performance_schema_system_table_definitions[] = {
         {"performance_schema",
@@ -78,6 +131,21 @@ static const struct mylite_execution_catalog_mysql_system_table
          performance_schema_variable_status_primary_key_columns,
          sizeof(performance_schema_variable_status_primary_key_columns) /
              sizeof(performance_schema_variable_status_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_PERFORMANCE_TIMERS,
+          "performance_timers",
+          performance_schema_performance_timer_columns,
+          sizeof(performance_schema_performance_timer_columns) /
+              sizeof(performance_schema_performance_timer_columns[0])},
+         performance_schema_performance_timer_column_keys,
+         performance_schema_performance_timer_column_extras,
+         performance_schema_performance_timer_column_privileges,
+         NULL,
+         NULL,
+         0U,
          NULL,
          NULL,
          0U},

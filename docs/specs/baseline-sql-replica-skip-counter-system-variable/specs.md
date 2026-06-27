@@ -10,11 +10,12 @@ It builds on the existing `SYSTEM_VARIABLE` lexer/parser token, scalar
 `sql_replica_skip_counter` as a mutable global replication counter that controls
 how many source events a future replica start should skip. MyLite does not
 implement replication channels, relay logs, `START REPLICA`, GTID state, or
-mutable system-variable assignment in the baseline, so this slice exposes only
-the fixed default scalar value.
+mutable replica state in the baseline, so this slice exposes the fixed default
+scalar value and accepts exact/default global assignments that preserve that
+value.
 
 This is not replication support. It does not implement
-`SET GLOBAL sql_replica_skip_counter`, replica SQL thread state, event
+nonzero `SET GLOBAL sql_replica_skip_counter`, replica SQL thread state, event
 skipping, channel rules, GTID restrictions, startup options, the deprecated
 `sql_slave_skip_counter` alias, or privilege semantics.
 
@@ -64,9 +65,17 @@ Observed behavior:
 - `@@session.sql_replica_skip_counter` and
   `@@local.sql_replica_skip_counter` fail with error `1238`, SQLSTATE `HY000`,
   and a message that the variable is global-only.
+- `SET GLOBAL sql_replica_skip_counter=0`,
+  `SET GLOBAL sql_replica_skip_counter=DEFAULT`, and
+  `SET @@global.sql_replica_skip_counter=0` succeed upstream and leave the
+  counter at `0`.
 - `SET GLOBAL sql_replica_skip_counter=1` succeeds upstream and changes
   unscoped and global reads to `1`; `SET GLOBAL sql_replica_skip_counter=0`
-  restores the default value. MyLite does not implement this mutable state.
+  restores the default value. MyLite does not implement this mutable nonzero
+  state.
+- Unscoped, session, local, and `@@session` assignment forms fail with error
+  `1229`, SQLSTATE `HY000`, and a message that the variable is global and
+  should be set with `SET GLOBAL`.
 - Variable and scope names are case-insensitive.
 - Backtick-quoted final variable-name components are accepted.
 - Backtick-quoted scope names, such as
@@ -105,6 +114,9 @@ The implementation must add:
 - backtick-quoted final variable-name components;
 - one-row scalar result sets with existing source-span column labels;
 - fixed value `0` for supported scopes;
+- accepted no-op assignment for `SET GLOBAL sql_replica_skip_counter=0`,
+  `SET GLOBAL sql_replica_skip_counter=DEFAULT`, and
+  `SET @@global.sql_replica_skip_counter=0`;
 - MySQL-compatible unknown-variable diagnostics for unsupported names;
 - deterministic rejection of quoted scopes;
 - fast C tests and a MySQL 8.4.9 expectation artifact.
@@ -117,14 +129,17 @@ SELECT @@sql_replica_skip_counter FROM DUAL
 SELECT @@global.sql_replica_skip_counter
 SELECT @@global.`sql_replica_skip_counter`, @@`sql_replica_skip_counter`
 SELECT @@sql_replica_skip_counter, @@warning_count, ROW_COUNT()
+SET GLOBAL sql_replica_skip_counter = 0
+SET GLOBAL sql_replica_skip_counter = DEFAULT
+SET @@global.sql_replica_skip_counter = 0
 ```
 
 ## Non-Goals
 
 This feature must not implement:
 
-- `SET`, startup options, persisted variables, `SET_VAR` hints, or mutable
-  global `sql_replica_skip_counter` state;
+- nonzero `SET`, startup options, persisted variables, `SET_VAR` hints, or
+  mutable global `sql_replica_skip_counter` state;
 - `START REPLICA`, `STOP REPLICA`, replication channels, relay logs, binary
   logs, event skipping, GTID checks, anonymous-transaction assignment, source
   metadata, applier workers, or replication status;
@@ -206,9 +221,10 @@ Runtime parses the raw token as a `@@` system variable:
   SQLSTATE `HY000`;
 - it preserves the original source text as the scalar result column label.
 
-For this slice, supported scopes return the same fixed value. This is a
-deliberate MyLite limitation: no mutable `sql_replica_skip_counter` state,
-replica thread state, or event skipping exists yet.
+For this slice, supported scopes return the same fixed value. Accepted
+assignment forms are limited to exact/default global no-ops that preserve `0`.
+This is a deliberate MyLite limitation: no mutable `sql_replica_skip_counter`
+state, replica thread state, or event skipping exists yet.
 
 ## Runtime Semantics
 
@@ -250,8 +266,8 @@ The implementation must preserve existing diagnostics conventions:
 - malformed variable paths: deterministic unknown-system-variable or parse
   diagnostics from the existing resolver;
 - unsupported scalar expression forms, aliases, clauses, table-backed `FROM`,
-  or `SET`: deterministic parse/unsupported diagnostics from the existing
-  parser and scalar executor;
+  non-global `SET`, or nonzero `SET`: deterministic parse/unsupported
+  diagnostics from the existing parser and scalar executor;
 - allocation failures: existing `MYLITE_NOMEM` or diagnostic path;
 - public API misuse: unchanged `mylite_execute()` validation behavior.
 
@@ -285,7 +301,10 @@ The tests must cover:
 - deterministic global-only diagnostics for `session` and `local` scopes;
 - unknown unscoped and scoped names;
 - quoted-scope rejection;
-- rejected `SET GLOBAL sql_replica_skip_counter`;
+- accepted `SET GLOBAL sql_replica_skip_counter = 0`,
+  `SET GLOBAL sql_replica_skip_counter = DEFAULT`, and
+  `SET @@global.sql_replica_skip_counter = 0`;
+- rejected non-global and nonzero `SET` forms;
 - rejected deprecated `@@sql_slave_skip_counter` alias for this MyLite slice;
 - rejected general expressions such as `@@sql_replica_skip_counter + 1`;
 - warning and error diagnostics snapshot behavior;
@@ -299,7 +318,8 @@ The MySQL expectation artifact must verify:
 - MySQL 8.4.9 version;
 - default value, global-only scope behavior, labels, quoted final names, and
   case-insensitive names;
-- upstream mutable global state and reset to `0`;
+- accepted upstream global `0`, `DEFAULT`, and `@@global` assignments;
+- upstream mutable nonzero global state and reset to `0`;
 - diagnostics for `session`, `local`, unknown variables, and quoted scope;
 - deprecated `sql_slave_skip_counter` alias warning as explicitly deferred;
 - MySQL acceptance of expression forms that MyLite still rejects.
@@ -312,7 +332,7 @@ Update:
 - `docs/compatibility/runtime-system-variables.md`;
 - `docs/compatibility/sql-replication.md`.
 
-Do not claim support for mutable global state, `SET`, replication event
+Do not claim support for mutable global state, nonzero `SET`, replication event
 skipping, `START REPLICA`, channels, GTID checks, the deprecated alias,
 privileges, `SHOW VARIABLES`, Performance Schema variable tables, or any
 descriptor-backed statement behavior change.

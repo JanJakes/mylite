@@ -30,6 +30,7 @@ enum {
     sql_replica_skip_counter_independent_column_count = 3,
     mysql_error_parse = 1064,
     mysql_error_unknown_system_variable = 1193,
+    mysql_error_global_variable_set_global = 1229,
     mysql_error_global_variable_only = 1238,
 };
 
@@ -536,13 +537,27 @@ static int test_sql_replica_skip_counter_qualifiers_and_errors(void) {
         }
     );
     failures += execute_statement_ok(database, "SELECT @@sql_replica_skip_counter + 1");
+    failures += execute_statement_ok(database, "SET GLOBAL sql_replica_skip_counter = 0");
+    failures += execute_statement_ok(database, "SET GLOBAL sql_replica_skip_counter = DEFAULT");
+    failures += execute_statement_ok(database, "SET @@global.sql_replica_skip_counter = 0");
+    failures += execute_error(
+        database,
+        "SET sql_replica_skip_counter = 0",
+        (struct expected_sql_error){
+            .code = mysql_error_global_variable_set_global,
+            .sqlstate = "HY000",
+            .message_part =
+                "Variable 'sql_replica_skip_counter' is a GLOBAL variable and should be set with "
+                "SET GLOBAL",
+        }
+    );
     failures += execute_error(
         database,
         "SET GLOBAL sql_replica_skip_counter = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "GLOBAL",
+            .message_part = "fixed no-op system variable assignments",
         }
     );
     failures += expect_query_result(
@@ -552,7 +567,7 @@ static int test_sql_replica_skip_counter_qualifiers_and_errors(void) {
             .columns = scalar_columns,
             .values = scalar_values,
             .count = sizeof(scalar_columns) / sizeof(scalar_columns[0]),
-            .context = "sql replica skip counter stays read-only after rejected SET",
+            .context = "sql replica skip counter stays fixed after SET forms",
         }
     );
 

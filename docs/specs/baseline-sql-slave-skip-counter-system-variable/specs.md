@@ -11,12 +11,12 @@ It builds on the existing `SYSTEM_VARIABLE` lexer/parser token, scalar
 global-only `@@sql_replica_skip_counter` baseline. MySQL exposes the alias as a
 deprecated global dynamic integer variable that reads and writes the same
 counter as `sql_replica_skip_counter`. MyLite does not implement replication
-channels, relay logs, `START REPLICA`, GTID state, mutable system-variable
-assignment, or warning-producing `SET` statements in the baseline, so this
-slice exposes only scalar reads of the alias and the required deprecation
-warnings.
+channels, relay logs, `START REPLICA`, GTID state, or mutable replica state in
+the baseline, so this slice exposes scalar reads of the alias, the required
+deprecation warnings, and exact/default global assignments that preserve the
+fixed `0` counter.
 
-This is not replication support. It does not implement `SET GLOBAL
+This is not replication support. It does not implement nonzero `SET GLOBAL
 sql_slave_skip_counter`, mutable counter state, replica SQL thread state, event
 skipping, channel rules, GTID restrictions, startup options, or privilege
 semantics.
@@ -83,10 +83,17 @@ Observed behavior:
   invalid scoped alias, the diagnostics area contains the deprecation warning
   followed by the global-only error. If the invalid scoped alias appears first,
   only the global-only error is stored.
+- `SET GLOBAL sql_slave_skip_counter=0`,
+  `SET GLOBAL sql_slave_skip_counter=DEFAULT`, and
+  `SET @@global.sql_slave_skip_counter=0` succeed upstream, record the same
+  deprecation warning, and leave `@@sql_replica_skip_counter` at `0`.
 - `SET GLOBAL sql_slave_skip_counter=1` succeeds upstream, records the same
   deprecation warning, and changes `@@sql_replica_skip_counter` to `1`;
   `SET GLOBAL sql_replica_skip_counter=0` restores the default value. MyLite
-  does not implement this mutable state or `SET` warning behavior.
+  does not implement this mutable nonzero state.
+- Unscoped, session, local, and `@@session` assignment forms record the alias
+  deprecation warning and then fail with error `1229`, SQLSTATE `HY000`, and a
+  message that the variable is global and should be set with `SET GLOBAL`.
 - Variable and scope names are case-insensitive.
 - Backtick-quoted final variable-name components are accepted.
 - Backtick-quoted scope names, such as
@@ -117,6 +124,11 @@ The implementation must add:
 - fixed value `0` for supported scopes;
 - one deprecation warning per successful alias reference;
 - same-statement `@@warning_count` behavior for alias warnings;
+- accepted no-op assignment for `SET GLOBAL sql_slave_skip_counter=0`,
+  `SET GLOBAL sql_slave_skip_counter=DEFAULT`, and
+  `SET @@global.sql_slave_skip_counter=0`, each with deprecation warning
+  `1287`;
+- alias deprecation warning before the global-only error for non-global `SET`;
 - MySQL-compatible unknown-variable diagnostics for unsupported names;
 - deterministic rejection of quoted scopes;
 - fast C tests and a MySQL 8.4.9 expectation artifact.
@@ -129,18 +141,21 @@ SELECT @@sql_slave_skip_counter FROM DUAL
 SELECT @@global.sql_slave_skip_counter
 SELECT @@global.`sql_slave_skip_counter`, @@`sql_slave_skip_counter`
 SELECT @@sql_slave_skip_counter, @@warning_count, ROW_COUNT()
+SET GLOBAL sql_slave_skip_counter = 0
+SET GLOBAL sql_slave_skip_counter = DEFAULT
+SET @@global.sql_slave_skip_counter = 0
 ```
 
 ## Non-Goals
 
 This feature must not implement:
 
-- `SET`, startup options, persisted variables, `SET_VAR` hints, or mutable
-  global `sql_slave_skip_counter` state;
+- nonzero `SET`, startup options, persisted variables, `SET_VAR` hints, or
+  mutable global `sql_slave_skip_counter` state;
 - `START REPLICA`, `STOP REPLICA`, replication channels, relay logs, binary
   logs, event skipping, GTID checks, anonymous-transaction assignment, source
   metadata, applier workers, or replication status;
-- warning-producing `SET GLOBAL sql_slave_skip_counter` behavior;
+- warning-producing mutable `SET GLOBAL sql_slave_skip_counter` behavior;
 - privilege checks for restricted global variables;
 - variables other than `sql_slave_skip_counter`;
 - changed descriptor-backed DDL, DML, or `SELECT` execution;
@@ -222,8 +237,10 @@ Runtime parses the raw token as a `@@` system variable:
 - it preserves the original source text as the scalar result column label.
 
 For this slice, supported scopes return the same fixed value as
-`@@sql_replica_skip_counter`. This is a deliberate MyLite limitation: no mutable
-counter state, replica thread state, or event skipping exists yet.
+`@@sql_replica_skip_counter`. Accepted assignment forms are limited to
+exact/default global no-ops that preserve `0` and emit the alias warning. This
+is a deliberate MyLite limitation: no mutable counter state, replica thread
+state, or event skipping exists yet.
 
 ## Runtime Semantics
 
@@ -272,19 +289,24 @@ The implementation must preserve existing diagnostics conventions:
 - unsupported `session` and `local` scopes for this variable: MySQL error
   `1238`, SQLSTATE `HY000`, message containing
   `Variable 'sql_slave_skip_counter' is a GLOBAL variable`;
+- unsupported non-global `SET` forms: warning `1287` followed by MySQL error
+  `1229`, SQLSTATE `HY000`, message containing
+  `Variable 'sql_slave_skip_counter' is a GLOBAL variable and should be set
+  with SET GLOBAL`;
 - quoted scope components: deterministic parse error `1064`, SQLSTATE
   `42000`, using MyLite's unsupported quoted-scope message;
 - malformed variable paths: deterministic unknown-system-variable or parse
   diagnostics from the existing resolver;
 - unsupported scalar expression forms, aliases, clauses, table-backed `FROM`,
-  or `SET`: deterministic parse/unsupported diagnostics from the existing
-  parser and scalar executor;
+  non-global `SET`, or nonzero `SET`: deterministic parse/unsupported
+  diagnostics from the existing parser and scalar executor;
 - allocation failures while recording warnings: existing `MYLITE_NOMEM` or
   diagnostic path;
 - public API misuse: unchanged `mylite_execute()` validation behavior.
 
-Error paths for invalid alias scopes must not also append the alias deprecation
-warning.
+Error paths for invalid scalar alias scopes must not also append the alias
+deprecation warning. Assignment paths append the alias warning before
+assignment-specific errors, matching observed MySQL behavior.
 
 ## Storage, Catalog, and SQLite
 
@@ -320,7 +342,10 @@ The tests must cover:
   without deprecation warnings;
 - unknown unscoped and scoped names;
 - quoted-scope rejection;
-- rejected `SET GLOBAL sql_slave_skip_counter`;
+- accepted `SET GLOBAL sql_slave_skip_counter = 0`,
+  `SET GLOBAL sql_slave_skip_counter = DEFAULT`, and
+  `SET @@global.sql_slave_skip_counter = 0`, including deprecation warnings;
+- rejected non-global and nonzero `SET` forms;
 - rejected general expressions such as `@@sql_slave_skip_counter + 1`;
 - warning and error diagnostics snapshot behavior;
 - independence from selected schema, create/insert/update/select/delete,
@@ -335,8 +360,10 @@ The MySQL expectation artifact must verify:
   case-insensitive names;
 - one warning per alias reference and exact deprecation warning text;
 - same-statement `@@warning_count` behavior for alias warnings;
-- upstream `SET GLOBAL sql_slave_skip_counter` mutability and warning behavior
-  as outside the MyLite slice;
+- accepted upstream global `0`, `DEFAULT`, and `@@global` assignments with
+  deprecation warnings;
+- upstream nonzero `SET GLOBAL sql_slave_skip_counter` mutability and warning
+  behavior as outside the MyLite slice;
 - diagnostics for `session`, `local`, unknown variables, and quoted scope;
 - MySQL acceptance of expression forms that MyLite still rejects.
 
@@ -348,7 +375,7 @@ Update:
 - `docs/compatibility/runtime-system-variables.md`;
 - `docs/compatibility/sql-replication.md`.
 
-Do not claim support for mutable global state, `SET`, replication event
+Do not claim support for mutable global state, nonzero `SET`, replication event
 skipping, `START REPLICA`, channels, GTID checks, privileges, `SHOW VARIABLES`,
 Performance Schema variable tables, or any descriptor-backed statement behavior
 change.

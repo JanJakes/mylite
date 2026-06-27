@@ -32,6 +32,7 @@ enum {
     sql_slave_skip_counter_mixed_diagnostics_count = 2,
     mysql_error_parse = 1064,
     mysql_error_unknown_system_variable = 1193,
+    mysql_error_global_variable_set_global = 1229,
     mysql_error_global_variable_only = 1238,
     mysql_warning_deprecated = 1287,
 };
@@ -71,6 +72,10 @@ static int expect_show_count_warnings(
 static int expect_show_count_errors(mylite_db *database, const char *expected, const char *context);
 static int expect_show_single_deprecation_warning(mylite_db *database, const char *context);
 static int expect_show_deprecation_warning_and_scope_error(
+    mylite_db *database,
+    const char *context
+);
+static int expect_show_deprecation_warning_and_set_global_error(
     mylite_db *database,
     const char *context
 );
@@ -646,13 +651,60 @@ static int test_sql_slave_skip_counter_qualifiers_and_errors(void) {
         }
     );
     failures += execute_statement_ok(database, "SELECT @@sql_slave_skip_counter + 1");
+    failures += execute_statement_ok(database, "SET GLOBAL sql_slave_skip_counter = 0");
+    failures += expect_show_count_warnings(
+        database,
+        "1",
+        "sql slave skip counter SET GLOBAL zero warning count"
+    );
+    failures += expect_show_single_deprecation_warning(
+        database,
+        "sql slave skip counter SET GLOBAL zero warning"
+    );
+    failures += execute_statement_ok(database, "SET GLOBAL sql_slave_skip_counter = DEFAULT");
+    failures += expect_show_count_warnings(
+        database,
+        "1",
+        "sql slave skip counter SET GLOBAL default warning count"
+    );
+    failures += expect_show_single_deprecation_warning(
+        database,
+        "sql slave skip counter SET GLOBAL default warning"
+    );
+    failures += execute_statement_ok(database, "SET @@global.sql_slave_skip_counter = 0");
+    failures += expect_show_count_warnings(
+        database,
+        "1",
+        "sql slave skip counter SET @@global zero warning count"
+    );
+    failures += expect_show_single_deprecation_warning(
+        database,
+        "sql slave skip counter SET @@global zero warning"
+    );
+    failures += execute_error(
+        database,
+        "SET sql_slave_skip_counter = 0",
+        (struct expected_sql_error){
+            .code = mysql_error_global_variable_set_global,
+            .sqlstate = "HY000",
+            .message_part =
+                "Variable 'sql_slave_skip_counter' is a GLOBAL variable and should be set with SET "
+                "GLOBAL",
+        }
+    );
+    failures +=
+        expect_show_count_warnings(database, "2", "sql slave skip counter SET scope diagnostic");
+    failures += expect_show_deprecation_warning_and_set_global_error(
+        database,
+        "sql slave skip counter SET scope warnings"
+    );
     failures += execute_error(
         database,
         "SET GLOBAL sql_slave_skip_counter = 1",
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "GLOBAL",
+            .message_part = "fixed no-op system variable assignments",
         }
     );
     failures += expect_query_result(
@@ -663,7 +715,7 @@ static int test_sql_slave_skip_counter_qualifiers_and_errors(void) {
             .values = scalar_values,
             .count = sizeof(scalar_columns) / sizeof(scalar_columns[0]),
             .warning_count = 1U,
-            .context = "sql slave skip counter stays read-only after rejected SET",
+            .context = "sql slave skip counter stays fixed after SET forms",
         }
     );
 
@@ -862,6 +914,38 @@ static int expect_show_deprecation_warning_and_scope_error(
     failures += expect_text_contains(
         mylite_result_value_text(result, 1U, 2U),
         "Variable 'sql_slave_skip_counter' is a GLOBAL variable",
+        context
+    );
+    failures += expect_size(mylite_result_warning_count(result), 0U, context);
+
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_show_deprecation_warning_and_set_global_error(
+    mylite_db *database,
+    const char *context
+) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, "SHOW WARNINGS", &result);
+
+    failures += expect_size(
+        mylite_result_row_count(result),
+        sql_slave_skip_counter_mixed_diagnostics_count,
+        context
+    );
+    failures += expect_text_or_null(mylite_result_value_text(result, 0U, 0U), "Warning", context);
+    failures += expect_text_or_null(mylite_result_value_text(result, 0U, 1U), "1287", context);
+    failures += expect_text_contains(
+        mylite_result_value_text(result, 0U, 2U),
+        sql_slave_skip_counter_deprecation_warning,
+        context
+    );
+    failures += expect_text_or_null(mylite_result_value_text(result, 1U, 0U), "Error", context);
+    failures += expect_text_or_null(mylite_result_value_text(result, 1U, 1U), "1229", context);
+    failures += expect_text_contains(
+        mylite_result_value_text(result, 1U, 2U),
+        "Variable 'sql_slave_skip_counter' is a GLOBAL variable and should be set with SET GLOBAL",
         context
     );
     failures += expect_size(mylite_result_warning_count(result), 0U, context);

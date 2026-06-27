@@ -173,6 +173,35 @@ expect_value \
     "1|Warning	1287	$DEPRECATION_WARNING|1|" \
     "$mutable_warning"
 
+fixed_assignment_warnings=$(run_mysql \
+    "SET GLOBAL sql_slave_skip_counter=0; \
+     SHOW COUNT(*) WARNINGS; \
+     SHOW WARNINGS; \
+     SET GLOBAL sql_slave_skip_counter=DEFAULT; \
+     SHOW COUNT(*) WARNINGS; \
+     SHOW WARNINGS; \
+     SET @@global.sql_slave_skip_counter=0; \
+     SHOW COUNT(*) WARNINGS; \
+     SHOW WARNINGS; \
+     SELECT @@sql_replica_skip_counter; \
+     SET GLOBAL sql_replica_skip_counter=0;" \
+    | tail -n 7 \
+    | tr '\n' '|')
+expect_value \
+    "mysql accepts fixed sql_slave_skip_counter no-op global assignments with warnings" \
+    "1|Warning	1287	$DEPRECATION_WARNING|1|Warning	1287	$DEPRECATION_WARNING|1|Warning	1287	$DEPRECATION_WARNING|0|" \
+    "$fixed_assignment_warnings"
+
+set_scope_diagnostics=$(printf '%s\n' \
+    'SELECT 1; SET sql_slave_skip_counter=0; SHOW COUNT(*) WARNINGS; SHOW WARNINGS;' \
+    | docker exec -i "$MYSQL_CONTAINER" mysql $MYSQL_ARGS --skip-column-names --force 2>/dev/null \
+    | tail -n 3 \
+    | tr '\n' '|')
+expect_value \
+    "unscoped sql_slave_skip_counter SET records deprecation warning and SET GLOBAL error" \
+    "2|Warning	1287	$DEPRECATION_WARNING|Error	1229	Variable 'sql_slave_skip_counter' is a GLOBAL variable and should be set with SET GLOBAL|" \
+    "$set_scope_diagnostics"
+
 expect_error \
     "session sql_slave_skip_counter scope is rejected upstream" \
     1238 \

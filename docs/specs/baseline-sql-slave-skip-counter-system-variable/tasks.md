@@ -11,6 +11,8 @@ replica-skip-counter alias: `@@sql_slave_skip_counter`.
      counts, and statement-diagnostics interactions.
    - Specify fixed MyLite value `0` for no-scope and `global` forms.
    - Specify one deprecation warning per successful alias reference.
+   - Specify exact/default global no-op assignment forms that preserve `0` and
+     emit the alias warning.
    - Specify same-statement `@@warning_count` behavior when alias warnings are
      produced.
    - Record supported and intentionally unsupported behavior in `specs.md`.
@@ -20,10 +22,12 @@ replica-skip-counter alias: `@@sql_slave_skip_counter`.
    - Return fixed value `0` for supported scopes.
    - Reject `session` and `local` scopes as global-only.
    - Append warning `1287` for each successful alias reference.
+   - Append warning `1287` for accepted alias `SET` forms and before
+     assignment-specific alias errors.
    - Make same-statement `@@warning_count` and `@@error_count` match the
      warning-producing alias behavior.
    - Preserve existing unknown-variable, unsupported-expression,
-     unsupported-`SET`, and quoted-scope diagnostics.
+     non-global/nonzero unsupported-`SET`, and quoted-scope diagnostics.
    - Do not change parser grammar, descriptor-backed statement execution,
      replication metadata, public ABI, storage, VFS, catalog, or SQLite
      integration.
@@ -33,9 +37,10 @@ replica-skip-counter alias: `@@sql_slave_skip_counter`.
    - Cover values, labels, scopes, quoted final names, `FROM DUAL`,
      deprecation warnings, warning counts, same-statement diagnostics, selected
      schema behavior, mixed scalar reads, unknown names, global-only
-     diagnostics, quoted-scope rejection, rejected `SET`, persistence, preamble
-     preservation, unchanged generations, descriptor-backed DDL/DML
-     independence, and independent file-backed handles.
+     diagnostics, quoted-scope rejection, accepted fixed global `SET`,
+     rejected non-global and nonzero `SET`, persistence, preamble preservation,
+     unchanged generations, descriptor-backed DDL/DML independence, and
+     independent file-backed handles.
 
 4. MySQL expectation artifact
    - Add a shell script that checks MySQL 8.4.9 result shapes, values,
@@ -46,7 +51,7 @@ replica-skip-counter alias: `@@sql_slave_skip_counter`.
    - Update `COMPATIBILITY.md`.
    - Update `docs/compatibility/runtime-system-variables.md`.
    - Update `docs/compatibility/sql-replication.md`.
-   - Do not claim mutable `sql_slave_skip_counter` state, `SET`,
+   - Do not claim mutable `sql_slave_skip_counter` state, nonzero `SET`,
      replica-event skipping, `START REPLICA`, channels, GTID behavior,
      privileges, `SHOW VARIABLES`, or Performance Schema variable tables.
 
@@ -58,10 +63,10 @@ replica-skip-counter alias: `@@sql_slave_skip_counter`.
 
 ## Non-Goals
 
-- Do not implement `SET`, startup options, persisted variables, mutable global
-  state, `START REPLICA`, `STOP REPLICA`, replication channels, relay logs,
-  binary logs, event skipping, GTID checks, anonymous-transaction assignment,
-  source metadata, applier workers, replication status, privileges,
+- Do not implement nonzero `SET`, startup options, persisted variables,
+  mutable global state, `START REPLICA`, `STOP REPLICA`, replication channels,
+  relay logs, binary logs, event skipping, GTID checks, anonymous-transaction
+  assignment, source metadata, applier workers, replication status, privileges,
   `SHOW VARIABLES`, Performance Schema variable tables, table-backed
   evaluation, aliases, clauses, arbitrary expressions, SQLite SQL, catalog
   mutations, or SQLite fork patches.

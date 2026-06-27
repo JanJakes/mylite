@@ -130,6 +130,27 @@ expect_value \
     "1	1	0	0	0" \
     "$mutable_values"
 
+fixed_assignment_values=$(run_mysql \
+    "SET GLOBAL sql_replica_skip_counter=0; \
+     SELECT @@sql_replica_skip_counter, @@warning_count, @@error_count, ROW_COUNT(); \
+     SET GLOBAL sql_replica_skip_counter=DEFAULT; \
+     SELECT @@sql_replica_skip_counter, @@warning_count, @@error_count, ROW_COUNT(); \
+     SET @@global.sql_replica_skip_counter=0; \
+     SELECT @@sql_replica_skip_counter, @@warning_count, @@error_count, ROW_COUNT();" \
+    | tail -n 3 \
+    | tr '\n' '|')
+expect_value \
+    "mysql accepts fixed sql_replica_skip_counter no-op global assignments" \
+    "0	0	0	0|0	0	0	0|0	0	0	0|" \
+    "$fixed_assignment_values"
+
+expect_error \
+    "unscoped sql_replica_skip_counter SET requires SET GLOBAL upstream" \
+    1229 \
+    HY000 \
+    "Variable 'sql_replica_skip_counter' is a GLOBAL variable and should be set with SET GLOBAL" \
+    "SET sql_replica_skip_counter=0;"
+
 expect_error \
     "session sql_replica_skip_counter scope is rejected upstream" \
     1238 \

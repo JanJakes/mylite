@@ -31,6 +31,12 @@ static int apply_set_replication_global_system_variable_assignment(
         set_read_only_system_variable_error(database, target->name);
         return MYLITE_ERROR;
     }
+    if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER) {
+        rc = append_system_variable_read_warning(database, target->kind);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
     if (target->scope != SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         set_global_variable_set_global_required_error(database, target->name);
         return MYLITE_ERROR;
@@ -138,6 +144,10 @@ static int apply_set_replication_global_system_variable_assignment(
             unsupported_message
         );
         break;
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_REPLICA_SKIP_COUNTER:
+    case MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER:
+        rc = validate_set_fixed_uint64_value(database, value_node, 0U, unsupported_message);
+        break;
     case MYLITE_EXECUTION_SYSTEM_VARIABLE_RPL_STOP_REPLICA_TIMEOUT:
         rc = validate_set_fixed_uint64_value(
             database,
@@ -182,7 +192,8 @@ static int apply_set_replication_global_system_variable_assignment(
         set_runtime_error(database, "invalid replication global system variable");
         return MYLITE_ERROR;
     }
-    if (rc == MYLITE_OK && mylite_execution_system_variable_warns_on_scalar_read(target->kind)) {
+    if (rc == MYLITE_OK && target->kind != MYLITE_EXECUTION_SYSTEM_VARIABLE_SQL_SLAVE_SKIP_COUNTER &&
+        mylite_execution_system_variable_warns_on_scalar_read(target->kind)) {
         rc = append_system_variable_read_warning(database, target->kind);
     }
     return rc;

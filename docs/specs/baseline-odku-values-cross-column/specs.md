@@ -26,6 +26,7 @@ This slice expands the existing duplicate-key update baseline:
 ```sql
 insert_duplicate_assignment ::= target_column EQ VALUES LPAREN source_column RPAREN
 insert_duplicate_assignment ::= target_column EQ row_scalar_expression
+row_scalar_expression ::= VALUES LPAREN source_column RPAREN integer_arithmetic_operator integer_literal
 row_scalar_expression ::= supported_row_scalar_function_with_values_reference
 supported_row_scalar_function_with_values_reference ::= function_name LPAREN ... VALUES LPAREN source_column RPAREN ... RPAREN
 ```
@@ -36,12 +37,13 @@ inserted source value has the same logical and physical storage descriptor as
 the target descriptor. Character-string descriptors must also have the same
 character set and collation.
 
-`VALUES(source_column)` may also appear inside the currently supported
-duplicate-update row-scalar function and integer-arithmetic subset, including
-the verified `CONCAT(VALUES(col), ...)` and
-`GREATEST(VALUES(col) + integer, ...)` forms. These references are scoped only
-to `ON DUPLICATE KEY UPDATE` planning and are materialized from the would-be
-inserted row before the expression is bound for SQLite execution.
+`VALUES(source_column)` may also appear in the currently supported
+duplicate-update row-scalar integer-arithmetic subset and inside supported
+row-scalar function expressions, including the verified direct
+`VALUES(col) + integer`, `VALUES(col) * integer`, `CONCAT(VALUES(col), ...)`,
+and `GREATEST(VALUES(col) + integer, ...)` forms. These references are scoped
+only to `ON DUPLICATE KEY UPDATE` planning and are materialized from the
+would-be inserted row before the expression is bound for SQLite execution.
 
 Supported statement envelopes are the current `INSERT ... VALUES`,
 `INSERT ... SET`, and `INSERT ... SELECT` duplicate-key-update subsets.
@@ -83,7 +85,7 @@ The runtime tests cover:
 - `INSERT ... VALUES ... ON DUPLICATE KEY UPDATE c = VALUES(a)`;
 - multiple cross-column references in one duplicate-key tail, proving values
   come from the inserted row and are not affected by assignment order;
-- nested duplicate-update row-scalar arithmetic and string expressions using
-  `VALUES(column)`;
+- direct and nested duplicate-update row-scalar arithmetic and string
+  expressions using `VALUES(column)`;
 - the same direct and nested behavior for `INSERT ... SELECT`;
 - continued warnings and unknown-column diagnostics.

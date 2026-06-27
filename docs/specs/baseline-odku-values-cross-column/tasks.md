@@ -6,4 +6,6 @@
 - [x] Add MyLite runtime coverage for `INSERT ... VALUES` and
   `INSERT ... SELECT` cross-column references.
 - [x] Add MySQL expectation coverage for the new cases.
+- [x] Add direct `VALUES(column)` row-scalar arithmetic coverage for supported
+  duplicate-key-update envelopes.
 - [x] Update compatibility documentation.

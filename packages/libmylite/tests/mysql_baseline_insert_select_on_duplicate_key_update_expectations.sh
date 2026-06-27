@@ -128,6 +128,20 @@ expect_output \
      DROP TABLE t, s;"
 
 expect_output \
+    "table source direct values arithmetic reference" \
+    "2	1	0
+1	10	21" \
+    "CREATE TABLE t(id INT PRIMARY KEY, v INT, n INT) ENGINE=InnoDB;
+     CREATE TABLE s(id INT, v INT, n INT) ENGINE=InnoDB;
+     INSERT INTO t VALUES (1, 10, 100);
+     INSERT INTO s VALUES (1, 20, 200);
+     INSERT INTO t SELECT id, v, n FROM s
+         ON DUPLICATE KEY UPDATE n = VALUES(v) + 1;
+     SELECT ROW_COUNT(), @@warning_count, @@error_count;
+     SELECT id, v, n FROM t;
+     DROP TABLE t, s;"
+
+expect_output \
     "values warning text" \
     "Warning	1287	${VALUES_WARNING}" \
     "CREATE TABLE t(id INT PRIMARY KEY, v INT) ENGINE=InnoDB;

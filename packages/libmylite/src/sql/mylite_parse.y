@@ -4412,8 +4412,43 @@ duplicate_update_value(A) ::= insert_value(V). {
 duplicate_update_value(A) ::= dml_period_timezone_weight_value(V). {
     A = V;
 }
-duplicate_update_value(A) ::= VALUES(V) LPAREN qualified_identifier(I) RPAREN(R). {
-    A = mylite_sql_parser_make_insert_values_reference(state, V, I, R);
+duplicate_update_value(A) ::= duplicate_values_reference(V). {
+    A = V;
+}
+duplicate_update_value(A) ::= duplicate_values_reference(B) PLUS(T) INTEGER(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_ADD,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+duplicate_update_value(A) ::= duplicate_values_reference(B) MINUS(T) INTEGER(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_SUBTRACT,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+duplicate_update_value(A) ::= duplicate_values_reference(B) STAR(T) INTEGER(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_MULTIPLY,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+duplicate_update_value(A) ::= duplicate_values_reference(B) SLASH(T) INTEGER(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_DIVIDE,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+duplicate_update_value(A) ::= duplicate_values_reference(B) DIV(T) INTEGER(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_INTEGER_DIVIDE,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+duplicate_update_value(A) ::= duplicate_values_reference(B) PERCENT(T) INTEGER(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_MODULO,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_INTEGER));
+}
+duplicate_update_value(A) ::= duplicate_values_reference(B) MOD(T) INTEGER(C). {
+    A = mylite_sql_parser_make_binary_expression(
+        state, B, T, MYLITE_SQL_AST_OPERATOR_MODULO,
+        mylite_sql_parser_make_literal(state, C, MYLITE_SQL_AST_LITERAL_INTEGER));
 }
 duplicate_update_value(A) ::= arithmetic_duplicate_source_column(B) PLUS(T) INTEGER(C). {
     A = mylite_sql_parser_make_binary_expression(
@@ -4431,6 +4466,10 @@ arithmetic_duplicate_source_column(A) ::= IDENTIFIER(T). {
 }
 arithmetic_duplicate_source_column(A) ::= QUOTED_IDENTIFIER(T). {
     A = mylite_sql_parser_make_identifier(state, T);
+}
+
+duplicate_values_reference(A) ::= VALUES(V) LPAREN qualified_identifier(I) RPAREN(R). {
+    A = mylite_sql_parser_make_insert_values_reference(state, V, I, R);
 }
 
 insert_column_list_opt(A) ::= . {

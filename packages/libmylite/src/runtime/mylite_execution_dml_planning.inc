@@ -712,6 +712,9 @@ static int plan_insert_duplicate_same_column_arithmetic(
     }
 
     operator_kind = mylite_sql_ast_node_operator(value_node);
+    if (row_scalar_expression_contains_insert_values_reference(value_node)) {
+        return MYLITE_OK;
+    }
     if (operator_kind != MYLITE_SQL_AST_OPERATOR_ADD &&
         operator_kind != MYLITE_SQL_AST_OPERATOR_SUBTRACT) {
         set_insert_duplicate_arithmetic_unsupported_error(database);
@@ -807,7 +810,10 @@ static int plan_insert_duplicate_row_scalar_assignment(
         }
     }
     if (column_descriptor_is_auto_increment(target_column) ||
-        insert_duplicate_column_index_is_keyed(plan, duplicate_assignment->assignment_column_index)) {
+        insert_duplicate_column_index_is_keyed(
+            plan,
+            duplicate_assignment->assignment_column_index
+        )) {
         set_unsupported_error(
             database,
             "INSERT ... ON DUPLICATE KEY UPDATE row-scalar assignment does not support "

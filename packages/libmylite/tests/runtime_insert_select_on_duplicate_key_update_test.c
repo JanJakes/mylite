@@ -107,6 +107,7 @@ static int test_insert_select_duplicate_success_and_persistence(void) {
     static const char *const changed_rows[] = {"1", "20", "200"};
     static const char *const values_cross_rows[] = {"1", "200", "1"};
     static const char *const values_row_scalar_rows[] = {"1", "10", "21"};
+    static const char *const values_direct_row_scalar_rows[] = {"1", "10", "21"};
     static const char *const mixed_rows[] = {"1", "40", "400", "2", "30", "300"};
     static const char *const no_key_rows[] = {"1", "10"};
     static const char *const default_rows[] = {"1", "7", NULL};
@@ -194,6 +195,26 @@ static int test_insert_select_duplicate_success_and_persistence(void) {
             .column_count = 3U,
             .row_count = 1U,
             .context = "row-scalar VALUES insert-select duplicate rows",
+        }
+    );
+    failures += expect_statement_ok(database, "DELETE FROM t");
+    failures += expect_statement_ok(database, "DELETE FROM s");
+    failures += expect_statement_ok(database, "INSERT INTO t VALUES (1, 10, 100)");
+    failures += expect_statement_ok(database, "INSERT INTO s VALUES (1, 20, 200)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO t SELECT id, v, n FROM s "
+        "ON DUPLICATE KEY UPDATE n = VALUES(v) + 1",
+        (struct expected_dml){.affected_rows = 2, .warning_count = 1U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, n FROM t",
+            .values = values_direct_row_scalar_rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "direct row-scalar VALUES insert-select duplicate rows",
         }
     );
     failures += expect_statement_ok(database, "DELETE FROM t");

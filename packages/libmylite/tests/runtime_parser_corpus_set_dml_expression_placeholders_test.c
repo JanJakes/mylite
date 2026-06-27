@@ -46,11 +46,6 @@ static int test_set_dml_expression_placeholders(void) {
     failures += execute_error(database, "SET @x = 1 + (SELECT COUNT(*) FROM t)", unsupported);
     failures += execute_error(database, "INSERT INTO t VALUES (1 / 0, 2 * 3)", unsupported);
     failures += execute_error(database, "INSERT IGNORE INTO t VALUES (2 / 0)", unsupported);
-    failures += execute_error(
-        database,
-        "INSERT INTO t VALUES (1) ON DUPLICATE KEY UPDATE x = VALUES(x) + 1",
-        unsupported
-    );
     failures += execute_error(database, "UPDATE t SET data = data * 2 WHERE id = 3", unsupported);
     failures += execute_error(
         database,

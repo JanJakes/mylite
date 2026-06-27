@@ -138,6 +138,23 @@ expect_output \
 run_mysql "DROP TABLE t;" "$DATABASE" >/dev/null
 
 expect_output \
+    "values function direct arithmetic duplicate update" \
+    "2	2	0
+0	2	0
+1	20	38" \
+    "CREATE TABLE t(id INT PRIMARY KEY, n INT, out_n INT); "\
+"INSERT INTO t VALUES (1,10,0); "\
+"INSERT INTO t VALUES (1,19,0) ON DUPLICATE KEY UPDATE "\
+"n=VALUES(n)+1, out_n=VALUES(n)*2; "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"INSERT INTO t VALUES (1,19,0) ON DUPLICATE KEY UPDATE "\
+"n=VALUES(n)+1, out_n=VALUES(n)*2; "\
+"SELECT ROW_COUNT(), @@warning_count, @@error_count; "\
+"SELECT id,n,out_n FROM t;" \
+    "$DATABASE"
+run_mysql "DROP TABLE t;" "$DATABASE" >/dev/null
+
+expect_output \
     "values function row-scalar string duplicate update" \
     "2	1	0
 0	1	0

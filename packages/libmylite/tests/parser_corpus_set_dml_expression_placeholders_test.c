@@ -36,8 +36,6 @@ static int test_set_dml_expression_placeholders(void) {
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "INSERT IGNORE INTO t VALUES (2 / 0)",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "INSERT INTO t VALUES (1) ON DUPLICATE KEY UPDATE x = VALUES(x) + 1",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "UPDATE t SET data = data * 2 WHERE id = 3",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "UPDATE mysql.server_cost SET cost_value = 0.5 * cost_value",
@@ -48,6 +46,10 @@ static int test_set_dml_expression_placeholders(void) {
     failures += expect_statement_kind((struct expected_statement){
         .sql = "UPDATE counters SET n = n + 1;",
         .kind = MYLITE_SQL_AST_UPDATE_STATEMENT,
+    });
+    failures += expect_statement_kind((struct expected_statement){
+        .sql = "INSERT INTO t VALUES (1) ON DUPLICATE KEY UPDATE x = VALUES(x) + 1",
+        .kind = MYLITE_SQL_AST_INSERT_STATEMENT,
     });
     for (size_t index = 0U; index < sizeof(placeholders) / sizeof(placeholders[0]); ++index) {
         failures += expect_statement_kind(placeholders[index]);

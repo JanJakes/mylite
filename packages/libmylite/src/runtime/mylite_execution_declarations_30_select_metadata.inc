@@ -454,6 +454,27 @@ static int append_mysql_schema_system_table_rows(
     const struct mylite_execution_catalog_mysql_system_table *definition,
     struct information_schema_row_set *rows
 );
+static int append_performance_schema_system_table_rows(
+    struct mylite_db *database,
+    const struct mylite_execution_catalog_mysql_system_table *definition,
+    struct information_schema_row_set *rows
+);
+static int append_performance_schema_variable_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    bool global_scope
+);
+static int append_performance_schema_status_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    bool global_scope
+);
+static bool performance_schema_show_status_descriptor_visible(
+    const struct mylite_execution_show_status_descriptor *descriptor,
+    bool global_scope
+);
+static bool performance_schema_status_name_is_command_counter(const char *name);
+static bool performance_schema_status_name_is_session_only(const char *name);
 static int append_sys_schema_system_table_rows(
     struct mylite_db *database,
     const struct mylite_statement_context *context,

@@ -468,6 +468,9 @@ static const char *mysql_system_table_primary_key_collation_for_name(
     const char *table_name,
     size_t sequence
 );
+static const char *mysql_system_table_primary_key_index_type(
+    const struct mylite_execution_catalog_mysql_system_table *definition
+);
 static int validate_show_index_where_clause(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *where_clause

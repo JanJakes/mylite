@@ -54,7 +54,7 @@ static int append_information_schema_statistics_mysql_system_table_rows(
             NULL,
             NULL,
             "",
-            "BTREE",
+            mysql_system_table_primary_key_index_type(definition),
             "",
             "",
             "YES",

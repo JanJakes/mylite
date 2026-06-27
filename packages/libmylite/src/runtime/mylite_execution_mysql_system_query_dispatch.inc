@@ -86,6 +86,9 @@ static int append_mysql_system_table_system_rows(
     if (strcmp(definition->schema_name, "mysql") == 0) {
         return append_mysql_schema_system_table_rows(database, definition, rows);
     }
+    if (strcmp(definition->schema_name, "performance_schema") == 0) {
+        return append_performance_schema_system_table_rows(database, definition, rows);
+    }
     if (strcmp(definition->schema_name, "sys") == 0) {
         return append_sys_schema_system_table_rows(database, context, definition, rows);
     }
@@ -117,6 +120,140 @@ static int append_mysql_schema_system_table_rows(
 
     set_runtime_error(database, "invalid mysql system table");
     return MYLITE_ERROR;
+}
+
+static int append_performance_schema_system_table_rows(
+    struct mylite_db *database,
+    const struct mylite_execution_catalog_mysql_system_table *definition,
+    struct information_schema_row_set *rows
+) {
+    if (strcmp(definition->query_definition.name, "global_variables") == 0) {
+        return append_performance_schema_variable_rows(database, rows, true);
+    }
+    if (strcmp(definition->query_definition.name, "session_variables") == 0) {
+        return append_performance_schema_variable_rows(database, rows, false);
+    }
+    if (strcmp(definition->query_definition.name, "global_status") == 0) {
+        return append_performance_schema_status_rows(database, rows, true);
+    }
+    if (strcmp(definition->query_definition.name, "session_status") == 0) {
+        return append_performance_schema_status_rows(database, rows, false);
+    }
+
+    set_runtime_error(database, "invalid performance_schema system table");
+    return MYLITE_ERROR;
+}
+
+static int append_performance_schema_variable_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    bool global_scope
+) {
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != 2U) {
+        set_runtime_error(database, "invalid performance_schema variable columns");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < mylite_execution_system_variable_descriptor_count();
+         ++index) {
+        const struct mylite_execution_system_variable_descriptor *descriptor =
+            mylite_execution_system_variable_descriptor_at(index);
+        char integer_buffer[integer_text_capacity];
+        const char *values[2] = {NULL, NULL};
+
+        if (!show_variable_descriptor_visible(descriptor, global_scope)) {
+            continue;
+        }
+
+        values[0] = descriptor->name;
+        rc = show_system_variable_value(
+            database,
+            descriptor->kind,
+            global_scope,
+            integer_buffer,
+            sizeof(integer_buffer),
+            &values[1]
+        );
+        if (rc == MYLITE_OK) {
+            rc = append_information_schema_row(database, rows, values);
+        }
+    }
+    return rc;
+}
+
+static int append_performance_schema_status_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    bool global_scope
+) {
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != 2U) {
+        set_runtime_error(database, "invalid performance_schema status columns");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < mylite_execution_show_status_descriptor_count();
+         ++index) {
+        const struct mylite_execution_show_status_descriptor *descriptor =
+            mylite_execution_show_status_descriptor_at(index);
+        const char *values[2] = {NULL, NULL};
+
+        if (!performance_schema_show_status_descriptor_visible(descriptor, global_scope)) {
+            continue;
+        }
+
+        values[0] = descriptor->name;
+        values[1] = descriptor->value;
+        rc = append_information_schema_row(database, rows, values);
+    }
+    return rc;
+}
+
+static bool performance_schema_show_status_descriptor_visible(
+    const struct mylite_execution_show_status_descriptor *descriptor,
+    bool global_scope
+) {
+    if (descriptor == NULL ||
+        (performance_schema_status_name_is_command_counter(descriptor->name) &&
+         strcmp(descriptor->name, "Com_stmt_reprepare") != 0)) {
+        return false;
+    }
+    if (global_scope) {
+        return descriptor->show_global &&
+               !performance_schema_status_name_is_session_only(descriptor->name);
+    }
+    return descriptor->show_session;
+}
+
+static bool performance_schema_status_name_is_command_counter(const char *name) {
+    return name != NULL && strncmp(name, "Com_", 4U) == 0;
+}
+
+static bool performance_schema_status_name_is_session_only(const char *name) {
+    static const char *const session_only_names[] = {
+        "Compression",
+        "Compression_algorithm",
+        "Compression_level",
+        "Last_query_cost",
+        "Last_query_partial_plans",
+        "Tls_sni_server_name",
+    };
+
+    if (name == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(session_only_names) / sizeof(session_only_names[0]);
+         ++index) {
+        if (strcmp(name, session_only_names[index]) == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static int append_sys_schema_system_table_rows(

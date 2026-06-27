@@ -6,10 +6,11 @@ The `performance_schema` schema name is exposed in the limited built-in schema
 catalog and can be selected with `USE performance_schema`. The MySQL 8.4.9
 target runtime's Performance Schema table names are exposed as metadata-only
 rows through `INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`, `SHOW FULL TABLES`,
-and `SHOW TABLE STATUS`, but the tables remain non-queryable and unsupported
-unless listed otherwise below. MyLite rejects schema, table, index, rename,
-truncate, and single-table DML writes targeting `performance_schema` with
-`1044 / 42000` access-denied diagnostics.
+and `SHOW TABLE STATUS`. The variable/status tables listed below are queryable
+for MyLite's supported registries; the remaining tables are metadata-only and
+unsupported unless listed otherwise. MyLite rejects schema, table, index,
+rename, truncate, and single-table DML writes targeting `performance_schema`
+with `1044 / 42000` access-denied diagnostics.
 
 | Table | Status | Notes |
 | --- | --- | --- |
@@ -70,8 +71,8 @@ truncate, and single-table DML writes targeting `performance_schema` with
 | `performance_schema.firewall_group_allowlist` | ❌ | Firewall in-memory data for group profile allowlists |
 | `performance_schema.firewall_groups` | ❌ | Firewall in-memory data for group profiles |
 | `performance_schema.firewall_membership` | ❌ | Firewall in-memory data for group profile members |
-| `performance_schema.global_status` | ❌ | Global status variables |
-| `performance_schema.global_variables` | ❌ | Global system variables |
+| `performance_schema.global_status` | 🟡 | Queryable global rows from MyLite's supported status registry, with MySQL-shaped columns and `HASH` primary-key metadata; live instrumentation and full optional status universe remain unsupported |
+| `performance_schema.global_variables` | 🟡 | Queryable global rows from MyLite's supported system-variable registry, with MySQL-shaped columns and `HASH` primary-key metadata; persisted/global mutation and full optional variable universe remain unsupported |
 | `performance_schema.host_cache` | ❌ | Information from internal host cache |
 | `performance_schema.hosts` | ❌ | Connection stats per host name |
 | `performance_schema.keyring_component_status` | ❌ | Status information for installed keyring component |
@@ -109,8 +110,8 @@ truncate, and single-table DML writes targeting `performance_schema` with
 | `performance_schema.rwlock_instances` | ❌ | Lock synchronization object instances |
 | `performance_schema.session_account_connect_attrs` | ❌ | Connection attributes per for current session |
 | `performance_schema.session_connect_attrs` | ❌ | Connection attributes for all sessions |
-| `performance_schema.session_status` | ❌ | Status variables for current session |
-| `performance_schema.session_variables` | ❌ | System variables for current session |
+| `performance_schema.session_status` | 🟡 | Queryable current-session rows from MyLite's supported status registry, including observed session-only status rows and Performance Schema command-counter filtering; live per-thread accounting remains unsupported |
+| `performance_schema.session_variables` | 🟡 | Queryable current-session rows from MyLite's supported system-variable registry, including session overrides; thread-specific variable tables remain unsupported |
 | `performance_schema.setup_actors` | ❌ | How to initialize monitoring for new foreground threads |
 | `performance_schema.setup_consumers` | ❌ | Consumers for which event information can be stored |
 | `performance_schema.setup_instruments` | ❌ | Table shape and diagnostics |

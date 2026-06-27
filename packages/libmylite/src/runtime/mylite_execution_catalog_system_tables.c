@@ -17,6 +17,8 @@ static const struct mylite_execution_catalog_system_table_provider system_table_
      mylite_execution_catalog_mysql_replication_system_table_definition_at},
     {mylite_execution_catalog_mysql_misc_system_table_definition_count,
      mylite_execution_catalog_mysql_misc_system_table_definition_at},
+    {mylite_execution_catalog_performance_schema_system_table_definition_count,
+     mylite_execution_catalog_performance_schema_system_table_definition_at},
     {mylite_execution_catalog_sys_core_system_table_definition_count,
      mylite_execution_catalog_sys_core_system_table_definition_at},
     {mylite_execution_catalog_sys_summary_system_table_definition_count,

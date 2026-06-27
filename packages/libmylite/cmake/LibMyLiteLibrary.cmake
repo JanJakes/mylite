@@ -83,6 +83,7 @@ add_library(mylite STATIC
   src/runtime/mylite_execution_catalog_mysql_service_tables.c
   src/runtime/mylite_execution_catalog_mysql_replication_tables.c
   src/runtime/mylite_execution_catalog_mysql_misc_tables.c
+  src/runtime/mylite_execution_catalog_performance_schema_tables.c
   src/runtime/mylite_execution_catalog_sys_core_tables.c
   src/runtime/mylite_execution_catalog_sys_summary_host_tables.c
   src/runtime/mylite_execution_catalog_sys_summary_innodb_tables.c

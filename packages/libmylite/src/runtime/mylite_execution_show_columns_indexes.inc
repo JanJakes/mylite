@@ -1068,7 +1068,7 @@ static int append_show_index_mysql_system_table_primary_key_rows(
                 NULL,
                 NULL,
                 "",
-                "BTREE",
+                mysql_system_table_primary_key_index_type(definition),
                 "",
                 "",
                 "YES",
@@ -1165,6 +1165,9 @@ static const char *mysql_system_table_primary_key_cardinality(
     if (definition == NULL) {
         return "0";
     }
+    if (strcmp(definition->schema_name, "performance_schema") == 0) {
+        return NULL;
+    }
     return mysql_system_table_primary_key_cardinality_for_name(
         definition->query_definition.name,
         sequence
@@ -1229,6 +1232,9 @@ static const char *mysql_system_table_primary_key_collation(
     if (definition == NULL) {
         return "A";
     }
+    if (strcmp(definition->schema_name, "performance_schema") == 0) {
+        return NULL;
+    }
     return mysql_system_table_primary_key_collation_for_name(
         definition->query_definition.name,
         sequence
@@ -1248,6 +1254,15 @@ static const char *mysql_system_table_primary_key_collation_for_name(
         return "D";
     }
     return "A";
+}
+
+static const char *mysql_system_table_primary_key_index_type(
+    const struct mylite_execution_catalog_mysql_system_table *definition
+) {
+    if (definition != NULL && strcmp(definition->schema_name, "performance_schema") == 0) {
+        return "HASH";
+    }
+    return "BTREE";
 }
 
 static int resolve_show_index_filter_nodes(

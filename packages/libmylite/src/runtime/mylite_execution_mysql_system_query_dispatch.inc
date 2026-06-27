@@ -189,6 +189,8 @@ static int append_performance_schema_system_table_rows(
         strcmp(definition->query_definition.name, "events_waits_summary_global_by_event_name") ==
             0 ||
         strcmp(definition->query_definition.name, "file_instances") == 0 ||
+        strcmp(definition->query_definition.name, "file_summary_by_event_name") == 0 ||
+        strcmp(definition->query_definition.name, "file_summary_by_instance") == 0 ||
         strcmp(definition->query_definition.name, "host_cache") == 0 ||
         strcmp(definition->query_definition.name, "keyring_component_status") == 0 ||
         strcmp(definition->query_definition.name, "keyring_keys") == 0 ||

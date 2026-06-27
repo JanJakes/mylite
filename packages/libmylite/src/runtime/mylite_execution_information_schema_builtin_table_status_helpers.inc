@@ -230,6 +230,14 @@ static const char *builtin_schema_table_rows(
         return "694";
     }
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "file_summary_by_event_name") == 0) {
+        return "80";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "file_summary_by_instance") == 0) {
+        return "4096";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
         strcmp(table_name, "setup_consumers") == 0) {
         return "16";
     }

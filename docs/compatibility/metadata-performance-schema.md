@@ -31,9 +31,9 @@ MyLite metadata and return MySQL-shaped missing-table diagnostics.
 Event current/history placeholders for stage and wait tables, statement
 history-long, and stored-program statement summaries expose MySQL-shaped
 metadata with empty read-only rows; live event instrumentation remains
-unsupported. Error, stage, and wait summary placeholders expose MySQL-shaped
-metadata with empty read-only rows; live error/stage/wait aggregation remains
-unsupported.
+unsupported. Error, file, stage, and wait summary placeholders expose
+MySQL-shaped metadata with empty read-only rows; live error/file/stage/wait
+aggregation remains unsupported.
 `user_defined_functions` exposes MySQL 8.4.9-shaped loadable-function registry
 rows, and `user_variables_by_thread` exposes MyLite session user variables for
 the current connection. The remaining tables are metadata-only and unsupported
@@ -95,8 +95,8 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.events_waits_summary_by_user_by_event_name` | 🟡 | Empty read-only wait-summary placeholder with MySQL-shaped metadata; no live wait aggregation |
 | `performance_schema.events_waits_summary_global_by_event_name` | 🟡 | Empty read-only wait-summary placeholder with MySQL-shaped metadata; no live wait aggregation |
 | `performance_schema.file_instances` | 🟡 | Empty read-only file-instance placeholder with MySQL-shaped columns, HASH primary/secondary index metadata, table metadata, selected-schema reads, and write protection; no live file I/O instrumentation |
-| `performance_schema.file_summary_by_event_name` | ❌ | File events per event name |
-| `performance_schema.file_summary_by_instance` | ❌ | File events per file instance |
+| `performance_schema.file_summary_by_event_name` | 🟡 | Empty read-only file-summary placeholder with MySQL-shaped metadata; no live file I/O aggregation |
+| `performance_schema.file_summary_by_instance` | 🟡 | Empty read-only file-summary placeholder with MySQL-shaped metadata; no live file I/O aggregation |
 | `performance_schema.firewall_group_allowlist` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
 | `performance_schema.firewall_groups` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |
 | `performance_schema.firewall_membership` | ✅ | Optional target-runtime table absence with no metadata rows and MySQL-shaped missing-table diagnostics |

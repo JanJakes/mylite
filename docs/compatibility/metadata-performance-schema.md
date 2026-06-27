@@ -18,7 +18,8 @@ system-variable registry with embedded source/range placeholders, and
 `persisted_variables` is an empty persisted-global placeholder. Connection
 summary, processlist, and thread tables expose limited rows from MyLite's
 open-connection registry. Connection attribute tables expose deterministic
-embedded MyLite attributes for open handles.
+embedded MyLite attributes for open handles. Instance tables for synchronization
+objects, files, and sockets expose empty read-only metadata placeholders.
 `user_defined_functions` exposes MySQL 8.4.9-shaped loadable-function registry
 rows, and `user_variables_by_thread` exposes MyLite session user variables for
 the current connection. The remaining tables are metadata-only and unsupported
@@ -33,7 +34,7 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.clone_progress` | ❌ | Clone operation progress |
 | `performance_schema.clone_status` | ❌ | Clone operation status |
 | `performance_schema.component_scheduler_tasks` | ❌ | Status of scheduled tasks |
-| `performance_schema.cond_instances` | ❌ | Synchronization object instances |
+| `performance_schema.cond_instances` | 🟡 | Empty read-only condition-instance placeholder with MySQL-shaped columns, HASH primary/secondary index metadata, table metadata, selected-schema reads, and write protection; no live synchronization instrumentation |
 | `performance_schema.data_lock_waits` | ❌ | Data lock wait relationships |
 | `performance_schema.data_locks` | ❌ | Data locks held and requested |
 | `performance_schema.error_log` | ❌ | Server error log recent entries |
@@ -79,7 +80,7 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.events_waits_summary_by_thread_by_event_name` | ❌ | Wait events per thread and event name |
 | `performance_schema.events_waits_summary_by_user_by_event_name` | ❌ | Wait events per user name and event name |
 | `performance_schema.events_waits_summary_global_by_event_name` | ❌ | Wait events per event name |
-| `performance_schema.file_instances` | ❌ | File instances |
+| `performance_schema.file_instances` | 🟡 | Empty read-only file-instance placeholder with MySQL-shaped columns, HASH primary/secondary index metadata, table metadata, selected-schema reads, and write protection; no live file I/O instrumentation |
 | `performance_schema.file_summary_by_event_name` | ❌ | File events per event name |
 | `performance_schema.file_summary_by_instance` | ❌ | File events per file instance |
 | `performance_schema.firewall_group_allowlist` | ❌ | Firewall in-memory data for group profile allowlists |
@@ -98,7 +99,7 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.memory_summary_by_user_by_event_name` | ❌ | Memory operations per user and event name |
 | `performance_schema.memory_summary_global_by_event_name` | ❌ | Memory operations globally per event name |
 | `performance_schema.metadata_locks` | ❌ | Metadata locks and lock requests |
-| `performance_schema.mutex_instances` | ❌ | Mutex synchronization object instances |
+| `performance_schema.mutex_instances` | 🟡 | Empty read-only mutex-instance placeholder with MySQL-shaped columns, HASH primary/secondary index metadata, table metadata, selected-schema reads, and write protection; no live mutex instrumentation |
 | `performance_schema.ndb_sync_excluded_objects` | ❌ | NDB objects which cannot be synchronized |
 | `performance_schema.ndb_sync_pending_objects` | ❌ | NDB objects waiting for synchronization |
 | `performance_schema.objects_summary_global_by_type` | ❌ | Object summaries |
@@ -121,7 +122,7 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.replication_group_member_actions` | ❌ | Table shape and diagnostics |
 | `performance_schema.replication_group_member_stats` | ❌ | Replication group member statistics |
 | `performance_schema.replication_group_members` | ❌ | Replication group member network and status |
-| `performance_schema.rwlock_instances` | ❌ | Lock synchronization object instances |
+| `performance_schema.rwlock_instances` | 🟡 | Empty read-only rwlock-instance placeholder with MySQL-shaped columns, HASH primary/secondary index metadata, table metadata, selected-schema reads, and write protection; no live rwlock instrumentation |
 | `performance_schema.session_account_connect_attrs` | 🟡 | Limited current-account rows from MyLite's open-connection registry with deterministic `_client_name`, `_client_version`, and `program_name` attributes; no arbitrary connector attributes, truncation accounting, or account filtering beyond embedded `root@%` |
 | `performance_schema.session_connect_attrs` | 🟡 | Limited open-connection rows with deterministic embedded MyLite attributes and MySQL-shaped primary-key metadata; no arbitrary connector attributes, wire-protocol attribute ingestion, or truncation accounting |
 | `performance_schema.session_status` | 🟡 | Queryable current-session rows from MyLite's supported status registry, including observed session-only status rows and Performance Schema command-counter filtering; live per-thread accounting remains unsupported |
@@ -134,7 +135,7 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.setup_metrics` | 🟡 | Read-only MySQL 8.4.9 default metric rows with MySQL-shaped metadata and HASH primary-key introspection; no metric collection or telemetry export |
 | `performance_schema.setup_objects` | 🟡 | Read-only MySQL 8.4.9 default object-filter rows and multi-column `OBJECT` unique-index metadata; no mutable instrumentation filters |
 | `performance_schema.setup_threads` | 🟡 | Read-only MySQL 8.4.9 default setup-thread class rows and HASH primary-key metadata; no mutable thread instrumentation setup |
-| `performance_schema.socket_instances` | ❌ | Active connection instances |
+| `performance_schema.socket_instances` | 🟡 | Empty read-only socket-instance placeholder with MySQL-shaped columns, HASH primary/secondary index metadata, table metadata, selected-schema reads, and write protection; no live socket instrumentation |
 | `performance_schema.socket_summary_by_event_name` | ❌ | Socket waits and I/O per event name |
 | `performance_schema.socket_summary_by_instance` | ❌ | Socket waits and I/O per instance |
 | `performance_schema.status_by_account` | 🟡 | Limited current-handle account status rows for embedded `root@%`, backed by MyLite's supported status registry; no disconnected aggregate storage or cross-handle Performance Schema accounting |

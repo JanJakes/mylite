@@ -109,6 +109,325 @@ static const struct mylite_execution_catalog_mysql_system_secondary_index
         {"ACCOUNT", 1U, NULL, "0", true, NULL, "HASH"},
 };
 
+static const char *const performance_schema_instance_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_instance_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_cond_instance_columns[] = {
+        {"NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "128",
+         "512",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(128)"},
+        {"OBJECT_INSTANCE_BEGIN",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+};
+
+static const char *const performance_schema_cond_instance_column_keys[] = {
+    "MUL",
+    "PRI",
+};
+
+static const size_t performance_schema_cond_instance_primary_key_columns[] = {
+    1U,
+};
+
+static const struct mylite_execution_catalog_mysql_system_secondary_index
+    performance_schema_cond_instance_secondary_indexes[] = {
+        {"NAME", 0U, NULL, "1", false, NULL, "HASH"},
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_mutex_instance_columns[] = {
+        {"NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "128",
+         "512",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(128)"},
+        {"OBJECT_INSTANCE_BEGIN",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"LOCKED_BY_THREAD_ID",
+         NULL,
+         "YES",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+};
+
+static const char *const performance_schema_mutex_instance_column_keys[] = {
+    "MUL",
+    "PRI",
+    "MUL",
+};
+
+static const size_t performance_schema_mutex_instance_primary_key_columns[] = {
+    1U,
+};
+
+static const struct mylite_execution_catalog_mysql_system_secondary_index
+    performance_schema_mutex_instance_secondary_indexes[] = {
+        {"LOCKED_BY_THREAD_ID", 2U, NULL, "1", false, NULL, "HASH"},
+        {"NAME", 0U, NULL, "1", false, NULL, "HASH"},
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_rwlock_instance_columns[] = {
+        {"NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "128",
+         "512",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(128)"},
+        {"OBJECT_INSTANCE_BEGIN",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"WRITE_LOCKED_BY_THREAD_ID",
+         NULL,
+         "YES",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"READ_LOCKED_BY_COUNT",
+         NULL,
+         "NO",
+         "int",
+         NULL,
+         NULL,
+         "10",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "int unsigned"},
+};
+
+static const char *const performance_schema_rwlock_instance_column_keys[] = {
+    "MUL",
+    "PRI",
+    "MUL",
+    "",
+};
+
+static const size_t performance_schema_rwlock_instance_primary_key_columns[] = {
+    1U,
+};
+
+static const struct mylite_execution_catalog_mysql_system_secondary_index
+    performance_schema_rwlock_instance_secondary_indexes[] = {
+        {"NAME", 0U, NULL, "1", false, NULL, "HASH"},
+        {"WRITE_LOCKED_BY_THREAD_ID", 2U, NULL, "1", false, NULL, "HASH"},
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_file_instance_columns[] = {
+        {"FILE_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "512",
+         "2048",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(512)"},
+        {"EVENT_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "128",
+         "512",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(128)"},
+        {"OPEN_COUNT", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"},
+};
+
+static const char *const performance_schema_file_instance_column_keys[] = {
+    "PRI",
+    "MUL",
+    "",
+};
+
+static const size_t performance_schema_file_instance_primary_key_columns[] = {
+    0U,
+};
+
+static const struct mylite_execution_catalog_mysql_system_secondary_index
+    performance_schema_file_instance_secondary_indexes[] = {
+        {"EVENT_NAME", 1U, NULL, "1", false, NULL, "HASH"},
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_socket_instance_columns[] = {
+        {"EVENT_NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "128",
+         "512",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(128)"},
+        {"OBJECT_INSTANCE_BEGIN",
+         NULL,
+         "NO",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"THREAD_ID",
+         NULL,
+         "YES",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"SOCKET_ID", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
+        {"IP",
+         NULL,
+         "NO",
+         "varchar",
+         "64",
+         "256",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(64)"},
+        {"PORT", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
+        {"STATE",
+         NULL,
+         "NO",
+         "enum",
+         "6",
+         "24",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "enum('IDLE','ACTIVE')"},
+};
+
+static const char *const performance_schema_socket_instance_column_keys[] = {
+    "",
+    "PRI",
+    "MUL",
+    "MUL",
+    "MUL",
+    "",
+    "",
+};
+
+static const size_t performance_schema_socket_instance_primary_key_columns[] = {
+    1U,
+};
+
+static const struct mylite_execution_catalog_mysql_system_secondary_index
+    performance_schema_socket_instance_secondary_indexes[] = {
+        {"IP", 4U, NULL, "1", false, NULL, "HASH"},
+        {"IP", 5U, NULL, "1", false, NULL, "HASH"},
+        {"SOCKET_ID", 3U, NULL, "1", false, NULL, "HASH"},
+        {"THREAD_ID", 2U, NULL, "1", false, NULL, "HASH"},
+};
+
 static const struct mylite_execution_catalog_column_definition performance_schema_hosts_columns[] =
     {
         {"HOST",
@@ -2212,6 +2531,40 @@ static const struct mylite_execution_catalog_mysql_system_table
          sizeof(performance_schema_accounts_secondary_indexes) /
              sizeof(performance_schema_accounts_secondary_indexes[0])},
         {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_COND_INSTANCES,
+          "cond_instances",
+          performance_schema_cond_instance_columns,
+          sizeof(performance_schema_cond_instance_columns) /
+              sizeof(performance_schema_cond_instance_columns[0])},
+         performance_schema_cond_instance_column_keys,
+         performance_schema_instance_column_extras,
+         performance_schema_instance_column_privileges,
+         NULL,
+         performance_schema_cond_instance_primary_key_columns,
+         sizeof(performance_schema_cond_instance_primary_key_columns) /
+             sizeof(performance_schema_cond_instance_primary_key_columns[0]),
+         NULL,
+         performance_schema_cond_instance_secondary_indexes,
+         sizeof(performance_schema_cond_instance_secondary_indexes) /
+             sizeof(performance_schema_cond_instance_secondary_indexes[0])},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_FILE_INSTANCES,
+          "file_instances",
+          performance_schema_file_instance_columns,
+          sizeof(performance_schema_file_instance_columns) /
+              sizeof(performance_schema_file_instance_columns[0])},
+         performance_schema_file_instance_column_keys,
+         performance_schema_instance_column_extras,
+         performance_schema_instance_column_privileges,
+         NULL,
+         performance_schema_file_instance_primary_key_columns,
+         sizeof(performance_schema_file_instance_primary_key_columns) /
+             sizeof(performance_schema_file_instance_primary_key_columns[0]),
+         NULL,
+         performance_schema_file_instance_secondary_indexes,
+         sizeof(performance_schema_file_instance_secondary_indexes) /
+             sizeof(performance_schema_file_instance_secondary_indexes[0])},
+        {"performance_schema",
          {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_GLOBAL_STATUS,
           "global_status",
           performance_schema_variable_status_columns,
@@ -2289,6 +2642,23 @@ static const struct mylite_execution_catalog_mysql_system_table
          NULL,
          NULL,
          0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_MUTEX_INSTANCES,
+          "mutex_instances",
+          performance_schema_mutex_instance_columns,
+          sizeof(performance_schema_mutex_instance_columns) /
+              sizeof(performance_schema_mutex_instance_columns[0])},
+         performance_schema_mutex_instance_column_keys,
+         performance_schema_instance_column_extras,
+         performance_schema_instance_column_privileges,
+         NULL,
+         performance_schema_mutex_instance_primary_key_columns,
+         sizeof(performance_schema_mutex_instance_primary_key_columns) /
+             sizeof(performance_schema_mutex_instance_primary_key_columns[0]),
+         NULL,
+         performance_schema_mutex_instance_secondary_indexes,
+         sizeof(performance_schema_mutex_instance_secondary_indexes) /
+             sizeof(performance_schema_mutex_instance_secondary_indexes[0])},
         {"performance_schema",
          {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_PROCESSLIST,
           "processlist",
@@ -2385,6 +2755,23 @@ static const struct mylite_execution_catalog_mysql_system_table
          NULL,
          0U},
         {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_RWLOCK_INSTANCES,
+          "rwlock_instances",
+          performance_schema_rwlock_instance_columns,
+          sizeof(performance_schema_rwlock_instance_columns) /
+              sizeof(performance_schema_rwlock_instance_columns[0])},
+         performance_schema_rwlock_instance_column_keys,
+         performance_schema_instance_column_extras,
+         performance_schema_instance_column_privileges,
+         NULL,
+         performance_schema_rwlock_instance_primary_key_columns,
+         sizeof(performance_schema_rwlock_instance_primary_key_columns) /
+             sizeof(performance_schema_rwlock_instance_primary_key_columns[0]),
+         NULL,
+         performance_schema_rwlock_instance_secondary_indexes,
+         sizeof(performance_schema_rwlock_instance_secondary_indexes) /
+             sizeof(performance_schema_rwlock_instance_secondary_indexes[0])},
+        {"performance_schema",
          {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_SETUP_OBJECTS,
           "setup_objects",
           performance_schema_setup_object_columns,
@@ -2448,6 +2835,23 @@ static const struct mylite_execution_catalog_mysql_system_table
          NULL,
          NULL,
          0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_SOCKET_INSTANCES,
+          "socket_instances",
+          performance_schema_socket_instance_columns,
+          sizeof(performance_schema_socket_instance_columns) /
+              sizeof(performance_schema_socket_instance_columns[0])},
+         performance_schema_socket_instance_column_keys,
+         performance_schema_instance_column_extras,
+         performance_schema_instance_column_privileges,
+         NULL,
+         performance_schema_socket_instance_primary_key_columns,
+         sizeof(performance_schema_socket_instance_primary_key_columns) /
+             sizeof(performance_schema_socket_instance_primary_key_columns[0]),
+         NULL,
+         performance_schema_socket_instance_secondary_indexes,
+         sizeof(performance_schema_socket_instance_secondary_indexes) /
+             sizeof(performance_schema_socket_instance_secondary_indexes[0])},
         {"performance_schema",
          {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_STATUS_BY_ACCOUNT,
           "status_by_account",

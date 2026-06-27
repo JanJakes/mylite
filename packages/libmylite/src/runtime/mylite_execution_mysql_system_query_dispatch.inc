@@ -131,6 +131,13 @@ static int append_performance_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "accounts") == 0) {
         return append_performance_schema_accounts_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "cond_instances") == 0 ||
+        strcmp(definition->query_definition.name, "file_instances") == 0 ||
+        strcmp(definition->query_definition.name, "mutex_instances") == 0 ||
+        strcmp(definition->query_definition.name, "rwlock_instances") == 0 ||
+        strcmp(definition->query_definition.name, "socket_instances") == 0) {
+        return MYLITE_OK;
+    }
     if (strcmp(definition->query_definition.name, "global_variables") == 0) {
         return append_performance_schema_variable_rows(database, rows, true);
     }

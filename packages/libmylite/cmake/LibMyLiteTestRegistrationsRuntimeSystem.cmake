@@ -709,6 +709,10 @@
     COMMAND mylite_runtime_performance_schema_setup_threads_test
   )
   add_test(
+    NAME libmylite.runtime.performance_schema_table_handles_table
+    COMMAND mylite_runtime_performance_schema_table_handles_table_test
+  )
+  add_test(
     NAME libmylite.runtime.performance_schema_user_defined_functions
     COMMAND mylite_runtime_performance_schema_user_defined_functions_test
   )

@@ -11,7 +11,8 @@ MyLite's supported registries, `performance_timers` exposes deterministic timer
 placeholder rows, and setup actor/consumer/object/thread tables expose read-only
 default configuration rows. `setup_loggers` and `setup_meters` expose read-only
 telemetry setup rows, and `setup_metrics` exposes the read-only default metric
-catalog. `user_defined_functions` exposes MySQL 8.4.9-shaped
+catalog. `table_handles` exposes MySQL-shaped read-only empty lock-handle
+metadata. `user_defined_functions` exposes MySQL 8.4.9-shaped
 loadable-function registry rows, and `user_variables_by_thread` exposes MyLite
 session user variables for the current connection. The remaining tables are
 metadata-only and unsupported unless listed otherwise. MyLite rejects schema,
@@ -133,7 +134,7 @@ table, index, rename, truncate, and single-table DML writes targeting
 | `performance_schema.status_by_host` | ❌ | Session status variables per host name |
 | `performance_schema.status_by_thread` | ❌ | Session status variables per session |
 | `performance_schema.status_by_user` | ❌ | Session status variables per user name |
-| `performance_schema.table_handles` | ❌ | Table locks and lock requests |
+| `performance_schema.table_handles` | 🟡 | Read-only empty MySQL 8.4.9-shaped table-handle metadata with HASH primary and secondary index introspection; no live table-lock instrumentation |
 | `performance_schema.table_io_waits_summary_by_index_usage` | ❌ | Table I/O waits per index |
 | `performance_schema.table_io_waits_summary_by_table` | ❌ | Table I/O waits per table |
 | `performance_schema.table_lock_waits_summary_by_table` | ❌ | Table lock waits per table |

@@ -160,6 +160,9 @@ static int append_performance_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "setup_threads") == 0) {
         return append_performance_schema_setup_thread_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "table_handles") == 0) {
+        return MYLITE_OK;
+    }
     if (strcmp(definition->query_definition.name, "user_defined_functions") == 0) {
         return append_performance_schema_user_defined_function_rows(database, rows);
     }

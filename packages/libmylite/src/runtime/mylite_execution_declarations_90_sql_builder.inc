@@ -454,6 +454,9 @@ static bool mysql_system_table_secondary_index_name_seen_before(
     const struct mylite_execution_catalog_mysql_system_table *definition,
     size_t secondary_index_index
 );
+static const char *mysql_system_table_index_nullable_value(
+    const struct mylite_execution_catalog_column_definition *column
+);
 static int append_show_index_mysql_system_table_row_if_matches(
     struct mylite_db *database,
     mylite_result *result,

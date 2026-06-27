@@ -1067,7 +1067,7 @@ static int append_show_index_mysql_system_table_primary_key_rows(
                 mysql_system_table_primary_key_cardinality(definition, key_index + 1),
                 NULL,
                 NULL,
-                "",
+                mysql_system_table_index_nullable_value(column),
                 mysql_system_table_primary_key_index_type(definition),
                 "",
                 "",
@@ -1124,7 +1124,7 @@ static int append_show_index_mysql_system_table_secondary_rows(
                 secondary_index->cardinality,
                 NULL,
                 NULL,
-                "",
+                mysql_system_table_index_nullable_value(column),
                 secondary_index->index_type,
                 "",
                 "",
@@ -1179,6 +1179,15 @@ static bool mysql_system_table_secondary_index_name_seen_before(
         }
     }
     return false;
+}
+
+static const char *mysql_system_table_index_nullable_value(
+    const struct mylite_execution_catalog_column_definition *column
+) {
+    if (column != NULL && column->is_nullable != NULL && strcmp(column->is_nullable, "YES") == 0) {
+        return "YES";
+    }
+    return "";
 }
 
 static int append_show_index_mysql_system_table_row_if_matches(

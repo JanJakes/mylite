@@ -2,14 +2,14 @@
 
 #include "runtime_test_support.h"
 
-#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
 enum {
     mysql_error_access_denied = 1044,
-    setup_objects_column_count = 5,
-    setup_objects_row_count = 20,
+    table_handles_column_count = 8,
+    table_handles_index_row_count = 6,
+    show_columns_column_count = 6,
     show_full_columns_column_count = 9,
     show_index_column_count = 15,
     show_table_status_column_count = 18,
@@ -36,29 +36,39 @@ struct expected_sql_error {
     const char *message_part;
 };
 
-static int test_performance_schema_setup_objects(void);
+static int test_performance_schema_table_handles(void);
 static int execute_ok(mylite_db *database, const char *sql);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_query(mylite_db *database, struct expected_query query);
 static int expect_row_count_state(mylite_db *database, const char *context);
 static int expect_int(int actual, int expected, const char *context);
-static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_text(const char *actual, const char *expected, const char *context);
 static int expect_contains(const char *actual, const char *needle, const char *context);
 
 int main(void) {
-    return test_performance_schema_setup_objects() == 0 ? 0 : 1;
+    return test_performance_schema_table_handles() == 0 ? 0 : 1;
 }
 
-static int test_performance_schema_setup_objects(void) {
+static int test_performance_schema_table_handles(void) {
     static const char *const count_column[] = {"COUNT(*)"};
-    static const char *const setup_object_columns[] = {
+    static const char *const table_handle_columns[] = {
         "OBJECT_TYPE",
         "OBJECT_SCHEMA",
         "OBJECT_NAME",
-        "ENABLED",
-        "TIMED",
+        "OBJECT_INSTANCE_BEGIN",
+        "OWNER_THREAD_ID",
+        "OWNER_EVENT_ID",
+        "INTERNAL_LOCK",
+        "EXTERNAL_LOCK",
+    };
+    static const char *const show_columns_columns[] = {
+        "Field",
+        "Type",
+        "Null",
+        "Key",
+        "Default",
+        "Extra",
     };
     static const char *const show_full_columns_columns[] = {
         "Field",
@@ -152,36 +162,33 @@ static int test_performance_schema_setup_objects(void) {
         "ENGINE_ATTRIBUTE",
         "SECONDARY_ENGINE_ATTRIBUTE",
     };
-    static const char *const count_twenty[] = {"20"};
-    static const char *const setup_object_rows[] = {
-        "EVENT",     "%",     "%", "YES", "YES", "EVENT",     "information_schema", "%", "NO", "NO",
-        "EVENT",     "mysql", "%", "NO",  "NO",  "EVENT",     "performance_schema", "%", "NO", "NO",
-        "FUNCTION",  "%",     "%", "YES", "YES", "FUNCTION",  "information_schema", "%", "NO", "NO",
-        "FUNCTION",  "mysql", "%", "NO",  "NO",  "FUNCTION",  "performance_schema", "%", "NO", "NO",
-        "PROCEDURE", "%",     "%", "YES", "YES", "PROCEDURE", "information_schema", "%", "NO", "NO",
-        "PROCEDURE", "mysql", "%", "NO",  "NO",  "PROCEDURE", "performance_schema", "%", "NO", "NO",
-        "TABLE",     "%",     "%", "YES", "YES", "TABLE",     "information_schema", "%", "NO", "NO",
-        "TABLE",     "mysql", "%", "NO",  "NO",  "TABLE",     "performance_schema", "%", "NO", "NO",
-        "TRIGGER",   "%",     "%", "YES", "YES", "TRIGGER",   "information_schema", "%", "NO", "NO",
-        "TRIGGER",   "mysql", "%", "NO",  "NO",  "TRIGGER",   "performance_schema", "%", "NO", "NO",
+    static const char *const zero_count[] = {"0"};
+    static const char *const show_columns[] = {
+        "OBJECT_TYPE",           "varchar(64)",     "NO",  "MUL", NULL, "",
+        "OBJECT_SCHEMA",         "varchar(64)",     "NO",  "",    NULL, "",
+        "OBJECT_NAME",           "varchar(64)",     "NO",  "",    NULL, "",
+        "OBJECT_INSTANCE_BEGIN", "bigint unsigned", "NO",  "PRI", NULL, "",
+        "OWNER_THREAD_ID",       "bigint unsigned", "YES", "MUL", NULL, "",
+        "OWNER_EVENT_ID",        "bigint unsigned", "YES", "",    NULL, "",
+        "INTERNAL_LOCK",         "varchar(64)",     "YES", "",    NULL, "",
+        "EXTERNAL_LOCK",         "varchar(64)",     "YES", "",    NULL, "",
     };
-    static const char *const selected_schema_object[] = {"NO", "NO"};
     static const char *const full_columns[] = {
         "OBJECT_TYPE",
-        "enum('EVENT','FUNCTION','PROCEDURE','TABLE','TRIGGER')",
+        "varchar(64)",
         "utf8mb4_0900_ai_ci",
         "NO",
         "MUL",
-        "TABLE",
+        NULL,
         "",
         "select,insert,update,references",
         "",
         "OBJECT_SCHEMA",
         "varchar(64)",
         "utf8mb4_0900_ai_ci",
-        "YES",
+        "NO",
         "",
-        "%",
+        NULL,
         "",
         "select,insert,update,references",
         "",
@@ -190,33 +197,75 @@ static int test_performance_schema_setup_objects(void) {
         "utf8mb4_0900_ai_ci",
         "NO",
         "",
-        "%",
+        NULL,
         "",
         "select,insert,update,references",
         "",
-        "ENABLED",
-        "enum('YES','NO')",
-        "utf8mb4_0900_ai_ci",
+        "OBJECT_INSTANCE_BEGIN",
+        "bigint unsigned",
+        NULL,
         "NO",
-        "",
-        "YES",
+        "PRI",
+        NULL,
         "",
         "select,insert,update,references",
         "",
-        "TIMED",
-        "enum('YES','NO')",
-        "utf8mb4_0900_ai_ci",
-        "NO",
-        "",
+        "OWNER_THREAD_ID",
+        "bigint unsigned",
+        NULL,
         "YES",
+        "MUL",
+        NULL,
+        "",
+        "select,insert,update,references",
+        "",
+        "OWNER_EVENT_ID",
+        "bigint unsigned",
+        NULL,
+        "YES",
+        "",
+        NULL,
+        "",
+        "select,insert,update,references",
+        "",
+        "INTERNAL_LOCK",
+        "varchar(64)",
+        "utf8mb4_0900_ai_ci",
+        "YES",
+        "",
+        NULL,
+        "",
+        "select,insert,update,references",
+        "",
+        "EXTERNAL_LOCK",
+        "varchar(64)",
+        "utf8mb4_0900_ai_ci",
+        "YES",
+        "",
+        NULL,
         "",
         "select,insert,update,references",
         "",
     };
     static const char *const show_index[] = {
-        "setup_objects",
+        "table_handles",
         "0",
-        "OBJECT",
+        "PRIMARY",
+        "1",
+        "OBJECT_INSTANCE_BEGIN",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "",
+        "HASH",
+        "",
+        "",
+        "YES",
+        NULL,
+        "table_handles",
+        "1",
+        "OBJECT_TYPE",
         "1",
         "OBJECT_TYPE",
         NULL,
@@ -229,11 +278,41 @@ static int test_performance_schema_setup_objects(void) {
         "",
         "YES",
         NULL,
-        "setup_objects",
-        "0",
-        "OBJECT",
+        "table_handles",
+        "1",
+        "OBJECT_TYPE",
         "2",
         "OBJECT_SCHEMA",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "",
+        "HASH",
+        "",
+        "",
+        "YES",
+        NULL,
+        "table_handles",
+        "1",
+        "OBJECT_TYPE",
+        "3",
+        "OBJECT_NAME",
+        NULL,
+        NULL,
+        NULL,
+        NULL,
+        "",
+        "HASH",
+        "",
+        "",
+        "YES",
+        NULL,
+        "table_handles",
+        "1",
+        "OWNER_THREAD_ID",
+        "1",
+        "OWNER_THREAD_ID",
         NULL,
         NULL,
         NULL,
@@ -244,16 +323,16 @@ static int test_performance_schema_setup_objects(void) {
         "",
         "YES",
         NULL,
-        "setup_objects",
-        "0",
-        "OBJECT",
-        "3",
-        "OBJECT_NAME",
+        "table_handles",
+        "1",
+        "OWNER_THREAD_ID",
+        "2",
+        "OWNER_EVENT_ID",
         NULL,
         NULL,
         NULL,
         NULL,
-        "",
+        "YES",
         "HASH",
         "",
         "",
@@ -261,76 +340,56 @@ static int test_performance_schema_setup_objects(void) {
         NULL,
     };
     static const char *const information_schema_columns[] = {
-        "OBJECT_TYPE",
-        "1",
-        "NO",
-        "enum('EVENT','FUNCTION','PROCEDURE','TABLE','TRIGGER')",
-        "MUL",
-        "TABLE",
-        "utf8mb4_0900_ai_ci",
-        "OBJECT_SCHEMA",
-        "2",
-        "YES",
-        "varchar(64)",
-        "",
-        "%",
-        "utf8mb4_0900_ai_ci",
-        "OBJECT_NAME",
-        "3",
-        "NO",
-        "varchar(64)",
-        "",
-        "%",
-        "utf8mb4_0900_ai_ci",
-        "ENABLED",
-        "4",
-        "NO",
-        "enum('YES','NO')",
-        "",
-        "YES",
-        "utf8mb4_0900_ai_ci",
-        "TIMED",
-        "5",
-        "NO",
-        "enum('YES','NO')",
-        "",
-        "YES",
-        "utf8mb4_0900_ai_ci",
+        "OBJECT_TYPE",           "1", "NO",  "varchar(64)",     "MUL", NULL, "utf8mb4_0900_ai_ci",
+        "OBJECT_SCHEMA",         "2", "NO",  "varchar(64)",     "",    NULL, "utf8mb4_0900_ai_ci",
+        "OBJECT_NAME",           "3", "NO",  "varchar(64)",     "",    NULL, "utf8mb4_0900_ai_ci",
+        "OBJECT_INSTANCE_BEGIN", "4", "NO",  "bigint unsigned", "PRI", NULL, NULL,
+        "OWNER_THREAD_ID",       "5", "YES", "bigint unsigned", "MUL", NULL, NULL,
+        "OWNER_EVENT_ID",        "6", "YES", "bigint unsigned", "",    NULL, NULL,
+        "INTERNAL_LOCK",         "7", "YES", "varchar(64)",     "",    NULL, "utf8mb4_0900_ai_ci",
+        "EXTERNAL_LOCK",         "8", "YES", "varchar(64)",     "",    NULL, "utf8mb4_0900_ai_ci",
     };
     static const char *const information_schema_statistics[] = {
-        "OBJECT", "0", "1", "OBJECT_TYPE",   NULL, NULL, "HASH",
-        "OBJECT", "0", "2", "OBJECT_SCHEMA", NULL, NULL, "HASH",
-        "OBJECT", "0", "3", "OBJECT_NAME",   NULL, NULL, "HASH",
+        "OBJECT_TYPE",     "1", "1", "OBJECT_TYPE",           NULL, NULL, "HASH",
+        "OBJECT_TYPE",     "1", "2", "OBJECT_SCHEMA",         NULL, NULL, "HASH",
+        "OBJECT_TYPE",     "1", "3", "OBJECT_NAME",           NULL, NULL, "HASH",
+        "OWNER_THREAD_ID", "1", "1", "OWNER_THREAD_ID",       NULL, NULL, "HASH",
+        "OWNER_THREAD_ID", "1", "2", "OWNER_EVENT_ID",        NULL, NULL, "HASH",
+        "PRIMARY",         "0", "1", "OBJECT_INSTANCE_BEGIN", NULL, NULL, "HASH",
     };
     static const char *const information_schema_tables[] = {
-        "setup_objects",
+        "table_handles",
         "BASE TABLE",
         "PERFORMANCE_SCHEMA",
         "Dynamic",
-        "128",
+        "0",
         NULL,
         "utf8mb4_0900_ai_ci",
     };
     static const char *const information_schema_constraints[] = {
-        "OBJECT",
-        "UNIQUE",
+        "PRIMARY",
+        "PRIMARY KEY",
         "YES",
     };
     static const char *const information_schema_key_usage[] = {
-        "OBJECT",
-        "OBJECT_TYPE",
+        "PRIMARY",
+        "OBJECT_INSTANCE_BEGIN",
         "1",
-        "OBJECT",
-        "OBJECT_SCHEMA",
-        "2",
-        "OBJECT",
-        "OBJECT_NAME",
-        "3",
     };
     static const char *const information_schema_constraint_extensions[] = {
         "performance_schema",
-        "setup_objects",
-        "OBJECT",
+        "table_handles",
+        "OBJECT_TYPE",
+        NULL,
+        NULL,
+        "performance_schema",
+        "table_handles",
+        "OWNER_THREAD_ID",
+        NULL,
+        NULL,
+        "performance_schema",
+        "table_handles",
+        "PRIMARY",
         NULL,
         NULL,
     };
@@ -350,67 +409,87 @@ static int test_performance_schema_setup_objects(void) {
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT COUNT(*) FROM performance_schema.setup_objects",
+            .sql = "SELECT COUNT(*) FROM performance_schema.table_handles",
             .column_names = count_column,
-            .values = count_twenty,
+            .values = zero_count,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "setup_objects row count",
+            .context = "table_handles row count",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT OBJECT_TYPE, OBJECT_SCHEMA, OBJECT_NAME, ENABLED, TIMED "
-                   "FROM performance_schema.setup_objects "
-                   "ORDER BY OBJECT_TYPE, OBJECT_SCHEMA, OBJECT_NAME",
-            .column_names = setup_object_columns,
-            .values = setup_object_rows,
-            .column_count = setup_objects_column_count,
-            .row_count = setup_objects_row_count,
-            .context = "setup_objects rows",
+            .sql = "SELECT * FROM performance_schema.table_handles "
+                   "WHERE OBJECT_SCHEMA = 'mysql' ORDER BY OBJECT_NAME",
+            .column_names = table_handle_columns,
+            .values = NULL,
+            .column_count = table_handles_column_count,
+            .row_count = 0U,
+            .context = "table_handles empty predicate",
         }
     );
     failures += execute_ok(database, "USE performance_schema");
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SELECT ENABLED, TIMED FROM setup_objects "
-                   "WHERE OBJECT_TYPE = 'TABLE' AND OBJECT_SCHEMA = 'mysql'",
-            .column_names = (const char *const[]){"ENABLED", "TIMED"},
-            .values = selected_schema_object,
-            .column_count = 2U,
+            .sql = "SELECT COUNT(*) FROM table_handles",
+            .column_names = count_column,
+            .values = zero_count,
+            .column_count = 1U,
             .row_count = 1U,
-            .context = "selected performance_schema table resolution",
+            .context = "selected schema table_handles",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SHOW FULL COLUMNS FROM performance_schema.setup_objects",
+            .sql = "SHOW COLUMNS FROM performance_schema.table_handles",
+            .column_names = show_columns_columns,
+            .values = show_columns,
+            .column_count = show_columns_column_count,
+            .row_count = table_handles_column_count,
+            .context = "table_handles show columns",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "DESCRIBE performance_schema.table_handles",
+            .column_names = show_columns_columns,
+            .values = show_columns,
+            .column_count = show_columns_column_count,
+            .row_count = table_handles_column_count,
+            .context = "table_handles describe",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SHOW FULL COLUMNS FROM performance_schema.table_handles",
             .column_names = show_full_columns_columns,
             .values = full_columns,
             .column_count = show_full_columns_column_count,
-            .row_count = setup_objects_column_count,
-            .context = "setup_objects show full columns",
+            .row_count = table_handles_column_count,
+            .context = "table_handles show full columns",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
-            .sql = "SHOW INDEX FROM performance_schema.setup_objects",
+            .sql = "SHOW INDEX FROM performance_schema.table_handles",
             .column_names = show_index_columns,
             .values = show_index,
             .column_count = show_index_column_count,
-            .row_count = 3U,
-            .context = "setup_objects show index",
+            .row_count = table_handles_index_row_count,
+            .context = "table_handles show index",
         }
     );
     failures += expect_query(
         database,
         (struct expected_query){
             .sql = "SHOW TABLE STATUS FROM performance_schema "
-                   "WHERE Name = 'setup_objects' "
+                   "WHERE Name = 'table_handles' "
                    "AND Engine = 'PERFORMANCE_SCHEMA' "
                    "AND Row_format = 'Dynamic' "
                    "AND Auto_increment IS NULL "
@@ -419,7 +498,7 @@ static int test_performance_schema_setup_objects(void) {
             .values = NULL,
             .column_count = show_table_status_column_count,
             .row_count = 1U,
-            .context = "setup_objects show table status",
+            .context = "table_handles show table status",
         }
     );
     failures += expect_query(
@@ -429,13 +508,13 @@ static int test_performance_schema_setup_objects(void) {
                    "COLUMN_KEY, COLUMN_DEFAULT, COLLATION_NAME "
                    "FROM information_schema.columns "
                    "WHERE TABLE_SCHEMA = 'performance_schema' "
-                   "AND TABLE_NAME = 'setup_objects' "
+                   "AND TABLE_NAME = 'table_handles' "
                    "ORDER BY ORDINAL_POSITION",
             .column_names = information_schema_columns_columns,
             .values = information_schema_columns,
             .column_count = information_schema_columns_projection_count,
-            .row_count = setup_objects_column_count,
-            .context = "information schema columns",
+            .row_count = table_handles_column_count,
+            .context = "table_handles information schema columns",
         }
     );
     failures += expect_query(
@@ -445,13 +524,13 @@ static int test_performance_schema_setup_objects(void) {
                    "COLLATION, CARDINALITY, INDEX_TYPE "
                    "FROM information_schema.statistics "
                    "WHERE TABLE_SCHEMA = 'performance_schema' "
-                   "AND TABLE_NAME = 'setup_objects' "
+                   "AND TABLE_NAME = 'table_handles' "
                    "ORDER BY INDEX_NAME, SEQ_IN_INDEX",
             .column_names = information_schema_statistics_columns,
             .values = information_schema_statistics,
             .column_count = information_schema_statistics_projection_count,
-            .row_count = 3U,
-            .context = "information schema statistics",
+            .row_count = table_handles_index_row_count,
+            .context = "table_handles information schema statistics",
         }
     );
     failures += expect_query(
@@ -461,12 +540,12 @@ static int test_performance_schema_setup_objects(void) {
                    "AUTO_INCREMENT, TABLE_COLLATION "
                    "FROM information_schema.tables "
                    "WHERE TABLE_SCHEMA = 'performance_schema' "
-                   "AND TABLE_NAME = 'setup_objects'",
+                   "AND TABLE_NAME = 'table_handles'",
             .column_names = information_schema_tables_columns,
             .values = information_schema_tables,
             .column_count = information_schema_tables_projection_count,
             .row_count = 1U,
-            .context = "information schema tables",
+            .context = "table_handles information schema tables",
         }
     );
     failures += expect_query(
@@ -475,12 +554,12 @@ static int test_performance_schema_setup_objects(void) {
             .sql = "SELECT CONSTRAINT_NAME, CONSTRAINT_TYPE, ENFORCED "
                    "FROM information_schema.table_constraints "
                    "WHERE TABLE_SCHEMA = 'performance_schema' "
-                   "AND TABLE_NAME = 'setup_objects'",
+                   "AND TABLE_NAME = 'table_handles'",
             .column_names = information_schema_constraints_columns,
             .values = information_schema_constraints,
             .column_count = information_schema_constraints_projection_count,
             .row_count = 1U,
-            .context = "information schema table constraints",
+            .context = "table_handles information schema constraints",
         }
     );
     failures += expect_query(
@@ -489,13 +568,12 @@ static int test_performance_schema_setup_objects(void) {
             .sql = "SELECT CONSTRAINT_NAME, COLUMN_NAME, ORDINAL_POSITION "
                    "FROM information_schema.key_column_usage "
                    "WHERE TABLE_SCHEMA = 'performance_schema' "
-                   "AND TABLE_NAME = 'setup_objects' "
-                   "ORDER BY ORDINAL_POSITION",
+                   "AND TABLE_NAME = 'table_handles'",
             .column_names = information_schema_key_usage_columns,
             .values = information_schema_key_usage,
             .column_count = information_schema_key_usage_projection_count,
-            .row_count = 3U,
-            .context = "information schema key column usage",
+            .row_count = 1U,
+            .context = "table_handles information schema key usage",
         }
     );
     failures += expect_query(
@@ -505,32 +583,35 @@ static int test_performance_schema_setup_objects(void) {
                    "ENGINE_ATTRIBUTE, SECONDARY_ENGINE_ATTRIBUTE "
                    "FROM information_schema.table_constraints_extensions "
                    "WHERE CONSTRAINT_SCHEMA = 'performance_schema' "
-                   "AND TABLE_NAME = 'setup_objects'",
+                   "AND TABLE_NAME = 'table_handles' "
+                   "ORDER BY CONSTRAINT_NAME",
             .column_names = information_schema_constraint_extensions_columns,
             .values = information_schema_constraint_extensions,
             .column_count = information_schema_constraint_extensions_projection_count,
-            .row_count = 1U,
-            .context = "information schema table constraint extensions",
+            .row_count = 3U,
+            .context = "table_handles information schema constraint extensions",
         }
     );
     failures += execute_error(
         database,
-        "UPDATE performance_schema.setup_objects SET ENABLED = 'NO'",
+        "UPDATE performance_schema.table_handles SET INTERNAL_LOCK = 'READ'",
         access_denied
     );
-    failures += expect_row_count_state(database, "row count after select");
+    failures += expect_row_count_state(database, "row count after denied table_handles update");
 
     mylite_close(database);
-    return failures;
+    return failures == 0 ? 0 : 1;
 }
 
 static int execute_ok(mylite_db *database, const char *sql) {
     mylite_result *result = NULL;
     int rc = mylite_execute(database, sql, strlen(sql), &result);
-    int failures = expect_int(rc, MYLITE_OK, sql);
+    int failures = 0;
 
-    if (rc != MYLITE_OK) {
-        fprintf(stderr, "%s: %s / %s\n", sql, mylite_sqlstate(database), mylite_errmsg(database));
+    failures += expect_int(rc, MYLITE_OK, sql);
+    if (rc == MYLITE_OK) {
+        failures += expect_int(mylite_errcode(database), 0, sql);
+        failures += expect_size(mylite_result_column_count(result), 0U, sql);
     }
     mylite_result_free(result);
     return failures;
@@ -542,9 +623,9 @@ static int execute_error(mylite_db *database, const char *sql, struct expected_s
     int failures = 0;
 
     failures += expect_int(rc, MYLITE_ERROR, sql);
-    failures += expect_int(mylite_errcode(database), expected.code, "error code");
-    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, "error sqlstate");
-    failures += expect_contains(mylite_errmsg(database), expected.message_part, "error message");
+    failures += expect_int(mylite_errcode(database), expected.code, sql);
+    failures += expect_text(mylite_sqlstate(database), expected.sqlstate, sql);
+    failures += expect_contains(mylite_errmsg(database), expected.message_part, sql);
     mylite_result_free(result);
     return failures;
 }
@@ -555,58 +636,47 @@ static int expect_query(mylite_db *database, struct expected_query query) {
     int failures = 0;
 
     failures += expect_int(rc, MYLITE_OK, query.context);
-    if (rc != MYLITE_OK) {
-        fprintf(
-            stderr,
-            "%s: %s / %s\n",
-            query.context,
-            mylite_sqlstate(database),
-            mylite_errmsg(database)
-        );
-    }
     if (rc == MYLITE_OK) {
+        failures += expect_int(mylite_errcode(database), 0, query.context);
         failures +=
             expect_size(mylite_result_column_count(result), query.column_count, query.context);
         failures += expect_size(mylite_result_row_count(result), query.row_count, query.context);
-        failures += expect_int64(mylite_result_affected_rows(result), 0, query.context);
-        for (size_t column = 0U; column < query.column_count; ++column) {
+        for (size_t column_index = 0U;
+             column_index < query.column_count && column_index < mylite_result_column_count(result);
+             ++column_index) {
             failures += expect_text(
-                mylite_result_column_name(result, column),
-                query.column_names[column],
+                mylite_result_column_name(result, column_index),
+                query.column_names[column_index],
                 query.context
             );
         }
-        if (query.values == NULL) {
-            mylite_result_free(result);
-            return failures;
-        }
-        for (size_t row = 0U; row < query.row_count; ++row) {
-            for (size_t column = 0U; column < query.column_count; ++column) {
-                size_t value_index = (row * query.column_count) + column;
-
-                failures += expect_text(
-                    mylite_result_value_text(result, row, column),
-                    query.values[value_index],
-                    query.context
-                );
+        if (query.values != NULL) {
+            for (size_t row_index = 0U; row_index < query.row_count; ++row_index) {
+                for (size_t column_index = 0U; column_index < query.column_count; ++column_index) {
+                    size_t value_index = (row_index * query.column_count) + column_index;
+                    failures += expect_text(
+                        mylite_result_value_text(result, row_index, column_index),
+                        query.values[value_index],
+                        query.context
+                    );
+                }
             }
         }
     }
-
     mylite_result_free(result);
     return failures;
 }
 
 static int expect_row_count_state(mylite_db *database, const char *context) {
-    static const char *const columns[] = {"ROW_COUNT()"};
-    static const char *const values[] = {"-1"};
+    static const char *const row_count_columns[] = {"ROW_COUNT()"};
+    static const char *const row_count_minus_one[] = {"-1"};
 
     return expect_query(
         database,
         (struct expected_query){
             .sql = "SELECT ROW_COUNT()",
-            .column_names = columns,
-            .values = values,
+            .column_names = row_count_columns,
+            .values = row_count_minus_one,
             .column_count = 1U,
             .row_count = 1U,
             .context = context,
@@ -619,20 +689,6 @@ static int expect_int(int actual, int expected, const char *context) {
         return 0;
     }
     fprintf(stderr, "%s: expected %d, got %d\n", context, expected, actual);
-    return 1;
-}
-
-static int expect_int64(int64_t actual, int64_t expected, const char *context) {
-    if (actual == expected) {
-        return 0;
-    }
-    fprintf(
-        stderr,
-        "%s: expected %lld, got %lld\n",
-        context,
-        (long long)expected,
-        (long long)actual
-    );
     return 1;
 }
 
@@ -662,7 +718,7 @@ static int expect_text(const char *actual, const char *expected, const char *con
 }
 
 static int expect_contains(const char *actual, const char *needle, const char *context) {
-    if (actual != NULL && needle != NULL && strstr(actual, needle) != NULL) {
+    if (actual != NULL && strstr(actual, needle) != NULL) {
         return 0;
     }
     fprintf(
@@ -670,7 +726,7 @@ static int expect_contains(const char *actual, const char *needle, const char *c
         "%s: expected [%s] to contain [%s]\n",
         context,
         actual == NULL ? "NULL" : actual,
-        needle == NULL ? "NULL" : needle
+        needle
     );
     return 1;
 }

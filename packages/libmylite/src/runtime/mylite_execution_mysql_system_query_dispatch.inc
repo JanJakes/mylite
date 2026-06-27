@@ -142,6 +142,25 @@ static int append_performance_schema_system_table_rows(
         strcmp(definition->query_definition.name, "keyring_keys") == 0 ||
         strcmp(definition->query_definition.name, "mutex_instances") == 0 ||
         strcmp(definition->query_definition.name, "prepared_statements_instances") == 0 ||
+        strcmp(definition->query_definition.name, "replication_applier_configuration") == 0 ||
+        strcmp(definition->query_definition.name, "replication_applier_filters") == 0 ||
+        strcmp(definition->query_definition.name, "replication_applier_global_filters") == 0 ||
+        strcmp(definition->query_definition.name, "replication_applier_status") == 0 ||
+        strcmp(definition->query_definition.name, "replication_applier_status_by_coordinator") ==
+            0 ||
+        strcmp(definition->query_definition.name, "replication_applier_status_by_worker") == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "replication_asynchronous_connection_failover"
+        ) == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "replication_asynchronous_connection_failover_managed"
+        ) == 0 ||
+        strcmp(definition->query_definition.name, "replication_connection_configuration") == 0 ||
+        strcmp(definition->query_definition.name, "replication_connection_status") == 0 ||
+        strcmp(definition->query_definition.name, "replication_group_member_stats") == 0 ||
+        strcmp(definition->query_definition.name, "replication_group_members") == 0 ||
         strcmp(definition->query_definition.name, "rwlock_instances") == 0 ||
         strcmp(definition->query_definition.name, "socket_instances") == 0) {
         return MYLITE_OK;

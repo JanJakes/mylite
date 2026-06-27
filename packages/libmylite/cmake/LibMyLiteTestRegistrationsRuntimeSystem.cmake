@@ -701,6 +701,10 @@
     COMMAND mylite_runtime_performance_schema_host_keyring_placeholders_test
   )
   add_test(
+    NAME libmylite.runtime.performance_schema_replication_placeholders
+    COMMAND mylite_runtime_performance_schema_replication_placeholders_test
+  )
+  add_test(
     NAME libmylite.runtime.performance_schema_connection_tables
     COMMAND mylite_runtime_performance_schema_connection_tables_test
   )

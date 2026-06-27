@@ -23,6 +23,8 @@ objects, files, and sockets expose empty read-only metadata placeholders.
 Binary-log compression, data-lock, data-lock-wait, and prepared-statement
 instrumentation tables expose empty read-only metadata placeholders.
 Host-cache and keyring tables expose empty read-only metadata placeholders.
+The supported no-replication Performance Schema replication tables expose empty
+read-only metadata placeholders.
 `user_defined_functions` exposes MySQL 8.4.9-shaped loadable-function registry
 rows, and `user_variables_by_thread` exposes MyLite session user variables for
 the current connection. The remaining tables are metadata-only and unsupported
@@ -110,21 +112,21 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.persisted_variables` | 🟡 | Empty read-only persisted-global variable placeholder with MySQL-shaped columns, HASH primary-key metadata, table metadata, selected-schema reads, and write protection; no `mysqld-auto.cnf`, `SET PERSIST`, or persisted-global load path |
 | `performance_schema.prepared_statements_instances` | 🟡 | Empty read-only prepared-statement instrumentation placeholder with MySQL-shaped metadata and HASH index introspection; no live prepared-statement statistics |
 | `performance_schema.processlist` | 🟡 | Limited open-connection rows from MyLite's processlist registry with current SQL text for the active handle; no privilege filtering or full Performance Schema statement/wait instrumentation |
-| `performance_schema.replication_applier_configuration` | ❌ | Configuration parameters for replication applier on replica |
-| `performance_schema.replication_applier_filters` | ❌ | Channel-specific replication filters on current replica |
-| `performance_schema.replication_applier_global_filters` | ❌ | Global replication filters on current replica |
-| `performance_schema.replication_applier_status` | ❌ | Current status of replication applier on replica |
-| `performance_schema.replication_applier_status_by_coordinator` | ❌ | SQL or coordinator thread applier status |
-| `performance_schema.replication_applier_status_by_worker` | ❌ | Worker thread applier status |
-| `performance_schema.replication_asynchronous_connection_failover` | ❌ | Source lists for asynchronous connection failover mechanism |
-| `performance_schema.replication_asynchronous_connection_failover_managed` | ❌ | Table shape and diagnostics |
-| `performance_schema.replication_connection_configuration` | ❌ | Configuration parameters for connecting to source |
-| `performance_schema.replication_connection_status` | ❌ | Current status of connection to source |
+| `performance_schema.replication_applier_configuration` | 🟡 | Empty read-only no-replication placeholder with MySQL-shaped metadata and HASH primary-key introspection; no channel/applier configuration state |
+| `performance_schema.replication_applier_filters` | 🟡 | Empty read-only no-replication filter placeholder with MySQL-shaped metadata; no channel filter state |
+| `performance_schema.replication_applier_global_filters` | 🟡 | Empty read-only global-filter placeholder with MySQL-shaped metadata; no global replication filter state |
+| `performance_schema.replication_applier_status` | 🟡 | Empty read-only no-replication applier-status placeholder with MySQL-shaped metadata and HASH primary-key introspection; no applier state |
+| `performance_schema.replication_applier_status_by_coordinator` | 🟡 | Empty read-only coordinator-status placeholder with MySQL-shaped metadata and HASH index introspection; no coordinator thread state |
+| `performance_schema.replication_applier_status_by_worker` | 🟡 | Empty read-only worker-status placeholder with MySQL-shaped metadata and HASH index introspection; no worker thread state |
+| `performance_schema.replication_asynchronous_connection_failover` | 🟡 | Empty read-only failover-source placeholder with MySQL-shaped metadata; no asynchronous failover source list |
+| `performance_schema.replication_asynchronous_connection_failover_managed` | 🟡 | Empty read-only managed-failover placeholder with MySQL-shaped metadata; no managed failover configuration |
+| `performance_schema.replication_connection_configuration` | 🟡 | Empty read-only source-connection configuration placeholder with MySQL-shaped metadata and HASH primary-key introspection; no source/channel configuration |
+| `performance_schema.replication_connection_status` | 🟡 | Empty read-only source-connection status placeholder with MySQL-shaped metadata and HASH index introspection; no source connection state |
 | `performance_schema.replication_group_communication_information` | ❌ | Replication group configuration options |
 | `performance_schema.replication_group_configuration_version` | ❌ | Table shape and diagnostics |
 | `performance_schema.replication_group_member_actions` | ❌ | Table shape and diagnostics |
-| `performance_schema.replication_group_member_stats` | ❌ | Replication group member statistics |
-| `performance_schema.replication_group_members` | ❌ | Replication group member network and status |
+| `performance_schema.replication_group_member_stats` | 🟡 | Empty read-only group-member stats placeholder with MySQL-shaped metadata; no Group Replication statistics |
+| `performance_schema.replication_group_members` | 🟡 | Empty read-only group-member placeholder with MySQL-shaped metadata; no Group Replication membership |
 | `performance_schema.rwlock_instances` | 🟡 | Empty read-only rwlock-instance placeholder with MySQL-shaped columns, HASH primary/secondary index metadata, table metadata, selected-schema reads, and write protection; no live rwlock instrumentation |
 | `performance_schema.session_account_connect_attrs` | 🟡 | Limited current-account rows from MyLite's open-connection registry with deterministic `_client_name`, `_client_version`, and `program_name` attributes; no arbitrary connector attributes, truncation accounting, or account filtering beyond embedded `root@%` |
 | `performance_schema.session_connect_attrs` | 🟡 | Limited open-connection rows with deterministic embedded MyLite attributes and MySQL-shaped primary-key metadata; no arbitrary connector attributes, wire-protocol attribute ingestion, or truncation accounting |

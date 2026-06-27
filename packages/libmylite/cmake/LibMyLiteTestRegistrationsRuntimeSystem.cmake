@@ -697,6 +697,10 @@
     COMMAND mylite_runtime_performance_schema_setup_logger_meter_tables_test
   )
   add_test(
+    NAME libmylite.runtime.performance_schema_setup_metrics_table
+    COMMAND mylite_runtime_performance_schema_setup_metrics_table_test
+  )
+  add_test(
     NAME libmylite.runtime.performance_schema_setup_objects
     COMMAND mylite_runtime_performance_schema_setup_objects_test
   )

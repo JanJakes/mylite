@@ -10,7 +10,8 @@ through `INFORMATION_SCHEMA.TABLES`, `SHOW TABLES`, `SHOW FULL TABLES`, and
 MyLite's supported registries, `performance_timers` exposes deterministic timer
 placeholder rows, and setup actor/consumer/object/thread tables expose read-only
 default configuration rows. `setup_loggers` and `setup_meters` expose read-only
-telemetry setup rows. `user_defined_functions` exposes MySQL 8.4.9-shaped
+telemetry setup rows, and `setup_metrics` exposes the read-only default metric
+catalog. `user_defined_functions` exposes MySQL 8.4.9-shaped
 loadable-function registry rows, and `user_variables_by_thread` exposes MyLite
 session user variables for the current connection. The remaining tables are
 metadata-only and unsupported unless listed otherwise. MyLite rejects schema,
@@ -122,6 +123,7 @@ table, index, rename, truncate, and single-table DML writes targeting
 | `performance_schema.setup_instruments` | ❌ | Table shape and diagnostics |
 | `performance_schema.setup_loggers` | 🟡 | Read-only MySQL 8.4.9 default logger row with MySQL-shaped metadata; no mutable telemetry logger configuration |
 | `performance_schema.setup_meters` | 🟡 | Read-only MySQL 8.4.9 default meter rows with MySQL-shaped metadata and HASH primary-key introspection; no mutable telemetry meter configuration |
+| `performance_schema.setup_metrics` | 🟡 | Read-only MySQL 8.4.9 default metric rows with MySQL-shaped metadata and HASH primary-key introspection; no metric collection or telemetry export |
 | `performance_schema.setup_objects` | 🟡 | Read-only MySQL 8.4.9 default object-filter rows and multi-column `OBJECT` unique-index metadata; no mutable instrumentation filters |
 | `performance_schema.setup_threads` | 🟡 | Read-only MySQL 8.4.9 default setup-thread class rows and HASH primary-key metadata; no mutable thread instrumentation setup |
 | `performance_schema.socket_instances` | ❌ | Active connection instances |

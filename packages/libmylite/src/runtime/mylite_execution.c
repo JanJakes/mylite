@@ -1251,6 +1251,8 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_mysql_system_query_dispatch.inc"
 
+#include "mylite_execution_mysql_system_performance_schema_setup_metrics_rows.inc"
+
 #include "mylite_execution_mysql_system_sys_auto_increment_rows.inc"
 
 #include "mylite_execution_mysql_system_sys_statistics_rows.inc"

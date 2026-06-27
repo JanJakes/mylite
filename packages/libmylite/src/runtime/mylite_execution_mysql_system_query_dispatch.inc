@@ -151,6 +151,9 @@ static int append_performance_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "setup_meters") == 0) {
         return append_performance_schema_setup_meter_rows(database, rows);
     }
+    if (strcmp(definition->query_definition.name, "setup_metrics") == 0) {
+        return append_performance_schema_setup_metric_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "setup_objects") == 0) {
         return append_performance_schema_setup_object_rows(database, rows);
     }

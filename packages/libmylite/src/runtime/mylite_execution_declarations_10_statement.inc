@@ -1065,6 +1065,7 @@ static int apply_set_sql_mode_cell_value(
 );
 static int apply_set_time_zone_cell_value(
     struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
     const struct session_scalar_cell *value
 );
 static int apply_set_autocommit_value(
@@ -2192,8 +2193,14 @@ static int parse_set_timestamp_system_variable_arithmetic(
 );
 static int apply_set_time_zone_value(
     struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node
 );
+static int validate_set_global_time_zone_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node
+);
+static int validate_set_global_time_zone_text(struct mylite_db *database, const char *text);
 static int copy_set_time_zone_value_text(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *value_node,

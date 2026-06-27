@@ -73,6 +73,9 @@ SET time_zone = 'SYSTEM'
 SET time_zone = SYSTEM
 SET time_zone = 'UTC'
 SET time_zone = UTC
+SET GLOBAL time_zone = DEFAULT
+SET GLOBAL time_zone = SYSTEM
+SET @@GLOBAL.time_zone = SYSTEM
 ```
 
 Successful assignments report `ROW_COUNT() = 0` and `@@warning_count = 0`.
@@ -111,14 +114,18 @@ larger behavior remains outside this MyLite slice.
 Observed global behavior:
 
 - `@@GLOBAL.time_zone` reads the global value.
+- `SET GLOBAL time_zone = DEFAULT`, `SET GLOBAL time_zone = SYSTEM`, and
+  `SET @@GLOBAL.time_zone = SYSTEM` succeed when the global value is already
+  the default `SYSTEM`; they do not change the current session value.
 - `SET GLOBAL time_zone = '+03:00'` changes the global value when privileges
   allow it, but does not change the current session value.
 - A later `SET time_zone = DEFAULT` copies the current global value into the
   session value.
 
 MyLite does not implement mutable global system-variable state in this slice.
-It keeps `@@GLOBAL.time_zone` fixed at `SYSTEM`, so `SET time_zone = DEFAULT`
-always resets the session to `SYSTEM`.
+It keeps `@@GLOBAL.time_zone` fixed at `SYSTEM`, accepts exact/default global
+`SYSTEM` no-op assignments, and makes `SET time_zone = DEFAULT` reset the
+session to `SYSTEM`.
 
 ## Scope
 
@@ -141,6 +148,9 @@ This feature adds:
   values;
 - accepted string values `SYSTEM`, `UTC`, and signed UTC offsets of the form
   `+H:MM`, `+HH:MM`, `-H:MM`, or `-HH:MM`;
+- fixed-global no-op assignment for `SET GLOBAL time_zone = DEFAULT`,
+  `SET GLOBAL time_zone = SYSTEM`, and equivalent string or `@@GLOBAL` forms
+  that canonicalize to `SYSTEM`;
 - offset range validation, readback normalization, and MySQL-shaped
   diagnostics for the supported invalid values;
 - session-time-zone-aware materialization for `CURDATE()` / `CURRENT_DATE`,
@@ -242,9 +252,11 @@ MyLite's embedded system time zone is fixed to UTC in this slice.
 `SET time_zone = DEFAULT` and scoped session/local equivalents reset the
 session `time_zone` to the fixed global value `SYSTEM`.
 
-`SET GLOBAL time_zone = ...` remains unsupported with the existing deterministic
-MyLite unsupported-global-assignment diagnostic. `@@GLOBAL.time_zone` still
-reads as `SYSTEM`.
+`SET GLOBAL time_zone = DEFAULT` and exact `SYSTEM` values are accepted as
+fixed-global no-ops. Valid non-`SYSTEM` global values such as `UTC` or signed
+offsets are rejected with a deterministic unsupported diagnostic because they
+would require mutable shared global state. `@@GLOBAL.time_zone` still reads as
+`SYSTEM`.
 
 `system_time_zone` is read-only and global-only. Session/local reads fail with
 the existing global-only diagnostic shape. `SET system_time_zone = ...` fails
@@ -319,8 +331,9 @@ Required diagnostics:
 - unknown system variable: existing `1193 / HY000`;
 - unsupported quoted system-variable scope: existing MyLite unsupported
   diagnostic;
-- unsupported `SET GLOBAL time_zone`: existing MyLite unsupported-global
-  diagnostic;
+- unsupported mutable `SET GLOBAL time_zone`: deterministic
+  `SET GLOBAL time_zone supports only fixed SYSTEM no-op assignments`
+  diagnostic after validating the value shape;
 - read-only `system_time_zone`: existing read-only system-variable diagnostic;
 - session/local `system_time_zone`: existing global-only system-variable
   diagnostic;
@@ -340,6 +353,8 @@ Add MySQL-runtime expectation coverage for:
 - default `@@GLOBAL.time_zone`, `@@SESSION.time_zone`,
   `@@system_time_zone`, `SHOW VARIABLES`, and `SHOW GLOBAL VARIABLES`;
 - each supported assignment spelling listed in this spec;
+- fixed-global `time_zone` no-op assignments and MySQL's broader mutable
+  global behavior as the deferred gap;
 - offset canonicalization, zero-offset normalization, range endpoints, `UTC`,
   and `SYSTEM`;
 - invalid offsets, unsupported names, numeric values, `NULL`, and unsupported

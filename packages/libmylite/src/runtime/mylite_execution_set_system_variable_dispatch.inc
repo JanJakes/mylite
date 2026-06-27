@@ -28,7 +28,7 @@ static int apply_set_system_variable_cell_value(
         return apply_set_sql_mode_cell_value(database, value);
     }
     if (target->kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TIME_ZONE) {
-        return apply_set_time_zone_cell_value(database, value);
+        return apply_set_time_zone_cell_value(database, target, value);
     }
     if (set_system_variable_is_last_insert_id(target->kind)) {
         return apply_set_last_insert_id_system_variable_cell_value(
@@ -553,14 +553,18 @@ static int apply_set_sql_mode_cell_value(
 
 static int apply_set_time_zone_cell_value(
     struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
     const struct session_scalar_cell *value
 ) {
-    if (value == NULL) {
+    if (target == NULL || value == NULL) {
         return MYLITE_MISUSE;
     }
     if (value->value == NULL) {
         set_system_variable_cant_be_set_value_error(database, "time_zone", "NULL");
         return MYLITE_ERROR;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        return validate_set_global_time_zone_text(database, value->value);
     }
     return set_session_time_zone(database, value->value);
 }

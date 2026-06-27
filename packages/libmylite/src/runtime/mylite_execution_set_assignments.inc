@@ -289,6 +289,9 @@ static int apply_set_system_variable_assignment(
     if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_AUTOCOMMIT) {
         return apply_set_autocommit_value(database, &target, value_node);
     }
+    if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TIME_ZONE) {
+        return apply_set_time_zone_value(database, &target, value_node);
+    }
     if (target.scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
         set_unsupported_error(database, "SET GLOBAL system variable assignment is not supported");
         return MYLITE_ERROR;
@@ -310,9 +313,6 @@ static int apply_set_system_variable_assignment(
     }
     if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TIMESTAMP) {
         return apply_set_timestamp_value(database, value_node);
-    }
-    if (target.kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_TIME_ZONE) {
-        return apply_set_time_zone_value(database, value_node);
     }
 
     set_read_only_system_variable_error(database, target.name);

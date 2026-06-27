@@ -91,6 +91,7 @@ static int test_time_zone_defaults_and_assignments(void) {
     static const char *const default_values[] = {"SYSTEM", "SYSTEM", "SYSTEM", "UTC", "-1"};
     static const char *const show_time_zone_values[] = {"time_zone", "SYSTEM"};
     static const char *const show_system_time_zone_values[] = {"system_time_zone", "UTC"};
+    static const char *const global_noop_values[] = {"SYSTEM", "+02:30", "0", "0", "0"};
     static const struct expected_assignment assignments[] = {
         {"SET time_zone = '+00:00'", "+00:00", 0, "set unscoped zero offset"},
         {"SET @@time_zone = '+5:30'", "+05:30", 330, "set system variable one-digit hour"},
@@ -166,6 +167,25 @@ static int test_time_zone_defaults_and_assignments(void) {
             .column_count = 2U,
             .row_count = 1U,
             .context = "show global system_time_zone",
+        }
+    );
+
+    failures += expect_statement_ok(database, "SET time_zone = '+02:30'");
+    failures += expect_statement_ok(database, "SET GLOBAL time_zone = DEFAULT");
+    failures += expect_statement_ok(database, "SET GLOBAL time_zone = SYSTEM");
+    failures += expect_statement_ok(database, "SET GLOBAL time_zone = 'system'");
+    failures += expect_statement_ok(database, "SET @@GLOBAL.time_zone = SYSTEM");
+    failures += expect_statement_ok(database, "SET @global_time_zone = 'SYSTEM'");
+    failures += expect_statement_ok(database, "SET @@GLOBAL.time_zone = @global_time_zone");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT @@GLOBAL.time_zone, @@SESSION.time_zone, @@warning_count, "
+                   "@@error_count, ROW_COUNT()",
+            .values = global_noop_values,
+            .column_count = sizeof(global_noop_values) / sizeof(global_noop_values[0]),
+            .row_count = 1U,
+            .context = "global time_zone no-op assignments",
         }
     );
 
@@ -407,7 +427,26 @@ static int test_time_zone_diagnostics_and_independent_handles(void) {
         (struct expected_sql_error){
             mysql_error_parse,
             "42000",
-            "SET GLOBAL system variable assignment is not supported",
+            "SET GLOBAL time_zone supports only fixed SYSTEM no-op assignments",
+        }
+    );
+    failures += execute_error(
+        first,
+        "SET @@GLOBAL.time_zone = UTC",
+        (struct expected_sql_error){
+            mysql_error_parse,
+            "42000",
+            "SET GLOBAL time_zone supports only fixed SYSTEM no-op assignments",
+        }
+    );
+    failures += expect_statement_ok(first, "SET @global_time_zone = 'UTC'");
+    failures += execute_error(
+        first,
+        "SET @@GLOBAL.time_zone = @global_time_zone",
+        (struct expected_sql_error){
+            mysql_error_parse,
+            "42000",
+            "SET GLOBAL time_zone supports only fixed SYSTEM no-op assignments",
         }
     );
     failures += execute_error(

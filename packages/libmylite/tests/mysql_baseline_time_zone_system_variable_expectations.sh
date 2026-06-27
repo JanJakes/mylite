@@ -150,10 +150,20 @@ UTC	2023-11-14 22:13:20	2023-11-14	22:13:20" \
 
 expect_output \
     "global time zone behavior deferred by mylite" \
-    "+03:00	SYSTEM	0	0
+    "SYSTEM	+02:30	0	0	0
+SYSTEM	+02:30	0	0	0
+SYSTEM	+02:30	0	0	0
++03:00	+02:30	0	0
 +03:00	+03:00	0	0
 SYSTEM	SYSTEM" \
-    "SET GLOBAL time_zone = '+03:00';
+    "SET time_zone = '+02:30';
+     SET GLOBAL time_zone = DEFAULT;
+     SELECT @@GLOBAL.time_zone, @@SESSION.time_zone, @@warning_count, @@error_count, ROW_COUNT();
+     SET @@GLOBAL.time_zone = SYSTEM;
+     SELECT @@GLOBAL.time_zone, @@SESSION.time_zone, @@warning_count, @@error_count, ROW_COUNT();
+     SET GLOBAL time_zone = 'system';
+     SELECT @@GLOBAL.time_zone, @@SESSION.time_zone, @@warning_count, @@error_count, ROW_COUNT();
+     SET GLOBAL time_zone = '+03:00';
      SELECT @@GLOBAL.time_zone, @@SESSION.time_zone, @@warning_count, ROW_COUNT();
      SET time_zone = DEFAULT;
      SELECT @@GLOBAL.time_zone, @@SESSION.time_zone, @@warning_count, ROW_COUNT();

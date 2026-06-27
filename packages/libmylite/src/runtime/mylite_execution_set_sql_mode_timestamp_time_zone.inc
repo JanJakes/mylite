@@ -195,14 +195,21 @@ static int parse_set_timestamp_system_variable_arithmetic(
 
 static int apply_set_time_zone_value(
     struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
     const struct mylite_sql_ast_node *value_node
 ) {
     char *decoded = NULL;
     int rc = MYLITE_OK;
 
+    if (target == NULL) {
+        return MYLITE_MISUSE;
+    }
     if (value_node == NULL) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
+    }
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        return validate_set_global_time_zone_value(database, value_node);
     }
     if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
         return set_session_time_zone(database, "SYSTEM");
@@ -214,6 +221,54 @@ static int apply_set_time_zone_value(
     rc = set_session_time_zone(database, decoded);
     free(decoded);
     return rc;
+}
+
+static int validate_set_global_time_zone_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *value_node
+) {
+    char *decoded = NULL;
+    int rc = MYLITE_OK;
+
+    if (value_node == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    if (value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return MYLITE_OK;
+    }
+
+    rc = copy_set_time_zone_value_text(database, value_node, &decoded);
+    if (rc == MYLITE_OK) {
+        rc = validate_set_global_time_zone_text(database, decoded);
+    }
+    free(decoded);
+    return rc;
+}
+
+static int validate_set_global_time_zone_text(struct mylite_db *database, const char *text) {
+    char canonical[MYLITE_SESSION_TIME_ZONE_CAPACITY];
+    int offset_minutes = 0;
+    int rc = MYLITE_OK;
+
+    if (text == NULL) {
+        set_system_variable_cant_be_set_value_error(database, "time_zone", "NULL");
+        return MYLITE_ERROR;
+    }
+
+    rc = parse_time_zone_text(database, text, canonical, sizeof(canonical), &offset_minutes);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (strcmp(canonical, "SYSTEM") == 0) {
+        return MYLITE_OK;
+    }
+
+    set_unsupported_error(
+        database,
+        "SET GLOBAL time_zone supports only fixed SYSTEM no-op assignments"
+    );
+    return MYLITE_ERROR;
 }
 
 static int copy_set_time_zone_value_text(

@@ -204,6 +204,34 @@ static const char *builtin_schema_table_rows(
         return "10000";
     }
     if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        (strcmp(table_name, "events_statements_current") == 0 ||
+         strcmp(table_name, "events_statements_history") == 0)) {
+        return "2560";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        (strcmp(table_name, "events_statements_histogram_by_digest") == 0 ||
+         strcmp(table_name, "events_statements_summary_by_digest") == 0)) {
+        return "10000";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "events_statements_histogram_global") == 0) {
+        return "450";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        (strcmp(table_name, "events_statements_summary_by_account_by_event_name") == 0 ||
+         strcmp(table_name, "events_statements_summary_by_host_by_event_name") == 0 ||
+         strcmp(table_name, "events_statements_summary_by_user_by_event_name") == 0)) {
+        return "28160";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "events_statements_summary_by_thread_by_event_name") == 0) {
+        return "56320";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
+        strcmp(table_name, "events_statements_summary_global_by_event_name") == 0) {
+        return "220";
+    }
+    if (strcmp(directory->schema_name, "performance_schema") == 0 &&
         strcmp(table_name, "events_waits_current") == 0) {
         return "1536";
     }

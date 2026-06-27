@@ -150,22 +150,43 @@ static int append_performance_schema_system_table_rows(
             definition->query_definition.name,
             "events_stages_summary_by_account_by_event_name"
         ) == 0 ||
-        strcmp(
-            definition->query_definition.name,
-            "events_stages_summary_by_host_by_event_name"
-        ) == 0 ||
+        strcmp(definition->query_definition.name, "events_stages_summary_by_host_by_event_name") ==
+            0 ||
         strcmp(
             definition->query_definition.name,
             "events_stages_summary_by_thread_by_event_name"
         ) == 0 ||
-        strcmp(
-            definition->query_definition.name,
-            "events_stages_summary_by_user_by_event_name"
-        ) == 0 ||
+        strcmp(definition->query_definition.name, "events_stages_summary_by_user_by_event_name") ==
+            0 ||
         strcmp(definition->query_definition.name, "events_stages_summary_global_by_event_name") ==
             0 ||
+        strcmp(definition->query_definition.name, "events_statements_current") == 0 ||
+        strcmp(definition->query_definition.name, "events_statements_histogram_by_digest") == 0 ||
+        strcmp(definition->query_definition.name, "events_statements_histogram_global") == 0 ||
+        strcmp(definition->query_definition.name, "events_statements_history") == 0 ||
         strcmp(definition->query_definition.name, "events_statements_history_long") == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "events_statements_summary_by_account_by_event_name"
+        ) == 0 ||
+        strcmp(definition->query_definition.name, "events_statements_summary_by_digest") == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "events_statements_summary_by_host_by_event_name"
+        ) == 0 ||
         strcmp(definition->query_definition.name, "events_statements_summary_by_program") == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "events_statements_summary_by_thread_by_event_name"
+        ) == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "events_statements_summary_by_user_by_event_name"
+        ) == 0 ||
+        strcmp(
+            definition->query_definition.name,
+            "events_statements_summary_global_by_event_name"
+        ) == 0 ||
         strcmp(definition->query_definition.name, "events_waits_current") == 0 ||
         strcmp(definition->query_definition.name, "events_waits_history") == 0 ||
         strcmp(definition->query_definition.name, "events_waits_history_long") == 0 ||
@@ -173,19 +194,13 @@ static int append_performance_schema_system_table_rows(
             definition->query_definition.name,
             "events_waits_summary_by_account_by_event_name"
         ) == 0 ||
-        strcmp(
-            definition->query_definition.name,
-            "events_waits_summary_by_host_by_event_name"
-        ) == 0 ||
+        strcmp(definition->query_definition.name, "events_waits_summary_by_host_by_event_name") ==
+            0 ||
         strcmp(definition->query_definition.name, "events_waits_summary_by_instance") == 0 ||
-        strcmp(
-            definition->query_definition.name,
-            "events_waits_summary_by_thread_by_event_name"
-        ) == 0 ||
-        strcmp(
-            definition->query_definition.name,
-            "events_waits_summary_by_user_by_event_name"
-        ) == 0 ||
+        strcmp(definition->query_definition.name, "events_waits_summary_by_thread_by_event_name") ==
+            0 ||
+        strcmp(definition->query_definition.name, "events_waits_summary_by_user_by_event_name") ==
+            0 ||
         strcmp(definition->query_definition.name, "events_waits_summary_global_by_event_name") ==
             0 ||
         strcmp(definition->query_definition.name, "file_instances") == 0 ||
@@ -208,10 +223,8 @@ static int append_performance_schema_system_table_rows(
         strcmp(definition->query_definition.name, "replication_applier_status_by_coordinator") ==
             0 ||
         strcmp(definition->query_definition.name, "replication_applier_status_by_worker") == 0 ||
-        strcmp(
-            definition->query_definition.name,
-            "replication_asynchronous_connection_failover"
-        ) == 0 ||
+        strcmp(definition->query_definition.name, "replication_asynchronous_connection_failover") ==
+            0 ||
         strcmp(
             definition->query_definition.name,
             "replication_asynchronous_connection_failover_managed"
@@ -324,6 +337,7 @@ static int append_performance_schema_accounts_rows(
     struct information_schema_row_set *rows
 ) {
     enum { performance_schema_accounts_column_count = 6 };
+
     char count_text[integer_text_capacity];
     const char *const values[performance_schema_accounts_column_count] = {
         "root",
@@ -351,6 +365,7 @@ static int append_performance_schema_hosts_rows(
     struct information_schema_row_set *rows
 ) {
     enum { performance_schema_hosts_column_count = 5 };
+
     char count_text[integer_text_capacity];
     const char *const values[performance_schema_hosts_column_count] = {
         "%",
@@ -377,6 +392,7 @@ static int append_performance_schema_users_rows(
     struct information_schema_row_set *rows
 ) {
     enum { performance_schema_users_column_count = 5 };
+
     char count_text[integer_text_capacity];
     const char *const values[performance_schema_users_column_count] = {
         "root",
@@ -764,11 +780,11 @@ static int append_performance_schema_variable_by_thread_rows(
     struct information_schema_row_set *rows
 ) {
     enum { performance_schema_thread_variable_status_column_count = 3 };
+
     char thread_id_text[integer_text_capacity];
     int rc = MYLITE_OK;
 
-    if (rows->definition->column_count !=
-        performance_schema_thread_variable_status_column_count) {
+    if (rows->definition->column_count != performance_schema_thread_variable_status_column_count) {
         set_runtime_error(database, "invalid performance_schema variables_by_thread columns");
         return MYLITE_ERROR;
     }
@@ -814,6 +830,7 @@ static int append_performance_schema_variables_info_rows(
     struct information_schema_row_set *rows
 ) {
     enum { performance_schema_variables_info_column_count = 8 };
+
     int rc = MYLITE_OK;
 
     if (rows->definition->column_count != performance_schema_variables_info_column_count) {
@@ -847,11 +864,11 @@ static int append_performance_schema_status_by_thread_rows(
     struct information_schema_row_set *rows
 ) {
     enum { performance_schema_thread_variable_status_column_count = 3 };
+
     char thread_id_text[integer_text_capacity];
     int rc = MYLITE_OK;
 
-    if (rows->definition->column_count !=
-        performance_schema_thread_variable_status_column_count) {
+    if (rows->definition->column_count != performance_schema_thread_variable_status_column_count) {
         set_runtime_error(database, "invalid performance_schema status_by_thread columns");
         return MYLITE_ERROR;
     }
@@ -885,6 +902,7 @@ static int append_performance_schema_status_by_account_rows(
     struct information_schema_row_set *rows
 ) {
     enum { performance_schema_status_by_account_column_count = 4 };
+
     int rc = MYLITE_OK;
 
     if (rows->definition->column_count != performance_schema_status_by_account_column_count) {
@@ -918,6 +936,7 @@ static int append_performance_schema_status_by_host_rows(
     struct information_schema_row_set *rows
 ) {
     enum { performance_schema_status_by_host_column_count = 3 };
+
     int rc = MYLITE_OK;
 
     if (rows->definition->column_count != performance_schema_status_by_host_column_count) {
@@ -950,6 +969,7 @@ static int append_performance_schema_status_by_user_rows(
     struct information_schema_row_set *rows
 ) {
     enum { performance_schema_status_by_user_column_count = 3 };
+
     int rc = MYLITE_OK;
 
     if (rows->definition->column_count != performance_schema_status_by_user_column_count) {
@@ -982,6 +1002,7 @@ static int append_performance_schema_performance_timer_rows(
     struct information_schema_row_set *rows
 ) {
     enum { performance_schema_performance_timer_column_count = 4 };
+
     static const char *const timer_rows[][performance_schema_performance_timer_column_count] = {
         {"CYCLE", "1000000000", "1", "1"},
         {"NANOSECOND", "1000000000", "1", "1"},
@@ -1008,6 +1029,7 @@ static int append_performance_schema_setup_actor_rows(
     struct information_schema_row_set *rows
 ) {
     enum { performance_schema_setup_actor_column_count = 5 };
+
     static const char *const default_actor_row[performance_schema_setup_actor_column_count] = {
         "%",
         "%",
@@ -1028,6 +1050,7 @@ static int append_performance_schema_setup_consumer_rows(
     struct information_schema_row_set *rows
 ) {
     enum { performance_schema_setup_consumer_column_count = 2 };
+
     static const char *const consumer_rows[][performance_schema_setup_consumer_column_count] = {
         {"events_stages_current", "NO"},
         {"events_stages_history", "NO"},
@@ -1066,6 +1089,7 @@ static int append_performance_schema_setup_logger_rows(
     struct information_schema_row_set *rows
 ) {
     enum { performance_schema_setup_logger_column_count = 3 };
+
     static const char *const logger_rows[][performance_schema_setup_logger_column_count] = {
         {"logger/error/error_log", "info", "MySQL error logger"},
     };
@@ -1088,6 +1112,7 @@ static int append_performance_schema_setup_meter_rows(
     struct information_schema_row_set *rows
 ) {
     enum { performance_schema_setup_meter_column_count = 4 };
+
     static const char *const meter_rows[][performance_schema_setup_meter_column_count] = {
         {"mysql.inno", "10", "YES", "MySql InnoDB metrics"},
         {"mysql.inno.buffer_pool", "10", "YES", "MySql InnoDB buffer pool metrics"},
@@ -1121,6 +1146,7 @@ static int append_performance_schema_setup_object_rows(
     struct information_schema_row_set *rows
 ) {
     enum { performance_schema_setup_object_column_count = 5 };
+
     static const char *const object_rows[][performance_schema_setup_object_column_count] = {
         {"EVENT", "%", "%", "YES", "YES"},
         {"EVENT", "information_schema", "%", "NO", "NO"},
@@ -1162,6 +1188,7 @@ static int append_performance_schema_setup_thread_rows(
     struct information_schema_row_set *rows
 ) {
     enum { performance_schema_setup_thread_column_count = 6 };
+
     static const char *const thread_rows[][performance_schema_setup_thread_column_count] = {
         {"thread/innodb/buf_dump_thread", "YES", "YES", "singleton", "0", NULL},
         {"thread/innodb/buf_pool_create_thread", "YES", "YES", "singleton", "0", NULL},
@@ -1185,7 +1212,8 @@ static int append_performance_schema_setup_thread_rows(
         {"thread/innodb/log_flusher_thread", "YES", "YES", "singleton", "0", NULL},
         {"thread/innodb/log_write_notifier_thread", "YES", "YES", "singleton", "0", NULL},
         {"thread/innodb/log_writer_thread", "YES", "YES", "singleton", "0", NULL},
-        {"thread/innodb/meb::redo_log_archive_consumer_thread", "YES", "YES", "singleton", "0", NULL},
+        {"thread/innodb/meb::redo_log_archive_consumer_thread", "YES", "YES", "singleton", "0", NULL
+        },
         {"thread/innodb/page_archiver_thread", "YES", "YES", "singleton", "0", NULL},
         {"thread/innodb/page_flush_coordinator_thread", "YES", "YES", "singleton", "0", NULL},
         {"thread/innodb/page_flush_thread", "YES", "YES", "", "0", NULL},
@@ -1239,8 +1267,9 @@ static int append_performance_schema_user_defined_function_rows(
     struct information_schema_row_set *rows
 ) {
     enum { performance_schema_user_defined_function_column_count = 5 };
-    static const char *const function_rows[][performance_schema_user_defined_function_column_count] =
-        {
+
+    static const char
+        *const function_rows[][performance_schema_user_defined_function_column_count] = {
             {"asynchronous_connection_failover_add_managed", "char", "function", NULL, "1"},
             {"asynchronous_connection_failover_add_source", "char", "function", NULL, "1"},
             {"asynchronous_connection_failover_delete_managed", "char", "function", NULL, "1"},
@@ -1278,11 +1307,11 @@ static int append_performance_schema_user_variable_by_thread_rows(
     struct information_schema_row_set *rows
 ) {
     enum { performance_schema_user_variable_by_thread_column_count = 3 };
+
     char thread_id_text[integer_text_capacity];
     int rc = MYLITE_OK;
 
-    if (rows->definition->column_count !=
-        performance_schema_user_variable_by_thread_column_count) {
+    if (rows->definition->column_count != performance_schema_user_variable_by_thread_column_count) {
         set_runtime_error(database, "invalid performance_schema user_variables_by_thread columns");
         return MYLITE_ERROR;
     }
@@ -1321,12 +1350,8 @@ static int format_performance_schema_current_thread_id(
         return MYLITE_MISUSE;
     }
 
-    written = snprintf(
-        thread_id_text,
-        thread_id_text_size,
-        "%" PRIu64,
-        database->session.connection_id
-    );
+    written =
+        snprintf(thread_id_text, thread_id_text_size, "%" PRIu64, database->session.connection_id);
     if (written < 0 || (size_t)written >= thread_id_text_size) {
         set_runtime_error(database, "failed to format performance_schema thread id");
         return MYLITE_ERROR;
@@ -1412,10 +1437,8 @@ static int append_sys_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "statement_analysis") == 0 ||
         strcmp(definition->query_definition.name, "statements_with_errors_or_warnings") == 0 ||
         strcmp(definition->query_definition.name, "statements_with_full_table_scans") == 0 ||
-        strcmp(
-            definition->query_definition.name,
-            "statements_with_runtimes_in_95th_percentile"
-        ) == 0 ||
+        strcmp(definition->query_definition.name, "statements_with_runtimes_in_95th_percentile") ==
+            0 ||
         strcmp(definition->query_definition.name, "statements_with_sorting") == 0 ||
         strcmp(definition->query_definition.name, "statements_with_temp_tables") == 0) {
         return append_sys_statement_digest_system_rows(

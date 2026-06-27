@@ -68,18 +68,18 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.events_stages_summary_by_thread_by_event_name` | 🟡 | Empty read-only stage-summary placeholder with MySQL-shaped metadata; no live stage aggregation |
 | `performance_schema.events_stages_summary_by_user_by_event_name` | 🟡 | Empty read-only stage-summary placeholder with MySQL-shaped metadata; no live stage aggregation |
 | `performance_schema.events_stages_summary_global_by_event_name` | 🟡 | Empty read-only stage-summary placeholder with MySQL-shaped metadata; no live stage aggregation |
-| `performance_schema.events_statements_current` | ❌ | Current statement events |
-| `performance_schema.events_statements_histogram_by_digest` | ❌ | Statement histograms per schema and digest value |
-| `performance_schema.events_statements_histogram_global` | ❌ | Statement histogram summarized globally |
-| `performance_schema.events_statements_history` | ❌ | Most recent statement events per thread |
+| `performance_schema.events_statements_current` | 🟡 | Empty read-only current-statement placeholder with MySQL-shaped metadata; no live statement instrumentation |
+| `performance_schema.events_statements_histogram_by_digest` | 🟡 | Empty read-only statement-histogram placeholder with MySQL-shaped metadata; no digest histogram aggregation |
+| `performance_schema.events_statements_histogram_global` | 🟡 | Empty read-only global statement-histogram placeholder with MySQL-shaped metadata; no histogram bucket rows |
+| `performance_schema.events_statements_history` | 🟡 | Empty read-only per-thread statement-history placeholder with MySQL-shaped metadata; no live statement instrumentation |
 | `performance_schema.events_statements_history_long` | 🟡 | Empty read-only global statement-history placeholder with MySQL-shaped metadata; no live statement instrumentation |
-| `performance_schema.events_statements_summary_by_account_by_event_name` | ❌ | Statement events per account and event name |
-| `performance_schema.events_statements_summary_by_digest` | ❌ | Statement events per schema and digest value |
-| `performance_schema.events_statements_summary_by_host_by_event_name` | ❌ | Statement events per host name and event name |
+| `performance_schema.events_statements_summary_by_account_by_event_name` | 🟡 | Empty read-only statement-summary placeholder with MySQL-shaped metadata; no live statement aggregation |
+| `performance_schema.events_statements_summary_by_digest` | 🟡 | Empty read-only digest-summary placeholder with MySQL-shaped metadata; no digest aggregation or query samples |
+| `performance_schema.events_statements_summary_by_host_by_event_name` | 🟡 | Empty read-only statement-summary placeholder with MySQL-shaped metadata; no live statement aggregation |
 | `performance_schema.events_statements_summary_by_program` | 🟡 | Empty read-only stored-program statement-summary placeholder with MySQL-shaped metadata; no stored-program instrumentation |
-| `performance_schema.events_statements_summary_by_thread_by_event_name` | ❌ | Statement events per thread and event name |
-| `performance_schema.events_statements_summary_by_user_by_event_name` | ❌ | Statement events per user name and event name |
-| `performance_schema.events_statements_summary_global_by_event_name` | ❌ | Statement events per event name |
+| `performance_schema.events_statements_summary_by_thread_by_event_name` | 🟡 | Empty read-only statement-summary placeholder with MySQL-shaped metadata; no live statement aggregation |
+| `performance_schema.events_statements_summary_by_user_by_event_name` | 🟡 | Empty read-only statement-summary placeholder with MySQL-shaped metadata; no live statement aggregation |
+| `performance_schema.events_statements_summary_global_by_event_name` | 🟡 | Empty read-only statement-summary placeholder with MySQL-shaped metadata; no live statement aggregation |
 | `performance_schema.events_transactions_current` | ❌ | Current transaction events |
 | `performance_schema.events_transactions_history` | ❌ | Most recent transaction events per thread |
 | `performance_schema.events_transactions_history_long` | ❌ | Most recent transaction events overall |

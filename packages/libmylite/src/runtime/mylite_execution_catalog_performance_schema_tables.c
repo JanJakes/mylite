@@ -3608,6 +3608,332 @@ static const struct mylite_execution_catalog_column_definition
          "enum('PRIMARY','SECONDARY')"},
 };
 
+#define MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN(name_, nullable_)                         \
+    {name_, NULL, nullable_, "bigint", NULL, NULL, "20", "0", NULL, NULL, NULL, "bigint unsigned"}
+
+#define MYLITE_PERFORMANCE_SCHEMA_INT_UNSIGNED_COLUMN(name_, nullable_)                            \
+    {name_, NULL, nullable_, "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int unsigned"}
+
+#define MYLITE_PERFORMANCE_SCHEMA_DOUBLE_COLUMN(name_, nullable_, precision_, scale_)              \
+    {name_,                                                                                        \
+     NULL,                                                                                         \
+     nullable_,                                                                                    \
+     "double",                                                                                     \
+     NULL,                                                                                         \
+     NULL,                                                                                         \
+     precision_,                                                                                   \
+     scale_,                                                                                       \
+     NULL,                                                                                         \
+     NULL,                                                                                         \
+     NULL,                                                                                         \
+     "double(" precision_ "," scale_ ")"}
+
+#define MYLITE_PERFORMANCE_SCHEMA_CHAR_COLUMN(                                                     \
+    name_,                                                                                         \
+    nullable_,                                                                                     \
+    length_,                                                                                       \
+    octets_,                                                                                       \
+    charset_,                                                                                      \
+    collation_                                                                                     \
+)                                                                                                  \
+    {name_,                                                                                        \
+     NULL,                                                                                         \
+     nullable_,                                                                                    \
+     "char",                                                                                       \
+     length_,                                                                                      \
+     octets_,                                                                                      \
+     NULL,                                                                                         \
+     NULL,                                                                                         \
+     NULL,                                                                                         \
+     charset_,                                                                                     \
+     collation_,                                                                                   \
+     "char(" length_ ")"}
+
+#define MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(                                                  \
+    name_,                                                                                         \
+    nullable_,                                                                                     \
+    length_,                                                                                       \
+    octets_,                                                                                       \
+    charset_,                                                                                      \
+    collation_                                                                                     \
+)                                                                                                  \
+    {name_,                                                                                        \
+     NULL,                                                                                         \
+     nullable_,                                                                                    \
+     "varchar",                                                                                    \
+     length_,                                                                                      \
+     octets_,                                                                                      \
+     NULL,                                                                                         \
+     NULL,                                                                                         \
+     NULL,                                                                                         \
+     charset_,                                                                                     \
+     collation_,                                                                                   \
+     "varchar(" length_ ")"}
+
+#define MYLITE_PERFORMANCE_SCHEMA_LONGTEXT_COLUMN(name_, nullable_)                                \
+    {name_,                                                                                        \
+     NULL,                                                                                         \
+     nullable_,                                                                                    \
+     "longtext",                                                                                   \
+     "4294967295",                                                                                 \
+     "4294967295",                                                                                 \
+     NULL,                                                                                         \
+     NULL,                                                                                         \
+     NULL,                                                                                         \
+     "utf8mb4",                                                                                    \
+     "utf8mb4_0900_ai_ci",                                                                         \
+     "longtext"}
+
+#define MYLITE_PERFORMANCE_SCHEMA_TIMESTAMP6_COLUMN(name_, nullable_)                              \
+    {name_, NULL, nullable_, "timestamp", NULL, NULL, NULL, NULL, "6", NULL, NULL, "timestamp(6)"}
+
+#define MYLITE_PERFORMANCE_SCHEMA_STATEMENT_SUMMARY_METRIC_COLUMNS                                 \
+    MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("COUNT_STAR", "NO"),                          \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_TIMER_WAIT", "NO"),                  \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("MIN_TIMER_WAIT", "NO"),                  \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("AVG_TIMER_WAIT", "NO"),                  \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("MAX_TIMER_WAIT", "NO"),                  \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_LOCK_TIME", "NO"),                   \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_ERRORS", "NO"),                      \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_WARNINGS", "NO"),                    \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_ROWS_AFFECTED", "NO"),               \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_ROWS_SENT", "NO"),                   \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_ROWS_EXAMINED", "NO"),               \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_CREATED_TMP_DISK_TABLES", "NO"),     \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_CREATED_TMP_TABLES", "NO"),          \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_SELECT_FULL_JOIN", "NO"),            \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_SELECT_FULL_RANGE_JOIN", "NO"),      \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_SELECT_RANGE", "NO"),                \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_SELECT_RANGE_CHECK", "NO"),          \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_SELECT_SCAN", "NO"),                 \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_SORT_MERGE_PASSES", "NO"),           \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_SORT_RANGE", "NO"),                  \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_SORT_ROWS", "NO"),                   \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_SORT_SCAN", "NO"),                   \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_NO_INDEX_USED", "NO"),               \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_NO_GOOD_INDEX_USED", "NO"),          \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("SUM_CPU_TIME", "NO"),                    \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("MAX_CONTROLLED_MEMORY", "NO"),           \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("MAX_TOTAL_MEMORY", "NO"),                \
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("COUNT_SECONDARY", "NO")
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_events_statements_histogram_by_digest_columns[] = {
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "SCHEMA_NAME",
+            "YES",
+            "64",
+            "256",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "DIGEST",
+            "YES",
+            "64",
+            "256",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_INT_UNSIGNED_COLUMN("BUCKET_NUMBER", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("BUCKET_TIMER_LOW", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("BUCKET_TIMER_HIGH", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("COUNT_BUCKET", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("COUNT_BUCKET_AND_LOWER", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_DOUBLE_COLUMN("BUCKET_QUANTILE", "NO", "7", "6"),
+};
+
+static const char *const performance_schema_events_statements_histogram_by_digest_column_keys[] = {
+    "MUL",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_events_statements_histogram_global_columns[] = {
+        MYLITE_PERFORMANCE_SCHEMA_INT_UNSIGNED_COLUMN("BUCKET_NUMBER", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("BUCKET_TIMER_LOW", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("BUCKET_TIMER_HIGH", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("COUNT_BUCKET", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("COUNT_BUCKET_AND_LOWER", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_DOUBLE_COLUMN("BUCKET_QUANTILE", "NO", "7", "6"),
+};
+
+static const char *const performance_schema_events_statements_histogram_global_column_keys[] = {
+    "PRI",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_events_statements_summary_by_account_columns[] = {
+        MYLITE_PERFORMANCE_SCHEMA_CHAR_COLUMN("USER", "YES", "32", "128", "utf8mb4", "utf8mb4_bin"),
+        MYLITE_PERFORMANCE_SCHEMA_CHAR_COLUMN(
+            "HOST",
+            "YES",
+            "255",
+            "255",
+            "ascii",
+            "ascii_general_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "EVENT_NAME",
+            "NO",
+            "128",
+            "512",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_STATEMENT_SUMMARY_METRIC_COLUMNS,
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_events_statements_summary_by_digest_columns[] = {
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "SCHEMA_NAME",
+            "YES",
+            "64",
+            "256",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "DIGEST",
+            "YES",
+            "64",
+            "256",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_LONGTEXT_COLUMN("DIGEST_TEXT", "YES"),
+        MYLITE_PERFORMANCE_SCHEMA_STATEMENT_SUMMARY_METRIC_COLUMNS,
+        MYLITE_PERFORMANCE_SCHEMA_TIMESTAMP6_COLUMN("FIRST_SEEN", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_TIMESTAMP6_COLUMN("LAST_SEEN", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("QUANTILE_95", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("QUANTILE_99", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("QUANTILE_999", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_LONGTEXT_COLUMN("QUERY_SAMPLE_TEXT", "YES"),
+        MYLITE_PERFORMANCE_SCHEMA_TIMESTAMP6_COLUMN("QUERY_SAMPLE_SEEN", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("QUERY_SAMPLE_TIMER_WAIT", "NO"),
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_events_statements_summary_by_host_columns[] = {
+        MYLITE_PERFORMANCE_SCHEMA_CHAR_COLUMN(
+            "HOST",
+            "YES",
+            "255",
+            "255",
+            "ascii",
+            "ascii_general_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "EVENT_NAME",
+            "NO",
+            "128",
+            "512",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_STATEMENT_SUMMARY_METRIC_COLUMNS,
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_events_statements_summary_by_thread_columns[] = {
+        MYLITE_PERFORMANCE_SCHEMA_BIGINT_UNSIGNED_COLUMN("THREAD_ID", "NO"),
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "EVENT_NAME",
+            "NO",
+            "128",
+            "512",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_STATEMENT_SUMMARY_METRIC_COLUMNS,
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_events_statements_summary_by_user_columns[] = {
+        MYLITE_PERFORMANCE_SCHEMA_CHAR_COLUMN("USER", "YES", "32", "128", "utf8mb4", "utf8mb4_bin"),
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "EVENT_NAME",
+            "NO",
+            "128",
+            "512",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_STATEMENT_SUMMARY_METRIC_COLUMNS,
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_events_statements_summary_global_columns[] = {
+        MYLITE_PERFORMANCE_SCHEMA_VARCHAR_COLUMN(
+            "EVENT_NAME",
+            "NO",
+            "128",
+            "512",
+            "utf8mb4",
+            "utf8mb4_0900_ai_ci"
+        ),
+        MYLITE_PERFORMANCE_SCHEMA_STATEMENT_SUMMARY_METRIC_COLUMNS,
+};
+
+static const char *const performance_schema_events_statements_summary_by_account_column_keys[] = {
+    "MUL", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "",    "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+};
+
+static const char *const performance_schema_events_statements_summary_by_digest_column_keys[] = {
+    "MUL", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "",    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+};
+
+static const char *const performance_schema_events_statements_summary_by_host_column_keys[] = {
+    "MUL", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "",    "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+};
+
+static const char *const performance_schema_events_statements_summary_by_thread_column_keys[] = {
+    "PRI", "PRI", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "",    "",    "", "", "", "", "", "", "", "", "", "", "", "", "",
+};
+
+static const char *const performance_schema_events_statements_summary_by_user_column_keys[] = {
+    "MUL", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "",    "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+};
+
+static const char *const performance_schema_events_statements_summary_global_column_keys[] = {
+    "PRI", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+    "",    "", "", "", "", "", "", "", "", "", "", "", "", "",
+};
+
+static const size_t performance_schema_first_column_primary_key_columns[] = {
+    0U,
+};
+
+static const struct mylite_execution_catalog_mysql_system_secondary_index
+    performance_schema_events_statements_histogram_by_digest_secondary_indexes[] = {
+        {"SCHEMA_NAME", 0U, NULL, "0", true, NULL, "HASH"},
+        {"SCHEMA_NAME", 1U, NULL, "0", true, NULL, "HASH"},
+        {"SCHEMA_NAME", 2U, NULL, "0", true, NULL, "HASH"},
+};
+
+static const struct mylite_execution_catalog_mysql_system_secondary_index
+    performance_schema_events_statements_summary_by_digest_secondary_indexes[] = {
+        {"SCHEMA_NAME", 0U, NULL, "0", true, NULL, "HASH"},
+        {"SCHEMA_NAME", 1U, NULL, "0", true, NULL, "HASH"},
+};
+
 static const struct mylite_execution_catalog_column_definition
     performance_schema_events_statements_summary_by_program_columns[] = {
         {"OBJECT_TYPE",
@@ -11192,6 +11518,70 @@ static const struct mylite_execution_catalog_mysql_system_table
          NULL,
          0U},
         {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_CURRENT,
+          "events_statements_current",
+          performance_schema_events_statements_history_long_columns,
+          sizeof(performance_schema_events_statements_history_long_columns) /
+              sizeof(performance_schema_events_statements_history_long_columns[0])},
+         performance_schema_event_thread_event_column_keys,
+         performance_schema_event_column_extras,
+         performance_schema_event_column_privileges,
+         NULL,
+         performance_schema_event_thread_event_primary_key_columns,
+         sizeof(performance_schema_event_thread_event_primary_key_columns) /
+             sizeof(performance_schema_event_thread_event_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_HISTOGRAM_BY_DIGEST,
+          "events_statements_histogram_by_digest",
+          performance_schema_events_statements_histogram_by_digest_columns,
+          sizeof(performance_schema_events_statements_histogram_by_digest_columns) /
+              sizeof(performance_schema_events_statements_histogram_by_digest_columns[0])},
+         performance_schema_events_statements_histogram_by_digest_column_keys,
+         performance_schema_event_column_extras,
+         performance_schema_event_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         performance_schema_events_statements_histogram_by_digest_secondary_indexes,
+         sizeof(performance_schema_events_statements_histogram_by_digest_secondary_indexes) /
+             sizeof(performance_schema_events_statements_histogram_by_digest_secondary_indexes[0])},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_HISTOGRAM_GLOBAL,
+          "events_statements_histogram_global",
+          performance_schema_events_statements_histogram_global_columns,
+          sizeof(performance_schema_events_statements_histogram_global_columns) /
+              sizeof(performance_schema_events_statements_histogram_global_columns[0])},
+         performance_schema_events_statements_histogram_global_column_keys,
+         performance_schema_event_column_extras,
+         performance_schema_event_column_privileges,
+         NULL,
+         performance_schema_first_column_primary_key_columns,
+         sizeof(performance_schema_first_column_primary_key_columns) /
+             sizeof(performance_schema_first_column_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_HISTORY,
+          "events_statements_history",
+          performance_schema_events_statements_history_long_columns,
+          sizeof(performance_schema_events_statements_history_long_columns) /
+              sizeof(performance_schema_events_statements_history_long_columns[0])},
+         performance_schema_event_thread_event_column_keys,
+         performance_schema_event_column_extras,
+         performance_schema_event_column_privileges,
+         NULL,
+         performance_schema_event_thread_event_primary_key_columns,
+         sizeof(performance_schema_event_thread_event_primary_key_columns) /
+             sizeof(performance_schema_event_thread_event_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
          {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_HISTORY_LONG,
           "events_statements_history_long",
           performance_schema_events_statements_history_long_columns,
@@ -11207,6 +11597,54 @@ static const struct mylite_execution_catalog_mysql_system_table
          NULL,
          0U},
         {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_SUMMARY_BY_ACCOUNT_BY_EVENT_NAME,
+          "events_statements_summary_by_account_by_event_name",
+          performance_schema_events_statements_summary_by_account_columns,
+          sizeof(performance_schema_events_statements_summary_by_account_columns) /
+              sizeof(performance_schema_events_statements_summary_by_account_columns[0])},
+         performance_schema_events_statements_summary_by_account_column_keys,
+         performance_schema_event_column_extras,
+         performance_schema_event_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         performance_schema_event_summary_account_secondary_indexes,
+         sizeof(performance_schema_event_summary_account_secondary_indexes) /
+             sizeof(performance_schema_event_summary_account_secondary_indexes[0])},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_SUMMARY_BY_DIGEST,
+          "events_statements_summary_by_digest",
+          performance_schema_events_statements_summary_by_digest_columns,
+          sizeof(performance_schema_events_statements_summary_by_digest_columns) /
+              sizeof(performance_schema_events_statements_summary_by_digest_columns[0])},
+         performance_schema_events_statements_summary_by_digest_column_keys,
+         performance_schema_event_column_extras,
+         performance_schema_event_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         performance_schema_events_statements_summary_by_digest_secondary_indexes,
+         sizeof(performance_schema_events_statements_summary_by_digest_secondary_indexes) /
+             sizeof(performance_schema_events_statements_summary_by_digest_secondary_indexes[0])},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_SUMMARY_BY_HOST_BY_EVENT_NAME,
+          "events_statements_summary_by_host_by_event_name",
+          performance_schema_events_statements_summary_by_host_columns,
+          sizeof(performance_schema_events_statements_summary_by_host_columns) /
+              sizeof(performance_schema_events_statements_summary_by_host_columns[0])},
+         performance_schema_events_statements_summary_by_host_column_keys,
+         performance_schema_event_column_extras,
+         performance_schema_event_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         performance_schema_event_summary_host_secondary_indexes,
+         sizeof(performance_schema_event_summary_host_secondary_indexes) /
+             sizeof(performance_schema_event_summary_host_secondary_indexes[0])},
+        {"performance_schema",
          {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_SUMMARY_BY_PROGRAM,
           "events_statements_summary_by_program",
           performance_schema_events_statements_summary_by_program_columns,
@@ -11219,6 +11657,54 @@ static const struct mylite_execution_catalog_mysql_system_table
          performance_schema_events_statement_program_primary_key_columns,
          sizeof(performance_schema_events_statement_program_primary_key_columns) /
              sizeof(performance_schema_events_statement_program_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_SUMMARY_BY_THREAD_BY_EVENT_NAME,
+          "events_statements_summary_by_thread_by_event_name",
+          performance_schema_events_statements_summary_by_thread_columns,
+          sizeof(performance_schema_events_statements_summary_by_thread_columns) /
+              sizeof(performance_schema_events_statements_summary_by_thread_columns[0])},
+         performance_schema_events_statements_summary_by_thread_column_keys,
+         performance_schema_event_column_extras,
+         performance_schema_event_column_privileges,
+         NULL,
+         performance_schema_event_summary_thread_primary_key_columns,
+         sizeof(performance_schema_event_summary_thread_primary_key_columns) /
+             sizeof(performance_schema_event_summary_thread_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_SUMMARY_BY_USER_BY_EVENT_NAME,
+          "events_statements_summary_by_user_by_event_name",
+          performance_schema_events_statements_summary_by_user_columns,
+          sizeof(performance_schema_events_statements_summary_by_user_columns) /
+              sizeof(performance_schema_events_statements_summary_by_user_columns[0])},
+         performance_schema_events_statements_summary_by_user_column_keys,
+         performance_schema_event_column_extras,
+         performance_schema_event_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         performance_schema_event_summary_user_secondary_indexes,
+         sizeof(performance_schema_event_summary_user_secondary_indexes) /
+             sizeof(performance_schema_event_summary_user_secondary_indexes[0])},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_SUMMARY_GLOBAL_BY_EVENT_NAME,
+          "events_statements_summary_global_by_event_name",
+          performance_schema_events_statements_summary_global_columns,
+          sizeof(performance_schema_events_statements_summary_global_columns) /
+              sizeof(performance_schema_events_statements_summary_global_columns[0])},
+         performance_schema_events_statements_summary_global_column_keys,
+         performance_schema_event_column_extras,
+         performance_schema_event_column_privileges,
+         NULL,
+         performance_schema_first_column_primary_key_columns,
+         sizeof(performance_schema_first_column_primary_key_columns) /
+             sizeof(performance_schema_first_column_primary_key_columns[0]),
          NULL,
          NULL,
          0U},

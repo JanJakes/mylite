@@ -177,8 +177,18 @@ static int append_information_schema_system_rows(
     case MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STAGES_SUMMARY_BY_THREAD_BY_EVENT_NAME:
     case MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STAGES_SUMMARY_BY_USER_BY_EVENT_NAME:
     case MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STAGES_SUMMARY_GLOBAL_BY_EVENT_NAME:
+    case MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_CURRENT:
+    case MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_HISTOGRAM_BY_DIGEST:
+    case MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_HISTOGRAM_GLOBAL:
+    case MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_HISTORY:
     case MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_HISTORY_LONG:
+    case MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_SUMMARY_BY_ACCOUNT_BY_EVENT_NAME:
+    case MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_SUMMARY_BY_DIGEST:
+    case MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_SUMMARY_BY_HOST_BY_EVENT_NAME:
     case MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_SUMMARY_BY_PROGRAM:
+    case MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_SUMMARY_BY_THREAD_BY_EVENT_NAME:
+    case MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_SUMMARY_BY_USER_BY_EVENT_NAME:
+    case MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_STATEMENTS_SUMMARY_GLOBAL_BY_EVENT_NAME:
     case MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_WAITS_CURRENT:
     case MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_WAITS_HISTORY:
     case MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_WAITS_HISTORY_LONG:
@@ -603,13 +613,10 @@ static int append_information_schema_view_table_usage_system_rows(
         {"statements_with_runtimes_in_95th_percentile",
          "sys",
          "x$ps_digest_95th_percentile_by_avg_us"},
-        {"statements_with_sorting",
-         "performance_schema",
-         "events_statements_summary_by_digest"},
+        {"statements_with_sorting", "performance_schema", "events_statements_summary_by_digest"},
         {"statements_with_sorting", "sys", "sys_config"},
-        {"statements_with_temp_tables",
-         "performance_schema",
-         "events_statements_summary_by_digest"},
+        {"statements_with_temp_tables", "performance_schema", "events_statements_summary_by_digest"
+        },
         {"statements_with_temp_tables", "sys", "sys_config"},
         {"innodb_lock_waits", "information_schema", "INNODB_TRX"},
         {"innodb_lock_waits", "performance_schema", "data_lock_waits"},
@@ -759,26 +766,21 @@ static int append_information_schema_view_table_usage_system_rows(
         {"x$statements_with_runtimes_in_95th_percentile",
          "sys",
          "x$ps_digest_95th_percentile_by_avg_us"},
-        {"x$statements_with_sorting",
-         "performance_schema",
-         "events_statements_summary_by_digest"},
+        {"x$statements_with_sorting", "performance_schema", "events_statements_summary_by_digest"},
         {"x$statements_with_temp_tables",
          "performance_schema",
          "events_statements_summary_by_digest"},
         {"x$ps_digest_95th_percentile_by_avg_us",
          "performance_schema",
          "events_statements_summary_by_digest"},
-        {"x$ps_digest_95th_percentile_by_avg_us",
-         "sys",
-         "x$ps_digest_avg_latency_distribution"},
+        {"x$ps_digest_95th_percentile_by_avg_us", "sys", "x$ps_digest_avg_latency_distribution"},
         {"x$ps_digest_avg_latency_distribution",
          "performance_schema",
          "events_statements_summary_by_digest"},
         {"x$ps_schema_table_statistics_io", "performance_schema", "file_summary_by_instance"},
         {"x$schema_flattened_keys", "information_schema", "STATISTICS"},
-        {"x$schema_index_statistics",
-         "performance_schema",
-         "table_io_waits_summary_by_index_usage"},
+        {"x$schema_index_statistics", "performance_schema", "table_io_waits_summary_by_index_usage"
+        },
         {"x$schema_table_lock_waits", "performance_schema", "events_statements_current"},
         {"x$schema_table_lock_waits", "performance_schema", "metadata_locks"},
         {"x$schema_table_lock_waits", "performance_schema", "threads"},

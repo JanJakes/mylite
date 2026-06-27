@@ -20,6 +20,7 @@
 enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
+    show_variable_column_count = 2,
     charset_variable_column_count = 6,
     scoped_variable_column_count = 4,
     server_variable_column_count = 10,
@@ -31,7 +32,9 @@ enum {
     reopen_variable_column_count = 8,
     database_variable_column_count = 5,
     mysql_error_parse = 1064,
+    mysql_error_unknown_character_set = 1115,
     mysql_error_session_variable_only = 1238,
+    mysql_error_incorrect_argument_type = 1232,
     mysql_error_unknown_system_variable = 1193,
 };
 
@@ -196,6 +199,58 @@ static int test_character_set_system_variable_values_and_persistence(void) {
         "binary",
         "0",
         "-1",
+    };
+    static const char *const filesystem_utf8_alias_values[] = {
+        "utf8mb3",
+        "binary",
+        "utf8mb3",
+        "utf8mb3",
+        "1",
+        "0",
+    };
+    static const char *const filesystem_latin2_values[] = {
+        "latin2",
+        "binary",
+        "latin2",
+        "latin2",
+        "0",
+        "0",
+    };
+    static const char *const filesystem_utf8mb3_values[] = {
+        "utf8mb3",
+        "binary",
+        "utf8mb3",
+        "utf8mb3",
+        "1",
+        "0",
+    };
+    static const char *const filesystem_utf8mb4_values[] = {
+        "utf8mb4",
+        "binary",
+        "utf8mb4",
+        "utf8mb4",
+        "0",
+        "0",
+    };
+    static const char *const filesystem_default_values[] = {
+        "binary",
+        "binary",
+        "binary",
+        "binary",
+        "0",
+        "0",
+    };
+    static const char *const show_filesystem_columns[] = {
+        "Variable_name",
+        "Value",
+    };
+    static const char *const show_filesystem_latin2_values[] = {
+        "character_set_filesystem",
+        "latin2",
+    };
+    static const char *const show_global_filesystem_values[] = {
+        "character_set_filesystem",
+        "binary",
     };
     static const char *const warning_columns[] = {
         "@@character_set_filesystem",
@@ -403,6 +458,137 @@ static int test_character_set_system_variable_values_and_persistence(void) {
             .values = filesystem_values,
             .count = filesystem_variable_column_count,
             .context = "filesystem charset variable values",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "SET SESSION character_set_filesystem=utf8");
+    failures += execute_ok(
+        database,
+        "SELECT @@character_set_filesystem, @@global.character_set_filesystem, "
+        "@@session.character_set_filesystem, @@local.character_set_filesystem, "
+        "@@warning_count, ROW_COUNT() FROM DUAL",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = filesystem_columns,
+            .values = filesystem_utf8_alias_values,
+            .count = filesystem_variable_column_count,
+            .context = "filesystem charset utf8 alias assignment",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "SET LOCAL character_set_filesystem='latin2'");
+    failures += execute_ok(
+        database,
+        "SELECT @@character_set_filesystem, @@global.character_set_filesystem, "
+        "@@session.character_set_filesystem, @@local.character_set_filesystem, "
+        "@@warning_count, ROW_COUNT() FROM DUAL",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = filesystem_columns,
+            .values = filesystem_latin2_values,
+            .count = filesystem_variable_column_count,
+            .context = "filesystem charset local assignment",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_ok(database, "SHOW VARIABLES LIKE 'character_set_filesystem'", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = show_filesystem_columns,
+            .values = show_filesystem_latin2_values,
+            .count = show_variable_column_count,
+            .context = "show variables filesystem charset session assignment",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures +=
+        execute_ok(database, "SHOW GLOBAL VARIABLES LIKE 'character_set_filesystem'", &result);
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = show_filesystem_columns,
+            .values = show_global_filesystem_values,
+            .count = show_variable_column_count,
+            .context = "show global variables filesystem charset fixed value",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "SET character_set_filesystem=+33");
+    failures += execute_ok(
+        database,
+        "SELECT @@character_set_filesystem, @@global.character_set_filesystem, "
+        "@@session.character_set_filesystem, @@local.character_set_filesystem, "
+        "@@warning_count, ROW_COUNT() FROM DUAL",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = filesystem_columns,
+            .values = filesystem_utf8mb3_values,
+            .count = filesystem_variable_column_count,
+            .context = "filesystem charset unary collation id assignment",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "SET @filesystem_charset_id = 255");
+    failures +=
+        execute_statement_ok(database, "SET character_set_filesystem=@filesystem_charset_id");
+    failures += execute_ok(
+        database,
+        "SELECT @@character_set_filesystem, @@global.character_set_filesystem, "
+        "@@session.character_set_filesystem, @@local.character_set_filesystem, "
+        "@@warning_count, ROW_COUNT() FROM DUAL",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = filesystem_columns,
+            .values = filesystem_utf8mb4_values,
+            .count = filesystem_variable_column_count,
+            .context = "filesystem charset collation id assignment",
+        }
+    );
+    mylite_result_free(result);
+    result = NULL;
+
+    failures += execute_statement_ok(database, "SET character_set_filesystem=DEFAULT");
+    failures += execute_statement_ok(database, "SET GLOBAL character_set_filesystem=binary");
+    failures += execute_statement_ok(database, "SET GLOBAL character_set_filesystem=DEFAULT");
+    failures += execute_ok(
+        database,
+        "SELECT @@character_set_filesystem, @@global.character_set_filesystem, "
+        "@@session.character_set_filesystem, @@local.character_set_filesystem, "
+        "@@warning_count, ROW_COUNT() FROM DUAL",
+        &result
+    );
+    failures += expect_scalar_result(
+        result,
+        (struct expected_scalar_result){
+            .columns = filesystem_columns,
+            .values = filesystem_default_values,
+            .count = filesystem_variable_column_count,
+            .context = "filesystem charset default assignment",
         }
     );
     mylite_result_free(result);
@@ -775,6 +961,80 @@ static int test_character_set_system_variable_qualifiers_and_errors(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "signed 64-bit +, binary -, and * arithmetic",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET SESSION character_set_filesystem=nosuch",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_character_set,
+            .sqlstate = "42000",
+            .message_part = "Unknown character set: 'nosuch'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET SESSION character_set_filesystem='33'",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_character_set,
+            .sqlstate = "42000",
+            .message_part = "Unknown character set: '33'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET SESSION character_set_filesystem=999",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_character_set,
+            .sqlstate = "42000",
+            .message_part = "Unknown character set: '999'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET SESSION character_set_filesystem=33.0",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_argument_type,
+            .sqlstate = "42000",
+            .message_part = "Incorrect argument type to variable 'character_set_filesystem'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET SESSION character_set_filesystem=-33.0",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_argument_type,
+            .sqlstate = "42000",
+            .message_part = "Incorrect argument type to variable 'character_set_filesystem'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SET GLOBAL character_set_filesystem=utf8mb4",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "fixed no-op system variable assignments",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @filesystem_charset_name = 'nosuch'");
+    failures += execute_error(
+        database,
+        "SET character_set_filesystem=@filesystem_charset_name",
+        (struct expected_sql_error){
+            .code = mysql_error_unknown_character_set,
+            .sqlstate = "42000",
+            .message_part = "Unknown character set: 'nosuch'",
+        }
+    );
+    failures += execute_statement_ok(database, "SET @filesystem_charset_decimal = 33.0");
+    failures += execute_error(
+        database,
+        "SET character_set_filesystem=@filesystem_charset_decimal",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_argument_type,
+            .sqlstate = "42000",
+            .message_part = "Incorrect argument type to variable 'character_set_filesystem'",
         }
     );
 

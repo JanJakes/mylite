@@ -575,6 +575,25 @@ size_t mylite_execution_catalog_mysql_character_set_count(void) {
     return sizeof(mysql_character_set_catalog) / sizeof(mysql_character_set_catalog[0]);
 }
 
+const struct mylite_execution_catalog_character_set *mylite_execution_catalog_mysql_character_set_by_name(
+    const char *name
+) {
+    const char *lookup_name = canonical_character_set_name_for_lookup(name);
+
+    if (name == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < mylite_execution_catalog_mysql_character_set_count(); ++index) {
+        if (catalog_text_equals_ascii_case_insensitive(
+                lookup_name,
+                mysql_character_set_catalog[index].name
+            )) {
+            return &mysql_character_set_catalog[index];
+        }
+    }
+    return NULL;
+}
+
 const struct mylite_execution_catalog_character_set *mylite_execution_catalog_mysql_character_set_at(
     size_t index
 ) {

@@ -380,6 +380,9 @@ const struct mylite_execution_catalog_scalar_collation *mylite_execution_catalog
 );
 
 size_t mylite_execution_catalog_mysql_character_set_count(void);
+const struct mylite_execution_catalog_character_set *mylite_execution_catalog_mysql_character_set_by_name(
+    const char *name
+);
 const struct mylite_execution_catalog_character_set *mylite_execution_catalog_mysql_character_set_at(
     size_t index
 );

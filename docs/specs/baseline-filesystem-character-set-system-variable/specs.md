@@ -9,11 +9,12 @@ It builds on the existing `SYSTEM_VARIABLE` lexer/parser token, scalar
 `SELECT` execution, diagnostics lifecycle, and MyLite's fixed charset variable
 surface. MySQL uses this variable when converting file-name string literals for
 server-side file operations. MyLite does not implement server-side file import
-or export in the baseline yet, so this slice exposes only the fixed default
-`binary` scalar value.
+or export in the baseline yet, so this slice exposes the default `binary`
+readback, handle-local session assignment/readback, and a fixed global
+boundary without implementing file-name conversion.
 
 This is not full `binary` character-set support. It does not implement binary
-string storage, conversions, collations, file import/export, or mutable
+string storage, conversions, collations, file import/export, or mutable global
 system-variable state.
 
 ## Sources
@@ -54,6 +55,19 @@ records the runtime probes for this feature. Observed behavior:
 - The variable has global and session scope. After
   `SET SESSION character_set_filesystem=utf8mb4`, unscoped, `session`, and
   `local` reads return `utf8mb4`, while `global` still returns `binary`.
+- `SET SESSION character_set_filesystem=utf8` canonicalizes readback to
+  `utf8mb3`; MySQL charset names such as `latin2`, `ucs2`, and `utf16` are
+  accepted for this metadata variable even when MyLite does not implement their
+  string-conversion semantics.
+- Integer assignments are interpreted as collation IDs, so `1` maps to
+  `big5`, `33` to `utf8mb3`, and `255` to `utf8mb4`. String digits such as
+  `'33'` are charset names and fail with unknown-character-set diagnostics.
+- Assignments that use the `utf8` alias emit warning `3719`; assignments that
+  resolve directly to `utf8mb3`, including integer collation ID `33`, emit
+  deprecation warning `1287`.
+- Decimal values fail with error `1232`, SQLSTATE `42000`; unknown charset
+  names and unknown collation IDs fail with error `1115`, SQLSTATE `42000`.
+- `SET character_set_filesystem=DEFAULT` resets the session value to `binary`.
 - Variable and scope names are case-insensitive.
 - Backtick-quoted final variable-name components are accepted.
 - Backtick-quoted scope names, such as
@@ -81,11 +95,16 @@ The implementation must add:
 - runtime recognition of `character_set_filesystem` inside the existing scalar
   `SELECT` subset;
 - support for no scope, `session`, `local`, and `global` scope qualifiers;
+- session/local/unscoped `SET character_set_filesystem` for `DEFAULT`, MySQL
+  charset names and aliases, and integer collation IDs;
+- scalar and `SHOW VARIABLES` readback of the handle-local session value while
+  `global` reads remain fixed at `binary`;
 - case-insensitive matching for unquoted scope and variable names;
 - backtick-quoted final variable-name components;
 - one-row scalar result sets with existing source-span column labels;
-- fixed value `binary` for all supported scopes;
 - MySQL-compatible unknown-variable diagnostics for unsupported names;
+- MySQL-compatible unknown-character-set and incorrect-type diagnostics for
+  unsupported assignment values;
 - deterministic rejection of quoted scopes;
 - fast C tests and a MySQL 8.4.9 expectation artifact.
 
@@ -98,22 +117,26 @@ SELECT @@session.character_set_filesystem, @@local.character_set_filesystem
 SELECT @@global.character_set_filesystem
 SELECT @@session.`character_set_filesystem`, @@`character_set_filesystem`
 SELECT @@character_set_filesystem, @@warning_count, ROW_COUNT()
+SET SESSION character_set_filesystem=utf8
+SET LOCAL character_set_filesystem='latin2'
+SET character_set_filesystem=255
+SET character_set_filesystem=DEFAULT
+SHOW VARIABLES LIKE 'character_set_filesystem'
 ```
 
 ## Non-Goals
 
 This feature must not implement:
 
-- `SET`, startup options, persisted variables, `SET_VAR` hints, or mutable
-  global/session filesystem charset state;
+- mutable global filesystem charset state, startup options, persisted
+  variables, or `SET_VAR` hints;
 - variables other than `character_set_filesystem`;
 - `character_sets_dir`, `character_set_system`, or
   `default_collation_for_utf8mb4`;
 - general `binary` table, column, literal, conversion, or collation support;
 - `LOAD DATA`, `LOAD XML`, `SELECT ... INTO OUTFILE`, `SELECT ... INTO
   DUMPFILE`, `LOAD_FILE()`, or file-name conversion semantics;
-- `SHOW VARIABLES`, Performance Schema variable tables, or
-  `INFORMATION_SCHEMA` character-set/collation tables;
+- Performance Schema variable tables or `INFORMATION_SCHEMA` variable tables;
 - client charset negotiation through a wire protocol;
 - table-backed variable evaluation, aliases, clauses, subqueries, arithmetic,
   functions over variables, parameters, prepared statements, or arbitrary
@@ -132,8 +155,10 @@ This feature must not implement:
 - Lexer/parser/AST own syntax admission and source spans for
   `SYSTEM_VARIABLE` expressions. No new grammar is needed beyond the existing
   `expression ::= SYSTEM_VARIABLE` rule.
-- Runtime execution owns system-variable path parsing, scope validation, fixed
-  filesystem charset value selection, and diagnostics for unsupported names.
+- Runtime execution owns system-variable path parsing, scope validation,
+  filesystem charset assignment validation/canonicalization, fixed global value
+  selection, session override state, and diagnostics for unsupported names and
+  values.
 - Result builder owns scalar result column labels and one-row text values.
 - Catalog, storage, VFS, and SQLite physical row storage are not involved.
   This feature must not touch `.mylite` preamble bytes or SQLite schema state.
@@ -183,9 +208,11 @@ Runtime parses the raw token as a `@@` system variable:
   `1193`, SQLSTATE `HY000`;
 - it preserves the original source text as the scalar result column label.
 
-For this slice, all scopes return the same fixed value. This is a deliberate
-MyLite limitation: MyLite currently has no mutable file-name character-set
-state and no server-side file SQL surfaces.
+For this slice, global reads return fixed `binary`. Unscoped, `session`, and
+`local` reads return the connection-local override when one has been assigned,
+or `binary` by default. This is a deliberate MyLite limitation: MyLite has no
+mutable server-global file-name character-set state and no server-side file SQL
+surfaces.
 
 ## Runtime Semantics
 
@@ -193,12 +220,13 @@ The supported variable returns:
 
 | Variable | Value |
 | --- | --- |
-| `character_set_filesystem` | `binary` |
+| `character_set_filesystem` global/default | `binary` |
+| `character_set_filesystem` session override | canonical MySQL charset name |
 
-The value is a MyLite filesystem-charset placeholder initialized from a
-constant. Since this slice does not implement file-name conversion or
-charset-changing statements, it does not change across `CREATE DATABASE`,
-`USE`, table DDL, DML, close/reopen, or independent handles.
+The value is a MyLite filesystem-charset metadata placeholder. Session
+assignment is connection-local, does not persist across close/reopen, and does
+not change `.mylite` storage bytes, catalog rows, or SQLite schema state.
+`CREATE DATABASE`, `USE`, table DDL, and DML do not change it.
 
 Successful scalar reads:
 
@@ -217,14 +245,20 @@ This slice uses existing diagnostics for:
 
 - syntax errors, including quoted scopes and unsupported scalar-select clauses;
 - unknown system variables: error `1193`, SQLSTATE `HY000`;
+- unknown charset names and unknown integer collation IDs: error `1115`,
+  SQLSTATE `42000`;
+- decimal assignment values: error `1232`, SQLSTATE `42000`;
+- `utf8` alias assignment warning: `3719`, SQLSTATE `HY000`;
+- `utf8mb3` assignment warning: `1287`, SQLSTATE `HY000`;
+- value-changing `SET GLOBAL character_set_filesystem=...` remains an
+  unsupported fixed-global mutation;
 - unsupported expressions such as arithmetic over system variables;
 - public API misuse through the existing execution/result API behavior;
 - allocation failures through existing MyLite allocation diagnostics.
 
-Supported reads of `@@character_set_filesystem` do not emit warnings. This
-slice does not implement MySQL's mutable `SET SESSION
-character_set_filesystem=...` surface, so assignment diagnostics and file-name
-conversion behavior are out of scope.
+Supported reads of `@@character_set_filesystem` do not emit warnings. Session
+assignments emit only the documented charset alias/deprecation warnings.
+File-name conversion behavior is out of scope.
 
 ## Tests
 
@@ -241,14 +275,19 @@ Tests must cover:
 - diagnostics read-and-clear behavior after warnings and errors;
 - unknown unscoped and scoped variable names;
 - unsupported wider expressions;
-- selected schema, close/reopen, and independent handles do not change the
-  fixed value;
+- session/local/unscoped `SET`, `DEFAULT`, charset aliases, charset names that
+  are known to MySQL, integer collation IDs, string-digit rejection, unknown
+  charset diagnostics, decimal type diagnostics, alias/deprecation warning
+  counts, `SHOW VARIABLES` session readback, and fixed `SHOW GLOBAL VARIABLES`
+  readback;
+- selected schema, close/reopen, and independent handles do not leak or persist
+  the session value;
 - `.mylite` preamble preservation and unchanged catalog/SQLite generation;
 - existing parser/runtime/charset/system-variable tests still pass.
 
 The MySQL expectation script verifies the MySQL 8.4.9 reference behavior for
-the supported SQL forms and explicitly records upstream mutability and wider
-MySQL behavior that this slice leaves unsupported.
+the supported SQL forms and explicitly records wider MySQL behavior that this
+slice leaves unsupported.
 
 ## Compatibility Documentation
 
@@ -259,6 +298,6 @@ Update:
 - `docs/compatibility/character-sets.md`;
 - `docs/compatibility/sql-file-output.md`.
 
-Do not overclaim `binary` storage/conversion/collation support, mutable system
-variables, `SET`, `SHOW VARIABLES`, server-side file operations, or file-name
-conversion semantics.
+Do not overclaim `binary` storage/conversion/collation support, mutable global
+system variables, server-side file operations, or file-name conversion
+semantics.

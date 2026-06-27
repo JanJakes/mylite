@@ -243,6 +243,10 @@ static int apply_set_system_variable_assignment(
     if (rc != MYLITE_OK || handled) {
         return rc;
     }
+    rc = apply_set_character_set_filesystem_assignment(database, &target, value_node, &handled);
+    if (rc != MYLITE_OK || handled) {
+        return rc;
+    }
     rc = apply_set_global_session_placeholder_assignment(database, &target, value_node, &handled);
     if (rc != MYLITE_OK || handled) {
         return rc;
@@ -1743,6 +1747,231 @@ static bool set_system_variable_is_default_engine(
 ) {
     return kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_STORAGE_ENGINE ||
            kind == MYLITE_EXECUTION_SYSTEM_VARIABLE_DEFAULT_TMP_STORAGE_ENGINE;
+}
+
+static int apply_set_character_set_filesystem_assignment(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct mylite_sql_ast_node *value_node,
+    bool *out_handled
+) {
+    char *value = NULL;
+    size_t value_size = 0U;
+    bool value_is_collation_id = false;
+    int rc = MYLITE_OK;
+
+    if (target == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (target->kind != MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM) {
+        return MYLITE_OK;
+    }
+
+    *out_handled = true;
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        return validate_set_fixed_text_value(database, value_node, "binary");
+    }
+    if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_SET_DEFAULT_VALUE) {
+        return set_session_character_set_filesystem_value(
+            database,
+            target,
+            "binary",
+            strlen("binary"),
+            false
+        );
+    }
+    if (set_character_set_filesystem_value_is_decimal(value_node)) {
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
+    }
+    value_is_collation_id = set_character_set_filesystem_value_is_collation_id(value_node);
+
+    rc = copy_set_text_system_variable_node_value(
+        database,
+        value_node,
+        target->kind,
+        target->name,
+        &value,
+        &value_size
+    );
+    if (rc == MYLITE_OK) {
+        rc = set_session_character_set_filesystem_value(
+            database,
+            target,
+            value,
+            value_size,
+            value_is_collation_id
+        );
+    }
+    free(value);
+    return rc;
+}
+
+static int apply_set_character_set_filesystem_cell_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const struct session_scalar_cell *value,
+    enum mylite_session_user_variable_value_kind value_kind,
+    bool *out_handled
+) {
+    const char *text = value == NULL ? NULL : value->value;
+    size_t text_size = 0U;
+
+    if (target == NULL || out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    if (target->kind != MYLITE_EXECUTION_SYSTEM_VARIABLE_CHARACTER_SET_FILESYSTEM) {
+        return MYLITE_OK;
+    }
+
+    *out_handled = true;
+    if (target->scope == SET_SYSTEM_VARIABLE_SCOPE_GLOBAL) {
+        return validate_set_fixed_text_cell_value(database, target, value, value_kind, "binary");
+    }
+    if (value == NULL || text == NULL || value_kind == MYLITE_SESSION_USER_VARIABLE_VALUE_NULL) {
+        set_system_variable_cant_be_set_value_error(database, target->name, "NULL");
+        return MYLITE_ERROR;
+    }
+    if (value_kind == MYLITE_SESSION_USER_VARIABLE_VALUE_DECIMAL) {
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
+    }
+    if (value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_STRING &&
+        value_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER) {
+        return set_incorrect_system_variable_argument_type_error(database, target->name);
+    }
+
+    text_size = value->has_value_size ? value->value_size : strlen(text);
+    return set_session_character_set_filesystem_value(
+        database,
+        target,
+        text,
+        text_size,
+        value_kind == MYLITE_SESSION_USER_VARIABLE_VALUE_INTEGER
+    );
+}
+
+static int set_session_character_set_filesystem_value(
+    struct mylite_db *database,
+    const struct resolved_set_system_variable_target *target,
+    const char *value,
+    size_t value_size,
+    bool value_is_collation_id
+) {
+    const struct mylite_execution_catalog_character_set *charset = NULL;
+    int rc = MYLITE_OK;
+
+    if (database == NULL || target == NULL || value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (memchr(value, '\0', value_size) != NULL) {
+        set_system_variable_cant_be_set_value_error(database, target->name, "");
+        return MYLITE_ERROR;
+    }
+
+    charset = mysql_character_set_by_filesystem_value(value, value_is_collation_id);
+    if (charset == NULL) {
+        set_unknown_character_set_error(database, value);
+        return MYLITE_ERROR;
+    }
+
+    rc = set_session_system_variable_override(
+        database,
+        target->kind,
+        charset->name,
+        strlen(charset->name)
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    return append_character_set_filesystem_assignment_warning(
+        database,
+        value,
+        value_is_collation_id,
+        charset
+    );
+}
+
+static bool set_character_set_filesystem_value_is_collation_id(
+    const struct mylite_sql_ast_node *value_node
+) {
+    return set_character_set_filesystem_value_literal_kind(value_node, false) ==
+           MYLITE_SQL_AST_LITERAL_INTEGER;
+}
+
+static bool set_character_set_filesystem_value_is_decimal(
+    const struct mylite_sql_ast_node *value_node
+) {
+    enum mylite_sql_ast_literal_kind literal_kind =
+        set_character_set_filesystem_value_literal_kind(value_node, true);
+
+    return literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+           literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT;
+}
+
+static enum mylite_sql_ast_literal_kind set_character_set_filesystem_value_literal_kind(
+    const struct mylite_sql_ast_node *value_node,
+    bool unwrap_negative_unary
+) {
+    const struct mylite_sql_ast_node *literal = value_node;
+
+    if (literal == NULL) {
+        return MYLITE_SQL_AST_LITERAL_NONE;
+    }
+    if (literal->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(literal);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+            (unwrap_negative_unary && operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE)) {
+            literal = child_at(literal, 0U);
+        }
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        return MYLITE_SQL_AST_LITERAL_NONE;
+    }
+    return mylite_sql_ast_node_literal_kind(literal);
+}
+
+static const char *character_set_filesystem_character_set_for_collation_id(const char *value) {
+    for (size_t index = 0U; index < mylite_execution_catalog_mysql_collation_count(); ++index) {
+        const struct mylite_execution_catalog_collation *collation =
+            mylite_execution_catalog_mysql_collation_at(index);
+
+        if (collation != NULL && strcmp(collation->id, value) == 0) {
+            return collation->character_set;
+        }
+    }
+    return NULL;
+}
+
+static const struct mylite_execution_catalog_character_set *mysql_character_set_by_filesystem_value(
+    const char *value,
+    bool value_is_collation_id
+) {
+    const char *charset_name = value;
+
+    if (value_is_collation_id) {
+        charset_name = character_set_filesystem_character_set_for_collation_id(value);
+    }
+    return mylite_execution_catalog_mysql_character_set_by_name(charset_name);
+}
+
+static int append_character_set_filesystem_assignment_warning(
+    struct mylite_db *database,
+    const char *value,
+    bool value_is_collation_id,
+    const struct mylite_execution_catalog_character_set *charset
+) {
+    if (charset == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (!value_is_collation_id && text_equals_ascii_case_insensitive(value, "utf8")) {
+        return append_utf8_alias_warning(database);
+    }
+    if (text_equals_ascii_case_insensitive(charset->name, "utf8mb3")) {
+        return append_utf8mb3_deprecation_warning(database);
+    }
+    return MYLITE_OK;
 }
 
 static int apply_set_text_session_system_variable_value(

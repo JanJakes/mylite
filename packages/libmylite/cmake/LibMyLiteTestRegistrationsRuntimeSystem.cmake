@@ -44,6 +44,10 @@
     COMMAND mylite_runtime_internal_native_helper_rejections_test
   )
   add_test(
+    NAME libmylite.runtime.roles_graphml_function
+    COMMAND mylite_runtime_roles_graphml_function_test
+  )
+  add_test(
     NAME libmylite.runtime.replication_functions
     COMMAND mylite_runtime_replication_functions_test
   )

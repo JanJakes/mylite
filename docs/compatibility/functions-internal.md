@@ -37,7 +37,7 @@ functions.
 | `INTERNAL_UPDATE_TIME()` | ✅ | MySQL-runtime-verified native access rejection |
 | `PS_CURRENT_THREAD_ID()` | ✅ | MySQL-runtime-verified current synthetic Performance Schema thread id |
 | `PS_THREAD_ID()` | ✅ | MySQL-runtime-verified connection-id to synthetic thread-id mapping |
-| `ROLES_GRAPHML()` | ❌ | Return a GraphML document representing memory role subgraphs |
+| `ROLES_GRAPHML()` | ✅ | MySQL-runtime-verified embedded-account GraphML placeholder, scalar/DUAL/DO/row projection, charset/collation metadata, and native arity diagnostics; no persisted role graph |
 | `STATEMENT_DIGEST()` | ❌ | Compute statement digest hash value |
 | `STATEMENT_DIGEST_TEXT()` | ❌ | Compute normalized statement digest |
 

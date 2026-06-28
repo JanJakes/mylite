@@ -198,6 +198,10 @@ static void populate_scalar_connection_string_result_column_descriptor(
     struct mylite_result_column_descriptor *descriptor,
     struct scalar_connection_string_result_column_shape shape
 );
+static void populate_roles_graphml_result_column_descriptor(
+    const struct mylite_db *database,
+    struct mylite_result_column_descriptor *descriptor
+);
 static void populate_calendar_name_result_column_descriptor(
     const struct mylite_db *database,
     struct mylite_result_column_descriptor *descriptor

@@ -94,6 +94,14 @@ static const struct sys_function_descriptor sys_function_descriptors[] = {
         true,
         false,
     },
+    {
+        "ROLES_GRAPHML",
+        "_mylite_roles_graphml",
+        0U,
+        MYLITE_SYS_FUNCTION_ROLES_GRAPHML,
+        true,
+        false,
+    },
     {"extract_schema_from_file_name",
      "_mylite_sys_extract_schema_from_file_name",
      1U,
@@ -424,6 +432,7 @@ static int sys_validate_password_strength(
     const struct mylite_sys_function_argument *arguments,
     struct mylite_sys_function_result *out_result
 );
+static int sys_roles_graphml(struct mylite_sys_function_result *out_result);
 static size_t last_slash_before(const char *text, size_t end);
 static size_t last_dot_between(const char *text, size_t start, size_t end);
 static int copy_argument_text(const struct mylite_sys_function_argument *argument, char **out_text);
@@ -629,6 +638,8 @@ int mylite_sys_function_evaluate(
         return sys_ps_thread_id_native(database, arguments, out_result);
     case MYLITE_SYS_FUNCTION_VALIDATE_PASSWORD_STRENGTH:
         return sys_validate_password_strength(arguments, out_result);
+    case MYLITE_SYS_FUNCTION_ROLES_GRAPHML:
+        return sys_roles_graphml(out_result);
     case MYLITE_SYS_FUNCTION_EXTRACT_SCHEMA_FROM_FILE_NAME:
         return sys_extract_schema_from_file_name(arguments, out_result);
     case MYLITE_SYS_FUNCTION_EXTRACT_TABLE_FROM_FILE_NAME:
@@ -874,6 +885,26 @@ static int sys_validate_password_strength(
         return sys_function_null_result(out_result);
     }
     return sys_function_copy_result(out_result, "0", 1U);
+}
+
+static int sys_roles_graphml(struct mylite_sys_function_result *out_result) {
+    static const char roles_graphml[] =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        "<graphml xmlns=\"http://graphml.graphdrawing.org/xmlns\" "
+        "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" "
+        "xsi:schemaLocation=\"http://graphml.graphdrawing.org/xmlns "
+        "http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd\">\n"
+        "  <key id=\"key0\" for=\"edge\" attr.name=\"color\" attr.type=\"int\" />\n"
+        "  <key id=\"key1\" for=\"node\" attr.name=\"name\" attr.type=\"string\" />\n"
+        "  <graph id=\"G\" edgedefault=\"directed\" parse.nodeids=\"canonical\" "
+        "parse.edgeids=\"canonical\" parse.order=\"nodesfirst\">\n"
+        "    <node id=\"n0\">\n"
+        "      <data key=\"key1\">`root`@`%`</data>\n"
+        "    </node>\n"
+        "  </graph>\n"
+        "</graphml>\n";
+
+    return sys_function_copy_result(out_result, roles_graphml, sizeof(roles_graphml) - 1U);
 }
 
 static int sys_extract_table_from_file_name(

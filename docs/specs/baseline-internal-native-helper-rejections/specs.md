@@ -35,9 +35,10 @@ direct SQL access in MySQL 8.4.9:
 - `INTERNAL_TABLE_ROWS()`
 - `INTERNAL_UPDATE_TIME()`
 
-The slice does not implement callable `ROLES_GRAPHML()`,
-`STATEMENT_DIGEST()`, or `STATEMENT_DIGEST_TEXT()`; those functions have a
-public callable MySQL surface and need separate semantics.
+The slice does not implement callable `STATEMENT_DIGEST()` or
+`STATEMENT_DIGEST_TEXT()`; those functions have a public callable MySQL
+surface and need separate semantics. Callable `ROLES_GRAPHML()` is covered by
+the separate baseline roles GraphML function slice.
 
 ## Compatibility Sources
 

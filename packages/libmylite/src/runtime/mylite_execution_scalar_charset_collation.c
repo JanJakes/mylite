@@ -3,6 +3,7 @@
 
 #include "mylite_connection.h"
 #include "mylite_execution_catalog.h"
+#include "mylite_sys_functions.h"
 
 #include <mylite/mylite.h>
 
@@ -125,6 +126,11 @@ static enum planned_charset_collation_function_kind charset_collation_function_k
     enum mylite_sql_ast_node_kind ast_kind
 );
 static bool is_charset_collation_function_kind(enum mylite_sql_ast_node_kind ast_kind);
+static int roles_graphml_function_match(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_matches
+);
 static int charset_collation_select_result(
     enum planned_charset_collation_function_kind function_kind,
     const char *charset,
@@ -250,6 +256,8 @@ static int charset_collation_scalar_result(
 ) {
     const char *charset = "binary";
     const char *collation = "binary";
+    bool is_roles_graphml = false;
+    int match_rc = MYLITE_OK;
 
     if (out_result == NULL) {
         return MYLITE_MISUSE;
@@ -270,6 +278,18 @@ static int charset_collation_scalar_result(
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
         expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         return set_unknown_column_for_reference(database, expression);
+    }
+    match_rc = roles_graphml_function_match(database, expression, &is_roles_graphml);
+    if (match_rc != MYLITE_OK) {
+        return match_rc;
+    }
+    if (is_roles_graphml) {
+        return charset_collation_select_result(
+            function_kind,
+            "utf8mb3",
+            "utf8mb3_general_ci",
+            out_result
+        );
     }
 
     switch (expression->kind) {
@@ -381,10 +401,14 @@ static int coercibility_non_concat_scalar_result(
     const struct mylite_sql_ast_node *expression,
     const char **out_result
 ) {
+    bool is_roles_graphml = false;
+    int match_rc = MYLITE_OK;
+
     if (out_result == NULL) {
         return MYLITE_MISUSE;
     }
     *out_result = NULL;
+
     expression = mylite_execution_unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
         mylite_execution_set_unsupported_error(
@@ -396,6 +420,14 @@ static int coercibility_non_concat_scalar_result(
     if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
         expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
         return mylite_execution_set_unknown_column_reference_error(database, expression);
+    }
+    match_rc = roles_graphml_function_match(database, expression, &is_roles_graphml);
+    if (match_rc != MYLITE_OK) {
+        return match_rc;
+    }
+    if (is_roles_graphml) {
+        *out_result = "3";
+        return MYLITE_OK;
     }
 
     switch (expression->kind) {
@@ -1214,6 +1246,9 @@ static int scalar_expression_base_charset_collation_metadata(
     const char **out_charset,
     const char **out_collation
 ) {
+    bool is_roles_graphml = false;
+    int match_rc = MYLITE_OK;
+
     if (out_charset == NULL || out_collation == NULL) {
         return MYLITE_MISUSE;
     }
@@ -1227,6 +1262,15 @@ static int scalar_expression_base_charset_collation_metadata(
             "COLLATE supports only scalar values with known character set metadata"
         );
         return MYLITE_ERROR;
+    }
+    match_rc = roles_graphml_function_match(database, expression, &is_roles_graphml);
+    if (match_rc != MYLITE_OK) {
+        return match_rc;
+    }
+    if (is_roles_graphml) {
+        *out_charset = "utf8mb3";
+        *out_collation = "utf8mb3_general_ci";
+        return MYLITE_OK;
     }
 
     switch (expression->kind) {
@@ -1354,6 +1398,58 @@ static enum planned_charset_collation_function_kind charset_collation_function_k
 
 static bool is_charset_collation_function_kind(enum mylite_sql_ast_node_kind ast_kind) {
     return charset_collation_function_kind(ast_kind) != PLANNED_CHARSET_COLLATION_FUNCTION_NONE;
+}
+
+static int roles_graphml_function_match(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_matches
+) {
+    const struct mylite_sql_ast_node *current = NULL;
+    const struct mylite_sql_ast_node *first_identifier = NULL;
+    const struct mylite_sql_ast_node *second_identifier = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    enum mylite_sys_function_kind kind = MYLITE_SYS_FUNCTION_NONE;
+    size_t identifier_count = 0U;
+
+    if (out_matches == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_matches = false;
+
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_GENERIC_FUNCTION) {
+        return MYLITE_OK;
+    }
+    for (current = expression->first_child; current != NULL; current = current->next_sibling) {
+        if (current->kind != MYLITE_SQL_AST_IDENTIFIER) {
+            if (current->kind == MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+                arguments = current;
+            }
+            continue;
+        }
+        if (identifier_count == 0U) {
+            first_identifier = current;
+        } else if (identifier_count == 1U) {
+            second_identifier = current;
+        }
+        ++identifier_count;
+    }
+    if (identifier_count == 1U) {
+        (void)mylite_sys_function_lookup_span(NULL, &first_identifier->span, &kind);
+    } else if (identifier_count == 2U) {
+        (void
+        )mylite_sys_function_lookup_span(&first_identifier->span, &second_identifier->span, &kind);
+    }
+    if (kind != MYLITE_SYS_FUNCTION_ROLES_GRAPHML) {
+        return MYLITE_OK;
+    }
+    if (arguments != NULL && mylite_sql_ast_node_child_count(arguments) != 0U) {
+        mylite_execution_set_native_function_parameter_count_error(database, "ROLES_GRAPHML");
+        return MYLITE_ERROR;
+    }
+    *out_matches = true;
+    return MYLITE_OK;
 }
 
 static int charset_collation_select_result(

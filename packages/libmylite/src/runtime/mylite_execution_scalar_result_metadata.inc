@@ -198,6 +198,10 @@ static int populate_scalar_function_result_column_descriptor(
                 );
                 return MYLITE_OK;
             }
+            if (sys_function_kind == MYLITE_SYS_FUNCTION_ROLES_GRAPHML) {
+                populate_roles_graphml_result_column_descriptor(database, descriptor);
+                return MYLITE_OK;
+            }
             populate_scalar_connection_string_result_column_descriptor(
                 database,
                 descriptor,
@@ -1079,6 +1083,20 @@ static void populate_scalar_connection_string_result_column_descriptor(
     if (!shape.nullable) {
         descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_NOT_NULL;
     }
+}
+
+static void populate_roles_graphml_result_column_descriptor(
+    const struct mylite_db *database,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_BLOB;
+    descriptor->charset_id = result_metadata_collation_id(database->session.collation_connection);
+    descriptor->collation_id = descriptor->charset_id;
+    descriptor->display_length = mysql_roles_graphml_base_display_length *
+                                 scalar_connection_max_bytes_per_character(database);
+    descriptor->decimals = mysql_approximate_decimals;
+    descriptor->flags = 0U;
+    descriptor->nullable = true;
 }
 
 static void populate_uuid_string_result_column_descriptor(

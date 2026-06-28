@@ -614,6 +614,10 @@ static int row_scalar_collate_base_charset(
                            ? database->session.character_set_connection
                            : "binary";
         return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_AES_ENCRYPT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_AES_DECRYPT:
+        *out_charset = "binary";
+        return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
         if (base_expression->numeric_extra_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT) {
             *out_charset = database->session.character_set_connection;

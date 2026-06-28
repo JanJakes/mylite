@@ -70,6 +70,38 @@ static int plan_row_scalar_non_control_flow_expression(
     if (generic_rejected_native_function_name(expression)) {
         return set_native_function_rejected_error(database, expression);
     }
+    if (generic_function_name_equals(expression, "AES_ENCRYPT")) {
+        return plan_row_scalar_named_lock_function(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            (struct row_scalar_named_lock_function){
+                .function_name = "AES_ENCRYPT",
+                .argument_count = 2U,
+                .expression_kind = PLANNED_ROW_SCALAR_EXPRESSION_AES_ENCRYPT,
+            },
+            out_expression
+        );
+    }
+    if (generic_function_name_equals(expression, "AES_DECRYPT")) {
+        return plan_row_scalar_named_lock_function(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            (struct row_scalar_named_lock_function){
+                .function_name = "AES_DECRYPT",
+                .argument_count = 2U,
+                .expression_kind = PLANNED_ROW_SCALAR_EXPRESSION_AES_DECRYPT,
+            },
+            out_expression
+        );
+    }
     {
         enum mylite_sys_function_kind sys_function_kind = MYLITE_SYS_FUNCTION_NONE;
 

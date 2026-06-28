@@ -225,6 +225,16 @@ static int populate_scalar_function_result_column_descriptor(
                 descriptor
             );
         }
+        if (mylite_execution_scalar_aes_function_match(expression)) {
+            descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+            descriptor->charset_id = mysql_collation_binary_id;
+            descriptor->collation_id = mysql_collation_binary_id;
+            descriptor->display_length = mysql_json_document_display_length;
+            descriptor->decimals = mysql_approximate_decimals;
+            descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+            descriptor->nullable = true;
+            return MYLITE_OK;
+        }
         if (generic_system_function_name_equals(expression, "SLEEP") ||
             generic_system_function_name_equals(expression, "GET_LOCK") ||
             generic_system_function_name_equals(expression, "IS_FREE_LOCK") ||

@@ -1734,6 +1734,7 @@ static bool row_scalar_expression_is_predicate_value_context_attempt(
     if (is_row_scalar_control_flow_expression(node) ||
         generic_sys_function_kind(node, &sys_function_kind) ||
         generic_spatial_function_kind(node, &(enum mylite_spatial_function_kind){0}) ||
+        mylite_execution_scalar_aes_function_match(node) ||
         row_scalar_expression_is_string_function(node->kind) ||
         is_row_scalar_json_expression(node) || row_scalar_expression_is_rand_function(node) ||
         row_scalar_numeric_function_kind_is_supported(node->kind) ||

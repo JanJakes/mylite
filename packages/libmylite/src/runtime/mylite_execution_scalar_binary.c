@@ -429,6 +429,10 @@ int mylite_execution_scalar_binary_scalar_argument_value(
     default:
         break;
     }
+    if (mylite_execution_scalar_aes_function_match(expression)) {
+        *out_handled = true;
+        return mylite_execution_scalar_aes_function_value(database, expression, out_cell);
+    }
     return MYLITE_OK;
 }
 

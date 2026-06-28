@@ -228,6 +228,10 @@
     COMMAND mylite_runtime_compression_random_functions_test
   )
   add_test(
+    NAME libmylite.runtime.aes_encryption_functions
+    COMMAND mylite_runtime_aes_encryption_functions_test
+  )
+  add_test(
     NAME libmylite.runtime.ip_address_functions
     COMMAND mylite_runtime_ip_address_functions_test
   )

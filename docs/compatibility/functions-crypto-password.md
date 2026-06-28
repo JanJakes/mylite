@@ -4,8 +4,8 @@ Encryption, digest, password, and random byte helpers.
 
 | Function | Status | Notes |
 | --- | --- | --- |
-| `AES_DECRYPT()` | ❌ | Decrypt using AES |
-| `AES_ENCRYPT()` | ❌ | Encrypt using AES |
+| `AES_DECRYPT()` | 🟡 | Default two-argument `aes-128-ecb` baseline with binary metadata, NULL/invalid-input behavior, and scalar/row-backed documented contexts; no IV, KDF, or non-default block modes |
+| `AES_ENCRYPT()` | 🟡 | Default two-argument `aes-128-ecb` baseline with MySQL key folding, padding, binary metadata, and scalar/row-backed documented contexts; no IV, KDF, or non-default block modes |
 | `MD5()` | 🟡 | Scalar, row projection, documented `WHERE` predicates including row-scalar `IN`, and compatible non-key single-table `UPDATE` / duplicate-key assignments; no FIPS-mode NULL behavior or broad expression contexts |
 | `RANDOM_BYTES()` | 🟡 | Scalar, row projection, documented `WHERE IS [NOT] NULL`, and compatible non-key single-table `UPDATE` / duplicate-key assignments; no replication warning parity or broad expression contexts |
 | `SHA1(), SHA()` | 🟡 | Scalar, row projection, documented `WHERE` predicates including row-scalar `IN`, and compatible non-key single-table `UPDATE` / duplicate-key assignments; no broad expression contexts |

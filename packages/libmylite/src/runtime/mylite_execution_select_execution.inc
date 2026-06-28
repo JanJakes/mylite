@@ -225,6 +225,9 @@ static bool expression_is_supported_row_scalar_system_function(
     if (generic_spatial_function_kind(expression, &(enum mylite_spatial_function_kind){0})) {
         return true;
     }
+    if (mylite_execution_scalar_aes_function_match(expression)) {
+        return true;
+    }
     return generic_function_name_equals(expression, "GET_LOCK") ||
            generic_function_name_equals(expression, "IS_FREE_LOCK") ||
            generic_function_name_equals(expression, "IS_USED_LOCK") ||
@@ -2122,10 +2125,15 @@ static int populate_row_scalar_expression_result_column_descriptor(
         );
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES:
+    case PLANNED_ROW_SCALAR_EXPRESSION_AES_ENCRYPT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_AES_DECRYPT:
         descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
         descriptor->charset_id = mysql_collation_binary_id;
         descriptor->collation_id = mysql_collation_binary_id;
-        descriptor->display_length = mysql_random_bytes_display_length;
+        descriptor->display_length =
+            expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES
+                ? mysql_random_bytes_display_length
+                : mysql_json_document_display_length;
         descriptor->decimals = mysql_approximate_decimals;
         descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
         descriptor->nullable = true;

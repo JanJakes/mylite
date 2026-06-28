@@ -531,6 +531,9 @@ static int session_scalar_value(
         if (generic_spatial_function_kind(expression, &spatial_kind)) {
             return spatial_function_session_scalar_value(database, expression, out_cell);
         }
+        if (mylite_execution_scalar_aes_function_match(expression)) {
+            return mylite_execution_scalar_aes_function_value(database, expression, out_cell);
+        }
         return generic_system_function_value(database, expression, out_cell);
     }
     case MYLITE_SQL_AST_ABS_FUNCTION:

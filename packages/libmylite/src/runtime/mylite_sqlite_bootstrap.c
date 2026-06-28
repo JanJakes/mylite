@@ -1,5 +1,6 @@
 #include "mylite_sqlite_bootstrap.h"
 
+#include "mylite_aes.h"
 #include "mylite_base_conversion.h"
 #include "mylite_bitwise.h"
 #include "mylite_bitwise_aggregate.h"
@@ -306,6 +307,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_digest_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_aes_functions(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_uuid_functions(sqlite);

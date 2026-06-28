@@ -601,7 +601,8 @@ static bool is_digest_projection_expression(const struct mylite_sql_ast_node *ex
 }
 
 static bool is_binary_string_projection_expression(const struct mylite_sql_ast_node *expression) {
-    return (is_hex_projection_expression(expression) ||
+    return (mylite_execution_scalar_aes_function_match(expression) ||
+            is_hex_projection_expression(expression) ||
             is_base64_projection_expression(expression) ||
             is_compression_random_projection_expression(expression) ||
             is_unhex_projection_expression(expression) ||

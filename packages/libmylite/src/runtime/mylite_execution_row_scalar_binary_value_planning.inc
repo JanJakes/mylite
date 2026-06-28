@@ -76,6 +76,30 @@ static int plan_row_scalar_hex_expression(
         }
         return rc;
     }
+    if (has_source && mylite_execution_scalar_aes_function_match(argument)) {
+        out_expression->arguments =
+            (struct planned_row_scalar_expression *)calloc(1U, sizeof(*out_expression->arguments));
+        if (out_expression->arguments == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_HEX;
+        out_expression->argument_count = 1U;
+        rc = plan_row_scalar_non_concat_expression(
+            database,
+            argument,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            false,
+            &out_expression->arguments[0]
+        );
+        if (rc != MYLITE_OK) {
+            planned_row_scalar_expression_deinit(out_expression);
+        }
+        return rc;
+    }
 
     if (!is_hex_projection_expression(expression)) {
         set_hex_unsupported_error(database);

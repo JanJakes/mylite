@@ -39,6 +39,7 @@ endif()
 
 add_library(mylite STATIC
   "${MYLITE_SQL_PARSE_C}"
+  src/runtime/mylite_aes.c
   src/runtime/mylite_base_conversion.c
   src/runtime/mylite_bitwise.c
   src/runtime/mylite_bitwise_aggregate.c
@@ -107,6 +108,7 @@ add_library(mylite STATIC
   src/runtime/mylite_execution_dml_numeric.c
   src/runtime/mylite_execution_loaded_catalog.c
   src/runtime/mylite_execution_scalar_base_conversion.c
+  src/runtime/mylite_execution_scalar_binary_aes.c
   src/runtime/mylite_execution_scalar_binary.c
   src/runtime/mylite_execution_scalar_binary_base64.c
   src/runtime/mylite_execution_scalar_binary_char.c

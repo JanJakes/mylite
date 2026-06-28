@@ -17,7 +17,7 @@ enum {
     test_path_capacity = 1024,
     show_columns_field_count = 6,
     information_schema_column_count = 9,
-    json_docs_row_count = 5,
+    json_docs_row_count = 6,
     mysql_collation_binary_id = 63,
     mysql_error_parse = 1064,
     mysql_error_bad_null = 1048,
@@ -144,9 +144,12 @@ static int test_json_success_metadata_dml_and_persistence(void) {
         "5",
         "\"hello\"",
         "\"world\"",
+        "6",
+        "1.5",
+        "1e2",
     };
     static const char *const null_predicate_rows[] = {"2", "3"};
-    static const char *const not_null_predicate_rows[] = {"1", "4", "5"};
+    static const char *const not_null_predicate_rows[] = {"1", "4", "5", "6"};
     static const char *const altered_rows[] = {"1", NULL, "null"};
     static const char *const ignored_rows[] = {"1", "null"};
     static const char *const copied_rows[] = {"{\"source\": 1}"};
@@ -164,6 +167,8 @@ static int test_json_success_metadata_dml_and_persistence(void) {
         "{\"source\": 1}",
         "5",
         "\"hello\"",
+        "6",
+        "1.5",
     };
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
@@ -225,7 +230,8 @@ static int test_json_success_metadata_dml_and_persistence(void) {
         "(2, 'null', 'true'),"
         "(3, NULL, 'false'),"
         "(4, '[1,2,3]', '123'),"
-        "(5, '\"hello\"', '\"world\"')",
+        "(5, '\"hello\"', '\"world\"'),"
+        "(6, '1.5', '1e2')",
         (struct expected_dml_result){.affected_rows = json_docs_row_count, .warning_count = 0U}
     );
     failures += expect_query_values(
@@ -270,7 +276,7 @@ static int test_json_success_metadata_dml_and_persistence(void) {
             .sql = "SELECT id FROM json_docs WHERE payload IS NOT NULL ORDER BY id",
             .values = not_null_predicate_rows,
             .column_count = 1U,
-            .row_count = 3U,
+            .row_count = 4U,
             .context = "JSON IS NOT NULL predicate",
         }
     );
@@ -407,15 +413,6 @@ static int test_json_diagnostics(void) {
             .code = mysql_error_invalid_json_text,
             .sqlstate = "22032",
             .message_part = "Invalid JSON text",
-        }
-    );
-    failures += execute_error(
-        database,
-        "INSERT INTO t VALUES (1, '1.5', 'null')",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "JSON values support only objects",
         }
     );
     failures += execute_error(

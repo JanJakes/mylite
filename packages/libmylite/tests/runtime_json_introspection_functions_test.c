@@ -94,6 +94,8 @@ static int test_no_source_dual_and_do_json_introspection(void) {
         "string_type",
         "integer_type",
         "negative_type",
+        "decimal_type",
+        "exponent_type",
     };
     static const char *const values_type[] = {
         NULL,
@@ -105,6 +107,8 @@ static int test_no_source_dual_and_do_json_introspection(void) {
         "STRING",
         "INTEGER",
         "INTEGER",
+        "DOUBLE",
+        "DOUBLE",
     };
     static const char *const columns_length[] = {
         "null_sql",
@@ -244,7 +248,8 @@ static int test_no_source_dual_and_do_json_introspection(void) {
                    "JSON_TYPE('[]') AS array_type, JSON_TYPE('true') AS true_type, "
                    "JSON_TYPE('false') AS false_type, JSON_TYPE('null') AS json_null_type, "
                    "JSON_TYPE('\"x\"') AS string_type, JSON_TYPE('1') AS integer_type, "
-                   "JSON_TYPE('-1') AS negative_type",
+                   "JSON_TYPE('-1') AS negative_type, JSON_TYPE('1.5') AS decimal_type, "
+                   "JSON_TYPE('1e2') AS exponent_type",
             .columns = columns_type,
             .column_count = sizeof(columns_type) / sizeof(columns_type[0]),
             .values = values_type,

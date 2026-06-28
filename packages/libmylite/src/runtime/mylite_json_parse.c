@@ -2,6 +2,8 @@
 
 #include "mylite_json_internal.h"
 
+#include <errno.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -70,6 +72,11 @@ static int parse_integer_number(
     size_t integer_end,
     struct json_value *out_value
 );
+static int parse_floating_number(
+    struct json_parser *parser,
+    size_t start,
+    struct json_value *out_value
+);
 static bool integer_number_is_in_signed_range(
     const char *digits,
     size_t digit_count,
@@ -79,6 +86,7 @@ static int copy_number_text(
     const char *text,
     size_t length,
     bool negative_zero,
+    enum json_number_kind number_kind,
     struct json_value *out_value
 );
 static int parse_literal(
@@ -469,7 +477,7 @@ static int parse_number(struct json_parser *parser, struct json_value *out_value
         return rc;
     }
     if (has_fraction || has_exponent) {
-        return mylite_json_internal_parser_unsupported(parser, start);
+        return parse_floating_number(parser, start, out_value);
     }
 
     return parse_integer_number(
@@ -578,8 +586,40 @@ static int parse_integer_number(
         parser->text + start,
         parser->position - start,
         negative_zero,
+        JSON_NUMBER_INTEGER,
         out_value
     );
+}
+
+static int parse_floating_number(
+    struct json_parser *parser,
+    size_t start,
+    struct json_value *out_value
+) {
+    char *text = NULL;
+    char *end = NULL;
+    double value = 0.0;
+    size_t length = parser->position - start;
+    int rc = MYLITE_OK;
+
+    if (length == SIZE_MAX) {
+        return MYLITE_NOMEM;
+    }
+    text = malloc(length + 1U);
+    if (text == NULL) {
+        return MYLITE_NOMEM;
+    }
+    memcpy(text, parser->text + start, length);
+    text[length] = '\0';
+    errno = 0;
+    value = strtod(text, &end);
+    if (end != text + length || errno == ERANGE || !isfinite(value)) {
+        rc = mylite_json_internal_parser_unsupported(parser, start);
+    } else {
+        rc = copy_number_text(text, length, false, JSON_NUMBER_DOUBLE, out_value);
+    }
+    free(text);
+    return rc;
 }
 
 static bool integer_number_is_in_signed_range(
@@ -609,6 +649,7 @@ static int copy_number_text(
     const char *text,
     size_t length,
     bool negative_zero,
+    enum json_number_kind number_kind,
     struct json_value *out_value
 ) {
     char *copy = NULL;
@@ -628,6 +669,7 @@ static int copy_number_text(
     copy[length] = '\0';
 
     out_value->kind = JSON_VALUE_NUMBER;
+    out_value->number_kind = number_kind;
     out_value->payload.text = (struct json_text){
         .text = copy,
         .length = length,

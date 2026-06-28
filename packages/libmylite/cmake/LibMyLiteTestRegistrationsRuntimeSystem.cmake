@@ -521,6 +521,10 @@
     COMMAND mylite_runtime_spatial_geohash_functions_test
   )
   add_test(
+    NAME libmylite.runtime.spatial_geojson_functions
+    COMMAND mylite_runtime_spatial_geojson_functions_test
+  )
+  add_test(
     NAME libmylite.runtime.scalar_comparison_projection
     COMMAND mylite_runtime_scalar_comparison_projection_test
   )

@@ -18,6 +18,11 @@ enum json_value_kind {
     JSON_VALUE_OBJECT,
 };
 
+enum json_number_kind {
+    JSON_NUMBER_INTEGER,
+    JSON_NUMBER_DOUBLE,
+};
+
 enum {
     json_initial_container_capacity = 4,
     json_writer_initial_capacity = 32,
@@ -66,6 +71,7 @@ struct json_object {
 
 struct json_value {
     enum json_value_kind kind;
+    enum json_number_kind number_kind;
 
     union {
         bool boolean;

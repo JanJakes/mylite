@@ -20,6 +20,7 @@ enum {
     json_binary_int16_payload_size = 2,
     json_binary_int32_payload_size = 4,
     json_binary_int64_payload_size = 8,
+    json_binary_double_payload_size = 8,
     json_binary_varint_payload_bits = 7,
     json_binary_varint_single_byte_max = 0x7f,
 };
@@ -382,6 +383,9 @@ static uint64_t json_binary_integer_payload_size(const struct json_value *value)
 
     if (value == NULL || value->kind != JSON_VALUE_NUMBER) {
         return 0U;
+    }
+    if (value->number_kind == JSON_NUMBER_DOUBLE) {
+        return json_binary_double_payload_size;
     }
     integer = value->payload.text.text == NULL
                   ? 0
@@ -1580,6 +1584,7 @@ static int json_value_from_sql_value(
         return MYLITE_OK;
     case MYLITE_JSON_SQL_VALUE_INTEGER:
         out_value->kind = JSON_VALUE_NUMBER;
+        out_value->number_kind = JSON_NUMBER_INTEGER;
         return copy_integer_text(
             sql_value->integer,
             &out_value->payload.text.text,

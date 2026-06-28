@@ -8,7 +8,9 @@ readback, point coordinate access, core property/accessor functions, Cartesian
 length/area/envelope helpers, coordinate swapping, envelope construction, and
 MBR predicates in scalar, row-backed, and descriptor DML value contexts. Geohash
 helpers support coordinate encoding/decoding plus SRID 0 and 4326 point
-round-trips. It does not yet implement a general SRS catalog, GeoJSON, topology
+round-trips. GeoJSON helpers support 2D geometry, Feature extraction, and
+FeatureCollection extraction for SRID 0 and 4326. It does not yet implement a
+general SRS catalog, topology
 predicates, constructive geometry operations, or physical spatial search.
 
 | Function | Status | Notes |
@@ -32,7 +34,7 @@ predicates, constructive geometry operations, or physical spatial search.
 | `Polygon()` | ✅ | Construct SRID-0 Polygon values from LineString rings |
 | `ST_Area()` | ✅ | Cartesian SRID-0 Polygon/MultiPolygon area |
 | `ST_AsBinary(), ST_AsWKB()` | ✅ | Convert internal geometry bytes to WKB |
-| `ST_AsGeoJSON()` | ❌ | Generate GeoJSON object from geometry |
+| `ST_AsGeoJSON()` | ✅ | Generate 2D GeoJSON for supported geometry values |
 | `ST_AsText(), ST_AsWKT()` | ✅ | Convert internal geometry bytes to WKT |
 | `ST_Buffer()` | ❌ | Geometry buffer result |
 | `ST_Buffer_Strategy()` | ❌ | Produce strategy option for ST_Buffer() |
@@ -56,7 +58,7 @@ predicates, constructive geometry operations, or physical spatial search.
 | `ST_GeomCollFromWKB(), ST_GeometryCollectionFromWKB()` | ✅ | Construct SRID-0 geometry collection from WKB |
 | `ST_GeometryN()` | ✅ | Return one-based GeometryCollection member |
 | `ST_GeometryType()` | ✅ | Return name of geometry type |
-| `ST_GeomFromGeoJSON()` | ❌ | Generate geometry from GeoJSON object |
+| `ST_GeomFromGeoJSON()` | ✅ | Parse 2D GeoJSON geometry, Feature, and FeatureCollection values for SRID 0/4326 |
 | `ST_GeomFromText(), ST_GeometryFromText()` | ✅ | Construct SRID-0 geometry from WKT |
 | `ST_GeomFromWKB(), ST_GeometryFromWKB()` | ✅ | Construct SRID-0 geometry from WKB |
 | `ST_HausdorffDistance()` | ❌ | The discrete Hausdorff distance of one geometry from another |

@@ -87,7 +87,7 @@ const char *mylite_json_internal_value_type_name(const struct json_value *value)
     case JSON_VALUE_BOOL:
         return "BOOLEAN";
     case JSON_VALUE_NUMBER:
-        return "INTEGER";
+        return value->number_kind == JSON_NUMBER_DOUBLE ? "DOUBLE" : "INTEGER";
     case JSON_VALUE_STRING:
         return "STRING";
     case JSON_VALUE_ARRAY:

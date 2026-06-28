@@ -1,5 +1,7 @@
 #include "mylite_spatial.h"
 
+#include "mylite_json_internal.h"
+
 #include <ctype.h>
 #include <errno.h>
 #include <float.h>
@@ -31,15 +33,29 @@ enum {
     spatial_geohash_bits_per_character = 5,
     spatial_geohash_high_bit = 16,
     spatial_geohash_max_round_decimals = 6,
+    spatial_geojson_double_text_capacity = 80,
     spatial_srid_wgs84 = 4326,
+    spatial_geojson_as_max_option = 7,
+    spatial_geojson_from_min_option = 1,
+    spatial_geojson_from_max_option = 4,
+    spatial_geojson_bbox_option = 1,
+    spatial_geojson_short_crs_option = 2,
+    spatial_geojson_long_crs_option = 4,
+    spatial_geojson_default_max_dec_digits = 15,
     mysql_error_incorrect_type_for_argument = 3064,
     mysql_error_invalid_geohash = 1411,
+    mysql_error_invalid_json_text_in_function = 3141,
+    mysql_error_invalid_geojson_missing_member = 3070,
+    mysql_error_invalid_geojson_data = 3072,
+    mysql_error_unsupported_geojson_dimensions = 3073,
     mysql_error_numeric_value_out_of_range = 1690,
     mysql_error_native_function_parameter_count = 1582,
     mysql_error_wrong_arguments = 1210,
     mysql_error_invalid_gis_data = 3037,
     mysql_error_unexpected_geometry_type = 3516,
     mysql_error_srs_not_found = 3548,
+    mysql_error_geojson_longitude_out_of_range = 3616,
+    mysql_error_geojson_latitude_out_of_range = 3617,
 };
 
 static const double spatial_shoelace_area_divisor = 2.0;
@@ -95,6 +111,13 @@ struct spatial_box {
     double max_x;
     double max_y;
     bool has_value;
+};
+
+struct geojson_parse_context {
+    uint32_t srid;
+    bool strip_extra_dimensions;
+    const char *function_name;
+    struct mylite_spatial_error *error;
 };
 
 struct spatial_type_name {
@@ -181,6 +204,8 @@ static const struct spatial_function_descriptor spatial_function_descriptors[] =
     {"ST_LatFromGeoHash", MYLITE_SPATIAL_FUNCTION_ST_LATFROMGEOHASH},
     {"ST_LongFromGeoHash", MYLITE_SPATIAL_FUNCTION_ST_LONGFROMGEOHASH},
     {"ST_PointFromGeoHash", MYLITE_SPATIAL_FUNCTION_ST_POINTFROMGEOHASH},
+    {"ST_AsGeoJSON", MYLITE_SPATIAL_FUNCTION_ST_ASGEOJSON},
+    {"ST_GeomFromGeoJSON", MYLITE_SPATIAL_FUNCTION_ST_GEOMFROMGEOJSON},
 };
 
 static int evaluate_point_constructor(
@@ -364,6 +389,20 @@ static int evaluate_point_from_geohash(
     struct mylite_spatial_result *out_result,
     struct mylite_spatial_error *error
 );
+static int evaluate_as_geojson(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_from_geojson(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
 static bool function_name_matches(const char *name, size_t name_size, const char *expected);
 static bool function_kind_is_from_text(enum mylite_spatial_function_kind kind);
 static bool function_kind_is_from_wkb(enum mylite_spatial_function_kind kind);
@@ -412,6 +451,45 @@ static int set_invalid_geohash_error(
     const struct mylite_spatial_argument *argument,
     const char *function_name
 );
+static int set_invalid_json_text_error(
+    struct mylite_spatial_error *error,
+    const struct mylite_json_normalize_result *result,
+    const char *function_name
+);
+static int set_invalid_geojson_missing_member_error(
+    struct mylite_spatial_error *error,
+    const char *member,
+    const char *function_name
+);
+static int set_invalid_geojson_data_error(
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int set_unsupported_geojson_dimensions_error(
+    struct mylite_spatial_error *error,
+    size_t dimension_count,
+    const char *function_name
+);
+static int set_geojson_option_error(
+    struct mylite_spatial_error *error,
+    const char *value,
+    const char *function_name
+);
+static int set_geojson_max_dec_digits_error(
+    struct mylite_spatial_error *error,
+    const char *value,
+    const char *function_name
+);
+static int set_geojson_longitude_error(
+    struct mylite_spatial_error *error,
+    double longitude,
+    const char *function_name
+);
+static int set_geojson_latitude_error(
+    struct mylite_spatial_error *error,
+    double latitude,
+    const char *function_name
+);
 static int set_parameter_count_error(
     struct mylite_spatial_error *error,
     enum mylite_spatial_function_kind kind
@@ -455,6 +533,21 @@ static int argument_geohash_uint32(
     const char *function_name,
     const char *argument_name, // NOLINT(bugprone-easily-swappable-parameters): diagnostic labels.
     const char *range_subject
+);
+static int argument_geojson_uint32(
+    const struct mylite_spatial_argument *argument,
+    uint32_t *out_value,
+    bool *out_is_null,
+    struct mylite_spatial_error *error,
+    const char *function_name,
+    const char *argument_name
+);
+static int argument_geojson_srid(
+    const struct mylite_spatial_argument *argument,
+    uint32_t *out_srid,
+    bool *out_is_null,
+    struct mylite_spatial_error *error,
+    const char *function_name
 );
 static int argument_index(
     const struct mylite_spatial_argument *argument,
@@ -747,6 +840,121 @@ static int append_point_coordinates_as_wkt(
     const char *function_name
 );
 static int append_double_as_text(struct spatial_buffer *buffer, double value);
+static int append_geojson_geometry(
+    struct spatial_buffer *buffer,
+    struct spatial_wkb_cursor *cursor,
+    uint32_t srid,
+    uint32_t max_dec_digits,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int append_geojson_coordinates(
+    struct spatial_buffer *buffer,
+    struct spatial_wkb_cursor *cursor,
+    enum mylite_spatial_geometry_type type,
+    bool little_endian,
+    uint32_t srid,
+    uint32_t max_dec_digits,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int append_geojson_point_coordinates(
+    struct spatial_buffer *buffer,
+    struct spatial_wkb_cursor *cursor,
+    bool little_endian,
+    uint32_t srid, // NOLINT(bugprone-easily-swappable-parameters): GeoJSON axis options.
+    uint32_t max_dec_digits,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int append_geojson_line_coordinates(
+    struct spatial_buffer *buffer,
+    struct spatial_wkb_cursor *cursor,
+    bool little_endian,
+    uint32_t srid,
+    uint32_t max_dec_digits,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int append_geojson_polygon_coordinates(
+    struct spatial_buffer *buffer,
+    struct spatial_wkb_cursor *cursor,
+    bool little_endian,
+    uint32_t srid,
+    uint32_t max_dec_digits,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int append_geojson_collection_coordinates(
+    struct spatial_buffer *buffer,
+    struct spatial_wkb_cursor *cursor,
+    enum mylite_spatial_geometry_type type,
+    bool little_endian,
+    uint32_t srid,
+    uint32_t max_dec_digits,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int append_geojson_number(
+    struct spatial_buffer *buffer,
+    double value,
+    uint32_t max_dec_digits
+);
+static int append_geojson_bbox(
+    struct spatial_buffer *buffer,
+    const struct spatial_box *box,
+    uint32_t srid, // NOLINT(bugprone-easily-swappable-parameters): GeoJSON axis options.
+    uint32_t max_dec_digits
+);
+static int append_geojson_geometry_as_wkt(
+    const struct json_value *value,
+    struct geojson_parse_context *context,
+    struct spatial_buffer *out_wkt,
+    bool *out_is_null
+);
+static int append_geojson_feature_as_wkt(
+    const struct json_value *value,
+    struct geojson_parse_context *context,
+    struct spatial_buffer *out_wkt,
+    bool *out_is_null
+);
+static int append_geojson_feature_collection_as_wkt(
+    const struct json_value *value,
+    struct geojson_parse_context *context,
+    struct spatial_buffer *out_wkt
+);
+static int append_geojson_coordinate_as_wkt(
+    const struct json_value *value,
+    struct geojson_parse_context *context,
+    struct spatial_buffer *out_wkt
+);
+static int append_geojson_coordinate_list_as_wkt(
+    const struct json_value *value,
+    struct geojson_parse_context *context,
+    struct spatial_buffer *out_wkt
+);
+static int append_geojson_ring_list_as_wkt(
+    const struct json_value *value,
+    struct geojson_parse_context *context,
+    struct spatial_buffer *out_wkt
+);
+static int append_geojson_polygon_list_as_wkt(
+    const struct json_value *value,
+    struct geojson_parse_context *context,
+    struct spatial_buffer *out_wkt
+);
+static int geojson_coordinate_number(
+    const struct json_value *value,
+    double *out_value,
+    struct geojson_parse_context *context
+);
+static const char *geojson_geometry_type_name(enum mylite_spatial_geometry_type type);
+static const struct json_value *geojson_member_value(
+    const struct json_value *value,
+    const char *member
+);
+static bool geojson_member_name_equals(const char *left, size_t left_length, const char *right);
+static bool geojson_string_equals(const struct json_value *value, const char *expected);
 static int append_cstring(struct spatial_buffer *buffer, const char *text);
 static int parse_wkt_to_internal(
     const char *text,
@@ -848,13 +1056,15 @@ bool mylite_spatial_function_returns_geometry(enum mylite_spatial_function_kind 
            kind == MYLITE_SPATIAL_FUNCTION_ST_ENVELOPE ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_SWAPXY ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_MAKEENVELOPE ||
-           kind == MYLITE_SPATIAL_FUNCTION_ST_POINTFROMGEOHASH;
+           kind == MYLITE_SPATIAL_FUNCTION_ST_POINTFROMGEOHASH ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_GEOMFROMGEOJSON;
 }
 
 bool mylite_spatial_function_returns_text(enum mylite_spatial_function_kind kind) {
     return kind == MYLITE_SPATIAL_FUNCTION_ST_ASTEXT || kind == MYLITE_SPATIAL_FUNCTION_ST_ASWKT ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYTYPE ||
-           kind == MYLITE_SPATIAL_FUNCTION_ST_GEOHASH;
+           kind == MYLITE_SPATIAL_FUNCTION_ST_GEOHASH ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_ASGEOJSON;
 }
 
 bool mylite_spatial_function_returns_wkb(enum mylite_spatial_function_kind kind) {
@@ -990,6 +1200,10 @@ int mylite_spatial_evaluate(
         );
     case MYLITE_SPATIAL_FUNCTION_ST_POINTFROMGEOHASH:
         return evaluate_point_from_geohash(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_ASGEOJSON:
+        return evaluate_as_geojson(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_GEOMFROMGEOJSON:
+        return evaluate_from_geojson(kind, arguments, argument_count, out_result, out_error);
     default:
         break;
     }
@@ -1052,6 +1266,273 @@ static int evaluate_point_constructor(
     }
     if (rc != 0) {
         free(bytes);
+        return rc;
+    }
+    return assign_owned_bytes_result(out_result, MYLITE_SPATIAL_RESULT_GEOMETRY, bytes, byte_count);
+}
+
+static int evaluate_as_geojson(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view geometry = {0};
+    struct spatial_wkb_cursor cursor = {0};
+    struct spatial_wkb_cursor bounds_cursor = {0};
+    struct spatial_box box = {0};
+    struct spatial_buffer buffer = {0};
+    bool is_null = false;
+    bool max_digits_is_null = false;
+    bool options_is_null = false;
+    uint32_t max_dec_digits = spatial_geojson_default_max_dec_digits;
+    uint32_t options = 0U;
+    int rc = validate_argument_count(kind, argument_count, 1U, 3U, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (argument_count > 1U) {
+        rc = argument_geojson_uint32(
+            &arguments[1],
+            &max_dec_digits,
+            &max_digits_is_null,
+            error,
+            mylite_spatial_function_name(kind),
+            "max decimal digits"
+        );
+    }
+    if (rc == 0 && argument_count > 2U) {
+        rc = argument_geojson_uint32(
+            &arguments[2],
+            &options,
+            &options_is_null,
+            error,
+            mylite_spatial_function_name(kind),
+            "options"
+        );
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    if (arguments[0].is_null || max_digits_is_null || options_is_null) {
+        return assign_null_result(out_result);
+    }
+    if (argument_count > 2U && options > spatial_geojson_as_max_option) {
+        char text[spatial_double_text_capacity];
+
+        snprintf(text, sizeof(text), "%u", options);
+        return set_geojson_option_error(error, text, mylite_spatial_function_name(kind));
+    }
+    rc = read_single_geometry_argument(kind, arguments, 1U, &geometry, &is_null, error);
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null) {
+        return assign_null_result(out_result);
+    }
+    cursor = (struct spatial_wkb_cursor){.bytes = geometry.wkb, .size = geometry.wkb_size};
+    bounds_cursor = cursor;
+
+    rc = spatial_buffer_append_byte(&buffer, '{');
+    if (rc == 0 && geometry.srid != 0U &&
+        (options & (spatial_geojson_short_crs_option | spatial_geojson_long_crs_option)) != 0U) {
+        char srid_text[spatial_double_text_capacity];
+        const char *prefix = (options & spatial_geojson_long_crs_option) != 0U
+                                 ? "\"crs\": {\"type\": \"name\", \"properties\": {\"name\": "
+                                   "\"urn:ogc:def:crs:EPSG::"
+                                 : "\"crs\": {\"type\": \"name\", \"properties\": {\"name\": "
+                                   "\"EPSG:";
+
+        rc = append_cstring(&buffer, prefix);
+        snprintf(srid_text, sizeof(srid_text), "%u", geometry.srid);
+        if (rc == 0) {
+            rc = spatial_buffer_append(&buffer, srid_text, strlen(srid_text));
+        }
+        if (rc == 0) {
+            rc = append_cstring(&buffer, "\"}}, ");
+        }
+    }
+    if (rc == 0 && (options & spatial_geojson_bbox_option) != 0U) {
+        rc = wkb_bounds_at(&bounds_cursor, &box, error, mylite_spatial_function_name(kind));
+        if (rc == 0) {
+            rc = append_geojson_bbox(&buffer, &box, geometry.srid, max_dec_digits);
+        }
+        if (rc == 0) {
+            rc = append_cstring(&buffer, ", ");
+        }
+    }
+    if (rc == 0) {
+        rc = append_geojson_geometry(
+            &buffer,
+            &cursor,
+            geometry.srid,
+            max_dec_digits,
+            error,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_byte(&buffer, '}');
+    }
+    if (rc != 0) {
+        spatial_buffer_deinit(&buffer);
+        if (error != NULL && error->code == 0 && !error->is_nomem) {
+            return set_nomem_error(error);
+        }
+        return rc;
+    }
+    return assign_owned_bytes_result(
+        out_result,
+        MYLITE_SPATIAL_RESULT_TEXT,
+        buffer.bytes,
+        buffer.size
+    );
+}
+
+static int evaluate_from_geojson(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct json_parser parser = {0};
+    struct json_value value = {0};
+    struct geojson_parse_context context = {0};
+    struct spatial_buffer wkt = {0};
+    enum mylite_spatial_geometry_type actual_type = MYLITE_SPATIAL_GEOMETRY_NONE;
+    unsigned char *bytes = NULL;
+    size_t byte_count = 0U;
+    bool options_is_null = false;
+    bool srid_is_null = false;
+    bool geometry_is_null = false;
+    uint32_t options = spatial_geojson_from_min_option;
+    uint32_t srid = spatial_srid_wgs84;
+    int rc = validate_argument_count(kind, argument_count, 1U, 3U, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (argument_count > 1U) {
+        rc = argument_geojson_uint32(
+            &arguments[1],
+            &options,
+            &options_is_null,
+            error,
+            mylite_spatial_function_name(kind),
+            "options"
+        );
+    }
+    if (rc == 0 && argument_count > 2U) {
+        rc = argument_geojson_srid(
+            &arguments[2],
+            &srid,
+            &srid_is_null,
+            error,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    if (options_is_null || srid_is_null) {
+        return assign_null_result(out_result);
+    }
+    if (options < spatial_geojson_from_min_option || options > spatial_geojson_from_max_option) {
+        char text[spatial_double_text_capacity];
+
+        snprintf(text, sizeof(text), "%u", options);
+        return set_geojson_option_error(error, text, mylite_spatial_function_name(kind));
+    }
+    if (srid != 0U && srid != spatial_srid_wgs84) {
+        return set_spatial_error(
+            error,
+            mysql_error_srs_not_found,
+            "SR001",
+            "There's no spatial reference system with SRID %u.",
+            srid
+        );
+    }
+    if (arguments[0].is_null) {
+        return assign_null_result(out_result);
+    }
+
+    parser = (struct json_parser){
+        .text = (const char *)arguments[0].bytes,
+        .length = arguments[0].byte_count,
+        .position = 0U,
+        .result = {.status = MYLITE_JSON_NORMALIZE_OK, .position = 0U},
+    };
+    rc = mylite_json_internal_parse_document(&parser, &value);
+    if (rc != MYLITE_OK) {
+        mylite_json_internal_value_deinit(&value);
+        return set_invalid_json_text_error(
+            error,
+            &parser.result,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    context = (struct geojson_parse_context){
+        .srid = srid,
+        .strip_extra_dimensions = options != spatial_geojson_from_min_option,
+        .function_name = mylite_spatial_function_name(kind),
+        .error = error,
+    };
+    rc = append_geojson_geometry_as_wkt(&value, &context, &wkt, &geometry_is_null);
+    if (rc == 0 && geometry_is_null) {
+        mylite_json_internal_value_deinit(&value);
+        spatial_buffer_deinit(&wkt);
+        return assign_null_result(out_result);
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_byte(&wkt, '\0');
+    }
+    if (rc == 0) {
+        rc = parse_wkt_to_internal(
+            (const char *)wkt.bytes,
+            wkt.size - 1U,
+            mylite_spatial_function_name(kind),
+            &bytes,
+            &byte_count,
+            &actual_type,
+            error
+        );
+        (void)actual_type;
+    }
+    if (rc == 0 && srid != 0U) {
+        unsigned char *srid_bytes = NULL;
+        size_t srid_byte_count = 0U;
+        struct spatial_geometry_view parsed = {
+            .wkb = bytes + spatial_internal_srid_size,
+            .wkb_size = byte_count - spatial_internal_srid_size,
+            .srid = 0U,
+        };
+
+        rc = make_internal_geometry_from_wkb(
+            parsed.wkb,
+            parsed.wkb_size,
+            srid,
+            &srid_bytes,
+            &srid_byte_count,
+            error
+        );
+        if (rc == 0) {
+            free(bytes);
+            bytes = srid_bytes;
+            byte_count = srid_byte_count;
+        } else {
+            free(srid_bytes);
+        }
+    }
+    mylite_json_internal_value_deinit(&value);
+    spatial_buffer_deinit(&wkt);
+    if (rc != 0) {
+        free(bytes);
+        if (error != NULL && error->code == 0 && !error->is_nomem) {
+            return set_nomem_error(error);
+        }
         return rc;
     }
     return assign_owned_bytes_result(out_result, MYLITE_SPATIAL_RESULT_GEOMETRY, bytes, byte_count);
@@ -2896,6 +3377,180 @@ static int set_invalid_geohash_error(
     );
 }
 
+static int set_invalid_json_text_error(
+    struct mylite_spatial_error *error,
+    const struct mylite_json_normalize_result *result,
+    const char *function_name
+) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+
+    return set_spatial_error(
+        error,
+        mysql_error_invalid_json_text_in_function,
+        "22032",
+        "Invalid JSON text in argument 1 to function %s: \"%s\" at position %zu.",
+        spatial_diagnostic_function_name(
+            function_name,
+            diagnostic_function_name,
+            sizeof(diagnostic_function_name)
+        ),
+        mylite_json_invalid_text_error_message(result),
+        result == NULL ? 0U : result->position
+    );
+}
+
+static int set_invalid_geojson_missing_member_error(
+    struct mylite_spatial_error *error,
+    const char *member,
+    const char *function_name
+) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+
+    return set_spatial_error(
+        error,
+        mysql_error_invalid_geojson_missing_member,
+        "HY000",
+        "Invalid GeoJSON data provided to function %s: Missing required member '%s'",
+        spatial_diagnostic_function_name(
+            function_name,
+            diagnostic_function_name,
+            sizeof(diagnostic_function_name)
+        ),
+        member == NULL ? "" : member
+    );
+}
+
+static int set_invalid_geojson_data_error(
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+
+    return set_spatial_error(
+        error,
+        mysql_error_invalid_geojson_data,
+        "HY000",
+        "Invalid GeoJSON data provided to function %s",
+        spatial_diagnostic_function_name(
+            function_name,
+            diagnostic_function_name,
+            sizeof(diagnostic_function_name)
+        )
+    );
+}
+
+static int set_unsupported_geojson_dimensions_error(
+    struct mylite_spatial_error *error,
+    size_t dimension_count,
+    const char *function_name
+) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+
+    return set_spatial_error(
+        error,
+        mysql_error_unsupported_geojson_dimensions,
+        "HY000",
+        "Unsupported number of coordinate dimensions in function %s: Found %zu, expected 2",
+        spatial_diagnostic_function_name(
+            function_name,
+            diagnostic_function_name,
+            sizeof(diagnostic_function_name)
+        ),
+        dimension_count
+    );
+}
+
+static int set_geojson_option_error(
+    struct mylite_spatial_error *error,
+    const char *value,
+    const char *function_name
+) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+    const char *argument_name = "options";
+
+    if (function_name != NULL &&
+        function_name_matches(function_name, strlen(function_name), "ST_GeomFromGeoJSON")) {
+        argument_name = "option";
+    }
+    return set_spatial_error(
+        error,
+        mysql_error_invalid_geohash,
+        "HY000",
+        "Incorrect %s value: '%s' for function %s",
+        argument_name,
+        value == NULL ? "" : value,
+        spatial_diagnostic_function_name(
+            function_name,
+            diagnostic_function_name,
+            sizeof(diagnostic_function_name)
+        )
+    );
+}
+
+static int set_geojson_max_dec_digits_error(
+    struct mylite_spatial_error *error,
+    const char *value,
+    const char *function_name
+) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+
+    return set_spatial_error(
+        error,
+        mysql_error_invalid_geohash,
+        "HY000",
+        "Incorrect max decimal digits value: '%s' for function %s",
+        value == NULL ? "" : value,
+        spatial_diagnostic_function_name(
+            function_name,
+            diagnostic_function_name,
+            sizeof(diagnostic_function_name)
+        )
+    );
+}
+
+static int set_geojson_longitude_error(
+    struct mylite_spatial_error *error,
+    double longitude,
+    const char *function_name
+) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+
+    return set_spatial_error(
+        error,
+        mysql_error_geojson_longitude_out_of_range,
+        "22S02",
+        "Longitude %.6f is out of range in function %s. It must be within (-180.000000, "
+        "180.000000].",
+        longitude,
+        spatial_diagnostic_function_name(
+            function_name,
+            diagnostic_function_name,
+            sizeof(diagnostic_function_name)
+        )
+    );
+}
+
+static int set_geojson_latitude_error(
+    struct mylite_spatial_error *error,
+    double latitude,
+    const char *function_name
+) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+
+    return set_spatial_error(
+        error,
+        mysql_error_geojson_latitude_out_of_range,
+        "22S03",
+        "Latitude %.6f is out of range in function %s. It must be within [-90.000000, 90.000000].",
+        latitude,
+        spatial_diagnostic_function_name(
+            function_name,
+            diagnostic_function_name,
+            sizeof(diagnostic_function_name)
+        )
+    );
+}
+
 static int set_parameter_count_error(
     struct mylite_spatial_error *error,
     enum mylite_spatial_function_kind kind
@@ -3110,6 +3765,142 @@ static int argument_geohash_uint32(
         return set_incorrect_argument_type_error(error, argument_name, function_name);
     }
     *out_value = (uint32_t)value;
+    return 0;
+}
+
+static int argument_geojson_uint32(
+    const struct mylite_spatial_argument *argument,
+    uint32_t *out_value,
+    bool *out_is_null,
+    struct mylite_spatial_error *error,
+    const char *function_name,
+    const char *argument_name
+) {
+    char *text = NULL;
+    char *end = NULL;
+    char display[spatial_double_text_capacity];
+    double value = 0.0;
+
+    if (out_value == NULL || out_is_null == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    *out_value = 0U;
+    *out_is_null = argument == NULL || argument->is_null;
+    if (*out_is_null) {
+        return 0;
+    }
+    if (argument->has_numeric) {
+        value = argument->numeric;
+        snprintf(display, sizeof(display), "%.15g", value);
+        text = display;
+        if (!isfinite(value) || value < 0.0 || value > (double)UINT32_MAX) {
+            if (strcmp(argument_name, "max decimal digits") == 0) {
+                return set_geojson_max_dec_digits_error(error, text, function_name);
+            }
+            return set_geojson_option_error(error, text, function_name);
+        }
+        if (floor(value) != value) {
+            return set_incorrect_argument_type_error(error, argument_name, function_name);
+        }
+    } else {
+        if (argument->byte_count == SIZE_MAX) {
+            return set_nomem_error(error);
+        }
+        text = malloc(argument->byte_count + 1U);
+        if (text == NULL) {
+            return set_nomem_error(error);
+        }
+        if (argument->byte_count != 0U) {
+            memcpy(text, argument->bytes, argument->byte_count);
+        }
+        text[argument->byte_count] = '\0';
+        errno = 0;
+        value = strtod(text, &end);
+        if (end == text) {
+            value = 0.0;
+        } else if (errno == ERANGE || !isfinite(value)) {
+            int rc = strcmp(argument_name, "max decimal digits") == 0
+                         ? set_geojson_max_dec_digits_error(error, text, function_name)
+                         : set_geojson_option_error(error, text, function_name);
+
+            free(text);
+            return rc;
+        }
+        if (value < 0.0 || value > (double)UINT32_MAX) {
+            int rc = strcmp(argument_name, "max decimal digits") == 0
+                         ? set_geojson_max_dec_digits_error(error, text, function_name)
+                         : set_geojson_option_error(error, text, function_name);
+
+            free(text);
+            return rc;
+        }
+    }
+    *out_value = (uint32_t)value;
+    if (!argument->has_numeric) {
+        free(text);
+    }
+    return 0;
+}
+
+static int argument_geojson_srid(
+    const struct mylite_spatial_argument *argument,
+    uint32_t *out_srid,
+    bool *out_is_null,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    char *text = NULL;
+    char *end = NULL;
+    double value = 0.0;
+    bool from_numeric_argument = false;
+
+    if (out_srid == NULL || out_is_null == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    *out_srid = 0U;
+    *out_is_null = argument == NULL || argument->is_null;
+    if (*out_is_null) {
+        return 0;
+    }
+    if (argument->has_numeric) {
+        value = argument->numeric;
+        from_numeric_argument = true;
+    } else {
+        if (argument->byte_count == SIZE_MAX) {
+            return set_nomem_error(error);
+        }
+        text = malloc(argument->byte_count + 1U);
+        if (text == NULL) {
+            return set_nomem_error(error);
+        }
+        if (argument->byte_count != 0U) {
+            memcpy(text, argument->bytes, argument->byte_count);
+        }
+        text[argument->byte_count] = '\0';
+        errno = 0;
+        value = strtod(text, &end);
+        if (end == text) {
+            value = 0.0;
+        }
+        free(text);
+    }
+    if (!isfinite(value) || value < 0.0 || value > (double)UINT32_MAX ||
+        (from_numeric_argument && floor(value) != value)) {
+        char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+
+        return set_spatial_error(
+            error,
+            mysql_error_numeric_value_out_of_range,
+            "22003",
+            "SRID value is out of range in '%s'",
+            spatial_diagnostic_function_name(
+                function_name,
+                diagnostic_function_name,
+                sizeof(diagnostic_function_name)
+            )
+        );
+    }
+    *out_srid = (uint32_t)value;
     return 0;
 }
 
@@ -4914,6 +5705,882 @@ static int append_double_as_text(struct spatial_buffer *buffer, double value) {
         return -1;
     }
     return spatial_buffer_append(buffer, text, (size_t)written);
+}
+
+static int append_geojson_geometry(
+    struct spatial_buffer *buffer,
+    struct spatial_wkb_cursor *cursor,
+    uint32_t srid,
+    uint32_t max_dec_digits,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    bool little_endian = false;
+    enum mylite_spatial_geometry_type type = MYLITE_SPATIAL_GEOMETRY_NONE;
+    uint32_t count = 0U;
+    int rc = cursor_read_header(cursor, &little_endian, &type, error, function_name);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (type == MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION) {
+        rc = append_cstring(buffer, "\"type\": \"GeometryCollection\", \"geometries\": [");
+        if (rc == 0) {
+            rc = cursor_read_u32(cursor, little_endian, &count, error, function_name);
+        }
+        for (uint32_t index = 0U; rc == 0 && index < count; ++index) {
+            if (index > 0U) {
+                rc = append_cstring(buffer, ", ");
+            }
+            if (rc == 0) {
+                rc = spatial_buffer_append_byte(buffer, '{');
+            }
+            if (rc == 0) {
+                rc = append_geojson_geometry(
+                    buffer,
+                    cursor,
+                    srid,
+                    max_dec_digits,
+                    error,
+                    function_name
+                );
+            }
+            if (rc == 0) {
+                rc = spatial_buffer_append_byte(buffer, '}');
+            }
+        }
+        if (rc == 0) {
+            rc = spatial_buffer_append_byte(buffer, ']');
+        }
+        return rc;
+    }
+
+    rc = append_cstring(buffer, "\"type\": \"");
+    if (rc == 0) {
+        rc = append_cstring(buffer, geojson_geometry_type_name(type));
+    }
+    if (rc == 0) {
+        rc = append_cstring(buffer, "\", \"coordinates\": ");
+    }
+    if (rc == 0) {
+        rc = append_geojson_coordinates(
+            buffer,
+            cursor,
+            type,
+            little_endian,
+            srid,
+            max_dec_digits,
+            error,
+            function_name
+        );
+    }
+    return rc;
+}
+
+static int append_geojson_coordinates(
+    struct spatial_buffer *buffer,
+    struct spatial_wkb_cursor *cursor,
+    enum mylite_spatial_geometry_type type,
+    bool little_endian,
+    uint32_t srid,
+    uint32_t max_dec_digits,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    switch (type) {
+    case MYLITE_SPATIAL_GEOMETRY_POINT:
+        return append_geojson_point_coordinates(
+            buffer,
+            cursor,
+            little_endian,
+            srid,
+            max_dec_digits,
+            error,
+            function_name
+        );
+    case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
+        return append_geojson_line_coordinates(
+            buffer,
+            cursor,
+            little_endian,
+            srid,
+            max_dec_digits,
+            error,
+            function_name
+        );
+    case MYLITE_SPATIAL_GEOMETRY_POLYGON:
+        return append_geojson_polygon_coordinates(
+            buffer,
+            cursor,
+            little_endian,
+            srid,
+            max_dec_digits,
+            error,
+            function_name
+        );
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOINT:
+    case MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING:
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOLYGON:
+        return append_geojson_collection_coordinates(
+            buffer,
+            cursor,
+            type,
+            little_endian,
+            srid,
+            max_dec_digits,
+            error,
+            function_name
+        );
+    case MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION:
+    case MYLITE_SPATIAL_GEOMETRY_NONE:
+        break;
+    }
+    return set_invalid_gis_data_error(error, function_name);
+}
+
+static int append_geojson_point_coordinates(
+    struct spatial_buffer *buffer,
+    struct spatial_wkb_cursor *cursor,
+    bool little_endian,
+    uint32_t srid, // NOLINT(bugprone-easily-swappable-parameters): GeoJSON axis options.
+    uint32_t max_dec_digits,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    double coordinate_x = 0.0;
+    double coordinate_y = 0.0;
+    double output_x = 0.0;
+    double output_y = 0.0;
+    int rc = cursor_read_double(cursor, little_endian, &coordinate_x, error, function_name);
+
+    if (rc == 0) {
+        rc = cursor_read_double(cursor, little_endian, &coordinate_y, error, function_name);
+    }
+    output_x = srid == spatial_srid_wgs84 ? coordinate_y : coordinate_x;
+    output_y = srid == spatial_srid_wgs84 ? coordinate_x : coordinate_y;
+    if (rc == 0) {
+        rc = spatial_buffer_append_byte(buffer, '[');
+    }
+    if (rc == 0) {
+        rc = append_geojson_number(buffer, output_x, max_dec_digits);
+    }
+    if (rc == 0) {
+        rc = append_cstring(buffer, ", ");
+    }
+    if (rc == 0) {
+        rc = append_geojson_number(buffer, output_y, max_dec_digits);
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_byte(buffer, ']');
+    }
+    return rc;
+}
+
+static int append_geojson_line_coordinates(
+    struct spatial_buffer *buffer,
+    struct spatial_wkb_cursor *cursor,
+    bool little_endian,
+    uint32_t srid,
+    uint32_t max_dec_digits,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    uint32_t count = 0U;
+    int rc = cursor_read_u32(cursor, little_endian, &count, error, function_name);
+
+    if (rc == 0) {
+        rc = spatial_buffer_append_byte(buffer, '[');
+    }
+    for (uint32_t index = 0U; rc == 0 && index < count; ++index) {
+        if (index > 0U) {
+            rc = append_cstring(buffer, ", ");
+        }
+        if (rc == 0) {
+            rc = append_geojson_point_coordinates(
+                buffer,
+                cursor,
+                little_endian,
+                srid,
+                max_dec_digits,
+                error,
+                function_name
+            );
+        }
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_byte(buffer, ']');
+    }
+    return rc;
+}
+
+static int append_geojson_polygon_coordinates(
+    struct spatial_buffer *buffer,
+    struct spatial_wkb_cursor *cursor,
+    bool little_endian,
+    uint32_t srid,
+    uint32_t max_dec_digits,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    uint32_t ring_count = 0U;
+    int rc = cursor_read_u32(cursor, little_endian, &ring_count, error, function_name);
+
+    if (rc == 0) {
+        rc = spatial_buffer_append_byte(buffer, '[');
+    }
+    for (uint32_t ring_index = 0U; rc == 0 && ring_index < ring_count; ++ring_index) {
+        if (ring_index > 0U) {
+            rc = append_cstring(buffer, ", ");
+        }
+        if (rc == 0) {
+            rc = append_geojson_line_coordinates(
+                buffer,
+                cursor,
+                little_endian,
+                srid,
+                max_dec_digits,
+                error,
+                function_name
+            );
+        }
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_byte(buffer, ']');
+    }
+    return rc;
+}
+
+static int append_geojson_collection_coordinates(
+    struct spatial_buffer *buffer,
+    struct spatial_wkb_cursor *cursor,
+    enum mylite_spatial_geometry_type type,
+    bool little_endian,
+    uint32_t srid,
+    uint32_t max_dec_digits,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    enum mylite_spatial_geometry_type expected_type = collection_expected_nested_type(type);
+    uint32_t count = 0U;
+    int rc = cursor_read_u32(cursor, little_endian, &count, error, function_name);
+
+    if (rc == 0) {
+        rc = spatial_buffer_append_byte(buffer, '[');
+    }
+    for (uint32_t index = 0U; rc == 0 && index < count; ++index) {
+        bool nested_little_endian = false;
+        enum mylite_spatial_geometry_type nested_type = MYLITE_SPATIAL_GEOMETRY_NONE;
+
+        if (index > 0U) {
+            rc = append_cstring(buffer, ", ");
+        }
+        if (rc == 0) {
+            rc = cursor_read_header(
+                cursor,
+                &nested_little_endian,
+                &nested_type,
+                error,
+                function_name
+            );
+        }
+        if (rc == 0 && nested_type != expected_type) {
+            rc = set_invalid_gis_data_error(error, function_name);
+        }
+        if (rc == 0) {
+            rc = append_geojson_coordinates(
+                buffer,
+                cursor,
+                nested_type,
+                nested_little_endian,
+                srid,
+                max_dec_digits,
+                error,
+                function_name
+            );
+        }
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_byte(buffer, ']');
+    }
+    return rc;
+}
+
+static int append_geojson_number(
+    struct spatial_buffer *buffer,
+    double value,
+    uint32_t max_dec_digits
+) {
+    char text[spatial_geojson_double_text_capacity];
+    char *decimal = NULL;
+    char *exponent = NULL;
+    size_t length = 0U;
+    int written = 0;
+
+    if (value == 0.0) {
+        value = 0.0;
+    }
+    if (max_dec_digits > spatial_geojson_default_max_dec_digits) {
+        max_dec_digits = spatial_geojson_default_max_dec_digits;
+    }
+    written = snprintf(text, sizeof(text), "%.*f", (int)max_dec_digits, value);
+    if (written < 0 || (size_t)written >= sizeof(text)) {
+        return -1;
+    }
+    decimal = strchr(text, '.');
+    exponent = strchr(text, 'e');
+    if (exponent == NULL) {
+        exponent = strchr(text, 'E');
+    }
+    if (decimal != NULL && exponent == NULL) {
+        char *last = text + strlen(text) - 1U;
+
+        while (last > decimal + 1 && *last == '0') {
+            *last = '\0';
+            --last;
+        }
+    } else if (decimal == NULL && exponent == NULL) {
+        length = strlen(text);
+        if (length + 2U >= sizeof(text)) {
+            return -1;
+        }
+        text[length] = '.';
+        text[length + 1U] = '0';
+        text[length + 2U] = '\0';
+    }
+    return spatial_buffer_append(buffer, text, strlen(text));
+}
+
+static int append_geojson_bbox(
+    struct spatial_buffer *buffer,
+    const struct spatial_box *box,
+    uint32_t srid, // NOLINT(bugprone-easily-swappable-parameters): GeoJSON axis options.
+    uint32_t max_dec_digits
+) {
+    double values[4] = {0.0, 0.0, 0.0, 0.0};
+    int rc = append_cstring(buffer, "\"bbox\": ");
+
+    if (box == NULL || !box->has_value) {
+        if (rc == 0) {
+            rc = append_cstring(buffer, "[]");
+        }
+        return rc;
+    }
+    if (srid == spatial_srid_wgs84) {
+        values[0] = box->min_y;
+        values[1] = box->min_x;
+        values[2] = box->max_y;
+        values[3] = box->max_x;
+    } else {
+        values[0] = box->min_x;
+        values[1] = box->min_y;
+        values[2] = box->max_x;
+        values[3] = box->max_y;
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_byte(buffer, '[');
+    }
+    for (size_t index = 0U; rc == 0 && index < 4U; ++index) {
+        if (index > 0U) {
+            rc = append_cstring(buffer, ", ");
+        }
+        if (rc == 0) {
+            rc = append_geojson_number(buffer, values[index], max_dec_digits);
+        }
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_byte(buffer, ']');
+    }
+    return rc;
+}
+
+static int append_geojson_geometry_as_wkt(
+    const struct json_value *value,
+    struct geojson_parse_context *context,
+    struct spatial_buffer *out_wkt,
+    bool *out_is_null
+) {
+    const struct json_value *type = geojson_member_value(value, "type");
+    const struct json_value *coordinates = geojson_member_value(value, "coordinates");
+    const struct json_value *geometries = geojson_member_value(value, "geometries");
+    int rc = 0;
+
+    if (out_is_null != NULL) {
+        *out_is_null = value == NULL || value->kind == JSON_VALUE_NULL;
+    }
+    if (value == NULL || value->kind == JSON_VALUE_NULL) {
+        return 0;
+    }
+    if (value->kind != JSON_VALUE_OBJECT || type == NULL || type->kind != JSON_VALUE_STRING) {
+        return set_invalid_geojson_data_error(context->error, context->function_name);
+    }
+    if (geojson_string_equals(type, "Feature")) {
+        return append_geojson_feature_as_wkt(value, context, out_wkt, out_is_null);
+    }
+    if (geojson_string_equals(type, "FeatureCollection")) {
+        if (out_is_null != NULL) {
+            *out_is_null = false;
+        }
+        return append_geojson_feature_collection_as_wkt(value, context, out_wkt);
+    }
+    if (geojson_string_equals(type, "Point")) {
+        if (coordinates == NULL) {
+            return set_invalid_geojson_missing_member_error(
+                context->error,
+                "coordinates",
+                context->function_name
+            );
+        }
+        rc = append_cstring(out_wkt, "POINT(");
+        if (rc == 0) {
+            rc = append_geojson_coordinate_as_wkt(coordinates, context, out_wkt);
+        }
+        if (rc == 0) {
+            rc = spatial_buffer_append_byte(out_wkt, ')');
+        }
+        return rc;
+    }
+    if (geojson_string_equals(type, "LineString")) {
+        if (coordinates == NULL) {
+            return set_invalid_geojson_missing_member_error(
+                context->error,
+                "coordinates",
+                context->function_name
+            );
+        }
+        rc = append_cstring(out_wkt, "LINESTRING(");
+        if (rc == 0) {
+            rc = append_geojson_coordinate_list_as_wkt(coordinates, context, out_wkt);
+        }
+        if (rc == 0) {
+            rc = spatial_buffer_append_byte(out_wkt, ')');
+        }
+        return rc;
+    }
+    if (geojson_string_equals(type, "Polygon")) {
+        if (coordinates == NULL) {
+            return set_invalid_geojson_missing_member_error(
+                context->error,
+                "coordinates",
+                context->function_name
+            );
+        }
+        rc = append_cstring(out_wkt, "POLYGON(");
+        if (rc == 0) {
+            rc = append_geojson_ring_list_as_wkt(coordinates, context, out_wkt);
+        }
+        if (rc == 0) {
+            rc = spatial_buffer_append_byte(out_wkt, ')');
+        }
+        return rc;
+    }
+    if (geojson_string_equals(type, "MultiPoint")) {
+        if (coordinates == NULL || coordinates->kind != JSON_VALUE_ARRAY) {
+            return coordinates == NULL
+                       ? set_invalid_geojson_missing_member_error(
+                             context->error,
+                             "coordinates",
+                             context->function_name
+                         )
+                       : set_invalid_geojson_data_error(context->error, context->function_name);
+        }
+        rc = append_cstring(out_wkt, "MULTIPOINT(");
+        for (size_t index = 0U; rc == 0 && index < coordinates->payload.array.count; ++index) {
+            if (index > 0U) {
+                rc = spatial_buffer_append_byte(out_wkt, ',');
+            }
+            if (rc == 0) {
+                rc = spatial_buffer_append_byte(out_wkt, '(');
+            }
+            if (rc == 0) {
+                rc = append_geojson_coordinate_as_wkt(
+                    &coordinates->payload.array.values[index],
+                    context,
+                    out_wkt
+                );
+            }
+            if (rc == 0) {
+                rc = spatial_buffer_append_byte(out_wkt, ')');
+            }
+        }
+        if (rc == 0) {
+            rc = spatial_buffer_append_byte(out_wkt, ')');
+        }
+        return rc;
+    }
+    if (geojson_string_equals(type, "MultiLineString")) {
+        if (coordinates == NULL || coordinates->kind != JSON_VALUE_ARRAY) {
+            return coordinates == NULL
+                       ? set_invalid_geojson_missing_member_error(
+                             context->error,
+                             "coordinates",
+                             context->function_name
+                         )
+                       : set_invalid_geojson_data_error(context->error, context->function_name);
+        }
+        rc = append_cstring(out_wkt, "MULTILINESTRING(");
+        for (size_t index = 0U; rc == 0 && index < coordinates->payload.array.count; ++index) {
+            if (index > 0U) {
+                rc = spatial_buffer_append_byte(out_wkt, ',');
+            }
+            if (rc == 0) {
+                rc = spatial_buffer_append_byte(out_wkt, '(');
+            }
+            if (rc == 0) {
+                rc = append_geojson_coordinate_list_as_wkt(
+                    &coordinates->payload.array.values[index],
+                    context,
+                    out_wkt
+                );
+            }
+            if (rc == 0) {
+                rc = spatial_buffer_append_byte(out_wkt, ')');
+            }
+        }
+        if (rc == 0) {
+            rc = spatial_buffer_append_byte(out_wkt, ')');
+        }
+        return rc;
+    }
+    if (geojson_string_equals(type, "MultiPolygon")) {
+        if (coordinates == NULL) {
+            return set_invalid_geojson_missing_member_error(
+                context->error,
+                "coordinates",
+                context->function_name
+            );
+        }
+        rc = append_cstring(out_wkt, "MULTIPOLYGON(");
+        if (rc == 0) {
+            rc = append_geojson_polygon_list_as_wkt(coordinates, context, out_wkt);
+        }
+        if (rc == 0) {
+            rc = spatial_buffer_append_byte(out_wkt, ')');
+        }
+        return rc;
+    }
+    if (geojson_string_equals(type, "GeometryCollection")) {
+        if (geometries == NULL || geometries->kind != JSON_VALUE_ARRAY) {
+            return geometries == NULL
+                       ? set_invalid_geojson_missing_member_error(
+                             context->error,
+                             "geometries",
+                             context->function_name
+                         )
+                       : set_invalid_geojson_data_error(context->error, context->function_name);
+        }
+        rc = append_cstring(out_wkt, "GEOMETRYCOLLECTION(");
+        for (size_t index = 0U; rc == 0 && index < geometries->payload.array.count; ++index) {
+            bool is_null = false;
+
+            if (index > 0U) {
+                rc = spatial_buffer_append_byte(out_wkt, ',');
+            }
+            if (rc == 0) {
+                rc = append_geojson_geometry_as_wkt(
+                    &geometries->payload.array.values[index],
+                    context,
+                    out_wkt,
+                    &is_null
+                );
+            }
+            if (rc == 0 && is_null) {
+                rc = set_invalid_geojson_data_error(context->error, context->function_name);
+            }
+        }
+        if (rc == 0) {
+            rc = spatial_buffer_append_byte(out_wkt, ')');
+        }
+        return rc;
+    }
+    return set_invalid_geojson_data_error(context->error, context->function_name);
+}
+
+static int append_geojson_feature_as_wkt(
+    const struct json_value *value,
+    struct geojson_parse_context *context,
+    struct spatial_buffer *out_wkt,
+    bool *out_is_null
+) {
+    const struct json_value *geometry = geojson_member_value(value, "geometry");
+    const struct json_value *properties = geojson_member_value(value, "properties");
+
+    if (properties == NULL) {
+        return set_invalid_geojson_missing_member_error(
+            context->error,
+            "properties",
+            context->function_name
+        );
+    }
+    if (geometry == NULL) {
+        return set_invalid_geojson_missing_member_error(
+            context->error,
+            "geometry",
+            context->function_name
+        );
+    }
+    return append_geojson_geometry_as_wkt(geometry, context, out_wkt, out_is_null);
+}
+
+static int append_geojson_feature_collection_as_wkt(
+    const struct json_value *value,
+    struct geojson_parse_context *context,
+    struct spatial_buffer *out_wkt
+) {
+    const struct json_value *features = geojson_member_value(value, "features");
+    int rc = 0;
+
+    if (features == NULL || features->kind != JSON_VALUE_ARRAY) {
+        return features == NULL
+                   ? set_invalid_geojson_missing_member_error(
+                         context->error,
+                         "features",
+                         context->function_name
+                     )
+                   : set_invalid_geojson_data_error(context->error, context->function_name);
+    }
+    rc = append_cstring(out_wkt, "GEOMETRYCOLLECTION(");
+    for (size_t index = 0U; rc == 0 && index < features->payload.array.count; ++index) {
+        bool is_null = false;
+
+        if (index > 0U) {
+            rc = spatial_buffer_append_byte(out_wkt, ',');
+        }
+        if (rc == 0) {
+            rc = append_geojson_geometry_as_wkt(
+                &features->payload.array.values[index],
+                context,
+                out_wkt,
+                &is_null
+            );
+        }
+        if (rc == 0 && is_null) {
+            rc = set_invalid_geojson_data_error(context->error, context->function_name);
+        }
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_byte(out_wkt, ')');
+    }
+    return rc;
+}
+
+static int append_geojson_coordinate_as_wkt(
+    const struct json_value *value,
+    struct geojson_parse_context *context,
+    struct spatial_buffer *out_wkt
+) {
+    double longitude = 0.0;
+    double latitude = 0.0;
+    double coordinate_x = 0.0;
+    double coordinate_y = 0.0;
+    int rc = 0;
+
+    if (value == NULL || value->kind != JSON_VALUE_ARRAY || value->payload.array.count < 2U) {
+        return set_invalid_geojson_data_error(context->error, context->function_name);
+    }
+    if (value->payload.array.count > 2U && !context->strip_extra_dimensions) {
+        return set_unsupported_geojson_dimensions_error(
+            context->error,
+            value->payload.array.count,
+            context->function_name
+        );
+    }
+    rc = geojson_coordinate_number(&value->payload.array.values[0], &longitude, context);
+    if (rc == 0) {
+        rc = geojson_coordinate_number(&value->payload.array.values[1], &latitude, context);
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    if (context->srid == spatial_srid_wgs84) {
+        if (longitude <= spatial_geohash_longitude_min ||
+            longitude > spatial_geohash_longitude_max) {
+            return set_geojson_longitude_error(context->error, longitude, context->function_name);
+        }
+        if (latitude < spatial_geohash_latitude_min || latitude > spatial_geohash_latitude_max) {
+            return set_geojson_latitude_error(context->error, latitude, context->function_name);
+        }
+        coordinate_x = latitude;
+        coordinate_y = longitude;
+    } else {
+        coordinate_x = longitude;
+        coordinate_y = latitude;
+    }
+    rc = append_double_as_text(out_wkt, coordinate_x);
+    if (rc == 0) {
+        rc = spatial_buffer_append_byte(out_wkt, ' ');
+    }
+    if (rc == 0) {
+        rc = append_double_as_text(out_wkt, coordinate_y);
+    }
+    return rc;
+}
+
+static int append_geojson_coordinate_list_as_wkt(
+    const struct json_value *value,
+    struct geojson_parse_context *context,
+    struct spatial_buffer *out_wkt
+) {
+    int rc = 0;
+
+    if (value == NULL || value->kind != JSON_VALUE_ARRAY) {
+        return set_invalid_geojson_data_error(context->error, context->function_name);
+    }
+    for (size_t index = 0U; rc == 0 && index < value->payload.array.count; ++index) {
+        if (index > 0U) {
+            rc = spatial_buffer_append_byte(out_wkt, ',');
+        }
+        if (rc == 0) {
+            rc = append_geojson_coordinate_as_wkt(
+                &value->payload.array.values[index],
+                context,
+                out_wkt
+            );
+        }
+    }
+    return rc;
+}
+
+static int append_geojson_ring_list_as_wkt(
+    const struct json_value *value,
+    struct geojson_parse_context *context,
+    struct spatial_buffer *out_wkt
+) {
+    int rc = 0;
+
+    if (value == NULL || value->kind != JSON_VALUE_ARRAY) {
+        return set_invalid_geojson_data_error(context->error, context->function_name);
+    }
+    for (size_t index = 0U; rc == 0 && index < value->payload.array.count; ++index) {
+        if (index > 0U) {
+            rc = spatial_buffer_append_byte(out_wkt, ',');
+        }
+        if (rc == 0) {
+            rc = spatial_buffer_append_byte(out_wkt, '(');
+        }
+        if (rc == 0) {
+            rc = append_geojson_coordinate_list_as_wkt(
+                &value->payload.array.values[index],
+                context,
+                out_wkt
+            );
+        }
+        if (rc == 0) {
+            rc = spatial_buffer_append_byte(out_wkt, ')');
+        }
+    }
+    return rc;
+}
+
+static int append_geojson_polygon_list_as_wkt(
+    const struct json_value *value,
+    struct geojson_parse_context *context,
+    struct spatial_buffer *out_wkt
+) {
+    int rc = 0;
+
+    if (value == NULL || value->kind != JSON_VALUE_ARRAY) {
+        return set_invalid_geojson_data_error(context->error, context->function_name);
+    }
+    for (size_t index = 0U; rc == 0 && index < value->payload.array.count; ++index) {
+        if (index > 0U) {
+            rc = spatial_buffer_append_byte(out_wkt, ',');
+        }
+        if (rc == 0) {
+            rc = spatial_buffer_append_byte(out_wkt, '(');
+        }
+        if (rc == 0) {
+            rc = append_geojson_ring_list_as_wkt(
+                &value->payload.array.values[index],
+                context,
+                out_wkt
+            );
+        }
+        if (rc == 0) {
+            rc = spatial_buffer_append_byte(out_wkt, ')');
+        }
+    }
+    return rc;
+}
+
+static int geojson_coordinate_number(
+    const struct json_value *value,
+    double *out_value,
+    struct geojson_parse_context *context
+) {
+    char *end = NULL;
+    double parsed = 0.0;
+
+    if (value == NULL || out_value == NULL || value->kind != JSON_VALUE_NUMBER ||
+        value->payload.text.text == NULL) {
+        return set_invalid_geojson_data_error(context->error, context->function_name);
+    }
+    errno = 0;
+    parsed = strtod(value->payload.text.text, &end);
+    if (end != value->payload.text.text + value->payload.text.length || errno == ERANGE ||
+        !isfinite(parsed)) {
+        return set_invalid_geojson_data_error(context->error, context->function_name);
+    }
+    *out_value = parsed;
+    return 0;
+}
+
+static const char *geojson_geometry_type_name(enum mylite_spatial_geometry_type type) {
+    switch (type) {
+    case MYLITE_SPATIAL_GEOMETRY_POINT:
+        return "Point";
+    case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
+        return "LineString";
+    case MYLITE_SPATIAL_GEOMETRY_POLYGON:
+        return "Polygon";
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOINT:
+        return "MultiPoint";
+    case MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING:
+        return "MultiLineString";
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOLYGON:
+        return "MultiPolygon";
+    case MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION:
+        return "GeometryCollection";
+    case MYLITE_SPATIAL_GEOMETRY_NONE:
+        break;
+    }
+    return "Geometry";
+}
+
+static const struct json_value *geojson_member_value(
+    const struct json_value *value,
+    const char *member
+) {
+    if (value == NULL || value->kind != JSON_VALUE_OBJECT || member == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < value->payload.object.count; ++index) {
+        const struct json_member *candidate = &value->payload.object.members[index];
+
+        if (geojson_member_name_equals(candidate->key, candidate->key_length, member)) {
+            return candidate->value;
+        }
+    }
+    return NULL;
+}
+
+static bool geojson_member_name_equals(const char *left, size_t left_length, const char *right) {
+    if (left == NULL || right == NULL || strlen(right) != left_length) {
+        return false;
+    }
+    for (size_t index = 0U; index < left_length; ++index) {
+        if (tolower((unsigned char)left[index]) != tolower((unsigned char)right[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool geojson_string_equals(const struct json_value *value, const char *expected) {
+    if (value == NULL || value->kind != JSON_VALUE_STRING || expected == NULL) {
+        return false;
+    }
+    return value->payload.text.length == strlen(expected) &&
+           memcmp(value->payload.text.text, expected, value->payload.text.length) == 0;
 }
 
 static int append_cstring(struct spatial_buffer *buffer, const char *text) {

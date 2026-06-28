@@ -19,6 +19,7 @@ enum {
     spatial_internal_srid_size = 4,
     spatial_wkb_header_size = 5,
     spatial_coordinate_size = 16,
+    spatial_segment_endpoint_count = 2,
     spatial_rectangle_ring_point_count = 5,
     spatial_byte_bit_count = 8,
     spatial_u32_second_byte_shift = 8,
@@ -242,6 +243,7 @@ static const struct spatial_function_descriptor spatial_function_descriptors[] =
     {"ST_GeometryCollectionFromWKB", MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYCOLLECTIONFROMWKB},
     {"ST_Dimension", MYLITE_SPATIAL_FUNCTION_ST_DIMENSION},
     {"ST_IsEmpty", MYLITE_SPATIAL_FUNCTION_ST_ISEMPTY},
+    {"ST_IsSimple", MYLITE_SPATIAL_FUNCTION_ST_ISSIMPLE},
     {"ST_IsValid", MYLITE_SPATIAL_FUNCTION_ST_ISVALID},
     {"ST_Validate", MYLITE_SPATIAL_FUNCTION_ST_VALIDATE},
     {"ST_IsClosed", MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED},
@@ -365,6 +367,13 @@ static int evaluate_dimension(
     struct mylite_spatial_error *error
 );
 static int evaluate_is_empty(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_is_simple(
     enum mylite_spatial_function_kind kind,
     const struct mylite_spatial_argument *arguments,
     size_t argument_count,
@@ -1235,6 +1244,58 @@ static bool polygon_rings_intersect(
     const struct spatial_distance_geometry *left,
     const struct spatial_distance_geometry *right
 );
+static bool simplicity_geometry_is_simple(const struct spatial_distance_geometry *geometry);
+static bool simplicity_line_is_simple(const struct spatial_point *points, uint32_t point_count);
+static bool simplicity_multipoint_is_simple(const struct spatial_distance_geometry *geometry);
+static bool simplicity_multiline_is_simple(const struct spatial_distance_geometry *geometry);
+static bool simplicity_collection_is_simple(const struct spatial_distance_geometry *geometry);
+static bool simplicity_child_pair_intersects_invalidly(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+);
+static bool simplicity_geometries_intersect_invalidly(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+);
+static bool simplicity_point_line_intersection_invalid(
+    const struct spatial_point *point,
+    const struct spatial_distance_geometry *line
+);
+static bool simplicity_point_polygon_intersection_invalid(
+    const struct spatial_point *point,
+    const struct spatial_distance_geometry *polygon
+);
+static bool simplicity_line_pair_intersects_invalidly(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+);
+static bool simplicity_line_polygon_intersection_invalid(
+    const struct spatial_distance_geometry *line,
+    const struct spatial_distance_geometry *polygon
+);
+static bool simplicity_polygon_polygon_intersection_invalid(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+);
+static bool simplicity_segment_midpoint_is_polygon_interior(
+    const struct spatial_segment *segment,
+    const struct spatial_distance_geometry *polygon
+);
+static bool simplicity_line_segments_share_boundary_point(
+    const struct spatial_distance_geometry *left_line,
+    const struct spatial_segment *left_segment,
+    const struct spatial_distance_geometry *right_line,
+    const struct spatial_segment *right_segment
+);
+static bool simplicity_point_is_line_boundary(
+    const struct spatial_point *point,
+    const struct spatial_distance_geometry *line
+);
+static bool simplicity_line_is_closed(const struct spatial_distance_geometry *line);
+static bool simplicity_point_is_on_line(
+    const struct spatial_point *point,
+    const struct spatial_distance_geometry *line
+);
 static bool validity_geometry_is_valid(const struct spatial_distance_geometry *geometry);
 static bool validity_point_is_valid(const struct spatial_point *point);
 static bool validity_line_is_valid(const struct spatial_point *points, uint32_t point_count);
@@ -1695,6 +1756,7 @@ bool mylite_spatial_function_returns_integer(enum mylite_spatial_function_kind k
     return kind == MYLITE_SPATIAL_FUNCTION_ST_SRID ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_DIMENSION ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_ISEMPTY ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_ISSIMPLE ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_ISVALID ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES ||
@@ -1780,6 +1842,8 @@ int mylite_spatial_evaluate(
         return evaluate_dimension(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_ISEMPTY:
         return evaluate_is_empty(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_ISSIMPLE:
+        return evaluate_is_simple(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_ISVALID:
         return evaluate_is_valid(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_VALIDATE:
@@ -2792,6 +2856,36 @@ static int evaluate_is_empty(
         geometry_type_is_empty_collection(&geometry, error, mylite_spatial_function_name(kind)) ? 1
                                                                                                 : 0
     );
+}
+
+static int evaluate_is_simple(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view geometry = {0};
+    struct spatial_distance_geometry decoded = {0};
+    bool is_null = false;
+    bool is_simple = false;
+    int rc =
+        read_single_geometry_argument(kind, arguments, argument_count, &geometry, &is_null, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null) {
+        return assign_null_result(out_result);
+    }
+    rc =
+        distance_geometry_from_view(&geometry, &decoded, error, mylite_spatial_function_name(kind));
+    if (rc != 0) {
+        return rc;
+    }
+    is_simple = simplicity_geometry_is_simple(&decoded);
+    distance_geometry_deinit(&decoded);
+    return assign_integer_result(out_result, is_simple ? 1 : 0);
 }
 
 static int evaluate_is_valid(
@@ -7541,6 +7635,342 @@ static void distance_geometry_deinit(struct spatial_distance_geometry *geometry)
     }
     free(geometry->children);
     *geometry = (struct spatial_distance_geometry){0};
+}
+
+static bool simplicity_geometry_is_simple(const struct spatial_distance_geometry *geometry) {
+    if (geometry == NULL) {
+        return false;
+    }
+    switch (geometry->type) {
+    case MYLITE_SPATIAL_GEOMETRY_POINT:
+        return validity_point_is_valid(&geometry->point);
+    case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
+        return simplicity_line_is_simple(geometry->points, geometry->point_count);
+    case MYLITE_SPATIAL_GEOMETRY_POLYGON:
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOLYGON:
+        return true;
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOINT:
+        return simplicity_multipoint_is_simple(geometry);
+    case MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING:
+        return simplicity_multiline_is_simple(geometry);
+    case MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION:
+        return simplicity_collection_is_simple(geometry);
+    default:
+        break;
+    }
+    return false;
+}
+
+static bool simplicity_line_is_simple(const struct spatial_point *points, uint32_t point_count) {
+    bool closed = false;
+    uint32_t segment_count = 0U;
+
+    if (!validity_line_is_valid(points, point_count)) {
+        return false;
+    }
+    for (uint32_t index = 1U; index < point_count; ++index) {
+        if (spatial_points_are_equal(&points[index - 1U], &points[index])) {
+            return false;
+        }
+    }
+    closed = spatial_points_are_equal(&points[0], &points[point_count - 1U]);
+    segment_count = point_count - 1U;
+    for (uint32_t left_index = 0U; left_index < segment_count; ++left_index) {
+        struct spatial_segment left = {.start = points[left_index], .end = points[left_index + 1U]};
+
+        for (uint32_t right_index = left_index + 1U; right_index < segment_count; ++right_index) {
+            bool adjacent = right_index == left_index + 1U ||
+                            (closed && left_index == 0U && right_index == segment_count - 1U);
+            struct spatial_segment right = {
+                .start = points[right_index],
+                .end = points[right_index + 1U]
+            };
+
+            if (validity_segment_intersection_is_invalid(&left, &right, adjacent)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static bool simplicity_multipoint_is_simple(const struct spatial_distance_geometry *geometry) {
+    for (uint32_t index = 0U; index < geometry->child_count; ++index) {
+        const struct spatial_distance_geometry *child = &geometry->children[index];
+
+        if (child->type != MYLITE_SPATIAL_GEOMETRY_POINT ||
+            !validity_point_is_valid(&child->point)) {
+            return false;
+        }
+        for (uint32_t previous = 0U; previous < index; ++previous) {
+            if (spatial_points_are_equal(&geometry->children[previous].point, &child->point)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static bool simplicity_multiline_is_simple(const struct spatial_distance_geometry *geometry) {
+    for (uint32_t index = 0U; index < geometry->child_count; ++index) {
+        const struct spatial_distance_geometry *child = &geometry->children[index];
+
+        if (child->type != MYLITE_SPATIAL_GEOMETRY_LINESTRING ||
+            !simplicity_line_is_simple(child->points, child->point_count)) {
+            return false;
+        }
+        for (uint32_t previous = 0U; previous < index; ++previous) {
+            if (simplicity_line_pair_intersects_invalidly(&geometry->children[previous], child)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static bool simplicity_collection_is_simple(const struct spatial_distance_geometry *geometry) {
+    for (uint32_t index = 0U; index < geometry->child_count; ++index) {
+        if (!simplicity_geometry_is_simple(&geometry->children[index])) {
+            return false;
+        }
+        for (uint32_t previous = 0U; previous < index; ++previous) {
+            if (simplicity_child_pair_intersects_invalidly(
+                    &geometry->children[previous],
+                    &geometry->children[index]
+                )) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static bool simplicity_child_pair_intersects_invalidly(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+) {
+    if (distance_geometry_is_collection(left)) {
+        for (uint32_t index = 0U; index < left->child_count; ++index) {
+            if (simplicity_child_pair_intersects_invalidly(&left->children[index], right)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if (distance_geometry_is_collection(right)) {
+        for (uint32_t index = 0U; index < right->child_count; ++index) {
+            if (simplicity_child_pair_intersects_invalidly(left, &right->children[index])) {
+                return true;
+            }
+        }
+        return false;
+    }
+    return simplicity_geometries_intersect_invalidly(left, right);
+}
+
+static bool simplicity_geometries_intersect_invalidly(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+) {
+    switch (left->type) {
+    case MYLITE_SPATIAL_GEOMETRY_POINT:
+        if (right->type == MYLITE_SPATIAL_GEOMETRY_POINT) {
+            return spatial_points_are_equal(&left->point, &right->point);
+        }
+        if (right->type == MYLITE_SPATIAL_GEOMETRY_LINESTRING) {
+            return simplicity_point_line_intersection_invalid(&left->point, right);
+        }
+        if (right->type == MYLITE_SPATIAL_GEOMETRY_POLYGON) {
+            return simplicity_point_polygon_intersection_invalid(&left->point, right);
+        }
+        break;
+    case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
+        if (right->type == MYLITE_SPATIAL_GEOMETRY_POINT) {
+            return simplicity_point_line_intersection_invalid(&right->point, left);
+        }
+        if (right->type == MYLITE_SPATIAL_GEOMETRY_LINESTRING) {
+            return simplicity_line_pair_intersects_invalidly(left, right);
+        }
+        if (right->type == MYLITE_SPATIAL_GEOMETRY_POLYGON) {
+            return simplicity_line_polygon_intersection_invalid(left, right);
+        }
+        break;
+    case MYLITE_SPATIAL_GEOMETRY_POLYGON:
+        if (right->type == MYLITE_SPATIAL_GEOMETRY_POINT) {
+            return simplicity_point_polygon_intersection_invalid(&right->point, left);
+        }
+        if (right->type == MYLITE_SPATIAL_GEOMETRY_LINESTRING) {
+            return simplicity_line_polygon_intersection_invalid(right, left);
+        }
+        if (right->type == MYLITE_SPATIAL_GEOMETRY_POLYGON) {
+            return simplicity_polygon_polygon_intersection_invalid(left, right);
+        }
+        break;
+    default:
+        break;
+    }
+    return false;
+}
+
+static bool simplicity_point_line_intersection_invalid(
+    const struct spatial_point *point,
+    const struct spatial_distance_geometry *line
+) {
+    if (!simplicity_point_is_on_line(point, line)) {
+        return false;
+    }
+    return !simplicity_point_is_line_boundary(point, line);
+}
+
+static bool simplicity_point_polygon_intersection_invalid(
+    const struct spatial_point *point,
+    const struct spatial_distance_geometry *polygon
+) {
+    return validity_polygon_contains_point_interior(polygon, point);
+}
+
+static bool simplicity_line_pair_intersects_invalidly(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+) {
+    if (!line_has_segment(left) || !line_has_segment(right)) {
+        return false;
+    }
+    for (uint32_t left_index = 0U; left_index + 1U < left->point_count; ++left_index) {
+        struct spatial_segment left_segment = line_segment(left, left_index);
+
+        for (uint32_t right_index = 0U; right_index + 1U < right->point_count; ++right_index) {
+            struct spatial_segment right_segment = line_segment(right, right_index);
+
+            if (!segments_intersect(&left_segment, &right_segment)) {
+                continue;
+            }
+            if (validity_segment_intersection_is_invalid(&left_segment, &right_segment, true)) {
+                return true;
+            }
+            if (!simplicity_line_segments_share_boundary_point(
+                    left,
+                    &left_segment,
+                    right,
+                    &right_segment
+                )) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool simplicity_line_polygon_intersection_invalid(
+    const struct spatial_distance_geometry *line,
+    const struct spatial_distance_geometry *polygon
+) {
+    if (!line_has_segment(line)) {
+        return false;
+    }
+    for (uint32_t index = 0U; index < line->point_count; ++index) {
+        if (validity_polygon_contains_point_interior(polygon, &line->points[index])) {
+            return true;
+        }
+    }
+    for (uint32_t line_index = 0U; line_index + 1U < line->point_count; ++line_index) {
+        struct spatial_segment segment = line_segment(line, line_index);
+
+        if (simplicity_segment_midpoint_is_polygon_interior(&segment, polygon)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool simplicity_polygon_polygon_intersection_invalid(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+) {
+    if (left->ring_count > 0U && left->rings[0].point_count > 0U &&
+        validity_polygon_contains_point_interior(right, &left->rings[0].points[0])) {
+        return true;
+    }
+    if (right->ring_count > 0U && right->rings[0].point_count > 0U &&
+        validity_polygon_contains_point_interior(left, &right->rings[0].points[0])) {
+        return true;
+    }
+    return false;
+}
+
+static bool simplicity_segment_midpoint_is_polygon_interior(
+    const struct spatial_segment *segment,
+    const struct spatial_distance_geometry *polygon
+) {
+    struct spatial_point midpoint = {
+        .coordinate_x =
+            (segment->start.coordinate_x + segment->end.coordinate_x) / spatial_midpoint_divisor,
+        .coordinate_y =
+            (segment->start.coordinate_y + segment->end.coordinate_y) / spatial_midpoint_divisor,
+    };
+
+    return validity_polygon_contains_point_interior(polygon, &midpoint);
+}
+
+static bool simplicity_line_segments_share_boundary_point(
+    const struct spatial_distance_geometry *left_line,
+    const struct spatial_segment *left_segment,
+    const struct spatial_distance_geometry *right_line,
+    const struct spatial_segment *right_segment
+) {
+    const struct spatial_point *left_points[spatial_segment_endpoint_count] = {
+        &left_segment->start,
+        &left_segment->end,
+    };
+    const struct spatial_point *right_points[spatial_segment_endpoint_count] = {
+        &right_segment->start,
+        &right_segment->end,
+    };
+
+    for (size_t left_index = 0U; left_index < spatial_segment_endpoint_count; ++left_index) {
+        for (size_t right_index = 0U; right_index < spatial_segment_endpoint_count; ++right_index) {
+            if (spatial_points_are_equal(left_points[left_index], right_points[right_index]) &&
+                simplicity_point_is_line_boundary(left_points[left_index], left_line) &&
+                simplicity_point_is_line_boundary(right_points[right_index], right_line)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool simplicity_point_is_line_boundary(
+    const struct spatial_point *point,
+    const struct spatial_distance_geometry *line
+) {
+    if (simplicity_line_is_closed(line) || point == NULL || line == NULL ||
+        line->point_count < 2U) {
+        return false;
+    }
+    return spatial_points_are_equal(point, &line->points[0]) ||
+           spatial_points_are_equal(point, &line->points[line->point_count - 1U]);
+}
+
+static bool simplicity_line_is_closed(const struct spatial_distance_geometry *line) {
+    return line != NULL && line->point_count > 1U &&
+           spatial_points_are_equal(&line->points[0], &line->points[line->point_count - 1U]);
+}
+
+static bool simplicity_point_is_on_line(
+    const struct spatial_point *point,
+    const struct spatial_distance_geometry *line
+) {
+    if (point == NULL || !line_has_segment(line)) {
+        return false;
+    }
+    for (uint32_t index = 0U; index + 1U < line->point_count; ++index) {
+        struct spatial_segment segment = line_segment(line, index);
+
+        if (point_on_segment(point, &segment)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool validity_geometry_is_valid(const struct spatial_distance_geometry *geometry) {

@@ -525,6 +525,10 @@
     COMMAND mylite_runtime_spatial_validity_functions_test
   )
   add_test(
+    NAME libmylite.runtime.spatial_simplicity_function
+    COMMAND mylite_runtime_spatial_simplicity_function_test
+  )
+  add_test(
     NAME libmylite.runtime.spatial_collect_aggregate
     COMMAND mylite_runtime_spatial_collect_aggregate_test
   )

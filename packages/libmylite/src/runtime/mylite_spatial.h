@@ -111,6 +111,7 @@ enum mylite_spatial_function_kind {
     MYLITE_SPATIAL_FUNCTION_ST_CONVEXHULL = 91,
     MYLITE_SPATIAL_FUNCTION_ST_ISVALID = 92,
     MYLITE_SPATIAL_FUNCTION_ST_VALIDATE = 93,
+    MYLITE_SPATIAL_FUNCTION_ST_ISSIMPLE = 94,
 };
 
 enum mylite_spatial_result_kind {

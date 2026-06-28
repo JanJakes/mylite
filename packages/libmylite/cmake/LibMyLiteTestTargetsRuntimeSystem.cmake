@@ -1469,6 +1469,17 @@
   )
   mylite_configure_c_target(mylite_runtime_spatial_validity_functions_test)
 
+  add_executable(mylite_runtime_spatial_simplicity_function_test
+    tests/runtime_spatial_simplicity_function_test.c
+  )
+  target_link_libraries(mylite_runtime_spatial_simplicity_function_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_spatial_simplicity_function_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_spatial_simplicity_function_test)
+
   add_executable(mylite_runtime_spatial_collect_aggregate_test
     tests/runtime_spatial_collect_aggregate_test.c
   )

@@ -82,6 +82,7 @@ static const struct spatial_sqlite_function_descriptor spatial_sqlite_function_d
     {"ST_GeometryCollectionFromWKB", MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYCOLLECTIONFROMWKB},
     {"ST_Dimension", MYLITE_SPATIAL_FUNCTION_ST_DIMENSION},
     {"ST_IsEmpty", MYLITE_SPATIAL_FUNCTION_ST_ISEMPTY},
+    {"ST_IsSimple", MYLITE_SPATIAL_FUNCTION_ST_ISSIMPLE},
     {"ST_IsValid", MYLITE_SPATIAL_FUNCTION_ST_ISVALID},
     {"ST_Validate", MYLITE_SPATIAL_FUNCTION_ST_VALIDATE},
     {"ST_IsClosed", MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED},

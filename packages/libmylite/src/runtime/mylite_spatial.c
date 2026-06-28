@@ -153,6 +153,11 @@ struct spatial_point_collection {
     uint32_t point_count;
 };
 
+struct spatial_discrete_point_set {
+    struct spatial_point *points;
+    uint32_t point_count;
+};
+
 enum spatial_centroid_dimension {
     SPATIAL_CENTROID_DIMENSION_NONE = -1,
     SPATIAL_CENTROID_DIMENSION_POINT = 0,
@@ -276,6 +281,8 @@ static const struct spatial_function_descriptor spatial_function_descriptors[] =
     {"ST_PointAtDistance", MYLITE_SPATIAL_FUNCTION_ST_POINTATDISTANCE},
     {"ST_Distance_Sphere", MYLITE_SPATIAL_FUNCTION_ST_DISTANCESPHERE},
     {"ST_Centroid", MYLITE_SPATIAL_FUNCTION_ST_CENTROID},
+    {"ST_FrechetDistance", MYLITE_SPATIAL_FUNCTION_ST_FRECHETDISTANCE},
+    {"ST_HausdorffDistance", MYLITE_SPATIAL_FUNCTION_ST_HAUSDORFFDISTANCE},
 };
 
 static int evaluate_point_constructor(
@@ -432,6 +439,13 @@ static int evaluate_distance(
     struct mylite_spatial_error *error
 );
 static int evaluate_distance_sphere(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_discrete_distance(
     enum mylite_spatial_function_kind kind,
     const struct mylite_spatial_argument *arguments,
     size_t argument_count,
@@ -945,6 +959,75 @@ static int distance_sphere_between_collections(
     double radius,
     double *out_distance,
     bool *out_has_distance
+);
+static bool frechet_distance_supports_types(
+    enum mylite_spatial_geometry_type left_type, // NOLINT(bugprone-easily-swappable-parameters)
+    enum mylite_spatial_geometry_type right_type
+);
+static bool hausdorff_distance_supports_types(
+    enum mylite_spatial_geometry_type left_type, // NOLINT(bugprone-easily-swappable-parameters)
+    enum mylite_spatial_geometry_type right_type
+);
+static int discrete_point_set_from_geometry(
+    const struct spatial_distance_geometry *geometry,
+    struct spatial_discrete_point_set *out_set,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static size_t discrete_point_set_count_geometry(const struct spatial_distance_geometry *geometry);
+static int discrete_point_set_append_geometry(
+    const struct spatial_distance_geometry *geometry,
+    struct spatial_discrete_point_set *set,
+    uint32_t *io_offset,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static void discrete_point_set_deinit(struct spatial_discrete_point_set *set);
+static int frechet_distance_between_lines(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right,
+    double *out_distance,
+    struct mylite_spatial_error *error
+);
+static int hausdorff_distance_between_supported_geometries(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right,
+    double *out_distance,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int hausdorff_distance_line_to_multiline(
+    const struct spatial_distance_geometry *line,
+    const struct spatial_distance_geometry *multiline,
+    double *out_distance,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int hausdorff_distance_multiline_to_multiline(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right,
+    double *out_distance,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int hausdorff_distance_point_to_discrete_geometry(
+    const struct spatial_point *point,
+    const struct spatial_distance_geometry *geometry,
+    double *out_distance,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int hausdorff_distance_between_line_points(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right,
+    double *out_distance,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int hausdorff_distance_between_point_sets(
+    const struct spatial_discrete_point_set *left,
+    const struct spatial_discrete_point_set *right,
+    double *out_distance
 );
 static int centroid_accumulate_geometry(
     const struct spatial_distance_geometry *geometry,
@@ -1502,6 +1585,8 @@ bool mylite_spatial_function_returns_double(enum mylite_spatial_function_kind ki
            kind == MYLITE_SPATIAL_FUNCTION_ST_LENGTH || kind == MYLITE_SPATIAL_FUNCTION_ST_AREA ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_DISTANCE ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_DISTANCESPHERE ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_FRECHETDISTANCE ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_HAUSDORFFDISTANCE ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_LATFROMGEOHASH ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_LONGFROMGEOHASH ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_LATITUDE ||
@@ -1603,6 +1688,9 @@ int mylite_spatial_evaluate(
         return evaluate_distance(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_DISTANCESPHERE:
         return evaluate_distance_sphere(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_FRECHETDISTANCE:
+    case MYLITE_SPATIAL_FUNCTION_ST_HAUSDORFFDISTANCE:
+        return evaluate_discrete_distance(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINT:
     case MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINTS:
     case MYLITE_SPATIAL_FUNCTION_ST_POINTATDISTANCE:
@@ -3377,6 +3465,104 @@ static int evaluate_distance_sphere(
     }
     if (!isfinite(distance)) {
         return set_distance_range_error(error, mylite_spatial_function_name(kind));
+    }
+    return assign_double_result(out_result, distance);
+}
+
+static int evaluate_discrete_distance(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    const char *function_name = mylite_spatial_function_name(kind);
+    struct spatial_geometry_view left = {0};
+    struct spatial_geometry_view right = {0};
+    struct spatial_distance_geometry left_geometry = {0};
+    struct spatial_distance_geometry right_geometry = {0};
+    bool left_is_null = false;
+    bool right_is_null = false;
+    bool has_distance = false;
+    double distance = 0.0;
+    int rc = validate_argument_count(kind, argument_count, 2U, 3U, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (any_argument_is_null(arguments, argument_count)) {
+        return assign_null_result(out_result);
+    }
+    rc = read_single_geometry_argument(kind, arguments, 1U, &left, &left_is_null, error);
+    if (rc == 0) {
+        rc = read_single_geometry_argument(kind, arguments + 1U, 1U, &right, &right_is_null, error);
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    if (left_is_null || right_is_null) {
+        return assign_null_result(out_result);
+    }
+    if (left.srid != right.srid) {
+        return set_gis_different_srids_error(error, left.srid, right.srid, function_name);
+    }
+    if (left.srid != 0U) {
+        return set_not_implemented_for_geographic_srs_error(error, function_name);
+    }
+    if (argument_count == 3U) {
+        return set_unknown_length_unit_error(error, &arguments[2], function_name);
+    }
+    rc = distance_geometry_from_view(&left, &left_geometry, error, function_name);
+    if (rc == 0) {
+        rc = distance_geometry_from_view(&right, &right_geometry, error, function_name);
+    }
+    if (rc == 0 && (distance_geometry_is_empty(&left_geometry) ||
+                    distance_geometry_is_empty(&right_geometry))) {
+        has_distance = false;
+    } else if (rc == 0 && kind == MYLITE_SPATIAL_FUNCTION_ST_FRECHETDISTANCE) {
+        if (!frechet_distance_supports_types(left_geometry.type, right_geometry.type)) {
+            rc = set_not_implemented_for_cartesian_srs_error(
+                error,
+                left_geometry.type,
+                right_geometry.type,
+                function_name
+            );
+        } else if (left_geometry.point_count == 0U || right_geometry.point_count == 0U) {
+            has_distance = false;
+        } else {
+            rc = frechet_distance_between_lines(&left_geometry, &right_geometry, &distance, error);
+            has_distance = rc == 0;
+        }
+    } else if (rc == 0) {
+        if (!hausdorff_distance_supports_types(left_geometry.type, right_geometry.type)) {
+            rc = set_not_implemented_for_cartesian_srs_error(
+                error,
+                left_geometry.type,
+                right_geometry.type,
+                function_name
+            );
+        }
+        if (rc == 0) {
+            rc = hausdorff_distance_between_supported_geometries(
+                &left_geometry,
+                &right_geometry,
+                &distance,
+                error,
+                function_name
+            );
+            has_distance = rc == 0;
+        }
+    }
+    distance_geometry_deinit(&left_geometry);
+    distance_geometry_deinit(&right_geometry);
+    if (rc != 0) {
+        return rc;
+    }
+    if (!has_distance) {
+        return assign_null_result(out_result);
+    }
+    if (!isfinite(distance)) {
+        return set_invalid_gis_data_error(error, function_name);
     }
     return assign_double_result(out_result, distance);
 }
@@ -5758,6 +5944,481 @@ static int distance_sphere_between_collections(
             }
         }
     }
+    return 0;
+}
+
+static bool frechet_distance_supports_types(
+    enum mylite_spatial_geometry_type left_type, // NOLINT(bugprone-easily-swappable-parameters)
+    enum mylite_spatial_geometry_type right_type
+) {
+    return left_type == MYLITE_SPATIAL_GEOMETRY_LINESTRING &&
+           right_type == MYLITE_SPATIAL_GEOMETRY_LINESTRING;
+}
+
+static bool hausdorff_distance_supports_types(
+    enum mylite_spatial_geometry_type left_type, // NOLINT(bugprone-easily-swappable-parameters)
+    enum mylite_spatial_geometry_type right_type
+) {
+    if (left_type == MYLITE_SPATIAL_GEOMETRY_LINESTRING) {
+        return right_type == MYLITE_SPATIAL_GEOMETRY_LINESTRING ||
+               right_type == MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING;
+    }
+    if (left_type == MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING) {
+        return right_type == MYLITE_SPATIAL_GEOMETRY_LINESTRING ||
+               right_type == MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING;
+    }
+    if (left_type == MYLITE_SPATIAL_GEOMETRY_POINT) {
+        return right_type == MYLITE_SPATIAL_GEOMETRY_MULTIPOINT;
+    }
+    if (left_type == MYLITE_SPATIAL_GEOMETRY_MULTIPOINT) {
+        return right_type == MYLITE_SPATIAL_GEOMETRY_POINT ||
+               right_type == MYLITE_SPATIAL_GEOMETRY_MULTIPOINT;
+    }
+    return false;
+}
+
+static int discrete_point_set_from_geometry(
+    const struct spatial_distance_geometry *geometry,
+    struct spatial_discrete_point_set *out_set,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    size_t point_count = 0U;
+    uint32_t offset = 0U;
+    int rc = 0;
+
+    if (geometry == NULL || out_set == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    *out_set = (struct spatial_discrete_point_set){0};
+    point_count = discrete_point_set_count_geometry(geometry);
+    if (point_count == 0U) {
+        return 0;
+    }
+    if (point_count > UINT32_MAX || point_count > SIZE_MAX / sizeof(*out_set->points)) {
+        return set_nomem_error(error);
+    }
+    out_set->points = calloc(point_count, sizeof(*out_set->points));
+    if (out_set->points == NULL) {
+        return set_nomem_error(error);
+    }
+    out_set->point_count = (uint32_t)point_count;
+    rc = discrete_point_set_append_geometry(geometry, out_set, &offset, error, function_name);
+    if (rc == 0 && offset != out_set->point_count) {
+        rc = set_invalid_gis_data_error(error, function_name);
+    }
+    if (rc != 0) {
+        discrete_point_set_deinit(out_set);
+    }
+    return rc;
+}
+
+static size_t discrete_point_set_count_geometry(const struct spatial_distance_geometry *geometry) {
+    size_t point_count = 0U;
+
+    if (geometry == NULL) {
+        return 0U;
+    }
+    switch (geometry->type) {
+    case MYLITE_SPATIAL_GEOMETRY_POINT:
+        return 1U;
+    case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
+        return geometry->point_count;
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOINT:
+    case MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING:
+        for (uint32_t index = 0U; index < geometry->child_count; ++index) {
+            size_t child_count = discrete_point_set_count_geometry(&geometry->children[index]);
+
+            if (child_count > SIZE_MAX - point_count) {
+                return SIZE_MAX;
+            }
+            point_count += child_count;
+        }
+        return point_count;
+    default:
+        break;
+    }
+    return 0U;
+}
+
+static int discrete_point_set_append_geometry(
+    const struct spatial_distance_geometry *geometry,
+    struct spatial_discrete_point_set *set,
+    uint32_t *io_offset,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    if (geometry == NULL || set == NULL || io_offset == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    switch (geometry->type) {
+    case MYLITE_SPATIAL_GEOMETRY_POINT:
+        if (*io_offset >= set->point_count) {
+            return set_invalid_gis_data_error(error, function_name);
+        }
+        set->points[*io_offset] = geometry->point;
+        ++(*io_offset);
+        return 0;
+    case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
+        if (geometry->point_count > set->point_count - *io_offset) {
+            return set_invalid_gis_data_error(error, function_name);
+        }
+        memcpy(
+            set->points + *io_offset,
+            geometry->points,
+            (size_t)geometry->point_count * sizeof(*set->points)
+        );
+        *io_offset += geometry->point_count;
+        return 0;
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOINT:
+    case MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING:
+        for (uint32_t index = 0U; index < geometry->child_count; ++index) {
+            int rc = discrete_point_set_append_geometry(
+                &geometry->children[index],
+                set,
+                io_offset,
+                error,
+                function_name
+            );
+
+            if (rc != 0) {
+                return rc;
+            }
+        }
+        return 0;
+    default:
+        break;
+    }
+    return set_invalid_gis_data_error(error, function_name);
+}
+
+static void discrete_point_set_deinit(struct spatial_discrete_point_set *set) {
+    if (set == NULL) {
+        return;
+    }
+    free(set->points);
+    *set = (struct spatial_discrete_point_set){0};
+}
+
+static int frechet_distance_between_lines(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right,
+    double *out_distance,
+    struct mylite_spatial_error *error
+) {
+    double *row_a = NULL;
+    double *row_b = NULL;
+    double *previous = NULL;
+    double *current = NULL;
+    size_t right_count = 0U;
+
+    if (left == NULL || right == NULL || out_distance == NULL || left->point_count == 0U ||
+        right->point_count == 0U) {
+        return -1;
+    }
+    right_count = right->point_count;
+    if (right_count > SIZE_MAX / sizeof(*row_a)) {
+        return set_nomem_error(error);
+    }
+    row_a = calloc(right_count, sizeof(*row_a));
+    row_b = calloc(right_count, sizeof(*row_b));
+    if (row_a == NULL || row_b == NULL) {
+        free(row_a);
+        free(row_b);
+        return set_nomem_error(error);
+    }
+    previous = row_a;
+    current = row_b;
+    previous[0] = distance_point_to_point(&left->points[0], &right->points[0]);
+    for (size_t right_index = 1U; right_index < right_count; ++right_index) {
+        double point_distance =
+            distance_point_to_point(&left->points[0], &right->points[right_index]);
+
+        previous[right_index] = fmax(previous[right_index - 1U], point_distance);
+    }
+    for (uint32_t left_index = 1U; left_index < left->point_count; ++left_index) {
+        double point_distance =
+            distance_point_to_point(&left->points[left_index], &right->points[0]);
+
+        current[0] = fmax(previous[0], point_distance);
+        for (size_t right_index = 1U; right_index < right_count; ++right_index) {
+            double prior = fmin(
+                fmin(previous[right_index], previous[right_index - 1U]),
+                current[right_index - 1U]
+            );
+
+            point_distance =
+                distance_point_to_point(&left->points[left_index], &right->points[right_index]);
+            current[right_index] = fmax(prior, point_distance);
+        }
+        double *swap = previous;
+
+        previous = current;
+        current = swap;
+    }
+    *out_distance = previous[right_count - 1U];
+    free(row_a);
+    free(row_b);
+    return 0;
+}
+
+static int hausdorff_distance_between_supported_geometries(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right,
+    double *out_distance,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    struct spatial_discrete_point_set left_points = {0};
+    struct spatial_discrete_point_set right_points = {0};
+    int rc = 0;
+
+    if (left == NULL || right == NULL || out_distance == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    if (left->type == MYLITE_SPATIAL_GEOMETRY_LINESTRING &&
+        right->type == MYLITE_SPATIAL_GEOMETRY_LINESTRING) {
+        return hausdorff_distance_between_line_points(
+            left,
+            right,
+            out_distance,
+            error,
+            function_name
+        );
+    }
+    if (left->type == MYLITE_SPATIAL_GEOMETRY_POINT &&
+        right->type == MYLITE_SPATIAL_GEOMETRY_MULTIPOINT) {
+        return hausdorff_distance_point_to_discrete_geometry(
+            &left->point,
+            right,
+            out_distance,
+            error,
+            function_name
+        );
+    }
+    if (left->type == MYLITE_SPATIAL_GEOMETRY_MULTIPOINT &&
+        right->type == MYLITE_SPATIAL_GEOMETRY_POINT) {
+        return hausdorff_distance_point_to_discrete_geometry(
+            &right->point,
+            left,
+            out_distance,
+            error,
+            function_name
+        );
+    }
+    if (left->type == MYLITE_SPATIAL_GEOMETRY_MULTIPOINT &&
+        right->type == MYLITE_SPATIAL_GEOMETRY_MULTIPOINT) {
+        rc = discrete_point_set_from_geometry(left, &left_points, error, function_name);
+        if (rc == 0) {
+            rc = discrete_point_set_from_geometry(right, &right_points, error, function_name);
+        }
+        if (rc == 0) {
+            rc = hausdorff_distance_between_point_sets(&left_points, &right_points, out_distance);
+        }
+        discrete_point_set_deinit(&left_points);
+        discrete_point_set_deinit(&right_points);
+        return rc == 0 ? 0 : set_invalid_gis_data_error(error, function_name);
+    }
+    if (left->type == MYLITE_SPATIAL_GEOMETRY_LINESTRING &&
+        right->type == MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING) {
+        return hausdorff_distance_line_to_multiline(
+            left,
+            right,
+            out_distance,
+            error,
+            function_name
+        );
+    }
+    if (left->type == MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING &&
+        right->type == MYLITE_SPATIAL_GEOMETRY_LINESTRING) {
+        return hausdorff_distance_line_to_multiline(
+            right,
+            left,
+            out_distance,
+            error,
+            function_name
+        );
+    }
+    if (left->type == MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING &&
+        right->type == MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING) {
+        return hausdorff_distance_multiline_to_multiline(
+            left,
+            right,
+            out_distance,
+            error,
+            function_name
+        );
+    }
+    return set_invalid_gis_data_error(error, function_name);
+}
+
+static int hausdorff_distance_line_to_multiline(
+    const struct spatial_distance_geometry *line,
+    const struct spatial_distance_geometry *multiline,
+    double *out_distance,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    bool has_distance = false;
+    double distance = 0.0;
+
+    if (line == NULL || multiline == NULL || out_distance == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    for (uint32_t index = 0U; index < multiline->child_count; ++index) {
+        double child_distance = 0.0;
+        int rc = hausdorff_distance_between_line_points(
+            line,
+            &multiline->children[index],
+            &child_distance,
+            error,
+            function_name
+        );
+
+        if (rc != 0) {
+            return rc;
+        }
+        if (!has_distance || child_distance > distance) {
+            distance = child_distance;
+            has_distance = true;
+        }
+    }
+    if (!has_distance) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    *out_distance = distance;
+    return 0;
+}
+
+static int hausdorff_distance_multiline_to_multiline(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right,
+    double *out_distance,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    bool has_distance = false;
+    double distance = 0.0;
+
+    if (left == NULL || right == NULL || out_distance == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    for (uint32_t left_index = 0U; left_index < left->child_count; ++left_index) {
+        for (uint32_t right_index = 0U; right_index < right->child_count; ++right_index) {
+            double child_distance = 0.0;
+            int rc = hausdorff_distance_between_line_points(
+                &left->children[left_index],
+                &right->children[right_index],
+                &child_distance,
+                error,
+                function_name
+            );
+
+            if (rc != 0) {
+                return rc;
+            }
+            if (!has_distance || child_distance > distance) {
+                distance = child_distance;
+                has_distance = true;
+            }
+        }
+    }
+    if (!has_distance) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    *out_distance = distance;
+    return 0;
+}
+
+static int hausdorff_distance_point_to_discrete_geometry(
+    const struct spatial_point *point,
+    const struct spatial_distance_geometry *geometry,
+    double *out_distance,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    struct spatial_discrete_point_set points = {0};
+    double distance = DBL_MAX;
+    int rc = 0;
+
+    if (point == NULL || geometry == NULL || out_distance == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    rc = discrete_point_set_from_geometry(geometry, &points, error, function_name);
+    if (rc != 0) {
+        return rc;
+    }
+    for (uint32_t index = 0U; index < points.point_count; ++index) {
+        double candidate = distance_point_to_point(point, &points.points[index]);
+
+        if (candidate < distance) {
+            distance = candidate;
+        }
+    }
+    discrete_point_set_deinit(&points);
+    if (distance == DBL_MAX) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    *out_distance = distance;
+    return 0;
+}
+
+static int hausdorff_distance_between_line_points(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right,
+    double *out_distance,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    struct spatial_discrete_point_set left_points = {0};
+    struct spatial_discrete_point_set right_points = {0};
+    int rc = 0;
+
+    if (left == NULL || right == NULL || out_distance == NULL ||
+        left->type != MYLITE_SPATIAL_GEOMETRY_LINESTRING ||
+        right->type != MYLITE_SPATIAL_GEOMETRY_LINESTRING || left->point_count == 0U ||
+        right->point_count == 0U) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    left_points = (struct spatial_discrete_point_set){
+        .points = left->points,
+        .point_count = left->point_count,
+    };
+    right_points = (struct spatial_discrete_point_set){
+        .points = right->points,
+        .point_count = right->point_count,
+    };
+    rc = hausdorff_distance_between_point_sets(&left_points, &right_points, out_distance);
+    return rc == 0 ? 0 : set_invalid_gis_data_error(error, function_name);
+}
+
+static int hausdorff_distance_between_point_sets(
+    const struct spatial_discrete_point_set *left,
+    const struct spatial_discrete_point_set *right,
+    double *out_distance
+) {
+    double distance = 0.0;
+
+    if (left == NULL || right == NULL || out_distance == NULL || left->point_count == 0U ||
+        right->point_count == 0U) {
+        return -1;
+    }
+    for (uint32_t left_index = 0U; left_index < left->point_count; ++left_index) {
+        double nearest = DBL_MAX;
+
+        for (uint32_t right_index = 0U; right_index < right->point_count; ++right_index) {
+            double candidate =
+                distance_point_to_point(&left->points[left_index], &right->points[right_index]);
+
+            if (candidate < nearest) {
+                nearest = candidate;
+            }
+        }
+        if (nearest > distance) {
+            distance = nearest;
+        }
+    }
+    *out_distance = distance;
     return 0;
 }
 

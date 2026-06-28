@@ -198,6 +198,34 @@ expect_output \
 "ST_Distance_Sphere(ST_GeomFromText('MULTIPOINT(0 0,10 0)'), "\
 "ST_GeomFromText('MULTIPOINT(20 0,30 0)'));"
 
+discrete_distance_expected=$(cat <<EXPECTED
+2.8284271247461903	5	1	2.8284271247461903	5	5	5	4.242640687119285	4.242640687119285	6	NULL	NULL
+EXPECTED
+)
+expect_output \
+    "discrete distance measurements" \
+    "$discrete_distance_expected" \
+    "SELECT ST_FrechetDistance(ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), "\
+"ST_GeomFromText('LINESTRING(0 1,0 6,3 3,5 6)')), "\
+"ST_FrechetDistance(ST_GeomFromText('LINESTRING(1 1,1 1)'), "\
+"ST_GeomFromText('LINESTRING(4 5,4 5)')), "\
+"ST_HausdorffDistance(ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), "\
+"ST_GeomFromText('LINESTRING(0 1,0 6,3 3,5 6)')), "\
+"ST_HausdorffDistance(ST_GeomFromText('LINESTRING(0 1,0 6,3 3,5 6)'), "\
+"ST_GeomFromText('LINESTRING(0 0,0 5,5 5)')), "\
+"ST_HausdorffDistance(Point(0,0), ST_GeomFromText('MULTIPOINT(3 4,10 10)')), "\
+"ST_HausdorffDistance(ST_GeomFromText('MULTIPOINT(3 4,10 10)'), Point(0,0)), "\
+"ST_HausdorffDistance(ST_GeomFromText('MULTIPOINT(0 0,3 4)'), "\
+"ST_GeomFromText('MULTIPOINT(6 8,3 4)')), "\
+"ST_HausdorffDistance(ST_GeomFromText('LINESTRING(0 0,0 5)'), "\
+"ST_GeomFromText('MULTILINESTRING((0 1,0 6),(3 3,5 6))')), "\
+"ST_HausdorffDistance(ST_GeomFromText('MULTILINESTRING((0 1,0 6),(3 3,5 6))'), "\
+"ST_GeomFromText('LINESTRING(0 0,0 5)')), "\
+"ST_HausdorffDistance(ST_GeomFromText('MULTILINESTRING((0 0,0 5),(5 5,6 6))'), "\
+"ST_GeomFromText('MULTILINESTRING((0 1,0 6),(3 3,5 6))')), "\
+"ST_FrechetDistance(NULL, ST_GeomFromText('LINESTRING(0 0,1 1)')), "\
+"ST_HausdorffDistance(ST_GeomFromText('GEOMETRYCOLLECTION EMPTY'), Point(0,0));"
+
 centroid_expected=$(cat <<EXPECTED
 POINT(2 4)	POINT(2 2)	POINT(1 3)	POINT(1 1)	POINT(5 5)	POINT(6 1)	POINT(3 3)	POINT(1 1)	POINT(4 4)	NULL	NULL	POINT(1 1)
 EXPECTED
@@ -325,6 +353,35 @@ expect_error \
     "22003" \
     "Invalid radius provided to function st_distance_sphere: Radius must be greater than zero." \
     "SELECT ST_Distance_Sphere(Point(0,0), Point(1,1), 0);"
+
+expect_error \
+    "frechet rejects unsupported cartesian type" \
+    3704 \
+    "22S00" \
+    "st_frechetdistance(POINT, LINESTRING) has not been implemented for Cartesian spatial reference systems." \
+    "SELECT ST_FrechetDistance(Point(0,0), ST_GeomFromText('LINESTRING(0 0,1 1)'));"
+
+expect_error \
+    "hausdorff rejects unsupported cartesian type" \
+    3704 \
+    "22S00" \
+    "st_hausdorffdistance(POINT, POINT) has not been implemented for Cartesian spatial reference systems." \
+    "SELECT ST_HausdorffDistance(Point(0,0), Point(1,1));"
+
+expect_error \
+    "frechet unit rejects srid 0" \
+    3882 \
+    "SU001" \
+    "The geometry passed to function st_frechetdistance is in SRID 0" \
+    "SELECT ST_FrechetDistance(ST_GeomFromText('LINESTRING(0 0,1 1)'), "\
+"ST_GeomFromText('LINESTRING(0 0,1 1)'), 'metre');"
+
+expect_error \
+    "hausdorff unit rejects srid 0" \
+    3882 \
+    "SU001" \
+    "The geometry passed to function st_hausdorffdistance is in SRID 0" \
+    "SELECT ST_HausdorffDistance(Point(0,0), ST_GeomFromText('MULTIPOINT(1 1)'), 'metre');"
 
 expect_error \
     "centroid rejects geographic srs" \

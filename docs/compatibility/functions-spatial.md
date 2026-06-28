@@ -6,7 +6,7 @@ MyLite supports a basic SRID-0 geometry surface: WKT/WKB constructors,
 MySQL-specific geometry constructors, WKT/WKB conversion, geometry type/SRID
 readback, point coordinate access, core property/accessor functions, Cartesian
 length/area/distance/envelope helpers, SRID-0 spherical distance and centroid,
-LineString interpolation, coordinate
+SRID-0 discrete trajectory distances, LineString interpolation, coordinate
 swapping, envelope construction, and MBR predicates in scalar, row-backed, and
 descriptor DML value contexts. Geohash helpers support coordinate
 encoding/decoding plus SRID 0 and 4326 point round-trips. GeoJSON helpers
@@ -55,7 +55,7 @@ search.
 | `ST_Envelope()` | ✅ | Return SRID-0 geometry envelope |
 | `ST_Equals()` | ❌ | Whether one geometry is equal to another |
 | `ST_ExteriorRing()` | ✅ | Return Polygon exterior ring |
-| `ST_FrechetDistance()` | ❌ | The discrete Fréchet distance of one geometry from another |
+| `ST_FrechetDistance()` | ✅ | SRID-0 discrete Fréchet distance for LineString pairs |
 | `ST_GeoHash()` | ✅ | Encode Point or coordinate pair as a geohash |
 | `ST_GeomCollFromText(), ST_GeometryCollectionFromText(), ST_GeomCollFromTxt()` | ✅ | Construct SRID-0 geometry collection from WKT |
 | `ST_GeomCollFromWKB(), ST_GeometryCollectionFromWKB()` | ✅ | Construct SRID-0 geometry collection from WKB |
@@ -64,7 +64,7 @@ search.
 | `ST_GeomFromGeoJSON()` | ✅ | Parse 2D GeoJSON geometry, Feature, and FeatureCollection values for SRID 0/4326 |
 | `ST_GeomFromText(), ST_GeometryFromText()` | ✅ | Construct SRID-0 geometry from WKT |
 | `ST_GeomFromWKB(), ST_GeometryFromWKB()` | ✅ | Construct SRID-0 geometry from WKB |
-| `ST_HausdorffDistance()` | ❌ | The discrete Hausdorff distance of one geometry from another |
+| `ST_HausdorffDistance()` | ✅ | Directed SRID-0 discrete Hausdorff distance for supported Point/MultiPoint and LineString/MultiLineString combinations |
 | `ST_InteriorRingN()` | ✅ | Return one-based Polygon interior ring |
 | `ST_Intersection()` | ❌ | Return point set intersection of two geometries |
 | `ST_Intersects()` | ❌ | Whether one geometry intersects another |

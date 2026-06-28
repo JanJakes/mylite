@@ -158,6 +158,20 @@ static int test_scalar_spatial_measure_accessors(void) {
         "1111946.8229846344",
         "1111946.8229846344",
     };
+    static const char *const discrete_distance_values[] = {
+        "2.8284271247461903",
+        "5",
+        "1",
+        "2.8284271247461903",
+        "5",
+        "5",
+        "5",
+        "4.242640687119285",
+        "4.242640687119285",
+        "6",
+        NULL,
+        NULL,
+    };
     static const char *const centroid_values[] = {
         "POINT(2 4)",
         "POINT(2 2)",
@@ -364,6 +378,35 @@ static int test_scalar_spatial_measure_accessors(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT ST_FrechetDistance(ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), "
+                   "ST_GeomFromText('LINESTRING(0 1,0 6,3 3,5 6)')), "
+                   "ST_FrechetDistance(ST_GeomFromText('LINESTRING(1 1,1 1)'), "
+                   "ST_GeomFromText('LINESTRING(4 5,4 5)')), "
+                   "ST_HausdorffDistance(ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), "
+                   "ST_GeomFromText('LINESTRING(0 1,0 6,3 3,5 6)')), "
+                   "ST_HausdorffDistance(ST_GeomFromText('LINESTRING(0 1,0 6,3 3,5 6)'), "
+                   "ST_GeomFromText('LINESTRING(0 0,0 5,5 5)')), "
+                   "ST_HausdorffDistance(Point(0,0), ST_GeomFromText('MULTIPOINT(3 4,10 10)')), "
+                   "ST_HausdorffDistance(ST_GeomFromText('MULTIPOINT(3 4,10 10)'), Point(0,0)), "
+                   "ST_HausdorffDistance(ST_GeomFromText('MULTIPOINT(0 0,3 4)'), "
+                   "ST_GeomFromText('MULTIPOINT(6 8,3 4)')), "
+                   "ST_HausdorffDistance(ST_GeomFromText('LINESTRING(0 0,0 5)'), "
+                   "ST_GeomFromText('MULTILINESTRING((0 1,0 6),(3 3,5 6))')), "
+                   "ST_HausdorffDistance(ST_GeomFromText('MULTILINESTRING((0 1,0 6),(3 3,5 6))'), "
+                   "ST_GeomFromText('LINESTRING(0 0,0 5)')), "
+                   "ST_HausdorffDistance(ST_GeomFromText('MULTILINESTRING((0 0,0 5),(5 5,6 6))'), "
+                   "ST_GeomFromText('MULTILINESTRING((0 1,0 6),(3 3,5 6))')), "
+                   "ST_FrechetDistance(NULL, ST_GeomFromText('LINESTRING(0 0,1 1)')), "
+                   "ST_HausdorffDistance(ST_GeomFromText('GEOMETRYCOLLECTION EMPTY'), Point(0,0))",
+            .column_count = sizeof(discrete_distance_values) / sizeof(discrete_distance_values[0]),
+            .values = discrete_distance_values,
+            .row_count = 1U,
+            .context = "discrete distance measurements",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql =
                 "SELECT ST_AsText(ST_Centroid(Point(2,4))), "
                 "ST_AsText(ST_Centroid(ST_GeomFromText('MULTIPOINT(0 0,2 2,4 4)'))), "
@@ -478,6 +521,12 @@ static int test_table_backed_spatial_measure_accessors(void) {
         "2223893.645969269",
         "0",
         "1111946.8229846344",
+    };
+    static const char *const discrete_distance_values[] = {
+        "2.8284271247461903",
+        "1",
+        "0",
+        "0",
     };
     static const char *const centroid_values[] = {
         "POINT(2 4)",
@@ -598,6 +647,30 @@ static int test_table_backed_spatial_measure_accessors(void) {
             .values = distance_sphere_values,
             .row_count = 2U,
             .context = "row-backed distance sphere projection",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE discrete_distance_values(id INT PRIMARY KEY, g GEOMETRY)",
+        NULL
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO discrete_distance_values VALUES "
+        "(1, ST_GeomFromText('LINESTRING(0 0,0 5,5 5)')), "
+        "(2, ST_GeomFromText('LINESTRING(0 1,0 6,3 3,5 6)'))",
+        (struct expected_dml_result){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ST_FrechetDistance(g, ST_GeomFromText('LINESTRING(0 1,0 6,3 3,5 6)')), "
+                   "ST_HausdorffDistance(g, ST_GeomFromText('LINESTRING(0 1,0 6,3 3,5 6)')) "
+                   "FROM discrete_distance_values ORDER BY id",
+            .column_count = 2U,
+            .values = discrete_distance_values,
+            .row_count = 2U,
+            .context = "row-backed discrete distance projection",
         }
     );
     failures +=
@@ -747,6 +820,45 @@ static int test_spatial_measure_accessor_diagnostics(void) {
             .sqlstate = "22003",
             .message_part = "Invalid radius provided to function st_distance_sphere: Radius must "
                             "be greater than zero",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ST_FrechetDistance(Point(0,0), ST_GeomFromText('LINESTRING(0 0,1 1)'))",
+        (struct expected_sql_error){
+            .code = mysql_error_not_implemented_for_cartesian_srs,
+            .sqlstate = "22S00",
+            .message_part = "st_frechetdistance(POINT, LINESTRING) has not been implemented for "
+                            "Cartesian spatial reference systems",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ST_HausdorffDistance(Point(0,0), Point(1,1))",
+        (struct expected_sql_error){
+            .code = mysql_error_not_implemented_for_cartesian_srs,
+            .sqlstate = "22S00",
+            .message_part = "st_hausdorffdistance(POINT, POINT) has not been implemented for "
+                            "Cartesian spatial reference systems",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ST_FrechetDistance(ST_GeomFromText('LINESTRING(0 0,1 1)'), "
+        "ST_GeomFromText('LINESTRING(0 0,1 1)'), 'metre')",
+        (struct expected_sql_error){
+            .code = mysql_error_geometry_unknown_length_unit,
+            .sqlstate = "SU001",
+            .message_part = "The geometry passed to function st_frechetdistance is in SRID 0",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ST_HausdorffDistance(Point(0,0), ST_GeomFromText('MULTIPOINT(1 1)'), 'metre')",
+        (struct expected_sql_error){
+            .code = mysql_error_geometry_unknown_length_unit,
+            .sqlstate = "SU001",
+            .message_part = "The geometry passed to function st_hausdorffdistance is in SRID 0",
         }
     );
     failures += execute_error(

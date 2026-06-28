@@ -242,6 +242,8 @@ static const struct spatial_function_descriptor spatial_function_descriptors[] =
     {"ST_GeometryCollectionFromWKB", MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYCOLLECTIONFROMWKB},
     {"ST_Dimension", MYLITE_SPATIAL_FUNCTION_ST_DIMENSION},
     {"ST_IsEmpty", MYLITE_SPATIAL_FUNCTION_ST_ISEMPTY},
+    {"ST_IsValid", MYLITE_SPATIAL_FUNCTION_ST_ISVALID},
+    {"ST_Validate", MYLITE_SPATIAL_FUNCTION_ST_VALIDATE},
     {"ST_IsClosed", MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED},
     {"ST_NumGeometries", MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES},
     {"ST_GeometryN", MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYN},
@@ -363,6 +365,20 @@ static int evaluate_dimension(
     struct mylite_spatial_error *error
 );
 static int evaluate_is_empty(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_is_valid(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_validate(
     enum mylite_spatial_function_kind kind,
     const struct mylite_spatial_argument *arguments,
     size_t argument_count,
@@ -1219,6 +1235,55 @@ static bool polygon_rings_intersect(
     const struct spatial_distance_geometry *left,
     const struct spatial_distance_geometry *right
 );
+static bool validity_geometry_is_valid(const struct spatial_distance_geometry *geometry);
+static bool validity_point_is_valid(const struct spatial_point *point);
+static bool validity_line_is_valid(const struct spatial_point *points, uint32_t point_count);
+static bool validity_polygon_is_valid(const struct spatial_distance_geometry *polygon);
+static bool validity_ring_is_valid(const struct spatial_distance_ring *ring);
+static bool validity_ring_is_simple(const struct spatial_distance_ring *ring);
+static bool validity_ring_segments_intersect_invalidly(
+    const struct spatial_distance_ring *ring,
+    uint32_t left_index,
+    uint32_t right_index
+);
+static bool validity_polygon_holes_are_valid(const struct spatial_distance_geometry *polygon);
+static bool validity_ring_point_is_inside_or_on_boundary(
+    const struct spatial_distance_ring *ring,
+    const struct spatial_point *point
+);
+static bool validity_ring_contains_point_interior(
+    const struct spatial_distance_ring *ring,
+    const struct spatial_point *point
+);
+static bool validity_rings_intersect_invalidly(
+    const struct spatial_distance_ring *left,
+    const struct spatial_distance_ring *right
+);
+static bool validity_polygons_intersect_invalidly(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+);
+static bool validity_polygon_contains_point_interior(
+    const struct spatial_distance_geometry *polygon,
+    const struct spatial_point *point
+);
+static bool validity_segment_intersection_is_invalid(
+    const struct spatial_segment *left, // NOLINT(bugprone-easily-swappable-parameters)
+    const struct spatial_segment *right,
+    bool allow_endpoint_touch
+);
+static bool spatial_segments_are_same_undirected(
+    const struct spatial_segment *left,
+    const struct spatial_segment *right
+);
+static bool spatial_point_is_segment_endpoint(
+    const struct spatial_point *point,
+    const struct spatial_segment *segment
+);
+static bool spatial_point_is_on_segment_interior(
+    const struct spatial_point *point,
+    const struct spatial_segment *segment
+);
 static double distance_line_to_ring(
     const struct spatial_distance_geometry *line,
     const struct spatial_distance_ring *ring
@@ -1611,7 +1676,8 @@ bool mylite_spatial_function_returns_geometry(enum mylite_spatial_function_kind 
            kind == MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINTS ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_POINTATDISTANCE ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_CENTROID ||
-           kind == MYLITE_SPATIAL_FUNCTION_ST_CONVEXHULL;
+           kind == MYLITE_SPATIAL_FUNCTION_ST_CONVEXHULL ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_VALIDATE;
 }
 
 bool mylite_spatial_function_returns_text(enum mylite_spatial_function_kind kind) {
@@ -1629,6 +1695,7 @@ bool mylite_spatial_function_returns_integer(enum mylite_spatial_function_kind k
     return kind == MYLITE_SPATIAL_FUNCTION_ST_SRID ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_DIMENSION ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_ISEMPTY ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_ISVALID ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_NUMPOINTS ||
@@ -1713,6 +1780,10 @@ int mylite_spatial_evaluate(
         return evaluate_dimension(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_ISEMPTY:
         return evaluate_is_empty(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_ISVALID:
+        return evaluate_is_valid(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_VALIDATE:
+        return evaluate_validate(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED:
         return evaluate_is_closed(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES:
@@ -2720,6 +2791,75 @@ static int evaluate_is_empty(
         out_result,
         geometry_type_is_empty_collection(&geometry, error, mylite_spatial_function_name(kind)) ? 1
                                                                                                 : 0
+    );
+}
+
+static int evaluate_is_valid(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view geometry = {0};
+    struct spatial_distance_geometry decoded = {0};
+    bool is_null = false;
+    bool is_valid = false;
+    int rc =
+        read_single_geometry_argument(kind, arguments, argument_count, &geometry, &is_null, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null) {
+        return assign_null_result(out_result);
+    }
+    rc =
+        distance_geometry_from_view(&geometry, &decoded, error, mylite_spatial_function_name(kind));
+    if (rc != 0) {
+        return rc;
+    }
+    is_valid = validity_geometry_is_valid(&decoded);
+    distance_geometry_deinit(&decoded);
+    return assign_integer_result(out_result, is_valid ? 1 : 0);
+}
+
+static int evaluate_validate(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view geometry = {0};
+    struct spatial_distance_geometry decoded = {0};
+    bool is_null = false;
+    bool is_valid = false;
+    int rc =
+        read_single_geometry_argument(kind, arguments, argument_count, &geometry, &is_null, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null) {
+        return assign_null_result(out_result);
+    }
+    rc =
+        distance_geometry_from_view(&geometry, &decoded, error, mylite_spatial_function_name(kind));
+    if (rc != 0) {
+        return rc;
+    }
+    is_valid = validity_geometry_is_valid(&decoded);
+    distance_geometry_deinit(&decoded);
+    if (!is_valid) {
+        return assign_null_result(out_result);
+    }
+    return assign_copied_bytes_result(
+        out_result,
+        MYLITE_SPATIAL_RESULT_GEOMETRY,
+        arguments[0].bytes,
+        arguments[0].byte_count,
+        error
     );
 }
 
@@ -7403,6 +7543,294 @@ static void distance_geometry_deinit(struct spatial_distance_geometry *geometry)
     *geometry = (struct spatial_distance_geometry){0};
 }
 
+static bool validity_geometry_is_valid(const struct spatial_distance_geometry *geometry) {
+    if (geometry == NULL) {
+        return false;
+    }
+    switch (geometry->type) {
+    case MYLITE_SPATIAL_GEOMETRY_POINT:
+        return validity_point_is_valid(&geometry->point);
+    case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
+        return validity_line_is_valid(geometry->points, geometry->point_count);
+    case MYLITE_SPATIAL_GEOMETRY_POLYGON:
+        return validity_polygon_is_valid(geometry);
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOINT:
+    case MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING:
+    case MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION:
+        for (uint32_t index = 0U; index < geometry->child_count; ++index) {
+            if (!validity_geometry_is_valid(&geometry->children[index])) {
+                return false;
+            }
+        }
+        return true;
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOLYGON:
+        for (uint32_t index = 0U; index < geometry->child_count; ++index) {
+            if (!validity_polygon_is_valid(&geometry->children[index])) {
+                return false;
+            }
+            for (uint32_t previous = 0U; previous < index; ++previous) {
+                if (validity_polygons_intersect_invalidly(
+                        &geometry->children[previous],
+                        &geometry->children[index]
+                    )) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    default:
+        break;
+    }
+    return false;
+}
+
+static bool validity_point_is_valid(const struct spatial_point *point) {
+    return point != NULL && isfinite(point->coordinate_x) && isfinite(point->coordinate_y);
+}
+
+static bool validity_line_is_valid(const struct spatial_point *points, uint32_t point_count) {
+    bool has_distinct_point = false;
+
+    if (points == NULL || point_count < 2U) {
+        return false;
+    }
+    for (uint32_t index = 0U; index < point_count; ++index) {
+        if (!validity_point_is_valid(&points[index])) {
+            return false;
+        }
+        if (index > 0U && !spatial_points_are_equal(&points[0], &points[index])) {
+            has_distinct_point = true;
+        }
+    }
+    return has_distinct_point;
+}
+
+static bool validity_polygon_is_valid(const struct spatial_distance_geometry *polygon) {
+    if (polygon == NULL || polygon->type != MYLITE_SPATIAL_GEOMETRY_POLYGON ||
+        polygon->ring_count == 0U) {
+        return false;
+    }
+    for (uint32_t index = 0U; index < polygon->ring_count; ++index) {
+        if (!validity_ring_is_valid(&polygon->rings[index])) {
+            return false;
+        }
+    }
+    return validity_polygon_holes_are_valid(polygon);
+}
+
+static bool validity_ring_is_valid(const struct spatial_distance_ring *ring) {
+    if (ring == NULL || ring->points == NULL || ring->point_count < 4U ||
+        !spatial_points_are_equal(&ring->points[0], &ring->points[ring->point_count - 1U]) ||
+        !spatial_ring_has_noncollinear_points(ring)) {
+        return false;
+    }
+    for (uint32_t index = 0U; index < ring->point_count; ++index) {
+        if (!validity_point_is_valid(&ring->points[index])) {
+            return false;
+        }
+        if (index > 0U &&
+            spatial_points_are_equal(&ring->points[index - 1U], &ring->points[index])) {
+            return false;
+        }
+    }
+    return validity_ring_is_simple(ring);
+}
+
+static bool validity_ring_is_simple(const struct spatial_distance_ring *ring) {
+    uint32_t segment_count = ring->point_count - 1U;
+
+    for (uint32_t left_index = 0U; left_index < segment_count; ++left_index) {
+        for (uint32_t right_index = left_index + 1U; right_index < segment_count; ++right_index) {
+            if (right_index == left_index + 1U ||
+                (left_index == 0U && right_index == segment_count - 1U)) {
+                continue;
+            }
+            if (validity_ring_segments_intersect_invalidly(ring, left_index, right_index)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static bool validity_ring_segments_intersect_invalidly(
+    const struct spatial_distance_ring *ring,
+    uint32_t left_index,
+    uint32_t right_index
+) {
+    struct spatial_segment left = ring_segment(ring, left_index);
+    struct spatial_segment right = ring_segment(ring, right_index);
+
+    return segments_intersect(&left, &right);
+}
+
+static bool validity_polygon_holes_are_valid(const struct spatial_distance_geometry *polygon) {
+    const struct spatial_distance_ring *exterior = &polygon->rings[0];
+
+    for (uint32_t hole_index = 1U; hole_index < polygon->ring_count; ++hole_index) {
+        const struct spatial_distance_ring *hole = &polygon->rings[hole_index];
+
+        if (validity_rings_intersect_invalidly(exterior, hole)) {
+            return false;
+        }
+        for (uint32_t point_index = 0U; point_index + 1U < hole->point_count; ++point_index) {
+            if (!validity_ring_point_is_inside_or_on_boundary(
+                    exterior,
+                    &hole->points[point_index]
+                )) {
+                return false;
+            }
+        }
+        for (uint32_t previous_index = 1U; previous_index < hole_index; ++previous_index) {
+            const struct spatial_distance_ring *previous = &polygon->rings[previous_index];
+
+            if (validity_rings_intersect_invalidly(previous, hole)) {
+                return false;
+            }
+            for (uint32_t point_index = 0U; point_index + 1U < hole->point_count; ++point_index) {
+                if (validity_ring_contains_point_interior(previous, &hole->points[point_index])) {
+                    return false;
+                }
+            }
+            for (uint32_t point_index = 0U; point_index + 1U < previous->point_count;
+                 ++point_index) {
+                if (validity_ring_contains_point_interior(hole, &previous->points[point_index])) {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+static bool validity_ring_point_is_inside_or_on_boundary(
+    const struct spatial_distance_ring *ring,
+    const struct spatial_point *point
+) {
+    enum spatial_point_ring_relation relation = point_ring_relation(ring, point);
+
+    return relation == SPATIAL_POINT_RING_INSIDE || relation == SPATIAL_POINT_RING_BOUNDARY;
+}
+
+static bool validity_ring_contains_point_interior(
+    const struct spatial_distance_ring *ring,
+    const struct spatial_point *point
+) {
+    return point_ring_relation(ring, point) == SPATIAL_POINT_RING_INSIDE;
+}
+
+static bool validity_rings_intersect_invalidly(
+    const struct spatial_distance_ring *left,
+    const struct spatial_distance_ring *right
+) {
+    for (uint32_t left_index = 0U; left_index + 1U < left->point_count; ++left_index) {
+        struct spatial_segment left_segment = ring_segment(left, left_index);
+
+        for (uint32_t right_index = 0U; right_index + 1U < right->point_count; ++right_index) {
+            struct spatial_segment right_segment = ring_segment(right, right_index);
+
+            if (validity_segment_intersection_is_invalid(&left_segment, &right_segment, true)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool validity_polygons_intersect_invalidly(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+) {
+    for (uint32_t left_ring = 0U; left_ring < left->ring_count; ++left_ring) {
+        for (uint32_t right_ring = 0U; right_ring < right->ring_count; ++right_ring) {
+            if (validity_rings_intersect_invalidly(
+                    &left->rings[left_ring],
+                    &right->rings[right_ring]
+                )) {
+                return true;
+            }
+        }
+    }
+    for (uint32_t index = 0U; index + 1U < right->rings[0].point_count; ++index) {
+        if (validity_polygon_contains_point_interior(left, &right->rings[0].points[index])) {
+            return true;
+        }
+    }
+    for (uint32_t index = 0U; index + 1U < left->rings[0].point_count; ++index) {
+        if (validity_polygon_contains_point_interior(right, &left->rings[0].points[index])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool validity_polygon_contains_point_interior(
+    const struct spatial_distance_geometry *polygon,
+    const struct spatial_point *point
+) {
+    if (point_ring_relation(&polygon->rings[0], point) != SPATIAL_POINT_RING_INSIDE) {
+        return false;
+    }
+    for (uint32_t index = 1U; index < polygon->ring_count; ++index) {
+        enum spatial_point_ring_relation relation =
+            point_ring_relation(&polygon->rings[index], point);
+
+        if (relation == SPATIAL_POINT_RING_INSIDE || relation == SPATIAL_POINT_RING_BOUNDARY) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool validity_segment_intersection_is_invalid(
+    const struct spatial_segment *left, // NOLINT(bugprone-easily-swappable-parameters)
+    const struct spatial_segment *right,
+    bool allow_endpoint_touch
+) {
+    bool shares_endpoint = false;
+
+    if (!segments_intersect(left, right)) {
+        return false;
+    }
+    if (!allow_endpoint_touch || spatial_segments_are_same_undirected(left, right) ||
+        spatial_point_is_on_segment_interior(&left->start, right) ||
+        spatial_point_is_on_segment_interior(&left->end, right) ||
+        spatial_point_is_on_segment_interior(&right->start, left) ||
+        spatial_point_is_on_segment_interior(&right->end, left)) {
+        return true;
+    }
+    shares_endpoint = spatial_point_is_segment_endpoint(&left->start, right) ||
+                      spatial_point_is_segment_endpoint(&left->end, right) ||
+                      spatial_point_is_segment_endpoint(&right->start, left) ||
+                      spatial_point_is_segment_endpoint(&right->end, left);
+    return !shares_endpoint;
+}
+
+static bool spatial_segments_are_same_undirected(
+    const struct spatial_segment *left,
+    const struct spatial_segment *right
+) {
+    return (spatial_points_are_equal(&left->start, &right->start) &&
+            spatial_points_are_equal(&left->end, &right->end)) ||
+           (spatial_points_are_equal(&left->start, &right->end) &&
+            spatial_points_are_equal(&left->end, &right->start));
+}
+
+static bool spatial_point_is_segment_endpoint(
+    const struct spatial_point *point,
+    const struct spatial_segment *segment
+) {
+    return spatial_points_are_equal(point, &segment->start) ||
+           spatial_points_are_equal(point, &segment->end);
+}
+
+static bool spatial_point_is_on_segment_interior(
+    const struct spatial_point *point,
+    const struct spatial_segment *segment
+) {
+    return point_on_segment(point, segment) && !spatial_point_is_segment_endpoint(point, segment);
+}
+
 static int distance_between_geometries(
     const struct spatial_distance_geometry *left,
     const struct spatial_distance_geometry *right,
@@ -9075,6 +9503,9 @@ static int validate_wkb_at(
         break;
     case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
         rc = cursor_read_u32(cursor, little_endian, &count, error, function_name);
+        if (rc == 0 && count < 2U) {
+            rc = set_invalid_gis_data_error(error, function_name);
+        }
         if (rc == 0) {
             rc = skip_wkb_points(cursor, count, error, function_name);
         }
@@ -10581,6 +11012,9 @@ static int parse_wkt_linestring(struct spatial_wkt_parser *parser, struct spatia
     }
     if (rc == 0) {
         rc = wkt_expect_byte(parser, ')');
+    }
+    if (rc == 0 && point_count < 2U) {
+        rc = set_invalid_gis_data_error(parser->error, parser->function_name);
     }
     if (rc == 0) {
         rc = spatial_buffer_append_byte(out_wkb, 1U);

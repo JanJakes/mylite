@@ -7,9 +7,9 @@ MySQL-specific geometry constructors, WKT/WKB conversion, geometry type/SRID
 readback, point coordinate access, core property/accessor functions, Cartesian
 length/area/distance/envelope helpers, spatial collection aggregation, SRID-0
 spherical distance, centroid, convex hull, discrete trajectory distances,
-LineString interpolation, coordinate swapping, envelope construction, and MBR
-predicates in scalar, row-backed, and descriptor DML value contexts. Geohash
-helpers support coordinate
+LineString interpolation, validity checks, coordinate swapping, envelope
+construction, and MBR predicates in scalar, row-backed, and descriptor DML
+value contexts. Geohash helpers support coordinate
 encoding/decoding plus SRID 0 and 4326 point round-trips. GeoJSON helpers
 support 2D geometry, Feature extraction, and FeatureCollection extraction for
 SRID 0 and 4326. Geographic point accessors support SRID 4326
@@ -72,7 +72,7 @@ search.
 | `ST_IsClosed()` | ✅ | Return LineString/MultiLineString closed state |
 | `ST_IsEmpty()` | ✅ | Return empty geometry collection state |
 | `ST_IsSimple()` | ❌ | Whether a geometry is simple |
-| `ST_IsValid()` | ❌ | Whether a geometry is valid |
+| `ST_IsValid()` | ✅ | SRID-0 validity check for representable geometry values |
 | `ST_LatFromGeoHash()` | ✅ | Decode latitude from geohash value |
 | `ST_Latitude()` | ✅ | Return latitude of SRID 4326 Point; setter form deferred |
 | `ST_Length()` | ✅ | Cartesian SRID-0 LineString/MultiLineString length |
@@ -108,7 +108,7 @@ search.
 | `ST_Touches()` | ❌ | Whether one geometry touches another |
 | `ST_Transform()` | ❌ | Transform coordinates of geometry |
 | `ST_Union()` | ❌ | Return point set union of two geometries |
-| `ST_Validate()` | ❌ | Return validated geometry |
+| `ST_Validate()` | ✅ | Return valid representable geometry values, otherwise `NULL` |
 | `ST_Within()` | ❌ | Whether one geometry is within another |
 | `ST_X()` | ✅ | Return X coordinate of Point |
 | `ST_Y()` | ✅ | Return Y coordinate of Point |

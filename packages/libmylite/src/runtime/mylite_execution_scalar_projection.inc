@@ -177,6 +177,9 @@ static bool is_named_lock_and_info_projection_expression(
     if (generic_sys_function_kind(expression, &sys_function_kind)) {
         return true;
     }
+    if (generic_rejected_native_function_name(expression)) {
+        return true;
+    }
     return (generic_function_name_equals(expression, "GET_LOCK") ||
             generic_function_name_equals(expression, "IS_FREE_LOCK") ||
             generic_function_name_equals(expression, "IS_USED_LOCK") ||

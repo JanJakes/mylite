@@ -135,6 +135,9 @@ static int generic_system_function_value(
         return MYLITE_MISUSE;
     }
     *out_cell = (struct session_scalar_cell){0};
+    if (generic_rejected_native_function_name(expression)) {
+        return set_native_function_rejected_error(database, expression);
+    }
     if (generic_sys_function_kind(expression, &sys_function_kind)) {
         return generic_sys_function_value(database, expression, sys_function_kind, out_cell);
     }
@@ -178,6 +181,104 @@ static int generic_system_function_value(
         return generic_update_xml_value(database, arguments, out_cell);
     }
     set_unsupported_error(database, "unsupported generic scalar function");
+    return MYLITE_ERROR;
+}
+
+static bool generic_rejected_native_function_name(const struct mylite_sql_ast_node *expression) {
+    const struct mylite_sql_ast_node *current = NULL;
+    const struct mylite_sql_ast_node *identifier = NULL;
+    size_t identifier_count = 0U;
+
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_GENERIC_FUNCTION) {
+        return false;
+    }
+    for (current = expression->first_child; current != NULL; current = current->next_sibling) {
+        if (current->kind != MYLITE_SQL_AST_IDENTIFIER) {
+            continue;
+        }
+        if (identifier_count == 0U) {
+            identifier = current;
+        }
+        ++identifier_count;
+    }
+    return identifier_count == 1U && rejected_native_function_identifier_name(identifier);
+}
+
+static bool rejected_native_function_identifier_name(const struct mylite_sql_ast_node *identifier) {
+    static const char *const names[] = {
+        "CAN_ACCESS_COLUMN",
+        "CAN_ACCESS_DATABASE",
+        "CAN_ACCESS_TABLE",
+        "CAN_ACCESS_USER",
+        "CAN_ACCESS_VIEW",
+        "GET_DD_COLUMN_PRIVILEGES",
+        "GET_DD_CREATE_OPTIONS",
+        "GET_DD_INDEX_SUB_PART_LENGTH",
+        "INTERNAL_AUTO_INCREMENT",
+        "INTERNAL_AVG_ROW_LENGTH",
+        "INTERNAL_CHECK_TIME",
+        "INTERNAL_CHECKSUM",
+        "INTERNAL_DATA_FREE",
+        "INTERNAL_DATA_LENGTH",
+        "INTERNAL_DD_CHAR_LENGTH",
+        "INTERNAL_GET_COMMENT_OR_ERROR",
+        "INTERNAL_GET_ENABLED_ROLE_JSON",
+        "INTERNAL_GET_HOSTNAME",
+        "INTERNAL_GET_USERNAME",
+        "INTERNAL_GET_VIEW_WARNING_OR_ERROR",
+        "INTERNAL_INDEX_COLUMN_CARDINALITY",
+        "INTERNAL_INDEX_LENGTH",
+        "INTERNAL_IS_ENABLED_ROLE",
+        "INTERNAL_IS_MANDATORY_ROLE",
+        "INTERNAL_KEYS_DISABLED",
+        "INTERNAL_MAX_DATA_LENGTH",
+        "INTERNAL_TABLE_ROWS",
+        "INTERNAL_UPDATE_TIME",
+    };
+
+    if (identifier == NULL) {
+        return false;
+    }
+    for (size_t index = 0U; index < sizeof(names) / sizeof(names[0]); ++index) {
+        if (source_span_text_equals_ascii_case_insensitive(&identifier->span, names[index])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int set_native_function_rejected_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_ast_node *schema_identifier = NULL;
+    const struct mylite_sql_ast_node *function_identifier = NULL;
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = 0;
+
+    if (generic_function_identifier_nodes(expression, &schema_identifier, &function_identifier) !=
+            MYLITE_OK ||
+        function_identifier == NULL) {
+        set_unsupported_error(database, "unsupported generic scalar function");
+        return MYLITE_ERROR;
+    }
+    (void)schema_identifier;
+    written = snprintf(
+        message,
+        sizeof(message),
+        "Access to native function '%.*s' is rejected.",
+        (int)function_identifier->span.length,
+        function_identifier->span.text
+    );
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_native_function_rejected,
+        "HY000",
+        message
+    );
     return MYLITE_ERROR;
 }
 
@@ -244,9 +345,9 @@ static int generic_sys_function_value(
             sys_arguments[index].is_null = cells[index].value == NULL;
             sys_arguments[index].text = cells[index].value;
             if (cells[index].value != NULL) {
-                sys_arguments[index].text_size =
-                    cells[index].has_value_size ? cells[index].value_size
-                                                : strlen(cells[index].value);
+                sys_arguments[index].text_size = cells[index].has_value_size
+                                                     ? cells[index].value_size
+                                                     : strlen(cells[index].value);
             }
         }
     }

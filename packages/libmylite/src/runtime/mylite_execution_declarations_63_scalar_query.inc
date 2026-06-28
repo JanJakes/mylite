@@ -314,6 +314,12 @@ static int generic_system_function_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static bool generic_rejected_native_function_name(const struct mylite_sql_ast_node *expression);
+static bool rejected_native_function_identifier_name(const struct mylite_sql_ast_node *identifier);
+static int set_native_function_rejected_error(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
 static bool generic_sys_function_kind(
     const struct mylite_sql_ast_node *expression,
     enum mylite_sys_function_kind *out_kind

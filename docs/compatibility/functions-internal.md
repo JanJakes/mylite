@@ -5,36 +5,36 @@ functions.
 
 | Function | Status | Notes |
 | --- | --- | --- |
-| `CAN_ACCESS_COLUMN()` | ❌ | Internal helper |
-| `CAN_ACCESS_DATABASE()` | ❌ | Internal helper |
-| `CAN_ACCESS_TABLE()` | ❌ | Internal helper |
-| `CAN_ACCESS_USER()` | ❌ | Internal helper |
-| `CAN_ACCESS_VIEW()` | ❌ | Internal helper |
+| `CAN_ACCESS_COLUMN()` | ✅ | MySQL-runtime-verified native access rejection |
+| `CAN_ACCESS_DATABASE()` | ✅ | MySQL-runtime-verified native access rejection |
+| `CAN_ACCESS_TABLE()` | ✅ | MySQL-runtime-verified native access rejection |
+| `CAN_ACCESS_USER()` | ✅ | MySQL-runtime-verified native access rejection |
+| `CAN_ACCESS_VIEW()` | ✅ | MySQL-runtime-verified native access rejection |
 | `FORMAT_BYTES()` | ✅ | MySQL-runtime-verified native byte formatter in scalar and row-backed contexts |
 | `FORMAT_PICO_TIME()` | ✅ | MySQL-runtime-verified native picosecond formatter in scalar and row-backed contexts |
-| `GET_DD_COLUMN_PRIVILEGES()` | ❌ | Internal helper |
-| `GET_DD_CREATE_OPTIONS()` | ❌ | Internal helper |
-| `GET_DD_INDEX_SUB_PART_LENGTH()` | ❌ | Internal helper |
-| `INTERNAL_AUTO_INCREMENT()` | ❌ | Internal helper |
-| `INTERNAL_AVG_ROW_LENGTH()` | ❌ | Internal helper |
-| `INTERNAL_CHECK_TIME()` | ❌ | Internal helper |
-| `INTERNAL_CHECKSUM()` | ❌ | Internal helper |
-| `INTERNAL_DATA_FREE()` | ❌ | Internal helper |
-| `INTERNAL_DATA_LENGTH()` | ❌ | Internal helper |
-| `INTERNAL_DD_CHAR_LENGTH()` | ❌ | Internal helper |
-| `INTERNAL_GET_COMMENT_OR_ERROR()` | ❌ | Internal helper |
-| `INTERNAL_GET_ENABLED_ROLE_JSON()` | ❌ | Internal helper |
-| `INTERNAL_GET_HOSTNAME()` | ❌ | Internal helper |
-| `INTERNAL_GET_USERNAME()` | ❌ | Internal helper |
-| `INTERNAL_GET_VIEW_WARNING_OR_ERROR()` | ❌ | Internal helper |
-| `INTERNAL_INDEX_COLUMN_CARDINALITY()` | ❌ | Internal helper |
-| `INTERNAL_INDEX_LENGTH()` | ❌ | Internal helper |
-| `INTERNAL_IS_ENABLED_ROLE()` | ❌ | Internal helper |
-| `INTERNAL_IS_MANDATORY_ROLE()` | ❌ | Internal helper |
-| `INTERNAL_KEYS_DISABLED()` | ❌ | Internal helper |
-| `INTERNAL_MAX_DATA_LENGTH()` | ❌ | Internal helper |
-| `INTERNAL_TABLE_ROWS()` | ❌ | Internal helper |
-| `INTERNAL_UPDATE_TIME()` | ❌ | Internal helper |
+| `GET_DD_COLUMN_PRIVILEGES()` | ✅ | MySQL-runtime-verified native access rejection |
+| `GET_DD_CREATE_OPTIONS()` | ✅ | MySQL-runtime-verified native access rejection |
+| `GET_DD_INDEX_SUB_PART_LENGTH()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_AUTO_INCREMENT()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_AVG_ROW_LENGTH()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_CHECK_TIME()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_CHECKSUM()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_DATA_FREE()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_DATA_LENGTH()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_DD_CHAR_LENGTH()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_GET_COMMENT_OR_ERROR()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_GET_ENABLED_ROLE_JSON()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_GET_HOSTNAME()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_GET_USERNAME()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_GET_VIEW_WARNING_OR_ERROR()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_INDEX_COLUMN_CARDINALITY()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_INDEX_LENGTH()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_IS_ENABLED_ROLE()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_IS_MANDATORY_ROLE()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_KEYS_DISABLED()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_MAX_DATA_LENGTH()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_TABLE_ROWS()` | ✅ | MySQL-runtime-verified native access rejection |
+| `INTERNAL_UPDATE_TIME()` | ✅ | MySQL-runtime-verified native access rejection |
 | `PS_CURRENT_THREAD_ID()` | ✅ | MySQL-runtime-verified current synthetic Performance Schema thread id |
 | `PS_THREAD_ID()` | ✅ | MySQL-runtime-verified connection-id to synthetic thread-id mapping |
 | `ROLES_GRAPHML()` | ❌ | Return a GraphML document representing memory role subgraphs |

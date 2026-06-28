@@ -67,6 +67,9 @@ static int plan_row_scalar_non_control_flow_expression(
     if (expression->kind == MYLITE_SQL_AST_LITERAL) {
         return plan_row_scalar_literal_value(database, expression, out_expression);
     }
+    if (generic_rejected_native_function_name(expression)) {
+        return set_native_function_rejected_error(database, expression);
+    }
     {
         enum mylite_sys_function_kind sys_function_kind = MYLITE_SYS_FUNCTION_NONE;
 

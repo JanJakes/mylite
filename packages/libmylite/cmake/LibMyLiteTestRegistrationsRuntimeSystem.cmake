@@ -40,6 +40,10 @@
     COMMAND mylite_runtime_system_function_residuals_test
   )
   add_test(
+    NAME libmylite.runtime.internal_native_helper_rejections
+    COMMAND mylite_runtime_internal_native_helper_rejections_test
+  )
+  add_test(
     NAME libmylite.runtime.replication_functions
     COMMAND mylite_runtime_replication_functions_test
   )

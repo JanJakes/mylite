@@ -113,6 +113,8 @@ static const struct spatial_sqlite_function_descriptor spatial_sqlite_function_d
     {"ST_PointFromGeoHash", MYLITE_SPATIAL_FUNCTION_ST_POINTFROMGEOHASH},
     {"ST_AsGeoJSON", MYLITE_SPATIAL_FUNCTION_ST_ASGEOJSON},
     {"ST_GeomFromGeoJSON", MYLITE_SPATIAL_FUNCTION_ST_GEOMFROMGEOJSON},
+    {"ST_Latitude", MYLITE_SPATIAL_FUNCTION_ST_LATITUDE},
+    {"ST_Longitude", MYLITE_SPATIAL_FUNCTION_ST_LONGITUDE},
 };
 
 int mylite_sqlite_register_spatial_functions(sqlite3 *sqlite) {

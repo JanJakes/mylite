@@ -56,6 +56,7 @@ enum {
     mysql_error_srs_not_found = 3548,
     mysql_error_geojson_longitude_out_of_range = 3616,
     mysql_error_geojson_latitude_out_of_range = 3617,
+    mysql_error_srs_not_geographic = 3726,
 };
 
 static const double spatial_shoelace_area_divisor = 2.0;
@@ -206,6 +207,8 @@ static const struct spatial_function_descriptor spatial_function_descriptors[] =
     {"ST_PointFromGeoHash", MYLITE_SPATIAL_FUNCTION_ST_POINTFROMGEOHASH},
     {"ST_AsGeoJSON", MYLITE_SPATIAL_FUNCTION_ST_ASGEOJSON},
     {"ST_GeomFromGeoJSON", MYLITE_SPATIAL_FUNCTION_ST_GEOMFROMGEOJSON},
+    {"ST_Latitude", MYLITE_SPATIAL_FUNCTION_ST_LATITUDE},
+    {"ST_Longitude", MYLITE_SPATIAL_FUNCTION_ST_LONGITUDE},
 };
 
 static int evaluate_point_constructor(
@@ -264,6 +267,13 @@ static int evaluate_srid(
     struct mylite_spatial_error *error
 );
 static int evaluate_point_coordinate(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_point_geographic_coordinate(
     enum mylite_spatial_function_kind kind,
     const struct mylite_spatial_argument *arguments,
     size_t argument_count,
@@ -439,6 +449,11 @@ static int set_wrong_arguments_error(struct mylite_spatial_error *error, const c
 static int set_incorrect_argument_type_error(
     struct mylite_spatial_error *error,
     const char *argument_name,
+    const char *function_name
+);
+static int set_srs_not_geographic_error(
+    struct mylite_spatial_error *error,
+    uint32_t srid,
     const char *function_name
 );
 static int set_geohash_range_error(
@@ -1088,7 +1103,9 @@ bool mylite_spatial_function_returns_double(enum mylite_spatial_function_kind ki
     return kind == MYLITE_SPATIAL_FUNCTION_ST_X || kind == MYLITE_SPATIAL_FUNCTION_ST_Y ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_LENGTH || kind == MYLITE_SPATIAL_FUNCTION_ST_AREA ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_LATFROMGEOHASH ||
-           kind == MYLITE_SPATIAL_FUNCTION_ST_LONGFROMGEOHASH;
+           kind == MYLITE_SPATIAL_FUNCTION_ST_LONGFROMGEOHASH ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_LATITUDE ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_LONGITUDE;
 }
 
 int mylite_spatial_evaluate(
@@ -1140,6 +1157,15 @@ int mylite_spatial_evaluate(
     case MYLITE_SPATIAL_FUNCTION_ST_X:
     case MYLITE_SPATIAL_FUNCTION_ST_Y:
         return evaluate_point_coordinate(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_LATITUDE:
+    case MYLITE_SPATIAL_FUNCTION_ST_LONGITUDE:
+        return evaluate_point_geographic_coordinate(
+            kind,
+            arguments,
+            argument_count,
+            out_result,
+            out_error
+        );
     case MYLITE_SPATIAL_FUNCTION_ST_DIMENSION:
         return evaluate_dimension(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_ISEMPTY:
@@ -2012,6 +2038,73 @@ static int evaluate_point_coordinate(
     return assign_double_result(
         out_result,
         kind == MYLITE_SPATIAL_FUNCTION_ST_X ? coordinate_x : coordinate_y
+    );
+}
+
+static int evaluate_point_geographic_coordinate(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    enum mylite_spatial_geometry_type type = MYLITE_SPATIAL_GEOMETRY_NONE;
+    uint32_t srid = 0U;
+    double coordinate_x = 0.0;
+    double coordinate_y = 0.0;
+    int rc = validate_argument_count(kind, argument_count, 1U, 1U, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (arguments[0].is_null) {
+        return assign_null_result(out_result);
+    }
+    rc = validate_internal_geometry(
+        arguments[0].bytes,
+        arguments[0].byte_count,
+        &type,
+        &srid,
+        error,
+        mylite_spatial_function_name(kind)
+    );
+    if (rc != 0) {
+        return rc;
+    }
+    if (type != MYLITE_SPATIAL_GEOMETRY_POINT) {
+        return set_unexpected_geometry_type_error(
+            error,
+            "POINT value",
+            type,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    if (srid == 0U) {
+        return set_srs_not_geographic_error(error, srid, mylite_spatial_function_name(kind));
+    }
+    if (srid != spatial_srid_wgs84) {
+        return set_spatial_error(
+            error,
+            mysql_error_srs_not_found,
+            "SR001",
+            "There's no spatial reference system with SRID %u.",
+            srid
+        );
+    }
+    rc = geometry_point_coordinates(
+        (const unsigned char *)arguments[0].bytes + spatial_internal_srid_size,
+        arguments[0].byte_count - spatial_internal_srid_size,
+        &coordinate_x,
+        &coordinate_y,
+        error,
+        mylite_spatial_function_name(kind)
+    );
+    if (rc != 0) {
+        return rc;
+    }
+    return assign_double_result(
+        out_result,
+        kind == MYLITE_SPATIAL_FUNCTION_ST_LATITUDE ? coordinate_x : coordinate_y
     );
 }
 
@@ -3317,6 +3410,29 @@ static int set_incorrect_argument_type_error(
             diagnostic_function_name,
             sizeof(diagnostic_function_name)
         )
+    );
+}
+
+static int set_srs_not_geographic_error(
+    struct mylite_spatial_error *error,
+    uint32_t srid,
+    const char *function_name
+) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+    const char *lower_function_name = spatial_diagnostic_function_name(
+        function_name,
+        diagnostic_function_name,
+        sizeof(diagnostic_function_name)
+    );
+
+    return set_spatial_error(
+        error,
+        mysql_error_srs_not_geographic,
+        "22S00",
+        "Function %s is only defined for geographic spatial reference systems, but one of its "
+        "arguments is in SRID %u, which is not geographic.",
+        lower_function_name,
+        srid
     );
 }
 

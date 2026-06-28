@@ -9,7 +9,8 @@ length/area/envelope helpers, coordinate swapping, envelope construction, and
 MBR predicates in scalar, row-backed, and descriptor DML value contexts. Geohash
 helpers support coordinate encoding/decoding plus SRID 0 and 4326 point
 round-trips. GeoJSON helpers support 2D geometry, Feature extraction, and
-FeatureCollection extraction for SRID 0 and 4326. It does not yet implement a
+FeatureCollection extraction for SRID 0 and 4326. Geographic point accessors
+support SRID 4326 latitude/longitude getters. It does not yet implement a
 general SRS catalog, topology
 predicates, constructive geometry operations, or physical spatial search.
 
@@ -70,14 +71,14 @@ predicates, constructive geometry operations, or physical spatial search.
 | `ST_IsSimple()` | ❌ | Whether a geometry is simple |
 | `ST_IsValid()` | ❌ | Whether a geometry is valid |
 | `ST_LatFromGeoHash()` | ✅ | Decode latitude from geohash value |
-| `ST_Latitude()` | ❌ | Return latitude of Point |
+| `ST_Latitude()` | ✅ | Return latitude of SRID 4326 Point; setter form deferred |
 | `ST_Length()` | ✅ | Cartesian SRID-0 LineString/MultiLineString length |
 | `ST_LineFromText(), ST_LineStringFromText()` | ✅ | Construct SRID-0 LineString from WKT |
 | `ST_LineFromWKB(), ST_LineStringFromWKB()` | ✅ | Construct SRID-0 LineString from WKB |
 | `ST_LineInterpolatePoint()` | ❌ | The point a given percentage along a LineString |
 | `ST_LineInterpolatePoints()` | ❌ | The points a given percentage along a LineString |
 | `ST_LongFromGeoHash()` | ✅ | Decode longitude from geohash value |
-| `ST_Longitude()` | ❌ | Return longitude of Point |
+| `ST_Longitude()` | ✅ | Return longitude of SRID 4326 Point; setter form deferred |
 | `ST_MakeEnvelope()` | ✅ | Construct SRID-0 Point, LineString, or Polygon envelope from two points |
 | `ST_MLineFromText(), ST_MultiLineStringFromText()` | ✅ | Construct SRID-0 MultiLineString from WKT |
 | `ST_MLineFromWKB(), ST_MultiLineStringFromWKB()` | ✅ | Construct SRID-0 MultiLineString from WKB |

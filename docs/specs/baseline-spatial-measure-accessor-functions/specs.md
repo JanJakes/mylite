@@ -109,9 +109,8 @@ This slice deliberately does not implement:
 
 - topology predicates such as `ST_Contains()` or `ST_Intersects()`;
 - constructive set operations such as `ST_Union()` and `ST_Buffer()`;
-- geographic SRS behavior, unit conversion, range validation, or SRS metadata;
-- `ST_Latitude()` / `ST_Longitude()` because MySQL defines them only for
-  geographic point SRS values and MyLite currently creates only SRID-0 values;
+- geographic SRS behavior beyond SRID 4326 latitude/longitude getters, unit
+  conversion, range validation, or SRS metadata;
 - invalid-geometry repair or full OGC validity evaluation.
 
 ## SQLite Integration

@@ -246,6 +246,25 @@ expect_output \
 "ST_AsText(ST_Centroid(NULL)), "\
 "ST_AsText(ST_Centroid(ST_GeomFromText('LINESTRING(1 1,1 1)')));"
 
+convex_hull_expected=$(cat <<EXPECTED
+POINT(1 2)	POINT(1 1)	LINESTRING(0 0,2 2)	POLYGON((5 0,25 0,15 25,5 0))	POLYGON((0 0,2 0,2 2,0 2,0 0))	POLYGON((0 0,2 0,3 1,1 1,0 0))	POLYGON((0 0,4 0,4 4,0 4,0 0))	POLYGON((0 0,7 0,6 3,2 2,0 0))	POLYGON((0 0,3 1,2 4,1 5,0 4,0 0))	NULL	NULL
+EXPECTED
+)
+expect_output \
+    "convex hull measurements" \
+    "$convex_hull_expected" \
+    "SELECT ST_AsText(ST_ConvexHull(Point(1,2))), "\
+"ST_AsText(ST_ConvexHull(ST_GeomFromText('MULTIPOINT(1 1,1 1,1 1)'))), "\
+"ST_AsText(ST_ConvexHull(ST_GeomFromText('MULTIPOINT(0 0,1 1,2 2,1 1)'))), "\
+"ST_AsText(ST_ConvexHull(ST_GeomFromText('MULTIPOINT(5 0,25 0,15 10,15 25)'))), "\
+"ST_AsText(ST_ConvexHull(ST_GeomFromText('MULTIPOINT(0 0,0 2,2 0,2 2,1 1)'))), "\
+"ST_AsText(ST_ConvexHull(ST_GeomFromText('LINESTRING(0 0,1 1,2 0,3 1)'))), "\
+"ST_AsText(ST_ConvexHull(ST_GeomFromText('POLYGON((0 0,4 0,4 4,2 2,0 4,0 0),(1 1,2 1,1 2,1 1))'))), "\
+"ST_AsText(ST_ConvexHull(ST_GeomFromText('MULTIPOLYGON(((0 0,2 0,2 2,0 0)),((5 0,7 0,6 3,5 0)))'))), "\
+"ST_AsText(ST_ConvexHull(ST_GeomFromText('GEOMETRYCOLLECTION(POINT(0 0),LINESTRING(1 2,3 1),POLYGON((0 4,2 4,1 5,0 4)))'))), "\
+"ST_AsText(ST_ConvexHull(ST_GeomFromText('GEOMETRYCOLLECTION EMPTY'))), "\
+"ST_AsText(ST_ConvexHull(NULL));"
+
 line_interpolation_expected=$(cat <<EXPECTED
 POINT(0 5)	POINT(2.5 5)	POINT(5 5)	POINT(0 0)	MULTIPOINT((0 2.5),(0 5),(2.5 5),(5 5))	MULTIPOINT((0 3),(1 5),(4 5))	MULTIPOINT((0 0))	MULTIPOINT((0 0))	MULTIPOINT((5 5))	POINT(0 0)	POINT(0 5)	POINT(2.5 5)	POINT(5 5)	NULL	NULL	NULL
 EXPECTED
@@ -396,5 +415,19 @@ expect_error \
     "22023" \
     "Invalid GIS data provided to function st_centroid." \
     "SELECT ST_AsText(ST_Centroid(ST_GeomFromText('POLYGON((0 0,1 1,2 2,0 0))')));"
+
+expect_error \
+    "convex hull rejects geographic srs" \
+    3618 \
+    "22S00" \
+    "st_convexhull(POINT) has not been implemented for geographic spatial reference systems." \
+    "SELECT ST_AsText(ST_ConvexHull(ST_PointFromGeoHash('mh2n0p0581',4326)));"
+
+expect_error \
+    "convex hull rejects invalid polygon" \
+    3037 \
+    "22023" \
+    "Invalid GIS data provided to function st_convexhull." \
+    "SELECT ST_AsText(ST_ConvexHull(ST_GeomFromText('POLYGON((0 0,1 1,2 2,0 0))')));"
 
 printf '%s\n' "mysql_baseline_spatial_measure_accessor_functions_expectations: ok"

@@ -283,6 +283,7 @@ static const struct spatial_function_descriptor spatial_function_descriptors[] =
     {"ST_Centroid", MYLITE_SPATIAL_FUNCTION_ST_CENTROID},
     {"ST_FrechetDistance", MYLITE_SPATIAL_FUNCTION_ST_FRECHETDISTANCE},
     {"ST_HausdorffDistance", MYLITE_SPATIAL_FUNCTION_ST_HAUSDORFFDISTANCE},
+    {"ST_ConvexHull", MYLITE_SPATIAL_FUNCTION_ST_CONVEXHULL},
 };
 
 static int evaluate_point_constructor(
@@ -425,6 +426,13 @@ static int evaluate_area(
     struct mylite_spatial_error *error
 );
 static int evaluate_centroid(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_convex_hull(
     enum mylite_spatial_function_kind kind,
     const struct mylite_spatial_argument *arguments,
     size_t argument_count,
@@ -779,6 +787,14 @@ static int make_linestring_internal_geometry(
     size_t *out_byte_count,
     struct mylite_spatial_error *error
 );
+static int make_polygon_internal_geometry_with_srid(
+    uint32_t srid, // NOLINT(bugprone-easily-swappable-parameters): internal polygon builder.
+    const struct spatial_point *points,
+    uint32_t point_count,
+    unsigned char **out_bytes,
+    size_t *out_byte_count,
+    struct mylite_spatial_error *error
+);
 static int make_multipoint_internal_geometry_with_srid(
     uint32_t srid, // NOLINT(bugprone-easily-swappable-parameters): internal collection builder.
     const struct spatial_point *points,
@@ -1077,6 +1093,47 @@ static void centroid_accumulator_add_fallback(
 static bool centroid_accumulator_accepts(
     struct spatial_centroid_accumulator *accumulator,
     enum spatial_centroid_dimension dimension
+);
+static int convex_hull_point_set_from_geometry(
+    const struct spatial_distance_geometry *geometry,
+    struct spatial_discrete_point_set *out_set,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static size_t convex_hull_point_set_count_geometry(const struct spatial_distance_geometry *geometry
+);
+static int convex_hull_point_set_append_geometry(
+    const struct spatial_distance_geometry *geometry,
+    struct spatial_discrete_point_set *set,
+    uint32_t *io_offset,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int convex_hull_validate_geometry_rings(
+    const struct spatial_distance_geometry *geometry,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static bool spatial_ring_has_noncollinear_points(const struct spatial_distance_ring *ring);
+static int convex_hull_build(
+    struct spatial_discrete_point_set *points,
+    struct spatial_discrete_point_set *out_hull,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int spatial_point_compare_for_hull(
+    const void *left, // NOLINT(bugprone-easily-swappable-parameters): qsort comparator ABI.
+    const void *right
+);
+static uint32_t convex_hull_unique_points(struct spatial_point *points, uint32_t point_count);
+static bool spatial_points_are_equal(
+    const struct spatial_point *left,
+    const struct spatial_point *right
+);
+static bool convex_hull_turn_is_clockwise_or_collinear(
+    const struct spatial_point *origin,
+    const struct spatial_point *middle,
+    const struct spatial_point *candidate
 );
 static int distance_geometry_read(
     struct spatial_wkb_cursor *cursor,
@@ -1553,7 +1610,8 @@ bool mylite_spatial_function_returns_geometry(enum mylite_spatial_function_kind 
            kind == MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINT ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINTS ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_POINTATDISTANCE ||
-           kind == MYLITE_SPATIAL_FUNCTION_ST_CENTROID;
+           kind == MYLITE_SPATIAL_FUNCTION_ST_CENTROID ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_CONVEXHULL;
 }
 
 bool mylite_spatial_function_returns_text(enum mylite_spatial_function_kind kind) {
@@ -1684,6 +1742,8 @@ int mylite_spatial_evaluate(
         return evaluate_area(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_CENTROID:
         return evaluate_centroid(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_CONVEXHULL:
+        return evaluate_convex_hull(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_DISTANCE:
         return evaluate_distance(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_DISTANCESPHERE:
@@ -3264,6 +3324,87 @@ static int evaluate_centroid(
         &byte_count,
         error
     );
+    if (rc != 0) {
+        free(bytes);
+        return rc;
+    }
+    return assign_owned_bytes_result(out_result, MYLITE_SPATIAL_RESULT_GEOMETRY, bytes, byte_count);
+}
+
+static int evaluate_convex_hull(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    const char *function_name = mylite_spatial_function_name(kind);
+    struct spatial_geometry_view geometry = {0};
+    struct spatial_distance_geometry distance_geometry = {0};
+    struct spatial_discrete_point_set points = {0};
+    struct spatial_discrete_point_set hull = {0};
+    bool is_null = false;
+    unsigned char *bytes = NULL;
+    size_t byte_count = 0U;
+    int rc =
+        read_single_geometry_argument(kind, arguments, argument_count, &geometry, &is_null, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null) {
+        return assign_null_result(out_result);
+    }
+    if (geometry.srid != 0U) {
+        return set_not_implemented_for_geographic_srs_geometry_error(
+            error,
+            geometry.type,
+            function_name
+        );
+    }
+    rc = distance_geometry_from_view(&geometry, &distance_geometry, error, function_name);
+    if (rc == 0) {
+        rc = convex_hull_validate_geometry_rings(&distance_geometry, error, function_name);
+    }
+    if (rc == 0) {
+        rc = convex_hull_point_set_from_geometry(&distance_geometry, &points, error, function_name);
+    }
+    distance_geometry_deinit(&distance_geometry);
+    if (rc == 0 && points.point_count == 0U) {
+        discrete_point_set_deinit(&points);
+        return assign_null_result(out_result);
+    }
+    if (rc == 0) {
+        rc = convex_hull_build(&points, &hull, error, function_name);
+    }
+    discrete_point_set_deinit(&points);
+    if (rc == 0 && hull.point_count == 1U) {
+        rc = make_point_internal_geometry(
+            hull.points[0].coordinate_x,
+            hull.points[0].coordinate_y,
+            &bytes,
+            &byte_count,
+            error
+        );
+    } else if (rc == 0 && hull.point_count == 2U) {
+        rc = make_linestring_internal_geometry(
+            hull.points,
+            hull.point_count,
+            &bytes,
+            &byte_count,
+            error
+        );
+    } else if (rc == 0) {
+        rc = make_polygon_internal_geometry_with_srid(
+            0U,
+            hull.points,
+            hull.point_count,
+            &bytes,
+            &byte_count,
+            error
+        );
+    }
+    discrete_point_set_deinit(&hull);
     if (rc != 0) {
         free(bytes);
         return rc;
@@ -5452,6 +5593,58 @@ static int make_linestring_internal_geometry(
     return 0;
 }
 
+static int make_polygon_internal_geometry_with_srid(
+    uint32_t srid, // NOLINT(bugprone-easily-swappable-parameters): internal polygon builder.
+    const struct spatial_point *points,
+    uint32_t point_count,
+    unsigned char **out_bytes,
+    size_t *out_byte_count,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_buffer buffer = {0};
+    int rc = append_internal_prefix(&buffer, srid);
+
+    if (points == NULL || point_count < 3U) {
+        spatial_buffer_deinit(&buffer);
+        return set_invalid_gis_data_error(error, "st_convexhull");
+    }
+    if (point_count == UINT32_MAX) {
+        spatial_buffer_deinit(&buffer);
+        return set_nomem_error(error);
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_byte(&buffer, 1U);
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_u32_le(&buffer, (uint32_t)MYLITE_SPATIAL_GEOMETRY_POLYGON);
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_u32_le(&buffer, 1U);
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_u32_le(&buffer, point_count + 1U);
+    }
+    for (uint32_t index = 0U; rc == 0 && index < point_count; ++index) {
+        rc = spatial_buffer_append_double_le(&buffer, points[index].coordinate_x);
+        if (rc == 0) {
+            rc = spatial_buffer_append_double_le(&buffer, points[index].coordinate_y);
+        }
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_double_le(&buffer, points[0].coordinate_x);
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_double_le(&buffer, points[0].coordinate_y);
+    }
+    if (rc != 0) {
+        spatial_buffer_deinit(&buffer);
+        return set_nomem_error(error);
+    }
+    *out_bytes = buffer.bytes;
+    *out_byte_count = buffer.size;
+    return 0;
+}
+
 static int make_multipoint_internal_geometry_with_srid(
     uint32_t srid, // NOLINT(bugprone-easily-swappable-parameters): internal collection builder.
     const struct spatial_point *points,
@@ -6659,6 +6852,344 @@ static bool centroid_accumulator_accepts(
         };
     }
     return true;
+}
+
+static int convex_hull_point_set_from_geometry(
+    const struct spatial_distance_geometry *geometry,
+    struct spatial_discrete_point_set *out_set,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    size_t point_count = 0U;
+    uint32_t offset = 0U;
+    int rc = 0;
+
+    if (geometry == NULL || out_set == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    *out_set = (struct spatial_discrete_point_set){0};
+    point_count = convex_hull_point_set_count_geometry(geometry);
+    if (point_count == 0U) {
+        return 0;
+    }
+    if (point_count > UINT32_MAX || point_count > SIZE_MAX / sizeof(*out_set->points)) {
+        return set_nomem_error(error);
+    }
+    out_set->points = calloc(point_count, sizeof(*out_set->points));
+    if (out_set->points == NULL) {
+        return set_nomem_error(error);
+    }
+    out_set->point_count = (uint32_t)point_count;
+    rc = convex_hull_point_set_append_geometry(geometry, out_set, &offset, error, function_name);
+    if (rc == 0 && offset != out_set->point_count) {
+        rc = set_invalid_gis_data_error(error, function_name);
+    }
+    if (rc != 0) {
+        discrete_point_set_deinit(out_set);
+    }
+    return rc;
+}
+
+static size_t convex_hull_point_set_count_geometry(const struct spatial_distance_geometry *geometry
+) {
+    size_t point_count = 0U;
+
+    if (geometry == NULL) {
+        return 0U;
+    }
+    switch (geometry->type) {
+    case MYLITE_SPATIAL_GEOMETRY_POINT:
+        return 1U;
+    case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
+        return geometry->point_count;
+    case MYLITE_SPATIAL_GEOMETRY_POLYGON:
+        for (uint32_t index = 0U; index < geometry->ring_count; ++index) {
+            if ((size_t)geometry->rings[index].point_count > SIZE_MAX - point_count) {
+                return SIZE_MAX;
+            }
+            point_count += geometry->rings[index].point_count;
+        }
+        return point_count;
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOINT:
+    case MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING:
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOLYGON:
+    case MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION:
+        for (uint32_t index = 0U; index < geometry->child_count; ++index) {
+            size_t child_count = convex_hull_point_set_count_geometry(&geometry->children[index]);
+
+            if (child_count > SIZE_MAX - point_count) {
+                return SIZE_MAX;
+            }
+            point_count += child_count;
+        }
+        return point_count;
+    default:
+        break;
+    }
+    return 0U;
+}
+
+static int convex_hull_point_set_append_geometry(
+    const struct spatial_distance_geometry *geometry,
+    struct spatial_discrete_point_set *set,
+    uint32_t *io_offset,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    if (geometry == NULL || set == NULL || io_offset == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    switch (geometry->type) {
+    case MYLITE_SPATIAL_GEOMETRY_POINT:
+        if (*io_offset >= set->point_count) {
+            return set_invalid_gis_data_error(error, function_name);
+        }
+        set->points[*io_offset] = geometry->point;
+        ++(*io_offset);
+        return 0;
+    case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
+        if (geometry->point_count > set->point_count - *io_offset) {
+            return set_invalid_gis_data_error(error, function_name);
+        }
+        memcpy(
+            set->points + *io_offset,
+            geometry->points,
+            (size_t)geometry->point_count * sizeof(*set->points)
+        );
+        *io_offset += geometry->point_count;
+        return 0;
+    case MYLITE_SPATIAL_GEOMETRY_POLYGON:
+        for (uint32_t index = 0U; index < geometry->ring_count; ++index) {
+            const struct spatial_distance_ring *ring = &geometry->rings[index];
+
+            if (ring->point_count > set->point_count - *io_offset) {
+                return set_invalid_gis_data_error(error, function_name);
+            }
+            memcpy(
+                set->points + *io_offset,
+                ring->points,
+                (size_t)ring->point_count * sizeof(*set->points)
+            );
+            *io_offset += ring->point_count;
+        }
+        return 0;
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOINT:
+    case MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING:
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOLYGON:
+    case MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION:
+        for (uint32_t index = 0U; index < geometry->child_count; ++index) {
+            int rc = convex_hull_point_set_append_geometry(
+                &geometry->children[index],
+                set,
+                io_offset,
+                error,
+                function_name
+            );
+
+            if (rc != 0) {
+                return rc;
+            }
+        }
+        return 0;
+    default:
+        break;
+    }
+    return set_invalid_gis_data_error(error, function_name);
+}
+
+static int convex_hull_validate_geometry_rings(
+    const struct spatial_distance_geometry *geometry,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    if (geometry == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    if (geometry->type == MYLITE_SPATIAL_GEOMETRY_POLYGON) {
+        if (geometry->ring_count == 0U) {
+            return set_invalid_gis_data_error(error, function_name);
+        }
+        for (uint32_t index = 0U; index < geometry->ring_count; ++index) {
+            if (!spatial_ring_has_noncollinear_points(&geometry->rings[index])) {
+                return set_invalid_gis_data_error(error, function_name);
+            }
+        }
+        return 0;
+    }
+    if (distance_geometry_is_collection(geometry)) {
+        for (uint32_t index = 0U; index < geometry->child_count; ++index) {
+            int rc = convex_hull_validate_geometry_rings(
+                &geometry->children[index],
+                error,
+                function_name
+            );
+
+            if (rc != 0) {
+                return rc;
+            }
+        }
+    }
+    return 0;
+}
+
+static bool spatial_ring_has_noncollinear_points(const struct spatial_distance_ring *ring) {
+    if (ring == NULL || ring->point_count < 4U) {
+        return false;
+    }
+    for (uint32_t origin_index = 0U; origin_index < ring->point_count; ++origin_index) {
+        for (uint32_t left_index = origin_index + 1U; left_index < ring->point_count;
+             ++left_index) {
+            if (spatial_points_are_equal(&ring->points[origin_index], &ring->points[left_index])) {
+                continue;
+            }
+            for (uint32_t right_index = left_index + 1U; right_index < ring->point_count;
+                 ++right_index) {
+                if (!double_near_zero(point_cross_product(
+                        &ring->points[origin_index],
+                        &ring->points[left_index],
+                        &ring->points[right_index]
+                    ))) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+static int convex_hull_build(
+    struct spatial_discrete_point_set *points,
+    struct spatial_discrete_point_set *out_hull,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    size_t hull_capacity = 0U;
+    uint32_t unique_count = 0U;
+    uint32_t hull_count = 0U;
+    uint32_t upper_start = 0U;
+    struct spatial_point *hull_points = NULL;
+
+    if (points == NULL || out_hull == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    *out_hull = (struct spatial_discrete_point_set){0};
+    for (uint32_t index = 0U; index < points->point_count; ++index) {
+        if (!isfinite(points->points[index].coordinate_x) ||
+            !isfinite(points->points[index].coordinate_y)) {
+            return set_invalid_gis_data_error(error, function_name);
+        }
+    }
+    qsort(
+        points->points,
+        points->point_count,
+        sizeof(*points->points),
+        spatial_point_compare_for_hull
+    );
+    unique_count = convex_hull_unique_points(points->points, points->point_count);
+    if (unique_count <= 2U) {
+        out_hull->points =
+            calloc(unique_count == 0U ? 1U : unique_count, sizeof(*out_hull->points));
+        if (out_hull->points == NULL) {
+            return set_nomem_error(error);
+        }
+        memcpy(out_hull->points, points->points, (size_t)unique_count * sizeof(*out_hull->points));
+        out_hull->point_count = unique_count;
+        return 0;
+    }
+    hull_capacity = (size_t)unique_count * 2U;
+    if (hull_capacity > SIZE_MAX / sizeof(*hull_points)) {
+        return set_nomem_error(error);
+    }
+    hull_points = calloc(hull_capacity, sizeof(*hull_points));
+    if (hull_points == NULL) {
+        return set_nomem_error(error);
+    }
+    for (uint32_t index = 0U; index < unique_count; ++index) {
+        while (hull_count >= 2U && convex_hull_turn_is_clockwise_or_collinear(
+                                       &hull_points[hull_count - 2U],
+                                       &hull_points[hull_count - 1U],
+                                       &points->points[index]
+                                   )) {
+            --hull_count;
+        }
+        hull_points[hull_count] = points->points[index];
+        ++hull_count;
+    }
+    upper_start = hull_count + 1U;
+    for (uint32_t index = unique_count - 2U;; --index) {
+        while (hull_count >= upper_start && convex_hull_turn_is_clockwise_or_collinear(
+                                                &hull_points[hull_count - 2U],
+                                                &hull_points[hull_count - 1U],
+                                                &points->points[index]
+                                            )) {
+            --hull_count;
+        }
+        hull_points[hull_count] = points->points[index];
+        ++hull_count;
+        if (index == 0U) {
+            break;
+        }
+    }
+    if (hull_count > 1U) {
+        --hull_count;
+    }
+    out_hull->points = hull_points;
+    out_hull->point_count = hull_count;
+    return 0;
+}
+
+static int spatial_point_compare_for_hull(
+    const void *left, // NOLINT(bugprone-easily-swappable-parameters): qsort comparator ABI.
+    const void *right
+) {
+    const struct spatial_point *left_point = left;
+    const struct spatial_point *right_point = right;
+
+    if (left_point->coordinate_x < right_point->coordinate_x) {
+        return -1;
+    }
+    if (left_point->coordinate_x > right_point->coordinate_x) {
+        return 1;
+    }
+    if (left_point->coordinate_y < right_point->coordinate_y) {
+        return -1;
+    }
+    if (left_point->coordinate_y > right_point->coordinate_y) {
+        return 1;
+    }
+    return 0;
+}
+
+static uint32_t convex_hull_unique_points(struct spatial_point *points, uint32_t point_count) {
+    uint32_t unique_count = 0U;
+
+    if (points == NULL || point_count == 0U) {
+        return 0U;
+    }
+    for (uint32_t index = 0U; index < point_count; ++index) {
+        if (unique_count == 0U ||
+            !spatial_points_are_equal(&points[index], &points[unique_count - 1U])) {
+            points[unique_count] = points[index];
+            ++unique_count;
+        }
+    }
+    return unique_count;
+}
+
+static bool spatial_points_are_equal(
+    const struct spatial_point *left,
+    const struct spatial_point *right
+) {
+    return left != NULL && right != NULL && left->coordinate_x == right->coordinate_x &&
+           left->coordinate_y == right->coordinate_y;
+}
+
+static bool convex_hull_turn_is_clockwise_or_collinear(
+    const struct spatial_point *origin,
+    const struct spatial_point *middle,
+    const struct spatial_point *candidate
+) {
+    return point_cross_product(origin, middle, candidate) <= spatial_distance_epsilon;
 }
 
 static int distance_geometry_read(

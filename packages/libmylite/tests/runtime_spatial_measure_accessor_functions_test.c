@@ -186,6 +186,19 @@ static int test_scalar_spatial_measure_accessors(void) {
         NULL,
         "POINT(1 1)",
     };
+    static const char *const convex_hull_values[] = {
+        "POINT(1 2)",
+        "POINT(1 1)",
+        "LINESTRING(0 0,2 2)",
+        "POLYGON((5 0,25 0,15 25,5 0))",
+        "POLYGON((0 0,2 0,2 2,0 2,0 0))",
+        "POLYGON((0 0,2 0,3 1,1 1,0 0))",
+        "POLYGON((0 0,4 0,4 4,0 4,0 0))",
+        "POLYGON((0 0,7 0,6 3,2 2,0 0))",
+        "POLYGON((0 0,3 1,2 4,1 5,0 4,0 0))",
+        NULL,
+        NULL,
+    };
     static const char *const line_interpolation_values[] = {
         "POINT(0 5)",
         "POINT(2.5 5)",
@@ -434,6 +447,29 @@ static int test_scalar_spatial_measure_accessors(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT ST_AsText(ST_ConvexHull(Point(1,2))), "
+                   "ST_AsText(ST_ConvexHull(ST_GeomFromText('MULTIPOINT(1 1,1 1,1 1)'))), "
+                   "ST_AsText(ST_ConvexHull(ST_GeomFromText('MULTIPOINT(0 0,1 1,2 2,1 1)'))), "
+                   "ST_AsText(ST_ConvexHull(ST_GeomFromText('MULTIPOINT(5 0,25 0,15 10,15 25)'))), "
+                   "ST_AsText(ST_ConvexHull(ST_GeomFromText('MULTIPOINT(0 0,0 2,2 0,2 2,1 1)'))), "
+                   "ST_AsText(ST_ConvexHull(ST_GeomFromText('LINESTRING(0 0,1 1,2 0,3 1)'))), "
+                   "ST_AsText(ST_ConvexHull(ST_GeomFromText('POLYGON((0 0,4 0,4 4,2 2,0 4,0 0),"
+                   "(1 1,2 1,1 2,1 1))'))), "
+                   "ST_AsText(ST_ConvexHull(ST_GeomFromText('MULTIPOLYGON(((0 0,2 0,2 2,0 0)),"
+                   "((5 0,7 0,6 3,5 0)))'))), "
+                   "ST_AsText(ST_ConvexHull(ST_GeomFromText('GEOMETRYCOLLECTION(POINT(0 0),"
+                   "LINESTRING(1 2,3 1),POLYGON((0 4,2 4,1 5,0 4)))'))), "
+                   "ST_AsText(ST_ConvexHull(ST_GeomFromText('GEOMETRYCOLLECTION EMPTY'))), "
+                   "ST_AsText(ST_ConvexHull(NULL))",
+            .column_count = sizeof(convex_hull_values) / sizeof(convex_hull_values[0]),
+            .values = convex_hull_values,
+            .row_count = 1U,
+            .context = "convex hull measurements",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT ST_AsText(ST_LineInterpolatePoint("
                    "ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), '0.5')), "
                    "ST_AsText(ST_LineInterpolatePoint("
@@ -532,6 +568,12 @@ static int test_table_backed_spatial_measure_accessors(void) {
         "POINT(2 4)",
         "POINT(1 3)",
         "POINT(5 5)",
+    };
+    static const char *const convex_hull_values[] = {
+        "POINT(1 2)",
+        "LINESTRING(0 0,3 4)",
+        "POLYGON((0 0,4 0,4 3,0 0))",
+        NULL,
     };
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -691,6 +733,16 @@ static int test_table_backed_spatial_measure_accessors(void) {
             .values = centroid_values,
             .row_count = 3U,
             .context = "row-backed centroid projection",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ST_AsText(ST_ConvexHull(g)) FROM spatial_values ORDER BY id",
+            .column_count = 1U,
+            .values = convex_hull_values,
+            .row_count = sizeof(convex_hull_values) / sizeof(convex_hull_values[0]),
+            .context = "row-backed convex hull projection",
         }
     );
 
@@ -878,6 +930,25 @@ static int test_spatial_measure_accessor_diagnostics(void) {
             .code = mysql_error_invalid_gis_data,
             .sqlstate = "22023",
             .message_part = "Invalid GIS data provided to function st_centroid",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ST_AsText(ST_ConvexHull(ST_PointFromGeoHash('mh2n0p0581',4326)))",
+        (struct expected_sql_error){
+            .code = mysql_error_not_implemented_for_geographic_srs,
+            .sqlstate = "22S00",
+            .message_part = "st_convexhull(POINT) has not been implemented for geographic "
+                            "spatial reference systems",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ST_AsText(ST_ConvexHull(ST_GeomFromText('POLYGON((0 0,1 1,2 2,0 0))')))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_gis_data,
+            .sqlstate = "22023",
+            .message_part = "Invalid GIS data provided to function st_convexhull",
         }
     );
     mylite_close(database);

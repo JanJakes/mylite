@@ -120,6 +120,7 @@ static const struct spatial_sqlite_function_descriptor spatial_sqlite_function_d
     {"ST_LineInterpolatePoints", MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINTS},
     {"ST_PointAtDistance", MYLITE_SPATIAL_FUNCTION_ST_POINTATDISTANCE},
     {"ST_Distance_Sphere", MYLITE_SPATIAL_FUNCTION_ST_DISTANCESPHERE},
+    {"ST_Centroid", MYLITE_SPATIAL_FUNCTION_ST_CENTROID},
 };
 
 int mylite_sqlite_register_spatial_functions(sqlite3 *sqlite) {

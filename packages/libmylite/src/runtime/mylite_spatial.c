@@ -67,6 +67,8 @@ enum {
 
 static const double spatial_shoelace_area_divisor = 2.0;
 static const double spatial_distance_epsilon = 0.000000000001;
+static const double spatial_midpoint_divisor = 2.0;
+static const double spatial_centroid_denominator_multiplier = 3.0;
 static const double spatial_distance_sphere_default_radius = 6370986.0;
 static const double spatial_degrees_to_radians_divisor = 180.0;
 static const double spatial_haversine_half_divisor = 2.0;
@@ -149,6 +151,22 @@ struct spatial_point_collection {
     enum mylite_spatial_geometry_type type;
     struct spatial_point *points;
     uint32_t point_count;
+};
+
+enum spatial_centroid_dimension {
+    SPATIAL_CENTROID_DIMENSION_NONE = -1,
+    SPATIAL_CENTROID_DIMENSION_POINT = 0,
+    SPATIAL_CENTROID_DIMENSION_LINE = 1,
+    SPATIAL_CENTROID_DIMENSION_POLYGON = 2,
+};
+
+struct spatial_centroid_accumulator {
+    enum spatial_centroid_dimension dimension;
+    double weighted_x;
+    double weighted_y;
+    double weight;
+    struct spatial_point fallback_point;
+    bool has_fallback_point;
 };
 
 enum spatial_point_ring_relation {
@@ -257,6 +275,7 @@ static const struct spatial_function_descriptor spatial_function_descriptors[] =
     {"ST_LineInterpolatePoints", MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINTS},
     {"ST_PointAtDistance", MYLITE_SPATIAL_FUNCTION_ST_POINTATDISTANCE},
     {"ST_Distance_Sphere", MYLITE_SPATIAL_FUNCTION_ST_DISTANCESPHERE},
+    {"ST_Centroid", MYLITE_SPATIAL_FUNCTION_ST_CENTROID},
 };
 
 static int evaluate_point_constructor(
@@ -398,6 +417,13 @@ static int evaluate_area(
     struct mylite_spatial_result *out_result,
     struct mylite_spatial_error *error
 );
+static int evaluate_centroid(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
 static int evaluate_distance(
     enum mylite_spatial_function_kind kind,
     const struct mylite_spatial_argument *arguments,
@@ -533,6 +559,11 @@ static int set_gis_different_srids_error(
 );
 static int set_not_implemented_for_geographic_srs_error(
     struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int set_not_implemented_for_geographic_srs_geometry_error(
+    struct mylite_spatial_error *error,
+    enum mylite_spatial_geometry_type type,
     const char *function_name
 );
 static int set_not_implemented_for_cartesian_srs_error(
@@ -914,6 +945,55 @@ static int distance_sphere_between_collections(
     double radius,
     double *out_distance,
     bool *out_has_distance
+);
+static int centroid_accumulate_geometry(
+    const struct spatial_distance_geometry *geometry,
+    struct spatial_centroid_accumulator *accumulator,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static void centroid_accumulate_point(
+    struct spatial_centroid_accumulator *accumulator,
+    const struct spatial_point *point
+);
+static void centroid_accumulate_line(
+    const struct spatial_distance_geometry *line,
+    struct spatial_centroid_accumulator *accumulator
+);
+static int centroid_accumulate_polygon(
+    const struct spatial_distance_geometry *polygon,
+    struct spatial_centroid_accumulator *accumulator,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int centroid_polygon_value(
+    const struct spatial_distance_geometry *polygon,
+    struct spatial_point *out_centroid,
+    double *out_area,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int centroid_ring_value(
+    const struct spatial_distance_ring *ring,
+    struct spatial_point *out_centroid,
+    double *out_area,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static void centroid_accumulator_add_weighted(
+    struct spatial_centroid_accumulator *accumulator,
+    enum spatial_centroid_dimension dimension,
+    const struct spatial_point *point,
+    double weight
+);
+static void centroid_accumulator_add_fallback(
+    struct spatial_centroid_accumulator *accumulator,
+    enum spatial_centroid_dimension dimension,
+    const struct spatial_point *point
+);
+static bool centroid_accumulator_accepts(
+    struct spatial_centroid_accumulator *accumulator,
+    enum spatial_centroid_dimension dimension
 );
 static int distance_geometry_read(
     struct spatial_wkb_cursor *cursor,
@@ -1389,7 +1469,8 @@ bool mylite_spatial_function_returns_geometry(enum mylite_spatial_function_kind 
            kind == MYLITE_SPATIAL_FUNCTION_ST_GEOMFROMGEOJSON ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINT ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINTS ||
-           kind == MYLITE_SPATIAL_FUNCTION_ST_POINTATDISTANCE;
+           kind == MYLITE_SPATIAL_FUNCTION_ST_POINTATDISTANCE ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_CENTROID;
 }
 
 bool mylite_spatial_function_returns_text(enum mylite_spatial_function_kind kind) {
@@ -1516,6 +1597,8 @@ int mylite_spatial_evaluate(
         return evaluate_length(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_AREA:
         return evaluate_area(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_CENTROID:
+        return evaluate_centroid(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_DISTANCE:
         return evaluate_distance(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_DISTANCESPHERE:
@@ -3020,6 +3103,86 @@ static int evaluate_area(
     return assign_double_result(out_result, area);
 }
 
+static int evaluate_centroid(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view geometry = {0};
+    struct spatial_distance_geometry distance_geometry = {0};
+    struct spatial_centroid_accumulator accumulator = {
+        .dimension = SPATIAL_CENTROID_DIMENSION_NONE,
+    };
+    struct spatial_point centroid = {0};
+    bool is_null = false;
+    unsigned char *bytes = NULL;
+    size_t byte_count = 0U;
+    int rc =
+        read_single_geometry_argument(kind, arguments, argument_count, &geometry, &is_null, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null) {
+        return assign_null_result(out_result);
+    }
+    if (geometry.srid != 0U) {
+        return set_not_implemented_for_geographic_srs_geometry_error(
+            error,
+            geometry.type,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    rc = distance_geometry_from_view(
+        &geometry,
+        &distance_geometry,
+        error,
+        mylite_spatial_function_name(kind)
+    );
+    if (rc == 0) {
+        rc = centroid_accumulate_geometry(
+            &distance_geometry,
+            &accumulator,
+            error,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    distance_geometry_deinit(&distance_geometry);
+    if (rc != 0) {
+        return rc;
+    }
+    if (accumulator.dimension == SPATIAL_CENTROID_DIMENSION_NONE) {
+        return assign_null_result(out_result);
+    }
+    if (accumulator.weight > 0.0) {
+        centroid = (struct spatial_point){
+            .coordinate_x = accumulator.weighted_x / accumulator.weight,
+            .coordinate_y = accumulator.weighted_y / accumulator.weight,
+        };
+    } else if (accumulator.has_fallback_point) {
+        centroid = accumulator.fallback_point;
+    } else {
+        return assign_null_result(out_result);
+    }
+    if (!isfinite(centroid.coordinate_x) || !isfinite(centroid.coordinate_y)) {
+        return set_invalid_gis_data_error(error, mylite_spatial_function_name(kind));
+    }
+    rc = make_point_internal_geometry(
+        centroid.coordinate_x,
+        centroid.coordinate_y,
+        &bytes,
+        &byte_count,
+        error
+    );
+    if (rc != 0) {
+        free(bytes);
+        return rc;
+    }
+    return assign_owned_bytes_result(out_result, MYLITE_SPATIAL_RESULT_GEOMETRY, bytes, byte_count);
+}
+
 static int evaluate_distance(
     enum mylite_spatial_function_kind kind,
     const struct mylite_spatial_argument *arguments,
@@ -4120,6 +4283,27 @@ static int set_not_implemented_for_geographic_srs_error(
             diagnostic_function_name,
             sizeof(diagnostic_function_name)
         )
+    );
+}
+
+static int set_not_implemented_for_geographic_srs_geometry_error(
+    struct mylite_spatial_error *error,
+    enum mylite_spatial_geometry_type type,
+    const char *function_name
+) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+
+    return set_spatial_error(
+        error,
+        mysql_error_not_implemented_for_geographic_srs,
+        "22S00",
+        "%s(%s) has not been implemented for geographic spatial reference systems.",
+        spatial_diagnostic_function_name(
+            function_name,
+            diagnostic_function_name,
+            sizeof(diagnostic_function_name)
+        ),
+        geometry_type_name(type)
     );
 }
 
@@ -5575,6 +5759,245 @@ static int distance_sphere_between_collections(
         }
     }
     return 0;
+}
+
+static int centroid_accumulate_geometry(
+    const struct spatial_distance_geometry *geometry,
+    struct spatial_centroid_accumulator *accumulator,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    if (geometry == NULL || accumulator == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    switch (geometry->type) {
+    case MYLITE_SPATIAL_GEOMETRY_POINT:
+        centroid_accumulate_point(accumulator, &geometry->point);
+        return 0;
+    case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
+        centroid_accumulate_line(geometry, accumulator);
+        return 0;
+    case MYLITE_SPATIAL_GEOMETRY_POLYGON:
+        return centroid_accumulate_polygon(geometry, accumulator, error, function_name);
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOINT:
+    case MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING:
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOLYGON:
+    case MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION:
+        for (uint32_t index = 0U; index < geometry->child_count; ++index) {
+            int rc = centroid_accumulate_geometry(
+                &geometry->children[index],
+                accumulator,
+                error,
+                function_name
+            );
+
+            if (rc != 0) {
+                return rc;
+            }
+        }
+        return 0;
+    default:
+        break;
+    }
+    return set_invalid_gis_data_error(error, function_name);
+}
+
+static void centroid_accumulate_point(
+    struct spatial_centroid_accumulator *accumulator,
+    const struct spatial_point *point
+) {
+    centroid_accumulator_add_weighted(accumulator, SPATIAL_CENTROID_DIMENSION_POINT, point, 1.0);
+}
+
+static void centroid_accumulate_line(
+    const struct spatial_distance_geometry *line,
+    struct spatial_centroid_accumulator *accumulator
+) {
+    if (line == NULL || accumulator == NULL || line->point_count == 0U) {
+        return;
+    }
+    centroid_accumulator_add_fallback(
+        accumulator,
+        SPATIAL_CENTROID_DIMENSION_LINE,
+        &line->points[0]
+    );
+    for (uint32_t index = 0U; index + 1U < line->point_count; ++index) {
+        const struct spatial_point *start = &line->points[index];
+        const struct spatial_point *end = &line->points[index + 1U];
+        double delta_x = end->coordinate_x - start->coordinate_x;
+        double delta_y = end->coordinate_y - start->coordinate_y;
+        double length = sqrt((delta_x * delta_x) + (delta_y * delta_y));
+        struct spatial_point midpoint = {
+            .coordinate_x = (start->coordinate_x + end->coordinate_x) / spatial_midpoint_divisor,
+            .coordinate_y = (start->coordinate_y + end->coordinate_y) / spatial_midpoint_divisor,
+        };
+
+        centroid_accumulator_add_weighted(
+            accumulator,
+            SPATIAL_CENTROID_DIMENSION_LINE,
+            &midpoint,
+            length
+        );
+    }
+}
+
+static int centroid_accumulate_polygon(
+    const struct spatial_distance_geometry *polygon,
+    struct spatial_centroid_accumulator *accumulator,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    struct spatial_point centroid = {0};
+    double area = 0.0;
+    int rc = centroid_polygon_value(polygon, &centroid, &area, error, function_name);
+
+    if (rc != 0) {
+        return rc;
+    }
+    centroid_accumulator_add_weighted(
+        accumulator,
+        SPATIAL_CENTROID_DIMENSION_POLYGON,
+        &centroid,
+        area
+    );
+    return 0;
+}
+
+static int centroid_polygon_value(
+    const struct spatial_distance_geometry *polygon,
+    struct spatial_point *out_centroid,
+    double *out_area,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    double weighted_x = 0.0;
+    double weighted_y = 0.0;
+    double total_area = 0.0;
+
+    if (polygon == NULL || out_centroid == NULL || out_area == NULL || polygon->ring_count == 0U) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    for (uint32_t ring_index = 0U; ring_index < polygon->ring_count; ++ring_index) {
+        struct spatial_point ring_centroid = {0};
+        double ring_area = 0.0;
+        double sign = ring_index == 0U ? 1.0 : -1.0;
+        int rc = centroid_ring_value(
+            &polygon->rings[ring_index],
+            &ring_centroid,
+            &ring_area,
+            error,
+            function_name
+        );
+
+        if (rc != 0) {
+            return rc;
+        }
+        total_area += sign * ring_area;
+        weighted_x += sign * ring_area * ring_centroid.coordinate_x;
+        weighted_y += sign * ring_area * ring_centroid.coordinate_y;
+    }
+    if (double_near_zero(total_area) || total_area < 0.0) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    *out_centroid = (struct spatial_point){
+        .coordinate_x = weighted_x / total_area,
+        .coordinate_y = weighted_y / total_area,
+    };
+    *out_area = total_area;
+    if (!isfinite(out_centroid->coordinate_x) || !isfinite(out_centroid->coordinate_y)) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    return 0;
+}
+
+static int centroid_ring_value(
+    const struct spatial_distance_ring *ring,
+    struct spatial_point *out_centroid,
+    double *out_area,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    double twice_area = 0.0;
+    double centroid_x_numerator = 0.0;
+    double centroid_y_numerator = 0.0;
+
+    if (ring == NULL || out_centroid == NULL || out_area == NULL || ring->point_count < 4U) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    for (uint32_t index = 0U; index + 1U < ring->point_count; ++index) {
+        const struct spatial_point *current = &ring->points[index];
+        const struct spatial_point *next = &ring->points[index + 1U];
+        double cross = (current->coordinate_x * next->coordinate_y) -
+                       (next->coordinate_x * current->coordinate_y);
+
+        twice_area += cross;
+        centroid_x_numerator += (current->coordinate_x + next->coordinate_x) * cross;
+        centroid_y_numerator += (current->coordinate_y + next->coordinate_y) * cross;
+    }
+    if (double_near_zero(twice_area)) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    *out_centroid = (struct spatial_point){
+        .coordinate_x =
+            centroid_x_numerator / (spatial_centroid_denominator_multiplier * twice_area),
+        .coordinate_y =
+            centroid_y_numerator / (spatial_centroid_denominator_multiplier * twice_area),
+    };
+    *out_area = fabs(twice_area) / spatial_shoelace_area_divisor;
+    if (!isfinite(out_centroid->coordinate_x) || !isfinite(out_centroid->coordinate_y)) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    return 0;
+}
+
+static void centroid_accumulator_add_weighted(
+    struct spatial_centroid_accumulator *accumulator,
+    enum spatial_centroid_dimension dimension,
+    const struct spatial_point *point,
+    double weight
+) {
+    if (point == NULL || !centroid_accumulator_accepts(accumulator, dimension)) {
+        return;
+    }
+    centroid_accumulator_add_fallback(accumulator, dimension, point);
+    if (weight <= 0.0 || !isfinite(weight)) {
+        return;
+    }
+    accumulator->weighted_x += point->coordinate_x * weight;
+    accumulator->weighted_y += point->coordinate_y * weight;
+    accumulator->weight += weight;
+}
+
+static void centroid_accumulator_add_fallback(
+    struct spatial_centroid_accumulator *accumulator,
+    enum spatial_centroid_dimension dimension,
+    const struct spatial_point *point
+) {
+    if (point == NULL || !centroid_accumulator_accepts(accumulator, dimension)) {
+        return;
+    }
+    if (!accumulator->has_fallback_point) {
+        accumulator->fallback_point = *point;
+        accumulator->has_fallback_point = true;
+    }
+}
+
+static bool centroid_accumulator_accepts(
+    struct spatial_centroid_accumulator *accumulator,
+    enum spatial_centroid_dimension dimension
+) {
+    if (accumulator == NULL) {
+        return false;
+    }
+    if (dimension < accumulator->dimension) {
+        return false;
+    }
+    if (dimension > accumulator->dimension) {
+        *accumulator = (struct spatial_centroid_accumulator){
+            .dimension = dimension,
+        };
+    }
+    return true;
 }
 
 static int distance_geometry_read(

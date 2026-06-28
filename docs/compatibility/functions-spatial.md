@@ -5,7 +5,7 @@ Spatial constructors, predicates, measurements, and conversion functions.
 MyLite supports a basic SRID-0 geometry surface: WKT/WKB constructors,
 MySQL-specific geometry constructors, WKT/WKB conversion, geometry type/SRID
 readback, point coordinate access, core property/accessor functions, Cartesian
-length/area/distance/envelope helpers, SRID-0 spherical distance,
+length/area/distance/envelope helpers, SRID-0 spherical distance and centroid,
 LineString interpolation, coordinate
 swapping, envelope construction, and MBR predicates in scalar, row-backed, and
 descriptor DML value contexts. Geohash helpers support coordinate
@@ -41,7 +41,7 @@ search.
 | `ST_AsText(), ST_AsWKT()` | ✅ | Convert internal geometry bytes to WKT |
 | `ST_Buffer()` | ❌ | Geometry buffer result |
 | `ST_Buffer_Strategy()` | ❌ | Produce strategy option for ST_Buffer() |
-| `ST_Centroid()` | ❌ | Return centroid as a point |
+| `ST_Centroid()` | ✅ | SRID-0 centroid for Point, LineString, Polygon, Multi*, and collections |
 | `ST_Collect()` | ❌ | Aggregate spatial values into collection |
 | `ST_Contains()` | ❌ | Whether one geometry contains another |
 | `ST_ConvexHull()` | ❌ | Return convex hull of geometry |

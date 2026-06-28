@@ -198,6 +198,26 @@ expect_output \
 "ST_Distance_Sphere(ST_GeomFromText('MULTIPOINT(0 0,10 0)'), "\
 "ST_GeomFromText('MULTIPOINT(20 0,30 0)'));"
 
+centroid_expected=$(cat <<EXPECTED
+POINT(2 4)	POINT(2 2)	POINT(1 3)	POINT(1 1)	POINT(5 5)	POINT(6 1)	POINT(3 3)	POINT(1 1)	POINT(4 4)	NULL	NULL	POINT(1 1)
+EXPECTED
+)
+expect_output \
+    "centroid measurements" \
+    "$centroid_expected" \
+    "SELECT ST_AsText(ST_Centroid(Point(2,4))), "\
+"ST_AsText(ST_Centroid(ST_GeomFromText('MULTIPOINT(0 0,2 2,4 4)'))), "\
+"ST_AsText(ST_Centroid(ST_GeomFromText('LINESTRING(0 0,0 4,4 4)'))), "\
+"ST_AsText(ST_Centroid(ST_GeomFromText('MULTILINESTRING((0 0,0 4),(0 0,4 0))'))), "\
+"ST_AsText(ST_Centroid(ST_GeomFromText('POLYGON((0 0,10 0,10 10,0 10,0 0),(4 4,6 4,6 6,4 6,4 4))'))), "\
+"ST_AsText(ST_Centroid(ST_GeomFromText('MULTIPOLYGON(((0 0,2 0,2 2,0 2,0 0)),((10 0,12 0,12 2,10 2,10 0)))'))), "\
+"ST_AsText(ST_Centroid(ST_GeomFromText('GEOMETRYCOLLECTION(POINT(100 100),LINESTRING(0 0,0 4),POLYGON((0 0,6 0,6 6,0 6,0 0)))'))), "\
+"ST_AsText(ST_Centroid(ST_GeomFromText('GEOMETRYCOLLECTION(POINT(100 100),LINESTRING(0 0,0 4),LINESTRING(0 0,4 0))'))), "\
+"ST_AsText(ST_Centroid(ST_GeomFromText('GEOMETRYCOLLECTION(POINT(0 0),MULTIPOINT(4 4,8 8))'))), "\
+"ST_AsText(ST_Centroid(ST_GeomFromText('GEOMETRYCOLLECTION EMPTY'))), "\
+"ST_AsText(ST_Centroid(NULL)), "\
+"ST_AsText(ST_Centroid(ST_GeomFromText('LINESTRING(1 1,1 1)')));"
+
 line_interpolation_expected=$(cat <<EXPECTED
 POINT(0 5)	POINT(2.5 5)	POINT(5 5)	POINT(0 0)	MULTIPOINT((0 2.5),(0 5),(2.5 5),(5 5))	MULTIPOINT((0 3),(1 5),(4 5))	MULTIPOINT((0 0))	MULTIPOINT((0 0))	MULTIPOINT((5 5))	POINT(0 0)	POINT(0 5)	POINT(2.5 5)	POINT(5 5)	NULL	NULL	NULL
 EXPECTED
@@ -305,5 +325,19 @@ expect_error \
     "22003" \
     "Invalid radius provided to function st_distance_sphere: Radius must be greater than zero." \
     "SELECT ST_Distance_Sphere(Point(0,0), Point(1,1), 0);"
+
+expect_error \
+    "centroid rejects geographic srs" \
+    3618 \
+    "22S00" \
+    "st_centroid(POINT) has not been implemented for geographic spatial reference systems." \
+    "SELECT ST_AsText(ST_Centroid(ST_PointFromGeoHash('mh2n0p0581',4326)));"
+
+expect_error \
+    "centroid rejects invalid polygon" \
+    3037 \
+    "22023" \
+    "Invalid GIS data provided to function st_centroid." \
+    "SELECT ST_AsText(ST_Centroid(ST_GeomFromText('POLYGON((0 0,1 1,2 2,0 0))')));"
 
 printf '%s\n' "mysql_baseline_spatial_measure_accessor_functions_expectations: ok"

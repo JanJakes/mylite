@@ -15,8 +15,10 @@ enum {
     mysql_error_numeric_value_out_of_range = 1690,
     mysql_error_wrong_arguments = 1210,
     mysql_error_gis_different_srids = 3033,
+    mysql_error_invalid_gis_data = 3037,
     mysql_error_geojson_longitude_out_of_range = 3616,
     mysql_error_geojson_latitude_out_of_range = 3617,
+    mysql_error_not_implemented_for_geographic_srs = 3618,
     mysql_error_not_implemented_for_cartesian_srs = 3704,
     mysql_error_nonpositive_radius = 3706,
     mysql_error_unexpected_geometry_type = 3516,
@@ -155,6 +157,20 @@ static int test_scalar_spatial_measure_accessors(void) {
         "1111946.8229846344",
         "1111946.8229846344",
         "1111946.8229846344",
+    };
+    static const char *const centroid_values[] = {
+        "POINT(2 4)",
+        "POINT(2 2)",
+        "POINT(1 3)",
+        "POINT(1 1)",
+        "POINT(5 5)",
+        "POINT(6 1)",
+        "POINT(3 3)",
+        "POINT(1 1)",
+        "POINT(4 4)",
+        NULL,
+        NULL,
+        "POINT(1 1)",
     };
     static const char *const line_interpolation_values[] = {
         "POINT(0 5)",
@@ -348,6 +364,33 @@ static int test_scalar_spatial_measure_accessors(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql =
+                "SELECT ST_AsText(ST_Centroid(Point(2,4))), "
+                "ST_AsText(ST_Centroid(ST_GeomFromText('MULTIPOINT(0 0,2 2,4 4)'))), "
+                "ST_AsText(ST_Centroid(ST_GeomFromText('LINESTRING(0 0,0 4,4 4)'))), "
+                "ST_AsText(ST_Centroid(ST_GeomFromText('MULTILINESTRING((0 0,0 4),(0 0,4 0))'))), "
+                "ST_AsText(ST_Centroid(ST_GeomFromText('POLYGON((0 0,10 0,10 10,0 10,0 0),"
+                "(4 4,6 4,6 6,4 6,4 4))'))), "
+                "ST_AsText(ST_Centroid(ST_GeomFromText('MULTIPOLYGON(((0 0,2 0,2 2,0 2,0 0)),"
+                "((10 0,12 0,12 2,10 2,10 0)))'))), "
+                "ST_AsText(ST_Centroid(ST_GeomFromText('GEOMETRYCOLLECTION(POINT(100 100),"
+                "LINESTRING(0 0,0 4),POLYGON((0 0,6 0,6 6,0 6,0 0)))'))), "
+                "ST_AsText(ST_Centroid(ST_GeomFromText('GEOMETRYCOLLECTION(POINT(100 100),"
+                "LINESTRING(0 0,0 4),LINESTRING(0 0,4 0))'))), "
+                "ST_AsText(ST_Centroid(ST_GeomFromText('GEOMETRYCOLLECTION(POINT(0 0),"
+                "MULTIPOINT(4 4,8 8))'))), "
+                "ST_AsText(ST_Centroid(ST_GeomFromText('GEOMETRYCOLLECTION EMPTY'))), "
+                "ST_AsText(ST_Centroid(NULL)), "
+                "ST_AsText(ST_Centroid(ST_GeomFromText('LINESTRING(1 1,1 1)')))",
+            .column_count = sizeof(centroid_values) / sizeof(centroid_values[0]),
+            .values = centroid_values,
+            .row_count = 1U,
+            .context = "centroid measurements",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT ST_AsText(ST_LineInterpolatePoint("
                    "ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), '0.5')), "
                    "ST_AsText(ST_LineInterpolatePoint("
@@ -435,6 +478,11 @@ static int test_table_backed_spatial_measure_accessors(void) {
         "2223893.645969269",
         "0",
         "1111946.8229846344",
+    };
+    static const char *const centroid_values[] = {
+        "POINT(2 4)",
+        "POINT(1 3)",
+        "POINT(5 5)",
     };
     char path[test_path_capacity];
     mylite_db *database = NULL;
@@ -550,6 +598,26 @@ static int test_table_backed_spatial_measure_accessors(void) {
             .values = distance_sphere_values,
             .row_count = 2U,
             .context = "row-backed distance sphere projection",
+        }
+    );
+    failures +=
+        execute_ok(database, "CREATE TABLE centroid_values(id INT PRIMARY KEY, g GEOMETRY)", NULL);
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO centroid_values VALUES "
+        "(1, Point(2,4)), "
+        "(2, ST_GeomFromText('LINESTRING(0 0,0 4,4 4)')), "
+        "(3, ST_GeomFromText('POLYGON((0 0,10 0,10 10,0 10,0 0),(4 4,6 4,6 6,4 6,4 4))'))",
+        (struct expected_dml_result){.affected_rows = 3, .warning_count = 0U}
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ST_AsText(ST_Centroid(g)) FROM centroid_values ORDER BY id",
+            .column_count = 1U,
+            .values = centroid_values,
+            .row_count = 3U,
+            .context = "row-backed centroid projection",
         }
     );
 
@@ -679,6 +747,25 @@ static int test_spatial_measure_accessor_diagnostics(void) {
             .sqlstate = "22003",
             .message_part = "Invalid radius provided to function st_distance_sphere: Radius must "
                             "be greater than zero",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ST_AsText(ST_Centroid(ST_PointFromGeoHash('mh2n0p0581',4326)))",
+        (struct expected_sql_error){
+            .code = mysql_error_not_implemented_for_geographic_srs,
+            .sqlstate = "22S00",
+            .message_part = "st_centroid(POINT) has not been implemented for geographic "
+                            "spatial reference systems",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ST_AsText(ST_Centroid(ST_GeomFromText('POLYGON((0 0,1 1,2 2,0 0))')))",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_gis_data,
+            .sqlstate = "22023",
+            .message_part = "Invalid GIS data provided to function st_centroid",
         }
     );
     mylite_close(database);

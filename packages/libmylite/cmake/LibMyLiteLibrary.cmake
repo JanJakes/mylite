@@ -166,6 +166,7 @@ add_library(mylite STATIC
   src/runtime/mylite_result_metadata.c
   src/runtime/mylite_sqlite_bootstrap.c
   src/runtime/mylite_sqlite_registration.c
+  src/runtime/mylite_statement_digest.c
   src/runtime/mylite_statement_context.c
   src/runtime/mylite_statistical_aggregate.c
   src/runtime/mylite_system_functions.c

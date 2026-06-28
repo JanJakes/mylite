@@ -505,6 +505,7 @@ enum {
     mysql_uncompressed_length_display_length = 10,
     mysql_validate_password_strength_display_length = 10,
     mysql_roles_graphml_base_display_length = 50331648,
+    mysql_statement_digest_text_base_display_length = 67108864,
     mysql_inet_ntoa_display_length = 31,
     mysql_json_value_display_character_length = 512,
     mysql_json_type_display_length = 68,

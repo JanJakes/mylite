@@ -48,6 +48,10 @@
     COMMAND mylite_runtime_roles_graphml_function_test
   )
   add_test(
+    NAME libmylite.runtime.statement_digest_text_function
+    COMMAND mylite_runtime_statement_digest_text_function_test
+  )
+  add_test(
     NAME libmylite.runtime.replication_functions
     COMMAND mylite_runtime_replication_functions_test
   )

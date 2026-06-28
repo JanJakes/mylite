@@ -131,6 +131,11 @@ static int roles_graphml_function_match(
     const struct mylite_sql_ast_node *expression,
     bool *out_matches
 );
+static int statement_digest_text_function_match(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_matches
+);
 static int charset_collation_select_result(
     enum planned_charset_collation_function_kind function_kind,
     const char *charset,
@@ -257,6 +262,7 @@ static int charset_collation_scalar_result(
     const char *charset = "binary";
     const char *collation = "binary";
     bool is_roles_graphml = false;
+    bool is_statement_digest_text = false;
     int match_rc = MYLITE_OK;
 
     if (out_result == NULL) {
@@ -288,6 +294,19 @@ static int charset_collation_scalar_result(
             function_kind,
             "utf8mb3",
             "utf8mb3_general_ci",
+            out_result
+        );
+    }
+    match_rc =
+        statement_digest_text_function_match(database, expression, &is_statement_digest_text);
+    if (match_rc != MYLITE_OK) {
+        return match_rc;
+    }
+    if (is_statement_digest_text) {
+        return charset_collation_select_result(
+            function_kind,
+            database->session.character_set_connection,
+            database->session.collation_connection,
             out_result
         );
     }
@@ -402,6 +421,7 @@ static int coercibility_non_concat_scalar_result(
     const char **out_result
 ) {
     bool is_roles_graphml = false;
+    bool is_statement_digest_text = false;
     int match_rc = MYLITE_OK;
 
     if (out_result == NULL) {
@@ -427,6 +447,15 @@ static int coercibility_non_concat_scalar_result(
     }
     if (is_roles_graphml) {
         *out_result = "3";
+        return MYLITE_OK;
+    }
+    match_rc =
+        statement_digest_text_function_match(database, expression, &is_statement_digest_text);
+    if (match_rc != MYLITE_OK) {
+        return match_rc;
+    }
+    if (is_statement_digest_text) {
+        *out_result = "4";
         return MYLITE_OK;
     }
 
@@ -1247,6 +1276,7 @@ static int scalar_expression_base_charset_collation_metadata(
     const char **out_collation
 ) {
     bool is_roles_graphml = false;
+    bool is_statement_digest_text = false;
     int match_rc = MYLITE_OK;
 
     if (out_charset == NULL || out_collation == NULL) {
@@ -1270,6 +1300,16 @@ static int scalar_expression_base_charset_collation_metadata(
     if (is_roles_graphml) {
         *out_charset = "utf8mb3";
         *out_collation = "utf8mb3_general_ci";
+        return MYLITE_OK;
+    }
+    match_rc =
+        statement_digest_text_function_match(database, expression, &is_statement_digest_text);
+    if (match_rc != MYLITE_OK) {
+        return match_rc;
+    }
+    if (is_statement_digest_text) {
+        *out_charset = database->session.character_set_connection;
+        *out_collation = database->session.collation_connection;
         return MYLITE_OK;
     }
 
@@ -1446,6 +1486,61 @@ static int roles_graphml_function_match(
     }
     if (arguments != NULL && mylite_sql_ast_node_child_count(arguments) != 0U) {
         mylite_execution_set_native_function_parameter_count_error(database, "ROLES_GRAPHML");
+        return MYLITE_ERROR;
+    }
+    *out_matches = true;
+    return MYLITE_OK;
+}
+
+static int statement_digest_text_function_match(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool *out_matches
+) {
+    const struct mylite_sql_ast_node *current = NULL;
+    const struct mylite_sql_ast_node *first_identifier = NULL;
+    const struct mylite_sql_ast_node *second_identifier = NULL;
+    const struct mylite_sql_ast_node *arguments = NULL;
+    enum mylite_sys_function_kind kind = MYLITE_SYS_FUNCTION_NONE;
+    size_t identifier_count = 0U;
+
+    if (out_matches == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_matches = false;
+
+    expression = mylite_execution_unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_GENERIC_FUNCTION) {
+        return MYLITE_OK;
+    }
+    for (current = expression->first_child; current != NULL; current = current->next_sibling) {
+        if (current->kind != MYLITE_SQL_AST_IDENTIFIER) {
+            if (current->kind == MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+                arguments = current;
+            }
+            continue;
+        }
+        if (identifier_count == 0U) {
+            first_identifier = current;
+        } else if (identifier_count == 1U) {
+            second_identifier = current;
+        }
+        ++identifier_count;
+    }
+    if (identifier_count == 1U) {
+        (void)mylite_sys_function_lookup_span(NULL, &first_identifier->span, &kind);
+    } else if (identifier_count == 2U) {
+        (void
+        )mylite_sys_function_lookup_span(&first_identifier->span, &second_identifier->span, &kind);
+    }
+    if (kind != MYLITE_SYS_FUNCTION_STATEMENT_DIGEST_TEXT) {
+        return MYLITE_OK;
+    }
+    if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 1U) {
+        mylite_execution_set_native_function_parameter_count_error(
+            database,
+            "STATEMENT_DIGEST_TEXT"
+        );
         return MYLITE_ERROR;
     }
     *out_matches = true;

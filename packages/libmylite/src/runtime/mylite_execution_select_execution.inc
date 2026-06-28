@@ -2188,6 +2188,10 @@ static int populate_row_scalar_expression_result_column_descriptor(
             populate_roles_graphml_result_column_descriptor(database, descriptor);
             return MYLITE_OK;
         }
+        if (expression->sys_function_kind == MYLITE_SYS_FUNCTION_STATEMENT_DIGEST_TEXT) {
+            populate_statement_digest_text_result_column_descriptor(database, descriptor);
+            return MYLITE_OK;
+        }
         populate_scalar_connection_string_result_column_descriptor(
             database,
             descriptor,

@@ -186,6 +186,8 @@ enum {
     mysql_error_duplicated_value_in_set = 1291,
     mysql_error_unknown_or_incorrect_time_zone = 1298,
     mysql_error_illegal_set_value = 1367,
+    mysql_error_statement_digest_parse = 3676,
+    mysql_error_statement_digest_parse_runtime = 3677,
     mysql_error_regexp_illegal_argument = 3685,
     mysql_error_regular_expression = 3696,
     mysql_error_regular_expression_character_range = 3697,

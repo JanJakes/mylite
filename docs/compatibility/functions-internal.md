@@ -38,7 +38,7 @@ functions.
 | `PS_CURRENT_THREAD_ID()` | ✅ | MySQL-runtime-verified current synthetic Performance Schema thread id |
 | `PS_THREAD_ID()` | ✅ | MySQL-runtime-verified connection-id to synthetic thread-id mapping |
 | `ROLES_GRAPHML()` | ✅ | MySQL-runtime-verified embedded-account GraphML placeholder, scalar/DUAL/DO/row projection, charset/collation metadata, and native arity diagnostics; no persisted role graph |
-| `STATEMENT_DIGEST()` | ❌ | Compute statement digest hash value |
-| `STATEMENT_DIGEST_TEXT()` | ❌ | Compute normalized statement digest |
+| `STATEMENT_DIGEST()` | ❌ | Hash value remains unsupported; MySQL's hash input is not the displayed digest text |
+| `STATEMENT_DIGEST_TEXT()` | ✅ | MySQL-runtime-verified normalized digest text for the documented MyLite-parsed statement subset, including scalar/DUAL/DO/row projection, metadata, charset/collation/coercibility wrappers, and native diagnostics |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

@@ -8,6 +8,7 @@
 #include "mylite_source_span.h"
 #include "mylite_sqlite_bootstrap.h"
 #include "mylite_sqlite_registration.h"
+#include "mylite_statement_digest.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -99,6 +100,14 @@ static const struct sys_function_descriptor sys_function_descriptors[] = {
         "_mylite_roles_graphml",
         0U,
         MYLITE_SYS_FUNCTION_ROLES_GRAPHML,
+        true,
+        false,
+    },
+    {
+        "STATEMENT_DIGEST_TEXT",
+        "_mylite_statement_digest_text",
+        1U,
+        MYLITE_SYS_FUNCTION_STATEMENT_DIGEST_TEXT,
         true,
         false,
     },
@@ -433,6 +442,11 @@ static int sys_validate_password_strength(
     struct mylite_sys_function_result *out_result
 );
 static int sys_roles_graphml(struct mylite_sys_function_result *out_result);
+static int sys_statement_digest_text(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+);
 static size_t last_slash_before(const char *text, size_t end);
 static size_t last_dot_between(const char *text, size_t start, size_t end);
 static int copy_argument_text(const struct mylite_sys_function_argument *argument, char **out_text);
@@ -640,6 +654,8 @@ int mylite_sys_function_evaluate(
         return sys_validate_password_strength(arguments, out_result);
     case MYLITE_SYS_FUNCTION_ROLES_GRAPHML:
         return sys_roles_graphml(out_result);
+    case MYLITE_SYS_FUNCTION_STATEMENT_DIGEST_TEXT:
+        return sys_statement_digest_text(database, arguments, out_result);
     case MYLITE_SYS_FUNCTION_EXTRACT_SCHEMA_FROM_FILE_NAME:
         return sys_extract_schema_from_file_name(arguments, out_result);
     case MYLITE_SYS_FUNCTION_EXTRACT_TABLE_FROM_FILE_NAME:
@@ -905,6 +921,26 @@ static int sys_roles_graphml(struct mylite_sys_function_result *out_result) {
         "</graphml>\n";
 
     return sys_function_copy_result(out_result, roles_graphml, sizeof(roles_graphml) - 1U);
+}
+
+static int sys_statement_digest_text(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+) {
+    if (arguments == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (arguments[0].is_null) {
+        return sys_function_null_result(out_result);
+    }
+    return mylite_statement_digest_text(
+        database,
+        arguments[0].text,
+        arguments[0].text_size,
+        &out_result->text,
+        &out_result->text_size
+    );
 }
 
 static int sys_extract_table_from_file_name(

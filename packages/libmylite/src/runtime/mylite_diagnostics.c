@@ -39,6 +39,7 @@ void mylite_diagnostics_init(struct mylite_diagnostics *diagnostics) {
     diagnostics->warnings = NULL;
     diagnostics->warning_count = 0U;
     diagnostics->warning_total_count = 0U;
+    diagnostics->count_only_warning_total_count = 0U;
     diagnostics->error_warning_total_count = 0U;
     diagnostics->warning_capacity = 0U;
     diagnostics->max_warning_count = SIZE_MAX;
@@ -55,6 +56,7 @@ void mylite_diagnostics_deinit(struct mylite_diagnostics *diagnostics) {
     diagnostics->warnings = NULL;
     diagnostics->warning_count = 0U;
     diagnostics->warning_total_count = 0U;
+    diagnostics->count_only_warning_total_count = 0U;
     diagnostics->error_warning_total_count = 0U;
     diagnostics->warning_capacity = 0U;
     mylite_diagnostics_reset(diagnostics);
@@ -68,6 +70,7 @@ void mylite_diagnostics_reset(struct mylite_diagnostics *diagnostics) {
     mylite_diagnostics_clear_condition(diagnostics);
     diagnostics->warning_count = 0U;
     diagnostics->warning_total_count = 0U;
+    diagnostics->count_only_warning_total_count = 0U;
     diagnostics->error_warning_total_count = 0U;
 }
 
@@ -122,6 +125,7 @@ int mylite_diagnostics_replace(
         mylite_diagnostics_clear_condition(&copy);
     }
     copy.warning_total_count = source->warning_total_count;
+    copy.count_only_warning_total_count = source->count_only_warning_total_count;
     copy.error_warning_total_count = source->error_warning_total_count;
     copy.max_warning_count = source->max_warning_count;
     copy.notes_enabled = source->notes_enabled;
@@ -178,6 +182,26 @@ int mylite_diagnostics_append_warning(
     const char *message
 ) {
     return append_warning_with_level(diagnostics, "Warning", code, sqlstate, message);
+}
+
+int mylite_diagnostics_increment_count_only_warning_total_count(
+    struct mylite_diagnostics *diagnostics,
+    size_t count
+) {
+    if (diagnostics == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (count > SIZE_MAX - diagnostics->warning_total_count) {
+        mylite_diagnostics_set_error(diagnostics, MYLITE_NOMEM, "HY001", "too many warnings");
+        return MYLITE_NOMEM;
+    }
+    if (count > SIZE_MAX - diagnostics->count_only_warning_total_count) {
+        mylite_diagnostics_set_error(diagnostics, MYLITE_NOMEM, "HY001", "too many warnings");
+        return MYLITE_NOMEM;
+    }
+    diagnostics->warning_total_count += count;
+    diagnostics->count_only_warning_total_count += count;
+    return MYLITE_OK;
 }
 
 int mylite_diagnostics_append_error(
@@ -326,6 +350,15 @@ size_t mylite_diagnostics_warning_total_count(const struct mylite_diagnostics *d
     }
 
     return diagnostics->warning_total_count;
+}
+
+size_t mylite_diagnostics_show_warning_total_count(const struct mylite_diagnostics *diagnostics) {
+    if (diagnostics == NULL ||
+        diagnostics->warning_total_count < diagnostics->count_only_warning_total_count) {
+        return 0U;
+    }
+
+    return diagnostics->warning_total_count - diagnostics->count_only_warning_total_count;
 }
 
 size_t mylite_diagnostics_error_warning_total_count(const struct mylite_diagnostics *diagnostics) {

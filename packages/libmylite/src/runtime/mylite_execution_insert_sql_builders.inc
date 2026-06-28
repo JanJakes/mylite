@@ -564,6 +564,7 @@ static bool row_scalar_expression_uses_string_collation(
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_TO_BIN:
     case PLANNED_ROW_SCALAR_EXPRESSION_CHAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
         break;
     }
 

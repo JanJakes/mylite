@@ -17,6 +17,7 @@ static int bind_row_scalar_non_concat_expression_parameters(
         return rc;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
@@ -223,6 +224,7 @@ static int bind_row_scalar_integer_arithmetic_frame_parameters(
         return rc;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
         if (expression->arguments == NULL || expression->argument_count != 2U) {

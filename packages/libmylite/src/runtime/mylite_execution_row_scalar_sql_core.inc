@@ -12,6 +12,8 @@ static int append_row_scalar_expression_sql(
             ++(*next_parameter);
         }
         return rc;
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
+        return mylite_dynamic_string_append(string, "NULL");
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return append_row_scalar_column_sql(string, expression);
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
@@ -930,6 +932,8 @@ static int append_row_scalar_conversion_base_expression_sql(
             ++(*next_parameter);
         }
         return rc;
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
+        return mylite_dynamic_string_append(string, "NULL");
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return append_row_scalar_column_sql(string, expression);
     case PLANNED_ROW_SCALAR_EXPRESSION_STRING_SLICE:
@@ -1134,6 +1138,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:
     case PLANNED_ROW_SCALAR_EXPRESSION_FIELD:
@@ -1261,6 +1266,8 @@ static int append_row_scalar_non_control_flow_expression_sql(
             ++(*next_parameter);
         }
         return rc;
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
+        return mylite_dynamic_string_append(string, "NULL");
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return append_row_scalar_column_sql(string, expression);
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
@@ -1577,6 +1584,8 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
             ++(*next_parameter);
         }
         return rc;
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
+        return mylite_dynamic_string_append(string, "NULL");
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return append_row_scalar_integer_arithmetic_column_sql(string, expression);
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:

@@ -418,6 +418,7 @@ static int append_row_scalar_uuid_argument_sql(
     switch (argument->kind) {
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
         return append_row_scalar_uuid_leaf_argument_sql(string, argument, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_SHORT:
@@ -610,6 +611,8 @@ static int append_row_scalar_uuid_leaf_argument_sql(
             ++(*next_parameter);
         }
         return rc;
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
+        return mylite_dynamic_string_append(string, "NULL");
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return mylite_dynamic_string_append_quoted_identifier(string, argument->column.name);
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
@@ -756,6 +759,7 @@ static const char *row_scalar_uuid_sql_function_name(enum planned_row_scalar_exp
         return "_mylite_bin_to_uuid";
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:

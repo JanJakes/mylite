@@ -2059,7 +2059,7 @@ static const struct mylite_diagnostics *system_variable_count_diagnostics(
         return NULL;
     }
     if (mylite_diagnostics_errcode(&database->diagnostics) != MYLITE_OK ||
-        mylite_diagnostics_warning_count(&database->diagnostics) > 0U) {
+        mylite_diagnostics_warning_total_count(&database->diagnostics) > 0U) {
         return &database->diagnostics;
     }
     return &database->previous_diagnostics;

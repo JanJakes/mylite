@@ -64,6 +64,16 @@ static int plan_row_scalar_non_control_flow_expression(
             out_expression
         );
     }
+    if (generic_function_name_equals(expression, "VALUES")) {
+        return plan_row_scalar_values_outside_odku_function(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (expression->kind == MYLITE_SQL_AST_LITERAL) {
         return plan_row_scalar_literal_value(database, expression, out_expression);
     }
@@ -569,6 +579,55 @@ static bool row_scalar_expression_is_insert_values_reference(
     }
     return expression->kind == MYLITE_SQL_AST_INSERT_VALUES_REFERENCE ||
            generic_function_name_equals(expression, "VALUES");
+}
+
+static int plan_row_scalar_values_outside_odku_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *arguments = NULL;
+    const struct mylite_sql_ast_node *column = NULL;
+    struct mylite_catalog_column_descriptor ignored_column = {0};
+    size_t ignored_source_index = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_expression == NULL) {
+        return MYLITE_MISUSE;
+    }
+    expression = unwrap_parenthesized_expression(expression);
+    arguments = generic_system_function_arguments(expression);
+    if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 1U) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    column = child_at(arguments, 0U);
+    if (column == NULL || (column->kind != MYLITE_SQL_AST_IDENTIFIER &&
+                           column->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    rc = resolve_descriptor_column_reference_with_source_index(
+        database,
+        column,
+        source_context,
+        COLUMN_REFERENCE_FIELD,
+        "VALUES() supports only descriptor column references",
+        table_columns,
+        table_column_count,
+        &ignored_column,
+        &ignored_source_index
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU;
+    out_expression->value = (struct planned_value){.is_null = true};
+    return MYLITE_OK;
 }
 
 static int plan_row_scalar_insert_values_reference(

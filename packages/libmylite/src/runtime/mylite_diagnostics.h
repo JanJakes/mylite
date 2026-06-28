@@ -24,6 +24,7 @@ struct mylite_diagnostics {
     struct mylite_diagnostic_record *warnings;
     size_t warning_count;
     size_t warning_total_count;
+    size_t count_only_warning_total_count;
     size_t error_warning_total_count;
     size_t warning_capacity;
     size_t max_warning_count;
@@ -56,6 +57,10 @@ int mylite_diagnostics_append_warning(
     const char *sqlstate,
     const char *message
 );
+int mylite_diagnostics_increment_count_only_warning_total_count(
+    struct mylite_diagnostics *diagnostics,
+    size_t count
+);
 int mylite_diagnostics_append_error(
     struct mylite_diagnostics *diagnostics,
     int code,
@@ -79,6 +84,7 @@ const char *mylite_diagnostics_errmsg(const struct mylite_diagnostics *diagnosti
 
 size_t mylite_diagnostics_warning_count(const struct mylite_diagnostics *diagnostics);
 size_t mylite_diagnostics_warning_total_count(const struct mylite_diagnostics *diagnostics);
+size_t mylite_diagnostics_show_warning_total_count(const struct mylite_diagnostics *diagnostics);
 size_t mylite_diagnostics_error_warning_total_count(const struct mylite_diagnostics *diagnostics);
 const struct mylite_diagnostic_record *mylite_diagnostics_warning_at(
     const struct mylite_diagnostics *diagnostics,

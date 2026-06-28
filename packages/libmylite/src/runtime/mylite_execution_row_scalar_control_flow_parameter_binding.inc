@@ -58,6 +58,7 @@ static int bind_row_scalar_control_flow_frame_parameters(
         switch (expression->kind) {
         case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
         case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
             return bind_row_scalar_control_flow_value_or_column_parameters(
                 statement,
                 expression,
@@ -212,6 +213,7 @@ static int bind_row_scalar_control_flow_frame_parameters(
         switch (expression->kind) {
         case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
         case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
             return bind_row_scalar_control_flow_value_or_column_parameters(
                 statement,
                 expression,
@@ -378,6 +380,9 @@ static int bind_row_scalar_control_flow_value_or_column_parameters(
         return MYLITE_MISUSE;
     }
     if (expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
+        return MYLITE_OK;
+    }
+    if (expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU) {
         return MYLITE_OK;
     }
     if (expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_VALUE) {

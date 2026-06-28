@@ -1015,6 +1015,10 @@
     COMMAND mylite_runtime_insert_select_on_duplicate_key_update_test
   )
   add_test(
+    NAME libmylite.runtime.values_function_non_odku
+    COMMAND mylite_runtime_values_function_non_odku_test
+  )
+  add_test(
     NAME libmylite.runtime.truncate_table_lifecycle
     COMMAND mylite_runtime_truncate_table_lifecycle_test
   )

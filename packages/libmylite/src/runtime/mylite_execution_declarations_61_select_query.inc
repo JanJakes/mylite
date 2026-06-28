@@ -378,6 +378,18 @@ static int execute_row_scalar_select_statement(
     bool apply_sql_select_limit,
     mylite_result **out_result
 );
+static int count_row_scalar_values_outside_odku_warning_counts(
+    const struct planned_row_scalar_select *plan,
+    size_t *out_count
+);
+static int append_row_scalar_values_outside_odku_warning_count(
+    struct mylite_db *database,
+    size_t warning_count
+);
+static int count_row_scalar_values_outside_odku_expressions(
+    const struct planned_row_scalar_expression *expression,
+    size_t *inout_count
+);
 static int plan_row_scalar_select(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,

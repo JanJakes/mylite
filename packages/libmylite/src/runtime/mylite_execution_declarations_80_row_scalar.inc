@@ -2405,6 +2405,14 @@ static int plan_row_scalar_non_control_flow_expression(
 static bool row_scalar_expression_is_insert_values_reference(
     const struct mylite_sql_ast_node *expression
 );
+static int plan_row_scalar_values_outside_odku_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_insert_values_reference(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

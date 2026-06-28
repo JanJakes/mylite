@@ -194,6 +194,7 @@ static bool select_statement_is_row_scalar_projection_attempt(
         }
         if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
             ((expression != NULL && expression->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION) ||
+             generic_function_name_equals(expression, "VALUES") ||
              row_scalar_expression_is_window_function(expression) ||
              (has_row_source &&
               row_scalar_expression_is_context_expression_attempt(expression, false)) ||
@@ -334,6 +335,7 @@ static int execute_row_scalar_select_statement(
     mylite_result **out_result
 ) {
     struct planned_row_scalar_select plan = {false};
+    size_t values_outside_odku_warning_count = 0U;
     int rc = plan_row_scalar_select(database, statement, true, &plan);
 
     if (rc == MYLITE_OK && apply_sql_select_limit) {
@@ -343,7 +345,30 @@ static int execute_row_scalar_select_statement(
         rc = append_select_modifier_warnings(database, statement);
     }
     if (rc == MYLITE_OK) {
+        rc = count_row_scalar_values_outside_odku_warning_counts(
+            &plan,
+            &values_outside_odku_warning_count
+        );
+        if (rc == MYLITE_NOMEM) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_values_outside_odku_warning_count(
+            database,
+            values_outside_odku_warning_count
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = append_session_scalar_row_scalar_select_warnings(database, statement);
+    }
+    if (rc == MYLITE_OK && values_outside_odku_warning_count != 0U) {
+        planned_row_scalar_select_deinit(&plan);
+        plan = (struct planned_row_scalar_select){false};
+        rc = plan_row_scalar_select(database, statement, true, &plan);
+    }
+    if (rc == MYLITE_OK && values_outside_odku_warning_count != 0U && apply_sql_select_limit) {
+        apply_sql_select_limit_to_plan_limit(database, &plan.limit);
     }
     if (rc == MYLITE_OK) {
         rc = execute_row_scalar_select_from_plan(database, &plan, out_result);
@@ -351,6 +376,73 @@ static int execute_row_scalar_select_statement(
     planned_row_scalar_select_deinit(&plan);
 
     return rc;
+}
+
+static int count_row_scalar_values_outside_odku_warning_counts(
+    const struct planned_row_scalar_select *plan,
+    size_t *out_count
+) {
+    size_t warning_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (plan == NULL || out_count == NULL) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < plan->item_count; ++index) {
+        rc = count_row_scalar_values_outside_odku_expressions(
+            &plan->items[index].expression,
+            &warning_count
+        );
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    *out_count = warning_count;
+    return MYLITE_OK;
+}
+
+static int append_row_scalar_values_outside_odku_warning_count(
+    struct mylite_db *database,
+    size_t warning_count
+) {
+    int rc = MYLITE_OK;
+
+    if (database == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = mylite_diagnostics_increment_count_only_warning_total_count(
+        mylite_connection_diagnostics(database),
+        warning_count
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int count_row_scalar_values_outside_odku_expressions(
+    const struct planned_row_scalar_expression *expression,
+    size_t *inout_count
+) {
+    if (expression == NULL || inout_count == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU) {
+        if (*inout_count == SIZE_MAX) {
+            return MYLITE_NOMEM;
+        }
+        ++(*inout_count);
+    }
+    for (size_t index = 0U; index < expression->argument_count; ++index) {
+        int rc = count_row_scalar_values_outside_odku_expressions(
+            &expression->arguments[index],
+            inout_count
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+    }
+    return MYLITE_OK;
 }
 
 static int execute_row_scalar_select_from_plan(
@@ -2134,6 +2226,15 @@ static int populate_row_scalar_expression_result_column_descriptor(
             expression->kind == PLANNED_ROW_SCALAR_EXPRESSION_RANDOM_BYTES
                 ? mysql_random_bytes_display_length
                 : mysql_json_document_display_length;
+        descriptor->decimals = mysql_approximate_decimals;
+        descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
+        descriptor->nullable = true;
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
+        descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+        descriptor->charset_id = mysql_collation_binary_id;
+        descriptor->collation_id = mysql_collation_binary_id;
+        descriptor->display_length = 0U;
         descriptor->decimals = mysql_approximate_decimals;
         descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
         descriptor->nullable = true;

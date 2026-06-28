@@ -222,6 +222,7 @@ static int bind_row_scalar_uuid_argument_parameters(
     switch (argument->kind) {
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
         return bind_row_scalar_uuid_leaf_argument_parameters(statement, argument, parameter_index);
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_SHORT:
@@ -405,6 +406,7 @@ static int bind_row_scalar_uuid_leaf_argument_parameters(
         }
         return rc;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONCAT_WS:

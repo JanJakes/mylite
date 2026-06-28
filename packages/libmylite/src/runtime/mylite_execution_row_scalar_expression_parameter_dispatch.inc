@@ -20,6 +20,7 @@ static int bind_row_scalar_expression_parameters(
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
     case PLANNED_ROW_SCALAR_EXPRESSION_COUNT_STAR:
     case PLANNED_ROW_SCALAR_EXPRESSION_SUM_COLUMN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION:
         return bind_row_scalar_window_function_expression_parameters(

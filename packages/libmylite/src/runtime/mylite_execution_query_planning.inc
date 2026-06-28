@@ -616,6 +616,7 @@ static int row_scalar_collate_base_charset(
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_AES_ENCRYPT:
     case PLANNED_ROW_SCALAR_EXPRESSION_AES_DECRYPT:
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
         *out_charset = "binary";
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:

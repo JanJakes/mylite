@@ -160,6 +160,8 @@ static int validate_row_scalar_numeric_function_argument(
             return MYLITE_OK;
         }
         break;
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
+        return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         if (row_scalar_numeric_function_column_descriptor_is_supported(&argument->column)) {
             return MYLITE_OK;

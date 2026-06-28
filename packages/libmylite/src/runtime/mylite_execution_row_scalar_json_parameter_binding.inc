@@ -152,6 +152,7 @@ static int bind_row_scalar_json_extract_document_argument_parameters(
     switch (expression->kind) {
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
         return bind_row_scalar_non_concat_expression_parameters(
             statement,
             expression,
@@ -310,6 +311,7 @@ static int bind_row_scalar_json_introspection_argument_parameters(
     switch (expression->kind) {
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
         return bind_row_scalar_non_concat_expression_parameters(
             statement,
             expression,
@@ -676,6 +678,7 @@ static int bind_row_scalar_json_set_document_argument_parameters(
     switch (expression->kind) {
     case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
         return bind_row_scalar_non_concat_expression_parameters(
             statement,
             expression,

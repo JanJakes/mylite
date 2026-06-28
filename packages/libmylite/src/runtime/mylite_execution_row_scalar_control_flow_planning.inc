@@ -2496,6 +2496,8 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
             return PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING;
         }
         return PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUES_OUTSIDE_ODKU:
+        return PLANNED_ROW_SCALAR_FIELD_DOMAIN_NONE;
     case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
         return row_scalar_control_flow_column_domain(&expression->column);
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:

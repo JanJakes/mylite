@@ -2655,6 +2655,17 @@
   )
   mylite_configure_c_target(mylite_runtime_insert_select_on_duplicate_key_update_test)
 
+  add_executable(mylite_runtime_values_function_non_odku_test
+    tests/runtime_values_function_non_odku_test.c
+  )
+  target_link_libraries(mylite_runtime_values_function_non_odku_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_values_function_non_odku_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_values_function_non_odku_test)
+
   add_executable(mylite_runtime_truncate_table_lifecycle_test
     tests/runtime_truncate_table_lifecycle_test.c
   )

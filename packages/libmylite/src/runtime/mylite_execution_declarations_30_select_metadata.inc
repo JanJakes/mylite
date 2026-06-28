@@ -544,11 +544,19 @@ static int append_performance_schema_performance_timer_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
+static int append_performance_schema_log_status_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
 static int append_performance_schema_setup_actor_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );
 static int append_performance_schema_setup_consumer_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+);
+static int append_performance_schema_setup_instrument_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
 );

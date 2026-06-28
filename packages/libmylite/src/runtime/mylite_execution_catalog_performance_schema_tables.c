@@ -10376,6 +10376,150 @@ static const char *const performance_schema_performance_timer_column_privileges[
 };
 
 static const struct mylite_execution_catalog_column_definition
+    performance_schema_error_log_columns[] = {
+        MYLITE_PERFORMANCE_SCHEMA_TIMESTAMP6_COLUMN("LOGGED", "NO"),
+        {"THREAD_ID",
+         NULL,
+         "YES",
+         "bigint",
+         NULL,
+         NULL,
+         "20",
+         "0",
+         NULL,
+         NULL,
+         NULL,
+         "bigint unsigned"},
+        {"PRIO",
+         NULL,
+         "NO",
+         "enum",
+         "7",
+         "28",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "enum('System','Error','Warning','Note')"},
+        {"ERROR_CODE",
+         NULL,
+         "YES",
+         "varchar",
+         "10",
+         "40",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(10)"},
+        {"SUBSYSTEM",
+         NULL,
+         "YES",
+         "varchar",
+         "7",
+         "28",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(7)"},
+        {"DATA",
+         NULL,
+         "NO",
+         "text",
+         "65535",
+         "65535",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "text"},
+};
+
+static const char *const performance_schema_error_log_column_keys[] = {
+    "PRI",
+    "MUL",
+    "MUL",
+    "MUL",
+    "MUL",
+    "",
+};
+
+static const char *const performance_schema_error_log_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_error_log_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const size_t performance_schema_error_log_primary_key_columns[] = {
+    0U,
+};
+
+static const struct mylite_execution_catalog_mysql_system_secondary_index
+    performance_schema_error_log_secondary_indexes[] = {
+        {"THREAD_ID", 1U, NULL, "1", false, NULL, "HASH"},
+        {"PRIO", 2U, NULL, "1", false, NULL, "HASH"},
+        {"ERROR_CODE", 3U, NULL, "1", false, NULL, "HASH"},
+        {"SUBSYSTEM", 4U, NULL, "1", false, NULL, "HASH"},
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_log_status_columns[] = {
+        {"SERVER_UUID",
+         NULL,
+         "NO",
+         "char",
+         "36",
+         "144",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_bin",
+         "char(36)"},
+        {"LOCAL", NULL, "NO", "json", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "json"},
+        {"REPLICATION", NULL, "NO", "json", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "json"},
+        {"STORAGE_ENGINES", NULL, "NO", "json", NULL, NULL, NULL, NULL, NULL, NULL, NULL, "json"},
+};
+
+static const char *const performance_schema_log_status_column_keys[] = {
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_log_status_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_log_status_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const struct mylite_execution_catalog_column_definition
     performance_schema_setup_actor_columns[] = {
         {"HOST",
          "%",
@@ -10513,6 +10657,118 @@ static const char *const performance_schema_setup_consumer_column_privileges[] =
 };
 
 static const size_t performance_schema_setup_consumer_primary_key_columns[] = {
+    0U,
+};
+
+static const struct mylite_execution_catalog_column_definition
+    performance_schema_setup_instrument_columns[] = {
+        {"NAME",
+         NULL,
+         "NO",
+         "varchar",
+         "128",
+         "512",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "varchar(128)"},
+        {"ENABLED",
+         NULL,
+         "NO",
+         "enum",
+         "3",
+         "12",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "enum('YES','NO')"},
+        {"TIMED",
+         NULL,
+         "YES",
+         "enum",
+         "3",
+         "12",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "enum('YES','NO')"},
+        {"PROPERTIES",
+         NULL,
+         "NO",
+         "set",
+         "71",
+         "284",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "set('singleton','progress','user','global_statistics','mutable','controlled_by_default')"
+        },
+        {"FLAGS",
+         NULL,
+         "YES",
+         "set",
+         "10",
+         "40",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "set('controlled')"},
+        {"VOLATILITY", NULL, "NO", "int", NULL, NULL, "10", "0", NULL, NULL, NULL, "int"},
+        {"DOCUMENTATION",
+         NULL,
+         "YES",
+         "longtext",
+         "4294967295",
+         "4294967295",
+         NULL,
+         NULL,
+         NULL,
+         "utf8mb4",
+         "utf8mb4_0900_ai_ci",
+         "longtext"},
+};
+
+static const char *const performance_schema_setup_instrument_column_keys[] = {
+    "PRI",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_setup_instrument_column_extras[] = {
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+};
+
+static const char *const performance_schema_setup_instrument_column_privileges[] = {
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+    "select,insert,update,references",
+};
+
+static const size_t performance_schema_setup_instrument_primary_key_columns[] = {
     0U,
 };
 
@@ -11716,6 +11972,23 @@ static const struct mylite_execution_catalog_mysql_system_table
          sizeof(performance_schema_data_locks_secondary_indexes) /
              sizeof(performance_schema_data_locks_secondary_indexes[0])},
         {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_ERROR_LOG,
+          "error_log",
+          performance_schema_error_log_columns,
+          sizeof(performance_schema_error_log_columns) /
+              sizeof(performance_schema_error_log_columns[0])},
+         performance_schema_error_log_column_keys,
+         performance_schema_error_log_column_extras,
+         performance_schema_error_log_column_privileges,
+         NULL,
+         performance_schema_error_log_primary_key_columns,
+         sizeof(performance_schema_error_log_primary_key_columns) /
+             sizeof(performance_schema_error_log_primary_key_columns[0]),
+         NULL,
+         performance_schema_error_log_secondary_indexes,
+         sizeof(performance_schema_error_log_secondary_indexes) /
+             sizeof(performance_schema_error_log_secondary_indexes[0])},
+        {"performance_schema",
          {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_EVENTS_ERRORS_SUMMARY_BY_ACCOUNT_BY_ERROR,
           "events_errors_summary_by_account_by_error",
           performance_schema_error_summary_account_columns,
@@ -12545,6 +12818,21 @@ static const struct mylite_execution_catalog_mysql_system_table
          NULL,
          0U},
         {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_LOG_STATUS,
+          "log_status",
+          performance_schema_log_status_columns,
+          sizeof(performance_schema_log_status_columns) /
+              sizeof(performance_schema_log_status_columns[0])},
+         performance_schema_log_status_column_keys,
+         performance_schema_log_status_column_extras,
+         performance_schema_log_status_column_privileges,
+         NULL,
+         NULL,
+         0U,
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
          {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_MEMORY_SUMMARY_BY_ACCOUNT_BY_EVENT_NAME,
           "memory_summary_by_account_by_event_name",
           performance_schema_memory_summary_account_columns,
@@ -12913,6 +13201,22 @@ static const struct mylite_execution_catalog_mysql_system_table
          performance_schema_setup_consumer_primary_key_columns,
          sizeof(performance_schema_setup_consumer_primary_key_columns) /
              sizeof(performance_schema_setup_consumer_primary_key_columns[0]),
+         NULL,
+         NULL,
+         0U},
+        {"performance_schema",
+         {MYLITE_EXECUTION_CATALOG_TABLE_PERFORMANCE_SCHEMA_SETUP_INSTRUMENTS,
+          "setup_instruments",
+          performance_schema_setup_instrument_columns,
+          sizeof(performance_schema_setup_instrument_columns) /
+              sizeof(performance_schema_setup_instrument_columns[0])},
+         performance_schema_setup_instrument_column_keys,
+         performance_schema_setup_instrument_column_extras,
+         performance_schema_setup_instrument_column_privileges,
+         NULL,
+         performance_schema_setup_instrument_primary_key_columns,
+         sizeof(performance_schema_setup_instrument_primary_key_columns) /
+             sizeof(performance_schema_setup_instrument_primary_key_columns[0]),
          NULL,
          NULL,
          0U},

@@ -709,6 +709,10 @@
     COMMAND mylite_runtime_performance_schema_transaction_event_placeholders_test
   )
   add_test(
+    NAME libmylite.runtime.performance_schema_remaining_placeholders
+    COMMAND mylite_runtime_performance_schema_remaining_placeholders_test
+  )
+  add_test(
     NAME libmylite.runtime.performance_schema_error_summary_placeholders
     COMMAND mylite_runtime_performance_schema_error_summary_placeholders_test
   )

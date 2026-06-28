@@ -136,6 +136,7 @@ static int append_performance_schema_system_table_rows(
             0 ||
         strcmp(definition->query_definition.name, "data_locks") == 0 ||
         strcmp(definition->query_definition.name, "data_lock_waits") == 0 ||
+        strcmp(definition->query_definition.name, "error_log") == 0 ||
         strcmp(definition->query_definition.name, "events_errors_summary_by_account_by_error") ==
             0 ||
         strcmp(definition->query_definition.name, "events_errors_summary_by_host_by_error") == 0 ||
@@ -304,11 +305,17 @@ static int append_performance_schema_system_table_rows(
     if (strcmp(definition->query_definition.name, "persisted_variables") == 0) {
         return MYLITE_OK;
     }
+    if (strcmp(definition->query_definition.name, "log_status") == 0) {
+        return append_performance_schema_log_status_rows(database, rows);
+    }
     if (strcmp(definition->query_definition.name, "setup_actors") == 0) {
         return append_performance_schema_setup_actor_rows(database, rows);
     }
     if (strcmp(definition->query_definition.name, "setup_consumers") == 0) {
         return append_performance_schema_setup_consumer_rows(database, rows);
+    }
+    if (strcmp(definition->query_definition.name, "setup_instruments") == 0) {
+        return append_performance_schema_setup_instrument_rows(database, rows);
     }
     if (strcmp(definition->query_definition.name, "setup_loggers") == 0) {
         return append_performance_schema_setup_logger_rows(database, rows);
@@ -1103,6 +1110,72 @@ static int append_performance_schema_setup_consumer_rows(
          rc == MYLITE_OK && index < sizeof(consumer_rows) / sizeof(consumer_rows[0]);
          ++index) {
         rc = append_information_schema_row(database, rows, consumer_rows[index]);
+    }
+    return rc;
+}
+
+static int append_performance_schema_log_status_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_log_status_column_count = 4 };
+
+    static const char *const log_status_row[performance_schema_log_status_column_count] = {
+        server_uuid_system_variable_value,
+        "{}",
+        "{}",
+        "{}",
+    };
+
+    if (rows->definition->column_count != performance_schema_log_status_column_count) {
+        set_runtime_error(database, "invalid performance_schema log_status columns");
+        return MYLITE_ERROR;
+    }
+    return append_information_schema_row(database, rows, log_status_row);
+}
+
+static int append_performance_schema_setup_instrument_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows
+) {
+    enum { performance_schema_setup_instrument_column_count = 7 };
+
+    static const char setup_instrument_lock_doc[] =
+        "Components can provide their own performance_schema tables. This lock protects the "
+        "list of such tables definitions.";
+    static const char *const instrument_rows[][performance_schema_setup_instrument_column_count] = {
+        {"idle", "YES", "YES", "user", NULL, "0", NULL},
+        {"memory/sql/TABLE",
+         "YES",
+         NULL,
+         "global_statistics",
+         "",
+         "0",
+         "Memory used by TABLE objects and their mem root."},
+        {"stage/sql/starting", "NO", "NO", "", NULL, "0", NULL},
+        {"statement/sql/select", "YES", "YES", "", NULL, "0", NULL},
+        {"wait/io/socket/sql/client_connection", "NO", "NO", "user", NULL, "0", NULL},
+        {"wait/synch/mutex/pfs/LOCK_pfs_share_list",
+         "NO",
+         "NO",
+         "singleton",
+         NULL,
+         "1",
+         setup_instrument_lock_doc},
+        {"wait/synch/mutex/sql/MYSQL_BIN_LOG::LOCK_commit", "NO", "NO", "", NULL, "0", NULL},
+        {"wait/synch/mutex/sql/TC_LOG_MMAP::LOCK_tc", "NO", "NO", "", NULL, "0", NULL},
+    };
+    int rc = MYLITE_OK;
+
+    if (rows->definition->column_count != performance_schema_setup_instrument_column_count) {
+        set_runtime_error(database, "invalid performance_schema setup_instruments columns");
+        return MYLITE_ERROR;
+    }
+
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < sizeof(instrument_rows) / sizeof(instrument_rows[0]);
+         ++index) {
+        rc = append_information_schema_row(database, rows, instrument_rows[index]);
     }
     return rc;
 }

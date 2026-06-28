@@ -54,7 +54,7 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.cond_instances` | 🟡 | Empty read-only condition-instance placeholder with MySQL-shaped columns, HASH primary/secondary index metadata, table metadata, selected-schema reads, and write protection; no live synchronization instrumentation |
 | `performance_schema.data_lock_waits` | 🟡 | Empty read-only data-lock-wait placeholder with MySQL-shaped metadata and HASH index introspection; no live wait graph |
 | `performance_schema.data_locks` | 🟡 | Empty read-only data-lock placeholder with MySQL-shaped metadata and HASH index introspection; no live data-lock instrumentation |
-| `performance_schema.error_log` | ❌ | Server error log recent entries |
+| `performance_schema.error_log` | 🟡 | Empty read-only error-log placeholder with MySQL-shaped metadata; no live error-log ring buffer |
 | `performance_schema.events_errors_summary_by_account_by_error` | 🟡 | Empty read-only error-summary placeholder with MySQL-shaped metadata; no live error aggregation |
 | `performance_schema.events_errors_summary_by_host_by_error` | 🟡 | Empty read-only error-summary placeholder with MySQL-shaped metadata; no live error aggregation |
 | `performance_schema.events_errors_summary_by_thread_by_error` | 🟡 | Empty read-only error-summary placeholder with MySQL-shaped metadata; no live error aggregation |
@@ -109,7 +109,7 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.hosts` | 🟡 | Limited embedded `%` current-host count row with MySQL-shaped fixed-table metadata; no disconnected host history, memory accounting, or instrumentation limits |
 | `performance_schema.keyring_component_status` | 🟡 | Empty read-only keyring component status placeholder with MySQL-shaped metadata; no keyring service state |
 | `performance_schema.keyring_keys` | 🟡 | Empty read-only keyring key placeholder with MySQL-shaped metadata; no key inventory |
-| `performance_schema.log_status` | ❌ | Information about server logs for backup purposes |
+| `performance_schema.log_status` | 🟡 | Read-only one-row embedded log-status placeholder with MySQL-shaped metadata and empty JSON state objects |
 | `performance_schema.memory_summary_by_account_by_event_name` | 🟡 | Empty read-only memory-summary placeholder with MySQL-shaped metadata; no live memory aggregation |
 | `performance_schema.memory_summary_by_host_by_event_name` | 🟡 | Empty read-only memory-summary placeholder with MySQL-shaped metadata; no live memory aggregation |
 | `performance_schema.memory_summary_by_thread_by_event_name` | 🟡 | Empty read-only memory-summary placeholder with MySQL-shaped metadata; no live memory aggregation |
@@ -146,7 +146,7 @@ and single-table DML writes targeting `performance_schema` with
 | `performance_schema.session_variables` | 🟡 | Queryable current-session rows from MyLite's supported system-variable registry, including session overrides; thread-specific variable tables remain unsupported |
 | `performance_schema.setup_actors` | 🟡 | Read-only MySQL-shaped default actor row and primary-key metadata; no mutable foreground-thread instrumentation setup |
 | `performance_schema.setup_consumers` | 🟡 | Read-only MySQL 8.4.9 default consumer rows and primary-key metadata; no mutable consumer state |
-| `performance_schema.setup_instruments` | ❌ | Table shape and diagnostics |
+| `performance_schema.setup_instruments` | 🟡 | Read-only compact default-instrument inventory with MySQL-shaped metadata; no full instrument registry or mutable setup state |
 | `performance_schema.setup_loggers` | 🟡 | Read-only MySQL 8.4.9 default logger row with MySQL-shaped metadata; no mutable telemetry logger configuration |
 | `performance_schema.setup_meters` | 🟡 | Read-only MySQL 8.4.9 default meter rows with MySQL-shaped metadata and HASH primary-key introspection; no mutable telemetry meter configuration |
 | `performance_schema.setup_metrics` | 🟡 | Read-only MySQL 8.4.9 default metric rows with MySQL-shaped metadata and HASH primary-key introspection; no metric collection or telemetry export |

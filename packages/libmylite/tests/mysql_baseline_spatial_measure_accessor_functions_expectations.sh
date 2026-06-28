@@ -179,6 +179,25 @@ expect_output \
 "ST_Distance(ST_GeomFromText('GEOMETRYCOLLECTION(POINT(10 10),LINESTRING(0 5,5 5))'), Point(1,1)), "\
 "ST_Distance(Point(0,0), Point(1,1), NULL);"
 
+distance_sphere_expected=$(cat <<EXPECTED
+20015042.813723423	10007521.40686171	3.141592653589793	6.283185307179586	0	NULL	NULL	1111946.8229846344	1111946.8229846344	1111946.8229846344
+EXPECTED
+)
+expect_output \
+    "distance sphere measurements" \
+    "$distance_sphere_expected" \
+    "SELECT ST_Distance_Sphere(Point(0,0), Point(180,0)), "\
+"ST_Distance_Sphere(Point(0,0), Point(0,90)), "\
+"ST_Distance_Sphere(Point(0,0), Point(180,0), 1), "\
+"ST_Distance_Sphere(Point(0,0), Point(180,0), '2'), "\
+"ST_Distance_Sphere(Point(0,0), Point(0,0)), "\
+"ST_Distance_Sphere(NULL, Point(1,1)), "\
+"ST_Distance_Sphere(Point(0,0), Point(1,1), NULL), "\
+"ST_Distance_Sphere(Point(0,0), ST_GeomFromText('MULTIPOINT(10 0,20 0)')), "\
+"ST_Distance_Sphere(ST_GeomFromText('MULTIPOINT(10 0,20 0)'), Point(0,0)), "\
+"ST_Distance_Sphere(ST_GeomFromText('MULTIPOINT(0 0,10 0)'), "\
+"ST_GeomFromText('MULTIPOINT(20 0,30 0)'));"
+
 line_interpolation_expected=$(cat <<EXPECTED
 POINT(0 5)	POINT(2.5 5)	POINT(5 5)	POINT(0 0)	MULTIPOINT((0 2.5),(0 5),(2.5 5),(5 5))	MULTIPOINT((0 3),(1 5),(4 5))	MULTIPOINT((0 0))	MULTIPOINT((0 0))	MULTIPOINT((5 5))	POINT(0 0)	POINT(0 5)	POINT(2.5 5)	POINT(5 5)	NULL	NULL	NULL
 EXPECTED
@@ -251,5 +270,40 @@ expect_error \
     "22003" \
     "Distance value is out of range in 'st_pointatdistance'" \
     "SELECT ST_AsText(ST_PointAtDistance(ST_GeomFromText('LINESTRING(0 0,0 5)'), 6));"
+
+expect_error \
+    "distance sphere rejects linestring" \
+    3704 \
+    "22S00" \
+    "st_distance_sphere(POINT, LINESTRING) has not been implemented for Cartesian spatial reference systems." \
+    "SELECT ST_Distance_Sphere(Point(0,0), ST_GeomFromText('LINESTRING(0 0,1 1)'));"
+
+expect_error \
+    "distance sphere rejects geometry collection" \
+    3704 \
+    "22S00" \
+    "st_distance_sphere(POINT, GEOMCOLLECTION) has not been implemented for Cartesian spatial reference systems." \
+    "SELECT ST_Distance_Sphere(Point(0,0), ST_GeomFromText('GEOMETRYCOLLECTION EMPTY'));"
+
+expect_error \
+    "distance sphere rejects longitude below range" \
+    3616 \
+    "22S02" \
+    "Longitude -180.000000 is out of range in function st_distance_sphere. It must be within (-180.000000, 180.000000]." \
+    "SELECT ST_Distance_Sphere(Point(-180,0), Point(0,0));"
+
+expect_error \
+    "distance sphere rejects latitude above range" \
+    3617 \
+    "22S03" \
+    "Latitude 91.000000 is out of range in function st_distance_sphere. It must be within [-90.000000, 90.000000]." \
+    "SELECT ST_Distance_Sphere(Point(0,91), Point(0,0));"
+
+expect_error \
+    "distance sphere rejects nonpositive radius" \
+    3706 \
+    "22003" \
+    "Invalid radius provided to function st_distance_sphere: Radius must be greater than zero." \
+    "SELECT ST_Distance_Sphere(Point(0,0), Point(1,1), 0);"
 
 printf '%s\n' "mysql_baseline_spatial_measure_accessor_functions_expectations: ok"

@@ -59,12 +59,17 @@ enum {
     mysql_error_geojson_longitude_out_of_range = 3616,
     mysql_error_geojson_latitude_out_of_range = 3617,
     mysql_error_not_implemented_for_geographic_srs = 3618,
+    mysql_error_not_implemented_for_cartesian_srs = 3704,
+    mysql_error_nonpositive_radius = 3706,
     mysql_error_srs_not_geographic = 3726,
     mysql_error_geometry_unknown_length_unit = 3882,
 };
 
 static const double spatial_shoelace_area_divisor = 2.0;
 static const double spatial_distance_epsilon = 0.000000000001;
+static const double spatial_distance_sphere_default_radius = 6370986.0;
+static const double spatial_degrees_to_radians_divisor = 180.0;
+static const double spatial_haversine_half_divisor = 2.0;
 static const double spatial_geohash_longitude_min = -180.0;
 static const double spatial_geohash_longitude_max = 180.0;
 static const double spatial_geohash_latitude_min = -90.0;
@@ -138,6 +143,12 @@ struct spatial_distance_geometry {
     uint32_t ring_count;
     struct spatial_distance_geometry *children;
     uint32_t child_count;
+};
+
+struct spatial_point_collection {
+    enum mylite_spatial_geometry_type type;
+    struct spatial_point *points;
+    uint32_t point_count;
 };
 
 enum spatial_point_ring_relation {
@@ -245,6 +256,7 @@ static const struct spatial_function_descriptor spatial_function_descriptors[] =
     {"ST_LineInterpolatePoint", MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINT},
     {"ST_LineInterpolatePoints", MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINTS},
     {"ST_PointAtDistance", MYLITE_SPATIAL_FUNCTION_ST_POINTATDISTANCE},
+    {"ST_Distance_Sphere", MYLITE_SPATIAL_FUNCTION_ST_DISTANCESPHERE},
 };
 
 static int evaluate_point_constructor(
@@ -393,6 +405,13 @@ static int evaluate_distance(
     struct mylite_spatial_result *out_result,
     struct mylite_spatial_error *error
 );
+static int evaluate_distance_sphere(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
 static int evaluate_line_interpolation(
     enum mylite_spatial_function_kind kind,
     const struct mylite_spatial_argument *arguments,
@@ -516,9 +535,29 @@ static int set_not_implemented_for_geographic_srs_error(
     struct mylite_spatial_error *error,
     const char *function_name
 );
+static int set_not_implemented_for_cartesian_srs_error(
+    struct mylite_spatial_error *error,
+    enum mylite_spatial_geometry_type left_type,
+    enum mylite_spatial_geometry_type right_type,
+    const char *function_name
+);
 static int set_unknown_length_unit_error(
     struct mylite_spatial_error *error,
     const struct mylite_spatial_argument *unit_argument,
+    const char *function_name
+);
+static int set_distance_sphere_longitude_error(
+    struct mylite_spatial_error *error,
+    double longitude,
+    const char *function_name
+);
+static int set_distance_sphere_latitude_error(
+    struct mylite_spatial_error *error,
+    double latitude,
+    const char *function_name
+);
+static int set_nonpositive_radius_error(
+    struct mylite_spatial_error *error,
     const char *function_name
 );
 static int set_distance_range_error(struct mylite_spatial_error *error, const char *function_name);
@@ -780,6 +819,9 @@ static int cursor_skip(
     const char *function_name
 );
 static const char *geometry_type_name(enum mylite_spatial_geometry_type type);
+static const char *cartesian_srs_not_implemented_geometry_type_name(
+    enum mylite_spatial_geometry_type type
+);
 static int geometry_point_coordinates(
     const unsigned char *wkb,
     size_t wkb_size,
@@ -841,6 +883,37 @@ static int distance_geometry_from_view(
     struct spatial_distance_geometry *out_geometry,
     struct mylite_spatial_error *error,
     const char *function_name
+);
+static int point_collection_from_geometry(
+    const struct spatial_geometry_view *geometry,
+    struct spatial_point_collection *out_collection,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int point_collection_read_multipoint(
+    struct spatial_wkb_cursor *cursor,
+    bool little_endian,
+    struct spatial_point_collection *out_collection,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static void point_collection_deinit(struct spatial_point_collection *collection);
+static int validate_distance_sphere_coordinates(
+    const struct spatial_point_collection *collection,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static double point_distance_sphere(
+    const struct spatial_point *left,
+    const struct spatial_point *right,
+    double radius
+);
+static int distance_sphere_between_collections(
+    const struct spatial_point_collection *left,
+    const struct spatial_point_collection *right,
+    double radius,
+    double *out_distance,
+    bool *out_has_distance
 );
 static int distance_geometry_read(
     struct spatial_wkb_cursor *cursor,
@@ -1347,6 +1420,7 @@ bool mylite_spatial_function_returns_double(enum mylite_spatial_function_kind ki
     return kind == MYLITE_SPATIAL_FUNCTION_ST_X || kind == MYLITE_SPATIAL_FUNCTION_ST_Y ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_LENGTH || kind == MYLITE_SPATIAL_FUNCTION_ST_AREA ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_DISTANCE ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_DISTANCESPHERE ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_LATFROMGEOHASH ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_LONGFROMGEOHASH ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_LATITUDE ||
@@ -1444,6 +1518,8 @@ int mylite_spatial_evaluate(
         return evaluate_area(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_DISTANCE:
         return evaluate_distance(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_DISTANCESPHERE:
+        return evaluate_distance_sphere(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINT:
     case MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINTS:
     case MYLITE_SPATIAL_FUNCTION_ST_POINTATDISTANCE:
@@ -3026,6 +3102,122 @@ static int evaluate_distance(
     return assign_double_result(out_result, distance);
 }
 
+static int evaluate_distance_sphere(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view left = {0};
+    struct spatial_geometry_view right = {0};
+    struct spatial_point_collection left_points = {0};
+    struct spatial_point_collection right_points = {0};
+    bool left_is_null = false;
+    bool right_is_null = false;
+    bool has_distance = false;
+    double radius = spatial_distance_sphere_default_radius;
+    double distance = 0.0;
+    int rc = validate_argument_count(kind, argument_count, 2U, 3U, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (any_argument_is_null(arguments, argument_count)) {
+        return assign_null_result(out_result);
+    }
+    rc = read_single_geometry_argument(kind, arguments, 1U, &left, &left_is_null, error);
+    if (rc == 0) {
+        rc = read_single_geometry_argument(kind, arguments + 1U, 1U, &right, &right_is_null, error);
+    }
+    if (rc == 0 && argument_count == 3U) {
+        rc = argument_distance(&arguments[2], &radius, error, mylite_spatial_function_name(kind));
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    if (left_is_null || right_is_null) {
+        return assign_null_result(out_result);
+    }
+    if (left.srid != right.srid) {
+        return set_gis_different_srids_error(
+            error,
+            left.srid,
+            right.srid,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    if (left.srid != 0U) {
+        return set_not_implemented_for_geographic_srs_error(
+            error,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    if (radius <= 0.0 || !isfinite(radius)) {
+        return set_nonpositive_radius_error(error, mylite_spatial_function_name(kind));
+    }
+    if ((left.type != MYLITE_SPATIAL_GEOMETRY_POINT &&
+         left.type != MYLITE_SPATIAL_GEOMETRY_MULTIPOINT) ||
+        (right.type != MYLITE_SPATIAL_GEOMETRY_POINT &&
+         right.type != MYLITE_SPATIAL_GEOMETRY_MULTIPOINT)) {
+        return set_not_implemented_for_cartesian_srs_error(
+            error,
+            left.type,
+            right.type,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    rc = point_collection_from_geometry(
+        &left,
+        &left_points,
+        error,
+        mylite_spatial_function_name(kind)
+    );
+    if (rc == 0) {
+        rc = point_collection_from_geometry(
+            &right,
+            &right_points,
+            error,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    if (rc == 0) {
+        rc = validate_distance_sphere_coordinates(
+            &left_points,
+            error,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    if (rc == 0) {
+        rc = validate_distance_sphere_coordinates(
+            &right_points,
+            error,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    if (rc == 0) {
+        rc = distance_sphere_between_collections(
+            &left_points,
+            &right_points,
+            radius,
+            &distance,
+            &has_distance
+        );
+    }
+    point_collection_deinit(&left_points);
+    point_collection_deinit(&right_points);
+    if (rc != 0) {
+        return rc;
+    }
+    if (!has_distance) {
+        return assign_null_result(out_result);
+    }
+    if (!isfinite(distance)) {
+        return set_distance_range_error(error, mylite_spatial_function_name(kind));
+    }
+    return assign_double_result(out_result, distance);
+}
+
 static int evaluate_line_interpolation(
     enum mylite_spatial_function_kind kind,
     const struct mylite_spatial_argument *arguments,
@@ -3931,6 +4123,29 @@ static int set_not_implemented_for_geographic_srs_error(
     );
 }
 
+static int set_not_implemented_for_cartesian_srs_error(
+    struct mylite_spatial_error *error,
+    enum mylite_spatial_geometry_type left_type,
+    enum mylite_spatial_geometry_type right_type,
+    const char *function_name
+) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+
+    return set_spatial_error(
+        error,
+        mysql_error_not_implemented_for_cartesian_srs,
+        "22S00",
+        "%s(%s, %s) has not been implemented for Cartesian spatial reference systems.",
+        spatial_diagnostic_function_name(
+            function_name,
+            diagnostic_function_name,
+            sizeof(diagnostic_function_name)
+        ),
+        cartesian_srs_not_implemented_geometry_type_name(left_type),
+        cartesian_srs_not_implemented_geometry_type_name(right_type)
+    );
+}
+
 static int set_unknown_length_unit_error(
     struct mylite_spatial_error *error,
     const struct mylite_spatial_argument *unit_argument,
@@ -3956,6 +4171,69 @@ static int set_unknown_length_unit_error(
         ),
         (int)unit_size,
         unit == NULL ? "" : unit
+    );
+}
+
+static int set_distance_sphere_longitude_error(
+    struct mylite_spatial_error *error,
+    double longitude,
+    const char *function_name
+) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+
+    return set_spatial_error(
+        error,
+        mysql_error_geojson_longitude_out_of_range,
+        "22S02",
+        "Longitude %.6f is out of range in function %s. It must be within (-180.000000, "
+        "180.000000].",
+        longitude,
+        spatial_diagnostic_function_name(
+            function_name,
+            diagnostic_function_name,
+            sizeof(diagnostic_function_name)
+        )
+    );
+}
+
+static int set_distance_sphere_latitude_error(
+    struct mylite_spatial_error *error,
+    double latitude,
+    const char *function_name
+) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+
+    return set_spatial_error(
+        error,
+        mysql_error_geojson_latitude_out_of_range,
+        "22S03",
+        "Latitude %.6f is out of range in function %s. It must be within [-90.000000, "
+        "90.000000].",
+        latitude,
+        spatial_diagnostic_function_name(
+            function_name,
+            diagnostic_function_name,
+            sizeof(diagnostic_function_name)
+        )
+    );
+}
+
+static int set_nonpositive_radius_error(
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+
+    return set_spatial_error(
+        error,
+        mysql_error_nonpositive_radius,
+        "22003",
+        "Invalid radius provided to function %s: Radius must be greater than zero.",
+        spatial_diagnostic_function_name(
+            function_name,
+            diagnostic_function_name,
+            sizeof(diagnostic_function_name)
+        )
     );
 }
 
@@ -5088,6 +5366,213 @@ static int distance_geometry_from_view(
     if (rc != 0 || cursor.offset != cursor.size) {
         distance_geometry_deinit(out_geometry);
         return rc != 0 ? rc : set_invalid_gis_data_error(error, function_name);
+    }
+    return 0;
+}
+
+static int point_collection_from_geometry(
+    const struct spatial_geometry_view *geometry,
+    struct spatial_point_collection *out_collection,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    struct spatial_wkb_cursor cursor = {0};
+    bool little_endian = false;
+    enum mylite_spatial_geometry_type type = MYLITE_SPATIAL_GEOMETRY_NONE;
+    int rc = 0;
+
+    if (geometry == NULL || out_collection == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    *out_collection = (struct spatial_point_collection){.type = geometry->type};
+    if (geometry->type == MYLITE_SPATIAL_GEOMETRY_POINT) {
+        out_collection->points = calloc(1U, sizeof(*out_collection->points));
+        if (out_collection->points == NULL) {
+            return set_nomem_error(error);
+        }
+        out_collection->point_count = 1U;
+        rc = geometry_point_coordinates(
+            geometry->wkb,
+            geometry->wkb_size,
+            &out_collection->points[0].coordinate_x,
+            &out_collection->points[0].coordinate_y,
+            error,
+            function_name
+        );
+        if (rc != 0) {
+            point_collection_deinit(out_collection);
+        }
+        return rc;
+    }
+    if (geometry->type != MYLITE_SPATIAL_GEOMETRY_MULTIPOINT) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    cursor = (struct spatial_wkb_cursor){.bytes = geometry->wkb, .size = geometry->wkb_size};
+    rc = cursor_read_header(&cursor, &little_endian, &type, error, function_name);
+    if (rc == 0 && type != MYLITE_SPATIAL_GEOMETRY_MULTIPOINT) {
+        rc = set_invalid_gis_data_error(error, function_name);
+    }
+    if (rc == 0) {
+        rc = point_collection_read_multipoint(
+            &cursor,
+            little_endian,
+            out_collection,
+            error,
+            function_name
+        );
+    }
+    if (rc == 0 && cursor.offset != cursor.size) {
+        rc = set_invalid_gis_data_error(error, function_name);
+    }
+    if (rc != 0) {
+        point_collection_deinit(out_collection);
+    }
+    return rc;
+}
+
+static int point_collection_read_multipoint(
+    struct spatial_wkb_cursor *cursor,
+    bool little_endian,
+    struct spatial_point_collection *out_collection,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    struct spatial_point *points = NULL;
+    uint32_t point_count = 0U;
+    int rc = cursor_read_u32(cursor, little_endian, &point_count, error, function_name);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (point_count == 0U) {
+        return 0;
+    }
+    if ((size_t)point_count > SIZE_MAX / sizeof(*points)) {
+        return set_nomem_error(error);
+    }
+    points = calloc((size_t)point_count, sizeof(*points));
+    if (points == NULL) {
+        return set_nomem_error(error);
+    }
+    for (uint32_t index = 0U; rc == 0 && index < point_count; ++index) {
+        bool point_little_endian = false;
+        enum mylite_spatial_geometry_type point_type = MYLITE_SPATIAL_GEOMETRY_NONE;
+
+        rc = cursor_read_header(cursor, &point_little_endian, &point_type, error, function_name);
+        if (rc == 0 && point_type != MYLITE_SPATIAL_GEOMETRY_POINT) {
+            rc = set_invalid_gis_data_error(error, function_name);
+        }
+        if (rc == 0) {
+            rc = cursor_read_double(
+                cursor,
+                point_little_endian,
+                &points[index].coordinate_x,
+                error,
+                function_name
+            );
+        }
+        if (rc == 0) {
+            rc = cursor_read_double(
+                cursor,
+                point_little_endian,
+                &points[index].coordinate_y,
+                error,
+                function_name
+            );
+        }
+    }
+    if (rc != 0) {
+        free(points);
+        return rc;
+    }
+    out_collection->points = points;
+    out_collection->point_count = point_count;
+    return 0;
+}
+
+static void point_collection_deinit(struct spatial_point_collection *collection) {
+    if (collection == NULL) {
+        return;
+    }
+    free(collection->points);
+    *collection = (struct spatial_point_collection){0};
+}
+
+static int validate_distance_sphere_coordinates(
+    const struct spatial_point_collection *collection,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    if (collection == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    for (uint32_t index = 0U; index < collection->point_count; ++index) {
+        double longitude = collection->points[index].coordinate_x;
+        double latitude = collection->points[index].coordinate_y;
+
+        if (longitude <= spatial_geohash_longitude_min ||
+            longitude > spatial_geohash_longitude_max || !isfinite(longitude)) {
+            return set_distance_sphere_longitude_error(error, longitude, function_name);
+        }
+        if (latitude < spatial_geohash_latitude_min || latitude > spatial_geohash_latitude_max ||
+            !isfinite(latitude)) {
+            return set_distance_sphere_latitude_error(error, latitude, function_name);
+        }
+    }
+    return 0;
+}
+
+static double point_distance_sphere(
+    const struct spatial_point *left,
+    const struct spatial_point *right,
+    double radius
+) {
+    double pi = acos(-1.0);
+    double left_longitude = left->coordinate_x * pi / spatial_degrees_to_radians_divisor;
+    double left_latitude = left->coordinate_y * pi / spatial_degrees_to_radians_divisor;
+    double right_longitude = right->coordinate_x * pi / spatial_degrees_to_radians_divisor;
+    double right_latitude = right->coordinate_y * pi / spatial_degrees_to_radians_divisor;
+    double delta_longitude = right_longitude - left_longitude;
+    double delta_latitude = right_latitude - left_latitude;
+    double sin_half_latitude = sin(delta_latitude / spatial_haversine_half_divisor);
+    double sin_half_longitude = sin(delta_longitude / spatial_haversine_half_divisor);
+    double haversine =
+        (sin_half_latitude * sin_half_latitude) +
+        (cos(left_latitude) * cos(right_latitude) * sin_half_longitude * sin_half_longitude);
+
+    if (haversine < 0.0) {
+        haversine = 0.0;
+    } else if (haversine > 1.0) {
+        haversine = 1.0;
+    }
+    return radius * spatial_haversine_half_divisor * asin(sqrt(haversine));
+}
+
+static int distance_sphere_between_collections(
+    const struct spatial_point_collection *left,
+    const struct spatial_point_collection *right,
+    double radius,
+    double *out_distance,
+    bool *out_has_distance
+) {
+    if (left == NULL || right == NULL || out_distance == NULL || out_has_distance == NULL) {
+        return -1;
+    }
+    *out_distance = 0.0;
+    *out_has_distance = false;
+    for (uint32_t left_index = 0U; left_index < left->point_count; ++left_index) {
+        for (uint32_t right_index = 0U; right_index < right->point_count; ++right_index) {
+            double distance = point_distance_sphere(
+                &left->points[left_index],
+                &right->points[right_index],
+                radius
+            );
+
+            if (!*out_has_distance || distance < *out_distance) {
+                *out_distance = distance;
+                *out_has_distance = true;
+            }
+        }
     }
     return 0;
 }
@@ -7138,6 +7623,15 @@ static const char *geometry_type_name(enum mylite_spatial_geometry_type type) {
         break;
     }
     return "UNKNOWN";
+}
+
+static const char *cartesian_srs_not_implemented_geometry_type_name(
+    enum mylite_spatial_geometry_type type
+) {
+    if (type == MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION) {
+        return "GEOMCOLLECTION";
+    }
+    return geometry_type_name(type);
 }
 
 static int geometry_point_coordinates(

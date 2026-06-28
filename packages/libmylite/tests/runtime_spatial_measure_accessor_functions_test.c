@@ -15,6 +15,10 @@ enum {
     mysql_error_numeric_value_out_of_range = 1690,
     mysql_error_wrong_arguments = 1210,
     mysql_error_gis_different_srids = 3033,
+    mysql_error_geojson_longitude_out_of_range = 3616,
+    mysql_error_geojson_latitude_out_of_range = 3617,
+    mysql_error_not_implemented_for_cartesian_srs = 3704,
+    mysql_error_nonpositive_radius = 3706,
     mysql_error_unexpected_geometry_type = 3516,
     mysql_error_geometry_unknown_length_unit = 3882,
 };
@@ -139,6 +143,18 @@ static int test_scalar_spatial_measure_accessors(void) {
         "3",
         "4",
         NULL,
+    };
+    static const char *const distance_sphere_values[] = {
+        "20015042.813723423",
+        "10007521.40686171",
+        "3.141592653589793",
+        "6.283185307179586",
+        "0",
+        NULL,
+        NULL,
+        "1111946.8229846344",
+        "1111946.8229846344",
+        "1111946.8229846344",
     };
     static const char *const line_interpolation_values[] = {
         "POINT(0 5)",
@@ -312,6 +328,26 @@ static int test_scalar_spatial_measure_accessors(void) {
     failures += expect_query(
         database,
         (struct expected_query){
+            .sql = "SELECT ST_Distance_Sphere(Point(0,0), Point(180,0)), "
+                   "ST_Distance_Sphere(Point(0,0), Point(0,90)), "
+                   "ST_Distance_Sphere(Point(0,0), Point(180,0), 1), "
+                   "ST_Distance_Sphere(Point(0,0), Point(180,0), '2'), "
+                   "ST_Distance_Sphere(Point(0,0), Point(0,0)), "
+                   "ST_Distance_Sphere(NULL, Point(1,1)), "
+                   "ST_Distance_Sphere(Point(0,0), Point(1,1), NULL), "
+                   "ST_Distance_Sphere(Point(0,0), ST_GeomFromText('MULTIPOINT(10 0,20 0)')), "
+                   "ST_Distance_Sphere(ST_GeomFromText('MULTIPOINT(10 0,20 0)'), Point(0,0)), "
+                   "ST_Distance_Sphere(ST_GeomFromText('MULTIPOINT(0 0,10 0)'), "
+                   "ST_GeomFromText('MULTIPOINT(20 0,30 0)'))",
+            .column_count = sizeof(distance_sphere_values) / sizeof(distance_sphere_values[0]),
+            .values = distance_sphere_values,
+            .row_count = 1U,
+            .context = "distance sphere measurements",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
             .sql = "SELECT ST_AsText(ST_LineInterpolatePoint("
                    "ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), '0.5')), "
                    "ST_AsText(ST_LineInterpolatePoint("
@@ -394,6 +430,12 @@ static int test_table_backed_spatial_measure_accessors(void) {
         "POINT(2.5 5)",
     };
     static const char *const line_update_values[] = {"1", "POINT(2.5 5)"};
+    static const char *const distance_sphere_values[] = {
+        "1111946.8229846344",
+        "2223893.645969269",
+        "0",
+        "1111946.8229846344",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -486,6 +528,30 @@ static int test_table_backed_spatial_measure_accessors(void) {
             .context = "row-backed linestring interpolation update",
         }
     );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE sphere_values(id INT PRIMARY KEY, g GEOMETRY, txt VARCHAR(120))",
+        NULL
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO sphere_values VALUES "
+        "(1, Point(0,0), NULL), "
+        "(2, ST_GeomFromText('MULTIPOINT(0 0,10 0)'), NULL)",
+        (struct expected_dml_result){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ST_Distance_Sphere(g, Point(10,0)), "
+                   "ST_Distance_Sphere(g, ST_GeomFromText('MULTIPOINT(20 0,30 0)')) "
+                   "FROM sphere_values ORDER BY id",
+            .column_count = 2U,
+            .values = distance_sphere_values,
+            .row_count = 2U,
+            .context = "row-backed distance sphere projection",
+        }
+    );
 
     mylite_close(database);
     remove_related_files(path);
@@ -565,6 +631,54 @@ static int test_spatial_measure_accessor_diagnostics(void) {
             .code = mysql_error_numeric_value_out_of_range,
             .sqlstate = "22003",
             .message_part = "Distance value is out of range in 'st_pointatdistance'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ST_Distance_Sphere(Point(0,0), ST_GeomFromText('LINESTRING(0 0,1 1)'))",
+        (struct expected_sql_error){
+            .code = mysql_error_not_implemented_for_cartesian_srs,
+            .sqlstate = "22S00",
+            .message_part = "st_distance_sphere(POINT, LINESTRING) has not been implemented for "
+                            "Cartesian spatial reference systems",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ST_Distance_Sphere(Point(0,0), ST_GeomFromText('GEOMETRYCOLLECTION EMPTY'))",
+        (struct expected_sql_error){
+            .code = mysql_error_not_implemented_for_cartesian_srs,
+            .sqlstate = "22S00",
+            .message_part = "st_distance_sphere(POINT, GEOMCOLLECTION) has not been "
+                            "implemented for Cartesian spatial reference systems",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ST_Distance_Sphere(Point(-180,0), Point(0,0))",
+        (struct expected_sql_error){
+            .code = mysql_error_geojson_longitude_out_of_range,
+            .sqlstate = "22S02",
+            .message_part = "Longitude -180.000000 is out of range in function st_distance_sphere",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ST_Distance_Sphere(Point(0,91), Point(0,0))",
+        (struct expected_sql_error){
+            .code = mysql_error_geojson_latitude_out_of_range,
+            .sqlstate = "22S03",
+            .message_part = "Latitude 91.000000 is out of range in function st_distance_sphere",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ST_Distance_Sphere(Point(0,0), Point(1,1), 0)",
+        (struct expected_sql_error){
+            .code = mysql_error_nonpositive_radius,
+            .sqlstate = "22003",
+            .message_part = "Invalid radius provided to function st_distance_sphere: Radius must "
+                            "be greater than zero",
         }
     );
     mylite_close(database);

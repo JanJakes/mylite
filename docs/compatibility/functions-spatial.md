@@ -5,7 +5,8 @@ Spatial constructors, predicates, measurements, and conversion functions.
 MyLite supports a basic SRID-0 geometry surface: WKT/WKB constructors,
 MySQL-specific geometry constructors, WKT/WKB conversion, geometry type/SRID
 readback, point coordinate access, core property/accessor functions, Cartesian
-length/area/distance/envelope helpers, LineString interpolation, coordinate
+length/area/distance/envelope helpers, SRID-0 spherical distance,
+LineString interpolation, coordinate
 swapping, envelope construction, and MBR predicates in scalar, row-backed, and
 descriptor DML value contexts. Geohash helpers support coordinate
 encoding/decoding plus SRID 0 and 4326 point round-trips. GeoJSON helpers
@@ -49,7 +50,7 @@ search.
 | `ST_Dimension()` | ✅ | Return SRID-0 geometry dimension |
 | `ST_Disjoint()` | ❌ | Whether one geometry is disjoint from another |
 | `ST_Distance()` | 🟡 | Cartesian SRID-0 geometry distance; geographic distance and unit conversion deferred |
-| `ST_Distance_Sphere()` | ❌ | Minimum distance on earth between two geometries |
+| `ST_Distance_Sphere()` | ✅ | SRID-0 spherical distance for Point and MultiPoint |
 | `ST_EndPoint()` | ✅ | Return LineString end point |
 | `ST_Envelope()` | ✅ | Return SRID-0 geometry envelope |
 | `ST_Equals()` | ❌ | Whether one geometry is equal to another |

@@ -2260,6 +2260,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "var_samp_aggregate_function";
     case MYLITE_SQL_AST_VARIANCE_AGGREGATE_FUNCTION:
         return "variance_aggregate_function";
+    case MYLITE_SQL_AST_ST_COLLECT_AGGREGATE_FUNCTION:
+        return "st_collect_aggregate_function";
     case MYLITE_SQL_AST_ANY_VALUE_FUNCTION:
         return "any_value_function";
     case MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR:

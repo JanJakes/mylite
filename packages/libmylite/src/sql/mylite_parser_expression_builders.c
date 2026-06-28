@@ -16,6 +16,7 @@ static bool generic_function_statistical_aggregate_kind(
     const struct mylite_sql_token *function_token,
     enum mylite_sql_ast_node_kind *out_function_kind
 );
+static bool generic_function_is_st_collect(const struct mylite_sql_token *function_token);
 
 struct mylite_sql_ast_node *mylite_sql_parser_make_identifier(
     struct mylite_sql_parser_state *state,
@@ -1372,15 +1373,30 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_generic_function(
     enum mylite_sql_ast_node_kind specialized_function_kind = MYLITE_SQL_AST_SCRIPT;
     enum mylite_sql_ast_node_kind specialized_error_kind = MYLITE_SQL_AST_SCRIPT;
 
-    if (generic_function_statistical_aggregate_kind(&function_token, &specialized_function_kind) &&
-        arguments != NULL && mylite_sql_ast_node_child_count(arguments) == 1U) {
+    if (generic_function_is_st_collect(&function_token)) {
+        if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 1U) {
+            mylite_sql_parser_set_state_status(state, MYLITE_SQL_PARSE_SYNTAX_ERROR);
+            return NULL;
+        }
         return mylite_sql_parser_make_one_argument_function(
             state,
             function_token,
-            specialized_function_kind,
+            MYLITE_SQL_AST_ST_COLLECT_AGGREGATE_FUNCTION,
             arguments->first_child,
             right_paren
         );
+    }
+
+    if (generic_function_statistical_aggregate_kind(&function_token, &specialized_function_kind)) {
+        if (arguments != NULL && mylite_sql_ast_node_child_count(arguments) == 1U) {
+            return mylite_sql_parser_make_one_argument_function(
+                state,
+                function_token,
+                specialized_function_kind,
+                arguments->first_child,
+                right_paren
+            );
+        }
     }
 
     if (generic_function_ip_address_kinds(
@@ -1470,6 +1486,29 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_statistical_aggregate_functio
     );
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_distinct_st_collect_aggregate_function(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token function_token,
+    struct mylite_sql_ast_node *argument,
+    const struct mylite_sql_token *distinct_token,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_ast_node *function = NULL;
+
+    if (!generic_function_is_st_collect(&function_token)) {
+        mylite_sql_parser_set_state_status(state, MYLITE_SQL_PARSE_SYNTAX_ERROR);
+        return NULL;
+    }
+    function = mylite_sql_parser_make_one_argument_function(
+        state,
+        function_token,
+        MYLITE_SQL_AST_ST_COLLECT_AGGREGATE_FUNCTION,
+        argument,
+        right_paren
+    );
+    return mylite_sql_parser_attach_aggregate_distinct_modifier(state, function, distinct_token);
+}
+
 static bool generic_function_statistical_aggregate_kind(
     const struct mylite_sql_token *function_token,
     enum mylite_sql_ast_node_kind *out_function_kind
@@ -1505,7 +1544,16 @@ static bool generic_function_statistical_aggregate_kind(
         *out_function_kind = MYLITE_SQL_AST_VARIANCE_AGGREGATE_FUNCTION;
         return true;
     }
+    if (mylite_sql_parser_token_text_equals(function_token, "ST_COLLECT")) {
+        *out_function_kind = MYLITE_SQL_AST_ST_COLLECT_AGGREGATE_FUNCTION;
+        return true;
+    }
     return false;
+}
+
+static bool generic_function_is_st_collect(const struct mylite_sql_token *function_token) {
+    return function_token != NULL &&
+           mylite_sql_parser_token_text_equals(function_token, "ST_COLLECT");
 }
 
 static bool generic_function_ip_address_kinds(

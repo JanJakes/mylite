@@ -1458,6 +1458,17 @@
   )
   mylite_configure_c_target(mylite_runtime_spatial_measure_accessor_functions_test)
 
+  add_executable(mylite_runtime_spatial_collect_aggregate_test
+    tests/runtime_spatial_collect_aggregate_test.c
+  )
+  target_link_libraries(mylite_runtime_spatial_collect_aggregate_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_spatial_collect_aggregate_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_spatial_collect_aggregate_test)
+
   add_executable(mylite_runtime_spatial_geohash_functions_test
     tests/runtime_spatial_geohash_functions_test.c
   )

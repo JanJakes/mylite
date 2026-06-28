@@ -402,6 +402,7 @@ static bool ast_node_is_aggregate_function(const struct mylite_sql_ast_node *nod
     case MYLITE_SQL_AST_VAR_POP_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_VAR_SAMP_AGGREGATE_FUNCTION:
     case MYLITE_SQL_AST_VARIANCE_AGGREGATE_FUNCTION:
+    case MYLITE_SQL_AST_ST_COLLECT_AGGREGATE_FUNCTION:
         return true;
     default:
         return false;

@@ -20,6 +20,7 @@ static int test_sum_aggregate(void);
 static int test_avg_aggregate(void);
 static int test_bitwise_aggregate(void);
 static int test_group_concat_aggregate(void);
+static int test_spatial_collect_aggregate(void);
 static int test_statistical_aggregate(void);
 
 int main(void) {
@@ -40,6 +41,7 @@ int main(void) {
     failures += test_avg_aggregate();
     failures += test_bitwise_aggregate();
     failures += test_group_concat_aggregate();
+    failures += test_spatial_collect_aggregate();
     failures += test_statistical_aggregate();
 
     return failures == 0 ? 0 : 1;
@@ -2957,6 +2959,93 @@ static int test_group_concat_aggregate(void) {
         "SELECT GROUP_CONCAT(id SEPARATOR 1) FROM t;",
         MYLITE_SQL_PARSE_OK,
         &result
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    return failures;
+}
+
+static int test_spatial_collect_aggregate(void) {
+    struct mylite_sql_parse_result result;
+    const struct mylite_sql_ast_node *select = NULL;
+    const struct mylite_sql_ast_node *select_list = NULL;
+    const struct mylite_sql_ast_node *first_expression = NULL;
+    const struct mylite_sql_ast_node *wrapper_arguments = NULL;
+    const struct mylite_sql_ast_node *statement = NULL;
+    int failures = 0;
+
+    failures += parser_test_parse_sql("SELECT ST_Collect(g) FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_ST_COLLECT_AGGREGATE_FUNCTION,
+        "st_collect aggregate"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 0U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "st_collect column argument"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT ST_Collect(DISTINCT g) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_ST_COLLECT_AGGREGATE_FUNCTION,
+        "st_collect distinct aggregate"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(first_expression, 1U),
+        MYLITE_SQL_AST_AGGREGATE_DISTINCT_MODIFIER,
+        "st_collect distinct marker"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT ST_AsText(ST_Collect(g)) FROM t;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    select = parser_test_child_at(result.root, 0U);
+    select_list = parser_test_child_at(select, 0U);
+    first_expression = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        first_expression,
+        MYLITE_SQL_AST_GENERIC_FUNCTION,
+        "st_collect scalar wrapper"
+    );
+    wrapper_arguments = parser_test_child_at(first_expression, 1U);
+    failures += parser_test_expect_node(
+        parser_test_child_at(wrapper_arguments, 0U),
+        MYLITE_SQL_AST_ST_COLLECT_AGGREGATE_FUNCTION,
+        "wrapped st_collect aggregate"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("SELECT ST_Collect() FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT,
+        "st_collect empty argument placeholder"
+    );
+    mylite_sql_parse_result_deinit(&result);
+    failures +=
+        parser_test_parse_sql("SELECT ST_Collect(g, h) FROM t;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT,
+        "st_collect too many arguments placeholder"
     );
     mylite_sql_parse_result_deinit(&result);
 

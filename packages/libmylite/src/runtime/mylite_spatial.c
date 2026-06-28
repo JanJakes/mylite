@@ -2511,7 +2511,8 @@ static int evaluate_geometry_type(
     if (rc != 0) {
         return rc;
     }
-    type_name = geometry_type_name(type);
+    type_name = type == MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION ? "GEOMCOLLECTION"
+                                                                   : geometry_type_name(type);
     return assign_copied_text_result(out_result, type_name, strlen(type_name), error);
 }
 

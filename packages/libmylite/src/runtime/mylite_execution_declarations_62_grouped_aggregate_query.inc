@@ -843,6 +843,11 @@ static enum planned_column_aggregate_function column_or_count_aggregate_function
 static enum planned_column_aggregate_function column_aggregate_function_from_expression(
     const struct mylite_sql_ast_node *expression
 );
+static bool spatial_collect_wrapper_from_expression(
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_spatial_function_kind *out_kind,
+    const struct mylite_sql_ast_node **out_collect_expression
+);
 static enum planned_column_aggregate_function column_aggregate_function_from_projection_expression(
     const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node **out_aggregate_expression,
@@ -916,6 +921,13 @@ static int append_column_aggregate_result_column(
     struct mylite_db *database,
     mylite_result *result,
     const struct planned_column_aggregate *plan
+);
+static int append_spatial_collect_result_column(
+    struct mylite_db *database,
+    mylite_result *result,
+    const char *column_name,
+    bool has_wrapper,
+    enum mylite_spatial_function_kind wrapper_kind
 );
 static int copy_aggregate_result_column_name(
     struct mylite_db *database,

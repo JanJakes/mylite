@@ -147,7 +147,15 @@ static int append_grouped_aggregate_result_columns(
                 &aggregate_column_name
             );
         }
-        if (rc == MYLITE_OK) {
+        if (rc == MYLITE_OK && item->function == PLANNED_GROUPED_AGGREGATE_ST_COLLECT) {
+            rc = append_spatial_collect_result_column(
+                database,
+                result,
+                aggregate_column_name,
+                item->has_spatial_wrapper,
+                item->spatial_wrapper_kind
+            );
+        } else if (rc == MYLITE_OK) {
             rc = mylite_result_append_column(result, aggregate_column_name);
             if (rc != MYLITE_OK) {
                 set_nomem_error(database);
@@ -1340,6 +1348,13 @@ static int plan_column_aggregate_select_item(
     out_item->expression = expression;
     out_item->alias = child_at(select_item, 1U);
     expression = unwrap_parenthesized_expression(expression);
+    if (spatial_collect_wrapper_from_expression(
+            expression,
+            &out_item->spatial_wrapper_kind,
+            NULL
+        )) {
+        out_item->has_spatial_wrapper = true;
+    }
     out_item->function = column_or_count_aggregate_function_from_projection_expression(
         expression,
         &aggregate_expression,
@@ -1456,6 +1471,7 @@ static int plan_column_aggregate_select_item(
             out_item
         );
     } else if (out_item->function != PLANNED_COLUMN_AGGREGATE_ANY_VALUE &&
+               out_item->function != PLANNED_COLUMN_AGGREGATE_ST_COLLECT &&
                column_aggregate_argument_is_row_scalar_expression(aggregate_expression)) {
         rc = plan_column_aggregate_row_scalar_expression(
             database,
@@ -1668,8 +1684,52 @@ static enum planned_column_aggregate_function column_aggregate_function_from_exp
     if (expression->kind == MYLITE_SQL_AST_VAR_SAMP_AGGREGATE_FUNCTION) {
         return PLANNED_COLUMN_AGGREGATE_VAR_SAMP;
     }
+    if (expression->kind == MYLITE_SQL_AST_ST_COLLECT_AGGREGATE_FUNCTION) {
+        return PLANNED_COLUMN_AGGREGATE_ST_COLLECT;
+    }
 
     return PLANNED_COLUMN_AGGREGATE_NONE;
+}
+
+static bool spatial_collect_wrapper_from_expression(
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_spatial_function_kind *out_kind,
+    const struct mylite_sql_ast_node **out_collect_expression
+) {
+    const struct mylite_sql_ast_node *arguments = NULL;
+    const struct mylite_sql_ast_node *argument = NULL;
+    enum mylite_spatial_function_kind kind = MYLITE_SPATIAL_FUNCTION_NONE;
+
+    if (out_kind != NULL) {
+        *out_kind = MYLITE_SPATIAL_FUNCTION_NONE;
+    }
+    if (out_collect_expression != NULL) {
+        *out_collect_expression = NULL;
+    }
+    expression = unwrap_parenthesized_expression(expression);
+    if (!generic_spatial_function_kind(expression, &kind)) {
+        return false;
+    }
+    if (kind != MYLITE_SPATIAL_FUNCTION_ST_ASTEXT && kind != MYLITE_SPATIAL_FUNCTION_ST_ASWKT &&
+        kind != MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYTYPE &&
+        kind != MYLITE_SPATIAL_FUNCTION_ST_SRID) {
+        return false;
+    }
+    arguments = generic_system_function_arguments(expression);
+    if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 1U) {
+        return false;
+    }
+    argument = unwrap_parenthesized_expression(child_at(arguments, 0U));
+    if (argument == NULL || argument->kind != MYLITE_SQL_AST_ST_COLLECT_AGGREGATE_FUNCTION) {
+        return false;
+    }
+    if (out_kind != NULL) {
+        *out_kind = kind;
+    }
+    if (out_collect_expression != NULL) {
+        *out_collect_expression = argument;
+    }
+    return true;
 }
 
 static enum planned_column_aggregate_function column_aggregate_function_from_projection_expression(
@@ -1693,6 +1753,9 @@ static enum planned_column_aggregate_function column_aggregate_function_from_pro
         *out_operator = MYLITE_SQL_AST_OPERATOR_NONE;
     }
     expression = unwrap_parenthesized_expression(expression);
+    if (spatial_collect_wrapper_from_expression(expression, NULL, out_aggregate_expression)) {
+        return PLANNED_COLUMN_AGGREGATE_ST_COLLECT;
+    }
     function = column_aggregate_function_from_expression(expression);
     if (function != PLANNED_COLUMN_AGGREGATE_NONE) {
         if (out_aggregate_expression != NULL) {
@@ -1793,6 +1856,9 @@ static const char *column_aggregate_source_error(enum planned_column_aggregate_f
     if (column_aggregate_function_is_statistical(function)) {
         return "statistical aggregate supports only descriptor-backed table reads";
     }
+    if (function == PLANNED_COLUMN_AGGREGATE_ST_COLLECT) {
+        return "ST_Collect(column) supports only descriptor-backed table reads";
+    }
 
     return "MIN/MAX supports only descriptor-backed table reads";
 }
@@ -1816,6 +1882,9 @@ static const char *column_aggregate_column_error(enum planned_column_aggregate_f
     if (column_aggregate_function_is_statistical(function)) {
         return "statistical aggregate supports only descriptor columns";
     }
+    if (function == PLANNED_COLUMN_AGGREGATE_ST_COLLECT) {
+        return "ST_Collect(column) supports only descriptor columns";
+    }
 
     return "MIN/MAX supports only descriptor columns";
 }
@@ -1836,6 +1905,9 @@ static const char *column_aggregate_integer_error(enum planned_column_aggregate_
     if (column_aggregate_function_is_statistical(function)) {
         return "statistical aggregate supports only integer descriptor columns";
     }
+    if (function == PLANNED_COLUMN_AGGREGATE_ST_COLLECT) {
+        return "ST_Collect(column) supports only spatial descriptor columns";
+    }
 
     return "MIN/MAX supports only integer and nonbinary string descriptor columns";
 }
@@ -1852,6 +1924,10 @@ static int validate_column_aggregate_descriptor_column(
     }
     if (column_aggregate_function_is_min_max(aggregate_function) &&
         column_descriptor_is_string_family(column)) {
+        return MYLITE_OK;
+    }
+    if (aggregate_function == PLANNED_COLUMN_AGGREGATE_ST_COLLECT &&
+        column_descriptor_is_spatial(column)) {
         return MYLITE_OK;
     }
     return integer_range_for_column(
@@ -2067,7 +2143,15 @@ static int append_column_aggregate_result_column(
         rc = copy_aggregate_result_column_name(database, &plan->expression->span, &column_name);
     }
 
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && plan->function == PLANNED_COLUMN_AGGREGATE_ST_COLLECT) {
+        rc = append_spatial_collect_result_column(
+            database,
+            result,
+            column_name,
+            plan->has_spatial_wrapper,
+            plan->spatial_wrapper_kind
+        );
+    } else if (rc == MYLITE_OK) {
         rc = mylite_result_append_column(result, column_name);
         if (rc != MYLITE_OK) {
             set_nomem_error(database);
@@ -2075,6 +2159,44 @@ static int append_column_aggregate_result_column(
     }
 
     free(column_name);
+    return rc;
+}
+
+static int append_spatial_collect_result_column(
+    struct mylite_db *database,
+    mylite_result *result,
+    const char *column_name,
+    bool has_wrapper,
+    enum mylite_spatial_function_kind wrapper_kind
+) {
+    struct mylite_result_column_descriptor descriptor = {
+        .label = column_name,
+        .schema_name = "",
+        .table_name = "",
+        .origin_schema_name = "",
+        .origin_table_name = "",
+        .origin_column_name = "",
+        .logical_type = MYLITE_RESULT_LOGICAL_TYPE_GEOMETRY,
+        .flags = MYLITE_RESULT_COLUMN_FLAG_BLOB | MYLITE_RESULT_COLUMN_FLAG_BINARY,
+        .charset_id = mysql_collation_binary_id,
+        .collation_id = mysql_collation_binary_id,
+        .display_length = mysql_json_document_display_length,
+        .decimals = mysql_approximate_decimals,
+        .nullable = true,
+    };
+    int rc = MYLITE_OK;
+
+    if (has_wrapper) {
+        rc =
+            populate_spatial_function_result_column_descriptor(database, wrapper_kind, &descriptor);
+        descriptor.label = column_name;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_column_descriptor(result, &descriptor);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
     return rc;
 }
 
@@ -2261,6 +2383,21 @@ static int append_column_aggregate_sqlite_cell(
     }
     if (item->function == PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT) {
         rc = append_grouped_group_concat_sqlite_cell(statement, *sqlite_column_index, out_cell);
+        if (rc == MYLITE_OK) {
+            ++(*sqlite_column_index);
+        }
+        return rc;
+    }
+    if (item->function == PLANNED_COLUMN_AGGREGATE_ST_COLLECT) {
+        rc = append_selected_sqlite_row_value_with_descriptor(
+            database,
+            statement,
+            (size_t)*sqlite_column_index,
+            item->has_spatial_wrapper ? NULL : &item->aggregate_column,
+            buffer,
+            buffer_size,
+            out_cell
+        );
         if (rc == MYLITE_OK) {
             ++(*sqlite_column_index);
         }
@@ -2513,6 +2650,21 @@ static int append_grouped_aggregate_sqlite_cell(
     if (item->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
         rc = append_grouped_group_concat_sqlite_cell(statement, *sqlite_column_index, out_cell);
         ++(*sqlite_column_index);
+        return rc;
+    }
+    if (item->function == PLANNED_GROUPED_AGGREGATE_ST_COLLECT) {
+        rc = append_selected_sqlite_row_value_with_descriptor(
+            database,
+            statement,
+            (size_t)*sqlite_column_index,
+            item->has_spatial_wrapper ? NULL : &item->aggregate_column,
+            buffer,
+            buffer_size,
+            out_cell
+        );
+        if (rc == MYLITE_OK) {
+            ++(*sqlite_column_index);
+        }
         return rc;
     }
     if (item->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {

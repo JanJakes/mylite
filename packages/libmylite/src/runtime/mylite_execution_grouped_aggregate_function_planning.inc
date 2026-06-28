@@ -114,6 +114,8 @@ static int plan_grouped_aggregate_expression(
 ) {
     const struct mylite_sql_ast_node *unwrapped_expression =
         unwrap_parenthesized_expression(aggregate_expression);
+    const struct mylite_sql_ast_node *aggregate_function_expression = unwrapped_expression;
+    const struct mylite_sql_ast_node *collect_expression = NULL;
     int rc = MYLITE_OK;
 
     *out_item = (struct planned_grouped_aggregate_item){0};
@@ -123,9 +125,17 @@ static int plan_grouped_aggregate_expression(
     if (out_item->function == PLANNED_GROUPED_AGGREGATE_NONE) {
         return MYLITE_OK;
     }
+    if (spatial_collect_wrapper_from_expression(
+            unwrapped_expression,
+            &out_item->spatial_wrapper_kind,
+            &collect_expression
+        )) {
+        aggregate_function_expression = collect_expression;
+        out_item->has_spatial_wrapper = true;
+    }
     out_item->aggregate_is_distinct =
         (out_item->function == PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN) ||
-        aggregate_function_is_distinct(unwrapped_expression);
+        aggregate_function_is_distinct(aggregate_function_expression);
     if (!grouped_aggregate_function_has_column(out_item->function)) {
         return MYLITE_OK;
     }
@@ -146,7 +156,7 @@ static int plan_grouped_aggregate_expression(
         }
         return plan_grouped_group_concat_options(
             database,
-            unwrapped_expression,
+            aggregate_function_expression,
             source_context,
             table_columns,
             table_column_count,
@@ -167,7 +177,7 @@ static int plan_grouped_aggregate_expression(
         }
         rc = plan_grouped_count_column(
             database,
-            unwrapped_expression,
+            aggregate_function_expression,
             source_context,
             table_columns,
             table_column_count,
@@ -183,7 +193,7 @@ static int plan_grouped_aggregate_expression(
     if (out_item->function == PLANNED_GROUPED_AGGREGATE_ANY_VALUE) {
         return plan_grouped_any_value_column(
             database,
-            unwrapped_expression,
+            aggregate_function_expression,
             source_context,
             table_columns,
             table_column_count,
@@ -191,10 +201,11 @@ static int plan_grouped_aggregate_expression(
             &out_item->aggregate_column_source_index
         );
     }
-    if (column_aggregate_argument_is_row_scalar_expression(unwrapped_expression)) {
+    if (out_item->function != PLANNED_GROUPED_AGGREGATE_ST_COLLECT &&
+        column_aggregate_argument_is_row_scalar_expression(aggregate_function_expression)) {
         return plan_grouped_aggregate_row_scalar_expression(
             database,
-            unwrapped_expression,
+            aggregate_function_expression,
             source_context,
             table_columns,
             table_column_count,
@@ -204,7 +215,7 @@ static int plan_grouped_aggregate_expression(
 
     return plan_grouped_column_aggregate_column(
         database,
-        unwrapped_expression,
+        aggregate_function_expression,
         grouped_column_aggregate_function(out_item->function),
         source_context,
         table_columns,
@@ -601,6 +612,9 @@ static enum planned_grouped_aggregate_function grouped_aggregate_function_from_e
     enum planned_column_aggregate_function column_function =
         column_aggregate_function_from_expression(expression);
 
+    if (spatial_collect_wrapper_from_expression(expression, NULL, NULL)) {
+        return PLANNED_GROUPED_AGGREGATE_ST_COLLECT;
+    }
     if (count_function == PLANNED_COUNT_STAR) {
         return PLANNED_GROUPED_AGGREGATE_COUNT_STAR;
     }
@@ -642,6 +656,8 @@ static enum planned_grouped_aggregate_function grouped_aggregate_function_from_e
         return PLANNED_GROUPED_AGGREGATE_VAR_POP;
     case PLANNED_COLUMN_AGGREGATE_VAR_SAMP:
         return PLANNED_GROUPED_AGGREGATE_VAR_SAMP;
+    case PLANNED_COLUMN_AGGREGATE_ST_COLLECT:
+        return PLANNED_GROUPED_AGGREGATE_ST_COLLECT;
     case PLANNED_COLUMN_AGGREGATE_NONE:
     case PLANNED_COLUMN_AGGREGATE_COUNT_STAR:
     case PLANNED_COLUMN_AGGREGATE_COUNT_COLUMN:
@@ -685,6 +701,8 @@ static enum planned_column_aggregate_function grouped_column_aggregate_function(
         return PLANNED_COLUMN_AGGREGATE_VAR_POP;
     case PLANNED_GROUPED_AGGREGATE_VAR_SAMP:
         return PLANNED_COLUMN_AGGREGATE_VAR_SAMP;
+    case PLANNED_GROUPED_AGGREGATE_ST_COLLECT:
+        return PLANNED_COLUMN_AGGREGATE_ST_COLLECT;
     case PLANNED_GROUPED_AGGREGATE_NONE:
     case PLANNED_GROUPED_AGGREGATE_COUNT_STAR:
     case PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN:

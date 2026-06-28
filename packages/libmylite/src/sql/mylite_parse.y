@@ -6586,6 +6586,10 @@ selected_grouped_aggregate_expression(A) ::= IDENTIFIER(T) LPAREN
         sum_aggregate_argument(B) RPAREN(R). {
     A = mylite_sql_parser_make_statistical_aggregate_function(state, T, B, R);
 }
+selected_grouped_aggregate_expression(A) ::= IDENTIFIER(T) LPAREN DISTINCT(D)
+        sum_aggregate_argument(B) RPAREN(R). {
+    A = mylite_sql_parser_make_distinct_st_collect_aggregate_function(state, T, B, &D, R);
+}
 selected_grouped_aggregate_expression(A) ::= GROUP_CONCAT(T) LPAREN(L) expression(B)
     group_concat_order_opt(O) group_concat_separator_opt(S) RPAREN(R). {
     A = mylite_sql_parser_make_group_concat_function(state, T, L, B, O, S, R);
@@ -9208,6 +9212,12 @@ expression(A) ::= IDENTIFIER(T) LPAREN RPAREN(R) aggregate_window_opt(W). {
 expression(A) ::= IDENTIFIER(T) LPAREN function_argument_list(B) RPAREN(R)
                   aggregate_window_opt(W). {
     A = mylite_sql_parser_make_generic_function_with_window_clause(state, T, B, R, W);
+}
+expression(A) ::= IDENTIFIER(T) LPAREN DISTINCT(D) expression(B) RPAREN(R)
+                  aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_distinct_st_collect_aggregate_function(state, T, B, &D, R),
+        W);
 }
 expression(A) ::= keyword_function_token(T) LPAREN RPAREN(R) aggregate_window_opt(W). {
     A = mylite_sql_parser_make_generic_function_with_window_clause(state, T, NULL, R, W);

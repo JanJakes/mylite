@@ -2090,6 +2090,7 @@ enum planned_column_aggregate_function {
     PLANNED_COLUMN_AGGREGATE_COUNT_LITERAL = 15,
     PLANNED_COLUMN_AGGREGATE_COUNT_DISTINCT_COLUMN = 16,
     PLANNED_COLUMN_AGGREGATE_ANY_VALUE = 17,
+    PLANNED_COLUMN_AGGREGATE_ST_COLLECT = 18,
 };
 
 struct planned_scalar_aggregate_subquery {
@@ -2114,6 +2115,8 @@ struct planned_column_aggregate {
     struct planned_row_scalar_expression aggregate_projection_rhs;
     struct planned_select_order aggregate_order;
     bool aggregate_is_distinct;
+    bool has_spatial_wrapper;
+    enum mylite_spatial_function_kind spatial_wrapper_kind;
     bool has_separator;
     struct planned_value separator;
     struct planned_value count_literal;
@@ -2159,6 +2162,7 @@ enum planned_grouped_aggregate_function {
     PLANNED_GROUPED_AGGREGATE_STDDEV_SAMP = 14,
     PLANNED_GROUPED_AGGREGATE_VAR_POP = 15,
     PLANNED_GROUPED_AGGREGATE_VAR_SAMP = 16,
+    PLANNED_GROUPED_AGGREGATE_ST_COLLECT = 17,
 };
 
 enum { grouped_aggregate_max_results = 16 };
@@ -2176,6 +2180,8 @@ struct planned_grouped_aggregate_item {
     struct planned_row_scalar_expression aggregate_row_scalar_expression;
     struct planned_select_order aggregate_order;
     bool aggregate_is_distinct;
+    bool has_spatial_wrapper;
+    enum mylite_spatial_function_kind spatial_wrapper_kind;
     bool has_separator;
     struct planned_value separator;
 };

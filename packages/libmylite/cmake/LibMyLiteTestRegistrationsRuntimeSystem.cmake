@@ -521,6 +521,10 @@
     COMMAND mylite_runtime_spatial_measure_accessor_functions_test
   )
   add_test(
+    NAME libmylite.runtime.spatial_collect_aggregate
+    COMMAND mylite_runtime_spatial_collect_aggregate_test
+  )
+  add_test(
     NAME libmylite.runtime.spatial_geohash_functions
     COMMAND mylite_runtime_spatial_geohash_functions_test
   )

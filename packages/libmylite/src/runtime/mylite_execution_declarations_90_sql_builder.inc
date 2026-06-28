@@ -2105,6 +2105,22 @@ static int append_group_concat_expression_call_sql(
     bool has_separator,
     size_t *next_parameter
 );
+static int append_spatial_collect_projection_sql(
+    struct mylite_dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t source_index,
+    bool qualify_column_references,
+    bool is_distinct,
+    bool has_wrapper,
+    enum mylite_spatial_function_kind wrapper_kind
+);
+static int append_spatial_collect_aggregate_call_sql(
+    struct mylite_dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t source_index,
+    bool qualify_column_references,
+    bool is_distinct
+);
 static const char *column_aggregate_sql_function(enum planned_column_aggregate_function function);
 static int build_grouped_aggregate_sql(
     const struct planned_grouped_aggregate *plan,

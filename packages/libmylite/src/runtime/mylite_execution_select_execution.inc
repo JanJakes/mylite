@@ -189,7 +189,8 @@ static bool select_statement_is_row_scalar_projection_attempt(
              expression->kind == MYLITE_SQL_AST_BIT_AND_AGGREGATE_FUNCTION ||
              expression->kind == MYLITE_SQL_AST_BIT_OR_AGGREGATE_FUNCTION ||
              expression->kind == MYLITE_SQL_AST_BIT_XOR_AGGREGATE_FUNCTION ||
-             expression->kind == MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION)) {
+             expression->kind == MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION ||
+             expression->kind == MYLITE_SQL_AST_ST_COLLECT_AGGREGATE_FUNCTION)) {
             return false;
         }
         if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&

@@ -1834,6 +1834,17 @@ static int make_derived_grouped_aggregate_source_column(
         out_column->table_id = 0;
         out_column->column_id = (int64_t)output_index + 1;
         out_column->ordinal_position = (int64_t)output_index + 1;
+    } else if (item->function == PLANNED_GROUPED_AGGREGATE_ST_COLLECT) {
+        if (!item->has_spatial_wrapper) {
+            snprintf(out_column->logical_type, sizeof(out_column->logical_type), "geometry");
+            snprintf(out_column->physical_type, sizeof(out_column->physical_type), "BLOB");
+        } else if (item->spatial_wrapper_kind == MYLITE_SPATIAL_FUNCTION_ST_SRID) {
+            snprintf(out_column->logical_type, sizeof(out_column->logical_type), "BIGINT");
+            snprintf(out_column->physical_type, sizeof(out_column->physical_type), "INTEGER");
+        } else {
+            snprintf(out_column->logical_type, sizeof(out_column->logical_type), "LONGTEXT");
+            snprintf(out_column->physical_type, sizeof(out_column->physical_type), "TEXT");
+        }
     } else {
         snprintf(out_column->logical_type, sizeof(out_column->logical_type), "BIGINT");
         snprintf(out_column->physical_type, sizeof(out_column->physical_type), "INTEGER");

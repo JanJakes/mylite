@@ -358,6 +358,17 @@ static int append_column_aggregate_select_item_sql(
     if (item->function == PLANNED_COLUMN_AGGREGATE_ANY_VALUE) {
         return mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column.name);
     }
+    if (item->function == PLANNED_COLUMN_AGGREGATE_ST_COLLECT) {
+        return append_spatial_collect_projection_sql(
+            string,
+            &item->aggregate_column,
+            0U,
+            false,
+            item->aggregate_is_distinct,
+            item->has_spatial_wrapper,
+            item->spatial_wrapper_kind
+        );
+    }
     if (item->aggregate_uses_row_scalar_expression) {
         if (item->function == PLANNED_COLUMN_AGGREGATE_AVG) {
             rc = mylite_dynamic_string_append(string, "SUM(");
@@ -614,6 +625,69 @@ static int append_group_concat_expression_call_sql(
     return rc;
 }
 
+static int append_spatial_collect_projection_sql(
+    struct mylite_dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t source_index,
+    bool qualify_column_references,
+    bool is_distinct,
+    bool has_wrapper,
+    enum mylite_spatial_function_kind wrapper_kind
+) {
+    const char *wrapper_name = NULL;
+    int rc = MYLITE_OK;
+
+    if (has_wrapper) {
+        wrapper_name = mylite_spatial_function_name(wrapper_kind);
+        if (wrapper_name == NULL) {
+            return MYLITE_ERROR;
+        }
+        rc = mylite_dynamic_string_append(string, wrapper_name);
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append_char(string, '(');
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_spatial_collect_aggregate_call_sql(
+            string,
+            column,
+            source_index,
+            qualify_column_references,
+            is_distinct
+        );
+    }
+    if (rc == MYLITE_OK && has_wrapper) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_spatial_collect_aggregate_call_sql(
+    struct mylite_dynamic_string *string,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t source_index,
+    bool qualify_column_references,
+    bool is_distinct
+) {
+    int rc = mylite_dynamic_string_append(
+        string,
+        is_distinct ? "_mylite_st_collect_distinct(" : "_mylite_st_collect("
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = append_descriptor_column_name_sql_for_source(
+            string,
+            column,
+            source_index,
+            qualify_column_references
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
 static const char *column_aggregate_sql_function(enum planned_column_aggregate_function function) {
     switch (function) {
     case PLANNED_COLUMN_AGGREGATE_NONE:
@@ -644,6 +718,8 @@ static const char *column_aggregate_sql_function(enum planned_column_aggregate_f
         return "_mylite_var_pop";
     case PLANNED_COLUMN_AGGREGATE_VAR_SAMP:
         return "_mylite_var_samp";
+    case PLANNED_COLUMN_AGGREGATE_ST_COLLECT:
+        return "_mylite_st_collect";
     case PLANNED_COLUMN_AGGREGATE_COUNT_STAR:
     case PLANNED_COLUMN_AGGREGATE_COUNT_COLUMN:
     case PLANNED_COLUMN_AGGREGATE_COUNT_LITERAL:
@@ -1042,6 +1118,17 @@ static int append_grouped_aggregate_expression_sql(
             qualify
         );
     }
+    if (item->function == PLANNED_GROUPED_AGGREGATE_ST_COLLECT) {
+        return append_spatial_collect_projection_sql(
+            string,
+            &item->aggregate_column,
+            item->aggregate_column_source_index,
+            qualify,
+            item->aggregate_is_distinct,
+            item->has_spatial_wrapper,
+            item->spatial_wrapper_kind
+        );
+    }
     if (item->aggregate_uses_row_scalar_expression) {
         if (next_parameter == NULL) {
             return MYLITE_ERROR;
@@ -1156,6 +1243,8 @@ static const char *grouped_aggregate_sql_function(
         return "_mylite_var_pop";
     case PLANNED_GROUPED_AGGREGATE_VAR_SAMP:
         return "_mylite_var_samp";
+    case PLANNED_GROUPED_AGGREGATE_ST_COLLECT:
+        return "_mylite_st_collect";
     case PLANNED_GROUPED_AGGREGATE_NONE:
     case PLANNED_GROUPED_AGGREGATE_COUNT_STAR:
     case PLANNED_GROUPED_AGGREGATE_AVG:
@@ -2661,6 +2750,7 @@ static const char *scalar_aggregate_sql_function(enum planned_column_aggregate_f
     case PLANNED_COLUMN_AGGREGATE_STDDEV_SAMP:
     case PLANNED_COLUMN_AGGREGATE_VAR_POP:
     case PLANNED_COLUMN_AGGREGATE_VAR_SAMP:
+    case PLANNED_COLUMN_AGGREGATE_ST_COLLECT:
     case PLANNED_COLUMN_AGGREGATE_COUNT_STAR:
     case PLANNED_COLUMN_AGGREGATE_COUNT_COLUMN:
     case PLANNED_COLUMN_AGGREGATE_COUNT_LITERAL:

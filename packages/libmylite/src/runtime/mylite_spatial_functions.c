@@ -107,6 +107,10 @@ static const struct spatial_sqlite_function_descriptor spatial_sqlite_function_d
     {"MBROverlaps", MYLITE_SPATIAL_FUNCTION_MBROVERLAPS},
     {"MBRTouches", MYLITE_SPATIAL_FUNCTION_MBRTOUCHES},
     {"MBRWithin", MYLITE_SPATIAL_FUNCTION_MBRWITHIN},
+    {"ST_GeoHash", MYLITE_SPATIAL_FUNCTION_ST_GEOHASH},
+    {"ST_LatFromGeoHash", MYLITE_SPATIAL_FUNCTION_ST_LATFROMGEOHASH},
+    {"ST_LongFromGeoHash", MYLITE_SPATIAL_FUNCTION_ST_LONGFROMGEOHASH},
+    {"ST_PointFromGeoHash", MYLITE_SPATIAL_FUNCTION_ST_POINTFROMGEOHASH},
 };
 
 int mylite_sqlite_register_spatial_functions(sqlite3 *sqlite) {

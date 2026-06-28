@@ -6,9 +6,10 @@ MyLite supports a basic SRID-0 geometry surface: WKT/WKB constructors,
 MySQL-specific geometry constructors, WKT/WKB conversion, geometry type/SRID
 readback, point coordinate access, core property/accessor functions, Cartesian
 length/area/envelope helpers, coordinate swapping, envelope construction, and
-MBR predicates in scalar, row-backed, and descriptor DML value contexts. It does
-not yet implement nonzero SRS behavior, topology predicates, constructive
-geometry operations, or physical spatial search.
+MBR predicates in scalar, row-backed, and descriptor DML value contexts. Geohash
+helpers support coordinate encoding/decoding plus SRID 0 and 4326 point
+round-trips. It does not yet implement a general SRS catalog, GeoJSON, topology
+predicates, constructive geometry operations, or physical spatial search.
 
 | Function | Status | Notes |
 | --- | --- | --- |
@@ -50,7 +51,7 @@ geometry operations, or physical spatial search.
 | `ST_Equals()` | ❌ | Whether one geometry is equal to another |
 | `ST_ExteriorRing()` | ✅ | Return Polygon exterior ring |
 | `ST_FrechetDistance()` | ❌ | The discrete Fréchet distance of one geometry from another |
-| `ST_GeoHash()` | ❌ | Produce a geohash value |
+| `ST_GeoHash()` | ✅ | Encode Point or coordinate pair as a geohash |
 | `ST_GeomCollFromText(), ST_GeometryCollectionFromText(), ST_GeomCollFromTxt()` | ✅ | Construct SRID-0 geometry collection from WKT |
 | `ST_GeomCollFromWKB(), ST_GeometryCollectionFromWKB()` | ✅ | Construct SRID-0 geometry collection from WKB |
 | `ST_GeometryN()` | ✅ | Return one-based GeometryCollection member |
@@ -66,14 +67,14 @@ geometry operations, or physical spatial search.
 | `ST_IsEmpty()` | ✅ | Return empty geometry collection state |
 | `ST_IsSimple()` | ❌ | Whether a geometry is simple |
 | `ST_IsValid()` | ❌ | Whether a geometry is valid |
-| `ST_LatFromGeoHash()` | ❌ | Return latitude from geohash value |
+| `ST_LatFromGeoHash()` | ✅ | Decode latitude from geohash value |
 | `ST_Latitude()` | ❌ | Return latitude of Point |
 | `ST_Length()` | ✅ | Cartesian SRID-0 LineString/MultiLineString length |
 | `ST_LineFromText(), ST_LineStringFromText()` | ✅ | Construct SRID-0 LineString from WKT |
 | `ST_LineFromWKB(), ST_LineStringFromWKB()` | ✅ | Construct SRID-0 LineString from WKB |
 | `ST_LineInterpolatePoint()` | ❌ | The point a given percentage along a LineString |
 | `ST_LineInterpolatePoints()` | ❌ | The points a given percentage along a LineString |
-| `ST_LongFromGeoHash()` | ❌ | Return longitude from geohash value |
+| `ST_LongFromGeoHash()` | ✅ | Decode longitude from geohash value |
 | `ST_Longitude()` | ❌ | Return longitude of Point |
 | `ST_MakeEnvelope()` | ✅ | Construct SRID-0 Point, LineString, or Polygon envelope from two points |
 | `ST_MLineFromText(), ST_MultiLineStringFromText()` | ✅ | Construct SRID-0 MultiLineString from WKT |
@@ -87,7 +88,7 @@ geometry operations, or physical spatial search.
 | `ST_NumPoints()` | ✅ | Return LineString point count |
 | `ST_Overlaps()` | ❌ | Whether one geometry overlaps another |
 | `ST_PointAtDistance()` | ❌ | The point a given distance along a LineString |
-| `ST_PointFromGeoHash()` | ❌ | Convert geohash value to POINT value |
+| `ST_PointFromGeoHash()` | ✅ | Convert geohash value to SRID 0 or 4326 Point |
 | `ST_PointFromText()` | ✅ | Construct SRID-0 Point from WKT |
 | `ST_PointFromWKB()` | ✅ | Construct SRID-0 Point from WKB |
 | `ST_PointN()` | ✅ | Return one-based LineString point |

@@ -25,6 +25,16 @@ enum {
     spatial_buffer_initial_capacity = 64,
     spatial_diagnostic_function_name_capacity = 64,
     spatial_double_text_capacity = 64,
+    spatial_geohash_max_length = 100,
+    spatial_geohash_decode_max_length = 433,
+    spatial_geohash_error_preview_length = 48,
+    spatial_geohash_bits_per_character = 5,
+    spatial_geohash_high_bit = 16,
+    spatial_geohash_max_round_decimals = 6,
+    spatial_srid_wgs84 = 4326,
+    mysql_error_incorrect_type_for_argument = 3064,
+    mysql_error_invalid_geohash = 1411,
+    mysql_error_numeric_value_out_of_range = 1690,
     mysql_error_native_function_parameter_count = 1582,
     mysql_error_wrong_arguments = 1210,
     mysql_error_invalid_gis_data = 3037,
@@ -33,6 +43,14 @@ enum {
 };
 
 static const double spatial_shoelace_area_divisor = 2.0;
+static const double spatial_geohash_longitude_min = -180.0;
+static const double spatial_geohash_longitude_max = 180.0;
+static const double spatial_geohash_latitude_min = -90.0;
+static const double spatial_geohash_latitude_max = 90.0;
+static const double spatial_geohash_interval_midpoint_divisor = 2.0;
+static const double spatial_geohash_integer_snap_width = 0.0001;
+static const double spatial_decimal_base = 10.0;
+static const char spatial_geohash_alphabet[] = "0123456789bcdefghjkmnpqrstuvwxyz";
 
 struct spatial_function_descriptor {
     const char *name;
@@ -159,6 +177,10 @@ static const struct spatial_function_descriptor spatial_function_descriptors[] =
     {"MBROverlaps", MYLITE_SPATIAL_FUNCTION_MBROVERLAPS},
     {"MBRTouches", MYLITE_SPATIAL_FUNCTION_MBRTOUCHES},
     {"MBRWithin", MYLITE_SPATIAL_FUNCTION_MBRWITHIN},
+    {"ST_GeoHash", MYLITE_SPATIAL_FUNCTION_ST_GEOHASH},
+    {"ST_LatFromGeoHash", MYLITE_SPATIAL_FUNCTION_ST_LATFROMGEOHASH},
+    {"ST_LongFromGeoHash", MYLITE_SPATIAL_FUNCTION_ST_LONGFROMGEOHASH},
+    {"ST_PointFromGeoHash", MYLITE_SPATIAL_FUNCTION_ST_POINTFROMGEOHASH},
 };
 
 static int evaluate_point_constructor(
@@ -321,6 +343,27 @@ static int evaluate_mbr_predicate(
     struct mylite_spatial_result *out_result,
     struct mylite_spatial_error *error
 );
+static int evaluate_geohash(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_coordinate_from_geohash(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_point_from_geohash(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
 static bool function_name_matches(const char *name, size_t name_size, const char *expected);
 static bool function_kind_is_from_text(enum mylite_spatial_function_kind kind);
 static bool function_kind_is_from_wkb(enum mylite_spatial_function_kind kind);
@@ -354,6 +397,21 @@ static int set_unexpected_geometry_type_error(
     const char *function_name
 );
 static int set_wrong_arguments_error(struct mylite_spatial_error *error, const char *function_name);
+static int set_incorrect_argument_type_error(
+    struct mylite_spatial_error *error,
+    const char *argument_name,
+    const char *function_name
+);
+static int set_geohash_range_error(
+    struct mylite_spatial_error *error,
+    const char *subject,
+    const char *function_name
+);
+static int set_invalid_geohash_error(
+    struct mylite_spatial_error *error,
+    const struct mylite_spatial_argument *argument,
+    const char *function_name
+);
 static int set_parameter_count_error(
     struct mylite_spatial_error *error,
     enum mylite_spatial_function_kind kind
@@ -375,12 +433,28 @@ static int argument_numeric(
     struct mylite_spatial_error *error,
     const char *function_name
 );
+static int argument_geohash_coordinate(
+    const struct mylite_spatial_argument *argument,
+    double *out_value,
+    struct mylite_spatial_error *error,
+    const char *function_name,
+    const char *range_subject
+);
 static int argument_srid(
     const struct mylite_spatial_argument *argument,
     uint32_t *out_srid,
     bool *out_is_null,
     struct mylite_spatial_error *error,
     const char *function_name
+);
+static int argument_geohash_uint32(
+    const struct mylite_spatial_argument *argument,
+    uint32_t *out_value,
+    bool *out_is_null,
+    struct mylite_spatial_error *error,
+    const char *function_name,
+    const char *argument_name, // NOLINT(bugprone-easily-swappable-parameters): diagnostic labels.
+    const char *range_subject
 );
 static int argument_index(
     const struct mylite_spatial_argument *argument,
@@ -420,6 +494,14 @@ static int make_internal_geometry_from_wkb(
     struct mylite_spatial_error *error
 );
 static int make_point_internal_geometry(
+    double coordinate_x,
+    double coordinate_y,
+    unsigned char **out_bytes,
+    size_t *out_byte_count,
+    struct mylite_spatial_error *error
+);
+static int make_point_internal_geometry_with_srid(
+    uint32_t srid, // NOLINT(bugprone-easily-swappable-parameters): internal point builder.
     double coordinate_x,
     double coordinate_y,
     unsigned char **out_bytes,
@@ -601,6 +683,27 @@ static bool spatial_box_interiors_intersect(
     const struct spatial_box *left,
     const struct spatial_box *right
 );
+static int geohash_encode(
+    double longitude, // NOLINT(bugprone-easily-swappable-parameters): geohash inputs.
+    double latitude,
+    uint32_t max_length,
+    unsigned char **out_text,
+    size_t *out_text_length,
+    struct mylite_spatial_error *error
+);
+static int geohash_decode(
+    const struct mylite_spatial_argument *argument,
+    double *out_longitude,
+    double *out_latitude,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static double geohash_round_coordinate(
+    double value, // NOLINT(bugprone-easily-swappable-parameters): interval rounding.
+    double minimum,
+    double maximum
+);
+static int geohash_character_value(unsigned char byte);
 static int append_wkb_as_wkt(
     struct spatial_buffer *buffer,
     struct spatial_wkb_cursor *cursor,
@@ -744,12 +847,14 @@ bool mylite_spatial_function_returns_geometry(enum mylite_spatial_function_kind 
            kind == MYLITE_SPATIAL_FUNCTION_ST_INTERIORRINGN ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_ENVELOPE ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_SWAPXY ||
-           kind == MYLITE_SPATIAL_FUNCTION_ST_MAKEENVELOPE;
+           kind == MYLITE_SPATIAL_FUNCTION_ST_MAKEENVELOPE ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_POINTFROMGEOHASH;
 }
 
 bool mylite_spatial_function_returns_text(enum mylite_spatial_function_kind kind) {
     return kind == MYLITE_SPATIAL_FUNCTION_ST_ASTEXT || kind == MYLITE_SPATIAL_FUNCTION_ST_ASWKT ||
-           kind == MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYTYPE;
+           kind == MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYTYPE ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_GEOHASH;
 }
 
 bool mylite_spatial_function_returns_wkb(enum mylite_spatial_function_kind kind) {
@@ -771,7 +876,9 @@ bool mylite_spatial_function_returns_integer(enum mylite_spatial_function_kind k
 
 bool mylite_spatial_function_returns_double(enum mylite_spatial_function_kind kind) {
     return kind == MYLITE_SPATIAL_FUNCTION_ST_X || kind == MYLITE_SPATIAL_FUNCTION_ST_Y ||
-           kind == MYLITE_SPATIAL_FUNCTION_ST_LENGTH || kind == MYLITE_SPATIAL_FUNCTION_ST_AREA;
+           kind == MYLITE_SPATIAL_FUNCTION_ST_LENGTH || kind == MYLITE_SPATIAL_FUNCTION_ST_AREA ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_LATFROMGEOHASH ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_LONGFROMGEOHASH;
 }
 
 int mylite_spatial_evaluate(
@@ -870,6 +977,19 @@ int mylite_spatial_evaluate(
     case MYLITE_SPATIAL_FUNCTION_MBRTOUCHES:
     case MYLITE_SPATIAL_FUNCTION_MBRWITHIN:
         return evaluate_mbr_predicate(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_GEOHASH:
+        return evaluate_geohash(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_LATFROMGEOHASH:
+    case MYLITE_SPATIAL_FUNCTION_ST_LONGFROMGEOHASH:
+        return evaluate_coordinate_from_geohash(
+            kind,
+            arguments,
+            argument_count,
+            out_result,
+            out_error
+        );
+    case MYLITE_SPATIAL_FUNCTION_ST_POINTFROMGEOHASH:
+        return evaluate_point_from_geohash(kind, arguments, argument_count, out_result, out_error);
     default:
         break;
     }
@@ -2233,6 +2353,260 @@ static int evaluate_mbr_predicate(
     return assign_integer_result(out_result, result ? 1 : 0);
 }
 
+static int evaluate_geohash(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view geometry = {0};
+    bool is_null = false;
+    bool max_length_is_null = false;
+    uint32_t max_length = 0U;
+    double longitude = 0.0;
+    double latitude = 0.0;
+    unsigned char *text = NULL;
+    size_t text_length = 0U;
+    int rc = validate_argument_count(kind, argument_count, 2U, 3U, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (argument_count == 2U) {
+        rc = read_single_geometry_argument(kind, arguments, 1U, &geometry, &is_null, error);
+        if (rc == 0) {
+            rc = argument_geohash_uint32(
+                &arguments[1],
+                &max_length,
+                &max_length_is_null,
+                error,
+                mylite_spatial_function_name(kind),
+                "geohash max length",
+                "max geohash length"
+            );
+        }
+        if (rc != 0) {
+            return rc;
+        }
+        if (is_null || max_length_is_null) {
+            return assign_null_result(out_result);
+        }
+        if (max_length < 1U || max_length > spatial_geohash_max_length) {
+            return set_geohash_range_error(
+                error,
+                "max geohash length",
+                mylite_spatial_function_name(kind)
+            );
+        }
+        if (geometry.type != MYLITE_SPATIAL_GEOMETRY_POINT) {
+            return set_incorrect_argument_type_error(
+                error,
+                "point",
+                mylite_spatial_function_name(kind)
+            );
+        }
+        if (geometry.srid != 0U && geometry.srid != spatial_srid_wgs84) {
+            return set_spatial_error(
+                error,
+                mysql_error_srs_not_found,
+                "SR001",
+                "There's no spatial reference system with SRID %u.",
+                geometry.srid
+            );
+        }
+        rc = geometry_point_coordinates(
+            geometry.wkb,
+            geometry.wkb_size,
+            &longitude,
+            &latitude,
+            error,
+            mylite_spatial_function_name(kind)
+        );
+        if (rc != 0) {
+            return rc;
+        }
+        if (geometry.srid == spatial_srid_wgs84) {
+            double coordinate_latitude = longitude;
+
+            longitude = latitude;
+            latitude = coordinate_latitude;
+        }
+    } else {
+        bool longitude_is_null = arguments[0].is_null;
+        bool latitude_is_null = arguments[1].is_null;
+
+        if (longitude_is_null || latitude_is_null || arguments[2].is_null) {
+            return assign_null_result(out_result);
+        }
+        rc = argument_geohash_coordinate(
+            &arguments[0],
+            &longitude,
+            error,
+            mylite_spatial_function_name(kind),
+            "longitude"
+        );
+        if (rc == 0) {
+            rc = argument_geohash_coordinate(
+                &arguments[1],
+                &latitude,
+                error,
+                mylite_spatial_function_name(kind),
+                "latitude"
+            );
+        }
+        if (rc == 0) {
+            rc = argument_geohash_uint32(
+                &arguments[2],
+                &max_length,
+                &max_length_is_null,
+                error,
+                mylite_spatial_function_name(kind),
+                "geohash max length",
+                "max geohash length"
+            );
+        }
+        if (rc != 0) {
+            return rc;
+        }
+        if (max_length_is_null) {
+            return assign_null_result(out_result);
+        }
+        if (max_length < 1U || max_length > spatial_geohash_max_length) {
+            return set_geohash_range_error(
+                error,
+                "max geohash length",
+                mylite_spatial_function_name(kind)
+            );
+        }
+    }
+    if (longitude < spatial_geohash_longitude_min || longitude > spatial_geohash_longitude_max) {
+        return set_geohash_range_error(error, "longitude", mylite_spatial_function_name(kind));
+    }
+    if (latitude < spatial_geohash_latitude_min || latitude > spatial_geohash_latitude_max) {
+        return set_geohash_range_error(error, "latitude", mylite_spatial_function_name(kind));
+    }
+    rc = geohash_encode(longitude, latitude, max_length, &text, &text_length, error);
+    if (rc != 0) {
+        free(text);
+        return rc;
+    }
+    return assign_owned_bytes_result(out_result, MYLITE_SPATIAL_RESULT_TEXT, text, text_length);
+}
+
+static int evaluate_coordinate_from_geohash(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    double longitude = 0.0;
+    double latitude = 0.0;
+    int rc = validate_argument_count(kind, argument_count, 1U, 1U, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (arguments[0].is_null) {
+        return assign_null_result(out_result);
+    }
+    rc = geohash_decode(
+        &arguments[0],
+        &longitude,
+        &latitude,
+        error,
+        mylite_spatial_function_name(kind)
+    );
+    if (rc != 0) {
+        return rc;
+    }
+    return assign_double_result(
+        out_result,
+        kind == MYLITE_SPATIAL_FUNCTION_ST_LATFROMGEOHASH ? latitude : longitude
+    );
+}
+
+static int evaluate_point_from_geohash(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    bool srid_is_null = false;
+    uint32_t srid = 0U;
+    double longitude = 0.0;
+    double latitude = 0.0;
+    unsigned char *bytes = NULL;
+    size_t byte_count = 0U;
+    int rc = validate_argument_count(kind, argument_count, 2U, 2U, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (arguments[0].is_null || arguments[1].is_null) {
+        return assign_null_result(out_result);
+    }
+    rc = geohash_decode(
+        &arguments[0],
+        &longitude,
+        &latitude,
+        error,
+        mylite_spatial_function_name(kind)
+    );
+    if (rc == 0) {
+        rc = argument_geohash_uint32(
+            &arguments[1],
+            &srid,
+            &srid_is_null,
+            error,
+            mylite_spatial_function_name(kind),
+            "SRID",
+            "SRID"
+        );
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    if (srid_is_null) {
+        return assign_null_result(out_result);
+    }
+    if (srid != 0U && srid != spatial_srid_wgs84) {
+        return set_spatial_error(
+            error,
+            mysql_error_srs_not_found,
+            "SR001",
+            "There's no spatial reference system with SRID %u.",
+            srid
+        );
+    }
+    if (srid == spatial_srid_wgs84) {
+        rc = make_point_internal_geometry_with_srid(
+            srid,
+            latitude,
+            longitude,
+            &bytes,
+            &byte_count,
+            error
+        );
+    } else {
+        rc = make_point_internal_geometry_with_srid(
+            srid,
+            longitude,
+            latitude,
+            &bytes,
+            &byte_count,
+            error
+        );
+    }
+    if (rc != 0) {
+        free(bytes);
+        return rc;
+    }
+    return assign_owned_bytes_result(out_result, MYLITE_SPATIAL_RESULT_GEOMETRY, bytes, byte_count);
+}
+
 static bool function_name_matches(const char *name, size_t name_size, const char *expected) {
     size_t index = 0U;
 
@@ -2444,6 +2818,84 @@ static int set_wrong_arguments_error(
     );
 }
 
+static int set_incorrect_argument_type_error(
+    struct mylite_spatial_error *error,
+    const char *argument_name,
+    const char *function_name
+) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+
+    return set_spatial_error(
+        error,
+        mysql_error_incorrect_type_for_argument,
+        "HY000",
+        "Incorrect type for argument %s in function %s.",
+        argument_name == NULL ? "value" : argument_name,
+        spatial_diagnostic_function_name(
+            function_name,
+            diagnostic_function_name,
+            sizeof(diagnostic_function_name)
+        )
+    );
+}
+
+static int set_geohash_range_error(
+    struct mylite_spatial_error *error,
+    const char *subject,
+    const char *function_name
+) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+
+    return set_spatial_error(
+        error,
+        mysql_error_numeric_value_out_of_range,
+        "22003",
+        "%s value is out of range in '%s'",
+        subject == NULL ? "geohash" : subject,
+        spatial_diagnostic_function_name(
+            function_name,
+            diagnostic_function_name,
+            sizeof(diagnostic_function_name)
+        )
+    );
+}
+
+static int set_invalid_geohash_error(
+    struct mylite_spatial_error *error,
+    const struct mylite_spatial_argument *argument,
+    const char *function_name
+) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+    char upper_function_name[spatial_diagnostic_function_name_capacity];
+    const char *text = argument == NULL ? "" : (const char *)argument->bytes;
+    size_t text_length = argument == NULL ? 0U : argument->byte_count;
+    size_t index = 0U;
+
+    if (function_name == NULL) {
+        function_name = "spatial";
+    }
+    for (; function_name[index] != '\0' && index + 1U < sizeof(upper_function_name); ++index) {
+        upper_function_name[index] = (char)toupper((unsigned char)function_name[index]);
+    }
+    upper_function_name[index] = '\0';
+    return set_spatial_error(
+        error,
+        mysql_error_invalid_geohash,
+        "HY000",
+        "Incorrect geohash value: '%.*s' for function %s",
+        (int)(text_length > spatial_geohash_error_preview_length
+                  ? spatial_geohash_error_preview_length
+                  : text_length),
+        text == NULL ? "" : text,
+        upper_function_name[0] == '\0' ? spatial_diagnostic_function_name(
+                                             function_name,
+                                             diagnostic_function_name,
+                                             sizeof(diagnostic_function_name)
+                                         )
+                                       : upper_function_name
+    );
+}
+
 static int set_parameter_count_error(
     struct mylite_spatial_error *error,
     enum mylite_spatial_function_kind kind
@@ -2533,6 +2985,51 @@ static int argument_numeric(
     return 0;
 }
 
+static int argument_geohash_coordinate(
+    const struct mylite_spatial_argument *argument,
+    double *out_value,
+    struct mylite_spatial_error *error,
+    const char *function_name,
+    const char *range_subject
+) {
+    char *text = NULL;
+    char *end = NULL;
+    double value = 0.0;
+
+    if (argument == NULL || out_value == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    if (argument->has_numeric) {
+        if (!isfinite(argument->numeric)) {
+            return set_geohash_range_error(error, range_subject, function_name);
+        }
+        *out_value = argument->numeric;
+        return 0;
+    }
+    if (argument->byte_count == SIZE_MAX) {
+        return set_nomem_error(error);
+    }
+    text = (char *)malloc(argument->byte_count + 1U);
+    if (text == NULL) {
+        return set_nomem_error(error);
+    }
+    if (argument->byte_count != 0U) {
+        memcpy(text, argument->bytes, argument->byte_count);
+    }
+    text[argument->byte_count] = '\0';
+    errno = 0;
+    value = strtod(text, &end);
+    if (end == text) {
+        value = 0.0;
+    } else if (errno == ERANGE || !isfinite(value)) {
+        free(text);
+        return set_geohash_range_error(error, range_subject, function_name);
+    }
+    free(text);
+    *out_value = value;
+    return 0;
+}
+
 static int argument_srid(
     const struct mylite_spatial_argument *argument,
     uint32_t *out_srid,
@@ -2557,6 +3054,62 @@ static int argument_srid(
         return set_invalid_gis_data_error(error, function_name);
     }
     *out_srid = (uint32_t)value;
+    return 0;
+}
+
+static int argument_geohash_uint32(
+    const struct mylite_spatial_argument *argument,
+    uint32_t *out_value,
+    bool *out_is_null,
+    struct mylite_spatial_error *error,
+    const char *function_name,
+    const char *argument_name, // NOLINT(bugprone-easily-swappable-parameters): diagnostic labels.
+    const char *range_subject
+) {
+    char *text = NULL;
+    char *end = NULL;
+    double value = 0.0;
+
+    if (out_value == NULL || out_is_null == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    *out_value = 0U;
+    *out_is_null = argument == NULL || argument->is_null;
+    if (*out_is_null) {
+        return 0;
+    }
+    if (argument->has_numeric) {
+        value = argument->numeric;
+    } else {
+        if (argument->byte_count == SIZE_MAX) {
+            return set_nomem_error(error);
+        }
+        text = (char *)malloc(argument->byte_count + 1U);
+        if (text == NULL) {
+            return set_nomem_error(error);
+        }
+        if (argument->byte_count != 0U) {
+            memcpy(text, argument->bytes, argument->byte_count);
+        }
+        text[argument->byte_count] = '\0';
+        errno = 0;
+        value = strtod(text, &end);
+        while (end != NULL && *end != '\0' && isspace((unsigned char)*end)) {
+            ++end;
+        }
+        if (end == text || (end != NULL && *end != '\0') || errno == ERANGE) {
+            free(text);
+            return set_geohash_range_error(error, range_subject, function_name);
+        }
+        free(text);
+    }
+    if (!isfinite(value) || value < 0.0 || value > (double)UINT32_MAX) {
+        return set_geohash_range_error(error, range_subject, function_name);
+    }
+    if (floor(value) != value) {
+        return set_incorrect_argument_type_error(error, argument_name, function_name);
+    }
+    *out_value = (uint32_t)value;
     return 0;
 }
 
@@ -2685,8 +3238,26 @@ static int make_point_internal_geometry(
     size_t *out_byte_count,
     struct mylite_spatial_error *error
 ) {
+    return make_point_internal_geometry_with_srid(
+        0U,
+        coordinate_x,
+        coordinate_y,
+        out_bytes,
+        out_byte_count,
+        error
+    );
+}
+
+static int make_point_internal_geometry_with_srid(
+    uint32_t srid, // NOLINT(bugprone-easily-swappable-parameters): internal point builder.
+    double coordinate_x,
+    double coordinate_y,
+    unsigned char **out_bytes,
+    size_t *out_byte_count,
+    struct mylite_spatial_error *error
+) {
     struct spatial_buffer buffer = {0};
-    int rc = append_internal_prefix(&buffer, 0U);
+    int rc = append_internal_prefix(&buffer, srid);
 
     if (rc == 0) {
         rc = spatial_buffer_append_byte(&buffer, 1U);
@@ -3524,6 +4095,167 @@ static bool spatial_box_interiors_intersect(
     max_x = left->max_x < right->max_x ? left->max_x : right->max_x;
     max_y = left->max_y < right->max_y ? left->max_y : right->max_y;
     return min_x < max_x && min_y < max_y;
+}
+
+static int geohash_encode(
+    double longitude, // NOLINT(bugprone-easily-swappable-parameters): geohash inputs.
+    double latitude,
+    uint32_t max_length,
+    unsigned char **out_text,
+    size_t *out_text_length,
+    struct mylite_spatial_error *error
+) {
+    double longitude_min = spatial_geohash_longitude_min;
+    double longitude_max = spatial_geohash_longitude_max;
+    double latitude_min = spatial_geohash_latitude_min;
+    double latitude_max = spatial_geohash_latitude_max;
+    bool use_longitude = true;
+    unsigned char *text = NULL;
+
+    if (out_text == NULL || out_text_length == NULL || max_length == 0U) {
+        return set_nomem_error(error);
+    }
+    text = (unsigned char *)malloc((size_t)max_length);
+    if (text == NULL) {
+        return set_nomem_error(error);
+    }
+    for (uint32_t index = 0U; index < max_length; ++index) {
+        int value = 0;
+
+        for (int bit = spatial_geohash_high_bit; bit > 0; bit >>= 1U) {
+            if (use_longitude) {
+                double midpoint =
+                    (longitude_min + longitude_max) / spatial_geohash_interval_midpoint_divisor;
+
+                if (longitude >= midpoint) {
+                    value |= bit;
+                    longitude_min = midpoint;
+                } else {
+                    longitude_max = midpoint;
+                }
+            } else {
+                double midpoint =
+                    (latitude_min + latitude_max) / spatial_geohash_interval_midpoint_divisor;
+
+                if (latitude >= midpoint) {
+                    value |= bit;
+                    latitude_min = midpoint;
+                } else {
+                    latitude_max = midpoint;
+                }
+            }
+            use_longitude = !use_longitude;
+        }
+        text[index] = (unsigned char)spatial_geohash_alphabet[value];
+    }
+    *out_text = text;
+    *out_text_length = max_length;
+    return 0;
+}
+
+static int geohash_decode(
+    const struct mylite_spatial_argument *argument,
+    double *out_longitude,
+    double *out_latitude,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    const unsigned char *text = NULL;
+    size_t text_length = 0U;
+    double longitude_min = spatial_geohash_longitude_min;
+    double longitude_max = spatial_geohash_longitude_max;
+    double latitude_min = spatial_geohash_latitude_min;
+    double latitude_max = spatial_geohash_latitude_max;
+    bool use_longitude = true;
+
+    if (argument == NULL || out_longitude == NULL || out_latitude == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    text = (const unsigned char *)argument->bytes;
+    text_length = argument->byte_count;
+    if (text == NULL || text_length == 0U) {
+        return set_invalid_geohash_error(error, argument, function_name);
+    }
+    if (text_length > spatial_geohash_decode_max_length) {
+        text_length = spatial_geohash_decode_max_length;
+    }
+    for (size_t index = 0U; index < text_length; ++index) {
+        int value = geohash_character_value(text[index]);
+
+        if (value < 0) {
+            return set_invalid_geohash_error(error, argument, function_name);
+        }
+        for (int bit = spatial_geohash_high_bit; bit > 0; bit >>= 1U) {
+            if (use_longitude) {
+                double midpoint =
+                    (longitude_min + longitude_max) / spatial_geohash_interval_midpoint_divisor;
+
+                if ((value & bit) != 0) {
+                    longitude_min = midpoint;
+                } else {
+                    longitude_max = midpoint;
+                }
+            } else {
+                double midpoint =
+                    (latitude_min + latitude_max) / spatial_geohash_interval_midpoint_divisor;
+
+                if ((value & bit) != 0) {
+                    latitude_min = midpoint;
+                } else {
+                    latitude_max = midpoint;
+                }
+            }
+            use_longitude = !use_longitude;
+        }
+    }
+    *out_longitude = geohash_round_coordinate(
+        (longitude_min + longitude_max) / spatial_geohash_interval_midpoint_divisor,
+        longitude_min,
+        longitude_max
+    );
+    *out_latitude = geohash_round_coordinate(
+        (latitude_min + latitude_max) / spatial_geohash_interval_midpoint_divisor,
+        latitude_min,
+        latitude_max
+    );
+    return 0;
+}
+
+static double geohash_round_coordinate(
+    double value, // NOLINT(bugprone-easily-swappable-parameters): interval rounding.
+    double minimum,
+    double maximum
+) {
+    double width = maximum - minimum;
+    double nearest_integer = nearbyint(value);
+    int decimal_count = 0;
+    double scale = 1.0;
+
+    if (width <= spatial_geohash_integer_snap_width && nearest_integer >= minimum &&
+        nearest_integer <= maximum) {
+        return nearest_integer;
+    }
+    if (width > 0.0 && width < 1.0) {
+        decimal_count = (int)ceil(-log10(width));
+        if (decimal_count > spatial_geohash_max_round_decimals) {
+            decimal_count = spatial_geohash_max_round_decimals;
+        }
+    }
+    for (int index = 0; index < decimal_count; ++index) {
+        scale *= spatial_decimal_base;
+    }
+    return nearbyint(value * scale) / scale;
+}
+
+static int geohash_character_value(unsigned char byte) {
+    unsigned char lower = (unsigned char)tolower(byte);
+
+    for (int index = 0; index < (int)(sizeof(spatial_geohash_alphabet) - 1U); ++index) {
+        if ((unsigned char)spatial_geohash_alphabet[index] == lower) {
+            return index;
+        }
+    }
+    return -1;
 }
 
 static int append_internal_prefix(struct spatial_buffer *buffer, uint32_t srid) {

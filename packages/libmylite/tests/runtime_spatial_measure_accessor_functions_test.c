@@ -11,8 +11,11 @@
 
 enum {
     test_path_capacity = 1024,
+    row_spatial_measure_column_count = 5,
     mysql_error_wrong_arguments = 1210,
+    mysql_error_gis_different_srids = 3033,
     mysql_error_unexpected_geometry_type = 3516,
+    mysql_error_geometry_unknown_length_unit = 3882,
 };
 
 struct expected_sql_error {
@@ -117,6 +120,23 @@ static int test_scalar_spatial_measure_accessors(void) {
         "0",
         "1",
         "0",
+        NULL,
+    };
+    static const char *const distance_values[] = {
+        "5",
+        NULL,
+        NULL,
+        "3",
+        "0",
+        "0",
+        "1",
+        "1",
+        "1",
+        "0",
+        "1",
+        "0",
+        "3",
+        "4",
         NULL,
     };
     mylite_db *database = NULL;
@@ -238,6 +258,38 @@ static int test_scalar_spatial_measure_accessors(void) {
             .context = "MBR predicates",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ST_Distance(Point(0,0), Point(3,4)), "
+                   "ST_Distance(NULL, Point(1,1)), "
+                   "ST_Distance(ST_GeomFromText('GEOMETRYCOLLECTION EMPTY'), Point(1,1)), "
+                   "ST_Distance(Point(0,0), ST_GeomFromText('LINESTRING(3 0,3 4)')), "
+                   "ST_Distance(ST_GeomFromText('LINESTRING(0 0,4 4)'), "
+                   "ST_GeomFromText('LINESTRING(0 4,4 0)')), "
+                   "ST_Distance(Point(2,2), ST_GeomFromText('POLYGON((0 0,4 0,4 4,0 4,0 0))')), "
+                   "ST_Distance(Point(5,2), ST_GeomFromText('POLYGON((0 0,4 0,4 4,0 4,0 0))')), "
+                   "ST_Distance(Point(2,2), ST_GeomFromText('POLYGON((0 0,5 0,5 5,0 5,0 0),"
+                   "(1 1,4 1,4 4,1 4,1 1))')), "
+                   "ST_Distance(ST_GeomFromText('LINESTRING(5 0,5 4)'), "
+                   "ST_GeomFromText('POLYGON((0 0,4 0,4 4,0 4,0 0))')), "
+                   "ST_Distance(ST_GeomFromText('LINESTRING(-1 2,1 2)'), "
+                   "ST_GeomFromText('POLYGON((0 0,4 0,4 4,0 4,0 0))')), "
+                   "ST_Distance(ST_GeomFromText('POLYGON((0 0,2 0,2 2,0 2,0 0))'), "
+                   "ST_GeomFromText('POLYGON((3 0,5 0,5 2,3 2,3 0))')), "
+                   "ST_Distance(ST_GeomFromText('POLYGON((0 0,3 0,3 3,0 3,0 0))'), "
+                   "ST_GeomFromText('POLYGON((2 2,5 2,5 5,2 5,2 2))')), "
+                   "ST_Distance(ST_GeomFromText('MULTIPOINT(0 0,10 10)'), "
+                   "ST_GeomFromText('LINESTRING(3 0,3 4)')), "
+                   "ST_Distance(ST_GeomFromText('GEOMETRYCOLLECTION(POINT(10 10),"
+                   "LINESTRING(0 5,5 5))'), Point(1,1)), "
+                   "ST_Distance(Point(0,0), Point(1,1), NULL)",
+            .column_count = sizeof(distance_values) / sizeof(distance_values[0]),
+            .values = distance_values,
+            .row_count = 1U,
+            .context = "distance measurements",
+        }
+    );
 
     mylite_close(database);
     return failures;
@@ -249,18 +301,22 @@ static int test_table_backed_spatial_measure_accessors(void) {
         "0",
         "0",
         "POINT(1 2)",
+        "0",
         "2",
         "1",
         "0",
         "POLYGON((0 0,3 0,3 4,0 4,0 0))",
+        "0",
         "3",
         "2",
         "0",
         "POLYGON((0 0,4 0,4 3,0 3,0 0))",
+        "0",
         "4",
         NULL,
         "1",
         "GEOMETRYCOLLECTION EMPTY",
+        NULL,
     };
     static const char *const update_values[] = {
         "1",
@@ -301,8 +357,9 @@ static int test_table_backed_spatial_measure_accessors(void) {
         database,
         (struct expected_query){
             .sql = "SELECT id, ST_Dimension(g), ST_IsEmpty(g), ST_AsText(ST_Envelope(g)) "
+                   ", ST_Distance(g, g) "
                    "FROM spatial_values ORDER BY id",
-            .column_count = 4U,
+            .column_count = row_spatial_measure_column_count,
             .values = projection_values,
             .row_count = 4U,
             .context = "row-backed spatial measure projection",
@@ -351,6 +408,28 @@ static int test_spatial_measure_accessor_diagnostics(void) {
             .code = mysql_error_wrong_arguments,
             .sqlstate = "HY000",
             .message_part = "Incorrect arguments to st_makeenvelope",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ST_Distance(Point(0,0), Point(1,1), 'metre')",
+        (struct expected_sql_error){
+            .code = mysql_error_geometry_unknown_length_unit,
+            .sqlstate = "SU001",
+            .message_part =
+                "The geometry passed to function st_distance is in SRID 0, which doesn't specify "
+                "a length unit. Can't convert to 'metre'.",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ST_Distance(ST_PointFromGeoHash('mh2n0p0581',4326), Point(1,1))",
+        (struct expected_sql_error){
+            .code = mysql_error_gis_different_srids,
+            .sqlstate = "HY000",
+            .message_part =
+                "Binary geometry function st_distance given two geometries of different srids: "
+                "4326 and 0, which should have been identical.",
         }
     );
     mylite_close(database);

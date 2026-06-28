@@ -5,14 +5,14 @@ Spatial constructors, predicates, measurements, and conversion functions.
 MyLite supports a basic SRID-0 geometry surface: WKT/WKB constructors,
 MySQL-specific geometry constructors, WKT/WKB conversion, geometry type/SRID
 readback, point coordinate access, core property/accessor functions, Cartesian
-length/area/envelope helpers, coordinate swapping, envelope construction, and
-MBR predicates in scalar, row-backed, and descriptor DML value contexts. Geohash
-helpers support coordinate encoding/decoding plus SRID 0 and 4326 point
-round-trips. GeoJSON helpers support 2D geometry, Feature extraction, and
-FeatureCollection extraction for SRID 0 and 4326. Geographic point accessors
-support SRID 4326 latitude/longitude getters. It does not yet implement a
-general SRS catalog, topology
-predicates, constructive geometry operations, or physical spatial search.
+length/area/distance/envelope helpers, coordinate swapping, envelope
+construction, and MBR predicates in scalar, row-backed, and descriptor DML
+value contexts. Geohash helpers support coordinate encoding/decoding plus SRID
+0 and 4326 point round-trips. GeoJSON helpers support 2D geometry, Feature
+extraction, and FeatureCollection extraction for SRID 0 and 4326. Geographic
+point accessors support SRID 4326 latitude/longitude getters. It does not yet
+implement a general SRS catalog, topology predicates, constructive geometry
+operations, or physical spatial search.
 
 | Function | Status | Notes |
 | --- | --- | --- |
@@ -47,7 +47,7 @@ predicates, constructive geometry operations, or physical spatial search.
 | `ST_Difference()` | ❌ | Return point set difference of two geometries |
 | `ST_Dimension()` | ✅ | Return SRID-0 geometry dimension |
 | `ST_Disjoint()` | ❌ | Whether one geometry is disjoint from another |
-| `ST_Distance()` | ❌ | The distance of one geometry from another |
+| `ST_Distance()` | 🟡 | Cartesian SRID-0 geometry distance; geographic distance and unit conversion deferred |
 | `ST_Distance_Sphere()` | ❌ | Minimum distance on earth between two geometries |
 | `ST_EndPoint()` | ✅ | Return LineString end point |
 | `ST_Envelope()` | ✅ | Return SRID-0 geometry envelope |

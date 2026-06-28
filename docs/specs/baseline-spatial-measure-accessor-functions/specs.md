@@ -11,7 +11,7 @@ be implemented directly from MyLite-owned WKB parsing:
 - `ST_NumPoints()`, `ST_PointN()`, `ST_StartPoint()`, `ST_EndPoint()`
 - `ST_ExteriorRing()`, `ST_InteriorRingN()`, `ST_NumInteriorRing()`,
   `ST_NumInteriorRings()`
-- `ST_Length()`, `ST_Area()`, `ST_Envelope()`, `ST_SwapXY()`,
+- `ST_Length()`, `ST_Area()`, `ST_Distance()`, `ST_Envelope()`, `ST_SwapXY()`,
   `ST_MakeEnvelope()`
 - `MBRContains()`, `MBRCoveredBy()`, `MBRCovers()`, `MBRDisjoint()`,
   `MBREquals()`, `MBRIntersects()`, `MBROverlaps()`, `MBRTouches()`,
@@ -38,6 +38,8 @@ relation sections:
   `https://dev.mysql.com/doc/refman/8.4/en/gis-geometrycollection-property-functions.html`
 - MBR relation functions:
   `https://dev.mysql.com/doc/refman/8.4/en/spatial-relation-functions-mbr.html`
+- Object-shape relation functions:
+  `https://dev.mysql.com/doc/refman/8.4/en/spatial-relation-functions-object-shapes.html`
 - Convenience functions:
   `https://dev.mysql.com/doc/refman/8.4/en/spatial-convenience-functions.html`
 
@@ -86,6 +88,13 @@ Measurements and transforms:
   values and `NULL` for other geometry types.
 - `ST_Area()` returns Cartesian area for Polygon and MultiPolygon values.
   Non-polygon geometries return MySQL error `3516` / SQLSTATE `22S01`.
+- `ST_Distance()` returns Cartesian SRID-0 minimum distance between supported
+  Point, LineString, Polygon, MultiPoint, MultiLineString, MultiPolygon, and
+  GeometryCollection values. It returns `0` when geometries intersect or one
+  surface contains the other, `NULL` for SQL `NULL` or empty geometry
+  arguments, MySQL error `3033` / SQLSTATE `HY000` for mismatched SRIDs, and
+  MySQL error `3882` / SQLSTATE `SU001` when a non-`NULL` unit argument is
+  supplied for SRID `0`.
 - `ST_Envelope()` returns a Point, horizontal/vertical LineString, rectangular
   Polygon, or empty geometry collection that covers the input MBR.
 - `ST_SwapXY()` swaps all coordinate pairs and preserves the geometry type and
@@ -110,7 +119,7 @@ This slice deliberately does not implement:
 - topology predicates such as `ST_Contains()` or `ST_Intersects()`;
 - constructive set operations such as `ST_Union()` and `ST_Buffer()`;
 - geographic SRS behavior beyond SRID 4326 latitude/longitude getters, unit
-  conversion, range validation, or SRS metadata;
+  conversion for distance, range validation, or SRS metadata;
 - invalid-geometry repair or full OGC validity evaluation.
 
 ## SQLite Integration

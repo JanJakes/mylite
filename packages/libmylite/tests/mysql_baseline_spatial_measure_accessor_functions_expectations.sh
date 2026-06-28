@@ -156,6 +156,29 @@ expect_output \
 "MBREquals(ST_GeomFromText('GEOMETRYCOLLECTION EMPTY'), Point(1,1)), "\
 "MBRIntersects(ST_GeomFromText('GEOMETRYCOLLECTION EMPTY'), Point(1,1));"
 
+distance_expected=$(cat <<EXPECTED
+5	NULL	NULL	3	0	0	1	1	1	0	1	0	3	4	NULL
+EXPECTED
+)
+expect_output \
+    "distance measurements" \
+    "$distance_expected" \
+    "SELECT ST_Distance(Point(0,0), Point(3,4)), "\
+"ST_Distance(NULL, Point(1,1)), "\
+"ST_Distance(ST_GeomFromText('GEOMETRYCOLLECTION EMPTY'), Point(1,1)), "\
+"ST_Distance(Point(0,0), ST_GeomFromText('LINESTRING(3 0,3 4)')), "\
+"ST_Distance(ST_GeomFromText('LINESTRING(0 0,4 4)'), ST_GeomFromText('LINESTRING(0 4,4 0)')), "\
+"ST_Distance(Point(2,2), ST_GeomFromText('POLYGON((0 0,4 0,4 4,0 4,0 0))')), "\
+"ST_Distance(Point(5,2), ST_GeomFromText('POLYGON((0 0,4 0,4 4,0 4,0 0))')), "\
+"ST_Distance(Point(2,2), ST_GeomFromText('POLYGON((0 0,5 0,5 5,0 5,0 0),(1 1,4 1,4 4,1 4,1 1))')), "\
+"ST_Distance(ST_GeomFromText('LINESTRING(5 0,5 4)'), ST_GeomFromText('POLYGON((0 0,4 0,4 4,0 4,0 0))')), "\
+"ST_Distance(ST_GeomFromText('LINESTRING(-1 2,1 2)'), ST_GeomFromText('POLYGON((0 0,4 0,4 4,0 4,0 0))')), "\
+"ST_Distance(ST_GeomFromText('POLYGON((0 0,2 0,2 2,0 2,0 0))'), ST_GeomFromText('POLYGON((3 0,5 0,5 2,3 2,3 0))')), "\
+"ST_Distance(ST_GeomFromText('POLYGON((0 0,3 0,3 3,0 3,0 0))'), ST_GeomFromText('POLYGON((2 2,5 2,5 5,2 5,2 2))')), "\
+"ST_Distance(ST_GeomFromText('MULTIPOINT(0 0,10 10)'), ST_GeomFromText('LINESTRING(3 0,3 4)')), "\
+"ST_Distance(ST_GeomFromText('GEOMETRYCOLLECTION(POINT(10 10),LINESTRING(0 5,5 5))'), Point(1,1)), "\
+"ST_Distance(Point(0,0), Point(1,1), NULL);"
+
 expect_error \
     "area rejects point" \
     3516 \
@@ -169,5 +192,19 @@ expect_error \
     "HY000" \
     "Incorrect arguments to st_makeenvelope" \
     "SELECT ST_AsText(ST_MakeEnvelope(Point(1,2), ST_GeomFromText('LINESTRING(0 0,1 1)')));"
+
+expect_error \
+    "distance unit rejects srid 0" \
+    3882 \
+    "SU001" \
+    "The geometry passed to function st_distance is in SRID 0, which doesn't specify a length unit. Can't convert to 'metre'." \
+    "SELECT ST_Distance(Point(0,0), Point(1,1), 'metre');"
+
+expect_error \
+    "distance rejects different srids" \
+    3033 \
+    "HY000" \
+    "Binary geometry function st_distance given two geometries of different srids: 4326 and 0, which should have been identical." \
+    "SELECT ST_Distance(ST_PointFromGeoHash('mh2n0p0581',4326), Point(1,1));"
 
 printf '%s\n' "mysql_baseline_spatial_measure_accessor_functions_expectations: ok"

@@ -242,6 +242,9 @@ static const struct spatial_function_descriptor spatial_function_descriptors[] =
     {"ST_Latitude", MYLITE_SPATIAL_FUNCTION_ST_LATITUDE},
     {"ST_Longitude", MYLITE_SPATIAL_FUNCTION_ST_LONGITUDE},
     {"ST_Distance", MYLITE_SPATIAL_FUNCTION_ST_DISTANCE},
+    {"ST_LineInterpolatePoint", MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINT},
+    {"ST_LineInterpolatePoints", MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINTS},
+    {"ST_PointAtDistance", MYLITE_SPATIAL_FUNCTION_ST_POINTATDISTANCE},
 };
 
 static int evaluate_point_constructor(
@@ -390,6 +393,13 @@ static int evaluate_distance(
     struct mylite_spatial_result *out_result,
     struct mylite_spatial_error *error
 );
+static int evaluate_line_interpolation(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
 static int evaluate_envelope(
     enum mylite_spatial_function_kind kind,
     const struct mylite_spatial_argument *arguments,
@@ -511,6 +521,7 @@ static int set_unknown_length_unit_error(
     const struct mylite_spatial_argument *unit_argument,
     const char *function_name
 );
+static int set_distance_range_error(struct mylite_spatial_error *error, const char *function_name);
 static int set_geohash_range_error(
     struct mylite_spatial_error *error,
     const char *subject,
@@ -576,6 +587,12 @@ static bool any_argument_is_null(
     size_t argument_count
 );
 static int argument_numeric(
+    const struct mylite_spatial_argument *argument,
+    double *out_value,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int argument_distance(
     const struct mylite_spatial_argument *argument,
     double *out_value,
     struct mylite_spatial_error *error,
@@ -672,6 +689,14 @@ static int make_point_internal_geometry_with_srid(
     struct mylite_spatial_error *error
 );
 static int make_linestring_internal_geometry(
+    const struct spatial_point *points,
+    uint32_t point_count,
+    unsigned char **out_bytes,
+    size_t *out_byte_count,
+    struct mylite_spatial_error *error
+);
+static int make_multipoint_internal_geometry_with_srid(
+    uint32_t srid, // NOLINT(bugprone-easily-swappable-parameters): internal collection builder.
     const struct spatial_point *points,
     uint32_t point_count,
     unsigned char **out_bytes,
@@ -961,6 +986,28 @@ static int line_point_from_wkb(
     uint32_t point_index,
     struct spatial_point *out_point,
     bool *out_found,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int line_points_from_wkb(
+    const struct spatial_geometry_view *geometry,
+    struct spatial_point **out_points,
+    uint32_t *out_point_count,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static double line_points_length(const struct spatial_point *points, uint32_t point_count);
+static struct spatial_point line_point_at_distance(
+    const struct spatial_point *points,
+    uint32_t point_count,
+    double target_distance
+);
+static int interpolated_line_points(
+    const struct spatial_point *line_points,
+    uint32_t line_point_count, // NOLINT(bugprone-easily-swappable-parameters)
+    double fraction,
+    struct spatial_point **out_points,
+    uint32_t *out_point_count,
     struct mylite_spatial_error *error,
     const char *function_name
 );
@@ -1266,7 +1313,10 @@ bool mylite_spatial_function_returns_geometry(enum mylite_spatial_function_kind 
            kind == MYLITE_SPATIAL_FUNCTION_ST_SWAPXY ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_MAKEENVELOPE ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_POINTFROMGEOHASH ||
-           kind == MYLITE_SPATIAL_FUNCTION_ST_GEOMFROMGEOJSON;
+           kind == MYLITE_SPATIAL_FUNCTION_ST_GEOMFROMGEOJSON ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINT ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINTS ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_POINTATDISTANCE;
 }
 
 bool mylite_spatial_function_returns_text(enum mylite_spatial_function_kind kind) {
@@ -1394,6 +1444,10 @@ int mylite_spatial_evaluate(
         return evaluate_area(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_DISTANCE:
         return evaluate_distance(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINT:
+    case MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINTS:
+    case MYLITE_SPATIAL_FUNCTION_ST_POINTATDISTANCE:
+        return evaluate_line_interpolation(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_ENVELOPE:
         return evaluate_envelope(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_SWAPXY:
@@ -2972,6 +3026,125 @@ static int evaluate_distance(
     return assign_double_result(out_result, distance);
 }
 
+static int evaluate_line_interpolation(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view geometry = {0};
+    struct spatial_point *line_points = NULL;
+    struct spatial_point *result_points = NULL;
+    struct spatial_point point = {0};
+    bool is_null = false;
+    uint32_t line_point_count = 0U;
+    uint32_t result_point_count = 0U;
+    double distance_value = 0.0;
+    double total_length = 0.0;
+    unsigned char *bytes = NULL;
+    size_t byte_count = 0U;
+    int rc = validate_argument_count(kind, argument_count, 2U, 2U, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (any_argument_is_null(arguments, argument_count)) {
+        return assign_null_result(out_result);
+    }
+    rc = read_single_geometry_argument(kind, arguments, 1U, &geometry, &is_null, error);
+    if (rc == 0) {
+        rc = argument_distance(
+            &arguments[1],
+            &distance_value,
+            error,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null) {
+        return assign_null_result(out_result);
+    }
+    if (geometry.type != MYLITE_SPATIAL_GEOMETRY_LINESTRING) {
+        return set_unexpected_geometry_type_error(
+            error,
+            "LINESTRING value",
+            geometry.type,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    rc = line_points_from_wkb(
+        &geometry,
+        &line_points,
+        &line_point_count,
+        error,
+        mylite_spatial_function_name(kind)
+    );
+    if (rc != 0) {
+        free(line_points);
+        return rc;
+    }
+    total_length = line_points_length(line_points, line_point_count);
+    if (kind == MYLITE_SPATIAL_FUNCTION_ST_POINTATDISTANCE) {
+        if (distance_value < 0.0 || distance_value > total_length) {
+            free(line_points);
+            return set_distance_range_error(error, mylite_spatial_function_name(kind));
+        }
+        point = line_point_at_distance(line_points, line_point_count, distance_value);
+        rc = make_point_internal_geometry_with_srid(
+            geometry.srid,
+            point.coordinate_x,
+            point.coordinate_y,
+            &bytes,
+            &byte_count,
+            error
+        );
+    } else if (distance_value < 0.0 || distance_value > 1.0) {
+        free(line_points);
+        return set_distance_range_error(error, mylite_spatial_function_name(kind));
+    } else if (kind == MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINT) {
+        point =
+            line_point_at_distance(line_points, line_point_count, total_length * distance_value);
+        rc = make_point_internal_geometry_with_srid(
+            geometry.srid,
+            point.coordinate_x,
+            point.coordinate_y,
+            &bytes,
+            &byte_count,
+            error
+        );
+    } else {
+        rc = interpolated_line_points(
+            line_points,
+            line_point_count,
+            distance_value,
+            &result_points,
+            &result_point_count,
+            error,
+            mylite_spatial_function_name(kind)
+        );
+        if (rc == 0) {
+            rc = make_multipoint_internal_geometry_with_srid(
+                geometry.srid,
+                result_points,
+                result_point_count,
+                &bytes,
+                &byte_count,
+                error
+            );
+        }
+    }
+    free(result_points);
+    free(line_points);
+    if (rc != 0) {
+        free(bytes);
+        return rc;
+    }
+    return assign_owned_bytes_result(out_result, MYLITE_SPATIAL_RESULT_GEOMETRY, bytes, byte_count);
+}
+
 static int evaluate_envelope(
     enum mylite_spatial_function_kind kind,
     const struct mylite_spatial_argument *arguments,
@@ -3786,6 +3959,22 @@ static int set_unknown_length_unit_error(
     );
 }
 
+static int set_distance_range_error(struct mylite_spatial_error *error, const char *function_name) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+
+    return set_spatial_error(
+        error,
+        mysql_error_numeric_value_out_of_range,
+        "22003",
+        "Distance value is out of range in '%s'",
+        spatial_diagnostic_function_name(
+            function_name,
+            diagnostic_function_name,
+            sizeof(diagnostic_function_name)
+        )
+    );
+}
+
 static int set_geohash_range_error(
     struct mylite_spatial_error *error,
     const char *subject,
@@ -4100,6 +4289,50 @@ static int argument_numeric(
     if (end == text || (end != NULL && *end != '\0') || errno == ERANGE || !isfinite(value)) {
         free(text);
         return set_invalid_gis_data_error(error, function_name);
+    }
+    free(text);
+    *out_value = value;
+    return 0;
+}
+
+static int argument_distance(
+    const struct mylite_spatial_argument *argument,
+    double *out_value,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    char *text = NULL;
+    char *end = NULL;
+    double value = 0.0;
+
+    if (argument == NULL || out_value == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    if (argument->has_numeric) {
+        if (!isfinite(argument->numeric)) {
+            return set_distance_range_error(error, function_name);
+        }
+        *out_value = argument->numeric;
+        return 0;
+    }
+    if (argument->byte_count == SIZE_MAX) {
+        return set_nomem_error(error);
+    }
+    text = (char *)malloc(argument->byte_count + 1U);
+    if (text == NULL) {
+        return set_nomem_error(error);
+    }
+    if (argument->byte_count != 0U) {
+        memcpy(text, argument->bytes, argument->byte_count);
+    }
+    text[argument->byte_count] = '\0';
+    errno = 0;
+    value = strtod(text, &end);
+    if (end == text) {
+        value = 0.0;
+    } else if (errno == ERANGE || !isfinite(value)) {
+        free(text);
+        return set_distance_range_error(error, function_name);
     }
     free(text);
     *out_value = value;
@@ -4558,6 +4791,47 @@ static int make_linestring_internal_geometry(
     }
     for (uint32_t index = 0U; rc == 0 && index < point_count; ++index) {
         rc = spatial_buffer_append_double_le(&buffer, points[index].coordinate_x);
+        if (rc == 0) {
+            rc = spatial_buffer_append_double_le(&buffer, points[index].coordinate_y);
+        }
+    }
+    if (rc != 0) {
+        spatial_buffer_deinit(&buffer);
+        return set_nomem_error(error);
+    }
+    *out_bytes = buffer.bytes;
+    *out_byte_count = buffer.size;
+    return 0;
+}
+
+static int make_multipoint_internal_geometry_with_srid(
+    uint32_t srid, // NOLINT(bugprone-easily-swappable-parameters): internal collection builder.
+    const struct spatial_point *points,
+    uint32_t point_count,
+    unsigned char **out_bytes,
+    size_t *out_byte_count,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_buffer buffer = {0};
+    int rc = append_internal_prefix(&buffer, srid);
+
+    if (rc == 0) {
+        rc = spatial_buffer_append_byte(&buffer, 1U);
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_u32_le(&buffer, (uint32_t)MYLITE_SPATIAL_GEOMETRY_MULTIPOINT);
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_u32_le(&buffer, point_count);
+    }
+    for (uint32_t index = 0U; rc == 0 && index < point_count; ++index) {
+        rc = spatial_buffer_append_byte(&buffer, 1U);
+        if (rc == 0) {
+            rc = spatial_buffer_append_u32_le(&buffer, (uint32_t)MYLITE_SPATIAL_GEOMETRY_POINT);
+        }
+        if (rc == 0) {
+            rc = spatial_buffer_append_double_le(&buffer, points[index].coordinate_x);
+        }
         if (rc == 0) {
             rc = spatial_buffer_append_double_le(&buffer, points[index].coordinate_y);
         }
@@ -6034,6 +6308,179 @@ static int line_point_from_wkb(
         }
     }
     return rc;
+}
+
+static int line_points_from_wkb(
+    const struct spatial_geometry_view *geometry,
+    struct spatial_point **out_points,
+    uint32_t *out_point_count,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    struct spatial_wkb_cursor cursor = {0};
+    struct spatial_point *points = NULL;
+    bool little_endian = false;
+    enum mylite_spatial_geometry_type type = MYLITE_SPATIAL_GEOMETRY_NONE;
+    uint32_t point_count = 0U;
+    int rc = 0;
+
+    if (geometry == NULL || out_points == NULL || out_point_count == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    *out_points = NULL;
+    *out_point_count = 0U;
+    cursor = (struct spatial_wkb_cursor){.bytes = geometry->wkb, .size = geometry->wkb_size};
+    rc = cursor_read_header(&cursor, &little_endian, &type, error, function_name);
+    if (rc == 0) {
+        rc = cursor_read_u32(&cursor, little_endian, &point_count, error, function_name);
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    if (point_count == 0U) {
+        return 0;
+    }
+    if ((size_t)point_count > SIZE_MAX / sizeof(*points)) {
+        return set_nomem_error(error);
+    }
+    points = calloc((size_t)point_count, sizeof(*points));
+    if (points == NULL) {
+        return set_nomem_error(error);
+    }
+    for (uint32_t index = 0U; rc == 0 && index < point_count; ++index) {
+        rc = cursor_read_double(
+            &cursor,
+            little_endian,
+            &points[index].coordinate_x,
+            error,
+            function_name
+        );
+        if (rc == 0) {
+            rc = cursor_read_double(
+                &cursor,
+                little_endian,
+                &points[index].coordinate_y,
+                error,
+                function_name
+            );
+        }
+    }
+    if (rc != 0) {
+        free(points);
+        return rc;
+    }
+    *out_points = points;
+    *out_point_count = point_count;
+    return 0;
+}
+
+static double line_points_length(const struct spatial_point *points, uint32_t point_count) {
+    double length = 0.0;
+
+    if (points == NULL || point_count < 2U) {
+        return 0.0;
+    }
+    for (uint32_t index = 0U; index + 1U < point_count; ++index) {
+        length += distance_point_to_point(&points[index], &points[index + 1U]);
+    }
+    return length;
+}
+
+static struct spatial_point line_point_at_distance(
+    const struct spatial_point *points,
+    uint32_t point_count,
+    double target_distance
+) {
+    double traversed = 0.0;
+
+    if (points == NULL || point_count == 0U) {
+        return (struct spatial_point){0};
+    }
+    if (target_distance <= 0.0 || point_count == 1U) {
+        return points[0];
+    }
+    for (uint32_t index = 0U; index + 1U < point_count; ++index) {
+        double segment_length = distance_point_to_point(&points[index], &points[index + 1U]);
+
+        if (double_near_zero(segment_length)) {
+            continue;
+        }
+        if (traversed + segment_length >= target_distance) {
+            double ratio = (target_distance - traversed) / segment_length;
+
+            if (ratio <= 0.0) {
+                return points[index];
+            }
+            if (ratio >= 1.0) {
+                return points[index + 1U];
+            }
+            return (struct spatial_point){
+                .coordinate_x =
+                    points[index].coordinate_x +
+                    ((points[index + 1U].coordinate_x - points[index].coordinate_x) * ratio),
+                .coordinate_y =
+                    points[index].coordinate_y +
+                    ((points[index + 1U].coordinate_y - points[index].coordinate_y) * ratio),
+            };
+        }
+        traversed += segment_length;
+    }
+    return points[point_count - 1U];
+}
+
+static int interpolated_line_points(
+    const struct spatial_point *line_points,
+    uint32_t line_point_count, // NOLINT(bugprone-easily-swappable-parameters)
+    double fraction,
+    struct spatial_point **out_points,
+    uint32_t *out_point_count,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    struct spatial_point *points = NULL;
+    uint32_t point_count = 1U;
+    double total_length = line_points_length(line_points, line_point_count);
+
+    if (out_points == NULL || out_point_count == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    *out_points = NULL;
+    *out_point_count = 0U;
+    if (fraction > 0.0 && !double_near_zero(total_length)) {
+        double raw_point_count = floor((1.0 + spatial_distance_epsilon) / fraction);
+
+        if (!isfinite(raw_point_count) || raw_point_count < 1.0 ||
+            raw_point_count > (double)UINT32_MAX) {
+            return set_distance_range_error(error, function_name);
+        }
+        point_count = (uint32_t)raw_point_count;
+    }
+    if ((size_t)point_count > SIZE_MAX / sizeof(*points)) {
+        return set_nomem_error(error);
+    }
+    points = calloc((size_t)point_count, sizeof(*points));
+    if (points == NULL) {
+        return set_nomem_error(error);
+    }
+    if (fraction == 0.0 || double_near_zero(total_length)) {
+        points[0] = line_point_at_distance(line_points, line_point_count, 0.0);
+    } else {
+        for (uint32_t index = 0U; index < point_count; ++index) {
+            double current_fraction = fraction * (double)(index + 1U);
+
+            if (current_fraction > 1.0 && current_fraction <= 1.0 + spatial_distance_epsilon) {
+                current_fraction = 1.0;
+            }
+            points[index] = line_point_at_distance(
+                line_points,
+                line_point_count,
+                total_length * current_fraction
+            );
+        }
+    }
+    *out_points = points;
+    *out_point_count = point_count;
+    return 0;
 }
 
 static int polygon_ring_from_wkb(

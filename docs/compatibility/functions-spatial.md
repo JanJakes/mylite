@@ -5,14 +5,15 @@ Spatial constructors, predicates, measurements, and conversion functions.
 MyLite supports a basic SRID-0 geometry surface: WKT/WKB constructors,
 MySQL-specific geometry constructors, WKT/WKB conversion, geometry type/SRID
 readback, point coordinate access, core property/accessor functions, Cartesian
-length/area/distance/envelope helpers, coordinate swapping, envelope
-construction, and MBR predicates in scalar, row-backed, and descriptor DML
-value contexts. Geohash helpers support coordinate encoding/decoding plus SRID
-0 and 4326 point round-trips. GeoJSON helpers support 2D geometry, Feature
-extraction, and FeatureCollection extraction for SRID 0 and 4326. Geographic
-point accessors support SRID 4326 latitude/longitude getters. It does not yet
-implement a general SRS catalog, topology predicates, constructive geometry
-operations, or physical spatial search.
+length/area/distance/envelope helpers, LineString interpolation, coordinate
+swapping, envelope construction, and MBR predicates in scalar, row-backed, and
+descriptor DML value contexts. Geohash helpers support coordinate
+encoding/decoding plus SRID 0 and 4326 point round-trips. GeoJSON helpers
+support 2D geometry, Feature extraction, and FeatureCollection extraction for
+SRID 0 and 4326. Geographic point accessors support SRID 4326
+latitude/longitude getters. It does not yet implement a general SRS catalog,
+topology predicates, constructive geometry operations, or physical spatial
+search.
 
 | Function | Status | Notes |
 | --- | --- | --- |
@@ -75,8 +76,8 @@ operations, or physical spatial search.
 | `ST_Length()` | ✅ | Cartesian SRID-0 LineString/MultiLineString length |
 | `ST_LineFromText(), ST_LineStringFromText()` | ✅ | Construct SRID-0 LineString from WKT |
 | `ST_LineFromWKB(), ST_LineStringFromWKB()` | ✅ | Construct SRID-0 LineString from WKB |
-| `ST_LineInterpolatePoint()` | ❌ | The point a given percentage along a LineString |
-| `ST_LineInterpolatePoints()` | ❌ | The points a given percentage along a LineString |
+| `ST_LineInterpolatePoint()` | ✅ | Cartesian SRID-0 point at LineString fraction |
+| `ST_LineInterpolatePoints()` | ✅ | Cartesian SRID-0 MultiPoint at repeated LineString fractions |
 | `ST_LongFromGeoHash()` | ✅ | Decode longitude from geohash value |
 | `ST_Longitude()` | ✅ | Return longitude of SRID 4326 Point; setter form deferred |
 | `ST_MakeEnvelope()` | ✅ | Construct SRID-0 Point, LineString, or Polygon envelope from two points |
@@ -90,7 +91,7 @@ operations, or physical spatial search.
 | `ST_NumInteriorRing(), ST_NumInteriorRings()` | ✅ | Return Polygon interior ring count |
 | `ST_NumPoints()` | ✅ | Return LineString point count |
 | `ST_Overlaps()` | ❌ | Whether one geometry overlaps another |
-| `ST_PointAtDistance()` | ❌ | The point a given distance along a LineString |
+| `ST_PointAtDistance()` | ✅ | Cartesian SRID-0 point at LineString distance |
 | `ST_PointFromGeoHash()` | ✅ | Convert geohash value to SRID 0 or 4326 Point |
 | `ST_PointFromText()` | ✅ | Construct SRID-0 Point from WKT |
 | `ST_PointFromWKB()` | ✅ | Construct SRID-0 Point from WKB |

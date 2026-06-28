@@ -179,6 +179,30 @@ expect_output \
 "ST_Distance(ST_GeomFromText('GEOMETRYCOLLECTION(POINT(10 10),LINESTRING(0 5,5 5))'), Point(1,1)), "\
 "ST_Distance(Point(0,0), Point(1,1), NULL);"
 
+line_interpolation_expected=$(cat <<EXPECTED
+POINT(0 5)	POINT(2.5 5)	POINT(5 5)	POINT(0 0)	MULTIPOINT((0 2.5),(0 5),(2.5 5),(5 5))	MULTIPOINT((0 3),(1 5),(4 5))	MULTIPOINT((0 0))	MULTIPOINT((0 0))	MULTIPOINT((5 5))	POINT(0 0)	POINT(0 5)	POINT(2.5 5)	POINT(5 5)	NULL	NULL	NULL
+EXPECTED
+)
+expect_output \
+    "linestring interpolation functions" \
+    "$line_interpolation_expected" \
+    "SELECT ST_AsText(ST_LineInterpolatePoint(ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), '0.5')), "\
+"ST_AsText(ST_LineInterpolatePoint(ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), '0.75')), "\
+"ST_AsText(ST_LineInterpolatePoint(ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), 1)), "\
+"ST_AsText(ST_LineInterpolatePoint(ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), 0)), "\
+"ST_AsText(ST_LineInterpolatePoints(ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), '0.25')), "\
+"ST_AsText(ST_LineInterpolatePoints(ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), '0.3')), "\
+"ST_AsText(ST_LineInterpolatePoints(ST_GeomFromText('LINESTRING(0 0,0 0,0 0)'), '0.5')), "\
+"ST_AsText(ST_LineInterpolatePoints(ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), 0)), "\
+"ST_AsText(ST_LineInterpolatePoints(ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), 1)), "\
+"ST_AsText(ST_PointAtDistance(ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), 0)), "\
+"ST_AsText(ST_PointAtDistance(ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), 5)), "\
+"ST_AsText(ST_PointAtDistance(ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), '7.5')), "\
+"ST_AsText(ST_PointAtDistance(ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), 10)), "\
+"ST_AsText(ST_LineInterpolatePoint(NULL, '0.5')), "\
+"ST_AsText(ST_LineInterpolatePoints(ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), NULL)), "\
+"ST_AsText(ST_PointAtDistance(ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), NULL));"
+
 expect_error \
     "area rejects point" \
     3516 \
@@ -206,5 +230,26 @@ expect_error \
     "HY000" \
     "Binary geometry function st_distance given two geometries of different srids: 4326 and 0, which should have been identical." \
     "SELECT ST_Distance(ST_PointFromGeoHash('mh2n0p0581',4326), Point(1,1));"
+
+expect_error \
+    "line interpolation rejects point" \
+    3516 \
+    "22S01" \
+    "LINESTRING value is a geometry of unexpected type POINT in st_lineinterpolatepoint." \
+    "SELECT ST_AsText(ST_LineInterpolatePoint(Point(1,2), '0.5'));"
+
+expect_error \
+    "line interpolation rejects fraction over one" \
+    1690 \
+    "22003" \
+    "Distance value is out of range in 'st_lineinterpolatepoints'" \
+    "SELECT ST_AsText(ST_LineInterpolatePoints(ST_GeomFromText('LINESTRING(0 0,0 5)'), '1.1'));"
+
+expect_error \
+    "point at distance rejects distance past end" \
+    1690 \
+    "22003" \
+    "Distance value is out of range in 'st_pointatdistance'" \
+    "SELECT ST_AsText(ST_PointAtDistance(ST_GeomFromText('LINESTRING(0 0,0 5)'), 6));"
 
 printf '%s\n' "mysql_baseline_spatial_measure_accessor_functions_expectations: ok"

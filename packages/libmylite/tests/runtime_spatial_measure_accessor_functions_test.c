@@ -12,6 +12,7 @@
 enum {
     test_path_capacity = 1024,
     row_spatial_measure_column_count = 5,
+    mysql_error_numeric_value_out_of_range = 1690,
     mysql_error_wrong_arguments = 1210,
     mysql_error_gis_different_srids = 3033,
     mysql_error_unexpected_geometry_type = 3516,
@@ -137,6 +138,24 @@ static int test_scalar_spatial_measure_accessors(void) {
         "0",
         "3",
         "4",
+        NULL,
+    };
+    static const char *const line_interpolation_values[] = {
+        "POINT(0 5)",
+        "POINT(2.5 5)",
+        "POINT(5 5)",
+        "POINT(0 0)",
+        "MULTIPOINT((0 2.5),(0 5),(2.5 5),(5 5))",
+        "MULTIPOINT((0 3),(1 5),(4 5))",
+        "MULTIPOINT((0 0))",
+        "MULTIPOINT((0 0))",
+        "MULTIPOINT((5 5))",
+        "POINT(0 0)",
+        "POINT(0 5)",
+        "POINT(2.5 5)",
+        "POINT(5 5)",
+        NULL,
+        NULL,
         NULL,
     };
     mylite_db *database = NULL;
@@ -290,6 +309,47 @@ static int test_scalar_spatial_measure_accessors(void) {
             .context = "distance measurements",
         }
     );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ST_AsText(ST_LineInterpolatePoint("
+                   "ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), '0.5')), "
+                   "ST_AsText(ST_LineInterpolatePoint("
+                   "ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), '0.75')), "
+                   "ST_AsText(ST_LineInterpolatePoint("
+                   "ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), 1)), "
+                   "ST_AsText(ST_LineInterpolatePoint("
+                   "ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), 0)), "
+                   "ST_AsText(ST_LineInterpolatePoints("
+                   "ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), '0.25')), "
+                   "ST_AsText(ST_LineInterpolatePoints("
+                   "ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), '0.3')), "
+                   "ST_AsText(ST_LineInterpolatePoints("
+                   "ST_GeomFromText('LINESTRING(0 0,0 0,0 0)'), '0.5')), "
+                   "ST_AsText(ST_LineInterpolatePoints("
+                   "ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), 0)), "
+                   "ST_AsText(ST_LineInterpolatePoints("
+                   "ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), 1)), "
+                   "ST_AsText(ST_PointAtDistance("
+                   "ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), 0)), "
+                   "ST_AsText(ST_PointAtDistance("
+                   "ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), 5)), "
+                   "ST_AsText(ST_PointAtDistance("
+                   "ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), '7.5')), "
+                   "ST_AsText(ST_PointAtDistance("
+                   "ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), 10)), "
+                   "ST_AsText(ST_LineInterpolatePoint(NULL, '0.5')), "
+                   "ST_AsText(ST_LineInterpolatePoints("
+                   "ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), NULL)), "
+                   "ST_AsText(ST_PointAtDistance("
+                   "ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), NULL))",
+            .column_count =
+                sizeof(line_interpolation_values) / sizeof(line_interpolation_values[0]),
+            .values = line_interpolation_values,
+            .row_count = 1U,
+            .context = "linestring interpolation functions",
+        }
+    );
 
     mylite_close(database);
     return failures;
@@ -328,6 +388,12 @@ static int test_table_backed_spatial_measure_accessors(void) {
         "4",
         "GEOMETRYCOLLECTION EMPTY",
     };
+    static const char *const line_interpolation_values[] = {
+        "POINT(0 5)",
+        "MULTIPOINT((0 5),(5 5))",
+        "POINT(2.5 5)",
+    };
+    static const char *const line_update_values[] = {"1", "POINT(2.5 5)"};
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = 0;
@@ -380,6 +446,46 @@ static int test_table_backed_spatial_measure_accessors(void) {
             .context = "row-backed spatial measure update",
         }
     );
+    failures += execute_ok(
+        database,
+        "CREATE TABLE line_values(id INT PRIMARY KEY, g GEOMETRY, txt VARCHAR(120))",
+        NULL
+    );
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO line_values VALUES "
+        "(1, ST_GeomFromText('LINESTRING(0 0,0 5,5 5)'), NULL)",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT ST_AsText(ST_LineInterpolatePoint(g, '0.5')), "
+                   "ST_AsText(ST_LineInterpolatePoints(g, '0.5')), "
+                   "ST_AsText(ST_PointAtDistance(g, '7.5')) "
+                   "FROM line_values",
+            .column_count =
+                sizeof(line_interpolation_values) / sizeof(line_interpolation_values[0]),
+            .values = line_interpolation_values,
+            .row_count = 1U,
+            .context = "row-backed linestring interpolation projection",
+        }
+    );
+    failures += expect_dml_ok(
+        database,
+        "UPDATE line_values SET txt = ST_AsText(ST_LineInterpolatePoint(g, '0.75'))",
+        (struct expected_dml_result){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, txt FROM line_values",
+            .column_count = sizeof(line_update_values) / sizeof(line_update_values[0]),
+            .values = line_update_values,
+            .row_count = 1U,
+            .context = "row-backed linestring interpolation update",
+        }
+    );
 
     mylite_close(database);
     remove_related_files(path);
@@ -430,6 +536,35 @@ static int test_spatial_measure_accessor_diagnostics(void) {
             .message_part =
                 "Binary geometry function st_distance given two geometries of different srids: "
                 "4326 and 0, which should have been identical.",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ST_AsText(ST_LineInterpolatePoint(Point(1,2), '0.5'))",
+        (struct expected_sql_error){
+            .code = mysql_error_unexpected_geometry_type,
+            .sqlstate = "22S01",
+            .message_part = "LINESTRING value is a geometry of unexpected type POINT in "
+                            "st_lineinterpolatepoint",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ST_AsText(ST_LineInterpolatePoints(ST_GeomFromText('LINESTRING(0 0,0 5)'), "
+        "'1.1'))",
+        (struct expected_sql_error){
+            .code = mysql_error_numeric_value_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Distance value is out of range in 'st_lineinterpolatepoints'",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT ST_AsText(ST_PointAtDistance(ST_GeomFromText('LINESTRING(0 0,0 5)'), 6))",
+        (struct expected_sql_error){
+            .code = mysql_error_numeric_value_out_of_range,
+            .sqlstate = "22003",
+            .message_part = "Distance value is out of range in 'st_pointatdistance'",
         }
     );
     mylite_close(database);

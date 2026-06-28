@@ -116,6 +116,9 @@ static const struct spatial_sqlite_function_descriptor spatial_sqlite_function_d
     {"ST_Latitude", MYLITE_SPATIAL_FUNCTION_ST_LATITUDE},
     {"ST_Longitude", MYLITE_SPATIAL_FUNCTION_ST_LONGITUDE},
     {"ST_Distance", MYLITE_SPATIAL_FUNCTION_ST_DISTANCE},
+    {"ST_LineInterpolatePoint", MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINT},
+    {"ST_LineInterpolatePoints", MYLITE_SPATIAL_FUNCTION_ST_LINEINTERPOLATEPOINTS},
+    {"ST_PointAtDistance", MYLITE_SPATIAL_FUNCTION_ST_POINTATDISTANCE},
 };
 
 int mylite_sqlite_register_spatial_functions(sqlite3 *sqlite) {

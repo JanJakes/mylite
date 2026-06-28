@@ -1,9 +1,9 @@
-# Baseline SHOW ENGINE STATUS Tasks
+# Baseline SHOW ENGINE STATUS And LOGS Tasks
 
 ## Goal
 
-Add the narrow `SHOW ENGINE InnoDB STATUS` compatibility surface as a
-descriptor-independent embedded placeholder result.
+Add the narrow `SHOW ENGINE InnoDB STATUS` and `SHOW ENGINE InnoDB LOGS`
+compatibility surfaces as descriptor-independent embedded placeholder results.
 
 ## Tasks
 
@@ -18,8 +18,9 @@ descriptor-independent embedded placeholder result.
    - Verify the expectation script against MySQL 8.4.9 before implementation.
 
 2. Parser and AST
-   - Add parser support for `SHOW ENGINE option_name STATUS`.
-   - Add an AST node for `SHOW ENGINE STATUS`.
+   - Add parser support for `SHOW ENGINE option_name STATUS` and
+     `SHOW ENGINE option_name LOGS`.
+   - Add AST nodes for `SHOW ENGINE STATUS` and `SHOW ENGINE LOGS`.
    - Preserve existing identifier behavior for `ENGINE`, `STATUS`, `LOGS`, and
      related keywords.
    - Add parser tests for supported syntax and deferred syntax errors.
@@ -28,8 +29,10 @@ descriptor-independent embedded placeholder result.
    - Decode the engine name using the existing table-option name policy.
    - Accept only `InnoDB`, case-insensitively.
    - Reject other engine names with the existing storage-engine diagnostic.
-   - Build the MySQL-shaped `Type`, `Name`, `Status` result with one stable
-     MyLite-owned row.
+   - Build the MySQL-shaped `Type`, `Name`, `Status` status result with one
+     stable MyLite-owned row.
+   - Build the MySQL-shaped `Type`, `Name`, `Status` logs result with zero
+     rows.
    - Do not read or mutate catalog rows and do not generate SQLite SQL.
 
 4. Runtime tests
@@ -39,9 +42,10 @@ descriptor-independent embedded placeholder result.
    - Keep tests deterministic and avoid a new framework.
 
 5. Compatibility docs
-   - Update `COMPATIBILITY.md` for limited `SHOW ENGINE InnoDB STATUS`.
+   - Update `COMPATIBILITY.md` for limited `SHOW ENGINE InnoDB STATUS` and
+     `SHOW ENGINE InnoDB LOGS`.
    - Update `docs/compatibility/sql-show-statements.md`.
-   - Do not overclaim `MUTEX`, `LOGS`, Performance Schema status, live monitor
+   - Do not overclaim `MUTEX`, Performance Schema status, live monitor
      output, privileges, filters, or alternate engines.
 
 6. Verification and review
@@ -55,7 +59,6 @@ descriptor-independent embedded placeholder result.
 ## Out Of Scope
 
 - `SHOW ENGINE InnoDB MUTEX`.
-- `SHOW ENGINE InnoDB LOGS`.
 - `SHOW ENGINE PERFORMANCE_SCHEMA STATUS`.
 - Non-`InnoDB` engines and plugin-specific engine internals.
 - Privilege enforcement and live monitor output.

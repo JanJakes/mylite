@@ -1420,6 +1420,42 @@ static int test_show_engine_status_statement(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql("SHOW ENGINE InnoDB LOGS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_ENGINE_LOGS_STATEMENT,
+        "show engine logs"
+    );
+    failures += parser_test_expect_child_count(statement, 1U, "show engine logs child count");
+    failures += parser_test_expect_node(
+        parser_test_child_at(statement, 0U),
+        MYLITE_SQL_AST_IDENTIFIER,
+        "show engine logs engine name"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(statement, 0U),
+        "InnoDB",
+        "show engine logs engine span"
+    );
+    failures +=
+        parser_test_expect_span_text(statement, "SHOW ENGINE InnoDB LOGS", "show engine logs span");
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql("SHOW ENGINE 'InnoDB' LOGS;", MYLITE_SQL_PARSE_OK, &result);
+    statement = parser_test_child_at(result.root, 0U);
+    failures += parser_test_expect_node(
+        statement,
+        MYLITE_SQL_AST_SHOW_ENGINE_LOGS_STATEMENT,
+        "show string engine logs"
+    );
+    failures += parser_test_expect_literal(
+        parser_test_child_at(statement, 0U),
+        MYLITE_SQL_AST_LITERAL_STRING,
+        "show string engine logs engine"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

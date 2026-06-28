@@ -491,6 +491,8 @@ static int execute_non_prepared_statement(
         return execute_show_engines_statement(database, out_result);
     case MYLITE_SQL_AST_SHOW_ENGINE_STATUS_STATEMENT:
         return execute_show_engine_status_statement(database, statement, out_result);
+    case MYLITE_SQL_AST_SHOW_ENGINE_LOGS_STATEMENT:
+        return execute_show_engine_logs_statement(database, statement, out_result);
     case MYLITE_SQL_AST_SHOW_PLUGINS_STATEMENT:
         return execute_show_plugins_statement(database, out_result);
     case MYLITE_SQL_AST_SHOW_DATABASES_STATEMENT:

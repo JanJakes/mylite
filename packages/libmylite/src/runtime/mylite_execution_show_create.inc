@@ -513,6 +513,45 @@ static int execute_show_engine_status_statement(
     return finish_successful_result(database, result, out_result);
 }
 
+static int execute_show_engine_logs_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    static const char *const result_columns[show_engine_status_result_column_count] = {
+        "Type",
+        "Name",
+        "Status",
+    };
+    mylite_result *result = NULL;
+    int rc = validate_show_engine_name(database, statement);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = mylite_result_create(&result);
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+
+    for (size_t column_index = 0U;
+         rc == MYLITE_OK && column_index < show_engine_status_result_column_count;
+         ++column_index) {
+        rc = mylite_result_append_column(result, result_columns[column_index]);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    return finish_successful_result(database, result, out_result);
+}
+
 static int validate_show_engine_name(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement
@@ -520,7 +559,9 @@ static int validate_show_engine_name(
     char engine_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     int rc = MYLITE_OK;
 
-    if (statement == NULL || statement->kind != MYLITE_SQL_AST_SHOW_ENGINE_STATUS_STATEMENT) {
+    if (statement == NULL ||
+        (statement->kind != MYLITE_SQL_AST_SHOW_ENGINE_STATUS_STATEMENT &&
+         statement->kind != MYLITE_SQL_AST_SHOW_ENGINE_LOGS_STATEMENT)) {
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }

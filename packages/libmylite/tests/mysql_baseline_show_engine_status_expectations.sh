@@ -23,6 +23,13 @@ run_mysql_with_headers() {
         | docker exec -i "$MYSQL_CONTAINER" mysql --protocol=TCP -h127.0.0.1 -uroot --batch --raw "$@"
 }
 
+run_mysql_verbose() {
+    sql=$1
+    shift
+    printf '%s\n' "$sql" \
+        | docker exec -i "$MYSQL_CONTAINER" mysql --protocol=TCP -h127.0.0.1 -uroot --column-type-info -vvv "$@"
+}
+
 expect_error() {
     label=$1
     code=$2
@@ -93,6 +100,21 @@ expect_innodb_status_result() {
     esac
 }
 
+expect_empty_engine_logs_result() {
+    label=$1
+    sql=$2
+
+    output=$(run_mysql_verbose "$sql")
+
+    case "$output" in
+        *"Field   1:  \`Type\`"*\
+*"Field   2:  \`Name\`"*\
+*"Field   3:  \`Status\`"*\
+*"0 rows in set"*) ;;
+        *) fail "$label: expected Type/Name/Status zero-row metadata, got [$output]" ;;
+    esac
+}
+
 version=$(run_mysql 'SELECT VERSION();')
 case "$version" in
     8.4.9*) ;;
@@ -129,7 +151,10 @@ expect_error \
     "SHOW FULL ENGINE InnoDB STATUS;"
 
 expect_success "show engine myisam status accepted by reference runtime" "SHOW ENGINE MyISAM STATUS;"
-expect_success "show engine logs accepted by reference runtime" "SHOW ENGINE InnoDB LOGS;"
+expect_empty_engine_logs_result "show engine logs" "SHOW ENGINE InnoDB LOGS;"
+
+status=$(run_mysql "SHOW ENGINE InnoDB LOGS; SELECT ROW_COUNT(), @@warning_count, @@error_count;" | tail -n 1)
+expect_value "show engine logs diagnostics" "-1	0	0" "$status"
 
 mutex_output=$(run_mysql_with_headers "SHOW ENGINE InnoDB MUTEX;")
 expect_value "show engine mutex headers" "Type	Name	Status" "$(printf '%s\n' "$mutex_output" | sed -n '1p')"

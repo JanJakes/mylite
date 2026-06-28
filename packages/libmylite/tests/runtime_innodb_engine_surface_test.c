@@ -69,6 +69,11 @@ struct expected_count_result {
     const char *context;
 };
 
+struct expected_empty_result {
+    const char *sql;
+    const char *context;
+};
+
 struct expected_warning_row {
     const char *level;
     const char *code;
@@ -120,6 +125,10 @@ static int expect_show_engine_status_result(
     mylite_db *database,
     const char *sql,
     const char *context
+);
+static int expect_show_engine_logs_result(
+    mylite_db *database,
+    struct expected_empty_result expected
 );
 static int expect_show_create_single_int(
     mylite_db *database,
@@ -241,6 +250,24 @@ static int test_innodb_create_forms_persistence_and_preamble(void) {
         database,
         "SHOW ENGINE 'InnoDB' STATUS",
         "show engine string status"
+    );
+    failures += expect_show_engine_logs_result(
+        database,
+        (struct expected_empty_result){
+            .sql = "SHOW ENGINE InnoDB LOGS",
+            .context = "show engine logs",
+        }
+    );
+    failures += expect_single_row_result(
+        database,
+        "SELECT ROW_COUNT(), @@warning_count, @@error_count",
+        (struct expected_single_row_result){
+            .columns = status_diagnostic_columns,
+            .values = status_diagnostic_values,
+            .column_count =
+                sizeof(status_diagnostic_columns) / sizeof(status_diagnostic_columns[0]),
+        },
+        "show engine logs diagnostics"
     );
     failures += expect_row_count(database, -1, "row count after show engines");
 
@@ -960,13 +987,20 @@ static int test_innodb_engine_diagnostics(void) {
             .message_part = "utility statement is not supported",
         }
     );
+    failures += expect_show_engine_logs_result(
+        database,
+        (struct expected_empty_result){
+            .sql = "SHOW ENGINE InnoDB LOGS",
+            .context = "diagnostics show engine logs",
+        }
+    );
     failures += execute_error(
         database,
-        "SHOW ENGINE InnoDB LOGS",
+        "SHOW ENGINE MyISAM LOGS",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_unknown_storage_engine,
             .sqlstate = "42000",
-            .message_part = "utility statement is not supported",
+            .message_part = "Unknown storage engine 'MyISAM'",
         }
     );
     failures += execute_error(
@@ -1329,6 +1363,20 @@ static int test_independent_innodb_engine_handles(void) {
         "SHOW ENGINE InnoDB STATUS",
         "second show engine status"
     );
+    failures += expect_show_engine_logs_result(
+        first,
+        (struct expected_empty_result){
+            .sql = "SHOW ENGINE InnoDB LOGS",
+            .context = "first show logs",
+        }
+    );
+    failures += expect_show_engine_logs_result(
+        second,
+        (struct expected_empty_result){
+            .sql = "SHOW ENGINE InnoDB LOGS",
+            .context = "second show logs",
+        }
+    );
     failures += expect_single_row_result(
         first,
         "SELECT @@default_storage_engine, @@global.default_storage_engine, "
@@ -1441,6 +1489,38 @@ static int expect_show_create_exact(
         },
         expected.context
     );
+}
+
+static int expect_show_engine_logs_result(
+    mylite_db *database,
+    struct expected_empty_result expected
+) {
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    failures += execute_ok(database, expected.sql, &result);
+    if (result == NULL) {
+        return failures + 1;
+    }
+
+    failures += expect_size(
+        mylite_result_column_count(result),
+        show_engine_status_column_count,
+        expected.context
+    );
+    failures += expect_size(mylite_result_row_count(result), 0U, expected.context);
+    failures += expect_int64(mylite_result_affected_rows(result), 0, expected.context);
+    failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
+    for (size_t column_index = 0U; column_index < show_engine_status_column_count; ++column_index) {
+        failures += expect_text_or_null(
+            mylite_result_column_name(result, column_index),
+            show_engine_status_columns[column_index],
+            expected.context
+        );
+    }
+
+    mylite_result_free(result);
+    return failures;
 }
 
 static int expect_show_warnings(

@@ -39,6 +39,7 @@ static int test_executable_admin_set_residuals(void) {
         {.sql = "SHOW EXTENDED FULL COLUMNS FROM t1",
          .kind = MYLITE_SQL_AST_SHOW_FULL_COLUMNS_STATEMENT},
         {.sql = "SHOW EXTENDED INDEX FROM t1", .kind = MYLITE_SQL_AST_SHOW_INDEX_STATEMENT},
+        {.sql = "SHOW ENGINE CSV LOGS", .kind = MYLITE_SQL_AST_SHOW_ENGINE_LOGS_STATEMENT},
         {.sql = "SET @@time_zone := 'UTC'", .kind = MYLITE_SQL_AST_SET_STATEMENT},
     };
     int failures = 0;
@@ -55,7 +56,6 @@ static int test_placeholder_admin_set_residuals(void) {
         },
         {.sql = "EXPLAIN ANALYZE DELETE t1 FROM t t1, t t2 WHERE t1.x = t2.x + 1",
          .kind = MYLITE_SQL_AST_EXPLAIN_STATEMENT},
-        {.sql = "SHOW ENGINE CSV LOGS", .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SHOW ENGINE MyISAM MUTEX", .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SHOW TRIGGERS WHERE 0", .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SHOW OPEN TABLES WHERE f1()=0",

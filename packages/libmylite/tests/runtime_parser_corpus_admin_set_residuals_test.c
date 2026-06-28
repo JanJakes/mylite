@@ -7,6 +7,7 @@
 
 enum {
     mysql_error_parse = 1064,
+    mysql_error_unknown_storage_engine = 1286,
     show_columns_column_count = 6,
     explain_placeholder_column_count = 12,
 };
@@ -61,6 +62,11 @@ static int test_admin_set_residual_runtime(void) {
         .code = mysql_error_parse,
         .sqlstate = "42000",
         .message_part = "utility statement is not supported",
+    };
+    struct expected_sql_error unknown_csv_engine = {
+        .code = mysql_error_unknown_storage_engine,
+        .sqlstate = "42000",
+        .message_part = "Unknown storage engine 'CSV'",
     };
     mylite_db *database = NULL;
     int failures = 0;
@@ -137,7 +143,7 @@ static int test_admin_set_residual_runtime(void) {
         }
     );
 
-    failures += execute_error(database, "SHOW ENGINE CSV LOGS", unsupported);
+    failures += execute_error(database, "SHOW ENGINE CSV LOGS", unknown_csv_engine);
     failures += execute_error(database, "SHOW ENGINE MyISAM MUTEX", unsupported);
     failures += execute_error(database, "SHOW TRIGGERS WHERE 0", unsupported);
     failures += execute_error(database, "SHOW OPEN TABLES WHERE f1()=0", unsupported);

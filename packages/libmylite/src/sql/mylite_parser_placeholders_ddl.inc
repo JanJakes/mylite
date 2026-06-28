@@ -1212,7 +1212,7 @@ static bool set_placeholder_assigned_token_is_unsupported_surface(
 static enum placeholder_statement_kind classify_show_placeholder_statement(
     const struct placeholder_statement_scan *scan
 ) {
-    if (show_engine_logs_mutex_placeholder_statement_is_supported(scan)) {
+    if (show_engine_mutex_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_UNSUPPORTED_UTILITY;
     }
     if (!scan->has_non_trailing_semicolon && placeholder_scan_parentheses_are_balanced(scan, 0U) &&
@@ -1249,7 +1249,7 @@ static enum placeholder_statement_kind classify_describe_placeholder_statement(
     return PLACEHOLDER_STATEMENT_NONE;
 }
 
-static bool show_engine_logs_mutex_placeholder_statement_is_supported(
+static bool show_engine_mutex_placeholder_statement_is_supported(
     const struct placeholder_statement_scan *scan
 ) {
     if (scan == NULL || scan->token_count != 4U || scan->has_non_trailing_semicolon ||
@@ -1260,8 +1260,7 @@ static bool show_engine_logs_mutex_placeholder_statement_is_supported(
         placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
         return false;
     }
-    return placeholder_scan_token_text_equals(scan, 3U, "LOGS") ||
-           placeholder_scan_token_text_equals(scan, 3U, "MUTEX");
+    return placeholder_scan_token_text_equals(scan, 3U, "MUTEX");
 }
 
 static enum placeholder_statement_kind classify_explain_placeholder_statement(

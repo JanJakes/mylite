@@ -1,11 +1,12 @@
-# Baseline SHOW ENGINE STATUS
+# Baseline SHOW ENGINE STATUS And LOGS
 
 ## Status
 
 This feature specifies a narrow embedded introspection slice for
-`SHOW ENGINE InnoDB STATUS`. MyLite exposes a MySQL-shaped row-result set for
-applications that probe InnoDB availability or diagnostics during startup, while
-keeping storage-engine internals owned by MyLite and SQLite.
+`SHOW ENGINE InnoDB STATUS` and `SHOW ENGINE InnoDB LOGS`. MyLite exposes
+MySQL-shaped row-result sets for applications that probe InnoDB availability or
+diagnostics during startup, while keeping storage-engine internals owned by
+MyLite and SQLite.
 
 The feature is intentionally not full `SHOW ENGINE` support. It does not expose
 live InnoDB monitor output, Performance Schema memory rows, mutex statistics,
@@ -67,14 +68,16 @@ records the runtime probes for this feature. Observed behavior:
   column labels with zero or more runtime-specific mutex rows. MyLite defers
   mutex statistics.
 - `SHOW ENGINE InnoDB LOGS` is accepted by the observed MySQL 8.4.9 runtime and
-  returns the same column labels with zero rows, but it is not part of the
-  documented `SHOW ENGINE` grammar used for this slice and remains deferred.
+  returns the same column labels with zero rows. This form is not listed by the
+  MySQL 8.4 `SHOW ENGINE` manual page, but the runtime behavior is stable in
+  the target 8.4.9 comparison environment used by this project.
 
 ## Scope
 
 The implementation must add:
 
-- parser and AST support for `SHOW ENGINE engine_name STATUS`;
+- parser and AST support for `SHOW ENGINE engine_name STATUS` and
+  `SHOW ENGINE engine_name LOGS`;
 - engine-name decoding for the same identifier and string-literal spellings
   already admitted for `CREATE TABLE ... ENGINE=InnoDB`;
 - runtime validation that the decoded engine name is `InnoDB`, compared ASCII
@@ -83,8 +86,9 @@ The implementation must add:
   embedded InnoDB-only storage-engine diagnostic;
 - a descriptor-independent result builder with MySQL 8.4.9 column labels
   `Type`, `Name`, and `Status`;
-- one synthetic row with `Type = InnoDB`, `Name = ''`, and MyLite-owned status
-  text;
+- one synthetic status row with `Type = InnoDB`, `Name = ''`, and MyLite-owned
+  status text;
+- an empty logs result with the same MySQL 8.4.9 column labels;
 - tests comparing the admitted MySQL-visible behavior with MySQL 8.4.9;
 - compatibility documentation for the exact limited surface.
 
@@ -95,7 +99,6 @@ This feature must not implement:
 - live InnoDB monitor text, latch statistics, transaction dumps, lock dumps, or
   physical SQLite diagnostics formatted as MySQL InnoDB monitor output;
 - `SHOW ENGINE InnoDB MUTEX`;
-- `SHOW ENGINE InnoDB LOGS`;
 - `SHOW ENGINE PERFORMANCE_SCHEMA STATUS`;
 - non-`InnoDB` engine status such as MyISAM, NDB, MEMORY, CSV, ARCHIVE,
   BLACKHOLE, or FEDERATED;
@@ -128,6 +131,7 @@ Supported syntax:
 
 ```sql
 SHOW ENGINE engine_name STATUS
+SHOW ENGINE engine_name LOGS
 
 engine_name:
     identifier
@@ -143,15 +147,22 @@ MyLite Lemon-syntax snippets:
 statement(A) ::= show_engine_status_statement(B). {
     A = B;
 }
+statement(A) ::= show_engine_logs_statement(B). {
+    A = B;
+}
 
 show_engine_status_statement(A) ::= SHOW(S) ENGINE option_name(N) STATUS(T). {
     A = mylite_sql_parser_make_show_engine_status_statement(state, S, N, T);
+}
+
+show_engine_logs_statement(A) ::= SHOW(S) ENGINE option_name(N) LOGS(L). {
+    A = mylite_sql_parser_make_show_engine_logs_statement(state, S, N, L);
 }
 ```
 
 The `option_name` nonterminal is reused intentionally so engine-name decoding
 matches the already supported `CREATE TABLE ... ENGINE=InnoDB` path. Unsupported
-`SHOW ENGINE ... MUTEX`, `SHOW ENGINE ... LOGS`, `SHOW ENGINE ... STATUS LIKE`,
+`SHOW ENGINE ... MUTEX`, `SHOW ENGINE ... STATUS LIKE`,
 `SHOW FULL ENGINE ... STATUS`, filters, and additional clauses remain syntax
 errors unless a later feature admits them.
 
@@ -170,8 +181,9 @@ InnoDB-only compatibility decision from `CREATE TABLE ... ENGINE`.
 
 ## Runtime Semantics
 
-`SHOW ENGINE InnoDB STATUS` builds a new row-result object without reading or
-mutating catalog rows and without generating SQLite SQL.
+`SHOW ENGINE InnoDB STATUS` and `SHOW ENGINE InnoDB LOGS` build new row-result
+objects without reading or mutating catalog rows and without generating SQLite
+SQL.
 
 Successful output:
 
@@ -188,6 +200,9 @@ monitor output.
 Success leaves `affected_rows == 0`, `warning_count == 0`, and following
 `ROW_COUNT() == -1`, matching MyLite's existing public result convention for
 row-producing statements and the observed MySQL behavior.
+
+`SHOW ENGINE InnoDB LOGS` returns the same columns with zero rows. It uses the
+same diagnostics and row-count conventions as the status result.
 
 ## Diagnostics
 
@@ -209,8 +224,9 @@ reserved `_mylite_*` names, descriptors, or physical SQLite identifiers.
 ## Performance And Storage
 
 The implementation is O(1). It allocates one small result object, appends three
-column labels and one text row, and performs no catalog scan or SQLite query.
-No `.mylite` file bytes are written, and no SQLite fork patch is required.
+column labels, appends one text row for `STATUS` or no rows for `LOGS`, and
+performs no catalog scan or SQLite query. No `.mylite` file bytes are written,
+and no SQLite fork patch is required.
 
 ## Tests
 
@@ -218,13 +234,13 @@ Tests must cover:
 
 - parser support for unquoted, lower-case, backtick-quoted, and string-literal
   `InnoDB` engine names;
-- successful runtime output columns and row values;
+- successful runtime output columns, status row values, and empty logs rowset;
 - warning count, absence of statement error conditions, and following
   `ROW_COUNT() == -1`;
 - no catalog or storage mutation by checking the MyLite preamble remains
   unchanged on a file-backed handle;
 - persistence independence by running the statement on independent handles;
 - unknown engine diagnostics for a representative non-`InnoDB` engine name;
-- deterministic syntax errors for `MUTEX`, `LOGS`, `LIKE`, and `FULL` forms
-  deferred by this slice;
+- deterministic syntax errors for `MUTEX`, `LIKE`, and `FULL` forms deferred
+  by this slice;
 - the MySQL expectation script against MySQL 8.4.9.

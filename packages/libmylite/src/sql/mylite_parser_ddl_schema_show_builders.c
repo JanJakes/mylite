@@ -1093,6 +1093,29 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_show_engine_status_statement(
     return statement;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_show_engine_logs_statement(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token show_token,
+    struct mylite_sql_ast_node *engine_name,
+    struct mylite_sql_token logs_token
+) {
+    struct mylite_sql_ast_node *statement = mylite_sql_parser_make_node(
+        state,
+        MYLITE_SQL_AST_SHOW_ENGINE_LOGS_STATEMENT,
+        mylite_sql_parser_span_join(
+            mylite_sql_parser_span_from_token(&show_token),
+            mylite_sql_parser_span_from_token(&logs_token)
+        )
+    );
+
+    if (statement == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(statement, engine_name);
+    return statement;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_show_plugins_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token show_token,

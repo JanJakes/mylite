@@ -2326,6 +2326,8 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "show_engines_statement";
     case MYLITE_SQL_AST_SHOW_ENGINE_STATUS_STATEMENT:
         return "show_engine_status_statement";
+    case MYLITE_SQL_AST_SHOW_ENGINE_LOGS_STATEMENT:
+        return "show_engine_logs_statement";
     case MYLITE_SQL_AST_SHOW_PLUGINS_STATEMENT:
         return "show_plugins_statement";
     case MYLITE_SQL_AST_SHOW_PRIVILEGES_STATEMENT:

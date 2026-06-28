@@ -304,6 +304,9 @@ statement(A) ::= show_engines_statement(B). {
 statement(A) ::= show_engine_status_statement(B). {
     A = B;
 }
+statement(A) ::= show_engine_logs_statement(B). {
+    A = B;
+}
 statement(A) ::= show_plugins_statement(B). {
     A = B;
 }
@@ -2291,6 +2294,9 @@ show_engines_statement(A) ::= SHOW(S) STORAGE ENGINES(E). {
 
 show_engine_status_statement(A) ::= SHOW(S) ENGINE option_name(N) STATUS(T). {
     A = mylite_sql_parser_make_show_engine_status_statement(state, S, N, T);
+}
+show_engine_logs_statement(A) ::= SHOW(S) ENGINE option_name(N) LOGS(L). {
+    A = mylite_sql_parser_make_show_engine_logs_statement(state, S, N, L);
 }
 
 show_plugins_statement(A) ::= SHOW(S) PLUGINS(P). {

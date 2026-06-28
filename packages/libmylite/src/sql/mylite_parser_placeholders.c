@@ -1866,7 +1866,7 @@ static enum placeholder_statement_kind classify_show_placeholder_statement(
 static enum placeholder_statement_kind classify_describe_placeholder_statement(
     const struct placeholder_statement_scan *scan
 );
-static bool show_engine_logs_mutex_placeholder_statement_is_supported(
+static bool show_engine_mutex_placeholder_statement_is_supported(
     const struct placeholder_statement_scan *scan
 );
 static enum placeholder_statement_kind classify_explain_placeholder_statement(

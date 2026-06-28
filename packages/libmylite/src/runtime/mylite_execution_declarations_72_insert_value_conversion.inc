@@ -391,6 +391,11 @@ static int convert_dml_scalar_cell_for_column(
     bool warn_on_trailing_space_truncation,
     struct planned_value *out_value
 );
+static int convert_dml_scalar_cell_spatial_value(
+    struct mylite_db *database,
+    const struct session_scalar_cell *cell,
+    struct planned_value *out_value
+);
 static int convert_dml_scalar_cell_text_value(
     struct mylite_db *database,
     const struct session_scalar_cell *cell,

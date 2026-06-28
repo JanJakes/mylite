@@ -272,6 +272,8 @@ static int append_row_scalar_expression_sql(
             expression,
             next_parameter
         );
+    case PLANNED_ROW_SCALAR_EXPRESSION_SPATIAL_FUNCTION:
+        return append_row_scalar_spatial_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_INET_ATON:
         return append_row_scalar_registered_function_expression_sql(
             string,
@@ -486,6 +488,28 @@ static int append_row_scalar_collate_expression_sql(
         rc = mylite_dynamic_string_append_char(string, ')');
     }
     return rc;
+}
+
+static int append_row_scalar_spatial_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    const char *function_name = NULL;
+
+    if (expression == NULL || expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_SPATIAL_FUNCTION) {
+        return MYLITE_ERROR;
+    }
+    function_name = mylite_spatial_function_name(expression->spatial_function_kind);
+    if (function_name == NULL) {
+        return MYLITE_ERROR;
+    }
+    return append_row_scalar_registered_function_expression_sql(
+        string,
+        function_name,
+        expression,
+        next_parameter
+    );
 }
 
 static const char *row_scalar_sql_collation_name(const char *collation_name) {
@@ -920,6 +944,7 @@ static int append_row_scalar_conversion_base_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
     case PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SPATIAL_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_COLLATE:
         return append_row_scalar_expression_sql(string, expression, next_parameter);
@@ -1186,6 +1211,7 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING:
     case PLANNED_ROW_SCALAR_EXPRESSION_WEIGHT_STRING_BINARY:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SPATIAL_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_CONVERSION:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID:
     case PLANNED_ROW_SCALAR_EXPRESSION_UUID_SHORT:
@@ -1296,6 +1322,7 @@ static int append_row_scalar_non_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_EXTRACT_VALUE:
     case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
     case PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SPATIAL_FUNCTION:
         return append_row_scalar_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_GREATEST:
     case PLANNED_ROW_SCALAR_EXPRESSION_LEAST:
@@ -1534,6 +1561,7 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
     case PLANNED_ROW_SCALAR_EXPRESSION_SLEEP:
     case PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION:
+    case PLANNED_ROW_SCALAR_EXPRESSION_SPATIAL_FUNCTION:
         return append_row_scalar_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_UNIX_TIMESTAMP:
         return append_row_scalar_unix_timestamp_expression_sql(string, expression, next_parameter);

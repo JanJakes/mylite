@@ -67,6 +67,7 @@ static int bind_row_scalar_control_flow_frame_parameters(
         case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
         case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
         case PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION:
+        case PLANNED_ROW_SCALAR_EXPRESSION_SPATIAL_FUNCTION:
             return bind_row_scalar_expression_parameters(statement, expression, parameter_index);
         case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
             return bind_row_scalar_integer_arithmetic_expression_parameters(
@@ -218,6 +219,7 @@ static int bind_row_scalar_control_flow_frame_parameters(
         case PLANNED_ROW_SCALAR_EXPRESSION_BASE_CONVERSION:
         case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
         case PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION:
+        case PLANNED_ROW_SCALAR_EXPRESSION_SPATIAL_FUNCTION:
             return bind_row_scalar_expression_parameters(statement, expression, parameter_index);
         case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
             return bind_row_scalar_integer_arithmetic_expression_parameters(

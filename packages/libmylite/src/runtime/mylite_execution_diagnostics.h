@@ -565,6 +565,7 @@ void mylite_execution_diagnostics_set_spatial_bad_null_error(
     struct mylite_db *database,
     const char *column_name
 );
+void mylite_execution_diagnostics_set_cannot_get_geometry_object_error(struct mylite_db *database);
 void mylite_execution_diagnostics_set_generated_column_value_error(
     struct mylite_db *database,
     const char *column_name,
@@ -1061,6 +1062,8 @@ int mylite_execution_diagnostics_status_from_parse_status(enum mylite_sql_parse_
 #  define append_load_data_null_to_not_null_warning                                                \
       mylite_execution_diagnostics_append_load_data_null_to_not_null_warning
 #  define set_spatial_bad_null_error mylite_execution_diagnostics_set_spatial_bad_null_error
+#  define set_cannot_get_geometry_object_error                                                     \
+      mylite_execution_diagnostics_set_cannot_get_geometry_object_error
 #  define set_generated_column_value_error                                                         \
       mylite_execution_diagnostics_set_generated_column_value_error
 #  define set_data_truncated_error mylite_execution_diagnostics_set_data_truncated_error

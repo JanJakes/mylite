@@ -525,8 +525,14 @@ static int session_scalar_value(
         return scalar_comparison_value(database, expression, out_cell);
     case MYLITE_SQL_AST_MOD_FUNCTION:
         return scalar_arithmetic_value(database, expression, out_cell);
-    case MYLITE_SQL_AST_GENERIC_FUNCTION:
+    case MYLITE_SQL_AST_GENERIC_FUNCTION: {
+        enum mylite_spatial_function_kind spatial_kind = MYLITE_SPATIAL_FUNCTION_NONE;
+
+        if (generic_spatial_function_kind(expression, &spatial_kind)) {
+            return spatial_function_session_scalar_value(database, expression, out_cell);
+        }
         return generic_system_function_value(database, expression, out_cell);
+    }
     case MYLITE_SQL_AST_ABS_FUNCTION:
         return mylite_execution_scalar_abs_function_value(database, expression, out_cell);
     case MYLITE_SQL_AST_SIGN_FUNCTION:

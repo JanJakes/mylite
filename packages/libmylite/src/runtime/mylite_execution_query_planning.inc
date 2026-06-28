@@ -609,6 +609,11 @@ static int row_scalar_collate_base_charset(
     case PLANNED_ROW_SCALAR_EXPRESSION_SEARCHED_CASE:
         *out_charset = database->session.character_set_connection;
         return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_SPATIAL_FUNCTION:
+        *out_charset = mylite_spatial_function_returns_text(base_expression->spatial_function_kind)
+                           ? database->session.character_set_connection
+                           : "binary";
+        return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
         if (base_expression->numeric_extra_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT) {
             *out_charset = database->session.character_set_connection;

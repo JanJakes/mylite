@@ -153,6 +153,7 @@ static int populate_scalar_function_result_column_descriptor(
 
     if (expression->kind == MYLITE_SQL_AST_GENERIC_FUNCTION) {
         enum mylite_sys_function_kind sys_function_kind = MYLITE_SYS_FUNCTION_NONE;
+        enum mylite_spatial_function_kind spatial_kind = MYLITE_SPATIAL_FUNCTION_NONE;
 
         if (generic_sys_function_kind(expression, &sys_function_kind)) {
             if (sys_function_kind == MYLITE_SYS_FUNCTION_VALIDATE_PASSWORD_STRENGTH) {
@@ -216,6 +217,13 @@ static int populate_scalar_function_result_column_descriptor(
                 }
             );
             return MYLITE_OK;
+        }
+        if (generic_spatial_function_kind(expression, &spatial_kind)) {
+            return populate_spatial_function_result_column_descriptor(
+                database,
+                spatial_kind,
+                descriptor
+            );
         }
         if (generic_system_function_name_equals(expression, "SLEEP") ||
             generic_system_function_name_equals(expression, "GET_LOCK") ||
@@ -1052,7 +1060,7 @@ static int populate_scalar_charset_collation_result_column_descriptor(
     } else if (text_equals_ascii_case_insensitive(charset, "utf8mb3")) {
         max_bytes_per_character = 3U;
     }
-    value_length = cell.value == NULL ? 0U : strlen(cell.value);
+    value_length = scalar_cell_text_length(&cell);
     if (value_length > UINT64_MAX / max_bytes_per_character) {
         session_scalar_cell_deinit(&cell);
         set_nomem_error(database);

@@ -2,17 +2,17 @@
 
 Spatial constructors, predicates, measurements, and conversion functions.
 
-Selected spatial constructor and conversion function calls are parser-admitted
-as generic function placeholders in current scalar, `SET`, and DML value
-positions.
-MyLite still does not implement non-`NULL` geometry values, SRIDs, spatial
-predicates, measurements, or spatial function execution.
+MyLite supports a basic SRID-0 geometry surface: WKT/WKB constructors,
+MySQL-specific geometry constructors, WKT/WKB conversion, geometry type/SRID
+readback, and point coordinate access in scalar, row-backed, and descriptor DML
+value contexts. It does not yet implement nonzero SRS behavior, topology,
+measurements, spatial predicates, or physical spatial search.
 
 | Function | Status | Notes |
 | --- | --- | --- |
-| `GeomCollection()` | ⚪ | Parser-admitted placeholder; no executable geometry collection construction |
-| `GeometryCollection()` | ⚪ | Parser-admitted placeholder; no executable geometry collection construction |
-| `LineString()` | ⚪ | Parser-admitted placeholder; no executable LineString construction |
+| `GeomCollection()` | ✅ | Construct SRID-0 geometry collections |
+| `GeometryCollection()` | ✅ | Construct SRID-0 geometry collections |
+| `LineString()` | ✅ | Construct SRID-0 LineString values from points |
 | `MBRContains()` | ❌ | Whether MBR of one geometry contains MBR of another |
 | `MBRCoveredBy()` | ❌ | Whether one MBR is covered by another |
 | `MBRCovers()` | ❌ | Whether one MBR covers another |
@@ -22,15 +22,15 @@ predicates, measurements, or spatial function execution.
 | `MBROverlaps()` | ❌ | Whether MBRs of two geometries overlap |
 | `MBRTouches()` | ❌ | Whether MBRs of two geometries touch |
 | `MBRWithin()` | ❌ | Whether MBR of one geometry is within MBR of another |
-| `MultiLineString()` | ⚪ | Parser-admitted placeholder; no executable MultiLineString construction |
-| `MultiPoint()` | ⚪ | Parser-admitted placeholder; no executable MultiPoint construction |
-| `MultiPolygon()` | ⚪ | Parser-admitted placeholder; no executable MultiPolygon construction |
-| `Point()` | ⚪ | Parser-admitted placeholder; no executable Point construction |
-| `Polygon()` | ⚪ | Parser-admitted placeholder; no executable Polygon construction |
+| `MultiLineString()` | ✅ | Construct SRID-0 MultiLineString values |
+| `MultiPoint()` | ✅ | Construct SRID-0 MultiPoint values |
+| `MultiPolygon()` | ✅ | Construct SRID-0 MultiPolygon values |
+| `Point()` | ✅ | Construct SRID-0 Point values |
+| `Polygon()` | ✅ | Construct SRID-0 Polygon values from LineString rings |
 | `ST_Area()` | ❌ | Return Polygon or MultiPolygon area |
-| `ST_AsBinary(), ST_AsWKB()` | ❌ | Convert from internal geometry format to WKB |
+| `ST_AsBinary(), ST_AsWKB()` | ✅ | Convert internal geometry bytes to WKB |
 | `ST_AsGeoJSON()` | ❌ | Generate GeoJSON object from geometry |
-| `ST_AsText(), ST_AsWKT()` | ❌ | Convert from internal geometry format to WKT |
+| `ST_AsText(), ST_AsWKT()` | ✅ | Convert internal geometry bytes to WKT |
 | `ST_Buffer()` | ❌ | Geometry buffer result |
 | `ST_Buffer_Strategy()` | ❌ | Produce strategy option for ST_Buffer() |
 | `ST_Centroid()` | ❌ | Return centroid as a point |
@@ -49,13 +49,13 @@ predicates, measurements, or spatial function execution.
 | `ST_ExteriorRing()` | ❌ | Return exterior ring of Polygon |
 | `ST_FrechetDistance()` | ❌ | The discrete Fréchet distance of one geometry from another |
 | `ST_GeoHash()` | ❌ | Produce a geohash value |
-| `ST_GeomCollFromText(), ST_GeometryCollectionFromText(), ST_GeomCollFromTxt()` | ❌ | Return geometry collection from WKT |
-| `ST_GeomCollFromWKB(), ST_GeometryCollectionFromWKB()` | ❌ | Return geometry collection from WKB |
+| `ST_GeomCollFromText(), ST_GeometryCollectionFromText(), ST_GeomCollFromTxt()` | ✅ | Construct SRID-0 geometry collection from WKT |
+| `ST_GeomCollFromWKB(), ST_GeometryCollectionFromWKB()` | ✅ | Construct SRID-0 geometry collection from WKB |
 | `ST_GeometryN()` | ❌ | Return N-th geometry from geometry collection |
-| `ST_GeometryType()` | ❌ | Return name of geometry type |
+| `ST_GeometryType()` | ✅ | Return name of geometry type |
 | `ST_GeomFromGeoJSON()` | ❌ | Generate geometry from GeoJSON object |
-| `ST_GeomFromText(), ST_GeometryFromText()` | ❌ | Return geometry from WKT |
-| `ST_GeomFromWKB(), ST_GeometryFromWKB()` | ❌ | Return geometry from WKB |
+| `ST_GeomFromText(), ST_GeometryFromText()` | ✅ | Construct SRID-0 geometry from WKT |
+| `ST_GeomFromWKB(), ST_GeometryFromWKB()` | ✅ | Construct SRID-0 geometry from WKB |
 | `ST_HausdorffDistance()` | ❌ | The discrete Hausdorff distance of one geometry from another |
 | `ST_InteriorRingN()` | ❌ | Return N-th interior ring of Polygon |
 | `ST_Intersection()` | ❌ | Return point set intersection of two geometries |
@@ -67,32 +67,32 @@ predicates, measurements, or spatial function execution.
 | `ST_LatFromGeoHash()` | ❌ | Return latitude from geohash value |
 | `ST_Latitude()` | ❌ | Return latitude of Point |
 | `ST_Length()` | ❌ | Return length of LineString |
-| `ST_LineFromText(), ST_LineStringFromText()` | ❌ | Construct LineString from WKT |
-| `ST_LineFromWKB(), ST_LineStringFromWKB()` | ❌ | Construct LineString from WKB |
+| `ST_LineFromText(), ST_LineStringFromText()` | ✅ | Construct SRID-0 LineString from WKT |
+| `ST_LineFromWKB(), ST_LineStringFromWKB()` | ✅ | Construct SRID-0 LineString from WKB |
 | `ST_LineInterpolatePoint()` | ❌ | The point a given percentage along a LineString |
 | `ST_LineInterpolatePoints()` | ❌ | The points a given percentage along a LineString |
 | `ST_LongFromGeoHash()` | ❌ | Return longitude from geohash value |
 | `ST_Longitude()` | ❌ | Return longitude of Point |
 | `ST_MakeEnvelope()` | ❌ | Rectangle around two points |
-| `ST_MLineFromText(), ST_MultiLineStringFromText()` | ❌ | Construct MultiLineString from WKT |
-| `ST_MLineFromWKB(), ST_MultiLineStringFromWKB()` | ❌ | Construct MultiLineString from WKB |
-| `ST_MPointFromText(), ST_MultiPointFromText()` | ❌ | Construct MultiPoint from WKT |
-| `ST_MPointFromWKB(), ST_MultiPointFromWKB()` | ❌ | Construct MultiPoint from WKB |
-| `ST_MPolyFromText(), ST_MultiPolygonFromText()` | ❌ | Construct MultiPolygon from WKT |
-| `ST_MPolyFromWKB(), ST_MultiPolygonFromWKB()` | ❌ | Construct MultiPolygon from WKB |
+| `ST_MLineFromText(), ST_MultiLineStringFromText()` | ✅ | Construct SRID-0 MultiLineString from WKT |
+| `ST_MLineFromWKB(), ST_MultiLineStringFromWKB()` | ✅ | Construct SRID-0 MultiLineString from WKB |
+| `ST_MPointFromText(), ST_MultiPointFromText()` | ✅ | Construct SRID-0 MultiPoint from WKT |
+| `ST_MPointFromWKB(), ST_MultiPointFromWKB()` | ✅ | Construct SRID-0 MultiPoint from WKB |
+| `ST_MPolyFromText(), ST_MultiPolygonFromText()` | ✅ | Construct SRID-0 MultiPolygon from WKT |
+| `ST_MPolyFromWKB(), ST_MultiPolygonFromWKB()` | ✅ | Construct SRID-0 MultiPolygon from WKB |
 | `ST_NumGeometries()` | ❌ | Return number of geometries in geometry collection |
 | `ST_NumInteriorRing(), ST_NumInteriorRings()` | ❌ | Return number of interior rings in Polygon |
 | `ST_NumPoints()` | ❌ | Return number of points in LineString |
 | `ST_Overlaps()` | ❌ | Whether one geometry overlaps another |
 | `ST_PointAtDistance()` | ❌ | The point a given distance along a LineString |
 | `ST_PointFromGeoHash()` | ❌ | Convert geohash value to POINT value |
-| `ST_PointFromText()` | ❌ | Construct Point from WKT |
-| `ST_PointFromWKB()` | ❌ | Construct Point from WKB |
+| `ST_PointFromText()` | ✅ | Construct SRID-0 Point from WKT |
+| `ST_PointFromWKB()` | ✅ | Construct SRID-0 Point from WKB |
 | `ST_PointN()` | ❌ | Return N-th point from LineString |
-| `ST_PolyFromText(), ST_PolygonFromText()` | ❌ | Construct Polygon from WKT |
-| `ST_PolyFromWKB(), ST_PolygonFromWKB()` | ❌ | Construct Polygon from WKB |
+| `ST_PolyFromText(), ST_PolygonFromText()` | ✅ | Construct SRID-0 Polygon from WKT |
+| `ST_PolyFromWKB(), ST_PolygonFromWKB()` | ✅ | Construct SRID-0 Polygon from WKB |
 | `ST_Simplify()` | ❌ | Return simplified geometry |
-| `ST_SRID()` | ❌ | Return spatial reference system ID for geometry |
+| `ST_SRID()` | ✅ | Return spatial reference system ID for geometry |
 | `ST_StartPoint()` | ❌ | Start Point of LineString |
 | `ST_SwapXY()` | ❌ | Return argument with X/Y coordinates swapped |
 | `ST_SymDifference()` | ❌ | Return point set symmetric difference of two geometries |
@@ -101,7 +101,7 @@ predicates, measurements, or spatial function execution.
 | `ST_Union()` | ❌ | Return point set union of two geometries |
 | `ST_Validate()` | ❌ | Return validated geometry |
 | `ST_Within()` | ❌ | Whether one geometry is within another |
-| `ST_X()` | ❌ | Return X coordinate of Point |
-| `ST_Y()` | ❌ | Return Y coordinate of Point |
+| `ST_X()` | ✅ | Return X coordinate of Point |
+| `ST_Y()` | ✅ | Return Y coordinate of Point |
 
 [Back to compatibility overview](../../COMPATIBILITY.md)

@@ -132,6 +132,7 @@ enum {
     mysql_error_spatial_unique = 3728,
     mysql_error_spatial_index_type_not_supported = 3729,
     mysql_error_data_too_long = 1406,
+    mysql_error_cannot_get_geometry_object = 1416,
     mysql_error_transaction_characteristics_changed = 1568,
     mysql_error_read_only_transaction = 1792,
     mysql_error_temporary_fulltext_index = 1796,

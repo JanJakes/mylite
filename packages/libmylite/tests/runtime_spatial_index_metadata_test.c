@@ -36,6 +36,7 @@ enum {
     mysql_error_wrong_usage = 1221,
     mysql_error_spatial_must_be_not_null = 1252,
     mysql_error_no_default = 1364,
+    mysql_error_cannot_get_geometry_object = 1416,
     mysql_error_spatial_index_non_geometric = 1687,
     mysql_error_spatial_column_cannot_be_null = 3673,
     mysql_error_spatial_unique = 3728,
@@ -749,18 +750,18 @@ static int test_spatial_null_dml_and_result_metadata(void) {
         database,
         "INSERT INTO nullable_spatial VALUES (4, 'POINT(1 2)')",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Spatial DML supports only NULL or DEFAULT values",
+            .code = mysql_error_cannot_get_geometry_object,
+            .sqlstate = "22003",
+            .message_part = "Cannot get geometry object from data you send to the GEOMETRY field",
         }
     );
     failures += execute_error(
         database,
         "UPDATE nullable_spatial SET g = 'POINT(1 2)' WHERE id = 1",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "Spatial DML supports only NULL or DEFAULT values",
+            .code = mysql_error_cannot_get_geometry_object,
+            .sqlstate = "22003",
+            .message_part = "Cannot get geometry object from data you send to the GEOMETRY field",
         }
     );
 

@@ -1,0 +1,135 @@
+#ifndef MYLITE_RUNTIME_MYLITE_SPATIAL_H
+#define MYLITE_RUNTIME_MYLITE_SPATIAL_H
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+enum mylite_spatial_geometry_type {
+    MYLITE_SPATIAL_GEOMETRY_NONE = 0,
+    MYLITE_SPATIAL_GEOMETRY_POINT = 1,
+    MYLITE_SPATIAL_GEOMETRY_LINESTRING = 2,
+    MYLITE_SPATIAL_GEOMETRY_POLYGON = 3,
+    MYLITE_SPATIAL_GEOMETRY_MULTIPOINT = 4,
+    MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING = 5,
+    MYLITE_SPATIAL_GEOMETRY_MULTIPOLYGON = 6,
+    MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION = 7,
+};
+
+enum mylite_spatial_function_kind {
+    MYLITE_SPATIAL_FUNCTION_NONE = 0,
+    MYLITE_SPATIAL_FUNCTION_POINT = 1,
+    MYLITE_SPATIAL_FUNCTION_LINESTRING = 2,
+    MYLITE_SPATIAL_FUNCTION_POLYGON = 3,
+    MYLITE_SPATIAL_FUNCTION_MULTIPOINT = 4,
+    MYLITE_SPATIAL_FUNCTION_MULTILINESTRING = 5,
+    MYLITE_SPATIAL_FUNCTION_MULTIPOLYGON = 6,
+    MYLITE_SPATIAL_FUNCTION_GEOMETRYCOLLECTION = 7,
+    MYLITE_SPATIAL_FUNCTION_GEOMCOLLECTION = 8,
+    MYLITE_SPATIAL_FUNCTION_ST_ASTEXT = 9,
+    MYLITE_SPATIAL_FUNCTION_ST_ASWKT = 10,
+    MYLITE_SPATIAL_FUNCTION_ST_ASBINARY = 11,
+    MYLITE_SPATIAL_FUNCTION_ST_ASWKB = 12,
+    MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYTYPE = 13,
+    MYLITE_SPATIAL_FUNCTION_ST_SRID = 14,
+    MYLITE_SPATIAL_FUNCTION_ST_X = 15,
+    MYLITE_SPATIAL_FUNCTION_ST_Y = 16,
+    MYLITE_SPATIAL_FUNCTION_ST_GEOMFROMTEXT = 17,
+    MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYFROMTEXT = 18,
+    MYLITE_SPATIAL_FUNCTION_ST_POINTFROMTEXT = 19,
+    MYLITE_SPATIAL_FUNCTION_ST_LINEFROMTEXT = 20,
+    MYLITE_SPATIAL_FUNCTION_ST_LINESTRINGFROMTEXT = 21,
+    MYLITE_SPATIAL_FUNCTION_ST_POLYFROMTEXT = 22,
+    MYLITE_SPATIAL_FUNCTION_ST_POLYGONFROMTEXT = 23,
+    MYLITE_SPATIAL_FUNCTION_ST_MPOINTFROMTEXT = 24,
+    MYLITE_SPATIAL_FUNCTION_ST_MULTIPOINTFROMTEXT = 25,
+    MYLITE_SPATIAL_FUNCTION_ST_MLINEFROMTEXT = 26,
+    MYLITE_SPATIAL_FUNCTION_ST_MULTILINESTRINGFROMTEXT = 27,
+    MYLITE_SPATIAL_FUNCTION_ST_MPOLYFROMTEXT = 28,
+    MYLITE_SPATIAL_FUNCTION_ST_MULTIPOLYGONFROMTEXT = 29,
+    MYLITE_SPATIAL_FUNCTION_ST_GEOMCOLLFROMTEXT = 30,
+    MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYCOLLECTIONFROMTEXT = 31,
+    MYLITE_SPATIAL_FUNCTION_ST_GEOMCOLLFROMTXT = 32,
+    MYLITE_SPATIAL_FUNCTION_ST_GEOMFROMWKB = 33,
+    MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYFROMWKB = 34,
+    MYLITE_SPATIAL_FUNCTION_ST_POINTFROMWKB = 35,
+    MYLITE_SPATIAL_FUNCTION_ST_LINEFROMWKB = 36,
+    MYLITE_SPATIAL_FUNCTION_ST_LINESTRINGFROMWKB = 37,
+    MYLITE_SPATIAL_FUNCTION_ST_POLYFROMWKB = 38,
+    MYLITE_SPATIAL_FUNCTION_ST_POLYGONFROMWKB = 39,
+    MYLITE_SPATIAL_FUNCTION_ST_MPOINTFROMWKB = 40,
+    MYLITE_SPATIAL_FUNCTION_ST_MULTIPOINTFROMWKB = 41,
+    MYLITE_SPATIAL_FUNCTION_ST_MLINEFROMWKB = 42,
+    MYLITE_SPATIAL_FUNCTION_ST_MULTILINESTRINGFROMWKB = 43,
+    MYLITE_SPATIAL_FUNCTION_ST_MPOLYFROMWKB = 44,
+    MYLITE_SPATIAL_FUNCTION_ST_MULTIPOLYGONFROMWKB = 45,
+    MYLITE_SPATIAL_FUNCTION_ST_GEOMCOLLFROMWKB = 46,
+    MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYCOLLECTIONFROMWKB = 47,
+};
+
+enum mylite_spatial_result_kind {
+    MYLITE_SPATIAL_RESULT_NULL = 0,
+    MYLITE_SPATIAL_RESULT_GEOMETRY = 1,
+    MYLITE_SPATIAL_RESULT_TEXT = 2,
+    MYLITE_SPATIAL_RESULT_BLOB = 3,
+    MYLITE_SPATIAL_RESULT_INTEGER = 4,
+    MYLITE_SPATIAL_RESULT_DOUBLE = 5,
+};
+
+enum {
+    MYLITE_SPATIAL_ERROR_MESSAGE_CAPACITY = 160,
+};
+
+struct mylite_spatial_argument {
+    const void *bytes;
+    size_t byte_count;
+    double numeric;
+    bool is_null;
+    bool has_numeric;
+};
+
+struct mylite_spatial_result {
+    enum mylite_spatial_result_kind kind;
+    void *bytes;
+    size_t byte_count;
+    int64_t integer;
+    double real;
+};
+
+struct mylite_spatial_error {
+    int code;
+    const char *sqlstate;
+    char message[MYLITE_SPATIAL_ERROR_MESSAGE_CAPACITY];
+    bool is_nomem;
+};
+
+bool mylite_spatial_function_kind_from_name(
+    const char *name,
+    size_t name_size,
+    enum mylite_spatial_function_kind *out_kind
+);
+const char *mylite_spatial_function_name(enum mylite_spatial_function_kind kind);
+bool mylite_spatial_function_is_constructor(enum mylite_spatial_function_kind kind);
+bool mylite_spatial_function_returns_geometry(enum mylite_spatial_function_kind kind);
+bool mylite_spatial_function_returns_text(enum mylite_spatial_function_kind kind);
+bool mylite_spatial_function_returns_wkb(enum mylite_spatial_function_kind kind);
+bool mylite_spatial_function_returns_integer(enum mylite_spatial_function_kind kind);
+bool mylite_spatial_function_returns_double(enum mylite_spatial_function_kind kind);
+
+int mylite_spatial_evaluate(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *out_error
+);
+void mylite_spatial_result_deinit(struct mylite_spatial_result *result);
+
+bool mylite_spatial_geometry_bytes_are_valid(const void *bytes, size_t byte_count);
+enum mylite_spatial_geometry_type mylite_spatial_geometry_bytes_type(
+    const void *bytes,
+    size_t byte_count
+);
+uint32_t mylite_spatial_geometry_bytes_srid(const void *bytes, size_t byte_count);
+
+#endif

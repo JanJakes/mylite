@@ -285,6 +285,17 @@ static int plan_row_scalar_non_control_flow_expression(
             out_expression
         );
     }
+    if (generic_spatial_function_kind(expression, &(enum mylite_spatial_function_kind){0})) {
+        return plan_row_scalar_spatial_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (expression->kind == MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION) {
         return plan_row_scalar_registered_one_argument_expression(
             database,
@@ -599,6 +610,7 @@ static bool row_scalar_expression_is_nested_value_argument(
         row_scalar_numeric_function_kind_is_supported(expression->kind) ||
         row_scalar_base_conversion_kind_is_supported(expression->kind) ||
         row_scalar_numeric_extra_kind_is_supported(expression->kind) ||
+        generic_spatial_function_kind(expression, &(enum mylite_spatial_function_kind){0}) ||
         row_scalar_numeric_function_kind_is_error(expression->kind) ||
         row_scalar_conversion_kind_from_expression(expression) !=
             PLANNED_ROW_SCALAR_CONVERSION_NONE ||
@@ -1330,6 +1342,55 @@ static int plan_row_scalar_sys_function(
     return rc;
 }
 
+static int plan_row_scalar_spatial_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *arguments = generic_system_function_arguments(expression);
+    enum mylite_spatial_function_kind kind = MYLITE_SPATIAL_FUNCTION_NONE;
+    size_t argument_count = arguments == NULL ? 0U : mylite_sql_ast_node_child_count(arguments);
+    int rc = MYLITE_OK;
+
+    if (!generic_spatial_function_kind(expression, &kind)) {
+        set_unsupported_error(database, "unsupported spatial function");
+        return MYLITE_ERROR;
+    }
+    out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_SPATIAL_FUNCTION;
+    out_expression->spatial_function_kind = kind;
+    out_expression->argument_count = argument_count;
+    if (argument_count == 0U) {
+        return MYLITE_OK;
+    }
+
+    out_expression->arguments = (struct planned_row_scalar_expression *)
+        calloc(argument_count, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < argument_count; ++index) {
+        rc = plan_row_scalar_non_concat_expression(
+            database,
+            child_at(arguments, index),
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            false,
+            &out_expression->arguments[index]
+        );
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(out_expression);
+    }
+    return rc;
+}
+
 static bool generic_function_name_equals(
     const struct mylite_sql_ast_node *expression,
     const char *name
@@ -1882,7 +1943,9 @@ static int plan_row_scalar_session_value(
 ) {
     struct session_scalar_cell cell = {0};
     uint64_t magnitude = 0U;
+    size_t value_length = 0U;
     bool is_negative = false;
+    int copy_rc = MYLITE_OK;
     int rc = session_scalar_value(database, expression, &cell);
 
     if (rc != MYLITE_OK) {
@@ -1891,13 +1954,15 @@ static int plan_row_scalar_session_value(
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_VALUE;
     if (cell.value == NULL) {
         out_expression->value = (struct planned_value){.is_null = true, .integer = 0};
+        session_scalar_cell_deinit(&cell);
         return MYLITE_OK;
     }
+    value_length = scalar_cell_text_length(&cell);
     if ((is_scalar_arithmetic_projection_expression(expression) ||
          row_scalar_session_value_prefers_integer(expression->kind)) &&
         mylite_execution_parse_signed_integer_text(
             cell.value,
-            strlen(cell.value),
+            value_length,
             &magnitude,
             &is_negative
         ) == MYLITE_EXECUTION_DML_NUMERIC_PARSE_OK &&
@@ -1912,10 +1977,17 @@ static int plan_row_scalar_session_value(
             out_expression->value =
                 (struct planned_value){.is_null = false, .integer = (int64_t)magnitude};
         }
+        session_scalar_cell_deinit(&cell);
         return MYLITE_OK;
     }
 
-    return copy_text_value(database, cell.value, &out_expression->value);
+    if (memchr(cell.value, '\0', value_length) != NULL) {
+        copy_rc = copy_blob_value(database, cell.value, value_length, &out_expression->value);
+    } else {
+        copy_rc = copy_text_value(database, cell.value, &out_expression->value);
+    }
+    session_scalar_cell_deinit(&cell);
+    return copy_rc;
 }
 
 static bool row_scalar_session_value_prefers_integer(enum mylite_sql_ast_node_kind expression_kind

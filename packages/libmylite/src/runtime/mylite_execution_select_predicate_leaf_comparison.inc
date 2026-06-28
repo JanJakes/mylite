@@ -3003,6 +3003,8 @@ static bool row_scalar_predicate_literal_prefers_text(
     case PLANNED_ROW_SCALAR_EXPRESSION_UPDATE_XML:
     case PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION:
         return true;
+    case PLANNED_ROW_SCALAR_EXPRESSION_SPATIAL_FUNCTION:
+        return mylite_spatial_function_returns_text(expression->spatial_function_kind);
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
         return expression->numeric_extra_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT;
     case PLANNED_ROW_SCALAR_EXPRESSION_IF:

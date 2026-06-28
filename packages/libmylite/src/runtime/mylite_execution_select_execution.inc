@@ -222,6 +222,9 @@ static bool expression_is_supported_row_scalar_system_function(
     if (generic_sys_function_kind(expression, &kind)) {
         return true;
     }
+    if (generic_spatial_function_kind(expression, &(enum mylite_spatial_function_kind){0})) {
+        return true;
+    }
     return generic_function_name_equals(expression, "GET_LOCK") ||
            generic_function_name_equals(expression, "IS_FREE_LOCK") ||
            generic_function_name_equals(expression, "IS_USED_LOCK") ||
@@ -240,6 +243,9 @@ static bool expression_contains_supported_row_scalar_system_function(
     const struct mylite_sql_ast_node *expression
 ) {
     if (expression_contains_sys_function(expression)) {
+        return true;
+    }
+    if (expression_contains_spatial_function(expression)) {
         return true;
     }
     return expression_contains_generic_function_named(expression, "GET_LOCK") ||
@@ -2124,6 +2130,12 @@ static int populate_row_scalar_expression_result_column_descriptor(
         descriptor->flags = MYLITE_RESULT_COLUMN_FLAG_BINARY;
         descriptor->nullable = true;
         return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_SPATIAL_FUNCTION:
+        return populate_spatial_function_result_column_descriptor(
+            database,
+            expression->spatial_function_kind,
+            descriptor
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_INET_ATON:
         populate_scalar_binary_numeric_result_column_descriptor(
             descriptor,

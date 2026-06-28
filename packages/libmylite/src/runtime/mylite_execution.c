@@ -44,6 +44,7 @@
 #include "mylite_rand.h"
 #include "mylite_regexp.h"
 #include "mylite_result.h"
+#include "mylite_spatial.h"
 #include "mylite_sqlite_registration.h"
 #include "mylite_statement_context.h"
 #include "mylite_string_base64.h"
@@ -1460,6 +1461,8 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_scalar_string_extended.inc"
 
 #include "mylite_execution_scalar_misc.inc"
+
+#include "mylite_execution_spatial_functions.inc"
 
 #include "mylite_execution_scalar_conversion.inc"
 

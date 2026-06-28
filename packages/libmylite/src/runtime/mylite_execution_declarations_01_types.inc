@@ -1596,6 +1596,7 @@ enum planned_row_scalar_expression_kind {
     PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_SIZE = 121,
     PLANNED_ROW_SCALAR_EXPRESSION_JSON_STORAGE_FREE = 122,
     PLANNED_ROW_SCALAR_EXPRESSION_JSON_SEARCH = 123,
+    PLANNED_ROW_SCALAR_EXPRESSION_SPATIAL_FUNCTION = 124,
 };
 
 enum row_scalar_control_flow_bind_mode {
@@ -1786,6 +1787,7 @@ struct planned_row_scalar_expression {
     enum planned_row_scalar_base_conversion_kind base_conversion_kind;
     enum planned_row_scalar_numeric_extra_kind numeric_extra_kind;
     enum mylite_sys_function_kind sys_function_kind;
+    enum mylite_spatial_function_kind spatial_function_kind;
     bool numeric_extra_has_decimal_scale;
     size_t numeric_extra_decimal_scale;
     enum planned_window_function_kind window_function_kind;

@@ -103,13 +103,14 @@ static int test_expression_value_placeholders(void) {
             .message_part = "support",
         }
     );
-    failures += execute_error(
+    failures +=
+        execute_ok(database, "INSERT INTO spatial_values VALUES (ST_GeomFromText('POINT(1 1)'))");
+    failures += expect_scalar_text(
         database,
-        "INSERT INTO spatial_values VALUES (ST_GeomFromText('POINT(1 1)'))",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "support",
+        (struct expected_scalar_text){
+            .sql = "SELECT ST_AsText(g) FROM spatial_values",
+            .expected = "POINT(1 1)",
+            .context = "DML spatial constructor value",
         }
     );
     failures += execute_error(

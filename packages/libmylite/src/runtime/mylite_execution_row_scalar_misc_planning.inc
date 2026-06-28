@@ -1285,7 +1285,7 @@ static bool row_scalar_column_descriptor_is_supported(
         column_descriptor_is_binary_string_family(column) || column_descriptor_is_bit(column) ||
         column_descriptor_is_date(column) || column_descriptor_is_time(column) ||
         column_descriptor_is_datetime(column) || column_descriptor_is_timestamp(column) ||
-        column_descriptor_is_year(column)) {
+        column_descriptor_is_year(column) || column_descriptor_is_spatial(column)) {
         return true;
     }
     if (column_descriptor_is_approximate(column)) {
@@ -1298,8 +1298,8 @@ static bool row_scalar_column_descriptor_is_supported(
 
     set_unsupported_error(
         database,
-        "row-scalar SELECT supports only integer, DECIMAL, string, binary string, BIT, YEAR, and "
-        "temporal columns"
+        "row-scalar SELECT supports only integer, DECIMAL, string, binary string, BIT, YEAR, "
+        "temporal, and spatial columns"
     );
     return false;
 }
@@ -1538,6 +1538,7 @@ static bool row_scalar_expression_contains_context_expression_attempt(
            row_scalar_expression_contains_numeric_function(expression) ||
            row_scalar_expression_contains_base_conversion_function(expression) ||
            row_scalar_expression_contains_numeric_extra_function(expression) ||
+           expression_contains_spatial_function(expression) ||
            row_scalar_expression_contains_conversion_expression(expression) ||
            row_scalar_expression_contains_rand_function(expression) ||
            row_scalar_expression_contains_any_value_function(expression) ||
@@ -1732,6 +1733,7 @@ static bool row_scalar_expression_is_predicate_value_context_attempt(
     }
     if (is_row_scalar_control_flow_expression(node) ||
         generic_sys_function_kind(node, &sys_function_kind) ||
+        generic_spatial_function_kind(node, &(enum mylite_spatial_function_kind){0}) ||
         row_scalar_expression_is_string_function(node->kind) ||
         is_row_scalar_json_expression(node) || row_scalar_expression_is_rand_function(node) ||
         row_scalar_numeric_function_kind_is_supported(node->kind) ||

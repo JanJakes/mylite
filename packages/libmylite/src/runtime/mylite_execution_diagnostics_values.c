@@ -232,6 +232,15 @@ void mylite_execution_diagnostics_set_spatial_bad_null_error(
     );
 }
 
+void mylite_execution_diagnostics_set_cannot_get_geometry_object_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_cannot_get_geometry_object,
+        "22003",
+        "Cannot get geometry object from data you send to the GEOMETRY field"
+    );
+}
+
 void mylite_execution_diagnostics_set_generated_column_value_error(
     struct mylite_db *database,
     const char *column_name,

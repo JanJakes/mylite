@@ -23,6 +23,7 @@
 #include "mylite_rand.h"
 #include "mylite_random_bytes.h"
 #include "mylite_regexp.h"
+#include "mylite_spatial_functions.h"
 #include "mylite_sqlite_registration.h"
 #include "mylite_statistical_aggregate.h"
 #include "mylite_string_base64.h"
@@ -332,6 +333,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_named_lock_functions(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_spatial_functions(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_system_functions(sqlite);

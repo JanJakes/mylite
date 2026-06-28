@@ -197,6 +197,15 @@ static int plan_row_scalar_numeric_extra_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_spatial_expression(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_numeric_extra_value_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *argument,

@@ -509,6 +509,10 @@
     COMMAND mylite_runtime_json_row_scalar_contexts_test
   )
   add_test(
+    NAME libmylite.runtime.spatial_basic_functions
+    COMMAND mylite_runtime_spatial_basic_functions_test
+  )
+  add_test(
     NAME libmylite.runtime.scalar_comparison_projection
     COMMAND mylite_runtime_scalar_comparison_projection_test
   )

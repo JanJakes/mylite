@@ -163,6 +163,7 @@ static bool is_scalar_function_projection_expression(const struct mylite_sql_ast
     return (is_numeric_scalar_function_projection_expression(expression) ||
             is_string_scalar_function_projection_expression(expression) ||
             is_named_lock_and_info_projection_expression(expression) ||
+            generic_spatial_function_kind(expression, &(enum mylite_spatial_function_kind){0}) ||
             is_scalar_conversion_projection_expression(expression) ||
             is_temporal_scalar_function_projection_expression(expression) ||
             is_json_scalar_function_projection_expression(expression)) != 0;

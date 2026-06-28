@@ -2098,7 +2098,7 @@ static int convert_update_column_value(
         );
     }
     if (column_descriptor_is_spatial(column)) {
-        set_unsupported_error(database, "Spatial DML supports only NULL or DEFAULT values");
+        set_cannot_get_geometry_object_error(database);
         return MYLITE_ERROR;
     }
 

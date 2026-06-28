@@ -2532,6 +2532,15 @@ static enum planned_row_scalar_field_domain row_scalar_control_flow_argument_dom
     case PLANNED_ROW_SCALAR_EXPRESSION_SYS_FUNCTION:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_PRETTY:
         return PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING;
+    case PLANNED_ROW_SCALAR_EXPRESSION_SPATIAL_FUNCTION:
+        if (mylite_spatial_function_returns_integer(expression->spatial_function_kind) ||
+            mylite_spatial_function_returns_double(expression->spatial_function_kind)) {
+            return PLANNED_ROW_SCALAR_FIELD_DOMAIN_INTEGER;
+        }
+        if (mylite_spatial_function_returns_text(expression->spatial_function_kind)) {
+            return PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING;
+        }
+        break;
     case PLANNED_ROW_SCALAR_EXPRESSION_NUMERIC_EXTRA:
         if (expression->numeric_extra_kind == PLANNED_ROW_SCALAR_NUMERIC_EXTRA_FORMAT) {
             return PLANNED_ROW_SCALAR_FIELD_DOMAIN_STRING;

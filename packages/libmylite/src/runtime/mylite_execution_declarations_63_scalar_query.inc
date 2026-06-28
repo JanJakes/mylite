@@ -383,6 +383,26 @@ static bool generic_system_function_name_equals(
 static const struct mylite_sql_ast_node *generic_system_function_arguments(
     const struct mylite_sql_ast_node *expression
 );
+static bool generic_spatial_function_kind(
+    const struct mylite_sql_ast_node *expression,
+    enum mylite_spatial_function_kind *out_kind
+);
+static bool expression_contains_spatial_function(const struct mylite_sql_ast_node *expression);
+static int spatial_function_session_scalar_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell
+);
+static int spatial_function_session_scalar_result(
+    struct mylite_db *database,
+    const struct mylite_spatial_result *result,
+    struct session_scalar_cell *out_cell
+);
+static int populate_spatial_function_result_column_descriptor(
+    struct mylite_db *database,
+    enum mylite_spatial_function_kind kind,
+    struct mylite_result_column_descriptor *descriptor
+);
 static int generic_named_lock_get_value(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *arguments,

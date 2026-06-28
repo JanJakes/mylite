@@ -391,6 +391,9 @@ static int convert_dml_scalar_cell_for_column(
             out_value
         );
     }
+    if (column_descriptor_is_spatial(column)) {
+        return convert_dml_scalar_cell_spatial_value(database, cell, out_value);
+    }
 
     rc = copy_dml_scalar_cell_text(
         database,
@@ -517,12 +520,6 @@ static int convert_dml_scalar_cell_for_column(
         free(text);
         return rc;
     }
-    if (column_descriptor_is_spatial(column)) {
-        free(text);
-        set_unsupported_error(database, "Spatial DML supports only NULL or DEFAULT values");
-        return MYLITE_ERROR;
-    }
-
     rc = convert_integer_string_text(
         database,
         text,
@@ -534,6 +531,33 @@ static int convert_dml_scalar_cell_for_column(
     );
     free(text);
     return rc;
+}
+
+static int convert_dml_scalar_cell_spatial_value(
+    struct mylite_db *database,
+    const struct session_scalar_cell *cell,
+    struct planned_value *out_value
+) {
+    char *bytes = NULL;
+    size_t byte_count = 0U;
+    int rc = copy_dml_scalar_cell_text(
+        database,
+        cell,
+        "Spatial DML supports only geometry values",
+        true,
+        &bytes,
+        &byte_count
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (!mylite_spatial_geometry_bytes_are_valid(bytes, byte_count)) {
+        free(bytes);
+        set_cannot_get_geometry_object_error(database);
+        return MYLITE_ERROR;
+    }
+    return assign_blob_value(database, bytes, byte_count, out_value);
 }
 
 static int convert_dml_scalar_cell_text_value(
@@ -1425,7 +1449,7 @@ static int convert_insert_value_by_descriptor(
     if (column_descriptor_is_spatial(column)) {
         (void)row_number;
         (void)ignore_errors;
-        set_unsupported_error(database, "Spatial DML supports only NULL or DEFAULT values");
+        set_cannot_get_geometry_object_error(database);
         return MYLITE_ERROR;
     }
 

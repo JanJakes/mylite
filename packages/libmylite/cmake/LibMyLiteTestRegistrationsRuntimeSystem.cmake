@@ -513,6 +513,10 @@
     COMMAND mylite_runtime_spatial_basic_functions_test
   )
   add_test(
+    NAME libmylite.runtime.spatial_measure_accessor_functions
+    COMMAND mylite_runtime_spatial_measure_accessor_functions_test
+  )
+  add_test(
     NAME libmylite.runtime.scalar_comparison_projection
     COMMAND mylite_runtime_scalar_comparison_projection_test
   )

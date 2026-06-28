@@ -16,6 +16,7 @@ enum {
     spatial_internal_srid_size = 4,
     spatial_wkb_header_size = 5,
     spatial_coordinate_size = 16,
+    spatial_rectangle_ring_point_count = 5,
     spatial_byte_bit_count = 8,
     spatial_u32_second_byte_shift = 8,
     spatial_u32_third_byte_shift = 16,
@@ -25,10 +26,13 @@ enum {
     spatial_diagnostic_function_name_capacity = 64,
     spatial_double_text_capacity = 64,
     mysql_error_native_function_parameter_count = 1582,
+    mysql_error_wrong_arguments = 1210,
     mysql_error_invalid_gis_data = 3037,
     mysql_error_unexpected_geometry_type = 3516,
     mysql_error_srs_not_found = 3548,
 };
+
+static const double spatial_shoelace_area_divisor = 2.0;
 
 struct spatial_function_descriptor {
     const char *name;
@@ -53,6 +57,26 @@ struct spatial_wkt_parser {
     size_t offset;
     const char *function_name;
     struct mylite_spatial_error *error;
+};
+
+struct spatial_geometry_view {
+    const unsigned char *wkb;
+    size_t wkb_size;
+    enum mylite_spatial_geometry_type type;
+    uint32_t srid;
+};
+
+struct spatial_point {
+    double coordinate_x;
+    double coordinate_y;
+};
+
+struct spatial_box {
+    double min_x;
+    double min_y;
+    double max_x;
+    double max_y;
+    bool has_value;
 };
 
 struct spatial_type_name {
@@ -108,6 +132,33 @@ static const struct spatial_function_descriptor spatial_function_descriptors[] =
     {"ST_MultiPolygonFromWKB", MYLITE_SPATIAL_FUNCTION_ST_MULTIPOLYGONFROMWKB},
     {"ST_GeomCollFromWKB", MYLITE_SPATIAL_FUNCTION_ST_GEOMCOLLFROMWKB},
     {"ST_GeometryCollectionFromWKB", MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYCOLLECTIONFROMWKB},
+    {"ST_Dimension", MYLITE_SPATIAL_FUNCTION_ST_DIMENSION},
+    {"ST_IsEmpty", MYLITE_SPATIAL_FUNCTION_ST_ISEMPTY},
+    {"ST_IsClosed", MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED},
+    {"ST_NumGeometries", MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES},
+    {"ST_GeometryN", MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYN},
+    {"ST_NumPoints", MYLITE_SPATIAL_FUNCTION_ST_NUMPOINTS},
+    {"ST_PointN", MYLITE_SPATIAL_FUNCTION_ST_POINTN},
+    {"ST_StartPoint", MYLITE_SPATIAL_FUNCTION_ST_STARTPOINT},
+    {"ST_EndPoint", MYLITE_SPATIAL_FUNCTION_ST_ENDPOINT},
+    {"ST_ExteriorRing", MYLITE_SPATIAL_FUNCTION_ST_EXTERIORRING},
+    {"ST_InteriorRingN", MYLITE_SPATIAL_FUNCTION_ST_INTERIORRINGN},
+    {"ST_NumInteriorRing", MYLITE_SPATIAL_FUNCTION_ST_NUMINTERIORRING},
+    {"ST_NumInteriorRings", MYLITE_SPATIAL_FUNCTION_ST_NUMINTERIORRINGS},
+    {"ST_Length", MYLITE_SPATIAL_FUNCTION_ST_LENGTH},
+    {"ST_Area", MYLITE_SPATIAL_FUNCTION_ST_AREA},
+    {"ST_Envelope", MYLITE_SPATIAL_FUNCTION_ST_ENVELOPE},
+    {"ST_SwapXY", MYLITE_SPATIAL_FUNCTION_ST_SWAPXY},
+    {"ST_MakeEnvelope", MYLITE_SPATIAL_FUNCTION_ST_MAKEENVELOPE},
+    {"MBRContains", MYLITE_SPATIAL_FUNCTION_MBRCONTAINS},
+    {"MBRCoveredBy", MYLITE_SPATIAL_FUNCTION_MBRCOVEREDBY},
+    {"MBRCovers", MYLITE_SPATIAL_FUNCTION_MBRCOVERS},
+    {"MBRDisjoint", MYLITE_SPATIAL_FUNCTION_MBRDISJOINT},
+    {"MBREquals", MYLITE_SPATIAL_FUNCTION_MBREQUALS},
+    {"MBRIntersects", MYLITE_SPATIAL_FUNCTION_MBRINTERSECTS},
+    {"MBROverlaps", MYLITE_SPATIAL_FUNCTION_MBROVERLAPS},
+    {"MBRTouches", MYLITE_SPATIAL_FUNCTION_MBRTOUCHES},
+    {"MBRWithin", MYLITE_SPATIAL_FUNCTION_MBRWITHIN},
 };
 
 static int evaluate_point_constructor(
@@ -172,6 +223,104 @@ static int evaluate_point_coordinate(
     struct mylite_spatial_result *out_result,
     struct mylite_spatial_error *error
 );
+static int evaluate_dimension(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_is_empty(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_is_closed(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_num_geometries(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_geometry_n(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_num_points(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_line_point_accessor(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_polygon_ring_accessor(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_length(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_area(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_envelope(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_swap_xy(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_make_envelope(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_mbr_predicate(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
 static bool function_name_matches(const char *name, size_t name_size, const char *expected);
 static bool function_kind_is_from_text(enum mylite_spatial_function_kind kind);
 static bool function_kind_is_from_wkb(enum mylite_spatial_function_kind kind);
@@ -204,6 +353,7 @@ static int set_unexpected_geometry_type_error(
     enum mylite_spatial_geometry_type actual_type,
     const char *function_name
 );
+static int set_wrong_arguments_error(struct mylite_spatial_error *error, const char *function_name);
 static int set_parameter_count_error(
     struct mylite_spatial_error *error,
     enum mylite_spatial_function_kind kind
@@ -228,6 +378,13 @@ static int argument_numeric(
 static int argument_srid(
     const struct mylite_spatial_argument *argument,
     uint32_t *out_srid,
+    bool *out_is_null,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int argument_index(
+    const struct mylite_spatial_argument *argument,
+    uint32_t *out_index,
     bool *out_is_null,
     struct mylite_spatial_error *error,
     const char *function_name
@@ -268,6 +425,23 @@ static int make_point_internal_geometry(
     unsigned char **out_bytes,
     size_t *out_byte_count,
     struct mylite_spatial_error *error
+);
+static int make_linestring_internal_geometry(
+    const struct spatial_point *points,
+    uint32_t point_count,
+    unsigned char **out_bytes,
+    size_t *out_byte_count,
+    struct mylite_spatial_error *error
+);
+static int make_envelope_internal_geometry(
+    const struct spatial_box *box,
+    unsigned char **out_bytes,
+    size_t *out_byte_count,
+    struct mylite_spatial_error *error
+);
+static int append_polygon_rectangle_wkb(
+    struct spatial_buffer *buffer,
+    const struct spatial_box *box
 );
 static int append_internal_prefix(struct spatial_buffer *buffer, uint32_t srid);
 static int spatial_buffer_append(struct spatial_buffer *buffer, const void *bytes, size_t size);
@@ -343,6 +517,89 @@ static int geometry_point_coordinates(
     double *out_y,
     struct mylite_spatial_error *error,
     const char *function_name
+);
+static int read_single_geometry_argument(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct spatial_geometry_view *out_geometry,
+    bool *out_is_null,
+    struct mylite_spatial_error *error
+);
+static int read_two_geometry_arguments(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct spatial_geometry_view *out_left,
+    struct spatial_geometry_view *out_right,
+    bool *out_is_null,
+    struct mylite_spatial_error *error
+);
+static bool geometry_type_is_empty_collection(
+    const struct spatial_geometry_view *geometry,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int wkb_dimension_at(
+    struct spatial_wkb_cursor *cursor,
+    int *out_dimension,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int wkb_bounds_at(
+    struct spatial_wkb_cursor *cursor,
+    struct spatial_box *box,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int wkb_length_at(
+    struct spatial_wkb_cursor *cursor,
+    double *out_length,
+    bool *out_supported,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int wkb_area_at(
+    struct spatial_wkb_cursor *cursor,
+    double *out_area,
+    bool *out_supported,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int wkb_swap_xy_at(
+    struct spatial_wkb_cursor *cursor,
+    struct spatial_buffer *out_wkb,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int line_point_from_wkb(
+    const struct spatial_geometry_view *geometry,
+    uint32_t point_index,
+    struct spatial_point *out_point,
+    bool *out_found,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int polygon_ring_from_wkb(
+    const struct spatial_geometry_view *geometry,
+    uint32_t ring_index,
+    unsigned char **out_bytes,
+    size_t *out_byte_count,
+    bool *out_found,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static void spatial_box_include_point(
+    struct spatial_box *box,
+    double coordinate_x,
+    double coordinate_y
+);
+static bool spatial_box_equals(const struct spatial_box *left, const struct spatial_box *right);
+static bool spatial_box_covers(const struct spatial_box *left, const struct spatial_box *right);
+static bool spatial_box_intersects(const struct spatial_box *left, const struct spatial_box *right);
+static bool spatial_box_interiors_intersect(
+    const struct spatial_box *left,
+    const struct spatial_box *right
 );
 static int append_wkb_as_wkt(
     struct spatial_buffer *buffer,
@@ -479,7 +736,15 @@ bool mylite_spatial_function_is_constructor(enum mylite_spatial_function_kind ki
 
 bool mylite_spatial_function_returns_geometry(enum mylite_spatial_function_kind kind) {
     return mylite_spatial_function_is_constructor(kind) || function_kind_is_from_text(kind) ||
-           function_kind_is_from_wkb(kind);
+           function_kind_is_from_wkb(kind) || kind == MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYN ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_POINTN ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_STARTPOINT ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_ENDPOINT ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_EXTERIORRING ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_INTERIORRINGN ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_ENVELOPE ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_SWAPXY ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_MAKEENVELOPE;
 }
 
 bool mylite_spatial_function_returns_text(enum mylite_spatial_function_kind kind) {
@@ -492,11 +757,21 @@ bool mylite_spatial_function_returns_wkb(enum mylite_spatial_function_kind kind)
 }
 
 bool mylite_spatial_function_returns_integer(enum mylite_spatial_function_kind kind) {
-    return kind == MYLITE_SPATIAL_FUNCTION_ST_SRID;
+    return kind == MYLITE_SPATIAL_FUNCTION_ST_SRID ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_DIMENSION ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_ISEMPTY ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_NUMPOINTS ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_NUMINTERIORRING ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_NUMINTERIORRINGS ||
+           (kind >= MYLITE_SPATIAL_FUNCTION_MBRCONTAINS && kind <= MYLITE_SPATIAL_FUNCTION_MBRWITHIN
+           );
 }
 
 bool mylite_spatial_function_returns_double(enum mylite_spatial_function_kind kind) {
-    return kind == MYLITE_SPATIAL_FUNCTION_ST_X || kind == MYLITE_SPATIAL_FUNCTION_ST_Y;
+    return kind == MYLITE_SPATIAL_FUNCTION_ST_X || kind == MYLITE_SPATIAL_FUNCTION_ST_Y ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_LENGTH || kind == MYLITE_SPATIAL_FUNCTION_ST_AREA;
 }
 
 int mylite_spatial_evaluate(
@@ -548,6 +823,53 @@ int mylite_spatial_evaluate(
     case MYLITE_SPATIAL_FUNCTION_ST_X:
     case MYLITE_SPATIAL_FUNCTION_ST_Y:
         return evaluate_point_coordinate(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_DIMENSION:
+        return evaluate_dimension(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_ISEMPTY:
+        return evaluate_is_empty(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED:
+        return evaluate_is_closed(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES:
+        return evaluate_num_geometries(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYN:
+        return evaluate_geometry_n(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_NUMPOINTS:
+        return evaluate_num_points(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_POINTN:
+    case MYLITE_SPATIAL_FUNCTION_ST_STARTPOINT:
+    case MYLITE_SPATIAL_FUNCTION_ST_ENDPOINT:
+        return evaluate_line_point_accessor(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_EXTERIORRING:
+    case MYLITE_SPATIAL_FUNCTION_ST_INTERIORRINGN:
+    case MYLITE_SPATIAL_FUNCTION_ST_NUMINTERIORRING:
+    case MYLITE_SPATIAL_FUNCTION_ST_NUMINTERIORRINGS:
+        return evaluate_polygon_ring_accessor(
+            kind,
+            arguments,
+            argument_count,
+            out_result,
+            out_error
+        );
+    case MYLITE_SPATIAL_FUNCTION_ST_LENGTH:
+        return evaluate_length(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_AREA:
+        return evaluate_area(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_ENVELOPE:
+        return evaluate_envelope(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_SWAPXY:
+        return evaluate_swap_xy(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_MAKEENVELOPE:
+        return evaluate_make_envelope(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_MBRCONTAINS:
+    case MYLITE_SPATIAL_FUNCTION_MBRCOVEREDBY:
+    case MYLITE_SPATIAL_FUNCTION_MBRCOVERS:
+    case MYLITE_SPATIAL_FUNCTION_MBRDISJOINT:
+    case MYLITE_SPATIAL_FUNCTION_MBREQUALS:
+    case MYLITE_SPATIAL_FUNCTION_MBRINTERSECTS:
+    case MYLITE_SPATIAL_FUNCTION_MBROVERLAPS:
+    case MYLITE_SPATIAL_FUNCTION_MBRTOUCHES:
+    case MYLITE_SPATIAL_FUNCTION_MBRWITHIN:
+        return evaluate_mbr_predicate(kind, arguments, argument_count, out_result, out_error);
     default:
         break;
     }
@@ -1092,6 +1414,825 @@ static int evaluate_point_coordinate(
     );
 }
 
+static int evaluate_dimension(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view geometry = {0};
+    struct spatial_wkb_cursor cursor = {0};
+    bool is_null = false;
+    int dimension = -1;
+    int rc =
+        read_single_geometry_argument(kind, arguments, argument_count, &geometry, &is_null, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null) {
+        return assign_null_result(out_result);
+    }
+    cursor = (struct spatial_wkb_cursor){.bytes = geometry.wkb, .size = geometry.wkb_size};
+    rc = wkb_dimension_at(&cursor, &dimension, error, mylite_spatial_function_name(kind));
+    if (rc != 0) {
+        return rc;
+    }
+    if (dimension < 0) {
+        return assign_null_result(out_result);
+    }
+    return assign_integer_result(out_result, dimension);
+}
+
+static int evaluate_is_empty(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view geometry = {0};
+    bool is_null = false;
+    int rc =
+        read_single_geometry_argument(kind, arguments, argument_count, &geometry, &is_null, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null) {
+        return assign_null_result(out_result);
+    }
+    return assign_integer_result(
+        out_result,
+        geometry_type_is_empty_collection(&geometry, error, mylite_spatial_function_name(kind)) ? 1
+                                                                                                : 0
+    );
+}
+
+static int evaluate_is_closed(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view geometry = {0};
+    struct spatial_wkb_cursor cursor = {0};
+    bool is_null = false;
+    bool little_endian = false;
+    enum mylite_spatial_geometry_type type = MYLITE_SPATIAL_GEOMETRY_NONE;
+    uint32_t line_count = 1U;
+    int rc =
+        read_single_geometry_argument(kind, arguments, argument_count, &geometry, &is_null, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null ||
+        geometry_type_is_empty_collection(&geometry, error, mylite_spatial_function_name(kind))) {
+        return assign_null_result(out_result);
+    }
+    if (geometry.type != MYLITE_SPATIAL_GEOMETRY_LINESTRING &&
+        geometry.type != MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING) {
+        return assign_null_result(out_result);
+    }
+    cursor = (struct spatial_wkb_cursor){.bytes = geometry.wkb, .size = geometry.wkb_size};
+    rc = cursor_read_header(
+        &cursor,
+        &little_endian,
+        &type,
+        error,
+        mylite_spatial_function_name(kind)
+    );
+    if (rc != 0) {
+        return rc;
+    }
+    if (type == MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING) {
+        rc = cursor_read_u32(
+            &cursor,
+            little_endian,
+            &line_count,
+            error,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    for (uint32_t line_index = 0U; rc == 0 && line_index < line_count; ++line_index) {
+        bool line_little_endian = little_endian;
+        uint32_t point_count = 0U;
+        struct spatial_point first = {0};
+        struct spatial_point last = {0};
+
+        if (type == MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING) {
+            enum mylite_spatial_geometry_type nested_type = MYLITE_SPATIAL_GEOMETRY_NONE;
+
+            rc = cursor_read_header(
+                &cursor,
+                &line_little_endian,
+                &nested_type,
+                error,
+                mylite_spatial_function_name(kind)
+            );
+            if (rc == 0 && nested_type != MYLITE_SPATIAL_GEOMETRY_LINESTRING) {
+                rc = set_invalid_gis_data_error(error, mylite_spatial_function_name(kind));
+            }
+        }
+        if (rc == 0) {
+            rc = cursor_read_u32(
+                &cursor,
+                line_little_endian,
+                &point_count,
+                error,
+                mylite_spatial_function_name(kind)
+            );
+        }
+        for (uint32_t point_index = 0U; rc == 0 && point_index < point_count; ++point_index) {
+            struct spatial_point point = {0};
+
+            rc = cursor_read_double(
+                &cursor,
+                line_little_endian,
+                &point.coordinate_x,
+                error,
+                mylite_spatial_function_name(kind)
+            );
+            if (rc == 0) {
+                rc = cursor_read_double(
+                    &cursor,
+                    line_little_endian,
+                    &point.coordinate_y,
+                    error,
+                    mylite_spatial_function_name(kind)
+                );
+            }
+            if (rc == 0 && point_index == 0U) {
+                first = point;
+            }
+            if (rc == 0) {
+                last = point;
+            }
+        }
+        if (rc == 0 && (point_count == 0U || first.coordinate_x != last.coordinate_x ||
+                        first.coordinate_y != last.coordinate_y)) {
+            return assign_integer_result(out_result, 0);
+        }
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    return assign_integer_result(out_result, 1);
+}
+
+static int evaluate_num_geometries(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view geometry = {0};
+    struct spatial_wkb_cursor cursor = {0};
+    bool is_null = false;
+    bool little_endian = false;
+    enum mylite_spatial_geometry_type type = MYLITE_SPATIAL_GEOMETRY_NONE;
+    uint32_t count = 0U;
+    int rc =
+        read_single_geometry_argument(kind, arguments, argument_count, &geometry, &is_null, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null || geometry.type != MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION) {
+        return assign_null_result(out_result);
+    }
+    cursor = (struct spatial_wkb_cursor){.bytes = geometry.wkb, .size = geometry.wkb_size};
+    rc = cursor_read_header(
+        &cursor,
+        &little_endian,
+        &type,
+        error,
+        mylite_spatial_function_name(kind)
+    );
+    if (rc == 0) {
+        rc = cursor_read_u32(
+            &cursor,
+            little_endian,
+            &count,
+            error,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    return assign_integer_result(out_result, count);
+}
+
+static int evaluate_geometry_n(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view geometry = {0};
+    struct spatial_wkb_cursor cursor = {0};
+    bool is_null = false;
+    bool index_is_null = false;
+    bool little_endian = false;
+    enum mylite_spatial_geometry_type type = MYLITE_SPATIAL_GEOMETRY_NONE;
+    uint32_t count = 0U;
+    uint32_t requested_index = 0U;
+    int rc = validate_argument_count(kind, argument_count, 2U, 2U, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    rc = read_single_geometry_argument(kind, arguments, 1U, &geometry, &is_null, error);
+    if (rc == 0) {
+        rc = argument_index(
+            &arguments[1],
+            &requested_index,
+            &index_is_null,
+            error,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null || index_is_null || requested_index == 0U ||
+        geometry.type != MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION) {
+        return assign_null_result(out_result);
+    }
+    cursor = (struct spatial_wkb_cursor){.bytes = geometry.wkb, .size = geometry.wkb_size};
+    rc = cursor_read_header(
+        &cursor,
+        &little_endian,
+        &type,
+        error,
+        mylite_spatial_function_name(kind)
+    );
+    if (rc == 0) {
+        rc = cursor_read_u32(
+            &cursor,
+            little_endian,
+            &count,
+            error,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    for (uint32_t index = 1U; rc == 0 && index <= count; ++index) {
+        size_t start = cursor.offset;
+        enum mylite_spatial_geometry_type nested_type = MYLITE_SPATIAL_GEOMETRY_NONE;
+
+        rc = validate_wkb_at(&cursor, &nested_type, error, mylite_spatial_function_name(kind));
+        if (rc == 0 && index == requested_index) {
+            unsigned char *bytes = NULL;
+            size_t byte_count = 0U;
+
+            rc = make_internal_geometry_from_wkb(
+                geometry.wkb + start,
+                cursor.offset - start,
+                geometry.srid,
+                &bytes,
+                &byte_count,
+                error
+            );
+            if (rc != 0) {
+                free(bytes);
+                return rc;
+            }
+            return assign_owned_bytes_result(
+                out_result,
+                MYLITE_SPATIAL_RESULT_GEOMETRY,
+                bytes,
+                byte_count
+            );
+        }
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    return assign_null_result(out_result);
+}
+
+static int evaluate_num_points(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view geometry = {0};
+    struct spatial_wkb_cursor cursor = {0};
+    bool is_null = false;
+    bool little_endian = false;
+    enum mylite_spatial_geometry_type type = MYLITE_SPATIAL_GEOMETRY_NONE;
+    uint32_t point_count = 0U;
+    int rc =
+        read_single_geometry_argument(kind, arguments, argument_count, &geometry, &is_null, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null || geometry.type != MYLITE_SPATIAL_GEOMETRY_LINESTRING) {
+        return assign_null_result(out_result);
+    }
+    cursor = (struct spatial_wkb_cursor){.bytes = geometry.wkb, .size = geometry.wkb_size};
+    rc = cursor_read_header(
+        &cursor,
+        &little_endian,
+        &type,
+        error,
+        mylite_spatial_function_name(kind)
+    );
+    if (rc == 0) {
+        rc = cursor_read_u32(
+            &cursor,
+            little_endian,
+            &point_count,
+            error,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    return assign_integer_result(out_result, point_count);
+}
+
+static int evaluate_line_point_accessor(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view geometry = {0};
+    struct spatial_point point = {0};
+    bool is_null = false;
+    bool index_is_null = false;
+    bool found = false;
+    uint32_t point_index = 1U;
+    unsigned char *bytes = NULL;
+    size_t byte_count = 0U;
+    int rc = 0;
+
+    if (kind == MYLITE_SPATIAL_FUNCTION_ST_POINTN) {
+        rc = validate_argument_count(kind, argument_count, 2U, 2U, error);
+    } else {
+        rc = validate_argument_count(kind, argument_count, 1U, 1U, error);
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    rc = read_single_geometry_argument(kind, arguments, 1U, &geometry, &is_null, error);
+    if (rc == 0 && kind == MYLITE_SPATIAL_FUNCTION_ST_POINTN) {
+        rc = argument_index(
+            &arguments[1],
+            &point_index,
+            &index_is_null,
+            error,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null || index_is_null || point_index == 0U ||
+        geometry.type != MYLITE_SPATIAL_GEOMETRY_LINESTRING) {
+        return assign_null_result(out_result);
+    }
+    if (kind == MYLITE_SPATIAL_FUNCTION_ST_ENDPOINT) {
+        point_index = UINT32_MAX;
+    }
+    rc = line_point_from_wkb(
+        &geometry,
+        point_index,
+        &point,
+        &found,
+        error,
+        mylite_spatial_function_name(kind)
+    );
+    if (rc != 0) {
+        return rc;
+    }
+    if (!found) {
+        return assign_null_result(out_result);
+    }
+    rc = make_point_internal_geometry(
+        point.coordinate_x,
+        point.coordinate_y,
+        &bytes,
+        &byte_count,
+        error
+    );
+    if (rc != 0) {
+        free(bytes);
+        return rc;
+    }
+    return assign_owned_bytes_result(out_result, MYLITE_SPATIAL_RESULT_GEOMETRY, bytes, byte_count);
+}
+
+static int evaluate_polygon_ring_accessor(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view geometry = {0};
+    struct spatial_wkb_cursor cursor = {0};
+    bool is_null = false;
+    bool index_is_null = false;
+    bool little_endian = false;
+    bool found = false;
+    enum mylite_spatial_geometry_type type = MYLITE_SPATIAL_GEOMETRY_NONE;
+    uint32_t ring_count = 0U;
+    uint32_t ring_index = 0U;
+    unsigned char *bytes = NULL;
+    size_t byte_count = 0U;
+    int rc = 0;
+
+    if (kind == MYLITE_SPATIAL_FUNCTION_ST_INTERIORRINGN) {
+        rc = validate_argument_count(kind, argument_count, 2U, 2U, error);
+    } else {
+        rc = validate_argument_count(kind, argument_count, 1U, 1U, error);
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    rc = read_single_geometry_argument(kind, arguments, 1U, &geometry, &is_null, error);
+    if (rc == 0 && kind == MYLITE_SPATIAL_FUNCTION_ST_INTERIORRINGN) {
+        rc = argument_index(
+            &arguments[1],
+            &ring_index,
+            &index_is_null,
+            error,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null || index_is_null || geometry.type != MYLITE_SPATIAL_GEOMETRY_POLYGON) {
+        return assign_null_result(out_result);
+    }
+    cursor = (struct spatial_wkb_cursor){.bytes = geometry.wkb, .size = geometry.wkb_size};
+    rc = cursor_read_header(
+        &cursor,
+        &little_endian,
+        &type,
+        error,
+        mylite_spatial_function_name(kind)
+    );
+    if (rc == 0) {
+        rc = cursor_read_u32(
+            &cursor,
+            little_endian,
+            &ring_count,
+            error,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    if (kind == MYLITE_SPATIAL_FUNCTION_ST_NUMINTERIORRING ||
+        kind == MYLITE_SPATIAL_FUNCTION_ST_NUMINTERIORRINGS) {
+        return assign_integer_result(out_result, ring_count == 0U ? 0 : (int64_t)ring_count - 1);
+    }
+    if (kind == MYLITE_SPATIAL_FUNCTION_ST_EXTERIORRING) {
+        ring_index = 0U;
+    }
+    if (kind == MYLITE_SPATIAL_FUNCTION_ST_INTERIORRINGN && ring_index == 0U) {
+        return assign_null_result(out_result);
+    }
+    rc = polygon_ring_from_wkb(
+        &geometry,
+        ring_index,
+        &bytes,
+        &byte_count,
+        &found,
+        error,
+        mylite_spatial_function_name(kind)
+    );
+    if (rc != 0) {
+        free(bytes);
+        return rc;
+    }
+    if (!found) {
+        return assign_null_result(out_result);
+    }
+    return assign_owned_bytes_result(out_result, MYLITE_SPATIAL_RESULT_GEOMETRY, bytes, byte_count);
+}
+
+static int evaluate_length(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view geometry = {0};
+    struct spatial_wkb_cursor cursor = {0};
+    bool is_null = false;
+    bool supported = false;
+    double length = 0.0;
+    int rc =
+        read_single_geometry_argument(kind, arguments, argument_count, &geometry, &is_null, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null ||
+        geometry_type_is_empty_collection(&geometry, error, mylite_spatial_function_name(kind))) {
+        return assign_null_result(out_result);
+    }
+    cursor = (struct spatial_wkb_cursor){.bytes = geometry.wkb, .size = geometry.wkb_size};
+    rc = wkb_length_at(&cursor, &length, &supported, error, mylite_spatial_function_name(kind));
+    if (rc != 0) {
+        return rc;
+    }
+    if (!supported) {
+        return assign_null_result(out_result);
+    }
+    return assign_double_result(out_result, length);
+}
+
+static int evaluate_area(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view geometry = {0};
+    struct spatial_wkb_cursor cursor = {0};
+    bool is_null = false;
+    bool supported = false;
+    double area = 0.0;
+    int rc =
+        read_single_geometry_argument(kind, arguments, argument_count, &geometry, &is_null, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null ||
+        geometry_type_is_empty_collection(&geometry, error, mylite_spatial_function_name(kind))) {
+        return assign_null_result(out_result);
+    }
+    cursor = (struct spatial_wkb_cursor){.bytes = geometry.wkb, .size = geometry.wkb_size};
+    rc = wkb_area_at(&cursor, &area, &supported, error, mylite_spatial_function_name(kind));
+    if (rc != 0) {
+        return rc;
+    }
+    if (!supported) {
+        return set_unexpected_geometry_type_error(
+            error,
+            "POLYGON/MULTIPOLYGON value",
+            geometry.type,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    return assign_double_result(out_result, area);
+}
+
+static int evaluate_envelope(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view geometry = {0};
+    struct spatial_wkb_cursor cursor = {0};
+    struct spatial_box box = {0};
+    bool is_null = false;
+    unsigned char *bytes = NULL;
+    size_t byte_count = 0U;
+    int rc =
+        read_single_geometry_argument(kind, arguments, argument_count, &geometry, &is_null, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null) {
+        return assign_null_result(out_result);
+    }
+    cursor = (struct spatial_wkb_cursor){.bytes = geometry.wkb, .size = geometry.wkb_size};
+    rc = wkb_bounds_at(&cursor, &box, error, mylite_spatial_function_name(kind));
+    if (rc == 0) {
+        rc = make_envelope_internal_geometry(&box, &bytes, &byte_count, error);
+    }
+    if (rc != 0) {
+        free(bytes);
+        return rc;
+    }
+    return assign_owned_bytes_result(out_result, MYLITE_SPATIAL_RESULT_GEOMETRY, bytes, byte_count);
+}
+
+static int evaluate_swap_xy(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view geometry = {0};
+    struct spatial_wkb_cursor cursor = {0};
+    struct spatial_buffer wkb = {0};
+    unsigned char *bytes = NULL;
+    size_t byte_count = 0U;
+    bool is_null = false;
+    int rc =
+        read_single_geometry_argument(kind, arguments, argument_count, &geometry, &is_null, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null) {
+        return assign_null_result(out_result);
+    }
+    cursor = (struct spatial_wkb_cursor){.bytes = geometry.wkb, .size = geometry.wkb_size};
+    rc = wkb_swap_xy_at(&cursor, &wkb, error, mylite_spatial_function_name(kind));
+    if (rc == 0) {
+        rc = make_internal_geometry_from_wkb(
+            wkb.bytes,
+            wkb.size,
+            geometry.srid,
+            &bytes,
+            &byte_count,
+            error
+        );
+    }
+    spatial_buffer_deinit(&wkb);
+    if (rc != 0) {
+        free(bytes);
+        return rc;
+    }
+    return assign_owned_bytes_result(out_result, MYLITE_SPATIAL_RESULT_GEOMETRY, bytes, byte_count);
+}
+
+static int evaluate_make_envelope(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view left = {0};
+    struct spatial_geometry_view right = {0};
+    struct spatial_point left_point = {0};
+    struct spatial_point right_point = {0};
+    struct spatial_box box = {0};
+    bool is_null = false;
+    unsigned char *bytes = NULL;
+    size_t byte_count = 0U;
+    int rc = read_two_geometry_arguments(
+        kind,
+        arguments,
+        argument_count,
+        &left,
+        &right,
+        &is_null,
+        error
+    );
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null) {
+        return assign_null_result(out_result);
+    }
+    if (left.type != MYLITE_SPATIAL_GEOMETRY_POINT || right.type != MYLITE_SPATIAL_GEOMETRY_POINT) {
+        return set_wrong_arguments_error(error, mylite_spatial_function_name(kind));
+    }
+    rc = geometry_point_coordinates(
+        left.wkb,
+        left.wkb_size,
+        &left_point.coordinate_x,
+        &left_point.coordinate_y,
+        error,
+        mylite_spatial_function_name(kind)
+    );
+    if (rc == 0) {
+        rc = geometry_point_coordinates(
+            right.wkb,
+            right.wkb_size,
+            &right_point.coordinate_x,
+            &right_point.coordinate_y,
+            error,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    if (rc == 0) {
+        spatial_box_include_point(&box, left_point.coordinate_x, left_point.coordinate_y);
+        spatial_box_include_point(&box, right_point.coordinate_x, right_point.coordinate_y);
+        rc = make_envelope_internal_geometry(&box, &bytes, &byte_count, error);
+    }
+    if (rc != 0) {
+        free(bytes);
+        return rc;
+    }
+    return assign_owned_bytes_result(out_result, MYLITE_SPATIAL_RESULT_GEOMETRY, bytes, byte_count);
+}
+
+static int evaluate_mbr_predicate(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view left = {0};
+    struct spatial_geometry_view right = {0};
+    struct spatial_wkb_cursor left_cursor = {0};
+    struct spatial_wkb_cursor right_cursor = {0};
+    struct spatial_box left_box = {0};
+    struct spatial_box right_box = {0};
+    bool is_null = false;
+    bool result = false;
+    int rc = read_two_geometry_arguments(
+        kind,
+        arguments,
+        argument_count,
+        &left,
+        &right,
+        &is_null,
+        error
+    );
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null) {
+        return assign_null_result(out_result);
+    }
+    left_cursor = (struct spatial_wkb_cursor){.bytes = left.wkb, .size = left.wkb_size};
+    right_cursor = (struct spatial_wkb_cursor){.bytes = right.wkb, .size = right.wkb_size};
+    rc = wkb_bounds_at(&left_cursor, &left_box, error, mylite_spatial_function_name(kind));
+    if (rc == 0) {
+        rc = wkb_bounds_at(&right_cursor, &right_box, error, mylite_spatial_function_name(kind));
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    if (!left_box.has_value || !right_box.has_value) {
+        if (kind == MYLITE_SPATIAL_FUNCTION_MBREQUALS) {
+            return assign_integer_result(
+                out_result,
+                left_box.has_value == right_box.has_value ? 1 : 0
+            );
+        }
+        return assign_null_result(out_result);
+    }
+
+    switch (kind) {
+    case MYLITE_SPATIAL_FUNCTION_MBRCONTAINS:
+        result = spatial_box_covers(&left_box, &right_box) &&
+                 (spatial_box_equals(&left_box, &right_box) ||
+                  (left_box.min_x < right_box.min_x && left_box.max_x > right_box.max_x &&
+                   left_box.min_y < right_box.min_y && left_box.max_y > right_box.max_y));
+        break;
+    case MYLITE_SPATIAL_FUNCTION_MBRWITHIN:
+        result = spatial_box_covers(&right_box, &left_box) &&
+                 (spatial_box_equals(&left_box, &right_box) ||
+                  (right_box.min_x < left_box.min_x && right_box.max_x > left_box.max_x &&
+                   right_box.min_y < left_box.min_y && right_box.max_y > left_box.max_y));
+        break;
+    case MYLITE_SPATIAL_FUNCTION_MBRCOVERS:
+        result = spatial_box_covers(&left_box, &right_box);
+        break;
+    case MYLITE_SPATIAL_FUNCTION_MBRCOVEREDBY:
+        result = spatial_box_covers(&right_box, &left_box);
+        break;
+    case MYLITE_SPATIAL_FUNCTION_MBRDISJOINT:
+        result = !spatial_box_intersects(&left_box, &right_box);
+        break;
+    case MYLITE_SPATIAL_FUNCTION_MBREQUALS:
+        result = spatial_box_equals(&left_box, &right_box);
+        break;
+    case MYLITE_SPATIAL_FUNCTION_MBRINTERSECTS:
+        result = spatial_box_intersects(&left_box, &right_box);
+        break;
+    case MYLITE_SPATIAL_FUNCTION_MBROVERLAPS:
+        result = spatial_box_interiors_intersect(&left_box, &right_box) &&
+                 !spatial_box_covers(&left_box, &right_box) &&
+                 !spatial_box_covers(&right_box, &left_box);
+        break;
+    case MYLITE_SPATIAL_FUNCTION_MBRTOUCHES:
+        result = spatial_box_intersects(&left_box, &right_box) &&
+                 !spatial_box_interiors_intersect(&left_box, &right_box) &&
+                 !spatial_box_equals(&left_box, &right_box);
+        break;
+    default:
+        break;
+    }
+    return assign_integer_result(out_result, result ? 1 : 0);
+}
+
 static bool function_name_matches(const char *name, size_t name_size, const char *expected) {
     size_t index = 0U;
 
@@ -1284,6 +2425,25 @@ static int set_unexpected_geometry_type_error(
     );
 }
 
+static int set_wrong_arguments_error(
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+
+    return set_spatial_error(
+        error,
+        mysql_error_wrong_arguments,
+        "HY000",
+        "Incorrect arguments to %s",
+        spatial_diagnostic_function_name(
+            function_name,
+            diagnostic_function_name,
+            sizeof(diagnostic_function_name)
+        )
+    );
+}
+
 static int set_parameter_count_error(
     struct mylite_spatial_error *error,
     enum mylite_spatial_function_kind kind
@@ -1397,6 +2557,33 @@ static int argument_srid(
         return set_invalid_gis_data_error(error, function_name);
     }
     *out_srid = (uint32_t)value;
+    return 0;
+}
+
+static int argument_index(
+    const struct mylite_spatial_argument *argument,
+    uint32_t *out_index,
+    bool *out_is_null,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    double value = 0.0;
+
+    if (out_index == NULL || out_is_null == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    *out_index = 0U;
+    *out_is_null = argument == NULL || argument->is_null;
+    if (*out_is_null) {
+        return 0;
+    }
+    if (argument_numeric(argument, &value, error, function_name) != 0) {
+        return -1;
+    }
+    if (value < 1.0 || value > (double)UINT32_MAX || floor(value) != value) {
+        return 0;
+    }
+    *out_index = (uint32_t)value;
     return 0;
 }
 
@@ -1520,6 +2707,823 @@ static int make_point_internal_geometry(
     *out_bytes = buffer.bytes;
     *out_byte_count = buffer.size;
     return 0;
+}
+
+static int make_linestring_internal_geometry(
+    const struct spatial_point *points,
+    uint32_t point_count,
+    unsigned char **out_bytes,
+    size_t *out_byte_count,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_buffer buffer = {0};
+    int rc = append_internal_prefix(&buffer, 0U);
+
+    if (rc == 0) {
+        rc = spatial_buffer_append_byte(&buffer, 1U);
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_u32_le(&buffer, (uint32_t)MYLITE_SPATIAL_GEOMETRY_LINESTRING);
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_u32_le(&buffer, point_count);
+    }
+    for (uint32_t index = 0U; rc == 0 && index < point_count; ++index) {
+        rc = spatial_buffer_append_double_le(&buffer, points[index].coordinate_x);
+        if (rc == 0) {
+            rc = spatial_buffer_append_double_le(&buffer, points[index].coordinate_y);
+        }
+    }
+    if (rc != 0) {
+        spatial_buffer_deinit(&buffer);
+        return set_nomem_error(error);
+    }
+    *out_bytes = buffer.bytes;
+    *out_byte_count = buffer.size;
+    return 0;
+}
+
+static int make_envelope_internal_geometry(
+    const struct spatial_box *box,
+    unsigned char **out_bytes,
+    size_t *out_byte_count,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_buffer buffer = {0};
+    int rc = append_internal_prefix(&buffer, 0U);
+
+    if (box == NULL) {
+        return set_invalid_gis_data_error(error, "st_envelope");
+    }
+    if (rc == 0 && !box->has_value) {
+        rc = spatial_buffer_append_byte(&buffer, 1U);
+        if (rc == 0) {
+            rc = spatial_buffer_append_u32_le(
+                &buffer,
+                (uint32_t)MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION
+            );
+        }
+        if (rc == 0) {
+            rc = spatial_buffer_append_u32_le(&buffer, 0U);
+        }
+    } else if (rc == 0 && box->min_x == box->max_x && box->min_y == box->max_y) {
+        spatial_buffer_deinit(&buffer);
+        return make_point_internal_geometry(
+            box->min_x,
+            box->min_y,
+            out_bytes,
+            out_byte_count,
+            error
+        );
+    } else if (rc == 0 && (box->min_x == box->max_x || box->min_y == box->max_y)) {
+        const struct spatial_point points[] = {
+            {.coordinate_x = box->min_x, .coordinate_y = box->min_y},
+            {.coordinate_x = box->max_x, .coordinate_y = box->max_y},
+        };
+
+        spatial_buffer_deinit(&buffer);
+        return make_linestring_internal_geometry(points, 2U, out_bytes, out_byte_count, error);
+    } else if (rc == 0) {
+        rc = append_polygon_rectangle_wkb(&buffer, box);
+    }
+    if (rc != 0) {
+        spatial_buffer_deinit(&buffer);
+        return set_nomem_error(error);
+    }
+    *out_bytes = buffer.bytes;
+    *out_byte_count = buffer.size;
+    return 0;
+}
+
+static int append_polygon_rectangle_wkb(
+    struct spatial_buffer *buffer,
+    const struct spatial_box *box
+) {
+    const struct spatial_point points[] = {
+        {.coordinate_x = box->min_x, .coordinate_y = box->min_y},
+        {.coordinate_x = box->max_x, .coordinate_y = box->min_y},
+        {.coordinate_x = box->max_x, .coordinate_y = box->max_y},
+        {.coordinate_x = box->min_x, .coordinate_y = box->max_y},
+        {.coordinate_x = box->min_x, .coordinate_y = box->min_y},
+    };
+    int rc = spatial_buffer_append_byte(buffer, 1U);
+
+    if (rc == 0) {
+        rc = spatial_buffer_append_u32_le(buffer, (uint32_t)MYLITE_SPATIAL_GEOMETRY_POLYGON);
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_u32_le(buffer, 1U);
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_u32_le(buffer, spatial_rectangle_ring_point_count);
+    }
+    for (size_t index = 0U; rc == 0 && index < sizeof(points) / sizeof(points[0]); ++index) {
+        rc = spatial_buffer_append_double_le(buffer, points[index].coordinate_x);
+        if (rc == 0) {
+            rc = spatial_buffer_append_double_le(buffer, points[index].coordinate_y);
+        }
+    }
+    return rc;
+}
+
+static int wkb_length_at(
+    struct spatial_wkb_cursor *cursor,
+    double *out_length,
+    bool *out_supported,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    bool little_endian = false;
+    enum mylite_spatial_geometry_type type = MYLITE_SPATIAL_GEOMETRY_NONE;
+    uint32_t count = 0U;
+    int rc = cursor_read_header(cursor, &little_endian, &type, error, function_name);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (type == MYLITE_SPATIAL_GEOMETRY_LINESTRING) {
+        struct spatial_point previous = {0};
+
+        *out_supported = true;
+        rc = cursor_read_u32(cursor, little_endian, &count, error, function_name);
+        for (uint32_t index = 0U; rc == 0 && index < count; ++index) {
+            struct spatial_point current = {0};
+
+            rc = cursor_read_double(
+                cursor,
+                little_endian,
+                &current.coordinate_x,
+                error,
+                function_name
+            );
+            if (rc == 0) {
+                rc = cursor_read_double(
+                    cursor,
+                    little_endian,
+                    &current.coordinate_y,
+                    error,
+                    function_name
+                );
+            }
+            if (rc == 0 && index != 0U) {
+                double delta_x = current.coordinate_x - previous.coordinate_x;
+                double delta_y = current.coordinate_y - previous.coordinate_y;
+
+                *out_length += sqrt((delta_x * delta_x) + (delta_y * delta_y));
+            }
+            previous = current;
+        }
+        return rc;
+    }
+    if (type == MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING) {
+        *out_supported = true;
+        rc = cursor_read_u32(cursor, little_endian, &count, error, function_name);
+        for (uint32_t index = 0U; rc == 0 && index < count; ++index) {
+            rc = wkb_length_at(cursor, out_length, out_supported, error, function_name);
+        }
+        return rc;
+    }
+    (void)count;
+    return 0;
+}
+
+static int wkb_area_at(
+    struct spatial_wkb_cursor *cursor,
+    double *out_area,
+    bool *out_supported,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    bool little_endian = false;
+    enum mylite_spatial_geometry_type type = MYLITE_SPATIAL_GEOMETRY_NONE;
+    uint32_t count = 0U;
+    int rc = cursor_read_header(cursor, &little_endian, &type, error, function_name);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (type == MYLITE_SPATIAL_GEOMETRY_POLYGON) {
+        double polygon_area = 0.0;
+
+        *out_supported = true;
+        rc = cursor_read_u32(cursor, little_endian, &count, error, function_name);
+        for (uint32_t ring_index = 0U; rc == 0 && ring_index < count; ++ring_index) {
+            uint32_t point_count = 0U;
+            struct spatial_point first = {0};
+            struct spatial_point previous = {0};
+            double ring_twice_area = 0.0;
+
+            rc = cursor_read_u32(cursor, little_endian, &point_count, error, function_name);
+            for (uint32_t point_index = 0U; rc == 0 && point_index < point_count; ++point_index) {
+                struct spatial_point current = {0};
+
+                rc = cursor_read_double(
+                    cursor,
+                    little_endian,
+                    &current.coordinate_x,
+                    error,
+                    function_name
+                );
+                if (rc == 0) {
+                    rc = cursor_read_double(
+                        cursor,
+                        little_endian,
+                        &current.coordinate_y,
+                        error,
+                        function_name
+                    );
+                }
+                if (rc == 0 && point_index == 0U) {
+                    first = current;
+                }
+                if (rc == 0 && point_index != 0U) {
+                    ring_twice_area += (previous.coordinate_x * current.coordinate_y) -
+                                       (current.coordinate_x * previous.coordinate_y);
+                }
+                previous = current;
+            }
+            if (rc == 0 && point_count > 1U) {
+                ring_twice_area += (previous.coordinate_x * first.coordinate_y) -
+                                   (first.coordinate_x * previous.coordinate_y);
+                if (ring_index == 0U) {
+                    polygon_area += fabs(ring_twice_area) / spatial_shoelace_area_divisor;
+                } else {
+                    polygon_area -= fabs(ring_twice_area) / spatial_shoelace_area_divisor;
+                }
+            }
+        }
+        if (rc == 0) {
+            *out_area += polygon_area;
+        }
+        return rc;
+    }
+    if (type == MYLITE_SPATIAL_GEOMETRY_MULTIPOLYGON) {
+        *out_supported = true;
+        rc = cursor_read_u32(cursor, little_endian, &count, error, function_name);
+        for (uint32_t index = 0U; rc == 0 && index < count; ++index) {
+            rc = wkb_area_at(cursor, out_area, out_supported, error, function_name);
+        }
+        return rc;
+    }
+    return 0;
+}
+
+static int wkb_swap_xy_at(
+    struct spatial_wkb_cursor *cursor,
+    struct spatial_buffer *out_wkb,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    bool little_endian = false;
+    enum mylite_spatial_geometry_type type = MYLITE_SPATIAL_GEOMETRY_NONE;
+    uint32_t count = 0U;
+    int rc = cursor_read_header(cursor, &little_endian, &type, error, function_name);
+
+    if (rc == 0) {
+        rc = spatial_buffer_append_byte(out_wkb, 1U);
+    }
+    if (rc == 0) {
+        rc = spatial_buffer_append_u32_le(out_wkb, (uint32_t)type);
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    switch (type) {
+    case MYLITE_SPATIAL_GEOMETRY_POINT: {
+        double coordinate_x = 0.0;
+        double coordinate_y = 0.0;
+
+        rc = cursor_read_double(cursor, little_endian, &coordinate_x, error, function_name);
+        if (rc == 0) {
+            rc = cursor_read_double(cursor, little_endian, &coordinate_y, error, function_name);
+        }
+        if (rc == 0) {
+            rc = spatial_buffer_append_double_le(out_wkb, coordinate_y);
+        }
+        if (rc == 0) {
+            rc = spatial_buffer_append_double_le(out_wkb, coordinate_x);
+        }
+        return rc;
+    }
+    case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
+        rc = cursor_read_u32(cursor, little_endian, &count, error, function_name);
+        if (rc == 0) {
+            rc = spatial_buffer_append_u32_le(out_wkb, count);
+        }
+        for (uint32_t index = 0U; rc == 0 && index < count; ++index) {
+            double coordinate_x = 0.0;
+            double coordinate_y = 0.0;
+
+            rc = cursor_read_double(cursor, little_endian, &coordinate_x, error, function_name);
+            if (rc == 0) {
+                rc = cursor_read_double(cursor, little_endian, &coordinate_y, error, function_name);
+            }
+            if (rc == 0) {
+                rc = spatial_buffer_append_double_le(out_wkb, coordinate_y);
+            }
+            if (rc == 0) {
+                rc = spatial_buffer_append_double_le(out_wkb, coordinate_x);
+            }
+        }
+        return rc;
+    case MYLITE_SPATIAL_GEOMETRY_POLYGON:
+        rc = cursor_read_u32(cursor, little_endian, &count, error, function_name);
+        if (rc == 0) {
+            rc = spatial_buffer_append_u32_le(out_wkb, count);
+        }
+        for (uint32_t ring_index = 0U; rc == 0 && ring_index < count; ++ring_index) {
+            uint32_t point_count = 0U;
+
+            rc = cursor_read_u32(cursor, little_endian, &point_count, error, function_name);
+            if (rc == 0) {
+                rc = spatial_buffer_append_u32_le(out_wkb, point_count);
+            }
+            for (uint32_t point_index = 0U; rc == 0 && point_index < point_count; ++point_index) {
+                double coordinate_x = 0.0;
+                double coordinate_y = 0.0;
+
+                rc = cursor_read_double(cursor, little_endian, &coordinate_x, error, function_name);
+                if (rc == 0) {
+                    rc = cursor_read_double(
+                        cursor,
+                        little_endian,
+                        &coordinate_y,
+                        error,
+                        function_name
+                    );
+                }
+                if (rc == 0) {
+                    rc = spatial_buffer_append_double_le(out_wkb, coordinate_y);
+                }
+                if (rc == 0) {
+                    rc = spatial_buffer_append_double_le(out_wkb, coordinate_x);
+                }
+            }
+        }
+        return rc;
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOINT:
+    case MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING:
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOLYGON:
+    case MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION:
+        rc = cursor_read_u32(cursor, little_endian, &count, error, function_name);
+        if (rc == 0) {
+            rc = spatial_buffer_append_u32_le(out_wkb, count);
+        }
+        for (uint32_t index = 0U; rc == 0 && index < count; ++index) {
+            rc = wkb_swap_xy_at(cursor, out_wkb, error, function_name);
+        }
+        return rc;
+    default:
+        break;
+    }
+    return set_invalid_gis_data_error(error, function_name);
+}
+
+static int read_single_geometry_argument(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct spatial_geometry_view *out_geometry,
+    bool *out_is_null,
+    struct mylite_spatial_error *error
+) {
+    int rc = validate_argument_count(kind, argument_count, 1U, 1U, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (out_geometry == NULL || out_is_null == NULL) {
+        return set_invalid_gis_data_error(error, mylite_spatial_function_name(kind));
+    }
+    *out_geometry = (struct spatial_geometry_view){0};
+    *out_is_null = arguments[0].is_null;
+    if (*out_is_null) {
+        return 0;
+    }
+    rc = validate_internal_geometry(
+        arguments[0].bytes,
+        arguments[0].byte_count,
+        &out_geometry->type,
+        &out_geometry->srid,
+        error,
+        mylite_spatial_function_name(kind)
+    );
+    if (rc != 0) {
+        return rc;
+    }
+    out_geometry->wkb = (const unsigned char *)arguments[0].bytes + spatial_internal_srid_size;
+    out_geometry->wkb_size = arguments[0].byte_count - spatial_internal_srid_size;
+    return 0;
+}
+
+static int read_two_geometry_arguments(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct spatial_geometry_view *out_left,
+    struct spatial_geometry_view *out_right,
+    bool *out_is_null,
+    struct mylite_spatial_error *error
+) {
+    bool left_is_null = false;
+    bool right_is_null = false;
+    int rc = validate_argument_count(kind, argument_count, 2U, 2U, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    rc = read_single_geometry_argument(kind, arguments, 1U, out_left, &left_is_null, error);
+    if (rc == 0) {
+        rc = read_single_geometry_argument(
+            kind,
+            arguments + 1U,
+            1U,
+            out_right,
+            &right_is_null,
+            error
+        );
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    if (out_is_null != NULL) {
+        *out_is_null = left_is_null || right_is_null;
+    }
+    return 0;
+}
+
+static bool geometry_type_is_empty_collection(
+    const struct spatial_geometry_view *geometry,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    struct spatial_wkb_cursor cursor = {0};
+    bool little_endian = false;
+    enum mylite_spatial_geometry_type type = MYLITE_SPATIAL_GEOMETRY_NONE;
+    uint32_t count = 0U;
+
+    if (geometry == NULL || geometry->type != MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION) {
+        return false;
+    }
+    cursor = (struct spatial_wkb_cursor){.bytes = geometry->wkb, .size = geometry->wkb_size};
+    if (cursor_read_header(&cursor, &little_endian, &type, error, function_name) != 0 ||
+        cursor_read_u32(&cursor, little_endian, &count, error, function_name) != 0) {
+        return false;
+    }
+    return count == 0U;
+}
+
+static int wkb_dimension_at(
+    struct spatial_wkb_cursor *cursor,
+    int *out_dimension,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    bool little_endian = false;
+    enum mylite_spatial_geometry_type type = MYLITE_SPATIAL_GEOMETRY_NONE;
+    uint32_t count = 0U;
+    int dimension = -1;
+    int rc = cursor_read_header(cursor, &little_endian, &type, error, function_name);
+
+    if (rc != 0) {
+        return rc;
+    }
+    switch (type) {
+    case MYLITE_SPATIAL_GEOMETRY_POINT:
+        rc = skip_wkb_points(cursor, 1U, error, function_name);
+        dimension = 0;
+        break;
+    case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
+        rc = cursor_read_u32(cursor, little_endian, &count, error, function_name);
+        if (rc == 0) {
+            rc = skip_wkb_points(cursor, count, error, function_name);
+        }
+        dimension = 1;
+        break;
+    case MYLITE_SPATIAL_GEOMETRY_POLYGON:
+        rc = cursor_read_u32(cursor, little_endian, &count, error, function_name);
+        for (uint32_t index = 0U; rc == 0 && index < count; ++index) {
+            uint32_t point_count = 0U;
+
+            rc = cursor_read_u32(cursor, little_endian, &point_count, error, function_name);
+            if (rc == 0) {
+                rc = skip_wkb_points(cursor, point_count, error, function_name);
+            }
+        }
+        dimension = 2;
+        break;
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOINT:
+    case MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING:
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOLYGON:
+    case MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION:
+        rc = cursor_read_u32(cursor, little_endian, &count, error, function_name);
+        for (uint32_t index = 0U; rc == 0 && index < count; ++index) {
+            int nested_dimension = -1;
+
+            rc = wkb_dimension_at(cursor, &nested_dimension, error, function_name);
+            if (rc == 0 && nested_dimension > dimension) {
+                dimension = nested_dimension;
+            }
+        }
+        break;
+    default:
+        rc = set_invalid_gis_data_error(error, function_name);
+        break;
+    }
+    if (rc == 0 && out_dimension != NULL) {
+        *out_dimension = dimension;
+    }
+    return rc;
+}
+
+static int wkb_bounds_at(
+    struct spatial_wkb_cursor *cursor,
+    struct spatial_box *box,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    bool little_endian = false;
+    enum mylite_spatial_geometry_type type = MYLITE_SPATIAL_GEOMETRY_NONE;
+    uint32_t count = 0U;
+    int rc = cursor_read_header(cursor, &little_endian, &type, error, function_name);
+
+    if (rc != 0) {
+        return rc;
+    }
+    switch (type) {
+    case MYLITE_SPATIAL_GEOMETRY_POINT:
+        for (uint32_t index = 0U; rc == 0 && index < 1U; ++index) {
+            double coordinate_x = 0.0;
+            double coordinate_y = 0.0;
+
+            rc = cursor_read_double(cursor, little_endian, &coordinate_x, error, function_name);
+            if (rc == 0) {
+                rc = cursor_read_double(cursor, little_endian, &coordinate_y, error, function_name);
+            }
+            if (rc == 0) {
+                spatial_box_include_point(box, coordinate_x, coordinate_y);
+            }
+        }
+        break;
+    case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
+        rc = cursor_read_u32(cursor, little_endian, &count, error, function_name);
+        for (uint32_t index = 0U; rc == 0 && index < count; ++index) {
+            double coordinate_x = 0.0;
+            double coordinate_y = 0.0;
+
+            rc = cursor_read_double(cursor, little_endian, &coordinate_x, error, function_name);
+            if (rc == 0) {
+                rc = cursor_read_double(cursor, little_endian, &coordinate_y, error, function_name);
+            }
+            if (rc == 0) {
+                spatial_box_include_point(box, coordinate_x, coordinate_y);
+            }
+        }
+        break;
+    case MYLITE_SPATIAL_GEOMETRY_POLYGON:
+        rc = cursor_read_u32(cursor, little_endian, &count, error, function_name);
+        for (uint32_t ring_index = 0U; rc == 0 && ring_index < count; ++ring_index) {
+            uint32_t point_count = 0U;
+
+            rc = cursor_read_u32(cursor, little_endian, &point_count, error, function_name);
+            for (uint32_t point_index = 0U; rc == 0 && point_index < point_count; ++point_index) {
+                double coordinate_x = 0.0;
+                double coordinate_y = 0.0;
+
+                rc = cursor_read_double(cursor, little_endian, &coordinate_x, error, function_name);
+                if (rc == 0) {
+                    rc = cursor_read_double(
+                        cursor,
+                        little_endian,
+                        &coordinate_y,
+                        error,
+                        function_name
+                    );
+                }
+                if (rc == 0) {
+                    spatial_box_include_point(box, coordinate_x, coordinate_y);
+                }
+            }
+        }
+        break;
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOINT:
+    case MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING:
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOLYGON:
+    case MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION:
+        rc = cursor_read_u32(cursor, little_endian, &count, error, function_name);
+        for (uint32_t index = 0U; rc == 0 && index < count; ++index) {
+            rc = wkb_bounds_at(cursor, box, error, function_name);
+        }
+        break;
+    default:
+        rc = set_invalid_gis_data_error(error, function_name);
+        break;
+    }
+    return rc;
+}
+
+static int line_point_from_wkb(
+    const struct spatial_geometry_view *geometry,
+    uint32_t point_index,
+    struct spatial_point *out_point,
+    bool *out_found,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    struct spatial_wkb_cursor cursor = {0};
+    bool little_endian = false;
+    enum mylite_spatial_geometry_type type = MYLITE_SPATIAL_GEOMETRY_NONE;
+    uint32_t point_count = 0U;
+    int rc = 0;
+
+    if (out_found == NULL || out_point == NULL || geometry == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    *out_found = false;
+    cursor = (struct spatial_wkb_cursor){.bytes = geometry->wkb, .size = geometry->wkb_size};
+    rc = cursor_read_header(&cursor, &little_endian, &type, error, function_name);
+    if (rc == 0) {
+        rc = cursor_read_u32(&cursor, little_endian, &point_count, error, function_name);
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    if (point_index == UINT32_MAX) {
+        point_index = point_count;
+    }
+    if (point_index == 0U || point_index > point_count) {
+        return 0;
+    }
+    for (uint32_t index = 1U; rc == 0 && index <= point_count; ++index) {
+        struct spatial_point point = {0};
+
+        rc = cursor_read_double(&cursor, little_endian, &point.coordinate_x, error, function_name);
+        if (rc == 0) {
+            rc = cursor_read_double(
+                &cursor,
+                little_endian,
+                &point.coordinate_y,
+                error,
+                function_name
+            );
+        }
+        if (rc == 0 && index == point_index) {
+            *out_point = point;
+            *out_found = true;
+            return 0;
+        }
+    }
+    return rc;
+}
+
+static int polygon_ring_from_wkb(
+    const struct spatial_geometry_view *geometry,
+    uint32_t ring_index,
+    unsigned char **out_bytes,
+    size_t *out_byte_count,
+    bool *out_found,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    struct spatial_wkb_cursor cursor = {0};
+    bool little_endian = false;
+    enum mylite_spatial_geometry_type type = MYLITE_SPATIAL_GEOMETRY_NONE;
+    uint32_t ring_count = 0U;
+    int rc = 0;
+
+    if (geometry == NULL || out_bytes == NULL || out_byte_count == NULL || out_found == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    *out_bytes = NULL;
+    *out_byte_count = 0U;
+    *out_found = false;
+    cursor = (struct spatial_wkb_cursor){.bytes = geometry->wkb, .size = geometry->wkb_size};
+    rc = cursor_read_header(&cursor, &little_endian, &type, error, function_name);
+    if (rc == 0) {
+        rc = cursor_read_u32(&cursor, little_endian, &ring_count, error, function_name);
+    }
+    for (uint32_t current_ring = 0U; rc == 0 && current_ring < ring_count; ++current_ring) {
+        uint32_t point_count = 0U;
+
+        rc = cursor_read_u32(&cursor, little_endian, &point_count, error, function_name);
+        if (rc != 0) {
+            break;
+        }
+        if (current_ring == ring_index) {
+            struct spatial_point *points = (struct spatial_point *)
+                calloc(point_count == 0U ? 1U : point_count, sizeof(*points));
+
+            if (points == NULL) {
+                return set_nomem_error(error);
+            }
+            for (uint32_t point_index = 0U; rc == 0 && point_index < point_count; ++point_index) {
+                rc = cursor_read_double(
+                    &cursor,
+                    little_endian,
+                    &points[point_index].coordinate_x,
+                    error,
+                    function_name
+                );
+                if (rc == 0) {
+                    rc = cursor_read_double(
+                        &cursor,
+                        little_endian,
+                        &points[point_index].coordinate_y,
+                        error,
+                        function_name
+                    );
+                }
+            }
+            if (rc == 0) {
+                rc = make_linestring_internal_geometry(
+                    points,
+                    point_count,
+                    out_bytes,
+                    out_byte_count,
+                    error
+                );
+            }
+            free(points);
+            if (rc == 0) {
+                *out_found = true;
+            }
+            return rc;
+        }
+        rc = skip_wkb_points(&cursor, point_count, error, function_name);
+    }
+    return rc;
+}
+
+static void spatial_box_include_point(
+    struct spatial_box *box,
+    double coordinate_x,
+    double coordinate_y
+) {
+    if (box == NULL) {
+        return;
+    }
+    if (!box->has_value) {
+        *box = (struct spatial_box){
+            .min_x = coordinate_x,
+            .min_y = coordinate_y,
+            .max_x = coordinate_x,
+            .max_y = coordinate_y,
+            .has_value = true,
+        };
+        return;
+    }
+    if (coordinate_x < box->min_x) {
+        box->min_x = coordinate_x;
+    }
+    if (coordinate_x > box->max_x) {
+        box->max_x = coordinate_x;
+    }
+    if (coordinate_y < box->min_y) {
+        box->min_y = coordinate_y;
+    }
+    if (coordinate_y > box->max_y) {
+        box->max_y = coordinate_y;
+    }
+}
+
+static bool spatial_box_equals(const struct spatial_box *left, const struct spatial_box *right) {
+    return left != NULL && right != NULL && left->has_value && right->has_value &&
+           left->min_x == right->min_x && left->min_y == right->min_y &&
+           left->max_x == right->max_x && left->max_y == right->max_y;
+}
+
+static bool spatial_box_covers(const struct spatial_box *left, const struct spatial_box *right) {
+    return left != NULL && right != NULL && left->has_value && right->has_value &&
+           left->min_x <= right->min_x && left->min_y <= right->min_y &&
+           left->max_x >= right->max_x && left->max_y >= right->max_y;
+}
+
+static bool spatial_box_intersects(
+    const struct spatial_box *left,
+    const struct spatial_box *right
+) {
+    return left != NULL && right != NULL && left->has_value && right->has_value &&
+           left->min_x <= right->max_x && left->max_x >= right->min_x &&
+           left->min_y <= right->max_y && left->max_y >= right->min_y;
+}
+
+static bool spatial_box_interiors_intersect(
+    const struct spatial_box *left,
+    const struct spatial_box *right
+) {
+    double min_x = 0.0;
+    double min_y = 0.0;
+    double max_x = 0.0;
+    double max_y = 0.0;
+
+    if (left == NULL || right == NULL || !left->has_value || !right->has_value) {
+        return false;
+    }
+    min_x = left->min_x > right->min_x ? left->min_x : right->min_x;
+    min_y = left->min_y > right->min_y ? left->min_y : right->min_y;
+    max_x = left->max_x < right->max_x ? left->max_x : right->max_x;
+    max_y = left->max_y < right->max_y ? left->max_y : right->max_y;
+    return min_x < max_x && min_y < max_y;
 }
 
 static int append_internal_prefix(struct spatial_buffer *buffer, uint32_t srid) {

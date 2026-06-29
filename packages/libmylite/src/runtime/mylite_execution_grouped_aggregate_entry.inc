@@ -187,6 +187,9 @@ static void planned_grouped_aggregate_deinit(struct planned_grouped_aggregate *p
     }
     for (size_t aggregate_index = 0U; aggregate_index < plan->aggregate_count; ++aggregate_index) {
         planned_row_scalar_expression_deinit(
+            &plan->aggregates[aggregate_index].aggregate_key_row_scalar_expression
+        );
+        planned_row_scalar_expression_deinit(
             &plan->aggregates[aggregate_index].aggregate_row_scalar_expression
         );
         planned_select_order_deinit(&plan->aggregates[aggregate_index].aggregate_order);

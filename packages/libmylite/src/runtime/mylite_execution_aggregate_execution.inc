@@ -1470,6 +1470,17 @@ static int plan_column_aggregate_select_item(
             input->table_column_count,
             out_item
         );
+    } else if (column_aggregate_function_is_json(out_item->function)) {
+        rc = plan_column_json_aggregate_options(
+            database,
+            aggregate_expression,
+            out_item->function,
+            true,
+            input->source_context,
+            input->table_columns,
+            input->table_column_count,
+            out_item
+        );
     } else if (out_item->function != PLANNED_COLUMN_AGGREGATE_ANY_VALUE &&
                out_item->function != PLANNED_COLUMN_AGGREGATE_ST_COLLECT &&
                column_aggregate_argument_is_row_scalar_expression(aggregate_expression)) {
@@ -1523,11 +1534,29 @@ static int plan_column_aggregate_without_source(
     int rc = MYLITE_OK;
 
     if (where_clause != NULL || argument == NULL ||
-        (function != PLANNED_COLUMN_AGGREGATE_MIN && function != PLANNED_COLUMN_AGGREGATE_MAX &&
+        (!column_aggregate_function_is_json(function) &&
+         function != PLANNED_COLUMN_AGGREGATE_MIN && function != PLANNED_COLUMN_AGGREGATE_MAX &&
          !column_aggregate_function_is_statistical(function)) ||
-        !column_aggregate_argument_is_row_scalar_expression(aggregate_expression)) {
+        (!column_aggregate_function_is_json(function) &&
+         !column_aggregate_argument_is_row_scalar_expression(aggregate_expression))) {
         set_unsupported_error(database, column_aggregate_source_error(function));
         return MYLITE_ERROR;
+    }
+    if (column_aggregate_function_is_json(function)) {
+        if (where_clause != NULL) {
+            set_unsupported_error(database, column_aggregate_source_error(function));
+            return MYLITE_ERROR;
+        }
+        return plan_column_json_aggregate_options(
+            database,
+            aggregate_expression,
+            function,
+            false,
+            NULL,
+            NULL,
+            0U,
+            out_plan
+        );
     }
 
     rc = plan_row_scalar_expression(
@@ -1568,6 +1597,7 @@ static void planned_column_aggregate_deinit(struct planned_column_aggregate *pla
     planned_select_order_deinit(&plan->aggregate_order);
     planned_value_deinit(&plan->separator);
     planned_value_deinit(&plan->count_literal);
+    planned_row_scalar_expression_deinit(&plan->aggregate_key_row_scalar_expression);
     planned_row_scalar_expression_deinit(&plan->aggregate_row_scalar_expression);
     planned_row_scalar_expression_deinit(&plan->aggregate_projection_rhs);
     *plan = (struct planned_column_aggregate){0};
@@ -1686,6 +1716,12 @@ static enum planned_column_aggregate_function column_aggregate_function_from_exp
     }
     if (expression->kind == MYLITE_SQL_AST_ST_COLLECT_AGGREGATE_FUNCTION) {
         return PLANNED_COLUMN_AGGREGATE_ST_COLLECT;
+    }
+    if (generic_function_name_equals(expression, "JSON_ARRAYAGG")) {
+        return PLANNED_COLUMN_AGGREGATE_JSON_ARRAYAGG;
+    }
+    if (generic_function_name_equals(expression, "JSON_OBJECTAGG")) {
+        return PLANNED_COLUMN_AGGREGATE_JSON_OBJECTAGG;
     }
 
     return PLANNED_COLUMN_AGGREGATE_NONE;
@@ -1837,6 +1873,11 @@ static bool column_aggregate_function_is_statistical(
             function == PLANNED_COLUMN_AGGREGATE_VAR_SAMP) != 0;
 }
 
+static bool column_aggregate_function_is_json(enum planned_column_aggregate_function function) {
+    return (function == PLANNED_COLUMN_AGGREGATE_JSON_ARRAYAGG ||
+            function == PLANNED_COLUMN_AGGREGATE_JSON_OBJECTAGG) != 0;
+}
+
 static const char *column_aggregate_source_error(enum planned_column_aggregate_function function) {
     if (column_aggregate_function_is_bitwise(function)) {
         return "BIT_AND/BIT_OR/BIT_XOR(column) supports only descriptor-backed table reads";
@@ -1858,6 +1899,9 @@ static const char *column_aggregate_source_error(enum planned_column_aggregate_f
     }
     if (function == PLANNED_COLUMN_AGGREGATE_ST_COLLECT) {
         return "ST_Collect(column) supports only descriptor-backed table reads";
+    }
+    if (column_aggregate_function_is_json(function)) {
+        return "JSON aggregates with WHERE require descriptor-backed table reads";
     }
 
     return "MIN/MAX supports only descriptor-backed table reads";
@@ -2082,6 +2126,99 @@ static int plan_column_group_concat_options(
         );
     }
 
+    return rc;
+}
+
+static bool aggregate_function_has_window_clause(const struct mylite_sql_ast_node *function) {
+    const struct mylite_sql_ast_node *child = NULL;
+
+    if (function == NULL) {
+        return false;
+    }
+    child = function->first_child;
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_WINDOW_SPEC ||
+            child->kind == MYLITE_SQL_AST_WINDOW_REFERENCE) {
+            return true;
+        }
+        child = child->next_sibling;
+    }
+    return false;
+}
+
+static const char *column_json_aggregate_function_name(
+    enum planned_column_aggregate_function function
+) {
+    if (function == PLANNED_COLUMN_AGGREGATE_JSON_ARRAYAGG) {
+        return "JSON_ARRAYAGG";
+    }
+    if (function == PLANNED_COLUMN_AGGREGATE_JSON_OBJECTAGG) {
+        return "JSON_OBJECTAGG";
+    }
+    return "JSON aggregate";
+}
+
+static int plan_column_json_aggregate_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *function,
+    enum planned_column_aggregate_function aggregate_function,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_column_aggregate *out_plan
+) {
+    const struct mylite_sql_ast_node *arguments = generic_system_function_arguments(function);
+    const struct mylite_sql_ast_node *value = NULL;
+    size_t expected_argument_count =
+        aggregate_function == PLANNED_COLUMN_AGGREGATE_JSON_OBJECTAGG ? 2U : 1U;
+    int rc = MYLITE_OK;
+
+    if (aggregate_function_has_window_clause(function)) {
+        set_unsupported_error(database, "JSON aggregate window functions are not yet supported");
+        return MYLITE_ERROR;
+    }
+    if (arguments == NULL ||
+        mylite_sql_ast_node_child_count(arguments) != expected_argument_count) {
+        set_native_function_parameter_count_error(
+            database,
+            column_json_aggregate_function_name(aggregate_function)
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (aggregate_function == PLANNED_COLUMN_AGGREGATE_JSON_OBJECTAGG) {
+        rc = plan_row_scalar_json_constructor_argument(
+            database,
+            child_at(arguments, 0U),
+            true,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            COLUMN_REFERENCE_FIELD,
+            &out_plan->aggregate_key_row_scalar_expression
+        );
+        value = child_at(arguments, 1U);
+    } else {
+        value = child_at(arguments, 0U);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_json_constructor_argument(
+            database,
+            value,
+            false,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            COLUMN_REFERENCE_FIELD,
+            &out_plan->aggregate_row_scalar_expression
+        );
+    }
+    if (rc == MYLITE_OK) {
+        out_plan->aggregate_uses_row_scalar_expression = true;
+    }
     return rc;
 }
 
@@ -2388,6 +2525,14 @@ static int append_column_aggregate_sqlite_cell(
         }
         return rc;
     }
+    if (item->function == PLANNED_COLUMN_AGGREGATE_JSON_ARRAYAGG ||
+        item->function == PLANNED_COLUMN_AGGREGATE_JSON_OBJECTAGG) {
+        rc = append_grouped_group_concat_sqlite_cell(statement, *sqlite_column_index, out_cell);
+        if (rc == MYLITE_OK) {
+            ++(*sqlite_column_index);
+        }
+        return rc;
+    }
     if (item->function == PLANNED_COLUMN_AGGREGATE_ST_COLLECT) {
         rc = append_selected_sqlite_row_value_with_descriptor(
             database,
@@ -2648,6 +2793,12 @@ static int append_grouped_aggregate_sqlite_cell(
 
     *out_cell = (struct mylite_result_cell){.is_null = true};
     if (item->function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
+        rc = append_grouped_group_concat_sqlite_cell(statement, *sqlite_column_index, out_cell);
+        ++(*sqlite_column_index);
+        return rc;
+    }
+    if (item->function == PLANNED_GROUPED_AGGREGATE_JSON_ARRAYAGG ||
+        item->function == PLANNED_GROUPED_AGGREGATE_JSON_OBJECTAGG) {
         rc = append_grouped_group_concat_sqlite_cell(statement, *sqlite_column_index, out_cell);
         ++(*sqlite_column_index);
         return rc;
@@ -2960,6 +3111,7 @@ static int column_aggregate_select_step_error(
     const char *message = NULL;
     bool has_sum = false;
     bool has_avg = false;
+    bool has_json = false;
 
     for (size_t item_index = 0U; item_index < plan->item_count; ++item_index) {
         if (plan->items[item_index].function == PLANNED_COLUMN_AGGREGATE_SUM) {
@@ -2968,6 +3120,12 @@ static int column_aggregate_select_step_error(
         if (plan->items[item_index].function == PLANNED_COLUMN_AGGREGATE_AVG) {
             has_avg = true;
         }
+        if (column_aggregate_function_is_json(plan->items[item_index].function)) {
+            has_json = true;
+        }
+    }
+    if (map_json_aggregate_step_error(database, statement, sqlite_rc, has_json) != MYLITE_OK) {
+        return MYLITE_ERROR;
     }
     if (sqlite_rc == SQLITE_ERROR && (has_sum || has_avg)) {
         message = sqlite3_errmsg(sqlite3_db_handle(statement));
@@ -2999,6 +3157,7 @@ static int grouped_aggregate_step_error(
     const char *message = NULL;
     bool has_sum = false;
     bool has_avg = false;
+    bool has_json = false;
 
     for (size_t aggregate_index = 0U; aggregate_index < plan->aggregate_count; ++aggregate_index) {
         if (plan->aggregates[aggregate_index].function == PLANNED_GROUPED_AGGREGATE_SUM) {
@@ -3007,6 +3166,14 @@ static int grouped_aggregate_step_error(
         if (plan->aggregates[aggregate_index].function == PLANNED_GROUPED_AGGREGATE_AVG) {
             has_avg = true;
         }
+        if (plan->aggregates[aggregate_index].function == PLANNED_GROUPED_AGGREGATE_JSON_ARRAYAGG ||
+            plan->aggregates[aggregate_index].function ==
+                PLANNED_GROUPED_AGGREGATE_JSON_OBJECTAGG) {
+            has_json = true;
+        }
+    }
+    if (map_json_aggregate_step_error(database, statement, sqlite_rc, has_json) != MYLITE_OK) {
+        return MYLITE_ERROR;
     }
     if (sqlite_rc == SQLITE_ERROR && (has_sum || has_avg)) {
         message = sqlite3_errmsg(sqlite3_db_handle(statement));
@@ -3027,6 +3194,40 @@ static int grouped_aggregate_step_error(
     }
 
     return mylite_sqlite_status_to_mylite(sqlite_rc);
+}
+
+static int map_json_aggregate_step_error(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int sqlite_rc,
+    bool has_json_aggregate
+) {
+    const char *message = NULL;
+
+    if (!has_json_aggregate || sqlite_rc != SQLITE_ERROR) {
+        return MYLITE_OK;
+    }
+
+    message = sqlite3_errmsg(sqlite3_db_handle(statement));
+    if (message == NULL) {
+        return MYLITE_OK;
+    }
+    if (strcmp(message, "JSON documents may not contain NULL member names.") == 0) {
+        set_json_null_member_name_error(database);
+        return MYLITE_ERROR;
+    }
+    if (strcmp(message, "Invalid JSON text in JSON constructor") == 0) {
+        set_invalid_json_function_text_error(database, 0U);
+        return MYLITE_ERROR;
+    }
+    if (strcmp(message, "Unsupported JSON value in JSON constructor") == 0) {
+        set_unsupported_error(
+            database,
+            "JSON constructors support only baseline JSON values"
+        );
+        return MYLITE_ERROR;
+    }
+    return MYLITE_OK;
 }
 
 static int column_aggregate_execution_error(struct mylite_db *database, int rc) {

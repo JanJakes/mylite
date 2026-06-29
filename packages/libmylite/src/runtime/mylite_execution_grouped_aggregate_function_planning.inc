@@ -163,6 +163,18 @@ static int plan_grouped_aggregate_expression(
             out_item
         );
     }
+    if (out_item->function == PLANNED_GROUPED_AGGREGATE_JSON_ARRAYAGG ||
+        out_item->function == PLANNED_GROUPED_AGGREGATE_JSON_OBJECTAGG) {
+        return plan_grouped_json_aggregate_options(
+            database,
+            aggregate_function_expression,
+            out_item->function,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_item
+        );
+    }
     if (out_item->function == PLANNED_GROUPED_AGGREGATE_COUNT_COLUMN ||
         out_item->function == PLANNED_GROUPED_AGGREGATE_COUNT_DISTINCT_COLUMN) {
         if (column_aggregate_argument_is_row_scalar_expression(unwrapped_expression)) {
@@ -398,6 +410,71 @@ static int plan_grouped_group_concat_options(
         );
     }
 
+    return rc;
+}
+
+static int plan_grouped_json_aggregate_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *function,
+    enum planned_grouped_aggregate_function aggregate_function,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate_item *out_item
+) {
+    const struct mylite_sql_ast_node *arguments = generic_system_function_arguments(function);
+    const struct mylite_sql_ast_node *value = NULL;
+    enum planned_column_aggregate_function column_function =
+        grouped_column_aggregate_function(aggregate_function);
+    size_t expected_argument_count =
+        column_function == PLANNED_COLUMN_AGGREGATE_JSON_OBJECTAGG ? 2U : 1U;
+    int rc = MYLITE_OK;
+
+    if (aggregate_function_has_window_clause(function)) {
+        set_unsupported_error(database, "JSON aggregate window functions are not yet supported");
+        return MYLITE_ERROR;
+    }
+    if (arguments == NULL ||
+        mylite_sql_ast_node_child_count(arguments) != expected_argument_count) {
+        set_native_function_parameter_count_error(
+            database,
+            column_json_aggregate_function_name(column_function)
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (column_function == PLANNED_COLUMN_AGGREGATE_JSON_OBJECTAGG) {
+        rc = plan_row_scalar_json_constructor_argument(
+            database,
+            child_at(arguments, 0U),
+            true,
+            true,
+            source_context,
+            table_columns,
+            table_column_count,
+            COLUMN_REFERENCE_FIELD,
+            &out_item->aggregate_key_row_scalar_expression
+        );
+        value = child_at(arguments, 1U);
+    } else {
+        value = child_at(arguments, 0U);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_json_constructor_argument(
+            database,
+            value,
+            false,
+            true,
+            source_context,
+            table_columns,
+            table_column_count,
+            COLUMN_REFERENCE_FIELD,
+            &out_item->aggregate_row_scalar_expression
+        );
+    }
+    if (rc == MYLITE_OK) {
+        out_item->aggregate_uses_row_scalar_expression = true;
+    }
     return rc;
 }
 
@@ -648,6 +725,10 @@ static enum planned_grouped_aggregate_function grouped_aggregate_function_from_e
         return PLANNED_GROUPED_AGGREGATE_BIT_XOR;
     case PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT:
         return PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT;
+    case PLANNED_COLUMN_AGGREGATE_JSON_ARRAYAGG:
+        return PLANNED_GROUPED_AGGREGATE_JSON_ARRAYAGG;
+    case PLANNED_COLUMN_AGGREGATE_JSON_OBJECTAGG:
+        return PLANNED_GROUPED_AGGREGATE_JSON_OBJECTAGG;
     case PLANNED_COLUMN_AGGREGATE_STDDEV_POP:
         return PLANNED_GROUPED_AGGREGATE_STDDEV_POP;
     case PLANNED_COLUMN_AGGREGATE_STDDEV_SAMP:
@@ -693,6 +774,10 @@ static enum planned_column_aggregate_function grouped_column_aggregate_function(
         return PLANNED_COLUMN_AGGREGATE_BIT_XOR;
     case PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT:
         return PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT;
+    case PLANNED_GROUPED_AGGREGATE_JSON_ARRAYAGG:
+        return PLANNED_COLUMN_AGGREGATE_JSON_ARRAYAGG;
+    case PLANNED_GROUPED_AGGREGATE_JSON_OBJECTAGG:
+        return PLANNED_COLUMN_AGGREGATE_JSON_OBJECTAGG;
     case PLANNED_GROUPED_AGGREGATE_STDDEV_POP:
         return PLANNED_COLUMN_AGGREGATE_STDDEV_POP;
     case PLANNED_GROUPED_AGGREGATE_STDDEV_SAMP:

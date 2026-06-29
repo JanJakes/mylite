@@ -2084,16 +2084,18 @@ enum planned_column_aggregate_function {
     PLANNED_COLUMN_AGGREGATE_BIT_OR = 6,
     PLANNED_COLUMN_AGGREGATE_BIT_XOR = 7,
     PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT = 8,
-    PLANNED_COLUMN_AGGREGATE_STDDEV_POP = 9,
-    PLANNED_COLUMN_AGGREGATE_STDDEV_SAMP = 10,
-    PLANNED_COLUMN_AGGREGATE_VAR_POP = 11,
-    PLANNED_COLUMN_AGGREGATE_VAR_SAMP = 12,
-    PLANNED_COLUMN_AGGREGATE_COUNT_STAR = 13,
-    PLANNED_COLUMN_AGGREGATE_COUNT_COLUMN = 14,
-    PLANNED_COLUMN_AGGREGATE_COUNT_LITERAL = 15,
-    PLANNED_COLUMN_AGGREGATE_COUNT_DISTINCT_COLUMN = 16,
-    PLANNED_COLUMN_AGGREGATE_ANY_VALUE = 17,
-    PLANNED_COLUMN_AGGREGATE_ST_COLLECT = 18,
+    PLANNED_COLUMN_AGGREGATE_JSON_ARRAYAGG = 9,
+    PLANNED_COLUMN_AGGREGATE_JSON_OBJECTAGG = 10,
+    PLANNED_COLUMN_AGGREGATE_STDDEV_POP = 11,
+    PLANNED_COLUMN_AGGREGATE_STDDEV_SAMP = 12,
+    PLANNED_COLUMN_AGGREGATE_VAR_POP = 13,
+    PLANNED_COLUMN_AGGREGATE_VAR_SAMP = 14,
+    PLANNED_COLUMN_AGGREGATE_COUNT_STAR = 15,
+    PLANNED_COLUMN_AGGREGATE_COUNT_COLUMN = 16,
+    PLANNED_COLUMN_AGGREGATE_COUNT_LITERAL = 17,
+    PLANNED_COLUMN_AGGREGATE_COUNT_DISTINCT_COLUMN = 18,
+    PLANNED_COLUMN_AGGREGATE_ANY_VALUE = 19,
+    PLANNED_COLUMN_AGGREGATE_ST_COLLECT = 20,
 };
 
 struct planned_scalar_aggregate_subquery {
@@ -2112,6 +2114,7 @@ struct planned_column_aggregate {
     struct mylite_catalog_table_descriptor table;
     struct mylite_catalog_column_descriptor aggregate_column;
     bool aggregate_uses_row_scalar_expression;
+    struct planned_row_scalar_expression aggregate_key_row_scalar_expression;
     struct planned_row_scalar_expression aggregate_row_scalar_expression;
     bool aggregate_has_projection_rhs;
     enum mylite_sql_ast_operator aggregate_projection_operator;
@@ -2160,12 +2163,14 @@ enum planned_grouped_aggregate_function {
     PLANNED_GROUPED_AGGREGATE_BIT_OR = 9,
     PLANNED_GROUPED_AGGREGATE_BIT_XOR = 10,
     PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT = 11,
-    PLANNED_GROUPED_AGGREGATE_ANY_VALUE = 12,
-    PLANNED_GROUPED_AGGREGATE_STDDEV_POP = 13,
-    PLANNED_GROUPED_AGGREGATE_STDDEV_SAMP = 14,
-    PLANNED_GROUPED_AGGREGATE_VAR_POP = 15,
-    PLANNED_GROUPED_AGGREGATE_VAR_SAMP = 16,
-    PLANNED_GROUPED_AGGREGATE_ST_COLLECT = 17,
+    PLANNED_GROUPED_AGGREGATE_JSON_ARRAYAGG = 12,
+    PLANNED_GROUPED_AGGREGATE_JSON_OBJECTAGG = 13,
+    PLANNED_GROUPED_AGGREGATE_ANY_VALUE = 14,
+    PLANNED_GROUPED_AGGREGATE_STDDEV_POP = 15,
+    PLANNED_GROUPED_AGGREGATE_STDDEV_SAMP = 16,
+    PLANNED_GROUPED_AGGREGATE_VAR_POP = 17,
+    PLANNED_GROUPED_AGGREGATE_VAR_SAMP = 18,
+    PLANNED_GROUPED_AGGREGATE_ST_COLLECT = 19,
 };
 
 enum { grouped_aggregate_max_results = 16 };
@@ -2180,6 +2185,7 @@ struct planned_grouped_aggregate_item {
     struct mylite_catalog_column_descriptor aggregate_column;
     size_t aggregate_column_source_index;
     bool aggregate_uses_row_scalar_expression;
+    struct planned_row_scalar_expression aggregate_key_row_scalar_expression;
     struct planned_row_scalar_expression aggregate_row_scalar_expression;
     struct planned_select_order aggregate_order;
     bool aggregate_is_distinct;

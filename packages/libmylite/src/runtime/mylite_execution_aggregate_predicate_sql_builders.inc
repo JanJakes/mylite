@@ -355,6 +355,16 @@ static int append_column_aggregate_select_item_sql(
             next_parameter
         );
     }
+    if (item->function == PLANNED_COLUMN_AGGREGATE_JSON_ARRAYAGG ||
+        item->function == PLANNED_COLUMN_AGGREGATE_JSON_OBJECTAGG) {
+        return append_json_aggregate_call_sql(
+            string,
+            item->function == PLANNED_COLUMN_AGGREGATE_JSON_OBJECTAGG,
+            &item->aggregate_key_row_scalar_expression,
+            &item->aggregate_row_scalar_expression,
+            next_parameter
+        );
+    }
     if (item->function == PLANNED_COLUMN_AGGREGATE_ANY_VALUE) {
         return mylite_dynamic_string_append_quoted_identifier(string, item->aggregate_column.name);
     }
@@ -516,6 +526,41 @@ static int append_aggregate_distinct_sql(
         return MYLITE_OK;
     }
     return mylite_dynamic_string_append(string, "DISTINCT ");
+}
+
+static int append_json_aggregate_call_sql(
+    struct mylite_dynamic_string *string,
+    bool is_object,
+    const struct planned_row_scalar_expression *key_expression,
+    const struct planned_row_scalar_expression *value_expression,
+    size_t *next_parameter
+) {
+    int rc = mylite_dynamic_string_append(
+        string,
+        is_object ? "_mylite_json_objectagg(" : "_mylite_json_arrayagg("
+    );
+
+    if (rc == MYLITE_OK && is_object) {
+        rc = append_row_scalar_json_constructor_argument_sql(
+            string,
+            key_expression,
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK && is_object) {
+        rc = mylite_dynamic_string_append(string, ", ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_json_constructor_argument_sql(
+            string,
+            value_expression,
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
 }
 
 static int append_group_concat_call_sql(
@@ -708,6 +753,10 @@ static const char *column_aggregate_sql_function(enum planned_column_aggregate_f
         return "_mylite_bit_xor";
     case PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT:
         return "group_concat";
+    case PLANNED_COLUMN_AGGREGATE_JSON_ARRAYAGG:
+        return "_mylite_json_arrayagg";
+    case PLANNED_COLUMN_AGGREGATE_JSON_OBJECTAGG:
+        return "_mylite_json_objectagg";
     case PLANNED_COLUMN_AGGREGATE_ANY_VALUE:
         return "";
     case PLANNED_COLUMN_AGGREGATE_STDDEV_POP:
@@ -1129,6 +1178,16 @@ static int append_grouped_aggregate_expression_sql(
             item->spatial_wrapper_kind
         );
     }
+    if (item->function == PLANNED_GROUPED_AGGREGATE_JSON_ARRAYAGG ||
+        item->function == PLANNED_GROUPED_AGGREGATE_JSON_OBJECTAGG) {
+        return append_json_aggregate_call_sql(
+            string,
+            item->function == PLANNED_GROUPED_AGGREGATE_JSON_OBJECTAGG,
+            &item->aggregate_key_row_scalar_expression,
+            &item->aggregate_row_scalar_expression,
+            next_parameter
+        );
+    }
     if (item->aggregate_uses_row_scalar_expression) {
         if (next_parameter == NULL) {
             return MYLITE_ERROR;
@@ -1235,6 +1294,10 @@ static const char *grouped_aggregate_sql_function(
         return "_mylite_bit_xor";
     case PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT:
         return "group_concat";
+    case PLANNED_GROUPED_AGGREGATE_JSON_ARRAYAGG:
+        return "_mylite_json_arrayagg";
+    case PLANNED_GROUPED_AGGREGATE_JSON_OBJECTAGG:
+        return "_mylite_json_objectagg";
     case PLANNED_GROUPED_AGGREGATE_STDDEV_POP:
         return "_mylite_stddev_pop";
     case PLANNED_GROUPED_AGGREGATE_STDDEV_SAMP:
@@ -2759,6 +2822,8 @@ static const char *scalar_aggregate_sql_function(enum planned_column_aggregate_f
     case PLANNED_COLUMN_AGGREGATE_BIT_OR:
     case PLANNED_COLUMN_AGGREGATE_BIT_XOR:
     case PLANNED_COLUMN_AGGREGATE_GROUP_CONCAT:
+    case PLANNED_COLUMN_AGGREGATE_JSON_ARRAYAGG:
+    case PLANNED_COLUMN_AGGREGATE_JSON_OBJECTAGG:
     case PLANNED_COLUMN_AGGREGATE_STDDEV_POP:
     case PLANNED_COLUMN_AGGREGATE_STDDEV_SAMP:
     case PLANNED_COLUMN_AGGREGATE_VAR_POP:

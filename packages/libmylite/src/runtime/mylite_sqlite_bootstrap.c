@@ -14,6 +14,7 @@
 #include "mylite_group_concat_aggregate.h"
 #include "mylite_integer_arithmetic.h"
 #include "mylite_ip_address.h"
+#include "mylite_json_aggregate.h"
 #include "mylite_json_functions.h"
 #include "mylite_last_insert_id.h"
 #include "mylite_like.h"
@@ -257,6 +258,9 @@ static int initialize_function_registration_surface(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_group_concat_aggregate_function(sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_sqlite_register_json_aggregate_functions(sqlite);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_sqlite_register_statistical_aggregate_functions(sqlite);

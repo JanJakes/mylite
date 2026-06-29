@@ -342,6 +342,15 @@ static int plan_grouped_group_concat_options(
     size_t table_column_count,
     struct planned_grouped_aggregate_item *out_item
 );
+static int plan_grouped_json_aggregate_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *function,
+    enum planned_grouped_aggregate_function aggregate_function,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate_item *out_item
+);
 static int plan_group_concat_value_column(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *function,
@@ -863,9 +872,24 @@ static bool column_aggregate_function_is_bitwise(enum planned_column_aggregate_f
 static bool column_aggregate_function_is_min_max(enum planned_column_aggregate_function function);
 static bool column_aggregate_function_is_statistical(enum planned_column_aggregate_function function
 );
+static bool column_aggregate_function_is_json(enum planned_column_aggregate_function function);
 static const char *column_aggregate_source_error(enum planned_column_aggregate_function function);
 static const char *column_aggregate_column_error(enum planned_column_aggregate_function function);
 static const char *column_aggregate_integer_error(enum planned_column_aggregate_function function);
+static bool aggregate_function_has_window_clause(const struct mylite_sql_ast_node *function);
+static const char *column_json_aggregate_function_name(
+    enum planned_column_aggregate_function function
+);
+static int plan_column_json_aggregate_options(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *function,
+    enum planned_column_aggregate_function aggregate_function,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_column_aggregate *out_plan
+);
 static int validate_count_distinct_column_descriptor(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
@@ -1060,6 +1084,12 @@ static int grouped_aggregate_step_error(
     sqlite3_stmt *statement,
     const struct planned_grouped_aggregate *plan,
     int sqlite_rc
+);
+static int map_json_aggregate_step_error(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int sqlite_rc,
+    bool has_json_aggregate
 );
 static int format_count_value(
     struct mylite_db *database,

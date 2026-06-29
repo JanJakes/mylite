@@ -716,6 +716,13 @@ static int bind_column_aggregate_item_parameters(
             ++(*parameter_index);
         }
     }
+    if (rc == MYLITE_OK && item->function == PLANNED_COLUMN_AGGREGATE_JSON_OBJECTAGG) {
+        rc = bind_row_scalar_expression_parameters(
+            statement,
+            &item->aggregate_key_row_scalar_expression,
+            parameter_index
+        );
+    }
     if (rc == MYLITE_OK && item->aggregate_uses_row_scalar_expression) {
         rc = bind_row_scalar_expression_parameters(
             statement,
@@ -988,6 +995,16 @@ static int bind_grouped_aggregate_row_scalar_expression_parameters(
 
     if (item == NULL || !item->aggregate_uses_row_scalar_expression) {
         return MYLITE_OK;
+    }
+    if (item->function == PLANNED_GROUPED_AGGREGATE_JSON_OBJECTAGG) {
+        rc = bind_row_scalar_expression_parameters(
+            statement,
+            &item->aggregate_key_row_scalar_expression,
+            parameter_index
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
     }
     rc = bind_row_scalar_expression_parameters(
         statement,

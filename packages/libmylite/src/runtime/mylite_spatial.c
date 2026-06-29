@@ -246,6 +246,8 @@ static const struct spatial_function_descriptor spatial_function_descriptors[] =
     {"ST_IsSimple", MYLITE_SPATIAL_FUNCTION_ST_ISSIMPLE},
     {"ST_IsValid", MYLITE_SPATIAL_FUNCTION_ST_ISVALID},
     {"ST_Validate", MYLITE_SPATIAL_FUNCTION_ST_VALIDATE},
+    {"ST_Disjoint", MYLITE_SPATIAL_FUNCTION_ST_DISJOINT},
+    {"ST_Intersects", MYLITE_SPATIAL_FUNCTION_ST_INTERSECTS},
     {"ST_IsClosed", MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED},
     {"ST_NumGeometries", MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES},
     {"ST_GeometryN", MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYN},
@@ -465,6 +467,13 @@ static int evaluate_convex_hull(
     struct mylite_spatial_error *error
 );
 static int evaluate_distance(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
+static int evaluate_relation_predicate(
     enum mylite_spatial_function_kind kind,
     const struct mylite_spatial_argument *arguments,
     size_t argument_count,
@@ -1758,6 +1767,8 @@ bool mylite_spatial_function_returns_integer(enum mylite_spatial_function_kind k
            kind == MYLITE_SPATIAL_FUNCTION_ST_ISEMPTY ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_ISSIMPLE ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_ISVALID ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_DISJOINT ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_INTERSECTS ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_NUMPOINTS ||
@@ -1881,6 +1892,9 @@ int mylite_spatial_evaluate(
         return evaluate_convex_hull(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_DISTANCE:
         return evaluate_distance(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_DISJOINT:
+    case MYLITE_SPATIAL_FUNCTION_ST_INTERSECTS:
+        return evaluate_relation_predicate(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_DISTANCESPHERE:
         return evaluate_distance_sphere(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_FRECHETDISTANCE:
@@ -3727,6 +3741,83 @@ static int evaluate_distance(
         return assign_null_result(out_result);
     }
     return assign_double_result(out_result, distance);
+}
+
+static int evaluate_relation_predicate(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_geometry_view left = {0};
+    struct spatial_geometry_view right = {0};
+    struct spatial_distance_geometry left_geometry = {0};
+    struct spatial_distance_geometry right_geometry = {0};
+    bool is_null = false;
+    bool has_distance = false;
+    bool intersects = false;
+    double distance = 0.0;
+    int rc = read_two_geometry_arguments(
+        kind,
+        arguments,
+        argument_count,
+        &left,
+        &right,
+        &is_null,
+        error
+    );
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null) {
+        return assign_null_result(out_result);
+    }
+    if (left.srid != right.srid) {
+        return set_gis_different_srids_error(
+            error,
+            left.srid,
+            right.srid,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    if (left.srid != 0U) {
+        return set_not_implemented_for_geographic_srs_error(
+            error,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    rc = distance_geometry_from_view(
+        &left,
+        &left_geometry,
+        error,
+        mylite_spatial_function_name(kind)
+    );
+    if (rc == 0) {
+        rc = distance_geometry_from_view(
+            &right,
+            &right_geometry,
+            error,
+            mylite_spatial_function_name(kind)
+        );
+    }
+    if (rc == 0) {
+        rc = distance_between_geometries(&left_geometry, &right_geometry, &distance, &has_distance);
+    }
+    distance_geometry_deinit(&left_geometry);
+    distance_geometry_deinit(&right_geometry);
+    if (rc != 0) {
+        return rc;
+    }
+    if (!has_distance) {
+        return assign_null_result(out_result);
+    }
+    intersects = double_near_zero(distance);
+    if (kind == MYLITE_SPATIAL_FUNCTION_ST_INTERSECTS) {
+        return assign_integer_result(out_result, intersects ? 1 : 0);
+    }
+    return assign_integer_result(out_result, intersects ? 0 : 1);
 }
 
 static int evaluate_distance_sphere(

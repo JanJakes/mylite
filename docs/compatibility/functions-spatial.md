@@ -9,7 +9,8 @@ length/area/distance/envelope helpers, spatial collection aggregation, SRID-0
 spherical distance, centroid, convex hull, discrete trajectory distances,
 LineString interpolation, simplicity and validity checks, coordinate swapping,
 envelope construction, and MBR predicates in scalar, row-backed, and descriptor
-DML value contexts. Geohash helpers support coordinate
+DML value contexts. SRID-0 `ST_Disjoint()` and `ST_Intersects()` cover
+representable object-shape disjoint/intersection checks. Geohash helpers support coordinate
 encoding/decoding plus SRID 0 and 4326 point round-trips. GeoJSON helpers
 support 2D geometry, Feature extraction, and FeatureCollection extraction for
 SRID 0 and 4326. Geographic point accessors support SRID 4326
@@ -49,7 +50,7 @@ search.
 | `ST_Crosses()` | ❌ | Whether one geometry crosses another |
 | `ST_Difference()` | ❌ | Return point set difference of two geometries |
 | `ST_Dimension()` | ✅ | Return SRID-0 geometry dimension |
-| `ST_Disjoint()` | ❌ | Whether one geometry is disjoint from another |
+| `ST_Disjoint()` | ✅ | SRID-0 object-shape disjoint predicate for representable geometry values |
 | `ST_Distance()` | 🟡 | Cartesian SRID-0 geometry distance; geographic distance and unit conversion deferred |
 | `ST_Distance_Sphere()` | ✅ | SRID-0 spherical distance for Point and MultiPoint |
 | `ST_EndPoint()` | ✅ | Return LineString end point |
@@ -68,7 +69,7 @@ search.
 | `ST_HausdorffDistance()` | ✅ | Directed SRID-0 discrete Hausdorff distance for supported Point/MultiPoint and LineString/MultiLineString combinations |
 | `ST_InteriorRingN()` | ✅ | Return one-based Polygon interior ring |
 | `ST_Intersection()` | ❌ | Return point set intersection of two geometries |
-| `ST_Intersects()` | ❌ | Whether one geometry intersects another |
+| `ST_Intersects()` | ✅ | SRID-0 object-shape intersects predicate for representable geometry values |
 | `ST_IsClosed()` | ✅ | Return LineString/MultiLineString closed state |
 | `ST_IsEmpty()` | ✅ | Return empty geometry collection state |
 | `ST_IsSimple()` | ✅ | SRID-0 simplicity check for representable geometry values |

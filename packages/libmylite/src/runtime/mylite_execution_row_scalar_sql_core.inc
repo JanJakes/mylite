@@ -915,6 +915,12 @@ static const char *window_function_sql_name(enum planned_window_function_kind ki
         return "min";
     case PLANNED_WINDOW_FUNCTION_MAX:
         return "max";
+    case PLANNED_WINDOW_FUNCTION_BIT_AND:
+        return "_mylite_bit_and";
+    case PLANNED_WINDOW_FUNCTION_BIT_OR:
+        return "_mylite_bit_or";
+    case PLANNED_WINDOW_FUNCTION_BIT_XOR:
+        return "_mylite_bit_xor";
     case PLANNED_WINDOW_FUNCTION_NONE:
         break;
     }

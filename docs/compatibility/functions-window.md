@@ -12,11 +12,14 @@ function below. Top-level `ORDER BY` window-function keys parse, but execution
 is rejected outside the current projection envelope.
 Core aggregate-window forms `COUNT(*)`, `COUNT(value)`, and integer-domain
 `SUM()` / `AVG()` / `MIN()` / `MAX()` execute in the documented projection
-baseline. `DISTINCT` aggregate windows return MySQL's `1235` unsupported
-diagnostic. JSON, statistical, bitwise, `GROUP_CONCAT()`, and broader
-aggregate-window placeholders remain parse-level compatibility only; see
+baseline. Integer-domain `BIT_AND()` / `BIT_OR()` / `BIT_XOR()` windows execute
+in the documented bitwise aggregate-window baseline. `DISTINCT` aggregate
+windows return MySQL's `1235` unsupported diagnostic. JSON, statistical,
+`GROUP_CONCAT()`, and broader aggregate-window placeholders remain parse-level
+compatibility only; see
 [parser aggregate window syntax](../specs/parser-aggregate-window-syntax/specs.md),
 [baseline core aggregate window functions](../specs/baseline-core-aggregate-window-functions/specs.md),
+[baseline bitwise aggregate window functions](../specs/baseline-bitwise-aggregate-window-functions/specs.md),
 [parser corpus aggregate/window surfaces](../specs/parser-corpus-aggregate-window-surfaces/specs.md),
 [parser corpus JSON/statistical aggregate window surfaces](../specs/parser-corpus-json-stat-aggregate-window-surfaces/specs.md),
 and [parser corpus order expression residuals](../specs/parser-corpus-order-expression-residuals/specs.md).
@@ -28,6 +31,7 @@ diagnostic because MySQL 8.4.9 parses but does not implement that behavior.
 | Function | Status | Notes |
 | --- | --- | --- |
 | Core aggregate windows | ✅ | Projection-only `COUNT(*)`, `COUNT(value)`, and integer-domain `SUM()` / `AVG()` / `MIN()` / `MAX()` windows over the current no-source, `DUAL`, one-table, named-window, partition/order/frame row-scalar window envelope. See [core aggregate windows](../specs/baseline-core-aggregate-window-functions/specs.md). |
+| Bitwise aggregate windows | ✅ | Projection-only integer-domain `BIT_AND()` / `BIT_OR()` / `BIT_XOR()` windows over the current no-source, `DUAL`, one-table, named-window, partition/order/frame row-scalar window envelope. See [bitwise aggregate windows](../specs/baseline-bitwise-aggregate-window-functions/specs.md). |
 | `CUME_DIST()` | ✅ | Projection-only baseline window support, including named windows and rank/distribution frame clauses. See [rank/navigation](../specs/baseline-window-rank-navigation-functions/specs.md), [named windows](../specs/baseline-named-window-definitions/specs.md), and [frame clauses](../specs/baseline-window-rank-frame-clauses/specs.md). |
 | `DENSE_RANK()` | ✅ | Projection-only baseline window support, including named windows and rank/distribution frame clauses. See [rank/navigation](../specs/baseline-window-rank-navigation-functions/specs.md), [named windows](../specs/baseline-named-window-definitions/specs.md), and [frame clauses](../specs/baseline-window-rank-frame-clauses/specs.md). |
 | `FIRST_VALUE()` | ✅ | Projection-only baseline window support over supported row-scalar value expressions, including named windows and supported `ROWS` / `RANGE` frame clauses. See [rank/navigation](../specs/baseline-window-rank-navigation-functions/specs.md), [named windows](../specs/baseline-named-window-definitions/specs.md), [value arguments](../specs/baseline-window-value-argument-expressions/specs.md), and [value frame clauses](../specs/baseline-window-value-frame-clauses/specs.md). |

@@ -767,6 +767,10 @@
     COMMAND mylite_runtime_core_aggregate_window_functions_test
   )
   add_test(
+    NAME libmylite.runtime.bitwise_aggregate_window_functions
+    COMMAND mylite_runtime_bitwise_aggregate_window_functions_test
+  )
+  add_test(
     NAME libmylite.runtime.window_rank_navigation_functions
     COMMAND mylite_runtime_window_rank_navigation_functions_test
   )

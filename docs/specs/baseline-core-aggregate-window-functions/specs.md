@@ -75,9 +75,11 @@ sources.
   `<window function>(DISTINCT ..)`.
 - `GROUP_CONCAT(...) OVER (...)` is rejected by MySQL 8.4.9 with
   `1235 / 42000`. MyLite keeps it outside this execution slice.
-- MySQL accepts bitwise, statistical, and JSON aggregate windows; MyLite keeps
-  those as documented follow-up work because their implementations are
-  MyLite-owned aggregate callbacks, not SQLite built-ins.
+- MySQL accepts bitwise, statistical, and JSON aggregate windows; this core
+  slice kept those as documented follow-up work because their implementations
+  are MyLite-owned aggregate callbacks, not SQLite built-ins. Bitwise aggregate
+  windows are covered by
+  `docs/specs/baseline-bitwise-aggregate-window-functions/specs.md`.
 
 ## Scope
 
@@ -115,7 +117,7 @@ Executable statement envelope:
 Deferred behavior:
 
 - `DISTINCT` aggregate windows beyond MySQL-compatible `1235` diagnostics;
-- bitwise, statistical, JSON, `GROUP_CONCAT()`, `ANY_VALUE()`, spatial, and
+- statistical, JSON, `GROUP_CONCAT()`, `ANY_VALUE()`, spatial, and
   user-defined aggregate windows;
 - decimal widening beyond MyLite's current signed-64 integer aggregate
   envelope;
@@ -169,10 +171,11 @@ only. SQLite built-in aggregate windows execute the core aggregate calls. MyLite
 adds one private scalar SQLite function to format integer `AVG()` window
 results from `SUM()`/`COUNT()` values. No SQLite fork hook is required.
 
-Future bitwise, statistical, JSON, or other MyLite-owned aggregate windows
-should use `sqlite3_create_window_function()` with `xStep`, `xInverse`,
-`xValue`, and `xFinal` callbacks, not a SQLite fork, unless profiling or
-correctness later proves that a narrow hook is needed.
+Future statistical, JSON, or other MyLite-owned aggregate windows should use
+`sqlite3_create_window_function()` with `xStep`, `xInverse`, `xValue`, and
+`xFinal` callbacks, not a SQLite fork, unless profiling or correctness later
+proves that a narrow hook is needed. The bitwise follow-up uses that public
+SQLite API.
 
 ## Tests
 

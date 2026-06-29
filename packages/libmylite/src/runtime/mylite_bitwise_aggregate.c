@@ -4,8 +4,11 @@
 
 #include <inttypes.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+
+enum { bitwise_aggregate_bit_count = 64 };
 
 enum mylite_bitwise_aggregate_operation {
     MYLITE_BITWISE_AGGREGATE_AND = 0,
@@ -19,20 +22,37 @@ struct mylite_bitwise_aggregate_config {
 };
 
 struct mylite_bitwise_aggregate_state {
-    bool initialized;
-    uint64_t value;
+    uint64_t non_null_count;
+    uint64_t bit_counts[bitwise_aggregate_bit_count];
 };
 
 static void bitwise_aggregate_step(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void bitwise_aggregate_inverse(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void bitwise_aggregate_final(sqlite3_context *context);
+static void bitwise_aggregate_value(sqlite3_context *context);
 static void uint64_decimal_order_key(sqlite3_context *context, int argc, sqlite3_value **argv);
 static const struct mylite_bitwise_aggregate_config *bitwise_aggregate_config(
     sqlite3_context *context
 );
-static void apply_bitwise_aggregate_operation(
-    const struct mylite_bitwise_aggregate_config *config,
+static bool read_bitwise_aggregate_argument(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv,
+    uint64_t *out_value,
+    bool *out_is_null
+);
+static void add_bitwise_aggregate_value(
     struct mylite_bitwise_aggregate_state *state,
     uint64_t value
+);
+static bool remove_bitwise_aggregate_value(
+    sqlite3_context *context,
+    struct mylite_bitwise_aggregate_state *state,
+    uint64_t value
+);
+static uint64_t bitwise_aggregate_result(
+    const struct mylite_bitwise_aggregate_config *config,
+    const struct mylite_bitwise_aggregate_state *state
 );
 static void set_bitwise_aggregate_result(sqlite3_context *context, uint64_t value);
 static bool parse_uint64_decimal_text(
@@ -56,7 +76,7 @@ int mylite_sqlite_register_bitwise_aggregate_functions(sqlite3 *sqlite) {
     };
     static struct mylite_sqlite_function_registration registrations[] = {
         {
-            .kind = MYLITE_SQLITE_FUNCTION_AGGREGATE,
+            .kind = MYLITE_SQLITE_FUNCTION_WINDOW,
             .name = "_mylite_bit_and",
             .argument_count = 1,
             .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
@@ -64,12 +84,12 @@ int mylite_sqlite_register_bitwise_aggregate_functions(sqlite3 *sqlite) {
             .scalar_callback = NULL,
             .step_callback = bitwise_aggregate_step,
             .final_callback = bitwise_aggregate_final,
-            .value_callback = NULL,
-            .inverse_callback = NULL,
+            .value_callback = bitwise_aggregate_value,
+            .inverse_callback = bitwise_aggregate_inverse,
             .destroy_callback = NULL,
         },
         {
-            .kind = MYLITE_SQLITE_FUNCTION_AGGREGATE,
+            .kind = MYLITE_SQLITE_FUNCTION_WINDOW,
             .name = "_mylite_bit_or",
             .argument_count = 1,
             .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
@@ -77,12 +97,12 @@ int mylite_sqlite_register_bitwise_aggregate_functions(sqlite3 *sqlite) {
             .scalar_callback = NULL,
             .step_callback = bitwise_aggregate_step,
             .final_callback = bitwise_aggregate_final,
-            .value_callback = NULL,
-            .inverse_callback = NULL,
+            .value_callback = bitwise_aggregate_value,
+            .inverse_callback = bitwise_aggregate_inverse,
             .destroy_callback = NULL,
         },
         {
-            .kind = MYLITE_SQLITE_FUNCTION_AGGREGATE,
+            .kind = MYLITE_SQLITE_FUNCTION_WINDOW,
             .name = "_mylite_bit_xor",
             .argument_count = 1,
             .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
@@ -90,8 +110,8 @@ int mylite_sqlite_register_bitwise_aggregate_functions(sqlite3 *sqlite) {
             .scalar_callback = NULL,
             .step_callback = bitwise_aggregate_step,
             .final_callback = bitwise_aggregate_final,
-            .value_callback = NULL,
-            .inverse_callback = NULL,
+            .value_callback = bitwise_aggregate_value,
+            .inverse_callback = bitwise_aggregate_inverse,
             .destroy_callback = NULL,
         },
         {
@@ -119,35 +139,51 @@ int mylite_sqlite_register_bitwise_aggregate_functions(sqlite3 *sqlite) {
 static void bitwise_aggregate_step(sqlite3_context *context, int argc, sqlite3_value **argv) {
     const struct mylite_bitwise_aggregate_config *config = bitwise_aggregate_config(context);
     struct mylite_bitwise_aggregate_state *state = NULL;
-    int value_type = SQLITE_NULL;
     uint64_t value = 0U;
+    bool is_null = false;
 
-    if (config == NULL || argc != 1 || argv == NULL || argv[0] == NULL) {
+    if (config == NULL) {
         sqlite3_result_error(context, "invalid MyLite bitwise aggregate callback", -1);
         return;
     }
-
-    value_type = sqlite3_value_type(argv[0]);
-    if (value_type == SQLITE_NULL) {
+    if (!read_bitwise_aggregate_argument(context, argc, argv, &value, &is_null)) {
         return;
     }
-    if (value_type != SQLITE_INTEGER) {
-        sqlite3_result_error(context, "invalid MyLite bitwise aggregate input type", -1);
+    if (is_null) {
         return;
     }
-
     state = sqlite3_aggregate_context(context, (int)sizeof(*state));
     if (state == NULL) {
         sqlite3_result_error_nomem(context);
         return;
     }
-    if (!state->initialized) {
-        state->initialized = true;
-        state->value = config->neutral_value;
-    }
+    add_bitwise_aggregate_value(state, value);
+}
 
-    value = (uint64_t)(int64_t)sqlite3_value_int64(argv[0]);
-    apply_bitwise_aggregate_operation(config, state, value);
+static void bitwise_aggregate_inverse(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    const struct mylite_bitwise_aggregate_config *config = bitwise_aggregate_config(context);
+    struct mylite_bitwise_aggregate_state *state = NULL;
+    uint64_t value = 0U;
+    bool is_null = false;
+
+    if (config == NULL) {
+        sqlite3_result_error(context, "invalid MyLite bitwise aggregate callback", -1);
+        return;
+    }
+    if (!read_bitwise_aggregate_argument(context, argc, argv, &value, &is_null)) {
+        return;
+    }
+    if (is_null) {
+        return;
+    }
+    state = sqlite3_aggregate_context(context, 0);
+    if (state == NULL) {
+        sqlite3_result_error(context, "invalid MyLite bitwise aggregate window state", -1);
+        return;
+    }
+    if (!remove_bitwise_aggregate_value(context, state, value)) {
+        return;
+    }
 }
 
 static void bitwise_aggregate_final(sqlite3_context *context) {
@@ -159,10 +195,19 @@ static void bitwise_aggregate_final(sqlite3_context *context) {
         return;
     }
 
-    set_bitwise_aggregate_result(
-        context,
-        state != NULL && state->initialized ? state->value : config->neutral_value
-    );
+    set_bitwise_aggregate_result(context, bitwise_aggregate_result(config, state));
+}
+
+static void bitwise_aggregate_value(sqlite3_context *context) {
+    const struct mylite_bitwise_aggregate_config *config = bitwise_aggregate_config(context);
+    struct mylite_bitwise_aggregate_state *state = sqlite3_aggregate_context(context, 0);
+
+    if (config == NULL) {
+        sqlite3_result_error(context, "invalid MyLite bitwise aggregate callback", -1);
+        return;
+    }
+
+    set_bitwise_aggregate_result(context, bitwise_aggregate_result(config, state));
 }
 
 static void uint64_decimal_order_key(sqlite3_context *context, int argc, sqlite3_value **argv) {
@@ -204,26 +249,109 @@ static const struct mylite_bitwise_aggregate_config *bitwise_aggregate_config(
     return sqlite3_user_data(context);
 }
 
-static void apply_bitwise_aggregate_operation(
-    const struct mylite_bitwise_aggregate_config *config,
+static bool read_bitwise_aggregate_argument(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv,
+    uint64_t *out_value,
+    bool *out_is_null
+) {
+    int value_type = SQLITE_NULL;
+
+    if (argc != 1 || argv == NULL || argv[0] == NULL || out_value == NULL || out_is_null == NULL) {
+        sqlite3_result_error(context, "invalid MyLite bitwise aggregate callback", -1);
+        return false;
+    }
+
+    *out_value = 0U;
+    *out_is_null = false;
+    value_type = sqlite3_value_type(argv[0]);
+    if (value_type == SQLITE_NULL) {
+        *out_is_null = true;
+        return true;
+    }
+    if (value_type != SQLITE_INTEGER) {
+        sqlite3_result_error(context, "invalid MyLite bitwise aggregate input type", -1);
+        return false;
+    }
+
+    *out_value = (uint64_t)(int64_t)sqlite3_value_int64(argv[0]);
+    return true;
+}
+
+static void add_bitwise_aggregate_value(
     struct mylite_bitwise_aggregate_state *state,
     uint64_t value
 ) {
-    if (config == NULL || state == NULL) {
+    if (state == NULL) {
         return;
     }
 
-    switch (config->operation) {
-    case MYLITE_BITWISE_AGGREGATE_AND:
-        state->value &= value;
-        return;
-    case MYLITE_BITWISE_AGGREGATE_OR:
-        state->value |= value;
-        return;
-    case MYLITE_BITWISE_AGGREGATE_XOR:
-        state->value ^= value;
-        return;
+    ++state->non_null_count;
+    for (size_t bit_index = 0U; bit_index < bitwise_aggregate_bit_count; ++bit_index) {
+        uint64_t mask = UINT64_C(1) << bit_index;
+        if ((value & mask) != 0U) {
+            ++state->bit_counts[bit_index];
+        }
     }
+}
+
+static bool remove_bitwise_aggregate_value(
+    sqlite3_context *context,
+    struct mylite_bitwise_aggregate_state *state,
+    uint64_t value
+) {
+    if (state == NULL || state->non_null_count == 0U) {
+        sqlite3_result_error(context, "invalid MyLite bitwise aggregate window state", -1);
+        return false;
+    }
+
+    --state->non_null_count;
+    for (size_t bit_index = 0U; bit_index < bitwise_aggregate_bit_count; ++bit_index) {
+        uint64_t mask = UINT64_C(1) << bit_index;
+        if ((value & mask) == 0U) {
+            continue;
+        }
+        if (state->bit_counts[bit_index] == 0U) {
+            sqlite3_result_error(context, "invalid MyLite bitwise aggregate window state", -1);
+            return false;
+        }
+        --state->bit_counts[bit_index];
+    }
+    return true;
+}
+
+static uint64_t bitwise_aggregate_result(
+    const struct mylite_bitwise_aggregate_config *config,
+    const struct mylite_bitwise_aggregate_state *state
+) {
+    uint64_t result = 0U;
+
+    if (config == NULL || state == NULL || state->non_null_count == 0U) {
+        return config == NULL ? 0U : config->neutral_value;
+    }
+
+    for (size_t bit_index = 0U; bit_index < bitwise_aggregate_bit_count; ++bit_index) {
+        uint64_t bit_count = state->bit_counts[bit_index];
+        uint64_t mask = UINT64_C(1) << bit_index;
+        bool set_bit = false;
+
+        switch (config->operation) {
+        case MYLITE_BITWISE_AGGREGATE_AND:
+            set_bit = bit_count == state->non_null_count;
+            break;
+        case MYLITE_BITWISE_AGGREGATE_OR:
+            set_bit = bit_count != 0U;
+            break;
+        case MYLITE_BITWISE_AGGREGATE_XOR:
+            set_bit = (bit_count % 2U) != 0U;
+            break;
+        }
+        if (set_bit) {
+            result |= mask;
+        }
+    }
+    return result;
 }
 
 static void set_bitwise_aggregate_result(sqlite3_context *context, uint64_t value) {

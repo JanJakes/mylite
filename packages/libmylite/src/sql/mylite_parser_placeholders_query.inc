@@ -166,7 +166,6 @@ static enum placeholder_statement_kind classify_query_scalar_expression_placehol
         return PLACEHOLDER_STATEMENT_NONE;
     }
     if (placeholder_scan_contains_lateral_derived_table(scan) ||
-        placeholder_scan_contains_grouping_function(scan) ||
         placeholder_scan_contains_sounds_like_surface(scan) ||
         placeholder_scan_contains_deprecated_logical_operator_surface(scan) ||
         placeholder_scan_contains_like_surface(scan) ||
@@ -3359,22 +3358,6 @@ static bool placeholder_scan_contains_lateral_derived_table(
     }
     for (size_t index = 0U; index + 1U < scan->token_count; ++index) {
         if (placeholder_scan_token_text_equals(scan, index, "LATERAL") &&
-            mylite_sql_parser_token_is_left_paren(&scan->tokens[index + 1U]) &&
-            placeholder_scan_parenthesized_operand_is_complete(scan, index + 1U)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool placeholder_scan_contains_grouping_function(
-    const struct placeholder_statement_scan *scan
-) {
-    if (scan == NULL) {
-        return false;
-    }
-    for (size_t index = 0U; index + 1U < scan->token_count; ++index) {
-        if (placeholder_scan_token_text_equals(scan, index, "GROUPING") &&
             mylite_sql_parser_token_is_left_paren(&scan->tokens[index + 1U]) &&
             placeholder_scan_parenthesized_operand_is_complete(scan, index + 1U)) {
             return true;

@@ -36,13 +36,22 @@ static int plan_grouped_aggregate_projection_columns(
         size_t source_index = 0U;
         size_t expression_index = out_plan->projection_count + 1U;
 
-        if (grouped_aggregate_function_from_expression(unwrap_parenthesized_expression(expression)
-            ) != PLANNED_GROUPED_AGGREGATE_NONE) {
+        if (grouped_expression_is_grouping_marker(database, expression)) {
+            rc = plan_grouped_aggregate_grouping_projection(
+                database,
+                expression,
+                child_at(item, 1U),
+                source_context,
+                table_columns,
+                table_column_count,
+                out_plan
+            );
+        } else if (grouped_aggregate_function_from_expression(unwrap_parenthesized_expression(expression)
+                   ) != PLANNED_GROUPED_AGGREGATE_NONE) {
             *out_first_aggregate_index = item_index;
             return MYLITE_OK;
-        }
-        if (expression != NULL && expression->kind == MYLITE_SQL_AST_WILDCARD &&
-            child_at(item, 1U) == NULL) {
+        } else if (expression != NULL && expression->kind == MYLITE_SQL_AST_WILDCARD &&
+                   child_at(item, 1U) == NULL) {
             rc = plan_grouped_aggregate_wildcard_projection_columns(
                 database,
                 expression_index,
@@ -222,6 +231,35 @@ static int append_grouped_projection_row_scalar_expression(
     return MYLITE_OK;
 }
 
+static int append_grouped_projection_grouping_marker(
+    struct mylite_db *database,
+    struct planned_grouped_aggregate *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias
+) {
+    struct planned_grouped_projection *projections = NULL;
+    size_t required_count = plan->projection_count + 1U;
+
+    if (required_count > SIZE_MAX / sizeof(*projections)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    projections = realloc(plan->projections, required_count * sizeof(*projections));
+    if (projections == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    plan->projections = projections;
+    plan->projections[plan->projection_count] = (struct planned_grouped_projection){
+        .expression = expression,
+        .alias = alias,
+        .is_grouping_marker = true,
+    };
+    plan->projection_count = required_count;
+    return MYLITE_OK;
+}
+
 static int plan_grouped_aggregate_temporal_projection(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -261,6 +299,149 @@ static int plan_grouped_aggregate_temporal_projection(
     }
     planned_row_scalar_expression_deinit(&row_scalar_expression);
     return rc;
+}
+
+static int plan_grouped_aggregate_grouping_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan
+) {
+    const struct mylite_sql_ast_node *arguments = NULL;
+    const struct mylite_sql_ast_node *argument = NULL;
+    struct mylite_catalog_column_descriptor column = {0};
+    size_t source_index = 0U;
+    size_t argument_count = 0U;
+    bool matched_group = false;
+    int rc = MYLITE_OK;
+
+    if (!out_plan->with_rollup) {
+        set_grouping_invalid_use_error(database);
+        return MYLITE_ERROR;
+    }
+    arguments = generic_system_function_arguments(unwrap_parenthesized_expression(expression));
+    argument_count = arguments == NULL ? 0U : mylite_sql_ast_node_child_count(arguments);
+    if (argument_count != 1U) {
+        set_unsupported_error(database, "GROUPING() supports one descriptor group column");
+        return MYLITE_ERROR;
+    }
+
+    argument = unwrap_parenthesized_expression(child_at(arguments, 0U));
+    if (argument == NULL || (argument->kind != MYLITE_SQL_AST_IDENTIFIER &&
+                             argument->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        set_grouping_incorrect_arguments_error(database);
+        return MYLITE_ERROR;
+    }
+    rc = resolve_descriptor_column_reference_with_source_index(
+        database,
+        argument,
+        source_context,
+        COLUMN_REFERENCE_GROUP,
+        "GROUPING() supports only descriptor group columns",
+        table_columns,
+        table_column_count,
+        &column,
+        &source_index
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    for (size_t group_index = 0U; group_index < out_plan->group_count; ++group_index) {
+        if (grouping_projection_column_matches_group_key(
+                &out_plan->groups[group_index],
+                &column,
+                source_index
+            )) {
+            matched_group = true;
+            break;
+        }
+    }
+    if (!matched_group) {
+        set_grouping_argument_not_grouped_error(database, 1U);
+        return MYLITE_ERROR;
+    }
+
+    return append_grouped_projection_grouping_marker(database, out_plan, expression, alias);
+}
+
+static bool grouped_expression_is_grouping_marker(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_ast_node *function_name = NULL;
+    char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY] = {0};
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL || expression->kind != MYLITE_SQL_AST_GENERIC_FUNCTION) {
+        return false;
+    }
+
+    function_name = child_at(expression, 0U);
+    if (function_name == NULL || function_name->kind != MYLITE_SQL_AST_IDENTIFIER) {
+        return false;
+    }
+    if (copy_identifier_text(function_name, name, sizeof(name), database) != MYLITE_OK) {
+        return false;
+    }
+    return text_equals_ascii_case_insensitive(name, "GROUPING");
+}
+
+static bool grouping_projection_column_matches_group_key(
+    const struct planned_grouped_key *group,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t source_index
+) {
+    if (group == NULL || column == NULL || group->uses_row_scalar_expression) {
+        return false;
+    }
+    return group->column_source_index == source_index && group->column.table_id == column->table_id &&
+           group->column.column_id == column->column_id;
+}
+
+static void set_grouping_invalid_use_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_invalid_group_function,
+        "HY000",
+        "Invalid use of group function"
+    );
+}
+
+static void set_grouping_incorrect_arguments_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_incorrect_arguments,
+        "HY000",
+        "Incorrect arguments to GROUPING function"
+    );
+}
+
+static void set_grouping_argument_not_grouped_error(
+    struct mylite_db *database,
+    size_t argument_index
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Argument #%zu of GROUPING function is not in GROUP BY",
+        argument_index
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "failed to format GROUPING() diagnostic");
+        return;
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_grouping_function_argument_not_grouped,
+        "HY000",
+        message
+    );
 }
 
 static int plan_grouped_aggregate_literal_projection(

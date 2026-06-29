@@ -171,6 +171,10 @@ static int validate_grouped_projection_references(
             ) != PLANNED_GROUPED_AGGREGATE_NONE) {
             return MYLITE_OK;
         }
+        if (grouped_expression_is_grouping_marker(database, expression)) {
+            item = item->next_sibling;
+            continue;
+        }
         if (expression != NULL && expression->kind == MYLITE_SQL_AST_WILDCARD &&
             child_at(item, 1U) == NULL) {
             item = item->next_sibling;

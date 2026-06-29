@@ -129,6 +129,12 @@ static int append_grouped_projection_row_scalar_expression(
     const struct mylite_sql_ast_node *expression,
     const struct mylite_sql_ast_node *alias
 );
+static int append_grouped_projection_grouping_marker(
+    struct mylite_db *database,
+    struct planned_grouped_aggregate *plan,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias
+);
 static int plan_grouped_aggregate_temporal_projection(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -137,6 +143,30 @@ static int plan_grouped_aggregate_temporal_projection(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_grouped_aggregate *out_plan
+);
+static int plan_grouped_aggregate_grouping_projection(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const struct mylite_sql_ast_node *alias,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_grouped_aggregate *out_plan
+);
+static bool grouped_expression_is_grouping_marker(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression
+);
+static bool grouping_projection_column_matches_group_key(
+    const struct planned_grouped_key *group,
+    const struct mylite_catalog_column_descriptor *column,
+    size_t source_index
+);
+static void set_grouping_invalid_use_error(struct mylite_db *database);
+static void set_grouping_incorrect_arguments_error(struct mylite_db *database);
+static void set_grouping_argument_not_grouped_error(
+    struct mylite_db *database,
+    size_t argument_index
 );
 static int plan_grouped_aggregate_literal_projection(
     struct mylite_db *database,
@@ -990,6 +1020,11 @@ static int append_grouped_aggregate_null_rollup_row(
     struct mylite_db *database,
     const struct planned_grouped_aggregate *plan,
     mylite_result *result
+);
+static void append_grouped_aggregate_rollup_projection_cell(
+    const struct planned_grouped_aggregate *plan,
+    size_t projection_index,
+    struct mylite_result_cell *out_cell
 );
 static int set_grouped_aggregate_found_row_count(
     struct mylite_db *database,

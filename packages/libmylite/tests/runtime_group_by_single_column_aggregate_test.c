@@ -29,11 +29,14 @@ enum {
     mysql_error_column_ambiguous = 1052,
     mysql_error_unknown_column = 1054,
     mysql_error_not_group_by = 1055,
+    mysql_error_invalid_group_function = 1111,
     mysql_error_incorrect_database_name = 1102,
     mysql_error_incorrect_table_name = 1103,
     mysql_error_unknown = 1105,
     mysql_error_table_does_not_exist = 1146,
+    mysql_error_incorrect_arguments = 1210,
     mysql_error_data_out_of_range = 1264,
+    mysql_error_grouping_function_argument_not_grouped = 3602,
 };
 
 struct expected_sql_error {
@@ -102,6 +105,23 @@ int main(void) {
 static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const g_count_columns[] = {"g", "COUNT(*)"};
     static const char *const g_count_values[] = {NULL, "1", "1", "2", "2", "2"};
+    static const char *const g_grouping_columns[] = {"g", "GROUPING(g)", "COUNT(*)"};
+    static const char *const g_grouping_values[] = {
+        NULL,
+        "0",
+        "1",
+        "1",
+        "0",
+        "2",
+        "2",
+        "0",
+        "2",
+        NULL,
+        "1",
+        "5",
+    };
+    static const char *const g_grouping_alias_columns[] = {"marker"};
+    static const char *const g_grouping_alias_values[] = {"0", "0", "0", "1"};
     static const char *const g_rollup_count_values[] = {
         NULL,
         "1",
@@ -851,6 +871,28 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
     failures += expect_grouped_query(
         database,
         (struct expected_grouped_query){
+            .sql = "SELECT g, GROUPING(g), COUNT(*) FROM grouped_numbers GROUP BY g WITH ROLLUP",
+            .columns = g_grouping_columns,
+            .column_count = 3U,
+            .values = g_grouping_values,
+            .row_count = 4U,
+            .context = "single-key rollup grouping marker distinguishes rollup null",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT GROUPING(g) AS marker FROM grouped_numbers GROUP BY g WITH ROLLUP",
+            .columns = g_grouping_alias_columns,
+            .column_count = 1U,
+            .values = g_grouping_alias_values,
+            .row_count = 4U,
+            .context = "single-key rollup grouping marker alias",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
             .sql = "SELECT g, COUNT(*), COUNT(n), SUM(n), MIN(n), MAX(n), AVG(n) "
                    "FROM grouped_numbers GROUP BY g WITH ROLLUP",
             .columns = g_rollup_multi_columns,
@@ -882,6 +924,18 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = NULL,
             .row_count = 0U,
             .context = "single-key rollup empty filtered source emits no total row",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, GROUPING(g), COUNT(*) FROM grouped_numbers WHERE n > 100 "
+                   "GROUP BY g WITH ROLLUP",
+            .columns = g_grouping_columns,
+            .column_count = 3U,
+            .values = NULL,
+            .row_count = 0U,
+            .context = "single-key grouping marker empty filtered source emits no rows",
         }
     );
     failures += expect_grouped_query(
@@ -3048,6 +3102,42 @@ static int test_grouped_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "GROUP BY supports only descriptor group columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, GROUPING(g), COUNT(*) FROM grouped_numbers GROUP BY g",
+        (struct expected_sql_error){
+            .code = mysql_error_invalid_group_function,
+            .sqlstate = "HY000",
+            .message_part = "Invalid use of group function",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, GROUPING(n), COUNT(*) FROM grouped_numbers GROUP BY g WITH ROLLUP",
+        (struct expected_sql_error){
+            .code = mysql_error_grouping_function_argument_not_grouped,
+            .sqlstate = "HY000",
+            .message_part = "Argument #1 of GROUPING function is not in GROUP BY",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, GROUPING(1), COUNT(*) FROM grouped_numbers GROUP BY g WITH ROLLUP",
+        (struct expected_sql_error){
+            .code = mysql_error_incorrect_arguments,
+            .sqlstate = "HY000",
+            .message_part = "Incorrect arguments to GROUPING function",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, GROUPING(g, n), COUNT(*) FROM grouped_numbers GROUP BY g WITH ROLLUP",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "GROUPING() supports one descriptor group column",
         }
     );
     failures += execute_error(

@@ -1078,7 +1078,9 @@ static int append_grouped_projection_sql(
 ) {
     int rc = MYLITE_OK;
 
-    if (projection->uses_row_scalar_expression) {
+    if (projection->is_grouping_marker) {
+        rc = mylite_dynamic_string_append_char(string, '0');
+    } else if (projection->uses_row_scalar_expression) {
         if (next_parameter == NULL) {
             return MYLITE_ERROR;
         }

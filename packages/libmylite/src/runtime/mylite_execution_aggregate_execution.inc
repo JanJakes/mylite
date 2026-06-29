@@ -112,7 +112,7 @@ static int append_grouped_aggregate_result_columns(
                 return rc;
             }
             projection_column_name = projection_alias_text;
-        } else if (projection->uses_row_scalar_expression) {
+        } else if (projection->is_grouping_marker || projection->uses_row_scalar_expression) {
             rc = copy_scalar_projection_column_name(
                 database,
                 projection->expression,
@@ -2495,7 +2495,7 @@ static int append_grouped_aggregate_null_rollup_row(
         return MYLITE_NOMEM;
     }
     for (size_t column_index = 0U; column_index < result_column_count; ++column_index) {
-        cells[column_index].is_null = true;
+        append_grouped_aggregate_rollup_projection_cell(plan, column_index, &cells[column_index]);
     }
     rc = mylite_result_append_bytes_row(result, cells);
     if (rc == MYLITE_NOMEM) {
@@ -2879,7 +2879,7 @@ static int append_grouped_aggregate_rollup_sqlite_row(
 
     for (size_t projection_index = 0U; projection_index < plan->projection_count;
          ++projection_index) {
-        cells[projection_index].is_null = true;
+        append_grouped_aggregate_rollup_projection_cell(plan, projection_index, &cells[projection_index]);
     }
     for (size_t aggregate_index = 0U; rc == MYLITE_OK && aggregate_index < plan->aggregate_count;
          ++aggregate_index) {
@@ -2912,6 +2912,26 @@ static int append_grouped_aggregate_rollup_sqlite_row(
     return rc;
 }
 
+static void append_grouped_aggregate_rollup_projection_cell(
+    const struct planned_grouped_aggregate *plan,
+    size_t projection_index,
+    struct mylite_result_cell *out_cell
+) {
+    static const unsigned char grouping_marker[] = "1";
+
+    *out_cell = (struct mylite_result_cell){.is_null = true};
+    if (projection_index >= plan->projection_count) {
+        return;
+    }
+    if (plan->projections[projection_index].is_grouping_marker) {
+        *out_cell = (struct mylite_result_cell){
+            .bytes = grouping_marker,
+            .size = sizeof(grouping_marker) - 1U,
+            .is_null = false,
+        };
+    }
+}
+
 static int append_grouped_aggregate_projection_cell(
     struct mylite_db *database,
     sqlite3_stmt *statement,
@@ -2924,7 +2944,8 @@ static int append_grouped_aggregate_projection_cell(
     if (projection_index >= plan->projection_count) {
         return MYLITE_ERROR;
     }
-    if (plan->projections[projection_index].uses_row_scalar_expression) {
+    if (plan->projections[projection_index].is_grouping_marker ||
+        plan->projections[projection_index].uses_row_scalar_expression) {
         return append_selected_sqlite_row_value_with_descriptor(
             database,
             statement,

@@ -2220,6 +2220,7 @@ struct planned_compound_select {
 struct planned_grouped_projection {
     const struct mylite_sql_ast_node *expression;
     const struct mylite_sql_ast_node *alias;
+    bool is_grouping_marker;
     bool uses_row_scalar_expression;
     struct planned_row_scalar_expression row_scalar_expression;
     struct mylite_catalog_column_descriptor column;

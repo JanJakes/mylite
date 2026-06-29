@@ -1584,9 +1584,6 @@ static bool placeholder_scan_bare_truth_expression_is_qualified_identifier(
 static bool placeholder_scan_contains_lateral_derived_table(
     const struct placeholder_statement_scan *scan
 );
-static bool placeholder_scan_contains_grouping_function(
-    const struct placeholder_statement_scan *scan
-);
 static bool placeholder_scan_contains_sounds_like_surface(
     const struct placeholder_statement_scan *scan
 );

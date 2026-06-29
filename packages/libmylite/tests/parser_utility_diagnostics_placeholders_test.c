@@ -47,6 +47,29 @@ static int test_utility_noop_statement_forms(void) {
          .kind = MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT},
         {.sql = "UNINSTALL PLUGIN example", .kind = MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT},
         {
+            .sql = "CREATE SPATIAL REFERENCE SYSTEM 2004326 NAME 'Copy of WGS 84' "
+                   "ORGANIZATION 'EPSG' IDENTIFIED BY 2004326 DEFINITION 'GEOGCS[]'",
+            .kind = MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT,
+        },
+        {
+            .sql = "CREATE OR REPLACE SPATIAL REFERENCE SYSTEM 2004326 "
+                   "NAME 'Copy of WGS 84' DEFINITION 'GEOGCS[]'",
+            .kind = MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT,
+        },
+        {
+            .sql = "CREATE SPATIAL REFERENCE SYSTEM IF NOT EXISTS 2004326 "
+                   "NAME 'Copy of WGS 84' DEFINITION 'GEOGCS[]'",
+            .kind = MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT,
+        },
+        {
+            .sql = "DROP SPATIAL REFERENCE SYSTEM IF EXISTS 2004326",
+            .kind = MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT,
+        },
+        {
+            .sql = "DROP SPATIAL REFERENCE SYSTEM 2004326",
+            .kind = MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT,
+        },
+        {
             .sql = "CREATE TABLESPACE ts1 ADD DATAFILE 'ts1.ibd' ENGINE=InnoDB",
             .kind = MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT,
         },

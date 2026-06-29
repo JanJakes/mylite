@@ -40,6 +40,8 @@ fails:
   `UNINSTALL PLUGIN`;
 - `CREATE TABLESPACE`, `ALTER TABLESPACE`, `DROP TABLESPACE`, and
   `CREATE` / `ALTER` / `DROP LOGFILE GROUP`;
+- `CREATE SPATIAL REFERENCE SYSTEM`, `CREATE OR REPLACE SPATIAL REFERENCE
+  SYSTEM`, and `DROP SPATIAL REFERENCE SYSTEM`;
 - unsupported server-global or parser-admitted system-variable `SET` variants
   such as broad `SET GLOBAL ...`, `SET @@GLOBAL...`, and unsupported
   persisted/session/global assignments not handled by the normal `SET` runtime.
@@ -52,8 +54,8 @@ The runtime behavior is:
 - append one warning, code `1105`, SQLSTATE `HY000`, message
   `MyLite accepted this utility statement as an embedded no-op`;
 - leave catalogs, optimizer state, component/plugin registries, tablespace and
-  logfile-group metadata, system variables, user data, and user transactions
-  unchanged.
+  logfile-group metadata, spatial reference-system dictionaries, system
+  variables, user data, and user transactions unchanged.
 
 This intentionally differs from MySQL server side effects. MyLite has no
 loadable component/plugin mechanism, physical tablespaces or NDB logfile
@@ -172,6 +174,9 @@ utility_noop_statement:
   | CREATE LOGFILE GROUP ...
   | ALTER LOGFILE GROUP ...
   | DROP LOGFILE GROUP ...
+  | CREATE SPATIAL REFERENCE SYSTEM ...
+  | CREATE OR REPLACE SPATIAL REFERENCE SYSTEM ...
+  | DROP SPATIAL REFERENCE SYSTEM ...
   | SET GLOBAL ...
   | SET @@GLOBAL...
   | SET SESSION ... unsupported-value-shape
@@ -211,6 +216,7 @@ Coverage added:
   function lifecycle;
 - no physical tablespaces, datafiles, undo tablespaces, NDB tablespaces, or
   logfile groups;
+- no mutable spatial reference-system dictionary or custom SRID behavior;
 - no XA state machine, XA recovery records, two-phase commit, or distributed
   transaction integration;
 - no HANDLER cursor state or direct index cursor access;

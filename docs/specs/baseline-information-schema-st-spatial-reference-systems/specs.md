@@ -9,9 +9,10 @@ MyLite does not yet implement SRID attributes, spatial value semantics, GIS
 functions, or a spatial reference system dictionary.
 
 The slice is metadata-only. It does not add EPSG data rows, SRID validation,
-`CREATE SPATIAL REFERENCE SYSTEM`, `DROP SPATIAL REFERENCE SYSTEM`, WKT
-definition parsing, spatial calculations, or physical MySQL data dictionary
-tables.
+executable SRS catalog mutation, WKT definition parsing, spatial calculations,
+or physical MySQL data dictionary tables. `CREATE SPATIAL REFERENCE SYSTEM` and
+`DROP SPATIAL REFERENCE SYSTEM` are accepted separately as embedded no-op
+placeholders.
 
 ## Sources
 
@@ -134,7 +135,8 @@ Out of scope:
   validation;
 - WKT SRS definition parsing, axis metadata, coordinate transformations, or
   distance calculations;
-- `CREATE SPATIAL REFERENCE SYSTEM` and `DROP SPATIAL REFERENCE SYSTEM`;
+- executable `CREATE SPATIAL REFERENCE SYSTEM` and
+  `DROP SPATIAL REFERENCE SYSTEM` catalog mutation;
 - mutable SRS catalogs or user-defined SRS entries;
 - privilege filtering or account-specific visibility;
 - SQLite storage, VFS, extension, or fork changes.

@@ -9,6 +9,9 @@ static enum placeholder_statement_kind classify_create_placeholder_statement(
     if (foreign_server_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
     }
+    if (spatial_reference_system_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
+    }
     if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE") ||
         logfile_group_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
@@ -183,6 +186,35 @@ static bool foreign_server_drop_name_is_supported(
     }
     return placeholder_scan_token_can_name_loose_identifier(scan, index) ||
            scan->tokens[index].kind == MYLITE_SQL_TOKEN_STRING;
+}
+
+static bool spatial_reference_system_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+) {
+    size_t spatial_index = 1U;
+    size_t system_index = 0U;
+
+    if (scan == NULL || scan->has_non_trailing_semicolon ||
+        !placeholder_scan_parentheses_are_balanced(scan, 0U) ||
+        placeholder_scan_statement_tail_is_obviously_incomplete(scan)) {
+        return false;
+    }
+    if (placeholder_scan_token_text_equals(scan, 0U, "CREATE")) {
+        if (placeholder_scan_token_text_equals(scan, 1U, "OR") &&
+            placeholder_scan_token_text_equals(scan, 2U, "REPLACE")) {
+            spatial_index = 3U;
+        }
+    } else if (!placeholder_scan_token_text_equals(scan, 0U, "DROP")) {
+        return false;
+    }
+
+    system_index = spatial_index + 2U;
+    if (!placeholder_scan_token_text_equals(scan, spatial_index, "SPATIAL") ||
+        !placeholder_scan_token_text_equals(scan, spatial_index + 1U, "REFERENCE") ||
+        !placeholder_scan_token_text_equals(scan, system_index, "SYSTEM")) {
+        return false;
+    }
+    return system_index + 1U < scan->token_count;
 }
 
 static bool alter_schema_unsupported_placeholder_statement_is_supported(
@@ -1049,6 +1081,9 @@ static enum placeholder_statement_kind classify_drop_placeholder_statement(
     }
     if (foreign_server_placeholder_statement_is_supported(scan)) {
         return PLACEHOLDER_STATEMENT_ADMIN_NOOP;
+    }
+    if (spatial_reference_system_placeholder_statement_is_supported(scan)) {
+        return PLACEHOLDER_STATEMENT_UTILITY_NOOP;
     }
     if (placeholder_scan_token_text_equals(scan, 1U, "TABLESPACE") ||
         logfile_group_placeholder_statement_is_supported(scan)) {

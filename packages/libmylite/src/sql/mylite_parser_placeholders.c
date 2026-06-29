@@ -1689,6 +1689,9 @@ static bool foreign_server_drop_name_is_supported(
     const struct placeholder_statement_scan *scan,
     size_t index
 );
+static bool spatial_reference_system_placeholder_statement_is_supported(
+    const struct placeholder_statement_scan *scan
+);
 static bool alter_schema_unsupported_placeholder_statement_is_supported(
     const struct placeholder_statement_scan *scan
 );

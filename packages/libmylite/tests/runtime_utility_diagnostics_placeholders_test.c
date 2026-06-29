@@ -71,6 +71,9 @@ static int test_utility_noop_warning_surface(void) {
         "ANALYZE TABLE foo UPDATE HISTOGRAM ON col1 WITH 10 BUCKETS",
         "INSTALL COMPONENT 'file://component_validate_password'",
         "UNINSTALL PLUGIN validate_password",
+        "CREATE SPATIAL REFERENCE SYSTEM 2004326 NAME 'Copy of WGS 84'",
+        "CREATE OR REPLACE SPATIAL REFERENCE SYSTEM 2004326 NAME 'Copy of WGS 84'",
+        "DROP SPATIAL REFERENCE SYSTEM IF EXISTS 2004326",
         "CREATE TABLESPACE ts1 ADD DATAFILE 'ts1.ibd' ENGINE=InnoDB",
         "DROP TABLESPACE ts1",
         "CREATE LOGFILE GROUP lg1 ADD UNDOFILE 'undo.dat' ENGINE=InnoDB",
@@ -135,6 +138,10 @@ static int test_utility_noop_preserves_user_transaction(void) {
     failures += execute_statement_ok(database, "CREATE TABLE t (id INT)");
     failures += execute_statement_ok(database, "START TRANSACTION");
     failures += execute_statement_ok(database, "INSERT INTO t VALUES (1)");
+    failures += expect_utility_noop(
+        database,
+        "CREATE SPATIAL REFERENCE SYSTEM 2004326 NAME 'Copy of WGS 84' DEFINITION 'GEOGCS[]'"
+    );
     failures += expect_utility_noop(database, "DROP LOGFILE GROUP lg1 ENGINE=NDB");
     failures += execute_statement_ok(database, "ROLLBACK");
     failures += expect_query_values(

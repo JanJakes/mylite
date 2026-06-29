@@ -180,6 +180,12 @@ static int generic_system_function_value(
     if (generic_system_function_name_equals(expression, "UPDATEXML")) {
         return generic_update_xml_value(database, arguments, out_cell);
     }
+    if (generic_system_function_name_equals(expression, "JSON_SCHEMA_VALID")) {
+        return generic_json_schema_valid_value(database, arguments, out_cell);
+    }
+    if (generic_system_function_name_equals(expression, "JSON_SCHEMA_VALIDATION_REPORT")) {
+        return generic_json_schema_validation_report_value(database, arguments, out_cell);
+    }
     set_unsupported_error(database, "unsupported generic scalar function");
     return MYLITE_ERROR;
 }
@@ -1197,6 +1203,342 @@ static int generic_update_xml_value(
         out_cell->has_value_size = true;
     }
     return MYLITE_OK;
+}
+
+struct generic_json_schema_argument {
+    struct session_scalar_cell cell;
+    const char *text;
+    size_t text_length;
+    bool is_null;
+};
+
+static int generic_json_schema_valid_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+) {
+    return generic_json_schema_function_value(
+        database,
+        arguments,
+        "JSON_SCHEMA_VALID",
+        "json_schema_valid",
+        false,
+        out_cell
+    );
+}
+
+static int generic_json_schema_validation_report_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+) {
+    return generic_json_schema_function_value(
+        database,
+        arguments,
+        "JSON_SCHEMA_VALIDATION_REPORT",
+        "json_schema_validation_report",
+        true,
+        out_cell
+    );
+}
+
+static int generic_json_schema_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    const char *function_name,
+    const char *diagnostic_function_name,
+    bool report,
+    struct session_scalar_cell *out_cell
+) {
+    struct generic_json_schema_argument schema = {0};
+    struct generic_json_schema_argument document = {0};
+    struct mylite_json_schema_validation_result validation = {0};
+    char *report_text = NULL;
+    size_t report_text_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL || function_name == NULL || diagnostic_function_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 2U) {
+        set_native_function_parameter_count_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+
+    rc = generic_json_schema_argument_value(
+        database,
+        child_at(arguments, 0U),
+        diagnostic_function_name,
+        1U,
+        &schema
+    );
+    if (rc == MYLITE_OK) {
+        rc = generic_json_schema_argument_value(
+            database,
+            child_at(arguments, 1U),
+            diagnostic_function_name,
+            2U,
+            &document
+        );
+    }
+    if (rc != MYLITE_OK) {
+        goto cleanup;
+    }
+    if (schema.is_null || document.is_null) {
+        out_cell->value = NULL;
+        goto cleanup;
+    }
+    if (report) {
+        rc = mylite_json_schema_validation_report(
+            schema.text,
+            schema.text_length,
+            document.text,
+            document.text_length,
+            &report_text,
+            &report_text_length,
+            &validation
+        );
+    } else {
+        rc = mylite_json_schema_validate(
+            schema.text,
+            schema.text_length,
+            document.text,
+            document.text_length,
+            &validation
+        );
+    }
+    if (rc == MYLITE_OK && validation.status == MYLITE_JSON_SCHEMA_VALIDATION_OK) {
+        if (report) {
+            out_cell->owned_text = report_text;
+            out_cell->value = out_cell->owned_text;
+            out_cell->value_size = report_text_length;
+            out_cell->has_value_size = true;
+            report_text = NULL;
+        } else {
+            out_cell->value = validation.is_valid ? "1" : "0";
+        }
+        goto cleanup;
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    } else if (validation.status == MYLITE_JSON_SCHEMA_VALIDATION_INVALID_SCHEMA_JSON) {
+        rc = set_json_schema_invalid_json_text_error(
+            database,
+            diagnostic_function_name,
+            1U,
+            &validation.schema_result
+        );
+    } else if (validation.status == MYLITE_JSON_SCHEMA_VALIDATION_INVALID_DOCUMENT_JSON) {
+        rc = set_json_schema_invalid_json_text_error(
+            database,
+            diagnostic_function_name,
+            2U,
+            &validation.document_result
+        );
+    } else if (validation.status == MYLITE_JSON_SCHEMA_VALIDATION_INVALID_SCHEMA_TYPE) {
+        rc = set_json_schema_invalid_type_error(database, diagnostic_function_name);
+    } else if (validation.status == MYLITE_JSON_SCHEMA_VALIDATION_UNSUPPORTED_REFERENCE) {
+        rc = set_json_schema_reference_unsupported_error(database);
+    } else {
+        set_unsupported_error(
+            database,
+            "JSON schema validation supports type, required, properties, minimum, and maximum"
+        );
+        rc = MYLITE_ERROR;
+    }
+
+cleanup:
+    free(report_text);
+    mylite_json_schema_validation_result_deinit(&validation);
+    generic_json_schema_argument_deinit(&document);
+    generic_json_schema_argument_deinit(&schema);
+    return rc;
+}
+
+static int generic_json_schema_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    const char *function_name,
+    size_t argument_index,
+    struct generic_json_schema_argument *out_argument
+) {
+    const struct mylite_sql_ast_node *unwrapped = unwrap_parenthesized_expression(argument);
+    enum mylite_session_user_variable_value_kind variable_kind =
+        MYLITE_SESSION_USER_VARIABLE_VALUE_NULL;
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    int rc = MYLITE_OK;
+
+    if (out_argument == NULL || function_name == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_argument = (struct generic_json_schema_argument){0};
+    if (unwrapped == NULL) {
+        set_unsupported_error(
+            database,
+            "JSON schema validation supports string, JSON, NULL, and user-variable arguments"
+        );
+        return MYLITE_ERROR;
+    }
+
+    if (unwrapped->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(unwrapped);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+            out_argument->is_null = true;
+            return MYLITE_OK;
+        }
+        if (literal_kind != MYLITE_SQL_AST_LITERAL_STRING) {
+            return set_json_schema_invalid_data_type_error(
+                database,
+                function_name,
+                argument_index
+            );
+        }
+        rc = decode_sql_string_literal(
+            database,
+            unwrapped,
+            "JSON schema validation supports only string literals",
+            "JSON schema validation string literals do not support NUL bytes",
+            &out_argument->cell.owned_text,
+            &out_argument->text_length
+        );
+        if (rc == MYLITE_OK) {
+            out_argument->text = out_argument->cell.owned_text;
+        }
+        return rc;
+    }
+
+    if (unwrapped->kind == MYLITE_SQL_AST_USER_VARIABLE) {
+        rc = session_user_variable_value_kind(database, unwrapped, &variable_kind);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (variable_kind == MYLITE_SESSION_USER_VARIABLE_VALUE_NULL) {
+            out_argument->is_null = true;
+            return MYLITE_OK;
+        }
+        if (variable_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_STRING) {
+            return set_json_schema_invalid_data_type_error(
+                database,
+                function_name,
+                argument_index
+            );
+        }
+        rc = session_user_variable_value(database, unwrapped, &out_argument->cell);
+        if (rc == MYLITE_OK) {
+            out_argument->text = out_argument->cell.value;
+            out_argument->text_length =
+                out_argument->cell.has_value_size ? out_argument->cell.value_size
+                                                  : strlen(out_argument->cell.value);
+            out_argument->is_null = out_argument->cell.value == NULL;
+        }
+        return rc;
+    }
+
+    set_unsupported_error(
+        database,
+        "JSON schema validation supports string, JSON, NULL, and user-variable arguments"
+    );
+    return MYLITE_ERROR;
+}
+
+static void generic_json_schema_argument_deinit(struct generic_json_schema_argument *argument) {
+    if (argument == NULL) {
+        return;
+    }
+    session_scalar_cell_deinit(&argument->cell);
+    *argument = (struct generic_json_schema_argument){0};
+}
+
+static int set_json_schema_invalid_json_text_error(
+    struct mylite_db *database,
+    const char *function_name,
+    size_t argument_index,
+    const struct mylite_json_normalize_result *result
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    size_t position = result == NULL ? 0U : result->position;
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Invalid JSON text in argument %zu to function %s: \"%s\" at position %zu.",
+        argument_index,
+        function_name == NULL ? "json_schema_valid" : function_name,
+        mylite_json_invalid_text_error_message(result),
+        position
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_invalid_json_text_in_function,
+        "22032",
+        message
+    );
+    return MYLITE_ERROR;
+}
+
+static int set_json_schema_invalid_type_error(
+    struct mylite_db *database,
+    const char *function_name
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Invalid JSON type in argument 1 to function %s; an object is required.",
+        function_name == NULL ? "json_schema_valid" : function_name
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_invalid_json_type,
+        "22032",
+        message
+    );
+    return MYLITE_ERROR;
+}
+
+static int set_json_schema_invalid_data_type_error(
+    struct mylite_db *database,
+    const char *function_name,
+    size_t argument_index
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Invalid data type for JSON data in argument %zu to function %s; a JSON string or JSON "
+        "type is required.",
+        argument_index,
+        function_name == NULL ? "json_schema_valid" : function_name
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        message[0] = '\0';
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_invalid_json_data,
+        "22032",
+        message
+    );
+    return MYLITE_ERROR;
+}
+
+static int set_json_schema_reference_unsupported_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_not_supported_yet,
+        "42000",
+        "This version of MySQL doesn't yet support 'references in JSON Schema'"
+    );
+    return MYLITE_ERROR;
 }
 
 static int generic_system_string_argument(

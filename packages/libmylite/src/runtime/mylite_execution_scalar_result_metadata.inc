@@ -245,7 +245,8 @@ static int populate_scalar_function_result_column_descriptor(
             generic_system_function_name_equals(expression, "IS_USED_LOCK") ||
             generic_system_function_name_equals(expression, "RELEASE_LOCK") ||
             generic_system_function_name_equals(expression, "RELEASE_ALL_LOCKS") ||
-            generic_system_function_name_equals(expression, "BENCHMARK")) {
+            generic_system_function_name_equals(expression, "BENCHMARK") ||
+            generic_system_function_name_equals(expression, "JSON_SCHEMA_VALID")) {
             populate_scalar_binary_numeric_result_column_descriptor(
                 descriptor,
                 (struct scalar_binary_numeric_result_column_shape){
@@ -272,7 +273,8 @@ static int populate_scalar_function_result_column_descriptor(
         }
         if (generic_system_function_name_equals(expression, "LOAD_FILE") ||
             generic_system_function_name_equals(expression, "EXTRACTVALUE") ||
-            generic_system_function_name_equals(expression, "UPDATEXML")) {
+            generic_system_function_name_equals(expression, "UPDATEXML") ||
+            generic_system_function_name_equals(expression, "JSON_SCHEMA_VALIDATION_REPORT")) {
             populate_scalar_connection_string_result_column_descriptor(
                 database,
                 descriptor,

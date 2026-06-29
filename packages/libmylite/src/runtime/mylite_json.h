@@ -24,6 +24,15 @@ enum mylite_json_search_mode {
     MYLITE_JSON_SEARCH_ALL = 1,
 };
 
+enum mylite_json_schema_validation_status {
+    MYLITE_JSON_SCHEMA_VALIDATION_OK = 0,
+    MYLITE_JSON_SCHEMA_VALIDATION_INVALID_SCHEMA_JSON = 1,
+    MYLITE_JSON_SCHEMA_VALIDATION_INVALID_DOCUMENT_JSON = 2,
+    MYLITE_JSON_SCHEMA_VALIDATION_INVALID_SCHEMA_TYPE = 3,
+    MYLITE_JSON_SCHEMA_VALIDATION_UNSUPPORTED_SCHEMA = 4,
+    MYLITE_JSON_SCHEMA_VALIDATION_UNSUPPORTED_REFERENCE = 5,
+};
+
 struct mylite_json_normalize_result {
     enum mylite_json_normalize_status status;
     size_t position;
@@ -48,6 +57,19 @@ struct mylite_json_sql_value {
     int64_t integer;
     bool boolean;
 };
+
+struct mylite_json_schema_validation_result {
+    enum mylite_json_schema_validation_status status;
+    bool is_valid;
+    struct mylite_json_normalize_result schema_result;
+    struct mylite_json_normalize_result document_result;
+    const char *failed_keyword;
+    char *schema_location;
+    char *document_location;
+};
+
+void mylite_json_schema_validation_result_deinit(struct mylite_json_schema_validation_result *result
+);
 
 int mylite_json_normalize(
     const char *text,
@@ -176,6 +198,22 @@ int mylite_json_member_of(
     int64_t *out_member,
     bool *out_is_null,
     struct mylite_json_normalize_result *out_result
+);
+int mylite_json_schema_validate(
+    const char *schema,
+    size_t schema_length,
+    const char *document,
+    size_t document_length,
+    struct mylite_json_schema_validation_result *out_result
+);
+int mylite_json_schema_validation_report(
+    const char *schema,
+    size_t schema_length,
+    const char *document,
+    size_t document_length,
+    char **out_text,
+    size_t *out_text_length,
+    struct mylite_json_schema_validation_result *out_result
 );
 int mylite_json_set(
     const char *text,

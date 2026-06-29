@@ -154,6 +154,7 @@ enum {
     mysql_error_invalid_json_one_or_all = 3154,
     mysql_error_json_null_member_name = 3158,
     mysql_error_json_path_not_array_cell = 3165,
+    mysql_error_invalid_json_type = 3853,
     mysql_error_illegal_user_variable_name = 3061,
     mysql_error_json_unquote_incorrect_type = 3064,
     mysql_error_json_quote_incorrect_type = 3064,

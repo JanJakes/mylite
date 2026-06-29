@@ -457,6 +457,10 @@
     COMMAND mylite_runtime_json_valid_function_test
   )
   add_test(
+    NAME libmylite.runtime.json_schema_functions
+    COMMAND mylite_runtime_json_schema_functions_test
+  )
+  add_test(
     NAME libmylite.runtime.json_extract_functions
     COMMAND mylite_runtime_json_extract_functions_test
   )

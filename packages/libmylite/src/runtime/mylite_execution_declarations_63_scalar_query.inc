@@ -482,6 +482,49 @@ static int generic_update_xml_value(
     const struct mylite_sql_ast_node *arguments,
     struct session_scalar_cell *out_cell
 );
+struct generic_json_schema_argument;
+static int generic_json_schema_valid_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+);
+static int generic_json_schema_validation_report_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    struct session_scalar_cell *out_cell
+);
+static int generic_json_schema_function_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    const char *function_name,
+    const char *diagnostic_function_name,
+    bool report,
+    struct session_scalar_cell *out_cell
+);
+static int generic_json_schema_argument_value(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *argument,
+    const char *function_name,
+    size_t argument_index,
+    struct generic_json_schema_argument *out_argument
+);
+static void generic_json_schema_argument_deinit(struct generic_json_schema_argument *argument);
+static int set_json_schema_invalid_json_text_error(
+    struct mylite_db *database,
+    const char *function_name,
+    size_t argument_index,
+    const struct mylite_json_normalize_result *result
+);
+static int set_json_schema_invalid_type_error(
+    struct mylite_db *database,
+    const char *function_name
+);
+static int set_json_schema_invalid_data_type_error(
+    struct mylite_db *database,
+    const char *function_name,
+    size_t argument_index
+);
+static int set_json_schema_reference_unsupported_error(struct mylite_db *database);
 static int generic_system_string_argument(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *argument,

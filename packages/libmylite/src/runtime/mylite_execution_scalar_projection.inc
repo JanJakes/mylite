@@ -193,6 +193,8 @@ static bool is_named_lock_and_info_projection_expression(
             generic_function_name_equals(expression, "LOAD_FILE") ||
             generic_function_name_equals(expression, "EXTRACTVALUE") ||
             generic_function_name_equals(expression, "UPDATEXML") ||
+            generic_function_name_equals(expression, "JSON_SCHEMA_VALID") ||
+            generic_function_name_equals(expression, "JSON_SCHEMA_VALIDATION_REPORT") ||
             generic_replication_function_name_is_supported(expression)) != 0;
 }
 

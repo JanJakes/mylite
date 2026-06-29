@@ -155,6 +155,7 @@ add_library(mylite STATIC
   src/runtime/mylite_json_mutation.c
   src/runtime/mylite_json_parse.c
   src/runtime/mylite_json_path.c
+  src/runtime/mylite_json_schema.c
   src/runtime/mylite_json_search.c
   src/runtime/mylite_json_validate.c
   src/runtime/mylite_named_locks.c

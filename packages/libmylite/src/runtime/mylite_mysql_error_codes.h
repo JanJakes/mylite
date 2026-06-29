@@ -68,6 +68,7 @@ enum {
     mysql_error_conflicting_declarations = 1302,
     mysql_error_incorrect_routine_argument_count = 1318,
     mysql_error_no_data = 1329,
+    mysql_error_duplicate_variable = 1331,
     mysql_error_row_is_referenced = 1451,
     mysql_error_no_referenced_row = 1452,
     mysql_error_cannot_drop_index_needed_fk = 1553,

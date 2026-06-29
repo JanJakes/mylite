@@ -210,7 +210,7 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_ADMIN_NOOP_STATEMENT:
         return execute_admin_noop_statement(database, out_result);
     case MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT:
-        return execute_unsupported_stored_program_statement(database);
+        return execute_unsupported_stored_program_statement(database, statement, out_result);
     case MYLITE_SQL_AST_UTILITY_NOOP_STATEMENT:
         return execute_utility_noop_statement(database, out_result);
     case MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT:

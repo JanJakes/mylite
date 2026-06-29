@@ -38,7 +38,17 @@ static int execute_set_statement(
     mylite_result **out_result
 );
 static int execute_admin_noop_statement(struct mylite_db *database, mylite_result **out_result);
-static int execute_unsupported_stored_program_statement(struct mylite_db *database);
+static int execute_unsupported_stored_program_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int try_execute_stored_procedure_local_variables_placeholder_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result,
+    bool *out_handled
+);
 static int execute_utility_noop_statement(struct mylite_db *database, mylite_result **out_result);
 static int execute_unsupported_utility_statement(struct mylite_db *database);
 static bool set_statement_is_persist_noop(const struct mylite_sql_ast_node *statement);
@@ -801,9 +811,7 @@ static int apply_set_default_engine_system_variable_cell_value(
     enum mylite_session_user_variable_value_kind value_kind,
     bool *out_handled
 );
-static bool set_system_variable_is_default_engine(
-    enum mylite_execution_system_variable_kind kind
-);
+static bool set_system_variable_is_default_engine(enum mylite_execution_system_variable_kind kind);
 static int apply_set_server_database_character_set_assignment(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,
@@ -893,12 +901,8 @@ static int set_session_character_set_filesystem_value(
     size_t value_size,
     bool value_is_collation_id
 );
-static bool set_character_set_value_is_catalog_id(
-    const struct mylite_sql_ast_node *value_node
-);
-static bool set_character_set_value_is_decimal(
-    const struct mylite_sql_ast_node *value_node
-);
+static bool set_character_set_value_is_catalog_id(const struct mylite_sql_ast_node *value_node);
+static bool set_character_set_value_is_decimal(const struct mylite_sql_ast_node *value_node);
 static enum mylite_sql_ast_literal_kind set_character_set_value_literal_kind(
     const struct mylite_sql_ast_node *value_node,
     bool unwrap_negative_unary
@@ -1230,9 +1234,7 @@ static int apply_set_remaining_system_variable_cell_value(
     enum mylite_session_user_variable_value_kind value_kind,
     bool *out_handled
 );
-static bool remaining_system_variable_handles_kind(
-    enum mylite_execution_system_variable_kind kind
-);
+static bool remaining_system_variable_handles_kind(enum mylite_execution_system_variable_kind kind);
 static int apply_set_insert_id_value(
     struct mylite_db *database,
     const struct resolved_set_system_variable_target *target,

@@ -27,6 +27,12 @@ static void sort_processlist_session_snapshots(
 );
 static void initialize_session_state(struct mylite_session_state *session);
 static void deinit_session_stored_procedure(struct mylite_session_stored_procedure *procedure);
+static void deinit_session_stored_procedure_local_declaration(
+    struct mylite_session_stored_procedure_local_declaration *declaration
+);
+static void deinit_session_stored_procedure_local_assignment(
+    struct mylite_session_stored_procedure_local_assignment *assignment
+);
 static uint64_t allocate_session_connection_id(void);
 static void copy_session_text(char *destination, size_t destination_size, const char *source);
 
@@ -602,9 +608,39 @@ static void deinit_session_stored_procedure(struct mylite_session_stored_procedu
         return;
     }
 
+    for (size_t index = 0U; index < procedure->local_declaration_count; ++index) {
+        deinit_session_stored_procedure_local_declaration(&procedure->local_declarations[index]);
+    }
+    for (size_t index = 0U; index < procedure->local_assignment_count; ++index) {
+        deinit_session_stored_procedure_local_assignment(&procedure->local_assignments[index]);
+    }
     free(procedure->select_sql);
+    free(procedure->local_declarations);
+    free(procedure->local_assignments);
     free(procedure->show_create_sql);
     *procedure = (struct mylite_session_stored_procedure){0};
+}
+
+static void deinit_session_stored_procedure_local_declaration(
+    struct mylite_session_stored_procedure_local_declaration *declaration
+) {
+    if (declaration == NULL) {
+        return;
+    }
+
+    free(declaration->default_sql);
+    *declaration = (struct mylite_session_stored_procedure_local_declaration){0};
+}
+
+static void deinit_session_stored_procedure_local_assignment(
+    struct mylite_session_stored_procedure_local_assignment *assignment
+) {
+    if (assignment == NULL) {
+        return;
+    }
+
+    free(assignment->value_sql);
+    *assignment = (struct mylite_session_stored_procedure_local_assignment){0};
 }
 
 static uint64_t allocate_session_connection_id(void) {

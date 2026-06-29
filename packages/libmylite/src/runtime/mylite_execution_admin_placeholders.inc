@@ -22,8 +22,27 @@ static int execute_admin_noop_statement(struct mylite_db *database, mylite_resul
     return finish_successful_result(database, result, out_result);
 }
 
-static int execute_unsupported_stored_program_statement(struct mylite_db *database) {
-    set_unsupported_error(database, "stored program or loadable function statement is not supported");
+static int execute_unsupported_stored_program_statement(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    bool handled = false;
+    int rc = try_execute_stored_procedure_local_variables_placeholder_statement(
+        database,
+        statement,
+        out_result,
+        &handled
+    );
+
+    if (handled || rc != MYLITE_OK) {
+        return rc;
+    }
+
+    set_unsupported_error(
+        database,
+        "stored program or loadable function statement is not supported"
+    );
     return MYLITE_ERROR;
 }
 

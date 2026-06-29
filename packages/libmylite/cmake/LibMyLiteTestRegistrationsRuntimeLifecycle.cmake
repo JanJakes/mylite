@@ -191,6 +191,10 @@
     COMMAND mylite_runtime_stored_procedure_select_call_test
   )
   add_test(
+    NAME libmylite.runtime.stored_procedure_local_variables
+    COMMAND mylite_runtime_stored_procedure_local_variables_test
+  )
+  add_test(
     NAME libmylite.runtime.admin_stored_program_placeholders
     COMMAND mylite_runtime_admin_stored_program_placeholders_test
   )

@@ -144,11 +144,33 @@ struct mylite_session_prepared_statement {
     size_t parameter_count;
 };
 
+enum mylite_session_stored_procedure_local_value_kind {
+    MYLITE_SESSION_STORED_PROCEDURE_LOCAL_VALUE_NUMBER = 0,
+    MYLITE_SESSION_STORED_PROCEDURE_LOCAL_VALUE_STRING = 1,
+};
+
+struct mylite_session_stored_procedure_local_declaration {
+    char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    enum mylite_session_stored_procedure_local_value_kind value_kind;
+    char *default_sql;
+    size_t default_sql_size;
+};
+
+struct mylite_session_stored_procedure_local_assignment {
+    char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char *value_sql;
+    size_t value_sql_size;
+};
+
 struct mylite_session_stored_procedure {
     char schema_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     char *select_sql;
     size_t select_sql_size;
+    struct mylite_session_stored_procedure_local_declaration *local_declarations;
+    size_t local_declaration_count;
+    struct mylite_session_stored_procedure_local_assignment *local_assignments;
+    size_t local_assignment_count;
     char *show_create_sql;
     size_t show_create_sql_size;
     char sql_mode_text[MYLITE_SESSION_SQL_MODE_TEXT_CAPACITY];

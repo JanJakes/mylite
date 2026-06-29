@@ -288,18 +288,9 @@ static int test_core_aggregate_window_diagnostics(void) {
         database,
         "SELECT GROUP_CONCAT(title) OVER () FROM posts",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
+            .code = mysql_error_not_supported_yet,
             .sqlstate = "42000",
-            .message_part = "aggregate window functions are not supported",
-        }
-    );
-    failures += execute_error(
-        database,
-        "SELECT JSON_ARRAYAGG(score) OVER () FROM posts",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "aggregate window functions are not supported",
+            .message_part = "group_concat as window function",
         }
     );
     failures += execute_error(

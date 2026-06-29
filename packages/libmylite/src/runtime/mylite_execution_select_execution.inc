@@ -2743,6 +2743,10 @@ static int populate_window_function_result_column_descriptor(
             }
         );
         return MYLITE_OK;
+    case PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG:
+    case PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG:
+        populate_scalar_json_result_column_descriptor(database, descriptor);
+        return MYLITE_OK;
     case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
     case PLANNED_WINDOW_FUNCTION_CUME_DIST:
         populate_scalar_binary_numeric_result_column_descriptor(
@@ -2766,6 +2770,7 @@ static int populate_window_function_result_column_descriptor(
             expression,
             descriptor
         );
+    case PLANNED_WINDOW_FUNCTION_GROUP_CONCAT:
     case PLANNED_WINDOW_FUNCTION_NONE:
         break;
     }

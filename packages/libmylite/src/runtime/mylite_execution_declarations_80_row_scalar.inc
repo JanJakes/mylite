@@ -420,6 +420,7 @@ static const struct mylite_sql_ast_node *window_function_null_treatment_node(
 );
 static bool window_function_has_arguments(enum planned_window_function_kind kind);
 static bool window_function_is_core_aggregate(enum planned_window_function_kind kind);
+static bool window_function_is_json_aggregate(enum planned_window_function_kind kind);
 static bool window_function_is_numeric_core_aggregate(enum planned_window_function_kind kind);
 static bool window_function_is_bitwise_aggregate(enum planned_window_function_kind kind);
 static bool window_function_is_statistical_aggregate(enum planned_window_function_kind kind);
@@ -444,6 +445,16 @@ static int plan_row_scalar_window_function_arguments(
     struct planned_row_scalar_expression *out_expression
 );
 static int plan_row_scalar_aggregate_window_function_arguments(
+    struct mylite_db *database,
+    enum planned_window_function_kind kind,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_json_aggregate_window_function_arguments(
     struct mylite_db *database,
     enum planned_window_function_kind kind,
     const struct mylite_sql_ast_node *expression,
@@ -589,6 +600,7 @@ static int set_window_function_unsupported_error(
     const char *function_name,
     const char *detail
 );
+static int set_aggregate_window_group_concat_unsupported_error(struct mylite_db *database);
 static int copy_lowercase_function_name(const char *source, char *destination, size_t size);
 static int plan_row_scalar_integer_arithmetic_expression(
     struct mylite_db *database,

@@ -1646,6 +1646,9 @@ static int plan_row_scalar_window_function_expression(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
+    if (kind == PLANNED_WINDOW_FUNCTION_GROUP_CONCAT) {
+        return set_aggregate_window_group_concat_unsupported_error(database);
+    }
     if (window_function_is_core_aggregate(kind) &&
         aggregate_window_function_is_distinct(expression)) {
         return set_aggregate_window_distinct_unsupported_error(database);
@@ -1664,7 +1667,18 @@ static int plan_row_scalar_window_function_expression(
         return MYLITE_ERROR;
     }
 
-    if (window_function_is_core_aggregate(kind)) {
+    if (window_function_is_json_aggregate(kind)) {
+        rc = plan_row_scalar_json_aggregate_window_function_arguments(
+            database,
+            kind,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    } else if (window_function_is_core_aggregate(kind)) {
         rc = plan_row_scalar_aggregate_window_function_arguments(
             database,
             kind,
@@ -1843,6 +1857,11 @@ static enum planned_window_function_kind planned_window_function_kind_from_ast(
             return PLANNED_WINDOW_FUNCTION_BIT_XOR;
         }
         break;
+    case MYLITE_SQL_AST_GROUP_CONCAT_AGGREGATE_FUNCTION:
+        if (aggregate_function_has_window_clause(expression)) {
+            return PLANNED_WINDOW_FUNCTION_GROUP_CONCAT;
+        }
+        break;
     case MYLITE_SQL_AST_STD_AGGREGATE_FUNCTION:
         if (aggregate_function_has_window_clause(expression)) {
             return PLANNED_WINDOW_FUNCTION_STD;
@@ -1878,6 +1897,16 @@ static enum planned_window_function_kind planned_window_function_kind_from_ast(
             return PLANNED_WINDOW_FUNCTION_VARIANCE;
         }
         break;
+    case MYLITE_SQL_AST_GENERIC_FUNCTION:
+        if (aggregate_function_has_window_clause(expression)) {
+            if (generic_function_name_equals(expression, "JSON_ARRAYAGG")) {
+                return PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG;
+            }
+            if (generic_function_name_equals(expression, "JSON_OBJECTAGG")) {
+                return PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG;
+            }
+        }
+        break;
     default:
         break;
     }
@@ -1889,6 +1918,9 @@ static const struct mylite_sql_ast_node *window_function_argument_list_node(
 ) {
     enum planned_window_function_kind kind = planned_window_function_kind_from_ast(expression);
 
+    if (window_function_is_json_aggregate(kind)) {
+        return child_at(expression, 1U);
+    }
     if (window_function_is_core_aggregate(kind)) {
         return NULL;
     }
@@ -1903,7 +1935,8 @@ static const struct mylite_sql_ast_node *window_function_spec_node(
 ) {
     enum planned_window_function_kind kind = planned_window_function_kind_from_ast(expression);
 
-    if (window_function_is_core_aggregate(kind)) {
+    if (window_function_is_core_aggregate(kind) || window_function_is_json_aggregate(kind) ||
+        kind == PLANNED_WINDOW_FUNCTION_GROUP_CONCAT) {
         return aggregate_window_spec_node(expression);
     }
     if (!window_function_has_arguments(kind)) {
@@ -1917,7 +1950,8 @@ static const struct mylite_sql_ast_node *window_function_null_treatment_node(
 ) {
     enum planned_window_function_kind kind = planned_window_function_kind_from_ast(expression);
 
-    if (window_function_is_core_aggregate(kind)) {
+    if (window_function_is_core_aggregate(kind) || window_function_is_json_aggregate(kind) ||
+        kind == PLANNED_WINDOW_FUNCTION_GROUP_CONCAT) {
         return NULL;
     }
     if (!window_function_has_arguments(kind)) {
@@ -1934,8 +1968,11 @@ static bool window_function_has_arguments(enum planned_window_function_kind kind
     case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
     case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
     case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+    case PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG:
+    case PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG:
         return true;
     case PLANNED_WINDOW_FUNCTION_NONE:
+    case PLANNED_WINDOW_FUNCTION_GROUP_CONCAT:
     case PLANNED_WINDOW_FUNCTION_COUNT_STAR:
     case PLANNED_WINDOW_FUNCTION_COUNT_VALUE:
     case PLANNED_WINDOW_FUNCTION_SUM:
@@ -1993,6 +2030,48 @@ static bool window_function_is_core_aggregate(enum planned_window_function_kind 
     case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
     case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
     case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+    case PLANNED_WINDOW_FUNCTION_GROUP_CONCAT:
+    case PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG:
+    case PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG:
+        break;
+    }
+    return false;
+}
+
+static bool window_function_is_json_aggregate(enum planned_window_function_kind kind) {
+    switch (kind) {
+    case PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG:
+    case PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG:
+        return true;
+    case PLANNED_WINDOW_FUNCTION_NONE:
+    case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
+    case PLANNED_WINDOW_FUNCTION_RANK:
+    case PLANNED_WINDOW_FUNCTION_DENSE_RANK:
+    case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
+    case PLANNED_WINDOW_FUNCTION_CUME_DIST:
+    case PLANNED_WINDOW_FUNCTION_NTILE:
+    case PLANNED_WINDOW_FUNCTION_LAG:
+    case PLANNED_WINDOW_FUNCTION_LEAD:
+    case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+    case PLANNED_WINDOW_FUNCTION_COUNT_STAR:
+    case PLANNED_WINDOW_FUNCTION_COUNT_VALUE:
+    case PLANNED_WINDOW_FUNCTION_SUM:
+    case PLANNED_WINDOW_FUNCTION_AVG:
+    case PLANNED_WINDOW_FUNCTION_MIN:
+    case PLANNED_WINDOW_FUNCTION_MAX:
+    case PLANNED_WINDOW_FUNCTION_BIT_AND:
+    case PLANNED_WINDOW_FUNCTION_BIT_OR:
+    case PLANNED_WINDOW_FUNCTION_BIT_XOR:
+    case PLANNED_WINDOW_FUNCTION_STD:
+    case PLANNED_WINDOW_FUNCTION_STDDEV:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_POP:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VAR_POP:
+    case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VARIANCE:
+    case PLANNED_WINDOW_FUNCTION_GROUP_CONCAT:
         break;
     }
     return false;
@@ -2029,6 +2108,9 @@ static bool window_function_is_numeric_core_aggregate(enum planned_window_functi
     case PLANNED_WINDOW_FUNCTION_VAR_POP:
     case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
     case PLANNED_WINDOW_FUNCTION_VARIANCE:
+    case PLANNED_WINDOW_FUNCTION_GROUP_CONCAT:
+    case PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG:
+    case PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG:
         break;
     }
     return false;
@@ -2065,6 +2147,9 @@ static bool window_function_is_bitwise_aggregate(enum planned_window_function_ki
     case PLANNED_WINDOW_FUNCTION_VAR_POP:
     case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
     case PLANNED_WINDOW_FUNCTION_VARIANCE:
+    case PLANNED_WINDOW_FUNCTION_GROUP_CONCAT:
+    case PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG:
+    case PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG:
         break;
     }
     return false;
@@ -2101,6 +2186,9 @@ static bool window_function_is_statistical_aggregate(enum planned_window_functio
     case PLANNED_WINDOW_FUNCTION_BIT_AND:
     case PLANNED_WINDOW_FUNCTION_BIT_OR:
     case PLANNED_WINDOW_FUNCTION_BIT_XOR:
+    case PLANNED_WINDOW_FUNCTION_GROUP_CONCAT:
+    case PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG:
+    case PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG:
         break;
     }
     return false;
@@ -2196,6 +2284,9 @@ static bool window_function_accepts_ignored_frame_clause(enum planned_window_fun
     case PLANNED_WINDOW_FUNCTION_VAR_POP:
     case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
     case PLANNED_WINDOW_FUNCTION_VARIANCE:
+    case PLANNED_WINDOW_FUNCTION_GROUP_CONCAT:
+    case PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG:
+    case PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG:
         break;
     }
     return false;
@@ -2222,6 +2313,8 @@ static bool window_function_uses_frame_clause(enum planned_window_function_kind 
     case PLANNED_WINDOW_FUNCTION_VAR_POP:
     case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
     case PLANNED_WINDOW_FUNCTION_VARIANCE:
+    case PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG:
+    case PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG:
         return true;
     case PLANNED_WINDOW_FUNCTION_NONE:
     case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
@@ -2232,6 +2325,7 @@ static bool window_function_uses_frame_clause(enum planned_window_function_kind 
     case PLANNED_WINDOW_FUNCTION_NTILE:
     case PLANNED_WINDOW_FUNCTION_LAG:
     case PLANNED_WINDOW_FUNCTION_LEAD:
+    case PLANNED_WINDOW_FUNCTION_GROUP_CONCAT:
         break;
     }
     return false;
@@ -2350,6 +2444,78 @@ static int plan_row_scalar_aggregate_window_function_arguments(
     return rc;
 }
 
+static int plan_row_scalar_json_aggregate_window_function_arguments(
+    struct mylite_db *database,
+    enum planned_window_function_kind kind,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *arguments = window_function_argument_list_node(expression);
+    const struct mylite_sql_ast_node *value = NULL;
+    size_t expected_argument_count =
+        kind == PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG ? 2U : 1U;
+    int rc = validate_window_function_argument_count(
+        database,
+        (struct window_function_argument_count_request){
+            .kind = kind,
+            .argument_count = arguments == NULL ? 0U : mylite_sql_ast_node_child_count(arguments),
+        }
+    );
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (arguments == NULL || arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments = (struct planned_row_scalar_expression *)calloc(
+        expected_argument_count,
+        sizeof(*out_expression->arguments)
+    );
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->argument_count = expected_argument_count;
+
+    if (kind == PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG) {
+        rc = plan_row_scalar_json_constructor_argument(
+            database,
+            child_at(arguments, 0U),
+            true,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            COLUMN_REFERENCE_FIELD,
+            &out_expression->arguments[0]
+        );
+        value = child_at(arguments, 1U);
+    } else {
+        value = child_at(arguments, 0U);
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_row_scalar_json_constructor_argument(
+            database,
+            value,
+            false,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            COLUMN_REFERENCE_FIELD,
+            &out_expression->arguments[expected_argument_count - 1U]
+        );
+    }
+    return rc;
+}
+
 static int validate_aggregate_window_numeric_argument(
     struct mylite_db *database,
     const char *function_name,
@@ -2418,6 +2584,7 @@ static int validate_window_function_argument_count(
         max_count = 1U;
         break;
     case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+    case PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG:
         min_count = 2U;
         max_count = 2U;
         break;
@@ -2450,10 +2617,12 @@ static int validate_window_function_argument_count(
     case PLANNED_WINDOW_FUNCTION_VAR_POP:
     case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
     case PLANNED_WINDOW_FUNCTION_VARIANCE:
+    case PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG:
         min_count = 1U;
         max_count = 1U;
         break;
     case PLANNED_WINDOW_FUNCTION_NONE:
+    case PLANNED_WINDOW_FUNCTION_GROUP_CONCAT:
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
@@ -2580,6 +2749,9 @@ static bool window_function_argument_is_row_scalar_value_expression(
     case PLANNED_WINDOW_FUNCTION_VAR_POP:
     case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
     case PLANNED_WINDOW_FUNCTION_VARIANCE:
+    case PLANNED_WINDOW_FUNCTION_GROUP_CONCAT:
+    case PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG:
+    case PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG:
         break;
     }
     return false;
@@ -2699,6 +2871,9 @@ static const char *window_function_integer_argument_unsupported_message(
     case PLANNED_WINDOW_FUNCTION_VAR_POP:
     case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
     case PLANNED_WINDOW_FUNCTION_VARIANCE:
+    case PLANNED_WINDOW_FUNCTION_GROUP_CONCAT:
+    case PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG:
+    case PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG:
         break;
     }
     return "arguments support only scalar literals";
@@ -2878,6 +3053,9 @@ static bool window_function_null_integer_argument_is_syntax_error(
     case PLANNED_WINDOW_FUNCTION_VAR_POP:
     case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
     case PLANNED_WINDOW_FUNCTION_VARIANCE:
+    case PLANNED_WINDOW_FUNCTION_GROUP_CONCAT:
+    case PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG:
+    case PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG:
         break;
     }
     return false;
@@ -2915,6 +3093,9 @@ static size_t window_function_integer_argument_index(enum planned_window_functio
     case PLANNED_WINDOW_FUNCTION_VAR_POP:
     case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
     case PLANNED_WINDOW_FUNCTION_VARIANCE:
+    case PLANNED_WINDOW_FUNCTION_GROUP_CONCAT:
+    case PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG:
+    case PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG:
         break;
     }
     return SIZE_MAX;
@@ -3339,6 +3520,12 @@ static const char *window_function_display_name(enum planned_window_function_kin
         return "VAR_SAMP";
     case PLANNED_WINDOW_FUNCTION_VARIANCE:
         return "VARIANCE";
+    case PLANNED_WINDOW_FUNCTION_GROUP_CONCAT:
+        return "GROUP_CONCAT";
+    case PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG:
+        return "JSON_ARRAYAGG";
+    case PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG:
+        return "JSON_OBJECTAGG";
     case PLANNED_WINDOW_FUNCTION_NONE:
         break;
     }
@@ -3364,6 +3551,16 @@ static int set_window_function_unsupported_error(
         return MYLITE_ERROR;
     }
     set_unsupported_error(database, message);
+    return MYLITE_ERROR;
+}
+
+static int set_aggregate_window_group_concat_unsupported_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_not_supported_yet,
+        "42000",
+        "This version of MySQL doesn't yet support 'group_concat as window function'"
+    );
     return MYLITE_ERROR;
 }
 

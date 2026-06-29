@@ -45,6 +45,10 @@ static int test_aggregate_window_surfaces(void) {
         NULL,
         "7.0710678118654755",
     };
+    static const char *const supported_json_window_rows[] = {
+        "[10, 20]",
+        "[10, 20]",
+    };
     static const char *const nth_from_first_rows[] = {"1", "1", "2", "1"};
     mylite_db *database = NULL;
     int failures = 0;
@@ -120,13 +124,14 @@ static int test_aggregate_window_surfaces(void) {
             .message_part = "COUNT() RANGE frame offsets are not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT JSON_ARRAYAGG(j) OVER () FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "aggregate window functions are not supported",
+        (struct expected_query){
+            .sql = "SELECT JSON_ARRAYAGG(j) OVER () FROM numbers",
+            .values = supported_json_window_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "supported JSON_ARRAYAGG aggregate window subset",
         }
     );
     failures += expect_query_values(

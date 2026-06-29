@@ -19,8 +19,8 @@ json_arrayagg_function ::= JSON_ARRAYAGG '(' expression ')'
 json_objectagg_function ::= JSON_OBJECTAGG '(' expression ',' expression ')'
 ```
 
-`OVER` clauses remain parsed as aggregate-window placeholders and are not part
-of this executable slice.
+`OVER` clauses are covered by
+`docs/specs/baseline-json-aggregate-window-functions/specs.md`.
 
 ## Semantics
 
@@ -55,7 +55,8 @@ The executable subset covers:
 
 The following remain outside this baseline slice:
 
-- `JSON_ARRAYAGG(...) OVER (...)` and `JSON_OBJECTAGG(...) OVER (...)`;
+- aggregate-window execution beyond
+  `docs/specs/baseline-json-aggregate-window-functions/specs.md`;
 - aggregate-local `ORDER BY` or deterministic ordering beyond the source order
   delivered by SQLite for the supported query;
 - `DISTINCT`;

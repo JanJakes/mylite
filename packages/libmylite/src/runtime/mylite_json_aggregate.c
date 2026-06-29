@@ -38,6 +38,10 @@ static void json_arrayagg_step(sqlite3_context *context, int argc, sqlite3_value
 static void json_objectagg_step(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_arrayagg_final(sqlite3_context *context);
 static void json_objectagg_final(sqlite3_context *context);
+static void json_arrayagg_value(sqlite3_context *context);
+static void json_objectagg_value(sqlite3_context *context);
+static void json_arrayagg_inverse(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void json_objectagg_inverse(sqlite3_context *context, int argc, sqlite3_value **argv);
 static int json_aggregate_convert_value(
     sqlite3_value *tag_value,
     sqlite3_value *sqlite_value,
@@ -57,14 +61,29 @@ static int json_aggregate_append_object_pair(
     struct json_aggregate_state *state,
     struct json_aggregate_object_pair *pair
 );
+static int json_aggregate_remove_array_value(
+    struct json_aggregate_state *state,
+    const struct json_aggregate_value *value
+);
+static int json_aggregate_remove_object_pair(
+    struct json_aggregate_state *state,
+    const struct json_aggregate_object_pair *pair
+);
+static void json_aggregate_remove_at(struct json_aggregate_state *state, size_t index);
+static bool json_aggregate_values_equal(
+    const struct json_aggregate_value *left,
+    const struct json_aggregate_value *right
+);
 static int json_aggregate_reserve(struct json_aggregate_state *state, bool has_keys);
 static void json_aggregate_finish_array(
     sqlite3_context *context,
-    struct json_aggregate_state *state
+    struct json_aggregate_state *state,
+    bool deinit_state
 );
 static void json_aggregate_finish_object(
     sqlite3_context *context,
-    struct json_aggregate_state *state
+    struct json_aggregate_state *state,
+    bool deinit_state
 );
 static void json_aggregate_finish_result(
     sqlite3_context *context,
@@ -80,7 +99,7 @@ static void json_aggregate_state_deinit(struct json_aggregate_state *state);
 int mylite_sqlite_register_json_aggregate_functions(sqlite3 *sqlite) {
     static struct mylite_sqlite_function_registration registrations[] = {
         {
-            .kind = MYLITE_SQLITE_FUNCTION_AGGREGATE,
+            .kind = MYLITE_SQLITE_FUNCTION_WINDOW,
             .name = "_mylite_json_arrayagg",
             .argument_count = json_aggregate_array_argc,
             .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
@@ -88,12 +107,12 @@ int mylite_sqlite_register_json_aggregate_functions(sqlite3 *sqlite) {
             .scalar_callback = NULL,
             .step_callback = json_arrayagg_step,
             .final_callback = json_arrayagg_final,
-            .value_callback = NULL,
-            .inverse_callback = NULL,
+            .value_callback = json_arrayagg_value,
+            .inverse_callback = json_arrayagg_inverse,
             .destroy_callback = NULL,
         },
         {
-            .kind = MYLITE_SQLITE_FUNCTION_AGGREGATE,
+            .kind = MYLITE_SQLITE_FUNCTION_WINDOW,
             .name = "_mylite_json_objectagg",
             .argument_count = json_aggregate_object_argc,
             .text_representation = SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS,
@@ -101,8 +120,8 @@ int mylite_sqlite_register_json_aggregate_functions(sqlite3 *sqlite) {
             .scalar_callback = NULL,
             .step_callback = json_objectagg_step,
             .final_callback = json_objectagg_final,
-            .value_callback = NULL,
-            .inverse_callback = NULL,
+            .value_callback = json_objectagg_value,
+            .inverse_callback = json_objectagg_inverse,
             .destroy_callback = NULL,
         },
     };
@@ -218,7 +237,7 @@ static void json_arrayagg_final(sqlite3_context *context) {
         return;
     }
 
-    json_aggregate_finish_array(context, state);
+    json_aggregate_finish_array(context, state, true);
 }
 
 static void json_objectagg_final(sqlite3_context *context) {
@@ -234,7 +253,110 @@ static void json_objectagg_final(sqlite3_context *context) {
         return;
     }
 
-    json_aggregate_finish_object(context, state);
+    json_aggregate_finish_object(context, state, true);
+}
+
+static void json_arrayagg_value(sqlite3_context *context) {
+    struct json_aggregate_state *state = NULL;
+
+    if (context == NULL) {
+        return;
+    }
+    state = sqlite3_aggregate_context(context, 0);
+    if (state == NULL || state->count == 0U) {
+        sqlite3_result_null(context);
+        return;
+    }
+
+    json_aggregate_finish_array(context, state, false);
+}
+
+static void json_objectagg_value(sqlite3_context *context) {
+    struct json_aggregate_state *state = NULL;
+
+    if (context == NULL) {
+        return;
+    }
+    state = sqlite3_aggregate_context(context, 0);
+    if (state == NULL || state->count == 0U) {
+        sqlite3_result_null(context);
+        return;
+    }
+
+    json_aggregate_finish_object(context, state, false);
+}
+
+static void json_arrayagg_inverse(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    struct json_aggregate_state *state = NULL;
+    struct json_aggregate_value value = {0};
+    int rc = MYLITE_OK;
+
+    if (context == NULL) {
+        return;
+    }
+    if (argc != json_aggregate_array_argc || argv == NULL || argv[0] == NULL || argv[1] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite JSON_ARRAYAGG callback", -1);
+        return;
+    }
+
+    rc = json_aggregate_convert_value(argv[0], argv[1], true, &value);
+    if (rc == MYLITE_NOMEM) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    if (rc != MYLITE_OK) {
+        sqlite3_result_error(context, "Unsupported JSON value in JSON constructor", -1);
+        return;
+    }
+
+    state = sqlite3_aggregate_context(context, 0);
+    rc = json_aggregate_remove_array_value(state, &value);
+    json_aggregate_value_deinit(&value);
+    if (rc != MYLITE_OK) {
+        sqlite3_result_error(context, "invalid MyLite JSON_ARRAYAGG window state", -1);
+    }
+}
+
+static void json_objectagg_inverse(sqlite3_context *context, int argc, sqlite3_value **argv) {
+    struct json_aggregate_state *state = NULL;
+    struct json_aggregate_object_pair pair = {0};
+    int rc = MYLITE_OK;
+
+    if (context == NULL) {
+        return;
+    }
+    if (argc != json_aggregate_object_argc || argv == NULL || argv[0] == NULL || argv[1] == NULL ||
+        argv[2] == NULL || argv[3] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite JSON_OBJECTAGG callback", -1);
+        return;
+    }
+
+    rc = json_aggregate_convert_value(argv[0], argv[1], false, &pair.key);
+    if (rc == MYLITE_OK) {
+        rc = json_aggregate_convert_value(argv[2], argv[3], true, &pair.value);
+    }
+    if (rc == MYLITE_NOMEM) {
+        json_aggregate_object_pair_deinit(&pair);
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    if (rc != MYLITE_OK) {
+        json_aggregate_object_pair_deinit(&pair);
+        sqlite3_result_error(context, "Unsupported JSON value in JSON constructor", -1);
+        return;
+    }
+    if (pair.key.value.kind == MYLITE_JSON_SQL_VALUE_NULL) {
+        json_aggregate_object_pair_deinit(&pair);
+        sqlite3_result_error(context, "JSON documents may not contain NULL member names.", -1);
+        return;
+    }
+
+    state = sqlite3_aggregate_context(context, 0);
+    rc = json_aggregate_remove_object_pair(state, &pair);
+    json_aggregate_object_pair_deinit(&pair);
+    if (rc != MYLITE_OK) {
+        sqlite3_result_error(context, "invalid MyLite JSON_OBJECTAGG window state", -1);
+    }
 }
 
 static int json_aggregate_convert_value(
@@ -357,6 +479,104 @@ static int json_aggregate_append_object_pair(
     return MYLITE_OK;
 }
 
+static int json_aggregate_remove_array_value(
+    struct json_aggregate_state *state,
+    const struct json_aggregate_value *value
+) {
+    if (state == NULL || value == NULL) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t index = 0U; index < state->count; ++index) {
+        if (json_aggregate_values_equal(&state->values[index], value)) {
+            json_aggregate_remove_at(state, index);
+            return MYLITE_OK;
+        }
+    }
+    return MYLITE_ERROR;
+}
+
+static int json_aggregate_remove_object_pair(
+    struct json_aggregate_state *state,
+    const struct json_aggregate_object_pair *pair
+) {
+    if (state == NULL || pair == NULL) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t index = 0U; index < state->count; ++index) {
+        if (json_aggregate_values_equal(&state->keys[index], &pair->key) &&
+            json_aggregate_values_equal(&state->values[index], &pair->value)) {
+            json_aggregate_remove_at(state, index);
+            return MYLITE_OK;
+        }
+    }
+    return MYLITE_ERROR;
+}
+
+static void json_aggregate_remove_at(struct json_aggregate_state *state, size_t index) {
+    size_t remaining = 0U;
+
+    if (state == NULL || index >= state->count) {
+        return;
+    }
+
+    if (state->keys != NULL) {
+        json_aggregate_value_deinit(&state->keys[index]);
+    }
+    json_aggregate_value_deinit(&state->values[index]);
+
+    remaining = state->count - index - 1U;
+    if (remaining != 0U) {
+        if (state->keys != NULL) {
+            memmove(
+                &state->keys[index],
+                &state->keys[index + 1U],
+                remaining * sizeof(*state->keys)
+            );
+        }
+        memmove(
+            &state->values[index],
+            &state->values[index + 1U],
+            remaining * sizeof(*state->values)
+        );
+    }
+
+    --state->count;
+    if (state->keys != NULL) {
+        state->keys[state->count] = (struct json_aggregate_value){0};
+    }
+    state->values[state->count] = (struct json_aggregate_value){0};
+}
+
+static bool json_aggregate_values_equal(
+    const struct json_aggregate_value *left,
+    const struct json_aggregate_value *right
+) {
+    if (left == NULL || right == NULL || left->value.kind != right->value.kind) {
+        return false;
+    }
+    switch (left->value.kind) {
+    case MYLITE_JSON_SQL_VALUE_NULL:
+        return true;
+    case MYLITE_JSON_SQL_VALUE_INTEGER:
+        return left->value.integer == right->value.integer;
+    case MYLITE_JSON_SQL_VALUE_BOOLEAN:
+        return left->value.boolean == right->value.boolean;
+    case MYLITE_JSON_SQL_VALUE_STRING:
+    case MYLITE_JSON_SQL_VALUE_JSON:
+        if (left->value.text_length != right->value.text_length) {
+            return false;
+        }
+        if (left->value.text_length == 0U) {
+            return true;
+        }
+        if (left->value.text == NULL || right->value.text == NULL) {
+            return false;
+        }
+        return memcmp(left->value.text, right->value.text, left->value.text_length) == 0;
+    }
+    return false;
+}
+
 static int json_aggregate_reserve(struct json_aggregate_state *state, bool has_keys) {
     struct json_aggregate_value *values = NULL;
     struct json_aggregate_value *keys = NULL;
@@ -398,7 +618,8 @@ static int json_aggregate_reserve(struct json_aggregate_state *state, bool has_k
 
 static void json_aggregate_finish_array(
     sqlite3_context *context,
-    struct json_aggregate_state *state
+    struct json_aggregate_state *state,
+    bool deinit_state
 ) {
     struct mylite_json_sql_value *values = NULL;
     struct mylite_json_normalize_result normalize_result = {0};
@@ -408,13 +629,17 @@ static void json_aggregate_finish_array(
 
     if (state->count > SIZE_MAX / sizeof(*values)) {
         sqlite3_result_error_nomem(context);
-        json_aggregate_state_deinit(state);
+        if (deinit_state) {
+            json_aggregate_state_deinit(state);
+        }
         return;
     }
     values = calloc(state->count, sizeof(*values));
     if (values == NULL) {
         sqlite3_result_error_nomem(context);
-        json_aggregate_state_deinit(state);
+        if (deinit_state) {
+            json_aggregate_state_deinit(state);
+        }
         return;
     }
     for (size_t index = 0U; index < state->count; ++index) {
@@ -430,12 +655,15 @@ static void json_aggregate_finish_array(
     );
     json_aggregate_finish_result(context, rc, result, result_length, &normalize_result);
     free(values);
-    json_aggregate_state_deinit(state);
+    if (deinit_state) {
+        json_aggregate_state_deinit(state);
+    }
 }
 
 static void json_aggregate_finish_object(
     sqlite3_context *context,
-    struct json_aggregate_state *state
+    struct json_aggregate_state *state,
+    bool deinit_state
 ) {
     struct mylite_json_sql_value *keys = NULL;
     struct mylite_json_sql_value *values = NULL;
@@ -446,7 +674,9 @@ static void json_aggregate_finish_object(
 
     if (state->count > SIZE_MAX / sizeof(*values)) {
         sqlite3_result_error_nomem(context);
-        json_aggregate_state_deinit(state);
+        if (deinit_state) {
+            json_aggregate_state_deinit(state);
+        }
         return;
     }
     keys = calloc(state->count, sizeof(*keys));
@@ -455,7 +685,9 @@ static void json_aggregate_finish_object(
         free(keys);
         free(values);
         sqlite3_result_error_nomem(context);
-        json_aggregate_state_deinit(state);
+        if (deinit_state) {
+            json_aggregate_state_deinit(state);
+        }
         return;
     }
     for (size_t index = 0U; index < state->count; ++index) {
@@ -474,7 +706,9 @@ static void json_aggregate_finish_object(
     json_aggregate_finish_result(context, rc, result, result_length, &normalize_result);
     free(keys);
     free(values);
-    json_aggregate_state_deinit(state);
+    if (deinit_state) {
+        json_aggregate_state_deinit(state);
+    }
 }
 
 static void json_aggregate_finish_result(

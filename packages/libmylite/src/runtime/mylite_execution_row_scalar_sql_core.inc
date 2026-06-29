@@ -648,6 +648,13 @@ static int append_row_scalar_window_function_expression_sql(
     if (expression->window_function_kind == PLANNED_WINDOW_FUNCTION_AVG) {
         return append_row_scalar_avg_window_expression_sql(string, expression, next_parameter);
     }
+    if (window_function_is_json_aggregate(expression->window_function_kind)) {
+        return append_row_scalar_json_aggregate_window_expression_sql(
+            string,
+            expression,
+            next_parameter
+        );
+    }
     function_name = window_function_sql_name(expression->window_function_kind);
     if (function_name == NULL) {
         return MYLITE_ERROR;
@@ -698,6 +705,54 @@ static int append_row_scalar_avg_window_expression_sql(
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_row_scalar_json_aggregate_window_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    const char *function_name = NULL;
+    int rc = MYLITE_OK;
+
+    if (string == NULL || expression == NULL || expression->arguments == NULL ||
+        next_parameter == NULL) {
+        return MYLITE_ERROR;
+    }
+    if (expression->window_function_kind == PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG &&
+        expression->argument_count == 1U) {
+        function_name = "_mylite_json_arrayagg";
+    } else if (expression->window_function_kind == PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG &&
+               expression->argument_count == 2U) {
+        function_name = "_mylite_json_objectagg";
+    } else {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append(string, function_name);
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, '(');
+    }
+    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < expression->argument_count;
+         ++argument_index) {
+        if (argument_index != 0U) {
+            rc = mylite_dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_row_scalar_json_constructor_argument_sql(
+                string,
+                &expression->arguments[argument_index],
+                next_parameter
+            );
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, ") ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_window_over_clause_sql(string, expression);
     }
     return rc;
 }
@@ -932,6 +987,9 @@ static const char *window_function_sql_name(enum planned_window_function_kind ki
         return "_mylite_var_pop";
     case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
         return "_mylite_var_samp";
+    case PLANNED_WINDOW_FUNCTION_GROUP_CONCAT:
+    case PLANNED_WINDOW_FUNCTION_JSON_ARRAYAGG:
+    case PLANNED_WINDOW_FUNCTION_JSON_OBJECTAGG:
     case PLANNED_WINDOW_FUNCTION_NONE:
         break;
     }

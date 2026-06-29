@@ -250,6 +250,7 @@ static const struct spatial_function_descriptor spatial_function_descriptors[] =
     {"ST_Intersects", MYLITE_SPATIAL_FUNCTION_ST_INTERSECTS},
     {"ST_Contains", MYLITE_SPATIAL_FUNCTION_ST_CONTAINS},
     {"ST_Within", MYLITE_SPATIAL_FUNCTION_ST_WITHIN},
+    {"ST_Equals", MYLITE_SPATIAL_FUNCTION_ST_EQUALS},
     {"ST_IsClosed", MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED},
     {"ST_NumGeometries", MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES},
     {"ST_GeometryN", MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYN},
@@ -1828,7 +1829,7 @@ bool mylite_spatial_function_returns_integer(enum mylite_spatial_function_kind k
            kind == MYLITE_SPATIAL_FUNCTION_ST_DISJOINT ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_INTERSECTS ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_CONTAINS ||
-           kind == MYLITE_SPATIAL_FUNCTION_ST_WITHIN ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_WITHIN || kind == MYLITE_SPATIAL_FUNCTION_ST_EQUALS ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_NUMPOINTS ||
@@ -1956,6 +1957,7 @@ int mylite_spatial_evaluate(
     case MYLITE_SPATIAL_FUNCTION_ST_INTERSECTS:
     case MYLITE_SPATIAL_FUNCTION_ST_CONTAINS:
     case MYLITE_SPATIAL_FUNCTION_ST_WITHIN:
+    case MYLITE_SPATIAL_FUNCTION_ST_EQUALS:
         return evaluate_relation_predicate(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_DISTANCESPHERE:
         return evaluate_distance_sphere(kind, arguments, argument_count, out_result, out_error);
@@ -3864,6 +3866,21 @@ static int evaluate_relation_predicate(
             error,
             mylite_spatial_function_name(kind)
         );
+    }
+    if (rc == 0 && kind == MYLITE_SPATIAL_FUNCTION_ST_EQUALS) {
+        bool left_is_empty = distance_geometry_is_empty(&left_geometry);
+        bool right_is_empty = distance_geometry_is_empty(&right_geometry);
+        bool equals = false;
+
+        if (left_is_empty || right_is_empty) {
+            equals = left_is_empty && right_is_empty;
+        } else {
+            equals = relation_geometry_contains(&left_geometry, &right_geometry) &&
+                     relation_geometry_contains(&right_geometry, &left_geometry);
+        }
+        distance_geometry_deinit(&left_geometry);
+        distance_geometry_deinit(&right_geometry);
+        return assign_integer_result(out_result, equals ? 1 : 0);
     }
     if (rc == 0 && (distance_geometry_is_empty(&left_geometry) ||
                     distance_geometry_is_empty(&right_geometry))) {

@@ -537,6 +537,10 @@
     COMMAND mylite_runtime_spatial_contains_within_functions_test
   )
   add_test(
+    NAME libmylite.runtime.spatial_equals_function
+    COMMAND mylite_runtime_spatial_equals_function_test
+  )
+  add_test(
     NAME libmylite.runtime.spatial_collect_aggregate
     COMMAND mylite_runtime_spatial_collect_aggregate_test
   )

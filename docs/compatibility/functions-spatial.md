@@ -13,12 +13,14 @@ DML value contexts. SRID-0 `ST_Disjoint()` and `ST_Intersects()` cover
 representable object-shape disjoint/intersection checks, and SRID-0
 `ST_Contains()` / `ST_Within()` cover boundary-sensitive containment for
 representable Point, LineString, Polygon, and child-decomposed collection
-values. Geohash helpers support coordinate encoding/decoding plus SRID 0 and
-4326 point round-trips. GeoJSON helpers support 2D geometry, Feature extraction,
-and FeatureCollection extraction for SRID 0 and 4326. Geographic point accessors
-support SRID 4326 latitude/longitude getters. It does not yet implement a
-general SRS catalog, full topology predicate coverage, constructive geometry
-operations, or physical spatial search.
+values. SRID-0 `ST_Equals()` covers object-shape equality for the same
+representable geometry surface. Geohash helpers support coordinate
+encoding/decoding plus SRID 0 and 4326 point round-trips. GeoJSON helpers
+support 2D geometry, Feature extraction, and FeatureCollection extraction for
+SRID 0 and 4326. Geographic point accessors support SRID 4326
+latitude/longitude getters. It does not yet implement a general SRS catalog,
+full topology predicate coverage, constructive geometry operations, or physical
+spatial search.
 
 | Function | Status | Notes |
 | --- | --- | --- |
@@ -57,7 +59,7 @@ operations, or physical spatial search.
 | `ST_Distance_Sphere()` | ✅ | SRID-0 spherical distance for Point and MultiPoint |
 | `ST_EndPoint()` | ✅ | Return LineString end point |
 | `ST_Envelope()` | ✅ | Return SRID-0 geometry envelope |
-| `ST_Equals()` | ❌ | Whether one geometry is equal to another |
+| `ST_Equals()` | 🟡 | SRID-0 object-shape equality for Point, LineString, Polygon, and child-decomposed collections; full collection-union topology and geographic SRS deferred |
 | `ST_ExteriorRing()` | ✅ | Return Polygon exterior ring |
 | `ST_FrechetDistance()` | ✅ | SRID-0 discrete Fréchet distance for LineString pairs |
 | `ST_GeoHash()` | ✅ | Encode Point or coordinate pair as a geohash |

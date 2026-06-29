@@ -55,13 +55,40 @@ static int plan_grouped_aggregate(
 
     rc = collect_grouped_aggregate_clauses(database, statement, &clauses);
     if (rc == MYLITE_OK) {
+        out_plan->with_rollup = grouped_aggregate_group_clause_has_rollup(clauses.group_clause);
         group_key_count = grouped_aggregate_group_key_count(clauses.group_clause);
         if (group_key_count == 0U) {
             set_unsupported_error(database, "GROUP BY requires one descriptor group column");
             return MYLITE_ERROR;
         }
-        if (grouped_aggregate_group_clause_has_rollup(clauses.group_clause)) {
-            set_unsupported_error(database, "GROUP BY WITH ROLLUP is not yet supported");
+        if (out_plan->with_rollup && out_plan->is_distinct) {
+            set_unsupported_error(database, "GROUP BY WITH ROLLUP does not yet support DISTINCT");
+            return MYLITE_ERROR;
+        }
+        if (out_plan->with_rollup && out_plan->calc_found_rows) {
+            set_unsupported_error(
+                database,
+                "GROUP BY WITH ROLLUP does not yet support SQL_CALC_FOUND_ROWS"
+            );
+            return MYLITE_ERROR;
+        }
+        if (out_plan->with_rollup && group_key_count != 1U) {
+            set_unsupported_error(
+                database,
+                "GROUP BY WITH ROLLUP supports one descriptor group column"
+            );
+            return MYLITE_ERROR;
+        }
+        if (out_plan->with_rollup && clauses.having_clause != NULL) {
+            set_unsupported_error(database, "GROUP BY WITH ROLLUP does not yet support HAVING");
+            return MYLITE_ERROR;
+        }
+        if (out_plan->with_rollup && clauses.order_clause != NULL) {
+            set_unsupported_error(database, "GROUP BY WITH ROLLUP does not yet support ORDER BY");
+            return MYLITE_ERROR;
+        }
+        if (out_plan->with_rollup && clauses.limit_clause != NULL) {
+            set_unsupported_error(database, "GROUP BY WITH ROLLUP does not yet support LIMIT");
             return MYLITE_ERROR;
         }
         if (group_key_count > grouped_aggregate_max_group_keys) {

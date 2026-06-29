@@ -803,6 +803,30 @@ static int build_grouped_aggregate_sql(
     return rc;
 }
 
+static int build_grouped_aggregate_rollup_sql(
+    const struct planned_grouped_aggregate *plan,
+    char **out_sql
+) {
+    struct mylite_dynamic_string string;
+    size_t next_parameter = 1U;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    mylite_dynamic_string_init(&string);
+
+    rc = append_grouped_aggregate_rollup_query_sql(&string, plan, &next_parameter);
+    if (rc == MYLITE_OK) {
+        *out_sql = mylite_dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    mylite_dynamic_string_deinit(&string);
+
+    return rc;
+}
+
 static int build_grouped_aggregate_found_rows_sql(
     const struct planned_grouped_aggregate *plan,
     char **out_sql
@@ -833,6 +857,53 @@ static int build_grouped_aggregate_found_rows_sql(
     }
 
     mylite_dynamic_string_deinit(&string);
+
+    return rc;
+}
+
+static int append_grouped_aggregate_rollup_query_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    size_t *next_parameter
+) {
+    bool has_output_item = false;
+    int rc = mylite_dynamic_string_append(string, "SELECT ");
+
+    for (size_t aggregate_index = 0U; rc == MYLITE_OK && aggregate_index < plan->aggregate_count;
+         ++aggregate_index) {
+        const struct planned_grouped_aggregate_item *item = &plan->aggregates[aggregate_index];
+
+        if (item->is_hidden_order_key) {
+            continue;
+        }
+        if (has_output_item) {
+            rc = mylite_dynamic_string_append(string, ", ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_grouped_aggregate_select_item_sql(
+                string,
+                plan,
+                item,
+                next_parameter,
+                false
+            );
+        }
+        if (rc == MYLITE_OK) {
+            has_output_item = true;
+        }
+    }
+    if (rc == MYLITE_OK && !has_output_item) {
+        return MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, " FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_grouped_aggregate_from_sql(string, plan, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_sql(string, &plan->predicate, next_parameter);
+    }
 
     return rc;
 }

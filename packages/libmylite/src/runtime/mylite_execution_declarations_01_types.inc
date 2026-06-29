@@ -2249,6 +2249,7 @@ struct planned_grouped_aggregate {
     size_t *order_item_aggregate_indexes;
     bool order_uses_aggregate;
     size_t order_aggregate_index;
+    bool with_rollup;
     bool is_distinct;
     bool calc_found_rows;
     struct planned_select_limit limit;

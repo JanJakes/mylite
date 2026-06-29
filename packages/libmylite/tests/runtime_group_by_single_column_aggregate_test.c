@@ -102,10 +102,37 @@ int main(void) {
 static int test_grouped_values_persistence_rename_and_drop(void) {
     static const char *const g_count_columns[] = {"g", "COUNT(*)"};
     static const char *const g_count_values[] = {NULL, "1", "1", "2", "2", "2"};
+    static const char *const g_rollup_count_values[] = {
+        NULL,
+        "1",
+        "1",
+        "2",
+        "2",
+        "2",
+        NULL,
+        "5",
+    };
+    static const char *const g_only_columns[] = {"g"};
+    static const char *const g_only_rollup_values[] = {NULL, "1", "2", NULL};
     static const char *const readable_post_status_columns[] = {"post_status", "num_posts"};
     static const char *const readable_post_status_values[] = {"private", "1", "publish", "5"};
     static const char *const g_count_n_columns[] = {"g", "COUNT(n)"};
     static const char *const g_count_n_values[] = {NULL, "0", "1", "1", "2", "2"};
+    static const char *const g_rollup_multi_columns[] = {
+        "g",
+        "COUNT(*)",
+        "COUNT(n)",
+        "SUM(n)",
+        "MIN(n)",
+        "MAX(n)",
+        "AVG(n)",
+    };
+    static const char *const g_rollup_multi_values[] = {
+        NULL, "1", "0", NULL, NULL, NULL, NULL,      "1",  "2", "1", "10", "10", "10", "10.0000",
+        "2",  "2", "2", "50", "20", "30", "25.0000", NULL, "5", "3", "60", "10", "30", "20.0000",
+    };
+    static const char *const g_rollup_where_columns[] = {"g", "COUNT(*)", "SUM(n)"};
+    static const char *const g_rollup_where_values[] = {"2", "2", "50", NULL, "2", "50"};
     static const char *const g_count_distinct_n_columns[] = {"g", "COUNT(DISTINCT n)"};
     static const char *const g_count_distinct_n_values[] = {NULL, "0", "1", "1", "2", "2"};
     static const char *const g_count_distinct_nn_columns[] = {"g", "COUNT(DISTINCT nn)"};
@@ -808,6 +835,64 @@ static int test_grouped_values_persistence_rename_and_drop(void) {
             .values = g_count_values,
             .row_count = 3U,
             .context = "count star grouped by nullable key",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g WITH ROLLUP",
+            .columns = g_count_columns,
+            .column_count = 2U,
+            .values = g_rollup_count_values,
+            .row_count = 4U,
+            .context = "single-key count rollup appends total row",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*), COUNT(n), SUM(n), MIN(n), MAX(n), AVG(n) "
+                   "FROM grouped_numbers GROUP BY g WITH ROLLUP",
+            .columns = g_rollup_multi_columns,
+            .column_count = grouped_multi_aggregate_column_count,
+            .values = g_rollup_multi_values,
+            .row_count = 4U,
+            .context = "single-key numeric aggregate rollup",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*), SUM(n) FROM grouped_numbers WHERE n > 10 "
+                   "GROUP BY g WITH ROLLUP",
+            .columns = g_rollup_where_columns,
+            .column_count = 3U,
+            .values = g_rollup_where_values,
+            .row_count = 2U,
+            .context = "single-key rollup honors source predicate",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g, COUNT(*) FROM grouped_numbers WHERE n > 100 "
+                   "GROUP BY g WITH ROLLUP",
+            .columns = g_count_columns,
+            .column_count = 2U,
+            .values = NULL,
+            .row_count = 0U,
+            .context = "single-key rollup empty filtered source emits no total row",
+        }
+    );
+    failures += expect_grouped_query(
+        database,
+        (struct expected_grouped_query){
+            .sql = "SELECT g FROM grouped_numbers GROUP BY g WITH ROLLUP",
+            .columns = g_only_columns,
+            .column_count = 1U,
+            .values = g_only_rollup_values,
+            .row_count = 4U,
+            .context = "single-key projection-only rollup",
         }
     );
     failures += expect_grouped_query(
@@ -2963,6 +3048,60 @@ static int test_grouped_diagnostics(void) {
             .code = mysql_error_parse,
             .sqlstate = "42000",
             .message_part = "GROUP BY supports only descriptor group columns",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, n, COUNT(*) FROM grouped_numbers GROUP BY g, n WITH ROLLUP",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "GROUP BY WITH ROLLUP supports one descriptor group column",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT DISTINCT g, COUNT(*) FROM grouped_numbers GROUP BY g WITH ROLLUP",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "GROUP BY WITH ROLLUP does not yet support DISTINCT",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT SQL_CALC_FOUND_ROWS g, COUNT(*) FROM grouped_numbers GROUP BY g WITH ROLLUP",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "GROUP BY WITH ROLLUP does not yet support SQL_CALC_FOUND_ROWS",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g WITH ROLLUP HAVING COUNT(*) > 0",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "GROUP BY WITH ROLLUP does not yet support HAVING",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g WITH ROLLUP ORDER BY g",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "GROUP BY WITH ROLLUP does not yet support ORDER BY",
+        }
+    );
+    failures += execute_error(
+        database,
+        "SELECT g, COUNT(*) FROM grouped_numbers GROUP BY g WITH ROLLUP LIMIT 2",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "GROUP BY WITH ROLLUP does not yet support LIMIT",
         }
     );
 

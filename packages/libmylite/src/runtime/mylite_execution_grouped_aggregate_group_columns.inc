@@ -10,16 +10,6 @@ static int plan_grouped_aggregate_group_columns(
     size_t group_count = grouped_aggregate_group_key_count(group_clause);
     int rc = MYLITE_OK;
 
-    for (const struct mylite_sql_ast_node *group_key =
-             group_clause == NULL ? NULL : group_clause->first_child;
-         group_key != NULL;
-         group_key = group_key->next_sibling) {
-        if (group_key->kind == MYLITE_SQL_AST_GROUP_BY_ROLLUP_MODIFIER) {
-            set_unsupported_error(database, "GROUP BY WITH ROLLUP is not yet supported");
-            return MYLITE_ERROR;
-        }
-    }
-
     if (group_count == 0U) {
         set_unsupported_error(database, "GROUP BY requires one descriptor group column");
         return MYLITE_ERROR;

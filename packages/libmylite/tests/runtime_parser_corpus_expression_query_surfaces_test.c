@@ -204,7 +204,7 @@ static int test_expression_query_surfaces(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "GROUP BY WITH ROLLUP is not yet supported",
+            .message_part = "GROUP BY supports",
         }
     );
     failures += execute_error(

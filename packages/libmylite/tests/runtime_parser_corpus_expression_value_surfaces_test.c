@@ -113,15 +113,8 @@ static int test_expression_value_placeholders(void) {
             .context = "DML spatial constructor value",
         }
     );
-    failures += execute_error(
-        database,
-        "SELECT region, SUM(amount) FROM sales GROUP BY region WITH ROLLUP",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "GROUP BY WITH ROLLUP is not yet supported",
-        }
-    );
+    failures +=
+        execute_ok(database, "SELECT region, SUM(amount) FROM sales GROUP BY region WITH ROLLUP");
 
     mylite_close(database);
     return failures;

@@ -2133,6 +2133,10 @@ static int build_grouped_aggregate_sql(
     const struct planned_grouped_aggregate *plan,
     char **out_sql
 );
+static int build_grouped_aggregate_rollup_sql(
+    const struct planned_grouped_aggregate *plan,
+    char **out_sql
+);
 static int build_grouped_aggregate_found_rows_sql(
     const struct planned_grouped_aggregate *plan,
     char **out_sql
@@ -2144,6 +2148,11 @@ static int append_grouped_aggregate_query_sql(
     bool include_order,
     bool include_limit,
     bool include_aliases
+);
+static int append_grouped_aggregate_rollup_query_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_grouped_aggregate *plan,
+    size_t *next_parameter
 );
 static int append_grouped_aggregate_from_sql(
     struct mylite_dynamic_string *string,

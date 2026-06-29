@@ -768,6 +768,54 @@ static int bind_grouped_aggregate_count_parameters(
     return bind_grouped_aggregate_parameters_with_limit(statement, plan, false);
 }
 
+static int bind_grouped_aggregate_rollup_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate *plan
+) {
+    int parameter_index = 1;
+    int rc = MYLITE_OK;
+
+    for (size_t aggregate_index = 0U; rc == MYLITE_OK && aggregate_index < plan->aggregate_count;
+         ++aggregate_index) {
+        const struct planned_grouped_aggregate_item *item = &plan->aggregates[aggregate_index];
+
+        if (item->is_hidden_order_key) {
+            continue;
+        }
+        rc = bind_grouped_aggregate_row_scalar_expression_parameters(
+            statement,
+            item,
+            &parameter_index
+        );
+        if (rc == MYLITE_OK && item->has_separator) {
+            rc = bind_planned_value_parameter(statement, parameter_index, &item->separator);
+            if (rc == MYLITE_OK) {
+                ++parameter_index;
+            }
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_select_source_parameters(
+            statement,
+            plan->sources,
+            plan->source_count,
+            &parameter_index
+        );
+    }
+    for (size_t join_index = 0U; rc == MYLITE_OK && join_index < plan->join_count; ++join_index) {
+        rc = bind_select_join_condition_parameters(
+            statement,
+            &plan->join_conditions[join_index],
+            &parameter_index
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
+    }
+
+    return rc;
+}
+
 static int bind_grouped_aggregate_parameters_with_limit(
     sqlite3_stmt *statement,
     const struct planned_grouped_aggregate *plan,

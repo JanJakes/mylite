@@ -2377,6 +2377,7 @@ static int read_grouped_aggregate_from_source(
 ) {
     sqlite3_stmt *statement = NULL;
     char *sql = NULL;
+    size_t initial_row_count = mylite_result_row_count(result);
     int sqlite_rc = SQLITE_OK;
     int rc = build_grouped_aggregate_sql(plan, &sql);
 
@@ -2408,7 +2409,99 @@ static int read_grouped_aggregate_from_source(
 
     rc = finalize_sqlite_statement(statement, rc);
     free(sql);
+    if (rc == MYLITE_OK && plan->with_rollup &&
+        mylite_result_row_count(result) > initial_row_count) {
+        rc = append_grouped_aggregate_rollup_row(database, plan, result);
+    }
 
+    return rc;
+}
+
+static int append_grouped_aggregate_rollup_row(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    mylite_result *result
+) {
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    size_t visible_aggregate_count = 0U;
+    int sqlite_rc = SQLITE_OK;
+    int rc = MYLITE_OK;
+
+    for (size_t aggregate_index = 0U; aggregate_index < plan->aggregate_count; ++aggregate_index) {
+        if (!plan->aggregates[aggregate_index].is_hidden_order_key) {
+            ++visible_aggregate_count;
+        }
+    }
+    if (visible_aggregate_count == 0U) {
+        return append_grouped_aggregate_null_rollup_row(database, plan, result);
+    }
+
+    rc = build_grouped_aggregate_rollup_sql(plan, &sql);
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, sql, &statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_grouped_aggregate_rollup_parameters(statement, plan);
+    }
+    if (rc == MYLITE_OK) {
+        for (size_t index = 0U; index < plan->aggregate_count; ++index) {
+            if (plan->aggregates[index].function == PLANNED_GROUPED_AGGREGATE_GROUP_CONCAT) {
+                database->session.group_concat_value_ordinal = 0U;
+                break;
+            }
+        }
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            rc = append_grouped_aggregate_rollup_sqlite_row(database, statement, plan, result);
+        } else {
+            rc = grouped_aggregate_step_error(database, statement, plan, sqlite_rc);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc != SQLITE_DONE) {
+            rc = grouped_aggregate_step_error(database, statement, plan, sqlite_rc);
+        }
+    }
+
+    rc = finalize_sqlite_statement(statement, rc);
+    free(sql);
+    return rc;
+}
+
+static int append_grouped_aggregate_null_rollup_row(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    mylite_result *result
+) {
+    struct mylite_result_cell *cells = NULL;
+    size_t result_column_count = plan->projection_count;
+    int rc = MYLITE_OK;
+
+    if (result_column_count == 0U) {
+        return MYLITE_ERROR;
+    }
+    if (result_column_count > SIZE_MAX / sizeof(*cells)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    cells = calloc(result_column_count, sizeof(*cells));
+    if (cells == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    for (size_t column_index = 0U; column_index < result_column_count; ++column_index) {
+        cells[column_index].is_null = true;
+    }
+    rc = mylite_result_append_bytes_row(result, cells);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    free(cells);
     return rc;
 }
 
@@ -2739,6 +2832,81 @@ static int append_grouped_aggregate_sqlite_row(
 
     free(cells);
     free(projection_buffers);
+    free(aggregate_buffers);
+
+    return rc;
+}
+
+static int append_grouped_aggregate_rollup_sqlite_row(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate *plan,
+    mylite_result *result
+) {
+    struct mylite_result_cell *cells = NULL;
+    char (*aggregate_buffers)[approximate_numeric_text_capacity] = NULL;
+    int sqlite_column_index = 0;
+    size_t visible_aggregate_count = 0U;
+    size_t result_column_count = 0U;
+    size_t result_aggregate_index = 0U;
+    int rc = MYLITE_OK;
+
+    for (size_t aggregate_index = 0U; aggregate_index < plan->aggregate_count; ++aggregate_index) {
+        if (!plan->aggregates[aggregate_index].is_hidden_order_key) {
+            ++visible_aggregate_count;
+        }
+    }
+    result_column_count = plan->projection_count + visible_aggregate_count;
+    if (result_column_count == 0U) {
+        return MYLITE_ERROR;
+    }
+    if (result_column_count > SIZE_MAX / sizeof(*cells) ||
+        plan->aggregate_count > SIZE_MAX / sizeof(*aggregate_buffers)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    cells = calloc(result_column_count, sizeof(*cells));
+    if (plan->aggregate_count > 0U) {
+        aggregate_buffers = calloc(plan->aggregate_count, sizeof(*aggregate_buffers));
+    }
+    if (cells == NULL || (plan->aggregate_count > 0U && aggregate_buffers == NULL)) {
+        free(cells);
+        free(aggregate_buffers);
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    for (size_t projection_index = 0U; projection_index < plan->projection_count;
+         ++projection_index) {
+        cells[projection_index].is_null = true;
+    }
+    for (size_t aggregate_index = 0U; rc == MYLITE_OK && aggregate_index < plan->aggregate_count;
+         ++aggregate_index) {
+        if (plan->aggregates[aggregate_index].is_hidden_order_key) {
+            continue;
+        }
+        rc = append_grouped_aggregate_sqlite_cell(
+            database,
+            statement,
+            &plan->aggregates[aggregate_index],
+            &sqlite_column_index,
+            &cells[plan->projection_count + result_aggregate_index],
+            aggregate_buffers[aggregate_index],
+            sizeof(aggregate_buffers[aggregate_index])
+        );
+        if (rc == MYLITE_OK) {
+            ++result_aggregate_index;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_bytes_row(result, cells);
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+
+    free(cells);
     free(aggregate_buffers);
 
     return rc;

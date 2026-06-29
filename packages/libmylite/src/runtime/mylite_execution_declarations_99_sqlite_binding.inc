@@ -1013,6 +1013,10 @@ static int bind_grouped_aggregate_count_parameters(
     sqlite3_stmt *statement,
     const struct planned_grouped_aggregate *plan
 );
+static int bind_grouped_aggregate_rollup_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate *plan
+);
 static int bind_grouped_aggregate_parameters_at(
     sqlite3_stmt *statement,
     const struct planned_grouped_aggregate *plan,

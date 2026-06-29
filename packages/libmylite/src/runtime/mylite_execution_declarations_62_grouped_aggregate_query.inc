@@ -981,6 +981,16 @@ static int read_grouped_aggregate_from_source(
     const struct planned_grouped_aggregate *plan,
     mylite_result *result
 );
+static int append_grouped_aggregate_rollup_row(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    mylite_result *result
+);
+static int append_grouped_aggregate_null_rollup_row(
+    struct mylite_db *database,
+    const struct planned_grouped_aggregate *plan,
+    mylite_result *result
+);
 static int set_grouped_aggregate_found_row_count(
     struct mylite_db *database,
     const struct planned_grouped_aggregate *plan,
@@ -1027,6 +1037,12 @@ static int append_bitwise_aggregate_sqlite_cell(
     struct mylite_result_cell *out_cell
 );
 static int append_grouped_aggregate_sqlite_row(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    const struct planned_grouped_aggregate *plan,
+    mylite_result *result
+);
+static int append_grouped_aggregate_rollup_sqlite_row(
     struct mylite_db *database,
     sqlite3_stmt *statement,
     const struct planned_grouped_aggregate *plan,

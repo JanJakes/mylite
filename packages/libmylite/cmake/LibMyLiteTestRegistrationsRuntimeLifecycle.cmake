@@ -699,6 +699,10 @@
     COMMAND mylite_runtime_in_subquery_predicates_test
   )
   add_test(
+    NAME libmylite.runtime.quantified_subquery_predicates
+    COMMAND mylite_runtime_quantified_subquery_predicates_test
+  )
+  add_test(
     NAME libmylite.runtime.where_and_predicates
     COMMAND mylite_runtime_where_and_predicates_test
   )

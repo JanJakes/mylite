@@ -328,6 +328,7 @@ static bool map_keyword_token(
         {"GROUP", MYLITE_SQL_PARSE_GROUP},
         {"GROUP_CONCAT", MYLITE_SQL_PARSE_GROUP_CONCAT},
         {"GROUPING", MYLITE_SQL_PARSE_GROUPING},
+        {"ANY", MYLITE_SQL_PARSE_ANY},
         {"ANY_VALUE", MYLITE_SQL_PARSE_ANY_VALUE},
         {"HAVING", MYLITE_SQL_PARSE_HAVING},
         {"ORDER", MYLITE_SQL_PARSE_ORDER},
@@ -1012,6 +1013,7 @@ static bool map_keyword_index(unsigned int keyword_index, int *out_parser_token)
         [16U] = MYLITE_SQL_PARSE_ALWAYS,               /* ALWAYS */
         [17U] = MYLITE_SQL_PARSE_ANALYZE,              /* ANALYZE */
         [18U] = MYLITE_SQL_PARSE_AND,                  /* AND */
+        [19U] = MYLITE_SQL_PARSE_ANY,                  /* ANY */
         [20U] = MYLITE_SQL_PARSE_ANY_VALUE,            /* ANY_VALUE */
         [21U] = MYLITE_SQL_PARSE_ARRAY,                /* ARRAY */
         [22U] = MYLITE_SQL_PARSE_AS,                   /* AS */
@@ -1431,6 +1433,7 @@ static bool map_keyword_index(unsigned int keyword_index, int *out_parser_token)
         [682U] = MYLITE_SQL_PARSE_SKIP,                /* SKIP */
         [685U] = MYLITE_SQL_PARSE_SMALLINT,            /* SMALLINT */
         [686U] = MYLITE_SQL_PARSE_SNAPSHOT,            /* SNAPSHOT */
+        [688U] = MYLITE_SQL_PARSE_SOME,                /* SOME */
         [690U] = MYLITE_SQL_PARSE_SOUNDEX,             /* SOUNDEX */
         [691U] = MYLITE_SQL_PARSE_SOUNDS,              /* SOUNDS */
         [720U] = MYLITE_SQL_PARSE_SPACE,               /* SPACE */

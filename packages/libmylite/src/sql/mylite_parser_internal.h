@@ -179,6 +179,11 @@ struct mylite_sql_comparison_operator_tokens {
     enum mylite_sql_ast_operator operator_kind;
 };
 
+struct mylite_sql_quantified_subquery_tokens {
+    struct mylite_sql_token token;
+    enum mylite_sql_ast_node_kind predicate_kind;
+};
+
 struct mylite_sql_transaction_completion {
     struct mylite_sql_token last_token;
     struct mylite_sql_token chain_start_token;
@@ -1821,6 +1826,14 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_in_predicate(
     struct mylite_sql_ast_node *left,
     struct mylite_sql_token in_token,
     struct mylite_sql_ast_node *values,
+    struct mylite_sql_token right_paren
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_quantified_subquery_predicate(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_comparison_operator_tokens operator_tokens,
+    struct mylite_sql_quantified_subquery_tokens quantifier_tokens,
+    struct mylite_sql_ast_node *select_statement,
     struct mylite_sql_token right_paren
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_exists_predicate(

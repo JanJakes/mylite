@@ -130,7 +130,8 @@ static int plan_is_null_predicate(
     };
 
     if (child_at(predicate_node, 0U) != NULL &&
-        child_at(predicate_node, 0U)->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
+        (child_at(predicate_node, 0U)->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE ||
+         predicate_node_is_quantified_subquery(child_at(predicate_node, 0U)))) {
         return plan_comparison_result_is_predicate(
             database,
             predicate_node,
@@ -294,7 +295,8 @@ static int plan_is_boolean_predicate(
         .right_index = SIZE_MAX,
     };
     if (child_at(predicate_node, 0U) != NULL &&
-        child_at(predicate_node, 0U)->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE) {
+        (child_at(predicate_node, 0U)->kind == MYLITE_SQL_AST_COMPARISON_PREDICATE ||
+         predicate_node_is_quantified_subquery(child_at(predicate_node, 0U)))) {
         return plan_comparison_result_is_predicate(
             database,
             predicate_node,
@@ -378,16 +380,29 @@ static int plan_comparison_result_is_predicate(
         return MYLITE_ERROR;
     }
 
-    rc = plan_comparison_predicate(
-        database,
-        child_at(predicate_node, 0U),
-        source_context,
-        table_columns,
-        table_column_count,
-        options,
-        predicate,
-        &node_index
-    );
+    if (predicate_node_is_quantified_subquery(child_at(predicate_node, 0U))) {
+        rc = plan_quantified_subquery_predicate(
+            database,
+            child_at(predicate_node, 0U),
+            source_context,
+            table_columns,
+            table_column_count,
+            options,
+            predicate,
+            &node_index
+        );
+    } else {
+        rc = plan_comparison_predicate(
+            database,
+            child_at(predicate_node, 0U),
+            source_context,
+            table_columns,
+            table_column_count,
+            options,
+            predicate,
+            &node_index
+        );
+    }
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -680,6 +695,116 @@ static int plan_in_predicate(
     predicate->qualify_column_references = true;
 
     return rc;
+}
+
+static bool predicate_node_is_quantified_subquery(
+    const struct mylite_sql_ast_node *predicate_node
+) {
+    return predicate_node != NULL &&
+           (predicate_node->kind == MYLITE_SQL_AST_ANY_SUBQUERY_PREDICATE ||
+            predicate_node->kind == MYLITE_SQL_AST_SOME_SUBQUERY_PREDICATE ||
+            predicate_node->kind == MYLITE_SQL_AST_ALL_SUBQUERY_PREDICATE);
+}
+
+static int plan_quantified_subquery_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+) {
+    struct planned_select_predicate_node node = {
+        .kind = PLANNED_SELECT_PREDICATE_QUANTIFIED_SUBQUERY,
+        .operator_kind = mylite_sql_ast_node_operator(predicate_node),
+        .quantified_subquery_kind = predicate_node == NULL ? 0 : predicate_node->kind,
+        .left_index = SIZE_MAX,
+        .right_index = SIZE_MAX,
+    };
+    size_t outer_source_count = 1U;
+    int rc = MYLITE_OK;
+
+    if (!predicate_node_is_quantified_subquery(predicate_node)) {
+        set_unsupported_error(
+            database,
+            "quantified subqueries support descriptor column left operands"
+        );
+        return MYLITE_ERROR;
+    }
+    if (child_at(predicate_node, 0U) == NULL ||
+        (child_at(predicate_node, 0U)->kind != MYLITE_SQL_AST_IDENTIFIER &&
+         child_at(predicate_node, 0U)->kind != MYLITE_SQL_AST_QUALIFIED_IDENTIFIER)) {
+        set_unsupported_error(
+            database,
+            "quantified subqueries support descriptor column left operands"
+        );
+        return MYLITE_ERROR;
+    }
+    if (options == NULL || !options->allow_quantified_subquery) {
+        set_unsupported_error(
+            database,
+            "quantified subqueries are supported only in SELECT WHERE"
+        );
+        return MYLITE_ERROR;
+    }
+    if (source_context == NULL) {
+        set_unsupported_error(
+            database,
+            "quantified subqueries support only an outer table source"
+        );
+        return MYLITE_ERROR;
+    }
+
+    rc = resolve_predicate_column_with_source_index(
+        database,
+        child_at(predicate_node, 0U),
+        source_context,
+        table_columns,
+        table_column_count,
+        &node.column,
+        &node.column_source_index
+    );
+    if (rc == MYLITE_OK && column_descriptor_is_enum(&node.column)) {
+        set_unsupported_error(
+            database,
+            "WHERE enum predicates do not yet support quantified subqueries"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && column_descriptor_is_set(&node.column)) {
+        set_unsupported_error(
+            database,
+            "WHERE set predicates do not yet support quantified subqueries"
+        );
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK && select_source_context_is_joined(source_context)) {
+        outer_source_count = source_context->source_count;
+    }
+    if (rc == MYLITE_OK) {
+        rc = plan_in_subquery_predicate(
+            database,
+            child_at(predicate_node, 1U),
+            source_context,
+            table_columns,
+            table_column_count,
+            outer_source_count,
+            &node
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_planned_select_predicate_node(database, predicate, &node, out_node_index);
+    }
+    if (rc != MYLITE_OK) {
+        planned_in_subquery_deinit(node.in_subquery);
+        free(node.in_subquery);
+        return rc;
+    }
+
+    predicate->qualify_column_references = true;
+    return MYLITE_OK;
 }
 
 static int plan_row_constructor_in_predicate(

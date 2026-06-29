@@ -100,6 +100,7 @@
 %type alter_algorithm_value { struct mylite_sql_alter_algorithm_value }
 %type alter_lock_value { struct mylite_sql_alter_lock_value }
 %type predicate_comparison_operator { struct mylite_sql_comparison_operator_tokens }
+%type quantified_subquery_quantifier { struct mylite_sql_quantified_subquery_tokens }
 %type predicate_comparison_result_is_opt { struct mylite_sql_comparison_operator_tokens }
 %type dml_function_token { struct mylite_sql_token }
 %type keyword_function_token { struct mylite_sql_token }
@@ -7543,6 +7544,102 @@ predicate_atom(A) ::= qualified_identifier(C) GREATER_EQUAL(O) predicate_compari
             state, C, O, MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL, V),
         S);
 }
+predicate_atom(A) ::= qualified_identifier(C) EQUAL(O) quantified_subquery_quantifier(Q)
+        LPAREN select_statement(S) RPAREN(R) predicate_comparison_result_is_opt(P). {
+    A = mylite_sql_parser_apply_comparison_result_is_suffix(
+        state,
+        mylite_sql_parser_make_quantified_subquery_predicate(
+            state,
+            C,
+            (struct mylite_sql_comparison_operator_tokens){
+                .token = O,
+                .operator_kind = MYLITE_SQL_AST_OPERATOR_EQUAL,
+            },
+            Q,
+            S,
+            R),
+        P);
+}
+predicate_atom(A) ::= qualified_identifier(C) NOT_EQUAL(O) quantified_subquery_quantifier(Q)
+        LPAREN select_statement(S) RPAREN(R) predicate_comparison_result_is_opt(P). {
+    A = mylite_sql_parser_apply_comparison_result_is_suffix(
+        state,
+        mylite_sql_parser_make_quantified_subquery_predicate(
+            state,
+            C,
+            (struct mylite_sql_comparison_operator_tokens){
+                .token = O,
+                .operator_kind = MYLITE_SQL_AST_OPERATOR_NOT_EQUAL,
+            },
+            Q,
+            S,
+            R),
+        P);
+}
+predicate_atom(A) ::= qualified_identifier(C) LESS(O) quantified_subquery_quantifier(Q)
+        LPAREN select_statement(S) RPAREN(R) predicate_comparison_result_is_opt(P). {
+    A = mylite_sql_parser_apply_comparison_result_is_suffix(
+        state,
+        mylite_sql_parser_make_quantified_subquery_predicate(
+            state,
+            C,
+            (struct mylite_sql_comparison_operator_tokens){
+                .token = O,
+                .operator_kind = MYLITE_SQL_AST_OPERATOR_LESS,
+            },
+            Q,
+            S,
+            R),
+        P);
+}
+predicate_atom(A) ::= qualified_identifier(C) LESS_EQUAL(O) quantified_subquery_quantifier(Q)
+        LPAREN select_statement(S) RPAREN(R) predicate_comparison_result_is_opt(P). {
+    A = mylite_sql_parser_apply_comparison_result_is_suffix(
+        state,
+        mylite_sql_parser_make_quantified_subquery_predicate(
+            state,
+            C,
+            (struct mylite_sql_comparison_operator_tokens){
+                .token = O,
+                .operator_kind = MYLITE_SQL_AST_OPERATOR_LESS_EQUAL,
+            },
+            Q,
+            S,
+            R),
+        P);
+}
+predicate_atom(A) ::= qualified_identifier(C) GREATER(O) quantified_subquery_quantifier(Q)
+        LPAREN select_statement(S) RPAREN(R) predicate_comparison_result_is_opt(P). {
+    A = mylite_sql_parser_apply_comparison_result_is_suffix(
+        state,
+        mylite_sql_parser_make_quantified_subquery_predicate(
+            state,
+            C,
+            (struct mylite_sql_comparison_operator_tokens){
+                .token = O,
+                .operator_kind = MYLITE_SQL_AST_OPERATOR_GREATER,
+            },
+            Q,
+            S,
+            R),
+        P);
+}
+predicate_atom(A) ::= qualified_identifier(C) GREATER_EQUAL(O) quantified_subquery_quantifier(Q)
+        LPAREN select_statement(S) RPAREN(R) predicate_comparison_result_is_opt(P). {
+    A = mylite_sql_parser_apply_comparison_result_is_suffix(
+        state,
+        mylite_sql_parser_make_quantified_subquery_predicate(
+            state,
+            C,
+            (struct mylite_sql_comparison_operator_tokens){
+                .token = O,
+                .operator_kind = MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL,
+            },
+            Q,
+            S,
+            R),
+        P);
+}
 predicate_atom(A) ::= qualified_identifier(C) predicate_comparison_operator(O)
         introduced_predicate_literal(V). {
     A = mylite_sql_parser_make_comparison_predicate(
@@ -8874,6 +8971,25 @@ predicate_comparison_operator(A) ::= GREATER_EQUAL(T). {
     A = (struct mylite_sql_comparison_operator_tokens){
         .token = T,
         .operator_kind = MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL,
+    };
+}
+
+quantified_subquery_quantifier(A) ::= ANY(T). {
+    A = (struct mylite_sql_quantified_subquery_tokens){
+        .token = T,
+        .predicate_kind = MYLITE_SQL_AST_ANY_SUBQUERY_PREDICATE,
+    };
+}
+quantified_subquery_quantifier(A) ::= SOME(T). {
+    A = (struct mylite_sql_quantified_subquery_tokens){
+        .token = T,
+        .predicate_kind = MYLITE_SQL_AST_SOME_SUBQUERY_PREDICATE,
+    };
+}
+quantified_subquery_quantifier(A) ::= ALL(T). {
+    A = (struct mylite_sql_quantified_subquery_tokens){
+        .token = T,
+        .predicate_kind = MYLITE_SQL_AST_ALL_SUBQUERY_PREDICATE,
     };
 }
 

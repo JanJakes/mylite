@@ -1915,6 +1915,108 @@ static int test_select_where_predicates(void) {
     mylite_sql_parse_result_deinit(&result);
 
     failures += parser_test_parse_sql(
+        "SELECT u.id FROM users AS u WHERE u.id = ANY "
+        "(SELECT o.user_id FROM orders AS o);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_ANY_SUBQUERY_PREDICATE,
+        "ANY subquery predicate"
+    );
+    failures += parser_test_expect_operator(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_OPERATOR_EQUAL,
+        "ANY subquery operator"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            1U
+        ),
+        MYLITE_SQL_AST_SELECT_STATEMENT,
+        "ANY subquery inner select"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT u.id FROM users AS u WHERE u.id <> SOME "
+        "(SELECT o.user_id FROM orders AS o);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_SOME_SUBQUERY_PREDICATE,
+        "SOME subquery predicate"
+    );
+    failures += parser_test_expect_operator(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_OPERATOR_NOT_EQUAL,
+        "SOME subquery operator"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT u.id FROM users AS u WHERE u.id >= ALL "
+        "(SELECT o.user_id FROM orders AS o);",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_ALL_SUBQUERY_PREDICATE,
+        "ALL subquery predicate"
+    );
+    failures += parser_test_expect_operator(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_OPERATOR_GREATER_EQUAL,
+        "ALL subquery operator"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT u.id FROM users AS u WHERE "
+        "u.id = ANY (SELECT o.user_id FROM orders AS o) IS UNKNOWN;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE,
+        "ANY subquery unknown suffix"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(
+            parser_test_child_at(
+                parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+                0U
+            ),
+            0U
+        ),
+        MYLITE_SQL_AST_ANY_SUBQUERY_PREDICATE,
+        "ANY subquery unknown child"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
+        "SELECT u.id FROM users AS u WHERE "
+        "u.id = ANY (SELECT o.user_id FROM orders AS o) IS NOT UNKNOWN;",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_operator(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(result.root, 0U), 2U), 0U),
+        MYLITE_SQL_AST_OPERATOR_IS_NOT_UNKNOWN,
+        "ANY subquery not unknown suffix"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
+    failures += parser_test_parse_sql(
         "SELECT p.ID FROM posts AS p WHERE "
         "(SELECT post_status FROM posts WHERE ID = p.post_parent) IN ('publish');",
         MYLITE_SQL_PARSE_OK,

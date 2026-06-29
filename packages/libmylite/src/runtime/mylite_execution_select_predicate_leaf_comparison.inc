@@ -205,6 +205,17 @@ static int plan_select_predicate_leaf_node(
             out_predicate,
             &node_index
         );
+    } else if (predicate_node_is_quantified_subquery(predicate_node)) {
+        rc = plan_quantified_subquery_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            options,
+            out_predicate,
+            &node_index
+        );
     } else {
         rc = plan_exists_predicate(
             database,
@@ -421,6 +432,17 @@ static int plan_select_predicate_leaf_node_without_exists(
                 &node_index
             );
         }
+    } else if (predicate_node_is_quantified_subquery(predicate_node)) {
+        rc = plan_quantified_subquery_predicate(
+            database,
+            predicate_node,
+            source_context,
+            table_columns,
+            table_column_count,
+            options,
+            out_predicate,
+            &node_index
+        );
     } else {
         rc = plan_in_predicate(
             database,

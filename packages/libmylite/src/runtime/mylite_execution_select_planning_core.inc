@@ -40,6 +40,7 @@ static int plan_select(
     struct select_predicate_plan_options predicate_options = {
         .allow_exists = true,
         .allow_in_subquery = true,
+        .allow_quantified_subquery = true,
         .allow_scalar_subquery_in_literal = true,
         .allow_same_scope_column_reference_rhs = true,
         .allow_date_format_numeric_predicate = true,
@@ -2867,6 +2868,7 @@ static int plan_row_scalar_select_row_envelope(
     const struct select_predicate_plan_options predicate_options = {
         .allow_exists = true,
         .allow_in_subquery = true,
+        .allow_quantified_subquery = true,
         .allow_scalar_subquery_in_literal = true,
         .allow_same_scope_column_reference_rhs = true,
         .allow_date_format_numeric_predicate = true,

@@ -645,6 +645,30 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_in_predicate(
     return predicate;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_quantified_subquery_predicate(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *left,
+    struct mylite_sql_comparison_operator_tokens operator_tokens,
+    struct mylite_sql_quantified_subquery_tokens quantifier_tokens,
+    struct mylite_sql_ast_node *select_statement,
+    struct mylite_sql_token right_paren
+) {
+    struct mylite_sql_source_span span =
+        left == NULL ? mylite_sql_parser_span_from_token(&operator_tokens.token) : left->span;
+    struct mylite_sql_ast_node *predicate = NULL;
+
+    span = mylite_sql_parser_span_join(span, mylite_sql_parser_span_from_token(&right_paren));
+    predicate = mylite_sql_parser_make_node(state, quantifier_tokens.predicate_kind, span);
+    if (predicate == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_set_operator(predicate, operator_tokens.operator_kind);
+    mylite_sql_ast_node_append_child(predicate, left);
+    mylite_sql_ast_node_append_child(predicate, select_statement);
+    return predicate;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_exists_predicate(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token exists_token,

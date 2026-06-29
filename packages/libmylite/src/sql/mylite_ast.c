@@ -575,6 +575,9 @@ enum mylite_sql_ast_operator mylite_sql_ast_node_operator(const struct mylite_sq
          node->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE &&
          node->kind != MYLITE_SQL_AST_IS_NULL_PREDICATE &&
          node->kind != MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE &&
+         node->kind != MYLITE_SQL_AST_ANY_SUBQUERY_PREDICATE &&
+         node->kind != MYLITE_SQL_AST_SOME_SUBQUERY_PREDICATE &&
+         node->kind != MYLITE_SQL_AST_ALL_SUBQUERY_PREDICATE &&
          node->kind != MYLITE_SQL_AST_AND_PREDICATE && node->kind != MYLITE_SQL_AST_OR_PREDICATE &&
          node->kind != MYLITE_SQL_AST_XOR_PREDICATE &&
          node->kind != MYLITE_SQL_AST_NOT_PREDICATE)) {
@@ -2262,6 +2265,12 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "variance_aggregate_function";
     case MYLITE_SQL_AST_ST_COLLECT_AGGREGATE_FUNCTION:
         return "st_collect_aggregate_function";
+    case MYLITE_SQL_AST_ANY_SUBQUERY_PREDICATE:
+        return "any_subquery_predicate";
+    case MYLITE_SQL_AST_SOME_SUBQUERY_PREDICATE:
+        return "some_subquery_predicate";
+    case MYLITE_SQL_AST_ALL_SUBQUERY_PREDICATE:
+        return "all_subquery_predicate";
     case MYLITE_SQL_AST_ANY_VALUE_FUNCTION:
         return "any_value_function";
     case MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR:

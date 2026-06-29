@@ -88,6 +88,7 @@ static bool sql_safe_updates_leaf_node_uses_key(
         case PLANNED_SELECT_PREDICATE_IS_NULL:
         case PLANNED_SELECT_PREDICATE_BETWEEN:
         case PLANNED_SELECT_PREDICATE_IN:
+        case PLANNED_SELECT_PREDICATE_QUANTIFIED_SUBQUERY:
         case PLANNED_SELECT_PREDICATE_IS_BOOLEAN:
             if (sql_safe_updates_column_id_is_keyed(
                     node->column.column_id,

@@ -1132,6 +1132,19 @@ static int plan_in_predicate(
     struct planned_select_predicate *predicate,
     size_t *out_node_index
 );
+static bool predicate_node_is_quantified_subquery(
+    const struct mylite_sql_ast_node *predicate_node
+);
+static int plan_quantified_subquery_predicate(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *predicate_node,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    const struct select_predicate_plan_options *options,
+    struct planned_select_predicate *predicate,
+    size_t *out_node_index
+);
 static int plan_row_constructor_in_predicate(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *predicate_node,
@@ -1415,6 +1428,11 @@ static int bind_select_in_value_list_parameters(
 static int bind_select_in_subquery_predicate_parameters(
     sqlite3_stmt *statement,
     const struct planned_in_subquery *subquery,
+    int *parameter_index
+);
+static int bind_select_quantified_subquery_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
     int *parameter_index
 );
 static int resolve_predicate_column_with_source_index(

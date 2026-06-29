@@ -33,6 +33,7 @@ static int plan_joined_select_predicate(
     const struct select_predicate_plan_options options = {
         .allow_exists = false,
         .allow_in_subquery = true,
+        .allow_quantified_subquery = true,
         .allow_scalar_subquery_in_literal = true,
         .allow_scalar_count_subquery_comparison = true,
         .allow_same_scope_column_reference_rhs = true,
@@ -668,6 +669,7 @@ static int plan_select_predicate_ast_node(
                             current->kind == MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE ||
                             current->kind == MYLITE_SQL_AST_BETWEEN_PREDICATE ||
                             current->kind == MYLITE_SQL_AST_IN_PREDICATE ||
+                            predicate_node_is_quantified_subquery(current) ||
                             current->kind == MYLITE_SQL_AST_EXISTS_PREDICATE)) {
         return plan_select_predicate_leaf_node(
             database,
@@ -722,7 +724,8 @@ static int plan_select_predicate_ast_node_without_exists(
                             current->kind == MYLITE_SQL_AST_IS_NULL_PREDICATE ||
                             current->kind == MYLITE_SQL_AST_IS_BOOLEAN_PREDICATE ||
                             current->kind == MYLITE_SQL_AST_BETWEEN_PREDICATE ||
-                            current->kind == MYLITE_SQL_AST_IN_PREDICATE)) {
+                            current->kind == MYLITE_SQL_AST_IN_PREDICATE ||
+                            predicate_node_is_quantified_subquery(current))) {
         return plan_select_predicate_leaf_node_without_exists(
             database,
             current,

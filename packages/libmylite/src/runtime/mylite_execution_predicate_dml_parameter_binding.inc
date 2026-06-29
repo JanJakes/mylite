@@ -177,6 +177,13 @@ static int bind_select_predicate_node_parameters(
     if (node->kind == PLANNED_SELECT_PREDICATE_IN) {
         return bind_select_in_predicate_parameters(statement, node, parameter_index);
     }
+    if (node->kind == PLANNED_SELECT_PREDICATE_QUANTIFIED_SUBQUERY) {
+        return bind_select_quantified_subquery_predicate_parameters(
+            statement,
+            node,
+            parameter_index
+        );
+    }
 
     return bind_select_non_in_predicate_node_parameters(statement, node, parameter_index);
 }
@@ -338,6 +345,9 @@ static int bind_select_predicate_node_parameters_without_subqueries(
     }
     if (node->kind == PLANNED_SELECT_PREDICATE_IN) {
         return bind_select_in_literal_predicate_parameters(statement, node, parameter_index);
+    }
+    if (node->kind == PLANNED_SELECT_PREDICATE_QUANTIFIED_SUBQUERY) {
+        return MYLITE_ERROR;
     }
 
     return bind_select_non_in_predicate_node_parameters(statement, node, parameter_index);
@@ -540,6 +550,29 @@ static int bind_select_in_subquery_predicate_parameters(
         &subquery->predicate,
         parameter_index
     );
+}
+
+static int bind_select_quantified_subquery_predicate_parameters(
+    sqlite3_stmt *statement,
+    const struct planned_select_predicate_node *node,
+    int *parameter_index
+) {
+    int rc = MYLITE_OK;
+
+    if (node == NULL || node->in_subquery == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc =
+        bind_select_in_subquery_predicate_parameters(statement, node->in_subquery, parameter_index);
+    if (rc == MYLITE_OK) {
+        rc = bind_select_in_subquery_predicate_parameters(
+            statement,
+            node->in_subquery,
+            parameter_index
+        );
+    }
+    return rc;
 }
 
 static int bind_count_parameters(sqlite3_stmt *statement, const struct planned_count *plan) {

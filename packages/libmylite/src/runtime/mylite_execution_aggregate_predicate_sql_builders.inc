@@ -1989,6 +1989,14 @@ static int append_select_predicate_non_exists_node_sql(
             next_parameter
         );
     }
+    if (node->kind == PLANNED_SELECT_PREDICATE_QUANTIFIED_SUBQUERY) {
+        return append_select_quantified_subquery_predicate_sql(
+            string,
+            predicate->qualify_column_references,
+            node,
+            next_parameter
+        );
+    }
 
     return append_select_predicate_column_term_sql(string, predicate, node, next_parameter);
 }
@@ -2024,6 +2032,9 @@ static int append_select_predicate_non_subquery_node_sql(
         return MYLITE_ERROR;
     }
     if (node->kind == PLANNED_SELECT_PREDICATE_SCALAR_COUNT_SUBQUERY_COMPARISON) {
+        return MYLITE_ERROR;
+    }
+    if (node->kind == PLANNED_SELECT_PREDICATE_QUANTIFIED_SUBQUERY) {
         return MYLITE_ERROR;
     }
 
@@ -2162,7 +2173,9 @@ static int append_select_predicate_column_term_sql_without_subqueries(
 static bool planned_select_predicate_comparison_has_postfix_is(
     const struct planned_select_predicate_node *node
 ) {
-    return node != NULL && node->kind == PLANNED_SELECT_PREDICATE_COMPARISON &&
+    return node != NULL &&
+           (node->kind == PLANNED_SELECT_PREDICATE_COMPARISON ||
+            node->kind == PLANNED_SELECT_PREDICATE_QUANTIFIED_SUBQUERY) &&
            node->comparison_result_is_operator_kind != MYLITE_SQL_AST_OPERATOR_NONE;
 }
 
@@ -2800,6 +2813,205 @@ static int append_select_scalar_count_subquery_comparison_predicate_sql(
         ++(*next_parameter);
     }
 
+    return rc;
+}
+
+static int append_select_quantified_subquery_predicate_sql(
+    struct mylite_dynamic_string *string,
+    bool qualify_column,
+    const struct planned_select_predicate_node *node,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (node == NULL || node->in_subquery == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    if (planned_select_predicate_comparison_has_postfix_is(node)) {
+        rc = mylite_dynamic_string_append_char(string, '(');
+    }
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = mylite_dynamic_string_append(string, "CASE WHEN ");
+    if (node->quantified_subquery_kind == MYLITE_SQL_AST_ANY_SUBQUERY_PREDICATE ||
+        node->quantified_subquery_kind == MYLITE_SQL_AST_SOME_SUBQUERY_PREDICATE) {
+        if (rc == MYLITE_OK) {
+            rc = append_select_quantified_subquery_exists_sql(
+                string,
+                qualify_column,
+                node,
+                QUANTIFIED_SUBQUERY_EXISTS_MATCH,
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, " THEN 1 WHEN ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_select_quantified_subquery_exists_sql(
+                string,
+                qualify_column,
+                node,
+                QUANTIFIED_SUBQUERY_EXISTS_UNKNOWN,
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, " THEN NULL ELSE 0 END");
+        }
+        if (rc == MYLITE_OK && planned_select_predicate_comparison_has_postfix_is(node)) {
+            rc = mylite_dynamic_string_append_char(string, ')');
+        }
+        if (rc == MYLITE_OK && planned_select_predicate_comparison_has_postfix_is(node)) {
+            rc = append_select_comparison_result_is_sql(string, node);
+        }
+        return rc;
+    }
+    if (node->quantified_subquery_kind == MYLITE_SQL_AST_ALL_SUBQUERY_PREDICATE) {
+        if (rc == MYLITE_OK) {
+            rc = append_select_quantified_subquery_exists_sql(
+                string,
+                qualify_column,
+                node,
+                QUANTIFIED_SUBQUERY_EXISTS_FALSE,
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, " THEN 0 WHEN ");
+        }
+        if (rc == MYLITE_OK) {
+            rc = append_select_quantified_subquery_exists_sql(
+                string,
+                qualify_column,
+                node,
+                QUANTIFIED_SUBQUERY_EXISTS_UNKNOWN,
+                next_parameter
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, " THEN NULL ELSE 1 END");
+        }
+        if (rc == MYLITE_OK && planned_select_predicate_comparison_has_postfix_is(node)) {
+            rc = mylite_dynamic_string_append_char(string, ')');
+        }
+        if (rc == MYLITE_OK && planned_select_predicate_comparison_has_postfix_is(node)) {
+            rc = append_select_comparison_result_is_sql(string, node);
+        }
+        return rc;
+    }
+
+    return MYLITE_ERROR;
+}
+
+static int append_select_quantified_subquery_exists_sql(
+    struct mylite_dynamic_string *string,
+    bool qualify_column,
+    const struct planned_select_predicate_node *node,
+    enum quantified_subquery_exists_kind exists_kind,
+    size_t *next_parameter
+) {
+    const struct planned_in_subquery *subquery = node == NULL ? NULL : node->in_subquery;
+    int rc = MYLITE_OK;
+
+    if (subquery == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append(string, "EXISTS (SELECT 1 FROM ");
+    if (rc == MYLITE_OK) {
+        rc = append_in_subquery_from_sql(string, subquery, next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_quantified_subquery_where_sql(
+            string,
+            qualify_column,
+            node,
+            exists_kind,
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_select_quantified_subquery_where_sql(
+    struct mylite_dynamic_string *string,
+    bool qualify_column,
+    const struct planned_select_predicate_node *node,
+    enum quantified_subquery_exists_kind exists_kind,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (planned_select_predicate_has_expression(&node->in_subquery->predicate)) {
+        rc = append_select_predicate_sql_without_exists(
+            string,
+            &node->in_subquery->predicate,
+            next_parameter
+        );
+        if (rc == MYLITE_OK) {
+            rc = mylite_dynamic_string_append(string, " AND ");
+        }
+    } else {
+        rc = mylite_dynamic_string_append(string, " WHERE ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_quantified_subquery_comparison_sql(
+            string,
+            qualify_column,
+            node,
+            exists_kind
+        );
+    }
+    return rc;
+}
+
+static int append_select_quantified_subquery_comparison_sql(
+    struct mylite_dynamic_string *string,
+    bool qualify_column,
+    const struct planned_select_predicate_node *node,
+    enum quantified_subquery_exists_kind exists_kind
+) {
+    int rc = MYLITE_OK;
+
+    if (exists_kind == QUANTIFIED_SUBQUERY_EXISTS_FALSE) {
+        rc = mylite_dynamic_string_append(string, "NOT ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, '(');
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_select_predicate_subject_sql(string, node, qualify_column, false);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ' ');
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, comparison_operator_sql(node->operator_kind));
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ' ');
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_descriptor_value_sql_for_source(
+            string,
+            &node->in_subquery->column,
+            node->in_subquery->column_source_index,
+            true
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    if (rc == MYLITE_OK && exists_kind == QUANTIFIED_SUBQUERY_EXISTS_UNKNOWN) {
+        rc = mylite_dynamic_string_append(string, " IS NULL");
+    }
     return rc;
 }
 

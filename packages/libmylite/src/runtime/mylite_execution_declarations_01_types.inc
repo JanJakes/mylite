@@ -1104,30 +1104,17 @@ enum planned_select_predicate_kind {
     PLANNED_SELECT_PREDICATE_SCALAR_AGGREGATE_SUBQUERY_BETWEEN = 18,
     PLANNED_SELECT_PREDICATE_ROW_SCALAR_IN = 19,
     PLANNED_SELECT_PREDICATE_ROW_SCALAR_IS_BOOLEAN = 20,
+    PLANNED_SELECT_PREDICATE_QUANTIFIED_SUBQUERY = 21,
 };
 
 struct planned_select_predicate_node {
-    enum planned_select_predicate_kind kind;
-    enum mylite_sql_ast_operator operator_kind;
-    struct mylite_catalog_column_descriptor column;
     size_t column_source_index;
-    enum mylite_sql_ast_operator comparison_result_is_operator_kind;
-    struct planned_value value;
-    bool value_is_column_reference;
-    struct mylite_catalog_column_descriptor value_column;
     size_t value_column_source_index;
-    struct planned_value upper_value;
     struct planned_value *values;
     size_t value_count;
-    bool compare_date_as_datetime;
-    bool compare_string_as_integer;
-    bool row_scalar_compare_as_real;
     size_t row_scalar_decimal_scale;
-    bool row_scalar_regexp_case_sensitive;
-    bool regexp_cast_subject_as_text;
     size_t left_index;
     size_t right_index;
-    char like_escape_character;
     struct planned_exists_subquery *exists_subquery;
     struct planned_in_subquery *in_subquery;
     struct planned_scalar_aggregate_subquery *subject_scalar_subquery;
@@ -1137,6 +1124,21 @@ struct planned_select_predicate_node {
     struct planned_row_scalar_expression *row_scalar_value_expression;
     struct planned_row_scalar_expression *row_scalar_upper_value_expression;
     struct planned_row_scalar_expression *row_scalar_value_expressions;
+    struct planned_value value;
+    struct planned_value upper_value;
+    struct mylite_catalog_column_descriptor column;
+    struct mylite_catalog_column_descriptor value_column;
+    enum planned_select_predicate_kind kind;
+    enum mylite_sql_ast_operator operator_kind;
+    enum mylite_sql_ast_node_kind quantified_subquery_kind;
+    enum mylite_sql_ast_operator comparison_result_is_operator_kind;
+    bool value_is_column_reference;
+    bool compare_date_as_datetime;
+    bool compare_string_as_integer;
+    bool row_scalar_compare_as_real;
+    bool row_scalar_regexp_case_sensitive;
+    bool regexp_cast_subject_as_text;
+    char like_escape_character;
 };
 
 struct planned_select_predicate {
@@ -1162,6 +1164,7 @@ enum planned_select_order_item_kind {
 struct select_predicate_plan_options {
     bool allow_exists;
     bool allow_in_subquery;
+    bool allow_quantified_subquery;
     bool allow_scalar_subquery_in_literal;
     bool allow_scalar_count_subquery_comparison;
     bool allow_column_reference_rhs;

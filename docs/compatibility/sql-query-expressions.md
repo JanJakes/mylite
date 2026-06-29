@@ -128,6 +128,12 @@ Comparison-result postfix `IS NULL`, `IS NOT NULL`, `IS UNKNOWN`, and
 comparison predicate subset. `UNKNOWN` maps to the comparison result being
 `NULL`, matching MySQL's three-valued predicate behavior.
 
+The current subquery predicate subset also admits descriptor-column
+`ANY` / `SOME` / `ALL` comparisons in supported `SELECT WHERE` contexts. The
+runtime preserves MySQL's empty-subquery and inner-`NULL` three-valued behavior
+for the documented one-column descriptor subquery envelope, with broader
+quantified subquery expression contexts still deferred.
+
 The limited user-variable surface exposes handle-local `@name` values in
 no-source/`DUAL` scalar `SELECT` lists, `DO` expressions, SQL-level prepared
 statement source/`USING` positions, source-free `INSERT` / `REPLACE` value
@@ -143,13 +149,14 @@ planning.
 
 The parser-corpus query scalar expression surface admits `VALUES` query
 containers in `EXISTS` and scalar-subquery expression positions. It also
-classifies selected still-unsupported scalar `IN` / `NOT IN`, quantified
-subquery comparison, and `LATERAL` query surfaces as explicit unsupported
-placeholders after the normal parser fails, while non-parenthesized
-`WHERE`/`HAVING`/`ON` `IN` predicates remain on their existing parser/runtime
-path. These parser placeholders do not implement broad scalar membership,
-quantified comparison, `VALUES` subquery, or lateral derived-table execution
-semantics.
+classifies selected still-unsupported scalar `IN` / `NOT IN`, remaining
+quantified subquery comparison, and `LATERAL` query surfaces as explicit
+unsupported placeholders after the normal parser fails, while
+non-parenthesized `WHERE`/`HAVING`/`ON` `IN` predicates and the documented
+descriptor-column quantified `SELECT WHERE` subset remain on their normal
+parser/runtime paths. These parser placeholders do not implement broad scalar
+membership, remaining quantified comparison, `VALUES` subquery, or lateral
+derived-table execution semantics.
 
 The parser-corpus table-reference surface classifies recognized `FROM (` and
 `JOIN (` table-reference groups, ODBC `{ OJ ... }` join escapes, and mixed

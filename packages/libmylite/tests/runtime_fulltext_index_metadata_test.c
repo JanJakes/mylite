@@ -384,6 +384,15 @@ static int test_fulltext_metadata_persistence_and_operations(void) {
             .context = "fulltext table rows remain readable",
         }
     );
+    failures += execute_error(
+        database,
+        "SELECT id FROM ft WHERE MATCH(body) AGAINST ('payload')",
+        (struct expected_sql_error){
+            .code = mysql_error_parse,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only descriptor column WHERE predicates",
+        }
+    );
     failures += expect_statement_ok(database, "CREATE TABLE ft_clone LIKE ft");
     failures += expect_query_values(
         database,

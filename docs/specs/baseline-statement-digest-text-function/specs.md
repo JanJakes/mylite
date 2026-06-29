@@ -8,11 +8,10 @@ compatibility grammar. The function is useful for applications that inspect
 Performance Schema-style statement digests or reuse the digest normalization
 surface exposed by MySQL Enterprise Firewall.
 
-`STATEMENT_DIGEST()` is intentionally not included in this support claim. MySQL
-8.4.9 returns a 64-character digest hash whose input is not the displayed
-`STATEMENT_DIGEST_TEXT()` value, as verified by comparing
-`STATEMENT_DIGEST('select 1')` with `SHA2(STATEMENT_DIGEST_TEXT('select 1'),
-256)`. MyLite must not guess that hash format.
+`STATEMENT_DIGEST()` is covered separately by the
+`baseline-statement-digest-function-boundary` slice. MyLite recognizes the
+function and supports its `NULL`, metadata, and arity behavior, but does not
+guess MySQL's non-`NULL` digest hash input.
 
 Primary references:
 
@@ -80,5 +79,5 @@ data, and it does not create an independent SQL semantic engine.
 
 The row is green in the baseline for the documented MyLite grammar subset. Full
 normalization for every MySQL grammar construct remains tied to parser grammar
-coverage, and `STATEMENT_DIGEST()` remains unsupported until the exact MySQL
-hash input is independently specified.
+coverage. The separate `STATEMENT_DIGEST()` row remains bounded until the exact
+MySQL hash input is independently specified.

@@ -203,6 +203,10 @@ static int populate_scalar_function_result_column_descriptor(
                 populate_roles_graphml_result_column_descriptor(database, descriptor);
                 return MYLITE_OK;
             }
+            if (sys_function_kind == MYLITE_SYS_FUNCTION_STATEMENT_DIGEST) {
+                populate_statement_digest_result_column_descriptor(database, descriptor);
+                return MYLITE_OK;
+            }
             if (sys_function_kind == MYLITE_SYS_FUNCTION_STATEMENT_DIGEST_TEXT) {
                 populate_statement_digest_text_result_column_descriptor(database, descriptor);
                 return MYLITE_OK;
@@ -1115,6 +1119,20 @@ static void populate_roles_graphml_result_column_descriptor(
     descriptor->charset_id = result_metadata_collation_id(database->session.collation_connection);
     descriptor->collation_id = descriptor->charset_id;
     descriptor->display_length = mysql_roles_graphml_base_display_length *
+                                 scalar_connection_max_bytes_per_character(database);
+    descriptor->decimals = mysql_approximate_decimals;
+    descriptor->flags = 0U;
+    descriptor->nullable = true;
+}
+
+static void populate_statement_digest_result_column_descriptor(
+    const struct mylite_db *database,
+    struct mylite_result_column_descriptor *descriptor
+) {
+    descriptor->logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+    descriptor->charset_id = result_metadata_collation_id(database->session.collation_connection);
+    descriptor->collation_id = descriptor->charset_id;
+    descriptor->display_length = mysql_statement_digest_display_character_length *
                                  scalar_connection_max_bytes_per_character(database);
     descriptor->decimals = mysql_approximate_decimals;
     descriptor->flags = 0U;

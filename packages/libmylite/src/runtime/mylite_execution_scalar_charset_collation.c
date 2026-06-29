@@ -131,7 +131,7 @@ static int roles_graphml_function_match(
     const struct mylite_sql_ast_node *expression,
     bool *out_matches
 );
-static int statement_digest_text_function_match(
+static int statement_digest_string_function_match(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     bool *out_matches
@@ -262,7 +262,7 @@ static int charset_collation_scalar_result(
     const char *charset = "binary";
     const char *collation = "binary";
     bool is_roles_graphml = false;
-    bool is_statement_digest_text = false;
+    bool is_statement_digest_string = false;
     int match_rc = MYLITE_OK;
 
     if (out_result == NULL) {
@@ -298,11 +298,11 @@ static int charset_collation_scalar_result(
         );
     }
     match_rc =
-        statement_digest_text_function_match(database, expression, &is_statement_digest_text);
+        statement_digest_string_function_match(database, expression, &is_statement_digest_string);
     if (match_rc != MYLITE_OK) {
         return match_rc;
     }
-    if (is_statement_digest_text) {
+    if (is_statement_digest_string) {
         return charset_collation_select_result(
             function_kind,
             database->session.character_set_connection,
@@ -421,7 +421,7 @@ static int coercibility_non_concat_scalar_result(
     const char **out_result
 ) {
     bool is_roles_graphml = false;
-    bool is_statement_digest_text = false;
+    bool is_statement_digest_string = false;
     int match_rc = MYLITE_OK;
 
     if (out_result == NULL) {
@@ -450,11 +450,11 @@ static int coercibility_non_concat_scalar_result(
         return MYLITE_OK;
     }
     match_rc =
-        statement_digest_text_function_match(database, expression, &is_statement_digest_text);
+        statement_digest_string_function_match(database, expression, &is_statement_digest_string);
     if (match_rc != MYLITE_OK) {
         return match_rc;
     }
-    if (is_statement_digest_text) {
+    if (is_statement_digest_string) {
         *out_result = "4";
         return MYLITE_OK;
     }
@@ -1276,7 +1276,7 @@ static int scalar_expression_base_charset_collation_metadata(
     const char **out_collation
 ) {
     bool is_roles_graphml = false;
-    bool is_statement_digest_text = false;
+    bool is_statement_digest_string = false;
     int match_rc = MYLITE_OK;
 
     if (out_charset == NULL || out_collation == NULL) {
@@ -1303,11 +1303,11 @@ static int scalar_expression_base_charset_collation_metadata(
         return MYLITE_OK;
     }
     match_rc =
-        statement_digest_text_function_match(database, expression, &is_statement_digest_text);
+        statement_digest_string_function_match(database, expression, &is_statement_digest_string);
     if (match_rc != MYLITE_OK) {
         return match_rc;
     }
-    if (is_statement_digest_text) {
+    if (is_statement_digest_string) {
         *out_charset = database->session.character_set_connection;
         *out_collation = database->session.collation_connection;
         return MYLITE_OK;
@@ -1492,7 +1492,7 @@ static int roles_graphml_function_match(
     return MYLITE_OK;
 }
 
-static int statement_digest_text_function_match(
+static int statement_digest_string_function_match(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
     bool *out_matches
@@ -1533,13 +1533,14 @@ static int statement_digest_text_function_match(
         (void
         )mylite_sys_function_lookup_span(&first_identifier->span, &second_identifier->span, &kind);
     }
-    if (kind != MYLITE_SYS_FUNCTION_STATEMENT_DIGEST_TEXT) {
+    if (kind != MYLITE_SYS_FUNCTION_STATEMENT_DIGEST &&
+        kind != MYLITE_SYS_FUNCTION_STATEMENT_DIGEST_TEXT) {
         return MYLITE_OK;
     }
     if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 1U) {
         mylite_execution_set_native_function_parameter_count_error(
             database,
-            "STATEMENT_DIGEST_TEXT"
+            mylite_sys_function_name(kind)
         );
         return MYLITE_ERROR;
     }

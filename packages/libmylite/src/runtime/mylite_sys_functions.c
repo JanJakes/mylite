@@ -111,6 +111,14 @@ static const struct sys_function_descriptor sys_function_descriptors[] = {
         true,
         false,
     },
+    {
+        "STATEMENT_DIGEST",
+        "_mylite_statement_digest",
+        1U,
+        MYLITE_SYS_FUNCTION_STATEMENT_DIGEST,
+        true,
+        false,
+    },
     {"extract_schema_from_file_name",
      "_mylite_sys_extract_schema_from_file_name",
      1U,
@@ -442,6 +450,11 @@ static int sys_validate_password_strength(
     struct mylite_sys_function_result *out_result
 );
 static int sys_roles_graphml(struct mylite_sys_function_result *out_result);
+static int sys_statement_digest(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+);
 static int sys_statement_digest_text(
     struct mylite_db *database,
     const struct mylite_sys_function_argument *arguments,
@@ -654,6 +667,8 @@ int mylite_sys_function_evaluate(
         return sys_validate_password_strength(arguments, out_result);
     case MYLITE_SYS_FUNCTION_ROLES_GRAPHML:
         return sys_roles_graphml(out_result);
+    case MYLITE_SYS_FUNCTION_STATEMENT_DIGEST:
+        return sys_statement_digest(database, arguments, out_result);
     case MYLITE_SYS_FUNCTION_STATEMENT_DIGEST_TEXT:
         return sys_statement_digest_text(database, arguments, out_result);
     case MYLITE_SYS_FUNCTION_EXTRACT_SCHEMA_FROM_FILE_NAME:
@@ -921,6 +936,26 @@ static int sys_roles_graphml(struct mylite_sys_function_result *out_result) {
         "</graphml>\n";
 
     return sys_function_copy_result(out_result, roles_graphml, sizeof(roles_graphml) - 1U);
+}
+
+static int sys_statement_digest(
+    struct mylite_db *database,
+    const struct mylite_sys_function_argument *arguments,
+    struct mylite_sys_function_result *out_result
+) {
+    if (database == NULL || arguments == NULL || out_result == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (arguments[0].is_null) {
+        return sys_function_null_result(out_result);
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_parse,
+        "42000",
+        "STATEMENT_DIGEST() hash computation is not yet supported"
+    );
+    return MYLITE_ERROR;
 }
 
 static int sys_statement_digest_text(

@@ -202,6 +202,10 @@ static void populate_roles_graphml_result_column_descriptor(
     const struct mylite_db *database,
     struct mylite_result_column_descriptor *descriptor
 );
+static void populate_statement_digest_result_column_descriptor(
+    const struct mylite_db *database,
+    struct mylite_result_column_descriptor *descriptor
+);
 static void populate_statement_digest_text_result_column_descriptor(
     const struct mylite_db *database,
     struct mylite_result_column_descriptor *descriptor

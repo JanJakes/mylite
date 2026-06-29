@@ -117,6 +117,7 @@ enum mylite_spatial_function_kind {
     MYLITE_SPATIAL_FUNCTION_ST_CONTAINS = 97,
     MYLITE_SPATIAL_FUNCTION_ST_WITHIN = 98,
     MYLITE_SPATIAL_FUNCTION_ST_EQUALS = 99,
+    MYLITE_SPATIAL_FUNCTION_ST_TOUCHES = 100,
 };
 
 enum mylite_spatial_result_kind {

@@ -14,7 +14,8 @@ representable object-shape disjoint/intersection checks, and SRID-0
 `ST_Contains()` / `ST_Within()` cover boundary-sensitive containment for
 representable Point, LineString, Polygon, and child-decomposed collection
 values. SRID-0 `ST_Equals()` covers object-shape equality for the same
-representable geometry surface. Geohash helpers support coordinate
+representable geometry surface, and SRID-0 `ST_Touches()` covers
+boundary-contact checks for that surface. Geohash helpers support coordinate
 encoding/decoding plus SRID 0 and 4326 point round-trips. GeoJSON helpers
 support 2D geometry, Feature extraction, and FeatureCollection extraction for
 SRID 0 and 4326. Geographic point accessors support SRID 4326
@@ -110,7 +111,7 @@ spatial search.
 | `ST_StartPoint()` | ✅ | Return LineString start point |
 | `ST_SwapXY()` | ✅ | Return SRID-preserving X/Y-swapped geometry |
 | `ST_SymDifference()` | ❌ | Return point set symmetric difference of two geometries |
-| `ST_Touches()` | ❌ | Whether one geometry touches another |
+| `ST_Touches()` | 🟡 | SRID-0 object-shape touches for Point, LineString, Polygon, and child-decomposed collections; full DE-9IM coverage and geographic SRS deferred |
 | `ST_Transform()` | ❌ | Transform coordinates of geometry |
 | `ST_Union()` | ❌ | Return point set union of two geometries |
 | `ST_Validate()` | ✅ | Return valid representable geometry values, otherwise `NULL` |

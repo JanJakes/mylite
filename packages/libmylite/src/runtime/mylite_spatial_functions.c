@@ -90,6 +90,7 @@ static const struct spatial_sqlite_function_descriptor spatial_sqlite_function_d
     {"ST_Contains", MYLITE_SPATIAL_FUNCTION_ST_CONTAINS},
     {"ST_Within", MYLITE_SPATIAL_FUNCTION_ST_WITHIN},
     {"ST_Equals", MYLITE_SPATIAL_FUNCTION_ST_EQUALS},
+    {"ST_Touches", MYLITE_SPATIAL_FUNCTION_ST_TOUCHES},
     {"ST_IsClosed", MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED},
     {"ST_NumGeometries", MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES},
     {"ST_GeometryN", MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYN},

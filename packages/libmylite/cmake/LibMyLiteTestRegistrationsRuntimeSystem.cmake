@@ -541,6 +541,10 @@
     COMMAND mylite_runtime_spatial_equals_function_test
   )
   add_test(
+    NAME libmylite.runtime.spatial_touches_function
+    COMMAND mylite_runtime_spatial_touches_function_test
+  )
+  add_test(
     NAME libmylite.runtime.spatial_collect_aggregate
     COMMAND mylite_runtime_spatial_collect_aggregate_test
   )

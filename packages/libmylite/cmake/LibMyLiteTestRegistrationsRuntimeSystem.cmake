@@ -545,6 +545,10 @@
     COMMAND mylite_runtime_spatial_touches_function_test
   )
   add_test(
+    NAME libmylite.runtime.spatial_crosses_function
+    COMMAND mylite_runtime_spatial_crosses_function_test
+  )
+  add_test(
     NAME libmylite.runtime.spatial_overlaps_function
     COMMAND mylite_runtime_spatial_overlaps_function_test
   )

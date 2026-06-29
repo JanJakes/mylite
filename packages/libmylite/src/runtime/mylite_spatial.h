@@ -119,6 +119,7 @@ enum mylite_spatial_function_kind {
     MYLITE_SPATIAL_FUNCTION_ST_EQUALS = 99,
     MYLITE_SPATIAL_FUNCTION_ST_TOUCHES = 100,
     MYLITE_SPATIAL_FUNCTION_ST_OVERLAPS = 101,
+    MYLITE_SPATIAL_FUNCTION_ST_CROSSES = 102,
 };
 
 enum mylite_spatial_result_kind {

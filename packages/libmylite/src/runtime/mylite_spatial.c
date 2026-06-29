@@ -253,6 +253,7 @@ static const struct spatial_function_descriptor spatial_function_descriptors[] =
     {"ST_Equals", MYLITE_SPATIAL_FUNCTION_ST_EQUALS},
     {"ST_Touches", MYLITE_SPATIAL_FUNCTION_ST_TOUCHES},
     {"ST_Overlaps", MYLITE_SPATIAL_FUNCTION_ST_OVERLAPS},
+    {"ST_Crosses", MYLITE_SPATIAL_FUNCTION_ST_CROSSES},
     {"ST_IsClosed", MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED},
     {"ST_NumGeometries", MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES},
     {"ST_GeometryN", MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYN},
@@ -1249,6 +1250,20 @@ static bool relation_geometry_interiors_intersect(
     const struct spatial_distance_geometry *left,
     const struct spatial_distance_geometry *right
 );
+static bool relation_geometry_crosses(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right,
+    int left_dimension,
+    int right_dimension
+);
+static bool relation_lines_cross(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+);
+static bool relation_line_segments_cross_at_point(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+);
 static bool relation_geometry_overlaps(
     const struct spatial_distance_geometry *left,
     const struct spatial_distance_geometry *right,
@@ -1904,6 +1919,7 @@ bool mylite_spatial_function_returns_integer(enum mylite_spatial_function_kind k
            kind == MYLITE_SPATIAL_FUNCTION_ST_WITHIN || kind == MYLITE_SPATIAL_FUNCTION_ST_EQUALS ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_TOUCHES ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_OVERLAPS ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_CROSSES ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_NUMPOINTS ||
@@ -2034,6 +2050,7 @@ int mylite_spatial_evaluate(
     case MYLITE_SPATIAL_FUNCTION_ST_EQUALS:
     case MYLITE_SPATIAL_FUNCTION_ST_TOUCHES:
     case MYLITE_SPATIAL_FUNCTION_ST_OVERLAPS:
+    case MYLITE_SPATIAL_FUNCTION_ST_CROSSES:
         return evaluate_relation_predicate(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_DISTANCESPHERE:
         return evaluate_distance_sphere(kind, arguments, argument_count, out_result, out_error);
@@ -3964,6 +3981,26 @@ static int evaluate_relation_predicate(
         distance_geometry_deinit(&left_geometry);
         distance_geometry_deinit(&right_geometry);
         return assign_null_result(out_result);
+    }
+    if (rc == 0 && kind == MYLITE_SPATIAL_FUNCTION_ST_CROSSES) {
+        int left_dimension = relation_geometry_dimension(&left_geometry);
+        int right_dimension = relation_geometry_dimension(&right_geometry);
+        bool crosses = false;
+
+        if (left_dimension == 2 || right_dimension == 0) {
+            distance_geometry_deinit(&left_geometry);
+            distance_geometry_deinit(&right_geometry);
+            return assign_null_result(out_result);
+        }
+        crosses = relation_geometry_crosses(
+            &left_geometry,
+            &right_geometry,
+            left_dimension,
+            right_dimension
+        );
+        distance_geometry_deinit(&left_geometry);
+        distance_geometry_deinit(&right_geometry);
+        return assign_integer_result(out_result, crosses ? 1 : 0);
     }
     if (rc == 0 && kind == MYLITE_SPATIAL_FUNCTION_ST_TOUCHES) {
         if (relation_geometry_dimension(&left_geometry) == 0 &&
@@ -8901,6 +8938,76 @@ static bool relation_geometry_interiors_intersect(
         return false;
     }
     return relation_simple_geometry_interiors_intersect(left, right);
+}
+
+static bool relation_geometry_crosses(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right,
+    int left_dimension,
+    int right_dimension
+) {
+    if (left_dimension == 1 && right_dimension == 1) {
+        return relation_lines_cross(left, right);
+    }
+    return relation_geometry_interiors_intersect(left, right) &&
+           !relation_geometry_contains(right, left);
+}
+
+static bool relation_lines_cross(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+) {
+    if (left == NULL || right == NULL) {
+        return false;
+    }
+    if (distance_geometry_is_collection(left)) {
+        for (uint32_t index = 0U; index < left->child_count; ++index) {
+            if (relation_lines_cross(&left->children[index], right)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if (distance_geometry_is_collection(right)) {
+        for (uint32_t index = 0U; index < right->child_count; ++index) {
+            if (relation_lines_cross(left, &right->children[index])) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if (left->type != MYLITE_SPATIAL_GEOMETRY_LINESTRING ||
+        right->type != MYLITE_SPATIAL_GEOMETRY_LINESTRING) {
+        return false;
+    }
+    return relation_line_segments_cross_at_point(left, right);
+}
+
+static bool relation_line_segments_cross_at_point(
+    const struct spatial_distance_geometry *left,
+    const struct spatial_distance_geometry *right
+) {
+    if (!line_has_segment(left) || !line_has_segment(right)) {
+        return false;
+    }
+    for (uint32_t left_index = 0U; left_index + 1U < left->point_count; ++left_index) {
+        struct spatial_segment left_segment = line_segment(left, left_index);
+
+        for (uint32_t right_index = 0U; right_index + 1U < right->point_count; ++right_index) {
+            struct spatial_segment right_segment = line_segment(right, right_index);
+
+            if (!relation_segments_overlap_collinearly(&left_segment, &right_segment) &&
+                relation_line_segments_have_interior_intersection(
+                    left,
+                    &left_segment,
+                    right,
+                    &right_segment
+                )) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 static bool relation_geometry_overlaps(

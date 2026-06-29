@@ -1,6 +1,7 @@
 static int plan_row_scalar_select_items(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
+    struct row_scalar_window_definitions *window_definitions,
     const struct select_source_context *source_context,
     const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *table_columns,
@@ -11,6 +12,7 @@ static int append_row_scalar_select_item(
     struct mylite_db *database,
     struct planned_row_scalar_select *plan,
     const struct mylite_sql_ast_node *select_item,
+    struct row_scalar_window_definitions *window_definitions,
     const struct select_source_context *source_context,
     const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *table_columns,
@@ -73,6 +75,17 @@ static int plan_row_scalar_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 );
+static int plan_row_scalar_expression_with_window_definitions(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct row_scalar_window_definitions *window_definitions,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_special_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -81,6 +94,7 @@ static int plan_row_scalar_special_expression(
     const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    struct row_scalar_window_definitions *window_definitions,
     struct planned_row_scalar_expression *out_expression,
     bool *out_handled
 );
@@ -309,7 +323,88 @@ static int plan_row_scalar_window_function_expression(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    struct row_scalar_window_definitions *window_definitions,
     struct planned_row_scalar_expression *out_expression
+);
+static int init_row_scalar_window_definitions(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *definition_list,
+    struct row_scalar_window_definitions *out_definitions
+);
+static int append_row_scalar_window_definition(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *definition,
+    struct row_scalar_window_definitions *definitions,
+    size_t index
+);
+static int validate_row_scalar_window_definitions(
+    struct mylite_db *database,
+    struct row_scalar_window_definitions *definitions
+);
+static void row_scalar_window_definitions_deinit(struct row_scalar_window_definitions *definitions);
+static int validate_row_scalar_window_definitions_are_used(
+    struct mylite_db *database,
+    const struct row_scalar_window_definitions *definitions
+);
+static int mark_row_scalar_window_spec_used(
+    struct mylite_db *database,
+    struct row_scalar_window_definitions *definitions,
+    const struct mylite_sql_ast_node *window_spec
+);
+static int resolve_row_scalar_window_spec(
+    struct mylite_db *database,
+    struct row_scalar_window_definitions *definitions,
+    const char *owner_name,
+    const struct mylite_sql_ast_node *window_spec,
+    struct row_scalar_window_spec_clauses *out_clauses
+);
+static int resolve_row_scalar_window_reference(
+    struct mylite_db *database,
+    struct row_scalar_window_definitions *definitions,
+    const char *owner_name,
+    const struct mylite_sql_ast_node *reference,
+    struct row_scalar_window_spec_clauses *out_clauses
+);
+static int resolve_row_scalar_window_definition(
+    struct mylite_db *database,
+    struct row_scalar_window_definitions *definitions,
+    struct row_scalar_window_definition_entry *entry
+);
+static struct row_scalar_window_definition_entry *find_row_scalar_window_definition(
+    struct row_scalar_window_definitions *definitions,
+    const char *name
+);
+static int merge_row_scalar_window_clauses(
+    struct mylite_db *database,
+    const char *owner_name,
+    const char *inherited_name,
+    const struct row_scalar_window_spec_clauses *source,
+    struct row_scalar_window_spec_clauses *target
+);
+static int add_row_scalar_window_clause(
+    struct mylite_db *database,
+    const char *owner_name,
+    const char *inherited_name,
+    const struct mylite_sql_ast_node *clause,
+    struct row_scalar_window_spec_clauses *target
+);
+static char *row_scalar_window_clause_source_name(
+    const struct mylite_sql_ast_node *clause,
+    struct row_scalar_window_spec_clauses *target
+);
+static const char *row_scalar_window_clause_property_name(const struct mylite_sql_ast_node *clause);
+static int copy_window_reference_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *reference,
+    char *destination,
+    size_t destination_size
+);
+static int set_window_name_not_defined_error(struct mylite_db *database, const char *name);
+static int set_window_duplicate_name_error(struct mylite_db *database, const char *name);
+static int set_window_circularity_error(struct mylite_db *database);
+static int set_window_inheritance_error(
+    struct mylite_db *database,
+    struct row_scalar_window_inheritance_error error
 );
 static enum planned_window_function_kind planned_window_function_kind_from_ast(
     const struct mylite_sql_ast_node *expression
@@ -3286,7 +3381,8 @@ static int plan_row_scalar_unix_timestamp_sysdate_expression(
     const struct mylite_sql_ast_node *expression,
     struct planned_row_scalar_expression *out_expression
 );
-static bool unix_timestamp_argument_is_sysdate_function(const struct mylite_sql_ast_node *expression
+static bool unix_timestamp_argument_is_sysdate_function(
+    const struct mylite_sql_ast_node *expression
 );
 static int plan_row_scalar_unix_timestamp_column(
     struct mylite_db *database,
@@ -3541,9 +3637,11 @@ static bool row_scalar_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
 );
-static bool row_scalar_expression_contains_row_function(const struct mylite_sql_ast_node *expression
+static bool row_scalar_expression_contains_row_function(
+    const struct mylite_sql_ast_node *expression
 );
-static bool row_scalar_expression_contains_sys_function(const struct mylite_sql_ast_node *expression
+static bool row_scalar_expression_contains_sys_function(
+    const struct mylite_sql_ast_node *expression
 );
 static bool row_scalar_expression_contains_context_expression_attempt(
     const struct mylite_sql_ast_node *expression,

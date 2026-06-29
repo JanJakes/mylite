@@ -1931,6 +1931,41 @@ struct row_scalar_select_clauses {
     const struct mylite_sql_ast_node *where_clause;
     const struct mylite_sql_ast_node *order_clause;
     const struct mylite_sql_ast_node *limit_clause;
+    const struct mylite_sql_ast_node *window_definitions;
+};
+
+enum row_scalar_window_definition_state {
+    ROW_SCALAR_WINDOW_DEFINITION_UNRESOLVED = 0,
+    ROW_SCALAR_WINDOW_DEFINITION_RESOLVING = 1,
+    ROW_SCALAR_WINDOW_DEFINITION_RESOLVED = 2,
+};
+
+struct row_scalar_window_spec_clauses {
+    const struct mylite_sql_ast_node *partition_clause;
+    const struct mylite_sql_ast_node *order_clause;
+    const struct mylite_sql_ast_node *frame_clause;
+    char partition_source_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char order_source_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    char frame_source_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+};
+
+struct row_scalar_window_definition_entry {
+    char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+    const struct mylite_sql_ast_node *spec;
+    enum row_scalar_window_definition_state state;
+    bool is_used;
+    struct row_scalar_window_spec_clauses clauses;
+};
+
+struct row_scalar_window_definitions {
+    struct row_scalar_window_definition_entry *entries;
+    size_t count;
+};
+
+struct row_scalar_window_inheritance_error {
+    const char *owner_name;
+    const char *inherited_name;
+    const char *property;
 };
 
 enum planned_insert_select_source_kind {

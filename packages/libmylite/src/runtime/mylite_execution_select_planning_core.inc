@@ -1283,8 +1283,9 @@ static int plan_derived_select_source_child(
                 out_source
             );
         }
-    } else if (rc == MYLITE_OK &&
-               select_statement_is_row_scalar_projection_attempt(select_statement)) {
+    } else if (
+        rc == MYLITE_OK && select_statement_is_row_scalar_projection_attempt(select_statement)
+    ) {
         out_source->derived_row_scalar_select =
             calloc(1U, sizeof(*out_source->derived_row_scalar_select));
         if (out_source->derived_row_scalar_select == NULL) {
@@ -1618,8 +1619,10 @@ static int make_derived_row_scalar_source_column(
     }
     if (item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_COLUMN) {
         *out_column = item->expression.column;
-    } else if (item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC ||
-               item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE) {
+    } else if (
+        item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC ||
+        item->expression.kind == PLANNED_ROW_SCALAR_EXPRESSION_VALUE
+    ) {
         *out_column = (struct mylite_catalog_column_descriptor){
             .column_id = (int64_t)output_index + 1,
             .ordinal_position = (int64_t)output_index + 1,
@@ -2099,8 +2102,10 @@ static int match_select_index_hint_name(
     if (index != NULL && context != NULL &&
         text_equals_ascii_case_insensitive(index->name, context->name)) {
         context->exact_match = true;
-    } else if (index != NULL && context != NULL &&
-               text_has_ascii_case_insensitive_prefix(index->name, context->name)) {
+    } else if (
+        index != NULL && context != NULL &&
+        text_has_ascii_case_insensitive_prefix(index->name, context->name)
+    ) {
         ++context->prefix_match_count;
     }
     return MYLITE_OK;
@@ -2139,7 +2144,8 @@ static int reject_duplicate_select_source_reference(
     return MYLITE_OK;
 }
 
-static const char *planned_select_source_reference_name(const struct planned_select_source *source
+static const char *planned_select_source_reference_name(
+    const struct planned_select_source *source
 ) {
     if (source->has_alias) {
         return source->alias;
@@ -2204,8 +2210,10 @@ static int plan_joined_select_condition_with_extra_predicate(
          joined_select_on_node_is_primary_condition(left_node))) {
         primary_node = left_node;
         extra_node = right_node;
-    } else if (joined_select_on_node_is_descriptor_equality(right_node) ||
-               joined_select_on_node_is_primary_condition(right_node)) {
+    } else if (
+        joined_select_on_node_is_descriptor_equality(right_node) ||
+        joined_select_on_node_is_primary_condition(right_node)
+    ) {
         primary_node = right_node;
         extra_node = left_node;
     } else {
@@ -2577,6 +2585,7 @@ static int plan_row_scalar_select(
     struct mylite_catalog_column_descriptor *table_columns = NULL;
     struct select_source_context source_context = {0};
     const struct mylite_catalog_table_descriptor *item_table = NULL;
+    struct row_scalar_window_definitions window_definitions = {0};
     size_t table_column_count = 0U;
     int rc = MYLITE_OK;
 
@@ -2669,15 +2678,26 @@ static int plan_row_scalar_select(
         item_table = &out_plan->table;
     }
     if (rc == MYLITE_OK) {
+        rc = init_row_scalar_window_definitions(
+            database,
+            clauses.window_definitions,
+            &window_definitions
+        );
+    }
+    if (rc == MYLITE_OK) {
         rc = plan_row_scalar_select_items(
             database,
             select_list,
+            &window_definitions,
             item_source_context,
             item_table,
             table_columns,
             table_column_count,
             out_plan
         );
+    }
+    if (rc == MYLITE_OK && clauses.window_definitions != NULL) {
+        rc = validate_row_scalar_window_definitions_are_used(database, &window_definitions);
     }
     if (rc == MYLITE_OK && out_plan->has_source) {
         rc = plan_row_scalar_select_row_envelope(
@@ -2695,6 +2715,7 @@ static int plan_row_scalar_select(
     }
 
     free(table_columns);
+    row_scalar_window_definitions_deinit(&window_definitions);
     if (rc != MYLITE_OK) {
         planned_row_scalar_select_deinit(out_plan);
     }
@@ -2718,11 +2739,7 @@ static int collect_row_scalar_select_clauses(
         } else if (optional_clause->kind == MYLITE_SQL_AST_SELECT_INTO_LIST) {
             /* SELECT ... INTO is handled after normal SELECT execution. */
         } else if (optional_clause->kind == MYLITE_SQL_AST_WINDOW_DEFINITION_LIST) {
-            set_unsupported_error(
-                database,
-                "row-scalar SELECT does not yet support WINDOW clauses"
-            );
-            return MYLITE_ERROR;
+            out_clauses->window_definitions = optional_clause;
         } else {
             set_unsupported_error(
                 database,
@@ -3449,7 +3466,8 @@ static int plan_row_scalar_select_exists_filter(
     return rc;
 }
 
-static bool row_scalar_select_where_is_exists_filter(const struct mylite_sql_ast_node *where_clause
+static bool row_scalar_select_where_is_exists_filter(
+    const struct mylite_sql_ast_node *where_clause
 ) {
     const struct mylite_sql_ast_node *predicate = NULL;
 

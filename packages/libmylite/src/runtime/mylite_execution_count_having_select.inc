@@ -9,7 +9,8 @@ static bool select_statement_has_count_having_clause(const struct mylite_sql_ast
 
     while (optional_clause != NULL) {
         if (optional_clause->kind == MYLITE_SQL_AST_HAVING_CLAUSE &&
-            count_having_comparison_uses_count_star(count_having_comparison_node(optional_clause)
+            count_having_comparison_uses_count_star(
+                count_having_comparison_node(optional_clause)
             )) {
             return true;
         }
@@ -96,8 +97,9 @@ static int plan_count_having_select(
     if (rc == MYLITE_OK) {
         out_plan->descriptor_projection.source = source;
         out_plan->descriptor_projection.table = table;
-        out_plan->descriptor_projection.is_distinct = mylite_sql_ast_node_select_modifier(statement
-                                                      ) == MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT;
+        out_plan->descriptor_projection.is_distinct =
+            mylite_sql_ast_node_select_modifier(statement) ==
+            MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT;
         copy_plan_source_alias_if_present(&out_plan->descriptor_projection, &source_context);
 
         out_plan->row_projection.has_source = true;
@@ -290,6 +292,7 @@ static int plan_count_having_row_scalar_projection(
     rc = plan_row_scalar_select_items(
         database,
         select_list,
+        NULL,
         source_context,
         &out_plan->row_projection.table,
         table_columns,

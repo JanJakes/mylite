@@ -1,6 +1,7 @@
 static int plan_row_scalar_select_items(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_list,
+    struct row_scalar_window_definitions *window_definitions,
     const struct select_source_context *source_context,
     const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *table_columns,
@@ -28,6 +29,7 @@ static int plan_row_scalar_select_items(
             database,
             out_plan,
             item,
+            window_definitions,
             source_context,
             table,
             table_columns,
@@ -47,6 +49,7 @@ static int append_row_scalar_select_item(
     struct mylite_db *database,
     struct planned_row_scalar_select *plan,
     const struct mylite_sql_ast_node *select_item,
+    struct row_scalar_window_definitions *window_definitions,
     const struct select_source_context *source_context,
     const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *table_columns,
@@ -103,7 +106,7 @@ static int append_row_scalar_select_item(
         );
     }
 
-    rc = plan_row_scalar_expression(
+    rc = plan_row_scalar_expression_with_window_definitions(
         database,
         item.source_expression,
         plan->has_source,
@@ -111,6 +114,7 @@ static int append_row_scalar_select_item(
         table,
         table_columns,
         table_column_count,
+        window_definitions,
         &item.expression
     );
     if (rc != MYLITE_OK) {
@@ -214,7 +218,8 @@ static int plan_row_scalar_information_schema_exists_select_item(
         return MYLITE_OK;
     }
 
-    rc = table_source_targets_information_schema(database, from_clause, &targets_information_schema);
+    rc =
+        table_source_targets_information_schema(database, from_clause, &targets_information_schema);
     if (rc != MYLITE_OK || !targets_information_schema) {
         return rc;
     }
@@ -269,7 +274,8 @@ static int information_schema_exists_subquery_matches(
     }
     for (const struct mylite_sql_ast_node *optional_clause =
              select_statement_optional_clause_start(statement);
-         optional_clause != NULL; optional_clause = optional_clause->next_sibling) {
+         optional_clause != NULL;
+         optional_clause = optional_clause->next_sibling) {
         if (optional_clause->kind != MYLITE_SQL_AST_WHERE_CLAUSE &&
             optional_clause->kind != MYLITE_SQL_AST_LIMIT_CLAUSE) {
             set_unsupported_error(database, "EXISTS subqueries support only WHERE and LIMIT");
@@ -278,8 +284,7 @@ static int information_schema_exists_subquery_matches(
     }
 
     rc = resolve_information_schema_query(database, statement, &query);
-    if (rc == MYLITE_OK &&
-        query.definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_PROCESSLIST) {
+    if (rc == MYLITE_OK && query.definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_PROCESSLIST) {
         set_unsupported_error(
             database,
             "EXISTS information_schema.processlist scalar projections are not supported"
@@ -300,8 +305,7 @@ static int information_schema_exists_subquery_matches(
         );
     }
     if (rc == MYLITE_OK) {
-        *out_matches = index_count != 0U &&
-                       !(query.limit.has_limit && query.limit.row_count == 0);
+        *out_matches = index_count != 0U && !(query.limit.has_limit && query.limit.row_count == 0);
     }
 
     free(indexes);

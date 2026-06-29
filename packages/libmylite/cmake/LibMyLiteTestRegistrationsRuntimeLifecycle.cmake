@@ -759,6 +759,10 @@
     COMMAND mylite_runtime_row_number_window_function_test
   )
   add_test(
+    NAME libmylite.runtime.named_window_definitions
+    COMMAND mylite_runtime_named_window_definitions_test
+  )
+  add_test(
     NAME libmylite.runtime.window_rank_navigation_functions
     COMMAND mylite_runtime_window_rank_navigation_functions_test
   )

@@ -17,6 +17,7 @@ enum {
     path_suffix_capacity = 16,
     mysql_error_parse = 1064,
     mysql_error_unknown_column = 1054,
+    mysql_error_window_name_not_defined = 3579,
     seed_post_count = 7,
 };
 
@@ -392,10 +393,9 @@ static int test_row_number_diagnostics(void) {
         database,
         "SELECT id, ROW_NUMBER() OVER (base_window ORDER BY id) AS rn FROM posts",
         (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "ROW_NUMBER() supports only PARTITION BY, ORDER BY, and "
-                            "baseline frame clauses",
+            .code = mysql_error_window_name_not_defined,
+            .sqlstate = "HY000",
+            .message_part = "Window name 'base_window' is not defined.",
         }
     );
 

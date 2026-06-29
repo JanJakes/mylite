@@ -8,6 +8,30 @@ static int plan_row_scalar_expression(
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
 ) {
+    return plan_row_scalar_expression_with_window_definitions(
+        database,
+        expression,
+        has_source,
+        source_context,
+        table,
+        table_columns,
+        table_column_count,
+        NULL,
+        out_expression
+    );
+}
+
+static int plan_row_scalar_expression_with_window_definitions(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_table_descriptor *table,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct row_scalar_window_definitions *window_definitions,
+    struct planned_row_scalar_expression *out_expression
+) {
     bool allow_scalar_subquery = true;
     bool handled = false;
     int rc = MYLITE_OK;
@@ -26,6 +50,7 @@ static int plan_row_scalar_expression(
         table,
         table_columns,
         table_column_count,
+        window_definitions,
         out_expression,
         &handled
     );
@@ -78,6 +103,7 @@ static int plan_row_scalar_special_expression(
     const struct mylite_catalog_table_descriptor *table,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    struct row_scalar_window_definitions *window_definitions,
     struct planned_row_scalar_expression *out_expression,
     bool *out_handled
 ) {
@@ -376,6 +402,7 @@ static int plan_row_scalar_special_expression(
             source_context,
             table_columns,
             table_column_count,
+            window_definitions,
             out_expression
         );
     }
@@ -1023,6 +1050,563 @@ static bool row_scalar_expression_is_window_function(const struct mylite_sql_ast
     return planned_window_function_kind_from_ast(expression) != PLANNED_WINDOW_FUNCTION_NONE;
 }
 
+static int init_row_scalar_window_definitions(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *definition_list,
+    struct row_scalar_window_definitions *out_definitions
+) {
+    const struct mylite_sql_ast_node *definition = NULL;
+    size_t count = 0U;
+    int rc = MYLITE_OK;
+
+    if (out_definitions == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_definitions = (struct row_scalar_window_definitions){0};
+    if (definition_list == NULL) {
+        return MYLITE_OK;
+    }
+    if (definition_list->kind != MYLITE_SQL_AST_WINDOW_DEFINITION_LIST) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    count = mylite_sql_ast_node_child_count(definition_list);
+    if (count == 0U) {
+        return MYLITE_OK;
+    }
+
+    out_definitions->entries = (struct row_scalar_window_definition_entry *)
+        calloc(count, sizeof(*out_definitions->entries));
+    if (out_definitions->entries == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_definitions->count = count;
+
+    definition = child_at(definition_list, 0U);
+    for (size_t index = 0U; rc == MYLITE_OK && index < count; ++index) {
+        rc = append_row_scalar_window_definition(database, definition, out_definitions, index);
+        definition = definition == NULL ? NULL : definition->next_sibling;
+    }
+    if (rc == MYLITE_OK) {
+        rc = validate_row_scalar_window_definitions(database, out_definitions);
+    }
+    if (rc != MYLITE_OK) {
+        row_scalar_window_definitions_deinit(out_definitions);
+    }
+    return rc;
+}
+
+static int append_row_scalar_window_definition(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *definition,
+    struct row_scalar_window_definitions *definitions,
+    size_t index
+) {
+    struct row_scalar_window_definition_entry *entry = NULL;
+    const struct mylite_sql_ast_node *name_node = NULL;
+    const struct mylite_sql_ast_node *spec = NULL;
+    int rc = MYLITE_OK;
+
+    if (definition == NULL || definitions == NULL || index >= definitions->count ||
+        definition->kind != MYLITE_SQL_AST_WINDOW_DEFINITION) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    entry = &definitions->entries[index];
+    name_node = child_at(definition, 0U);
+    spec = child_at(definition, 1U);
+    if (name_node == NULL || name_node->kind != MYLITE_SQL_AST_IDENTIFIER ||
+        (spec != NULL && spec->kind != MYLITE_SQL_AST_WINDOW_SPEC)) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    rc = copy_identifier_text(name_node, entry->name, sizeof(entry->name), database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    for (size_t previous = 0U; previous < index; ++previous) {
+        if (text_equals_ascii_case_insensitive(definitions->entries[previous].name, entry->name)) {
+            return set_window_duplicate_name_error(database, definitions->entries[previous].name);
+        }
+    }
+    entry->spec = spec;
+    entry->state = ROW_SCALAR_WINDOW_DEFINITION_UNRESOLVED;
+    entry->is_used = false;
+    entry->clauses = (struct row_scalar_window_spec_clauses){0};
+    return MYLITE_OK;
+}
+
+static int validate_row_scalar_window_definitions(
+    struct mylite_db *database,
+    struct row_scalar_window_definitions *definitions
+) {
+    int rc = MYLITE_OK;
+
+    if (definitions == NULL) {
+        return MYLITE_OK;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < definitions->count; ++index) {
+        rc = resolve_row_scalar_window_definition(
+            database,
+            definitions,
+            &definitions->entries[index]
+        );
+    }
+    return rc;
+}
+
+static void row_scalar_window_definitions_deinit(
+    struct row_scalar_window_definitions *definitions
+) {
+    if (definitions == NULL) {
+        return;
+    }
+    free(definitions->entries);
+    *definitions = (struct row_scalar_window_definitions){0};
+}
+
+static int validate_row_scalar_window_definitions_are_used(
+    struct mylite_db *database,
+    const struct row_scalar_window_definitions *definitions
+) {
+    if (definitions == NULL) {
+        return MYLITE_OK;
+    }
+    for (size_t index = 0U; index < definitions->count; ++index) {
+        if (!definitions->entries[index].is_used) {
+            set_unsupported_error(
+                database,
+                "row-scalar SELECT supports WINDOW clauses only when every named window "
+                "definition is used by a supported projection window function"
+            );
+            return MYLITE_ERROR;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static int mark_row_scalar_window_spec_used(
+    struct mylite_db *database,
+    struct row_scalar_window_definitions *definitions,
+    const struct mylite_sql_ast_node *window_spec
+) {
+    const struct mylite_sql_ast_node *clause = NULL;
+    char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY] = {0};
+    int rc = MYLITE_OK;
+
+    if (definitions == NULL || window_spec == NULL) {
+        return MYLITE_OK;
+    }
+    if (window_spec->kind == MYLITE_SQL_AST_WINDOW_REFERENCE) {
+        struct row_scalar_window_definition_entry *entry = NULL;
+
+        rc = copy_window_reference_name(database, window_spec, name, sizeof(name));
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        entry = find_row_scalar_window_definition(definitions, name);
+        if (entry == NULL) {
+            return set_window_name_not_defined_error(database, name);
+        }
+        if (entry->is_used) {
+            return MYLITE_OK;
+        }
+        entry->is_used = true;
+        return mark_row_scalar_window_spec_used(database, definitions, entry->spec);
+    }
+    if (window_spec->kind != MYLITE_SQL_AST_WINDOW_SPEC) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    clause = child_at(window_spec, 0U);
+    while (rc == MYLITE_OK && clause != NULL) {
+        if (clause->kind == MYLITE_SQL_AST_WINDOW_REFERENCE) {
+            rc = mark_row_scalar_window_spec_used(database, definitions, clause);
+        }
+        clause = clause->next_sibling;
+    }
+    return rc;
+}
+
+static int resolve_row_scalar_window_spec(
+    struct mylite_db *database,
+    struct row_scalar_window_definitions *definitions,
+    const char *owner_name,
+    const struct mylite_sql_ast_node *window_spec,
+    struct row_scalar_window_spec_clauses *out_clauses
+) {
+    const struct mylite_sql_ast_node *clause = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_clauses == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_clauses = (struct row_scalar_window_spec_clauses){0};
+    if (window_spec == NULL) {
+        return MYLITE_OK;
+    }
+    if (window_spec->kind == MYLITE_SQL_AST_WINDOW_REFERENCE) {
+        return resolve_row_scalar_window_reference(
+            database,
+            definitions,
+            owner_name,
+            window_spec,
+            out_clauses
+        );
+    }
+    if (window_spec->kind != MYLITE_SQL_AST_WINDOW_SPEC) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    clause = child_at(window_spec, 0U);
+    while (rc == MYLITE_OK && clause != NULL) {
+        if (clause->kind == MYLITE_SQL_AST_WINDOW_REFERENCE) {
+            struct row_scalar_window_spec_clauses inherited = {0};
+            char inherited_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY] = {0};
+
+            rc = copy_window_reference_name(
+                database,
+                clause,
+                inherited_name,
+                sizeof(inherited_name)
+            );
+            if (rc == MYLITE_OK) {
+                rc = resolve_row_scalar_window_reference(
+                    database,
+                    definitions,
+                    owner_name,
+                    clause,
+                    &inherited
+                );
+            }
+            if (rc == MYLITE_OK) {
+                rc = merge_row_scalar_window_clauses(
+                    database,
+                    owner_name,
+                    inherited_name,
+                    &inherited,
+                    out_clauses
+                );
+            }
+        } else {
+            rc = add_row_scalar_window_clause(database, owner_name, NULL, clause, out_clauses);
+        }
+        clause = clause->next_sibling;
+    }
+    return rc;
+}
+
+static int resolve_row_scalar_window_reference(
+    struct mylite_db *database,
+    struct row_scalar_window_definitions *definitions,
+    const char *owner_name,
+    const struct mylite_sql_ast_node *reference,
+    struct row_scalar_window_spec_clauses *out_clauses
+) {
+    struct row_scalar_window_definition_entry *entry = NULL;
+    char name[MYLITE_CATALOG_IDENTIFIER_CAPACITY] = {0};
+    int rc = MYLITE_OK;
+
+    (void)owner_name;
+    rc = copy_window_reference_name(database, reference, name, sizeof(name));
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    entry = find_row_scalar_window_definition(definitions, name);
+    if (entry == NULL) {
+        return set_window_name_not_defined_error(database, name);
+    }
+    rc = resolve_row_scalar_window_definition(database, definitions, entry);
+    if (rc == MYLITE_OK) {
+        *out_clauses = entry->clauses;
+    }
+    return rc;
+}
+
+static int resolve_row_scalar_window_definition(
+    struct mylite_db *database,
+    struct row_scalar_window_definitions *definitions,
+    struct row_scalar_window_definition_entry *entry
+) {
+    int rc = MYLITE_OK;
+
+    if (entry == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (entry->state == ROW_SCALAR_WINDOW_DEFINITION_RESOLVED) {
+        return MYLITE_OK;
+    }
+    if (entry->state == ROW_SCALAR_WINDOW_DEFINITION_RESOLVING) {
+        return set_window_circularity_error(database);
+    }
+
+    entry->state = ROW_SCALAR_WINDOW_DEFINITION_RESOLVING;
+    rc = resolve_row_scalar_window_spec(
+        database,
+        definitions,
+        entry->name,
+        entry->spec,
+        &entry->clauses
+    );
+    if (rc == MYLITE_OK) {
+        entry->state = ROW_SCALAR_WINDOW_DEFINITION_RESOLVED;
+    } else {
+        entry->state = ROW_SCALAR_WINDOW_DEFINITION_UNRESOLVED;
+    }
+    return rc;
+}
+
+static struct row_scalar_window_definition_entry *find_row_scalar_window_definition(
+    struct row_scalar_window_definitions *definitions,
+    const char *name
+) {
+    if (definitions == NULL || name == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < definitions->count; ++index) {
+        if (text_equals_ascii_case_insensitive(definitions->entries[index].name, name)) {
+            return &definitions->entries[index];
+        }
+    }
+    return NULL;
+}
+
+static int merge_row_scalar_window_clauses(
+    struct mylite_db *database,
+    const char *owner_name,
+    const char *inherited_name,
+    const struct row_scalar_window_spec_clauses *source,
+    struct row_scalar_window_spec_clauses *target
+) {
+    int rc = MYLITE_OK;
+
+    if (source == NULL || target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (source->partition_clause != NULL) {
+        rc = add_row_scalar_window_clause(
+            database,
+            owner_name,
+            inherited_name,
+            source->partition_clause,
+            target
+        );
+    }
+    if (rc == MYLITE_OK && source->order_clause != NULL) {
+        rc = add_row_scalar_window_clause(
+            database,
+            owner_name,
+            inherited_name,
+            source->order_clause,
+            target
+        );
+    }
+    if (rc == MYLITE_OK && source->frame_clause != NULL) {
+        rc = add_row_scalar_window_clause(
+            database,
+            owner_name,
+            inherited_name,
+            source->frame_clause,
+            target
+        );
+    }
+    return rc;
+}
+
+static int add_row_scalar_window_clause(
+    struct mylite_db *database,
+    const char *owner_name,
+    const char *inherited_name,
+    const struct mylite_sql_ast_node *clause,
+    struct row_scalar_window_spec_clauses *target
+) {
+    const struct mylite_sql_ast_node **slot = NULL;
+    char *source_name = NULL;
+
+    if (clause == NULL || target == NULL) {
+        return MYLITE_MISUSE;
+    }
+    switch (clause->kind) {
+    case MYLITE_SQL_AST_WINDOW_PARTITION_CLAUSE:
+        slot = &target->partition_clause;
+        break;
+    case MYLITE_SQL_AST_WINDOW_ORDER_CLAUSE:
+        slot = &target->order_clause;
+        break;
+    case MYLITE_SQL_AST_WINDOW_FRAME_CLAUSE:
+        slot = &target->frame_clause;
+        break;
+    default:
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    source_name = row_scalar_window_clause_source_name(clause, target);
+    if (*slot != NULL) {
+        return set_window_inheritance_error(
+            database,
+            (struct row_scalar_window_inheritance_error){
+                .owner_name = owner_name,
+                .inherited_name = inherited_name != NULL ? inherited_name : source_name,
+                .property = row_scalar_window_clause_property_name(clause),
+            }
+        );
+    }
+    *slot = clause;
+    if (source_name != NULL && inherited_name != NULL) {
+        int written =
+            snprintf(source_name, MYLITE_CATALOG_IDENTIFIER_CAPACITY, "%s", inherited_name);
+
+        if (written < 0 || (size_t)written >= MYLITE_CATALOG_IDENTIFIER_CAPACITY) {
+            set_runtime_error(database, "failed to format window diagnostic");
+            return MYLITE_ERROR;
+        }
+    }
+    return MYLITE_OK;
+}
+
+static char *row_scalar_window_clause_source_name(
+    const struct mylite_sql_ast_node *clause,
+    struct row_scalar_window_spec_clauses *target
+) {
+    if (clause == NULL || target == NULL) {
+        return NULL;
+    }
+    switch (clause->kind) {
+    case MYLITE_SQL_AST_WINDOW_PARTITION_CLAUSE:
+        return target->partition_source_name;
+    case MYLITE_SQL_AST_WINDOW_ORDER_CLAUSE:
+        return target->order_source_name;
+    case MYLITE_SQL_AST_WINDOW_FRAME_CLAUSE:
+        return target->frame_source_name;
+    default:
+        break;
+    }
+    return NULL;
+}
+
+static const char *row_scalar_window_clause_property_name(
+    const struct mylite_sql_ast_node *clause
+) {
+    if (clause == NULL) {
+        return "clause";
+    }
+    switch (clause->kind) {
+    case MYLITE_SQL_AST_WINDOW_PARTITION_CLAUSE:
+        return "a PARTITION BY clause";
+    case MYLITE_SQL_AST_WINDOW_ORDER_CLAUSE:
+        return "an ORDER BY clause";
+    case MYLITE_SQL_AST_WINDOW_FRAME_CLAUSE:
+        return "a frame clause";
+    default:
+        break;
+    }
+    return "clause";
+}
+
+static int copy_window_reference_name(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *reference,
+    char *destination,
+    size_t destination_size
+) {
+    if (reference == NULL || reference->kind != MYLITE_SQL_AST_WINDOW_REFERENCE) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+    return copy_identifier_text(child_at(reference, 0U), destination, destination_size, database);
+}
+
+static int set_window_name_not_defined_error(struct mylite_db *database, const char *name) {
+    char message[window_function_unsupported_message_capacity];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Window name '%s' is not defined.",
+        name == NULL ? "" : name
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "failed to format window diagnostic");
+        return MYLITE_ERROR;
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_window_name_not_defined,
+        "HY000",
+        message
+    );
+    return MYLITE_ERROR;
+}
+
+static int set_window_duplicate_name_error(struct mylite_db *database, const char *name) {
+    char message[window_function_unsupported_message_capacity];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Window '%s' is defined twice.",
+        name == NULL ? "" : name
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "failed to format window diagnostic");
+        return MYLITE_ERROR;
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_window_duplicate_name,
+        "HY000",
+        message
+    );
+    return MYLITE_ERROR;
+}
+
+static int set_window_circularity_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_window_circularity,
+        "HY000",
+        "There is a circularity in the window dependency graph."
+    );
+    return MYLITE_ERROR;
+}
+
+static int set_window_inheritance_error(
+    struct mylite_db *database,
+    struct row_scalar_window_inheritance_error error
+) {
+    char message[window_function_unsupported_message_capacity];
+    const char *owner = error.owner_name == NULL ? "<unnamed window>" : error.owner_name;
+    const char *inherited =
+        error.inherited_name == NULL ? "<unnamed window>" : error.inherited_name;
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Window '%s' cannot inherit '%s' since both contain %s.",
+        owner,
+        inherited,
+        error.property == NULL ? "window" : error.property
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        set_runtime_error(database, "failed to format window diagnostic");
+        return MYLITE_ERROR;
+    }
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_window_inheritance,
+        "HY000",
+        message
+    );
+    return MYLITE_ERROR;
+}
+
 static int plan_row_scalar_window_function_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,
@@ -1030,6 +1614,7 @@ static int plan_row_scalar_window_function_expression(
     const struct select_source_context *source_context,
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
+    struct row_scalar_window_definitions *window_definitions,
     struct planned_row_scalar_expression *out_expression
 ) {
     enum planned_window_function_kind kind = planned_window_function_kind_from_ast(expression);
@@ -1037,7 +1622,7 @@ static int plan_row_scalar_window_function_expression(
     const struct mylite_sql_ast_node *window_spec = window_function_spec_node(expression);
     const struct mylite_sql_ast_node *null_treatment =
         window_function_null_treatment_node(expression);
-    const struct mylite_sql_ast_node *clause = NULL;
+    struct row_scalar_window_spec_clauses window_clauses = {0};
     const char *function_name = window_function_display_name(kind);
     int rc = MYLITE_OK;
 
@@ -1081,18 +1666,23 @@ static int plan_row_scalar_window_function_expression(
     out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION;
     out_expression->window_function_kind = kind;
     out_expression->window_order_direction = PLANNED_SELECT_ORDER_ASC;
-    if (window_spec == NULL) {
-        return MYLITE_OK;
+    rc = resolve_row_scalar_window_spec(
+        database,
+        window_definitions,
+        NULL,
+        window_spec,
+        &window_clauses
+    );
+    if (rc == MYLITE_OK) {
+        rc = mark_row_scalar_window_spec_used(database, window_definitions, window_spec);
     }
-    if (window_spec->kind != MYLITE_SQL_AST_WINDOW_SPEC) {
-        set_window_function_unsupported_error(
-            database,
-            function_name,
-            "supports only a baseline window spec"
-        );
-        return MYLITE_ERROR;
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(out_expression);
+        return rc;
     }
-    if (!has_source && mylite_sql_ast_node_child_count(window_spec) != 0U) {
+    if (!has_source &&
+        (window_clauses.partition_clause != NULL || window_clauses.order_clause != NULL ||
+         window_clauses.frame_clause != NULL)) {
         set_window_function_unsupported_error(
             database,
             function_name,
@@ -1101,47 +1691,44 @@ static int plan_row_scalar_window_function_expression(
         return MYLITE_ERROR;
     }
 
-    clause = child_at(window_spec, 0U);
-    while (rc == MYLITE_OK && clause != NULL) {
-        if (clause->kind == MYLITE_SQL_AST_WINDOW_PARTITION_CLAUSE) {
-            rc = plan_row_scalar_window_partition_clause(
-                database,
-                function_name,
-                clause,
-                source_context,
-                table_columns,
-                table_column_count,
-                out_expression
-            );
-        } else if (clause->kind == MYLITE_SQL_AST_WINDOW_ORDER_CLAUSE) {
-            rc = plan_row_scalar_window_order_clause(
-                database,
-                function_name,
-                clause,
-                source_context,
-                table_columns,
-                table_column_count,
-                out_expression
-            );
-        } else if (clause->kind == MYLITE_SQL_AST_WINDOW_FRAME_CLAUSE &&
-                   (window_function_accepts_ignored_frame_clause(kind) ||
-                    window_function_uses_frame_clause(kind))) {
-            rc = plan_row_scalar_window_frame_clause(
-                database,
-                function_name,
-                clause,
-                window_function_uses_frame_clause(kind),
-                out_expression
-            );
-        } else {
-            set_window_function_unsupported_error(
-                database,
-                function_name,
-                "supports only PARTITION BY, ORDER BY, and baseline frame clauses"
-            );
-            rc = MYLITE_ERROR;
-        }
-        clause = clause->next_sibling;
+    if (rc == MYLITE_OK && window_clauses.partition_clause != NULL) {
+        rc = plan_row_scalar_window_partition_clause(
+            database,
+            function_name,
+            window_clauses.partition_clause,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (rc == MYLITE_OK && window_clauses.order_clause != NULL) {
+        rc = plan_row_scalar_window_order_clause(
+            database,
+            function_name,
+            window_clauses.order_clause,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
+    if (rc == MYLITE_OK && window_clauses.frame_clause != NULL &&
+        (window_function_accepts_ignored_frame_clause(kind) ||
+         window_function_uses_frame_clause(kind))) {
+        rc = plan_row_scalar_window_frame_clause(
+            database,
+            function_name,
+            window_clauses.frame_clause,
+            window_function_uses_frame_clause(kind),
+            out_expression
+        );
+    } else if (rc == MYLITE_OK && window_clauses.frame_clause != NULL) {
+        rc = set_window_function_unsupported_error(
+            database,
+            function_name,
+            "supports only PARTITION BY, ORDER BY, and baseline frame clauses"
+        );
     }
 
     if (rc != MYLITE_OK) {

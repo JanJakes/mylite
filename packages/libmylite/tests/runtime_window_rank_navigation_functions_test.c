@@ -686,6 +686,23 @@ static int test_window_function_metadata(void) {
 }
 
 static int test_window_function_diagnostics(void) {
+    static const char *const named_window_columns[] = {"id", "rn"};
+    static const char *const named_window_values[] = {
+        "1",
+        "1",
+        "2",
+        "2",
+        "3",
+        "3",
+        "4",
+        "4",
+        "5",
+        "5",
+        "6",
+        "6",
+        "7",
+        "7",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = open_app_database(&database, path, sizeof(path));
@@ -739,13 +756,16 @@ static int test_window_function_diagnostics(void) {
             .message_part = "Unknown column 'missing'",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT id, ROW_NUMBER() OVER w AS rn FROM posts WINDOW w AS (ORDER BY id)",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "does not yet support WINDOW clauses",
+        (struct expected_query){
+            .sql = "SELECT id, ROW_NUMBER() OVER w AS rn FROM posts "
+                   "WINDOW w AS (ORDER BY id) ORDER BY id",
+            .columns = named_window_columns,
+            .column_count = sizeof(named_window_columns) / sizeof(named_window_columns[0]),
+            .values = named_window_values,
+            .row_count = seed_post_count,
+            .context = "named window smoke",
         }
     );
     failures += execute_error(

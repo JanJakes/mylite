@@ -159,6 +159,11 @@ struct spatial_discrete_point_set {
     uint32_t point_count;
 };
 
+struct spatial_simplify_range {
+    uint32_t first;
+    uint32_t last;
+};
+
 enum spatial_centroid_dimension {
     SPATIAL_CENTROID_DIMENSION_NONE = -1,
     SPATIAL_CENTROID_DIMENSION_POINT = 0,
@@ -254,6 +259,7 @@ static const struct spatial_function_descriptor spatial_function_descriptors[] =
     {"ST_Touches", MYLITE_SPATIAL_FUNCTION_ST_TOUCHES},
     {"ST_Overlaps", MYLITE_SPATIAL_FUNCTION_ST_OVERLAPS},
     {"ST_Crosses", MYLITE_SPATIAL_FUNCTION_ST_CROSSES},
+    {"ST_Simplify", MYLITE_SPATIAL_FUNCTION_ST_SIMPLIFY},
     {"ST_IsClosed", MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED},
     {"ST_NumGeometries", MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES},
     {"ST_GeometryN", MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYN},
@@ -472,6 +478,13 @@ static int evaluate_convex_hull(
     struct mylite_spatial_result *out_result,
     struct mylite_spatial_error *error
 );
+static int evaluate_simplify(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+);
 static int evaluate_distance(
     enum mylite_spatial_function_kind kind,
     const struct mylite_spatial_argument *arguments,
@@ -624,6 +637,11 @@ static int set_not_implemented_for_geographic_srs_error(
     const char *function_name
 );
 static int set_not_implemented_for_geographic_srs_geometry_error(
+    struct mylite_spatial_error *error,
+    enum mylite_spatial_geometry_type type,
+    const char *function_name
+);
+static int set_not_implemented_for_geographic_srs_geometry_argument_error(
     struct mylite_spatial_error *error,
     enum mylite_spatial_geometry_type type,
     const char *function_name
@@ -1174,6 +1192,107 @@ static bool convex_hull_turn_is_clockwise_or_collinear(
     const struct spatial_point *origin,
     const struct spatial_point *middle,
     const struct spatial_point *candidate
+);
+static int simplify_geometry(
+    const struct spatial_distance_geometry *source,
+    double max_distance,
+    struct spatial_distance_geometry *out_geometry,
+    bool *out_has_geometry,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int simplify_point_geometry(
+    const struct spatial_distance_geometry *source,
+    struct spatial_distance_geometry *out_geometry,
+    bool *out_has_geometry,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int simplify_line_geometry(
+    const struct spatial_distance_geometry *source,
+    double max_distance,
+    struct spatial_distance_geometry *out_geometry,
+    bool *out_has_geometry,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int simplify_polygon_geometry(
+    const struct spatial_distance_geometry *source,
+    double max_distance,
+    struct spatial_distance_geometry *out_geometry,
+    bool *out_has_geometry,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int simplify_collection_geometry(
+    const struct spatial_distance_geometry *source,
+    double max_distance,
+    struct spatial_distance_geometry *out_geometry,
+    bool *out_has_geometry,
+    struct mylite_spatial_error *error,
+    const char *function_name
+);
+static int simplify_points(
+    const struct spatial_point *points,
+    uint32_t point_count,
+    double max_distance,
+    struct spatial_point **out_points,
+    uint32_t *out_point_count,
+    struct mylite_spatial_error *error
+);
+static int simplify_ring_points(
+    const struct spatial_point *points,
+    uint32_t point_count,
+    double max_distance,
+    struct spatial_point **out_points,
+    uint32_t *out_point_count,
+    bool *out_has_ring,
+    struct mylite_spatial_error *error
+);
+static int simplify_point_copy(
+    const struct spatial_point *points,
+    uint32_t point_count,
+    struct spatial_point **out_points,
+    uint32_t *out_point_count,
+    struct mylite_spatial_error *error
+);
+static int simplify_keep_mask(
+    const struct spatial_point *points,
+    uint32_t point_count, // NOLINT(bugprone-easily-swappable-parameters)
+    double max_distance,
+    bool *keep,
+    struct mylite_spatial_error *error
+);
+static bool simplify_range_push(
+    struct spatial_simplify_range *ranges,
+    uint32_t capacity,
+    uint32_t *io_count,
+    struct spatial_simplify_range range
+);
+static uint32_t simplify_kept_point_count(const bool *keep, uint32_t point_count);
+static void simplify_ring_canonicalize(struct spatial_point *points, uint32_t point_count);
+static bool simplify_ring_is_valid(const struct spatial_point *points, uint32_t point_count);
+static int make_internal_geometry_from_distance_geometry(
+    uint32_t srid,
+    const struct spatial_distance_geometry *geometry,
+    unsigned char **out_bytes,
+    size_t *out_byte_count,
+    struct mylite_spatial_error *error
+);
+static int append_distance_geometry_wkb(
+    struct spatial_buffer *buffer,
+    const struct spatial_distance_geometry *geometry
+);
+static int append_distance_geometry_points(
+    struct spatial_buffer *buffer,
+    const struct spatial_point *points,
+    uint32_t point_count
+);
+static int argument_simplify_distance(
+    const struct mylite_spatial_argument *argument,
+    double *out_value,
+    struct mylite_spatial_error *error,
+    const char *function_name
 );
 static int distance_geometry_read(
     struct spatial_wkb_cursor *cursor,
@@ -1893,6 +2012,7 @@ bool mylite_spatial_function_returns_geometry(enum mylite_spatial_function_kind 
            kind == MYLITE_SPATIAL_FUNCTION_ST_POINTATDISTANCE ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_CENTROID ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_CONVEXHULL ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_SIMPLIFY ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_VALIDATE;
 }
 
@@ -2041,6 +2161,8 @@ int mylite_spatial_evaluate(
         return evaluate_centroid(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_CONVEXHULL:
         return evaluate_convex_hull(kind, arguments, argument_count, out_result, out_error);
+    case MYLITE_SPATIAL_FUNCTION_ST_SIMPLIFY:
+        return evaluate_simplify(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_DISTANCE:
         return evaluate_distance(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_DISJOINT:
@@ -3818,6 +3940,85 @@ static int evaluate_convex_hull(
     return assign_owned_bytes_result(out_result, MYLITE_SPATIAL_RESULT_GEOMETRY, bytes, byte_count);
 }
 
+static int evaluate_simplify(
+    enum mylite_spatial_function_kind kind,
+    const struct mylite_spatial_argument *arguments,
+    size_t argument_count,
+    struct mylite_spatial_result *out_result,
+    struct mylite_spatial_error *error
+) {
+    const char *function_name = mylite_spatial_function_name(kind);
+    struct spatial_geometry_view geometry = {0};
+    struct spatial_distance_geometry source_geometry = {0};
+    struct spatial_distance_geometry simplified_geometry = {0};
+    bool is_null = false;
+    bool has_geometry = false;
+    double max_distance = 0.0;
+    unsigned char *bytes = NULL;
+    size_t byte_count = 0U;
+    int rc = validate_argument_count(kind, argument_count, 2U, 2U, error);
+
+    if (rc != 0) {
+        return rc;
+    }
+    if (any_argument_is_null(arguments, argument_count)) {
+        return assign_null_result(out_result);
+    }
+    rc = read_single_geometry_argument(kind, arguments, 1U, &geometry, &is_null, error);
+    if (rc == 0) {
+        rc = argument_simplify_distance(&arguments[1], &max_distance, error, function_name);
+    }
+    if (rc != 0) {
+        return rc;
+    }
+    if (is_null) {
+        return assign_null_result(out_result);
+    }
+    if (max_distance <= 0.0 || !isfinite(max_distance)) {
+        return set_wrong_arguments_error(error, function_name);
+    }
+    if (geometry.srid != 0U) {
+        return set_not_implemented_for_geographic_srs_geometry_argument_error(
+            error,
+            geometry.type,
+            function_name
+        );
+    }
+    rc = distance_geometry_from_view(&geometry, &source_geometry, error, function_name);
+    if (rc == 0) {
+        rc = simplify_geometry(
+            &source_geometry,
+            max_distance,
+            &simplified_geometry,
+            &has_geometry,
+            error,
+            function_name
+        );
+    }
+    distance_geometry_deinit(&source_geometry);
+    if (rc != 0) {
+        distance_geometry_deinit(&simplified_geometry);
+        return rc;
+    }
+    if (!has_geometry) {
+        distance_geometry_deinit(&simplified_geometry);
+        return assign_null_result(out_result);
+    }
+    rc = make_internal_geometry_from_distance_geometry(
+        geometry.srid,
+        &simplified_geometry,
+        &bytes,
+        &byte_count,
+        error
+    );
+    distance_geometry_deinit(&simplified_geometry);
+    if (rc != 0) {
+        free(bytes);
+        return rc;
+    }
+    return assign_owned_bytes_result(out_result, MYLITE_SPATIAL_RESULT_GEOMETRY, bytes, byte_count);
+}
+
 static int evaluate_distance(
     enum mylite_spatial_function_kind kind,
     const struct mylite_spatial_argument *arguments,
@@ -5199,6 +5400,27 @@ static int set_not_implemented_for_geographic_srs_geometry_error(
         mysql_error_not_implemented_for_geographic_srs,
         "22S00",
         "%s(%s) has not been implemented for geographic spatial reference systems.",
+        spatial_diagnostic_function_name(
+            function_name,
+            diagnostic_function_name,
+            sizeof(diagnostic_function_name)
+        ),
+        geometry_type_name(type)
+    );
+}
+
+static int set_not_implemented_for_geographic_srs_geometry_argument_error(
+    struct mylite_spatial_error *error,
+    enum mylite_spatial_geometry_type type,
+    const char *function_name
+) {
+    char diagnostic_function_name[spatial_diagnostic_function_name_capacity];
+
+    return set_spatial_error(
+        error,
+        mysql_error_not_implemented_for_geographic_srs,
+        "22S00",
+        "%s(%s, ...) has not been implemented for geographic spatial reference systems.",
         spatial_diagnostic_function_name(
             function_name,
             diagnostic_function_name,
@@ -7764,6 +7986,683 @@ static bool convex_hull_turn_is_clockwise_or_collinear(
     const struct spatial_point *candidate
 ) {
     return point_cross_product(origin, middle, candidate) <= spatial_distance_epsilon;
+}
+
+static int simplify_geometry(
+    const struct spatial_distance_geometry *source,
+    double max_distance,
+    struct spatial_distance_geometry *out_geometry,
+    bool *out_has_geometry,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    if (source == NULL || out_geometry == NULL || out_has_geometry == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    *out_geometry = (struct spatial_distance_geometry){0};
+    *out_has_geometry = false;
+    switch (source->type) {
+    case MYLITE_SPATIAL_GEOMETRY_POINT:
+        return simplify_point_geometry(
+            source,
+            out_geometry,
+            out_has_geometry,
+            error,
+            function_name
+        );
+    case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
+        return simplify_line_geometry(
+            source,
+            max_distance,
+            out_geometry,
+            out_has_geometry,
+            error,
+            function_name
+        );
+    case MYLITE_SPATIAL_GEOMETRY_POLYGON:
+        return simplify_polygon_geometry(
+            source,
+            max_distance,
+            out_geometry,
+            out_has_geometry,
+            error,
+            function_name
+        );
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOINT:
+    case MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING:
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOLYGON:
+    case MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION:
+        return simplify_collection_geometry(
+            source,
+            max_distance,
+            out_geometry,
+            out_has_geometry,
+            error,
+            function_name
+        );
+    default:
+        break;
+    }
+    return set_invalid_gis_data_error(error, function_name);
+}
+
+static int simplify_point_geometry(
+    const struct spatial_distance_geometry *source,
+    struct spatial_distance_geometry *out_geometry,
+    bool *out_has_geometry,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    if (source == NULL || out_geometry == NULL || out_has_geometry == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    *out_geometry = (struct spatial_distance_geometry){
+        .type = MYLITE_SPATIAL_GEOMETRY_POINT,
+        .point = source->point,
+    };
+    *out_has_geometry = true;
+    return 0;
+}
+
+static int simplify_line_geometry(
+    const struct spatial_distance_geometry *source,
+    double max_distance,
+    struct spatial_distance_geometry *out_geometry,
+    bool *out_has_geometry,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    struct spatial_point *points = NULL;
+    uint32_t point_count = 0U;
+    int rc = 0;
+
+    if (source == NULL || out_geometry == NULL || out_has_geometry == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    rc = simplify_points(
+        source->points,
+        source->point_count,
+        max_distance,
+        &points,
+        &point_count,
+        error
+    );
+    if (rc != 0) {
+        free(points);
+        return rc;
+    }
+    *out_geometry = (struct spatial_distance_geometry){
+        .type = MYLITE_SPATIAL_GEOMETRY_LINESTRING,
+        .points = points,
+        .point_count = point_count,
+    };
+    *out_has_geometry = true;
+    return 0;
+}
+
+static int simplify_polygon_geometry(
+    const struct spatial_distance_geometry *source,
+    double max_distance,
+    struct spatial_distance_geometry *out_geometry,
+    bool *out_has_geometry,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    struct spatial_distance_ring *rings = NULL;
+    uint32_t ring_count = 0U;
+    int rc = 0;
+
+    if (source == NULL || out_geometry == NULL || out_has_geometry == NULL ||
+        source->ring_count == 0U) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    if ((size_t)source->ring_count > SIZE_MAX / sizeof(*rings)) {
+        return set_nomem_error(error);
+    }
+    rings = calloc(source->ring_count, sizeof(*rings));
+    if (rings == NULL) {
+        return set_nomem_error(error);
+    }
+    for (uint32_t index = 0U; rc == 0 && index < source->ring_count; ++index) {
+        struct spatial_point *points = NULL;
+        uint32_t point_count = 0U;
+        bool has_ring = false;
+
+        rc = simplify_ring_points(
+            source->rings[index].points,
+            source->rings[index].point_count,
+            max_distance,
+            &points,
+            &point_count,
+            &has_ring,
+            error
+        );
+        if (rc != 0) {
+            free(points);
+            break;
+        }
+        if (!has_ring) {
+            free(points);
+            if (index == 0U) {
+                break;
+            }
+            continue;
+        }
+        rings[ring_count] = (struct spatial_distance_ring){
+            .points = points,
+            .point_count = point_count,
+        };
+        ++ring_count;
+    }
+    if (rc != 0) {
+        for (uint32_t index = 0U; index < ring_count; ++index) {
+            free(rings[index].points);
+        }
+        free(rings);
+        return rc;
+    }
+    if (ring_count == 0U) {
+        free(rings);
+        *out_has_geometry = false;
+        return 0;
+    }
+    *out_geometry = (struct spatial_distance_geometry){
+        .type = MYLITE_SPATIAL_GEOMETRY_POLYGON,
+        .rings = rings,
+        .ring_count = ring_count,
+    };
+    *out_has_geometry = true;
+    return 0;
+}
+
+static int simplify_collection_geometry(
+    const struct spatial_distance_geometry *source,
+    double max_distance,
+    struct spatial_distance_geometry *out_geometry,
+    bool *out_has_geometry,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    struct spatial_distance_geometry *children = NULL;
+    uint32_t child_count = 0U;
+    int rc = 0;
+
+    if (source == NULL || out_geometry == NULL || out_has_geometry == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    if (source->child_count == 0U) {
+        *out_has_geometry = false;
+        return 0;
+    }
+    if ((size_t)source->child_count > SIZE_MAX / sizeof(*children)) {
+        return set_nomem_error(error);
+    }
+    children = calloc(source->child_count, sizeof(*children));
+    if (children == NULL) {
+        return set_nomem_error(error);
+    }
+    for (uint32_t index = 0U; rc == 0 && index < source->child_count; ++index) {
+        bool has_child = false;
+
+        rc = simplify_geometry(
+            &source->children[index],
+            max_distance,
+            &children[child_count],
+            &has_child,
+            error,
+            function_name
+        );
+        if (rc == 0 && has_child) {
+            ++child_count;
+        } else if (rc == 0) {
+            distance_geometry_deinit(&children[child_count]);
+        }
+    }
+    if (rc != 0) {
+        for (uint32_t index = 0U; index < source->child_count; ++index) {
+            distance_geometry_deinit(&children[index]);
+        }
+        free(children);
+        return rc;
+    }
+    if (child_count == 0U) {
+        free(children);
+        *out_has_geometry = false;
+        return 0;
+    }
+    *out_geometry = (struct spatial_distance_geometry){
+        .type = source->type,
+        .children = children,
+        .child_count = child_count,
+    };
+    *out_has_geometry = true;
+    return 0;
+}
+
+static int simplify_points(
+    const struct spatial_point *points,
+    uint32_t point_count,
+    double max_distance,
+    struct spatial_point **out_points,
+    uint32_t *out_point_count,
+    struct mylite_spatial_error *error
+) {
+    bool *keep = NULL;
+    struct spatial_point *simplified = NULL;
+    uint32_t output_count = 0U;
+    uint32_t offset = 0U;
+    int rc = 0;
+
+    if (out_points == NULL || out_point_count == NULL) {
+        return set_invalid_gis_data_error(error, "st_simplify");
+    }
+    *out_points = NULL;
+    *out_point_count = 0U;
+    if (point_count <= 2U) {
+        return simplify_point_copy(points, point_count, out_points, out_point_count, error);
+    }
+    if (points == NULL || (size_t)point_count > SIZE_MAX / sizeof(*keep)) {
+        return set_nomem_error(error);
+    }
+    keep = calloc(point_count, sizeof(*keep));
+    if (keep == NULL) {
+        return set_nomem_error(error);
+    }
+    rc = simplify_keep_mask(points, point_count, max_distance, keep, error);
+    if (rc == 0) {
+        output_count = simplify_kept_point_count(keep, point_count);
+        if (output_count < 2U) {
+            output_count = 2U;
+            keep[0] = true;
+            keep[point_count - 1U] = true;
+        }
+        if ((size_t)output_count > SIZE_MAX / sizeof(*simplified)) {
+            rc = set_nomem_error(error);
+        }
+    }
+    if (rc == 0) {
+        simplified = calloc(output_count, sizeof(*simplified));
+        if (simplified == NULL) {
+            free(keep);
+            return set_nomem_error(error);
+        }
+    }
+    for (uint32_t index = 0U; rc == 0 && index < point_count; ++index) {
+        if (keep[index]) {
+            simplified[offset] = points[index];
+            ++offset;
+        }
+    }
+    free(keep);
+    if (rc != 0) {
+        free(simplified);
+        return rc;
+    }
+    *out_points = simplified;
+    *out_point_count = offset;
+    return 0;
+}
+
+static int simplify_ring_points(
+    const struct spatial_point *points,
+    uint32_t point_count,
+    double max_distance,
+    struct spatial_point **out_points,
+    uint32_t *out_point_count,
+    bool *out_has_ring,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_point *simplified = NULL;
+    uint32_t simplified_count = 0U;
+    int rc = 0;
+
+    if (out_points == NULL || out_point_count == NULL || out_has_ring == NULL) {
+        return set_invalid_gis_data_error(error, "st_simplify");
+    }
+    *out_points = NULL;
+    *out_point_count = 0U;
+    *out_has_ring = false;
+    if (points == NULL || point_count < 4U) {
+        return 0;
+    }
+    rc = simplify_points(points, point_count, max_distance, &simplified, &simplified_count, error);
+    if (rc != 0) {
+        free(simplified);
+        return rc;
+    }
+    if (simplified_count < 4U ||
+        !spatial_points_are_equal(&simplified[0], &simplified[simplified_count - 1U]) ||
+        !simplify_ring_is_valid(simplified, simplified_count)) {
+        free(simplified);
+        return 0;
+    }
+    simplify_ring_canonicalize(simplified, simplified_count);
+    *out_points = simplified;
+    *out_point_count = simplified_count;
+    *out_has_ring = true;
+    return 0;
+}
+
+static int simplify_point_copy(
+    const struct spatial_point *points,
+    uint32_t point_count,
+    struct spatial_point **out_points,
+    uint32_t *out_point_count,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_point *copy = NULL;
+
+    if (point_count != 0U && points == NULL) {
+        return set_invalid_gis_data_error(error, "st_simplify");
+    }
+    if ((size_t)point_count > SIZE_MAX / sizeof(*copy)) {
+        return set_nomem_error(error);
+    }
+    copy = calloc(point_count == 0U ? 1U : point_count, sizeof(*copy));
+    if (copy == NULL) {
+        return set_nomem_error(error);
+    }
+    if (point_count != 0U) {
+        memcpy(copy, points, (size_t)point_count * sizeof(*copy));
+    }
+    *out_points = copy;
+    *out_point_count = point_count;
+    return 0;
+}
+
+static int simplify_keep_mask(
+    const struct spatial_point *points,
+    uint32_t point_count, // NOLINT(bugprone-easily-swappable-parameters)
+    double max_distance,
+    bool *keep,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_simplify_range *ranges = NULL;
+    uint32_t range_count = 0U;
+    int rc = 0;
+
+    if (points == NULL || keep == NULL || point_count < 2U) {
+        return set_invalid_gis_data_error(error, "st_simplify");
+    }
+    if ((size_t)point_count > SIZE_MAX / sizeof(*ranges)) {
+        return set_nomem_error(error);
+    }
+    ranges = calloc(point_count, sizeof(*ranges));
+    if (ranges == NULL) {
+        return set_nomem_error(error);
+    }
+    keep[0] = true;
+    keep[point_count - 1U] = true;
+    if (!simplify_range_push(
+            ranges,
+            point_count,
+            &range_count,
+            (struct spatial_simplify_range){.first = 0U, .last = point_count - 1U}
+        )) {
+        rc = set_nomem_error(error);
+    }
+    while (rc == 0 && range_count != 0U) {
+        struct spatial_simplify_range range = ranges[range_count - 1U];
+        struct spatial_segment segment = {
+            .start = points[range.first],
+            .end = points[range.last],
+        };
+        double farthest_distance = -1.0;
+        uint32_t farthest_index = range.first;
+
+        --range_count;
+        if (range.last <= range.first + 1U) {
+            continue;
+        }
+        for (uint32_t index = range.first + 1U; index < range.last; ++index) {
+            double distance = distance_point_to_segment(&points[index], &segment);
+
+            if (distance > farthest_distance) {
+                farthest_distance = distance;
+                farthest_index = index;
+            }
+        }
+        if (farthest_distance > max_distance) {
+            keep[farthest_index] = true;
+            if (!simplify_range_push(
+                    ranges,
+                    point_count,
+                    &range_count,
+                    (struct spatial_simplify_range){
+                        .first = range.first,
+                        .last = farthest_index,
+                    }
+                ) ||
+                !simplify_range_push(
+                    ranges,
+                    point_count,
+                    &range_count,
+                    (struct spatial_simplify_range){
+                        .first = farthest_index,
+                        .last = range.last,
+                    }
+                )) {
+                rc = set_nomem_error(error);
+            }
+        }
+    }
+    free(ranges);
+    return rc;
+}
+
+static bool simplify_range_push(
+    struct spatial_simplify_range *ranges,
+    uint32_t capacity,
+    uint32_t *io_count,
+    struct spatial_simplify_range range
+) {
+    if (ranges == NULL || io_count == NULL || *io_count >= capacity) {
+        return false;
+    }
+    ranges[*io_count] = range;
+    ++(*io_count);
+    return true;
+}
+
+static uint32_t simplify_kept_point_count(const bool *keep, uint32_t point_count) {
+    uint32_t kept_count = 0U;
+
+    if (keep == NULL) {
+        return 0U;
+    }
+    for (uint32_t index = 0U; index < point_count; ++index) {
+        if (keep[index]) {
+            ++kept_count;
+        }
+    }
+    return kept_count;
+}
+
+static void simplify_ring_canonicalize(struct spatial_point *points, uint32_t point_count) {
+    struct spatial_point *rotated = NULL;
+    uint32_t unique_count = 0U;
+    uint32_t start = 0U;
+
+    if (points == NULL || point_count < 2U) {
+        return;
+    }
+    unique_count = point_count - 1U;
+    for (uint32_t index = 1U; index < unique_count; ++index) {
+        if (points[index].coordinate_x > points[start].coordinate_x ||
+            (points[index].coordinate_x == points[start].coordinate_x &&
+             points[index].coordinate_y > points[start].coordinate_y)) {
+            start = index;
+        }
+    }
+    if (start == 0U) {
+        return;
+    }
+    rotated = calloc(point_count, sizeof(*rotated));
+    if (rotated == NULL) {
+        return;
+    }
+    for (uint32_t index = 0U; index < unique_count; ++index) {
+        rotated[index] = points[(start + index) % unique_count];
+    }
+    rotated[unique_count] = rotated[0];
+    memcpy(points, rotated, (size_t)point_count * sizeof(*points));
+    free(rotated);
+}
+
+static bool simplify_ring_is_valid(const struct spatial_point *points, uint32_t point_count) {
+    struct spatial_distance_ring ring = {
+        .points = (struct spatial_point *)points,
+        .point_count = point_count,
+    };
+
+    return points != NULL && spatial_ring_has_noncollinear_points(&ring);
+}
+
+static int make_internal_geometry_from_distance_geometry(
+    uint32_t srid,
+    const struct spatial_distance_geometry *geometry,
+    unsigned char **out_bytes,
+    size_t *out_byte_count,
+    struct mylite_spatial_error *error
+) {
+    struct spatial_buffer buffer = {0};
+    int rc = append_internal_prefix(&buffer, srid);
+
+    if (rc == 0) {
+        rc = append_distance_geometry_wkb(&buffer, geometry);
+    }
+    if (rc != 0) {
+        spatial_buffer_deinit(&buffer);
+        return set_nomem_error(error);
+    }
+    *out_bytes = buffer.bytes;
+    *out_byte_count = buffer.size;
+    return 0;
+}
+
+static int append_distance_geometry_wkb(
+    struct spatial_buffer *buffer,
+    const struct spatial_distance_geometry *geometry
+) {
+    int rc = 0;
+
+    if (buffer == NULL || geometry == NULL) {
+        return -1;
+    }
+    rc = spatial_buffer_append_byte(buffer, 1U);
+    if (rc == 0) {
+        rc = spatial_buffer_append_u32_le(buffer, (uint32_t)geometry->type);
+    }
+    switch (geometry->type) {
+    case MYLITE_SPATIAL_GEOMETRY_POINT:
+        if (rc == 0) {
+            rc = spatial_buffer_append_double_le(buffer, geometry->point.coordinate_x);
+        }
+        if (rc == 0) {
+            rc = spatial_buffer_append_double_le(buffer, geometry->point.coordinate_y);
+        }
+        return rc;
+    case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
+        if (rc == 0) {
+            rc = spatial_buffer_append_u32_le(buffer, geometry->point_count);
+        }
+        if (rc == 0) {
+            rc = append_distance_geometry_points(buffer, geometry->points, geometry->point_count);
+        }
+        return rc;
+    case MYLITE_SPATIAL_GEOMETRY_POLYGON:
+        if (rc == 0) {
+            rc = spatial_buffer_append_u32_le(buffer, geometry->ring_count);
+        }
+        for (uint32_t index = 0U; rc == 0 && index < geometry->ring_count; ++index) {
+            rc = spatial_buffer_append_u32_le(buffer, geometry->rings[index].point_count);
+            if (rc == 0) {
+                rc = append_distance_geometry_points(
+                    buffer,
+                    geometry->rings[index].points,
+                    geometry->rings[index].point_count
+                );
+            }
+        }
+        return rc;
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOINT:
+    case MYLITE_SPATIAL_GEOMETRY_MULTILINESTRING:
+    case MYLITE_SPATIAL_GEOMETRY_MULTIPOLYGON:
+    case MYLITE_SPATIAL_GEOMETRY_GEOMETRYCOLLECTION:
+        if (rc == 0) {
+            rc = spatial_buffer_append_u32_le(buffer, geometry->child_count);
+        }
+        for (uint32_t index = 0U; rc == 0 && index < geometry->child_count; ++index) {
+            rc = append_distance_geometry_wkb(buffer, &geometry->children[index]);
+        }
+        return rc;
+    default:
+        break;
+    }
+    return -1;
+}
+
+static int append_distance_geometry_points(
+    struct spatial_buffer *buffer,
+    const struct spatial_point *points,
+    uint32_t point_count
+) {
+    int rc = 0;
+
+    if (point_count != 0U && points == NULL) {
+        return -1;
+    }
+    for (uint32_t index = 0U; rc == 0 && index < point_count; ++index) {
+        rc = spatial_buffer_append_double_le(buffer, points[index].coordinate_x);
+        if (rc == 0) {
+            rc = spatial_buffer_append_double_le(buffer, points[index].coordinate_y);
+        }
+    }
+    return rc;
+}
+
+static int argument_simplify_distance(
+    const struct mylite_spatial_argument *argument,
+    double *out_value,
+    struct mylite_spatial_error *error,
+    const char *function_name
+) {
+    char *text = NULL;
+    char *end = NULL;
+    double value = 0.0;
+
+    if (argument == NULL || out_value == NULL) {
+        return set_invalid_gis_data_error(error, function_name);
+    }
+    if (argument->has_numeric) {
+        if (!isfinite(argument->numeric)) {
+            return set_wrong_arguments_error(error, function_name);
+        }
+        *out_value = argument->numeric;
+        return 0;
+    }
+    if (argument->byte_count == SIZE_MAX) {
+        return set_nomem_error(error);
+    }
+    text = (char *)malloc(argument->byte_count + 1U);
+    if (text == NULL) {
+        return set_nomem_error(error);
+    }
+    if (argument->byte_count != 0U) {
+        memcpy(text, argument->bytes, argument->byte_count);
+    }
+    text[argument->byte_count] = '\0';
+    errno = 0;
+    value = strtod(text, &end);
+    if (end == text) {
+        value = 0.0;
+    } else if (errno == ERANGE || !isfinite(value)) {
+        free(text);
+        return set_wrong_arguments_error(error, function_name);
+    }
+    free(text);
+    *out_value = value;
+    return 0;
 }
 
 static int distance_geometry_read(

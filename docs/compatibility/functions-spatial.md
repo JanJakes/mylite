@@ -7,10 +7,11 @@ MySQL-specific geometry constructors, WKT/WKB conversion, geometry type/SRID
 readback, point coordinate access, core property/accessor functions, Cartesian
 length/area/distance/envelope helpers, spatial collection aggregation, SRID-0
 spherical distance, centroid, convex hull, discrete trajectory distances,
-LineString interpolation, simplicity and validity checks, coordinate swapping,
-envelope construction, and MBR predicates in scalar, row-backed, and descriptor
-DML value contexts. SRID-0 `ST_Disjoint()` and `ST_Intersects()` cover
-representable object-shape disjoint/intersection checks, and SRID-0
+LineString interpolation, geometry simplification, simplicity and validity
+checks, coordinate swapping, envelope construction, and MBR predicates in
+scalar, row-backed, and descriptor DML value contexts. SRID-0 `ST_Disjoint()`
+and `ST_Intersects()` cover representable object-shape
+disjoint/intersection checks, and SRID-0
 `ST_Contains()` / `ST_Within()` cover boundary-sensitive containment for
 representable Point, LineString, Polygon, and child-decomposed collection
 values. SRID-0 `ST_Equals()` covers object-shape equality for the same
@@ -108,7 +109,7 @@ spatial search.
 | `ST_PointN()` | ✅ | Return one-based LineString point |
 | `ST_PolyFromText(), ST_PolygonFromText()` | ✅ | Construct SRID-0 Polygon from WKT |
 | `ST_PolyFromWKB(), ST_PolygonFromWKB()` | ✅ | Construct SRID-0 Polygon from WKB |
-| `ST_Simplify()` | ❌ | Return simplified geometry |
+| `ST_Simplify()` | ✅ | SRID-0 Douglas-Peucker simplification for representable geometry values |
 | `ST_SRID()` | ✅ | Return spatial reference system ID for geometry |
 | `ST_StartPoint()` | ✅ | Return LineString start point |
 | `ST_SwapXY()` | ✅ | Return SRID-preserving X/Y-swapped geometry |

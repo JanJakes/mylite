@@ -12,23 +12,23 @@ no-argument procedure bridge for a single `SELECT` body.
 | --- | --- | --- |
 | `DO` | 🟡 | Limited expression-execution statement over the current no-source scalar expression domain, including supported session scalar/system-variable reads, integer/`NULL`/boolean literals, control-flow helpers, signed-64 arithmetic, top-level scalar `/` division, comparison, logical, and scalar-`IS`, limited unsigned-64 numeric bitwise operators, limited numeric `ABS()`, `SIGN()`, `CEIL()`/`CEILING()`/`FLOOR()`, limited integer-domain `ROUND()` including the current signed-64 negative-place subset, `BIT_COUNT()`, `BIN()`, `OCT()`, `CONV()`, `SQRT()`, `DEGREES()`, `RADIANS()`, `ACOS()`, `ASIN()`, `SIN()`, `COS()`, `TAN()`, `COT()`, `ATAN()`, and `ATAN2()`, limited `CRC32()`, `FORMAT()`, and `TRUNCATE()`, limited string length and ASCII string case functions, limited top-level `PI()` constant, and top-level `CASE`; returns no result rows, affected rows `0`, and evaluated-expression warnings for the admitted subset; no aliases, table-backed evaluation, variables, assignment, subqueries, parameters, general string/decimal/float expressions outside the documented scalar comparison subset, hex/bit expressions, stored-program blocks, or arbitrary SQLite pass-through |
 | `SELECT ... INTO var_list` | 🟡 | Top-level supported `SELECT ... INTO @user_variable[, ...]` assignment only; no stored-program local variables, routine scope, cursors, handlers, or `OUTFILE`/`DUMPFILE`. See [baseline SELECT INTO user variables](../specs/baseline-select-into-user-variables/specs.md) |
-| `BEGIN ... END` | ❌ | Stored-program block scope |
-| Statement labels | ❌ | LEAVE/ITERATE label binding |
-| `DECLARE` local variables | ❌ | Local variables and scope |
-| `DECLARE ... CONDITION` | ❌ | Named condition declarations |
-| `DECLARE ... CURSOR` | ❌ | Cursor declaration over SELECT statements |
-| `DECLARE ... HANDLER` | ❌ | Handler declaration semantics |
-| `CASE` statement | ❌ | Stored-program CASE statement semantics |
-| `IF` statement | ❌ | Stored-program IF/ELSEIF/ELSE semantics |
-| `LOOP` | ❌ | Stored-program LOOP semantics |
-| `REPEAT` | ❌ | Stored-program REPEAT UNTIL semantics |
-| `WHILE` | ❌ | Stored-program WHILE semantics |
-| `ITERATE` | ❌ | Loop iteration transfer |
-| `LEAVE` | ❌ | Block/loop exit transfer |
-| `RETURN` | ❌ | Stored-function return semantics |
-| `OPEN` cursor | ❌ | Cursor open lifecycle |
-| `FETCH` cursor | ❌ | Cursor fetch into variables and NOT FOUND handling |
-| `CLOSE` cursor | ❌ | Cursor close lifecycle |
+| `BEGIN ... END` | ⚪ | Recognized inside stored-program DDL placeholders with unsupported diagnostics; no general block scope. See [baseline stored-program body placeholders](../specs/baseline-stored-program-body-placeholders/specs.md) |
+| Statement labels | ⚪ | Recognized inside stored-program DDL placeholders with unsupported diagnostics; no label binding |
+| `DECLARE` local variables | ⚪ | Recognized inside stored-program DDL placeholders with unsupported diagnostics; no local variable scope |
+| `DECLARE ... CONDITION` | ⚪ | Recognized inside stored-program DDL placeholders with unsupported diagnostics; no named condition semantics |
+| `DECLARE ... CURSOR` | ⚪ | Recognized inside stored-program DDL placeholders with unsupported diagnostics; no cursor declaration lifecycle |
+| `DECLARE ... HANDLER` | ⚪ | Recognized inside stored-program DDL placeholders with unsupported diagnostics; no handler dispatch |
+| `CASE` statement | ⚪ | Recognized inside stored-program DDL placeholders with unsupported diagnostics; no statement execution |
+| `IF` statement | ⚪ | Recognized inside stored-program DDL placeholders with unsupported diagnostics; no branch execution |
+| `LOOP` | ⚪ | Recognized inside stored-program DDL placeholders with unsupported diagnostics; no loop execution |
+| `REPEAT` | ⚪ | Recognized inside stored-program DDL placeholders with unsupported diagnostics; no loop execution |
+| `WHILE` | ⚪ | Recognized inside stored-program DDL placeholders with unsupported diagnostics; no loop execution |
+| `ITERATE` | ⚪ | Recognized inside stored-program DDL placeholders with unsupported diagnostics; no control transfer |
+| `LEAVE` | ⚪ | Recognized inside stored-program DDL placeholders with unsupported diagnostics; no control transfer |
+| `RETURN` | ⚪ | Recognized inside stored-function DDL placeholders with unsupported diagnostics; no function return execution |
+| `OPEN` cursor | ⚪ | Recognized inside stored-program DDL placeholders with unsupported diagnostics; no cursor open lifecycle |
+| `FETCH` cursor | ⚪ | Recognized inside stored-program DDL placeholders with unsupported diagnostics; no cursor fetch lifecycle |
+| `CLOSE` cursor | ⚪ | Recognized inside stored-program DDL placeholders with unsupported diagnostics; no cursor close lifecycle |
 | `GET DIAGNOSTICS` | ⚪ | Parsed and rejected with unsupported utility diagnostics; no current or stacked diagnostics assignment surface |
 | `SIGNAL` | ⚪ | Parsed as an unsupported stored-program/condition-handling placeholder; no user-raised SQLSTATE, warning/error, or condition item semantics |
 | `RESIGNAL` | ⚪ | Parsed as an unsupported stored-program/condition-handling placeholder; no handler rethrow, active-handler validation, or diagnostics mutation |

@@ -178,6 +178,24 @@ static int test_stored_program_placeholder_errors(void) {
         "CREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW SET NEW.id = 1",
         "CREATE EVENT e ON SCHEDULE EVERY 1 DAY DO SELECT 1",
         "SET sql_mode = default; CREATE PROCEDURE p() BEGIN DECLARE y INT; END",
+        ("CREATE PROCEDURE body_features() BEGIN "
+         "DECLARE done BOOL DEFAULT FALSE; "
+         "DECLARE v INT DEFAULT 0; "
+         "DECLARE no_more_rows CONDITION FOR SQLSTATE '02000'; "
+         "DECLARE cur CURSOR FOR SELECT id FROM t; "
+         "DECLARE CONTINUE HANDLER FOR no_more_rows SET done = TRUE; "
+         "body_label: BEGIN "
+         "IF v = 0 THEN SET v = 1; ELSEIF v = 1 THEN SET v = 2; "
+         "ELSE SET v = 3; END IF; "
+         "CASE v WHEN 1 THEN SET v = 2; ELSE SET v = 4; END CASE; "
+         "loop_label: LOOP SET v = v + 1; "
+         "IF v > 4 THEN LEAVE loop_label; END IF; "
+         "ITERATE loop_label; END LOOP loop_label; "
+         "REPEAT SET v = v - 1; UNTIL v = 0 END REPEAT; "
+         "WHILE v < 1 DO SET v = v + 1; END WHILE; "
+         "OPEN cur; FETCH cur INTO v; CLOSE cur; "
+         "END body_label; END"),
+        "CREATE FUNCTION f_body() RETURNS INT DETERMINISTIC NO SQL BEGIN RETURN 1; END",
         "ALTER DEFINER=mysqltest_u1@localhost EVENT e1 ON SCHEDULE EVERY 1 HOUR",
         "SIGNAL SQLSTATE '01000'",
         "RESIGNAL",

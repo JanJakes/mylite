@@ -116,3 +116,9 @@ This is parser admission only. Stored-program execution remains unsupported
 except for the existing limited no-argument single-`SELECT` procedure bridge.
 `SIGNAL` and `RESIGNAL` move from raw parser rejection to parse-and-error
 placeholders.
+
+The detailed body-construct compatibility rows are tracked by
+`docs/specs/baseline-stored-program-body-placeholders/specs.md`, which keeps the
+same unsupported stored-program placeholder boundary while documenting
+representative `BEGIN`, declaration, control-flow, cursor, handler, and
+`RETURN` syntax.

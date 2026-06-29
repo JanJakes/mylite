@@ -91,6 +91,60 @@ DROP PROCEDURE p//
 DROP DATABASE ${DATABASE}//"
 
 expect_output \
+    "stored program body statement definitions" \
+    "" \
+    "CREATE DATABASE ${DATABASE};
+USE ${DATABASE};
+DELIMITER //
+SET sql_mode = default//
+CREATE TABLE t(id INT)//
+CREATE PROCEDURE body_features()
+BEGIN
+  DECLARE done BOOL DEFAULT FALSE;
+  DECLARE v INT DEFAULT 0;
+  DECLARE no_more_rows CONDITION FOR SQLSTATE '02000';
+  DECLARE cur CURSOR FOR SELECT id FROM t;
+  DECLARE CONTINUE HANDLER FOR no_more_rows SET done = TRUE;
+  body_label: BEGIN
+    IF v = 0 THEN
+      SET v = 1;
+    ELSEIF v = 1 THEN
+      SET v = 2;
+    ELSE
+      SET v = 3;
+    END IF;
+    CASE v
+      WHEN 1 THEN SET v = 2;
+      ELSE SET v = 4;
+    END CASE;
+    loop_label: LOOP
+      SET v = v + 1;
+      IF v > 4 THEN
+        LEAVE loop_label;
+      END IF;
+      ITERATE loop_label;
+    END LOOP loop_label;
+    REPEAT
+      SET v = v - 1;
+    UNTIL v = 0 END REPEAT;
+    WHILE v < 1 DO
+      SET v = v + 1;
+    END WHILE;
+    OPEN cur;
+    FETCH cur INTO v;
+    CLOSE cur;
+  END body_label;
+END//
+CREATE FUNCTION f_body() RETURNS INT DETERMINISTIC NO SQL
+BEGIN
+  RETURN 1;
+END//
+DROP FUNCTION f_body//
+DROP PROCEDURE body_features//
+DROP TABLE t//
+DROP DATABASE ${DATABASE}//"
+
+expect_output \
     "top-level signal warning" \
     "$(printf '%b' 'Warning\t1642\tUnhandled user-defined warning condition\n1')" \
     "SIGNAL SQLSTATE '01000'; SHOW WARNINGS; SELECT @@warning_count;"

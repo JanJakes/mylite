@@ -159,11 +159,35 @@ static int test_unsupported_stored_program_statement_forms(void) {
             .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,
         },
         {
+            .sql = ("CREATE PROCEDURE body_features() BEGIN "
+                    "DECLARE done BOOL DEFAULT FALSE; "
+                    "DECLARE v INT DEFAULT 0; "
+                    "DECLARE no_more_rows CONDITION FOR SQLSTATE '02000'; "
+                    "DECLARE cur CURSOR FOR SELECT id FROM t; "
+                    "DECLARE CONTINUE HANDLER FOR no_more_rows SET done = TRUE; "
+                    "body_label: BEGIN "
+                    "IF v = 0 THEN SET v = 1; ELSEIF v = 1 THEN SET v = 2; "
+                    "ELSE SET v = 3; END IF; "
+                    "CASE v WHEN 1 THEN SET v = 2; ELSE SET v = 4; END CASE; "
+                    "loop_label: LOOP SET v = v + 1; "
+                    "IF v > 4 THEN LEAVE loop_label; END IF; "
+                    "ITERATE loop_label; END LOOP loop_label; "
+                    "REPEAT SET v = v - 1; UNTIL v = 0 END REPEAT; "
+                    "WHILE v < 1 DO SET v = v + 1; END WHILE; "
+                    "OPEN cur; FETCH cur INTO v; CLOSE cur; "
+                    "END body_label; END"),
+            .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,
+        },
+        {
             .sql = "DROP PROCEDURE IF EXISTS p; CREATE PROCEDURE p() SELECT 1; CALL p()",
             .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,
         },
         {
             .sql = "CREATE FUNCTION f() RETURNS INT RETURN 1",
+            .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,
+        },
+        {
+            .sql = "CREATE FUNCTION f_body() RETURNS INT DETERMINISTIC NO SQL BEGIN RETURN 1; END",
             .kind = MYLITE_SQL_AST_UNSUPPORTED_STORED_PROGRAM_STATEMENT,
         },
         {

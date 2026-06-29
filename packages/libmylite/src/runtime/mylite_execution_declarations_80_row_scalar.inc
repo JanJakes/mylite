@@ -419,6 +419,16 @@ static const struct mylite_sql_ast_node *window_function_null_treatment_node(
     const struct mylite_sql_ast_node *expression
 );
 static bool window_function_has_arguments(enum planned_window_function_kind kind);
+static bool window_function_is_core_aggregate(enum planned_window_function_kind kind);
+static bool window_function_is_numeric_core_aggregate(enum planned_window_function_kind kind);
+static bool aggregate_window_function_is_distinct(const struct mylite_sql_ast_node *expression);
+static const struct mylite_sql_ast_node *aggregate_window_argument_node(
+    const struct mylite_sql_ast_node *expression
+);
+static const struct mylite_sql_ast_node *aggregate_window_spec_node(
+    const struct mylite_sql_ast_node *expression
+);
+static int set_aggregate_window_distinct_unsupported_error(struct mylite_db *database);
 static bool window_function_accepts_ignored_frame_clause(enum planned_window_function_kind kind);
 static bool window_function_uses_frame_clause(enum planned_window_function_kind kind);
 static int plan_row_scalar_window_function_arguments(
@@ -430,6 +440,24 @@ static int plan_row_scalar_window_function_arguments(
     const struct mylite_catalog_column_descriptor *table_columns,
     size_t table_column_count,
     struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_aggregate_window_function_arguments(
+    struct mylite_db *database,
+    enum planned_window_function_kind kind,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int validate_aggregate_window_numeric_argument(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct planned_row_scalar_expression *out_expression
+);
+static bool aggregate_window_numeric_argument_is_supported(
+    const struct planned_row_scalar_expression *argument
 );
 static int validate_window_function_argument_count(
     struct mylite_db *database,

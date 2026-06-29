@@ -116,7 +116,7 @@ static int execute_select_statement(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    if (select_statement_has_aggregate_window_expression(statement)) {
+    if (select_statement_has_unsupported_aggregate_window_expression(statement)) {
         set_unsupported_error(database, "aggregate window functions are not supported");
         return MYLITE_ERROR;
     }
@@ -286,13 +286,15 @@ static int execute_select_statement(
     );
 }
 
-static bool select_statement_has_aggregate_window_expression(
+static bool select_statement_has_unsupported_aggregate_window_expression(
     const struct mylite_sql_ast_node *statement
 ) {
-    return ast_node_has_aggregate_window_expression(statement);
+    return ast_node_has_unsupported_aggregate_window_expression(statement);
 }
 
-static bool ast_node_has_aggregate_window_expression(const struct mylite_sql_ast_node *node) {
+static bool ast_node_has_unsupported_aggregate_window_expression(
+    const struct mylite_sql_ast_node *node
+) {
     const struct mylite_sql_ast_node *child = NULL;
 
     if (node == NULL) {
@@ -302,14 +304,14 @@ static bool ast_node_has_aggregate_window_expression(const struct mylite_sql_ast
         child = child_at(node, 0U);
         while (child != NULL) {
             if (ast_node_is_window_clause_marker(child)) {
-                return true;
+                return !row_scalar_expression_is_window_function(node);
             }
             child = child->next_sibling;
         }
     }
     child = child_at(node, 0U);
     while (child != NULL) {
-        if (ast_node_has_aggregate_window_expression(child)) {
+        if (ast_node_has_unsupported_aggregate_window_expression(child)) {
             return true;
         }
         child = child->next_sibling;

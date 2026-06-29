@@ -763,6 +763,10 @@
     COMMAND mylite_runtime_named_window_definitions_test
   )
   add_test(
+    NAME libmylite.runtime.core_aggregate_window_functions
+    COMMAND mylite_runtime_core_aggregate_window_functions_test
+  )
+  add_test(
     NAME libmylite.runtime.window_rank_navigation_functions
     COMMAND mylite_runtime_window_rank_navigation_functions_test
   )

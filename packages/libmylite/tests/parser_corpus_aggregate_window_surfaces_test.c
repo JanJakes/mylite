@@ -72,6 +72,27 @@ static int test_aggregate_argument_placeholders(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql("SELECT COUNT(NULL) OVER ()", MYLITE_SQL_PARSE_OK, &result);
+    select_list = parser_test_child_at(parser_test_child_at(result.root, 0U), 0U);
+    window_function = parser_test_child_at(parser_test_child_at(select_list, 0U), 0U);
+    failures += parser_test_expect_node(
+        window_function,
+        MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION,
+        "COUNT literal window function"
+    );
+    failures += parser_test_expect_child_count(window_function, 2U, "COUNT window child count");
+    failures += parser_test_expect_literal(
+        parser_test_child_at(window_function, 0U),
+        MYLITE_SQL_AST_LITERAL_NULL,
+        "COUNT literal window argument"
+    );
+    failures += parser_test_expect_node(
+        parser_test_child_at(window_function, 1U),
+        MYLITE_SQL_AST_WINDOW_SPEC,
+        "COUNT literal window spec"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

@@ -5,10 +5,12 @@ static int execute_select_statement(
     bool apply_sql_select_limit,
     mylite_result **out_result
 );
-static bool select_statement_has_aggregate_window_expression(
+static bool select_statement_has_unsupported_aggregate_window_expression(
     const struct mylite_sql_ast_node *statement
 );
-static bool ast_node_has_aggregate_window_expression(const struct mylite_sql_ast_node *node);
+static bool ast_node_has_unsupported_aggregate_window_expression(
+    const struct mylite_sql_ast_node *node
+);
 static bool ast_node_is_aggregate_function(const struct mylite_sql_ast_node *node);
 static bool ast_node_is_generic_aggregate_window_function(const struct mylite_sql_ast_node *node);
 static bool source_span_text_equals_ascii_case_insensitive(

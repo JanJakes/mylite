@@ -38,6 +38,7 @@ int main(void) {
 
 static int test_aggregate_window_surfaces(void) {
     static const char *const supported_sum_rows[] = {"30"};
+    static const char *const supported_sum_window_rows[] = {"2", "2"};
     static const char *const supported_group_concat_rows[] = {"ann|bob"};
     static const char *const supported_group_concat_multi_arg_rows[] = {"ann|,bob|"};
     static const char *const nth_from_first_rows[] = {"1", "1", "2", "1"};
@@ -96,13 +97,14 @@ static int test_aggregate_window_surfaces(void) {
         }
     );
 
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT SUM(1) OVER () FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "aggregate window functions are not supported",
+        (struct expected_query){
+            .sql = "SELECT SUM(1) OVER () FROM numbers",
+            .values = supported_sum_window_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "supported SUM aggregate window subset",
         }
     );
     failures += execute_error(
@@ -111,7 +113,7 @@ static int test_aggregate_window_surfaces(void) {
         (struct expected_sql_error){
             .code = mysql_error_parse,
             .sqlstate = "42000",
-            .message_part = "aggregate window functions are not supported",
+            .message_part = "COUNT() RANGE frame offsets are not supported",
         }
     );
     failures += execute_error(

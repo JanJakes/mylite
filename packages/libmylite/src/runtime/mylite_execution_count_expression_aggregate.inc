@@ -566,11 +566,13 @@ static bool count_expression_aggregate_select_item_is_supported(
     if (expression == NULL) {
         return false;
     }
-    if (expression->kind == MYLITE_SQL_AST_COUNT_STAR_FUNCTION) {
+    if (expression->kind == MYLITE_SQL_AST_COUNT_STAR_FUNCTION &&
+        !aggregate_function_has_window_clause(expression)) {
         *inout_has_count_star = true;
         return true;
     }
     if (expression->kind == MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION &&
+        !aggregate_function_has_window_clause(expression) &&
         count_expression_aggregate_argument(expression) != NULL) {
         *inout_has_expression_count = true;
         return true;
@@ -591,7 +593,9 @@ static const struct mylite_sql_ast_node *count_expression_aggregate_argument(
     }
     child = child_at(expression, 0U);
     while (child != NULL) {
-        if (child->kind != MYLITE_SQL_AST_AGGREGATE_DISTINCT_MODIFIER) {
+        if (child->kind != MYLITE_SQL_AST_AGGREGATE_DISTINCT_MODIFIER &&
+            child->kind != MYLITE_SQL_AST_WINDOW_SPEC &&
+            child->kind != MYLITE_SQL_AST_WINDOW_REFERENCE) {
             if (argument != NULL) {
                 return NULL;
             }

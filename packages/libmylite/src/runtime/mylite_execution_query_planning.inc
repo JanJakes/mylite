@@ -111,6 +111,18 @@ static int plan_row_scalar_special_expression(
     int rc = MYLITE_OK;
 
     *out_handled = true;
+    if (row_scalar_expression_is_window_function(expression)) {
+        return plan_row_scalar_window_function_expression(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            window_definitions,
+            out_expression
+        );
+    }
     if (expression->kind == MYLITE_SQL_AST_COLLATE_EXPRESSION) {
         return plan_row_scalar_collate_expression(
             database,
@@ -1634,6 +1646,10 @@ static int plan_row_scalar_window_function_expression(
         set_parse_error(database, NULL);
         return MYLITE_ERROR;
     }
+    if (window_function_is_core_aggregate(kind) &&
+        aggregate_window_function_is_distinct(expression)) {
+        return set_aggregate_window_distinct_unsupported_error(database);
+    }
     if (null_treatment != NULL && null_treatment->kind == MYLITE_SQL_AST_WINDOW_IGNORE_NULLS) {
         mylite_diagnostics_set_error(
             mylite_connection_diagnostics(database),
@@ -1648,16 +1664,29 @@ static int plan_row_scalar_window_function_expression(
         return MYLITE_ERROR;
     }
 
-    rc = plan_row_scalar_window_function_arguments(
-        database,
-        kind,
-        arguments,
-        has_source,
-        source_context,
-        table_columns,
-        table_column_count,
-        out_expression
-    );
+    if (window_function_is_core_aggregate(kind)) {
+        rc = plan_row_scalar_aggregate_window_function_arguments(
+            database,
+            kind,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    } else {
+        rc = plan_row_scalar_window_function_arguments(
+            database,
+            kind,
+            arguments,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (rc != MYLITE_OK) {
         planned_row_scalar_expression_deinit(out_expression);
         return rc;
@@ -1766,6 +1795,39 @@ static enum planned_window_function_kind planned_window_function_kind_from_ast(
         return PLANNED_WINDOW_FUNCTION_LAST_VALUE;
     case MYLITE_SQL_AST_NTH_VALUE_FUNCTION:
         return PLANNED_WINDOW_FUNCTION_NTH_VALUE;
+    case MYLITE_SQL_AST_COUNT_STAR_FUNCTION:
+        if (aggregate_function_has_window_clause(expression)) {
+            return PLANNED_WINDOW_FUNCTION_COUNT_STAR;
+        }
+        break;
+    case MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION:
+    case MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION:
+    case MYLITE_SQL_AST_COUNT_DISTINCT_COLUMN_FUNCTION:
+    case MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION:
+        if (aggregate_function_has_window_clause(expression)) {
+            return PLANNED_WINDOW_FUNCTION_COUNT_VALUE;
+        }
+        break;
+    case MYLITE_SQL_AST_SUM_AGGREGATE_FUNCTION:
+        if (aggregate_function_has_window_clause(expression)) {
+            return PLANNED_WINDOW_FUNCTION_SUM;
+        }
+        break;
+    case MYLITE_SQL_AST_AVG_AGGREGATE_FUNCTION:
+        if (aggregate_function_has_window_clause(expression)) {
+            return PLANNED_WINDOW_FUNCTION_AVG;
+        }
+        break;
+    case MYLITE_SQL_AST_MIN_AGGREGATE_FUNCTION:
+        if (aggregate_function_has_window_clause(expression)) {
+            return PLANNED_WINDOW_FUNCTION_MIN;
+        }
+        break;
+    case MYLITE_SQL_AST_MAX_AGGREGATE_FUNCTION:
+        if (aggregate_function_has_window_clause(expression)) {
+            return PLANNED_WINDOW_FUNCTION_MAX;
+        }
+        break;
     default:
         break;
     }
@@ -1777,6 +1839,9 @@ static const struct mylite_sql_ast_node *window_function_argument_list_node(
 ) {
     enum planned_window_function_kind kind = planned_window_function_kind_from_ast(expression);
 
+    if (window_function_is_core_aggregate(kind)) {
+        return NULL;
+    }
     if (!window_function_has_arguments(kind)) {
         return NULL;
     }
@@ -1788,6 +1853,9 @@ static const struct mylite_sql_ast_node *window_function_spec_node(
 ) {
     enum planned_window_function_kind kind = planned_window_function_kind_from_ast(expression);
 
+    if (window_function_is_core_aggregate(kind)) {
+        return aggregate_window_spec_node(expression);
+    }
     if (!window_function_has_arguments(kind)) {
         return child_at(expression, 0U);
     }
@@ -1799,6 +1867,9 @@ static const struct mylite_sql_ast_node *window_function_null_treatment_node(
 ) {
     enum planned_window_function_kind kind = planned_window_function_kind_from_ast(expression);
 
+    if (window_function_is_core_aggregate(kind)) {
+        return NULL;
+    }
     if (!window_function_has_arguments(kind)) {
         return NULL;
     }
@@ -1815,6 +1886,12 @@ static bool window_function_has_arguments(enum planned_window_function_kind kind
     case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
         return true;
     case PLANNED_WINDOW_FUNCTION_NONE:
+    case PLANNED_WINDOW_FUNCTION_COUNT_STAR:
+    case PLANNED_WINDOW_FUNCTION_COUNT_VALUE:
+    case PLANNED_WINDOW_FUNCTION_SUM:
+    case PLANNED_WINDOW_FUNCTION_AVG:
+    case PLANNED_WINDOW_FUNCTION_MIN:
+    case PLANNED_WINDOW_FUNCTION_MAX:
     case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
     case PLANNED_WINDOW_FUNCTION_RANK:
     case PLANNED_WINDOW_FUNCTION_DENSE_RANK:
@@ -1823,6 +1900,117 @@ static bool window_function_has_arguments(enum planned_window_function_kind kind
         break;
     }
     return false;
+}
+
+static bool window_function_is_core_aggregate(enum planned_window_function_kind kind) {
+    switch (kind) {
+    case PLANNED_WINDOW_FUNCTION_COUNT_STAR:
+    case PLANNED_WINDOW_FUNCTION_COUNT_VALUE:
+    case PLANNED_WINDOW_FUNCTION_SUM:
+    case PLANNED_WINDOW_FUNCTION_AVG:
+    case PLANNED_WINDOW_FUNCTION_MIN:
+    case PLANNED_WINDOW_FUNCTION_MAX:
+        return true;
+    case PLANNED_WINDOW_FUNCTION_NONE:
+    case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
+    case PLANNED_WINDOW_FUNCTION_RANK:
+    case PLANNED_WINDOW_FUNCTION_DENSE_RANK:
+    case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
+    case PLANNED_WINDOW_FUNCTION_CUME_DIST:
+    case PLANNED_WINDOW_FUNCTION_NTILE:
+    case PLANNED_WINDOW_FUNCTION_LAG:
+    case PLANNED_WINDOW_FUNCTION_LEAD:
+    case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+        break;
+    }
+    return false;
+}
+
+static bool window_function_is_numeric_core_aggregate(enum planned_window_function_kind kind) {
+    switch (kind) {
+    case PLANNED_WINDOW_FUNCTION_SUM:
+    case PLANNED_WINDOW_FUNCTION_AVG:
+    case PLANNED_WINDOW_FUNCTION_MIN:
+    case PLANNED_WINDOW_FUNCTION_MAX:
+        return true;
+    case PLANNED_WINDOW_FUNCTION_NONE:
+    case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
+    case PLANNED_WINDOW_FUNCTION_RANK:
+    case PLANNED_WINDOW_FUNCTION_DENSE_RANK:
+    case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
+    case PLANNED_WINDOW_FUNCTION_CUME_DIST:
+    case PLANNED_WINDOW_FUNCTION_NTILE:
+    case PLANNED_WINDOW_FUNCTION_LAG:
+    case PLANNED_WINDOW_FUNCTION_LEAD:
+    case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+    case PLANNED_WINDOW_FUNCTION_COUNT_STAR:
+    case PLANNED_WINDOW_FUNCTION_COUNT_VALUE:
+        break;
+    }
+    return false;
+}
+
+static bool aggregate_window_function_is_distinct(const struct mylite_sql_ast_node *expression) {
+    if (expression == NULL) {
+        return false;
+    }
+    if (expression->kind == MYLITE_SQL_AST_COUNT_DISTINCT_COLUMN_FUNCTION) {
+        return true;
+    }
+    return aggregate_function_is_distinct(expression);
+}
+
+static const struct mylite_sql_ast_node *aggregate_window_argument_node(
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_ast_node *child = NULL;
+
+    if (expression == NULL) {
+        return NULL;
+    }
+    child = child_at(expression, 0U);
+    while (child != NULL) {
+        if (child->kind != MYLITE_SQL_AST_AGGREGATE_DISTINCT_MODIFIER &&
+            child->kind != MYLITE_SQL_AST_WINDOW_SPEC &&
+            child->kind != MYLITE_SQL_AST_WINDOW_REFERENCE) {
+            return child;
+        }
+        child = child->next_sibling;
+    }
+    return NULL;
+}
+
+static const struct mylite_sql_ast_node *aggregate_window_spec_node(
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_ast_node *child = NULL;
+
+    if (expression == NULL) {
+        return NULL;
+    }
+    child = child_at(expression, 0U);
+    while (child != NULL) {
+        if (child->kind == MYLITE_SQL_AST_WINDOW_SPEC ||
+            child->kind == MYLITE_SQL_AST_WINDOW_REFERENCE) {
+            return child;
+        }
+        child = child->next_sibling;
+    }
+    return NULL;
+}
+
+static int set_aggregate_window_distinct_unsupported_error(struct mylite_db *database) {
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_not_supported_yet,
+        "42000",
+        "This version of MySQL doesn't yet support '<window function>(DISTINCT ..)'"
+    );
+    return MYLITE_ERROR;
 }
 
 static bool window_function_accepts_ignored_frame_clause(enum planned_window_function_kind kind) {
@@ -1840,6 +2028,12 @@ static bool window_function_accepts_ignored_frame_clause(enum planned_window_fun
     case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
     case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
     case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+    case PLANNED_WINDOW_FUNCTION_COUNT_STAR:
+    case PLANNED_WINDOW_FUNCTION_COUNT_VALUE:
+    case PLANNED_WINDOW_FUNCTION_SUM:
+    case PLANNED_WINDOW_FUNCTION_AVG:
+    case PLANNED_WINDOW_FUNCTION_MIN:
+    case PLANNED_WINDOW_FUNCTION_MAX:
         break;
     }
     return false;
@@ -1850,6 +2044,12 @@ static bool window_function_uses_frame_clause(enum planned_window_function_kind 
     case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
     case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
     case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+    case PLANNED_WINDOW_FUNCTION_COUNT_STAR:
+    case PLANNED_WINDOW_FUNCTION_COUNT_VALUE:
+    case PLANNED_WINDOW_FUNCTION_SUM:
+    case PLANNED_WINDOW_FUNCTION_AVG:
+    case PLANNED_WINDOW_FUNCTION_MIN:
+    case PLANNED_WINDOW_FUNCTION_MAX:
         return true;
     case PLANNED_WINDOW_FUNCTION_NONE:
     case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
@@ -1925,6 +2125,108 @@ static int plan_row_scalar_window_function_arguments(
     return rc;
 }
 
+static int plan_row_scalar_aggregate_window_function_arguments(
+    struct mylite_db *database,
+    enum planned_window_function_kind kind,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *argument = aggregate_window_argument_node(expression);
+    const char *function_name = window_function_display_name(kind);
+    int rc = MYLITE_OK;
+
+    if (kind == PLANNED_WINDOW_FUNCTION_COUNT_STAR) {
+        if (argument != NULL) {
+            set_parse_error(database, NULL);
+            return MYLITE_ERROR;
+        }
+        return MYLITE_OK;
+    }
+    if (argument == NULL || function_name == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(1U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->argument_count = 1U;
+
+    rc = plan_row_scalar_window_function_value_argument(
+        database,
+        function_name,
+        argument,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        &out_expression->arguments[0]
+    );
+    if (rc == MYLITE_OK && window_function_is_numeric_core_aggregate(kind)) {
+        rc = validate_aggregate_window_numeric_argument(database, function_name, out_expression);
+    }
+    return rc;
+}
+
+static int validate_aggregate_window_numeric_argument(
+    struct mylite_db *database,
+    const char *function_name,
+    const struct planned_row_scalar_expression *out_expression
+) {
+    const struct planned_row_scalar_expression *argument = NULL;
+
+    if (out_expression == NULL || out_expression->argument_count != 1U ||
+        out_expression->arguments == NULL || function_name == NULL) {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    argument = &out_expression->arguments[0];
+    if (aggregate_window_numeric_argument_is_supported(argument)) {
+        return MYLITE_OK;
+    }
+
+    set_window_function_unsupported_error(
+        database,
+        function_name,
+        "aggregate-window arguments support only signed 64-bit integer expressions"
+    );
+    return MYLITE_ERROR;
+}
+
+static bool aggregate_window_numeric_argument_is_supported(
+    const struct planned_row_scalar_expression *argument
+) {
+    if (argument == NULL) {
+        return false;
+    }
+    switch (argument->kind) {
+    case PLANNED_ROW_SCALAR_EXPRESSION_VALUE:
+        return argument->value.is_null ||
+               (!argument->value.is_text && !argument->value.is_blob && !argument->value.is_real);
+    case PLANNED_ROW_SCALAR_EXPRESSION_COLUMN:
+        return strcmp(argument->column.physical_type, "INTEGER") == 0;
+    case PLANNED_ROW_SCALAR_EXPRESSION_INTEGER_ARITHMETIC:
+        break;
+    default:
+        return false;
+    }
+
+    for (size_t index = 0U; index < argument->argument_count; ++index) {
+        if (!aggregate_window_numeric_argument_is_supported(&argument->arguments[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static int validate_window_function_argument_count(
     struct mylite_db *database,
     struct window_function_argument_count_request request
@@ -1954,8 +2256,17 @@ static int validate_window_function_argument_count(
     case PLANNED_WINDOW_FUNCTION_DENSE_RANK:
     case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
     case PLANNED_WINDOW_FUNCTION_CUME_DIST:
+    case PLANNED_WINDOW_FUNCTION_COUNT_STAR:
         min_count = 0U;
         max_count = 0U;
+        break;
+    case PLANNED_WINDOW_FUNCTION_COUNT_VALUE:
+    case PLANNED_WINDOW_FUNCTION_SUM:
+    case PLANNED_WINDOW_FUNCTION_AVG:
+    case PLANNED_WINDOW_FUNCTION_MIN:
+    case PLANNED_WINDOW_FUNCTION_MAX:
+        min_count = 1U;
+        max_count = 1U;
         break;
     case PLANNED_WINDOW_FUNCTION_NONE:
         set_parse_error(database, NULL);
@@ -2068,6 +2379,12 @@ static bool window_function_argument_is_row_scalar_value_expression(
     case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
     case PLANNED_WINDOW_FUNCTION_CUME_DIST:
     case PLANNED_WINDOW_FUNCTION_NTILE:
+    case PLANNED_WINDOW_FUNCTION_COUNT_STAR:
+    case PLANNED_WINDOW_FUNCTION_COUNT_VALUE:
+    case PLANNED_WINDOW_FUNCTION_SUM:
+    case PLANNED_WINDOW_FUNCTION_AVG:
+    case PLANNED_WINDOW_FUNCTION_MIN:
+    case PLANNED_WINDOW_FUNCTION_MAX:
         break;
     }
     return false;
@@ -2171,6 +2488,12 @@ static const char *window_function_integer_argument_unsupported_message(
     case PLANNED_WINDOW_FUNCTION_CUME_DIST:
     case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
     case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_COUNT_STAR:
+    case PLANNED_WINDOW_FUNCTION_COUNT_VALUE:
+    case PLANNED_WINDOW_FUNCTION_SUM:
+    case PLANNED_WINDOW_FUNCTION_AVG:
+    case PLANNED_WINDOW_FUNCTION_MIN:
+    case PLANNED_WINDOW_FUNCTION_MAX:
         break;
     }
     return "arguments support only scalar literals";
@@ -2334,6 +2657,12 @@ static bool window_function_null_integer_argument_is_syntax_error(
     case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
     case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
     case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+    case PLANNED_WINDOW_FUNCTION_COUNT_STAR:
+    case PLANNED_WINDOW_FUNCTION_COUNT_VALUE:
+    case PLANNED_WINDOW_FUNCTION_SUM:
+    case PLANNED_WINDOW_FUNCTION_AVG:
+    case PLANNED_WINDOW_FUNCTION_MIN:
+    case PLANNED_WINDOW_FUNCTION_MAX:
         break;
     }
     return false;
@@ -2355,6 +2684,12 @@ static size_t window_function_integer_argument_index(enum planned_window_functio
     case PLANNED_WINDOW_FUNCTION_CUME_DIST:
     case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
     case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_COUNT_STAR:
+    case PLANNED_WINDOW_FUNCTION_COUNT_VALUE:
+    case PLANNED_WINDOW_FUNCTION_SUM:
+    case PLANNED_WINDOW_FUNCTION_AVG:
+    case PLANNED_WINDOW_FUNCTION_MIN:
+    case PLANNED_WINDOW_FUNCTION_MAX:
         break;
     }
     return SIZE_MAX;
@@ -2748,6 +3083,17 @@ static const char *window_function_display_name(enum planned_window_function_kin
         return "LAST_VALUE";
     case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
         return "NTH_VALUE";
+    case PLANNED_WINDOW_FUNCTION_COUNT_STAR:
+    case PLANNED_WINDOW_FUNCTION_COUNT_VALUE:
+        return "COUNT";
+    case PLANNED_WINDOW_FUNCTION_SUM:
+        return "SUM";
+    case PLANNED_WINDOW_FUNCTION_AVG:
+        return "AVG";
+    case PLANNED_WINDOW_FUNCTION_MIN:
+        return "MIN";
+    case PLANNED_WINDOW_FUNCTION_MAX:
+        return "MAX";
     case PLANNED_WINDOW_FUNCTION_NONE:
         break;
     }

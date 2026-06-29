@@ -176,6 +176,10 @@ static bool select_statement_is_row_scalar_projection_attempt(
         const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
 
         expression = unwrap_parenthesized_expression(expression);
+        if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
+            row_scalar_expression_is_window_function(expression)) {
+            return true;
+        }
         if (expression != NULL &&
             (expression->kind == MYLITE_SQL_AST_COUNT_STAR_FUNCTION ||
              expression->kind == MYLITE_SQL_AST_COUNT_COLUMN_FUNCTION ||
@@ -196,7 +200,6 @@ static bool select_statement_is_row_scalar_projection_attempt(
         if (select_item->kind == MYLITE_SQL_AST_SELECT_ITEM &&
             ((expression != NULL && expression->kind == MYLITE_SQL_AST_DEFAULT_FUNCTION) ||
              generic_function_name_equals(expression, "VALUES") ||
-             row_scalar_expression_is_window_function(expression) ||
              (has_row_source &&
               row_scalar_expression_is_context_expression_attempt(expression, false)) ||
              (has_row_source && row_scalar_expression_contains_bitwise_attempt(expression)) ||
@@ -2655,6 +2658,56 @@ static int populate_window_function_result_column_descriptor(
                 .decimals = 0U,
                 .extra_flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED,
                 .nullable = false,
+            }
+        );
+        return MYLITE_OK;
+    case PLANNED_WINDOW_FUNCTION_COUNT_STAR:
+    case PLANNED_WINDOW_FUNCTION_COUNT_VALUE:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                .display_length = mysql_scalar_bigint_display_length,
+                .decimals = 0U,
+                .extra_flags = 0U,
+                .nullable = false,
+            }
+        );
+        return MYLITE_OK;
+    case PLANNED_WINDOW_FUNCTION_SUM:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_NEWDECIMAL,
+                .display_length = mysql_sum_integer_display_length,
+                .decimals = 0U,
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    case PLANNED_WINDOW_FUNCTION_AVG:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_NEWDECIMAL,
+                .display_length = mysql_sum_integer_display_length,
+                .decimals = avg_fraction_digits,
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    case PLANNED_WINDOW_FUNCTION_MIN:
+    case PLANNED_WINDOW_FUNCTION_MAX:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
+                .display_length = mysql_scalar_bigint_display_length,
+                .decimals = 0U,
+                .extra_flags = 0U,
+                .nullable = true,
             }
         );
         return MYLITE_OK;

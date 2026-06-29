@@ -1352,6 +1352,22 @@ static int append_row_scalar_window_function_expression_sql(
     const struct planned_row_scalar_expression *expression,
     size_t *next_parameter
 );
+static int append_row_scalar_avg_window_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+);
+static int append_row_scalar_window_function_call_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    const char *function_name,
+    bool count_star,
+    size_t *next_parameter
+);
+static int append_row_scalar_window_over_clause_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression
+);
 static int append_row_scalar_window_function_argument_sql(
     struct mylite_dynamic_string *string,
     const struct planned_row_scalar_expression *argument,

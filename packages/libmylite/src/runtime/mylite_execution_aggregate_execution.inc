@@ -11,7 +11,8 @@ static bool select_statement_has_count_aggregate(const struct mylite_sql_ast_nod
         const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
 
         expression = unwrap_parenthesized_expression(expression);
-        if (count_function_from_expression(expression) != PLANNED_COUNT_NONE) {
+        if (count_function_from_expression(expression) != PLANNED_COUNT_NONE &&
+            !aggregate_function_has_window_clause(expression)) {
             return true;
         }
         select_item = select_item->next_sibling;
@@ -1129,7 +1130,8 @@ static bool select_statement_has_column_aggregate(const struct mylite_sql_ast_no
                 &aggregate_expression,
                 &operator_kind,
                 &rhs_expression
-            ) != PLANNED_COLUMN_AGGREGATE_NONE) {
+            ) != PLANNED_COLUMN_AGGREGATE_NONE &&
+            !aggregate_function_has_window_clause(aggregate_expression)) {
             return true;
         }
         (void)aggregate_expression;
@@ -1162,10 +1164,12 @@ static bool select_statement_has_multi_count_aggregate(
         const struct mylite_sql_ast_node *expression = child_at(select_item, 0U);
 
         expression = unwrap_parenthesized_expression(expression);
-        if (expression != NULL && expression->kind == MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION) {
+        if (expression != NULL && expression->kind == MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION &&
+            !aggregate_function_has_window_clause(expression)) {
             return false;
         }
-        if (count_function_from_expression(expression) != PLANNED_COUNT_NONE) {
+        if (count_function_from_expression(expression) != PLANNED_COUNT_NONE &&
+            !aggregate_function_has_window_clause(expression)) {
             has_count = true;
         }
         select_item = select_item->next_sibling;

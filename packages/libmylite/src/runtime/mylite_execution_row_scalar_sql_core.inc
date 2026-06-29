@@ -640,14 +640,78 @@ static int append_row_scalar_window_function_expression_sql(
     size_t *next_parameter
 ) {
     const char *function_name = NULL;
-    int rc = MYLITE_OK;
 
     if (expression == NULL || expression->kind != PLANNED_ROW_SCALAR_EXPRESSION_WINDOW_FUNCTION ||
         next_parameter == NULL) {
         return MYLITE_ERROR;
     }
+    if (expression->window_function_kind == PLANNED_WINDOW_FUNCTION_AVG) {
+        return append_row_scalar_avg_window_expression_sql(string, expression, next_parameter);
+    }
     function_name = window_function_sql_name(expression->window_function_kind);
     if (function_name == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    return append_row_scalar_window_function_call_sql(
+        string,
+        expression,
+        function_name,
+        expression->window_function_kind == PLANNED_WINDOW_FUNCTION_COUNT_STAR,
+        next_parameter
+    );
+}
+
+static int append_row_scalar_avg_window_expression_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (expression == NULL || expression->argument_count != 1U || expression->arguments == NULL ||
+        next_parameter == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append(string, "_mylite_avg_window_result(");
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_window_function_call_sql(
+            string,
+            expression,
+            "sum",
+            false,
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(string, ", ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_window_function_call_sql(
+            string,
+            expression,
+            "count",
+            false,
+            next_parameter
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append_char(string, ')');
+    }
+    return rc;
+}
+
+static int append_row_scalar_window_function_call_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression,
+    const char *function_name,
+    bool count_star,
+    size_t *next_parameter
+) {
+    int rc = MYLITE_OK;
+
+    if (string == NULL || expression == NULL || function_name == NULL || next_parameter == NULL) {
         return MYLITE_ERROR;
     }
 
@@ -655,7 +719,11 @@ static int append_row_scalar_window_function_expression_sql(
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, '(');
     }
-    for (size_t argument_index = 0U; rc == MYLITE_OK && argument_index < expression->argument_count;
+    if (rc == MYLITE_OK && count_star) {
+        rc = mylite_dynamic_string_append_char(string, '*');
+    }
+    for (size_t argument_index = 0U;
+         rc == MYLITE_OK && !count_star && argument_index < expression->argument_count;
          ++argument_index) {
         if (argument_index != 0U) {
             rc = mylite_dynamic_string_append(string, ", ");
@@ -669,8 +737,25 @@ static int append_row_scalar_window_function_expression_sql(
         }
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(string, ") OVER (");
+        rc = mylite_dynamic_string_append(string, ") ");
     }
+    if (rc == MYLITE_OK) {
+        rc = append_row_scalar_window_over_clause_sql(string, expression);
+    }
+    return rc;
+}
+
+static int append_row_scalar_window_over_clause_sql(
+    struct mylite_dynamic_string *string,
+    const struct planned_row_scalar_expression *expression
+) {
+    int rc = MYLITE_OK;
+
+    if (string == NULL || expression == NULL) {
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_dynamic_string_append(string, "OVER (");
     if (rc == MYLITE_OK && expression->window_has_partition) {
         rc = mylite_dynamic_string_append(string, "PARTITION BY ");
     }
@@ -819,6 +904,17 @@ static const char *window_function_sql_name(enum planned_window_function_kind ki
         return "last_value";
     case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
         return "nth_value";
+    case PLANNED_WINDOW_FUNCTION_COUNT_STAR:
+    case PLANNED_WINDOW_FUNCTION_COUNT_VALUE:
+        return "count";
+    case PLANNED_WINDOW_FUNCTION_SUM:
+        return "sum";
+    case PLANNED_WINDOW_FUNCTION_AVG:
+        return "avg";
+    case PLANNED_WINDOW_FUNCTION_MIN:
+        return "min";
+    case PLANNED_WINDOW_FUNCTION_MAX:
+        return "max";
     case PLANNED_WINDOW_FUNCTION_NONE:
         break;
     }

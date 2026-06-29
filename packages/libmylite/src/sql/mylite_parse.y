@@ -12871,13 +12871,18 @@ count_distinct_placeholder_argument(A) ::= MINUS(M) FLOAT(T). {
 count_distinct_placeholder_argument(A) ::= BINARY(T) expression(B). [BINARY] {
     A = mylite_sql_parser_make_unary_binary_expression(state, T, B);
 }
-expression(A) ::= COUNT(T) LPAREN(L) count_nullif_predicate_expression(B) RPAREN(R). {
-    A = mylite_sql_parser_make_no_space_one_argument_function(
-        state, T, L, MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION, B, R);
+expression(A) ::= COUNT(T) LPAREN(L) count_nullif_predicate_expression(B) RPAREN(R)
+                  aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_no_space_one_argument_function(
+            state, T, L, MYLITE_SQL_AST_COUNT_EXPRESSION_FUNCTION, B, R),
+        W);
 }
-expression(A) ::= COUNT(T) LPAREN(L) count_literal(B) RPAREN(R). {
-    A = mylite_sql_parser_make_no_space_one_argument_function(
-        state, T, L, MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION, B, R);
+expression(A) ::= COUNT(T) LPAREN(L) count_literal(B) RPAREN(R) aggregate_window_opt(W). {
+    A = mylite_sql_parser_attach_function_window_clause(
+        mylite_sql_parser_make_no_space_one_argument_function(
+            state, T, L, MYLITE_SQL_AST_COUNT_LITERAL_FUNCTION, B, R),
+        W);
 }
 count_nullif_predicate_expression(A) ::= NULLIF(T) LPAREN count_nullif_predicate(B)
         COMMA FALSE(F) RPAREN(R). {

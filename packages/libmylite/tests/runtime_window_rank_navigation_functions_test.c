@@ -703,6 +703,25 @@ static int test_window_function_diagnostics(void) {
         "7",
         "7",
     };
+    static const char *const count_window_columns[] = {"c"};
+    static const char *const count_window_values[] = {"7", "7", "7", "7", "7", "7", "7"};
+    static const char *const sum_window_columns[] = {"id", "running_id"};
+    static const char *const sum_window_values[] = {
+        "1",
+        "1",
+        "2",
+        "3",
+        "3",
+        "6",
+        "4",
+        "4",
+        "5",
+        "9",
+        "6",
+        "6",
+        "7",
+        "13",
+    };
     char path[test_path_capacity];
     mylite_db *database = NULL;
     int failures = open_app_database(&database, path, sizeof(path));
@@ -711,22 +730,27 @@ static int test_window_function_diagnostics(void) {
         failures += seed_posts(database);
     }
 
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT COUNT(*) OVER () FROM posts",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "aggregate window functions are not supported",
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) OVER () AS c FROM posts",
+            .columns = count_window_columns,
+            .column_count = sizeof(count_window_columns) / sizeof(count_window_columns[0]),
+            .values = count_window_values,
+            .row_count = seed_post_count,
+            .context = "COUNT aggregate window smoke",
         }
     );
-    failures += execute_error(
+    failures += expect_query(
         database,
-        "SELECT id, SUM(id) OVER (PARTITION BY author_id ORDER BY id) AS running_id FROM posts",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "aggregate window functions are not supported",
+        (struct expected_query){
+            .sql = "SELECT id, SUM(id) OVER (PARTITION BY author_id ORDER BY id) AS running_id "
+                   "FROM posts ORDER BY id",
+            .columns = sum_window_columns,
+            .column_count = sizeof(sum_window_columns) / sizeof(sum_window_columns[0]),
+            .values = sum_window_values,
+            .row_count = seed_post_count,
+            .context = "SUM aggregate window smoke",
         }
     );
     failures += execute_error(

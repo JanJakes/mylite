@@ -533,6 +533,10 @@
     COMMAND mylite_runtime_spatial_disjoint_intersects_functions_test
   )
   add_test(
+    NAME libmylite.runtime.spatial_contains_within_functions
+    COMMAND mylite_runtime_spatial_contains_within_functions_test
+  )
+  add_test(
     NAME libmylite.runtime.spatial_collect_aggregate
     COMMAND mylite_runtime_spatial_collect_aggregate_test
   )

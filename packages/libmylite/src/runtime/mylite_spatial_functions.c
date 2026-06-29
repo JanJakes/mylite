@@ -87,6 +87,8 @@ static const struct spatial_sqlite_function_descriptor spatial_sqlite_function_d
     {"ST_Validate", MYLITE_SPATIAL_FUNCTION_ST_VALIDATE},
     {"ST_Disjoint", MYLITE_SPATIAL_FUNCTION_ST_DISJOINT},
     {"ST_Intersects", MYLITE_SPATIAL_FUNCTION_ST_INTERSECTS},
+    {"ST_Contains", MYLITE_SPATIAL_FUNCTION_ST_CONTAINS},
+    {"ST_Within", MYLITE_SPATIAL_FUNCTION_ST_WITHIN},
     {"ST_IsClosed", MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED},
     {"ST_NumGeometries", MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES},
     {"ST_GeometryN", MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYN},

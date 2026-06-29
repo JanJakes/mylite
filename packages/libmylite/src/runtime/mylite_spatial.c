@@ -248,6 +248,8 @@ static const struct spatial_function_descriptor spatial_function_descriptors[] =
     {"ST_Validate", MYLITE_SPATIAL_FUNCTION_ST_VALIDATE},
     {"ST_Disjoint", MYLITE_SPATIAL_FUNCTION_ST_DISJOINT},
     {"ST_Intersects", MYLITE_SPATIAL_FUNCTION_ST_INTERSECTS},
+    {"ST_Contains", MYLITE_SPATIAL_FUNCTION_ST_CONTAINS},
+    {"ST_Within", MYLITE_SPATIAL_FUNCTION_ST_WITHIN},
     {"ST_IsClosed", MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED},
     {"ST_NumGeometries", MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES},
     {"ST_GeometryN", MYLITE_SPATIAL_FUNCTION_ST_GEOMETRYN},
@@ -1235,6 +1237,62 @@ static double distance_polygon_to_polygon(
     const struct spatial_distance_geometry *left,
     const struct spatial_distance_geometry *right
 );
+static bool relation_geometry_contains(
+    const struct spatial_distance_geometry *container,
+    const struct spatial_distance_geometry *content
+);
+static bool relation_simple_geometry_contains(
+    const struct spatial_distance_geometry *container,
+    const struct spatial_distance_geometry *content
+);
+static bool relation_line_contains_point(
+    const struct spatial_distance_geometry *line,
+    const struct spatial_point *point
+);
+static bool relation_point_is_on_line_interior(
+    const struct spatial_point *point,
+    const struct spatial_distance_geometry *line
+);
+static bool relation_line_contains_line(
+    const struct spatial_distance_geometry *container,
+    const struct spatial_distance_geometry *content
+);
+static bool relation_polygon_contains_line(
+    const struct spatial_distance_geometry *polygon,
+    const struct spatial_distance_geometry *line
+);
+static bool relation_polygon_contains_polygon(
+    const struct spatial_distance_geometry *container,
+    const struct spatial_distance_geometry *content
+);
+static bool relation_polygon_surface_contains_container(
+    const struct spatial_distance_geometry *content, // NOLINT(bugprone-easily-swappable-parameters)
+    const struct spatial_distance_geometry *container
+);
+static bool relation_polygon_surface_contains_polygon(
+    const struct spatial_distance_geometry *container,
+    const struct spatial_distance_geometry *content,
+    bool *out_has_interior_sample
+);
+static bool relation_polygon_contains_ring_samples(
+    const struct spatial_distance_geometry *container,
+    const struct spatial_distance_ring *ring,
+    bool *io_has_interior_sample
+);
+static bool relation_polygon_contains_point_sample(
+    const struct spatial_distance_geometry *container,
+    const struct spatial_point *point,
+    bool *io_has_interior_sample
+);
+static bool relation_segment_crosses_polygon_boundary(
+    const struct spatial_distance_geometry *polygon,
+    const struct spatial_segment *segment
+);
+static bool relation_segments_overlap_collinearly(
+    const struct spatial_segment *left, // NOLINT(bugprone-easily-swappable-parameters)
+    const struct spatial_segment *right
+);
+static struct spatial_point segment_midpoint(const struct spatial_segment *segment);
 static bool distance_geometry_is_collection(const struct spatial_distance_geometry *geometry);
 static bool distance_geometry_is_empty(const struct spatial_distance_geometry *geometry);
 static bool polygon_contains_point_surface(
@@ -1769,6 +1827,8 @@ bool mylite_spatial_function_returns_integer(enum mylite_spatial_function_kind k
            kind == MYLITE_SPATIAL_FUNCTION_ST_ISVALID ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_DISJOINT ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_INTERSECTS ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_CONTAINS ||
+           kind == MYLITE_SPATIAL_FUNCTION_ST_WITHIN ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_ISCLOSED ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_NUMGEOMETRIES ||
            kind == MYLITE_SPATIAL_FUNCTION_ST_NUMPOINTS ||
@@ -1894,6 +1954,8 @@ int mylite_spatial_evaluate(
         return evaluate_distance(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_DISJOINT:
     case MYLITE_SPATIAL_FUNCTION_ST_INTERSECTS:
+    case MYLITE_SPATIAL_FUNCTION_ST_CONTAINS:
+    case MYLITE_SPATIAL_FUNCTION_ST_WITHIN:
         return evaluate_relation_predicate(kind, arguments, argument_count, out_result, out_error);
     case MYLITE_SPATIAL_FUNCTION_ST_DISTANCESPHERE:
         return evaluate_distance_sphere(kind, arguments, argument_count, out_result, out_error);
@@ -3757,6 +3819,7 @@ static int evaluate_relation_predicate(
     bool is_null = false;
     bool has_distance = false;
     bool intersects = false;
+    bool contains = false;
     double distance = 0.0;
     int rc = read_two_geometry_arguments(
         kind,
@@ -3801,6 +3864,24 @@ static int evaluate_relation_predicate(
             error,
             mylite_spatial_function_name(kind)
         );
+    }
+    if (rc == 0 && (distance_geometry_is_empty(&left_geometry) ||
+                    distance_geometry_is_empty(&right_geometry))) {
+        distance_geometry_deinit(&left_geometry);
+        distance_geometry_deinit(&right_geometry);
+        return assign_null_result(out_result);
+    }
+    if (rc == 0 && kind == MYLITE_SPATIAL_FUNCTION_ST_CONTAINS) {
+        contains = relation_geometry_contains(&left_geometry, &right_geometry);
+        distance_geometry_deinit(&left_geometry);
+        distance_geometry_deinit(&right_geometry);
+        return assign_integer_result(out_result, contains ? 1 : 0);
+    }
+    if (rc == 0 && kind == MYLITE_SPATIAL_FUNCTION_ST_WITHIN) {
+        contains = relation_geometry_contains(&right_geometry, &left_geometry);
+        distance_geometry_deinit(&left_geometry);
+        distance_geometry_deinit(&right_geometry);
+        return assign_integer_result(out_result, contains ? 1 : 0);
     }
     if (rc == 0) {
         rc = distance_between_geometries(&left_geometry, &right_geometry, &distance, &has_distance);
@@ -8605,6 +8686,299 @@ static double distance_polygon_to_polygon(
         }
     }
     return has_distance ? distance : DBL_MAX;
+}
+
+static bool relation_geometry_contains(
+    const struct spatial_distance_geometry *container,
+    const struct spatial_distance_geometry *content
+) {
+    if (container == NULL || content == NULL || distance_geometry_is_empty(container) ||
+        distance_geometry_is_empty(content)) {
+        return false;
+    }
+    if (distance_geometry_is_collection(content)) {
+        for (uint32_t index = 0U; index < content->child_count; ++index) {
+            if (!relation_geometry_contains(container, &content->children[index])) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (distance_geometry_is_collection(container)) {
+        for (uint32_t index = 0U; index < container->child_count; ++index) {
+            if (relation_geometry_contains(&container->children[index], content)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    return relation_simple_geometry_contains(container, content);
+}
+
+static bool relation_simple_geometry_contains(
+    const struct spatial_distance_geometry *container,
+    const struct spatial_distance_geometry *content
+) {
+    switch (container->type) {
+    case MYLITE_SPATIAL_GEOMETRY_POINT:
+        return content->type == MYLITE_SPATIAL_GEOMETRY_POINT &&
+               spatial_points_are_equal(&container->point, &content->point);
+    case MYLITE_SPATIAL_GEOMETRY_LINESTRING:
+        if (content->type == MYLITE_SPATIAL_GEOMETRY_POINT) {
+            return relation_line_contains_point(container, &content->point);
+        }
+        if (content->type == MYLITE_SPATIAL_GEOMETRY_LINESTRING) {
+            return relation_line_contains_line(container, content);
+        }
+        return false;
+    case MYLITE_SPATIAL_GEOMETRY_POLYGON:
+        if (content->type == MYLITE_SPATIAL_GEOMETRY_POINT) {
+            return validity_polygon_contains_point_interior(container, &content->point);
+        }
+        if (content->type == MYLITE_SPATIAL_GEOMETRY_LINESTRING) {
+            return relation_polygon_contains_line(container, content);
+        }
+        if (content->type == MYLITE_SPATIAL_GEOMETRY_POLYGON) {
+            return relation_polygon_contains_polygon(container, content);
+        }
+        return false;
+    default:
+        break;
+    }
+    return false;
+}
+
+static bool relation_line_contains_point(
+    const struct spatial_distance_geometry *line,
+    const struct spatial_point *point
+) {
+    return relation_point_is_on_line_interior(point, line);
+}
+
+static bool relation_point_is_on_line_interior(
+    const struct spatial_point *point,
+    const struct spatial_distance_geometry *line
+) {
+    return simplicity_point_is_on_line(point, line) &&
+           !simplicity_point_is_line_boundary(point, line);
+}
+
+static bool relation_line_contains_line(
+    const struct spatial_distance_geometry *container,
+    const struct spatial_distance_geometry *content
+) {
+    bool has_interior_point = false;
+
+    if (!line_has_segment(container) || !line_has_segment(content)) {
+        return false;
+    }
+    for (uint32_t index = 0U; index < content->point_count; ++index) {
+        if (!simplicity_point_is_on_line(&content->points[index], container)) {
+            return false;
+        }
+        if (relation_point_is_on_line_interior(&content->points[index], container)) {
+            has_interior_point = true;
+        }
+    }
+    for (uint32_t index = 0U; index + 1U < content->point_count; ++index) {
+        struct spatial_segment segment = line_segment(content, index);
+        struct spatial_point midpoint = segment_midpoint(&segment);
+
+        if (!simplicity_point_is_on_line(&midpoint, container)) {
+            return false;
+        }
+        if (relation_point_is_on_line_interior(&midpoint, container)) {
+            has_interior_point = true;
+        }
+    }
+    return has_interior_point;
+}
+
+static bool relation_polygon_contains_line(
+    const struct spatial_distance_geometry *polygon,
+    const struct spatial_distance_geometry *line
+) {
+    bool has_interior_point = false;
+
+    if (!line_has_segment(line)) {
+        return false;
+    }
+    for (uint32_t index = 0U; index < line->point_count; ++index) {
+        if (!relation_polygon_contains_point_sample(
+                polygon,
+                &line->points[index],
+                &has_interior_point
+            )) {
+            return false;
+        }
+    }
+    for (uint32_t index = 0U; index + 1U < line->point_count; ++index) {
+        struct spatial_segment segment = line_segment(line, index);
+        struct spatial_point midpoint = segment_midpoint(&segment);
+
+        if (!relation_polygon_contains_point_sample(polygon, &midpoint, &has_interior_point)) {
+            return false;
+        }
+        if (relation_segment_crosses_polygon_boundary(polygon, &segment)) {
+            return false;
+        }
+    }
+    return has_interior_point;
+}
+
+static bool relation_polygon_contains_polygon(
+    const struct spatial_distance_geometry *container,
+    const struct spatial_distance_geometry *content
+) {
+    bool has_interior_sample = false;
+
+    if (!relation_polygon_surface_contains_polygon(container, content, &has_interior_sample)) {
+        return false;
+    }
+    if (has_interior_sample) {
+        return true;
+    }
+    return relation_polygon_surface_contains_container(content, container);
+}
+
+static bool relation_polygon_surface_contains_container(
+    const struct spatial_distance_geometry *content, // NOLINT(bugprone-easily-swappable-parameters)
+    const struct spatial_distance_geometry *container
+) {
+    const struct spatial_distance_geometry *surface_container = content;
+    const struct spatial_distance_geometry *surface_content = container;
+
+    return relation_polygon_surface_contains_polygon(surface_container, surface_content, NULL);
+}
+
+static bool relation_polygon_surface_contains_polygon(
+    const struct spatial_distance_geometry *container,
+    const struct spatial_distance_geometry *content,
+    bool *out_has_interior_sample
+) {
+    bool has_interior_sample = false;
+
+    if (container == NULL || content == NULL || container->ring_count == 0U ||
+        content->ring_count == 0U) {
+        return false;
+    }
+    for (uint32_t index = 0U; index < content->ring_count; ++index) {
+        if (!relation_polygon_contains_ring_samples(
+                container,
+                &content->rings[index],
+                &has_interior_sample
+            )) {
+            return false;
+        }
+    }
+    if (out_has_interior_sample != NULL) {
+        *out_has_interior_sample = has_interior_sample;
+    }
+    return true;
+}
+
+static bool relation_polygon_contains_ring_samples(
+    const struct spatial_distance_geometry *container,
+    const struct spatial_distance_ring *ring,
+    bool *io_has_interior_sample
+) {
+    if (!ring_has_segment(ring)) {
+        return false;
+    }
+    for (uint32_t index = 0U; index < ring->point_count; ++index) {
+        if (!relation_polygon_contains_point_sample(
+                container,
+                &ring->points[index],
+                io_has_interior_sample
+            )) {
+            return false;
+        }
+    }
+    for (uint32_t index = 0U; index + 1U < ring->point_count; ++index) {
+        struct spatial_segment segment = ring_segment(ring, index);
+        struct spatial_point midpoint = segment_midpoint(&segment);
+
+        if (!relation_polygon_contains_point_sample(container, &midpoint, io_has_interior_sample)) {
+            return false;
+        }
+        if (relation_segment_crosses_polygon_boundary(container, &segment)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool relation_polygon_contains_point_sample(
+    const struct spatial_distance_geometry *container,
+    const struct spatial_point *point,
+    bool *io_has_interior_sample
+) {
+    if (!polygon_contains_point_surface(container, point)) {
+        return false;
+    }
+    if (io_has_interior_sample != NULL &&
+        validity_polygon_contains_point_interior(container, point)) {
+        *io_has_interior_sample = true;
+    }
+    return true;
+}
+
+static bool relation_segment_crosses_polygon_boundary(
+    const struct spatial_distance_geometry *polygon,
+    const struct spatial_segment *segment
+) {
+    if (polygon == NULL || segment == NULL) {
+        return false;
+    }
+    for (uint32_t ring_index = 0U; ring_index < polygon->ring_count; ++ring_index) {
+        const struct spatial_distance_ring *ring = &polygon->rings[ring_index];
+
+        if (!ring_has_segment(ring)) {
+            continue;
+        }
+        for (uint32_t point_index = 0U; point_index + 1U < ring->point_count; ++point_index) {
+            struct spatial_segment boundary = ring_segment(ring, point_index);
+            bool intersects_at_content_endpoint = point_on_segment(&segment->start, &boundary) ||
+                                                  point_on_segment(&segment->end, &boundary);
+
+            if (!segments_intersect(segment, &boundary)) {
+                continue;
+            }
+            if (relation_segments_overlap_collinearly(segment, &boundary)) {
+                continue;
+            }
+            if (spatial_point_is_on_segment_interior(&boundary.start, segment) ||
+                spatial_point_is_on_segment_interior(&boundary.end, segment)) {
+                return true;
+            }
+            if (!intersects_at_content_endpoint) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool relation_segments_overlap_collinearly(
+    const struct spatial_segment *left, // NOLINT(bugprone-easily-swappable-parameters)
+    const struct spatial_segment *right
+) {
+    if (left == NULL || right == NULL ||
+        !double_near_zero(point_cross_product(&left->start, &left->end, &right->start)) ||
+        !double_near_zero(point_cross_product(&left->start, &left->end, &right->end))) {
+        return false;
+    }
+    return point_on_segment(&left->start, right) || point_on_segment(&left->end, right) ||
+           point_on_segment(&right->start, left) || point_on_segment(&right->end, left);
+}
+
+static struct spatial_point segment_midpoint(const struct spatial_segment *segment) {
+    return (struct spatial_point){
+        .coordinate_x =
+            (segment->start.coordinate_x + segment->end.coordinate_x) / spatial_midpoint_divisor,
+        .coordinate_y =
+            (segment->start.coordinate_y + segment->end.coordinate_y) / spatial_midpoint_divisor,
+    };
 }
 
 static bool distance_geometry_is_collection(const struct spatial_distance_geometry *geometry) {

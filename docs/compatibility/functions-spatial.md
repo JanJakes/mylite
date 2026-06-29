@@ -10,13 +10,15 @@ spherical distance, centroid, convex hull, discrete trajectory distances,
 LineString interpolation, simplicity and validity checks, coordinate swapping,
 envelope construction, and MBR predicates in scalar, row-backed, and descriptor
 DML value contexts. SRID-0 `ST_Disjoint()` and `ST_Intersects()` cover
-representable object-shape disjoint/intersection checks. Geohash helpers support coordinate
-encoding/decoding plus SRID 0 and 4326 point round-trips. GeoJSON helpers
-support 2D geometry, Feature extraction, and FeatureCollection extraction for
-SRID 0 and 4326. Geographic point accessors support SRID 4326
-latitude/longitude getters. It does not yet implement a general SRS catalog,
-topology predicates, constructive geometry operations, or physical spatial
-search.
+representable object-shape disjoint/intersection checks, and SRID-0
+`ST_Contains()` / `ST_Within()` cover boundary-sensitive containment for
+representable Point, LineString, Polygon, and child-decomposed collection
+values. Geohash helpers support coordinate encoding/decoding plus SRID 0 and
+4326 point round-trips. GeoJSON helpers support 2D geometry, Feature extraction,
+and FeatureCollection extraction for SRID 0 and 4326. Geographic point accessors
+support SRID 4326 latitude/longitude getters. It does not yet implement a
+general SRS catalog, full topology predicate coverage, constructive geometry
+operations, or physical spatial search.
 
 | Function | Status | Notes |
 | --- | --- | --- |
@@ -45,7 +47,7 @@ search.
 | `ST_Buffer_Strategy()` | ❌ | Produce strategy option for ST_Buffer() |
 | `ST_Centroid()` | ✅ | SRID-0 centroid for Point, LineString, Polygon, Multi*, and collections |
 | `ST_Collect()` | ✅ | Descriptor-backed grouped and ungrouped geometry aggregation |
-| `ST_Contains()` | ❌ | Whether one geometry contains another |
+| `ST_Contains()` | 🟡 | SRID-0 object-shape containment for Point, LineString, Polygon, and child-decomposed collections; full collection-union topology and geographic SRS deferred |
 | `ST_ConvexHull()` | ✅ | SRID-0 Point, LineString, Polygon, Multi*, and collection convex hull |
 | `ST_Crosses()` | ❌ | Whether one geometry crosses another |
 | `ST_Difference()` | ❌ | Return point set difference of two geometries |
@@ -110,7 +112,7 @@ search.
 | `ST_Transform()` | ❌ | Transform coordinates of geometry |
 | `ST_Union()` | ❌ | Return point set union of two geometries |
 | `ST_Validate()` | ✅ | Return valid representable geometry values, otherwise `NULL` |
-| `ST_Within()` | ❌ | Whether one geometry is within another |
+| `ST_Within()` | 🟡 | SRID-0 inverse containment for Point, LineString, Polygon, and child-decomposed collections; full collection-union topology and geographic SRS deferred |
 | `ST_X()` | ✅ | Return X coordinate of Point |
 | `ST_Y()` | ✅ | Return Y coordinate of Point |
 

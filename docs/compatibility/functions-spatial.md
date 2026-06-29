@@ -18,13 +18,16 @@ values. SRID-0 `ST_Equals()` covers object-shape equality for the same
 representable geometry surface, and SRID-0 `ST_Touches()` covers
 boundary-contact checks for that surface. SRID-0 `ST_Overlaps()` covers
 same-dimension partial overlap checks for that surface, and SRID-0
-`ST_Crosses()` covers dimension-sensitive crossing checks. Geohash helpers
-support coordinate encoding/decoding plus SRID 0 and 4326 point round-trips. GeoJSON helpers
-support 2D geometry, Feature extraction, and FeatureCollection extraction for
-SRID 0 and 4326. Geographic point accessors support SRID 4326
-latitude/longitude getters. It does not yet implement a general SRS catalog,
-full topology predicate coverage, constructive geometry operations, or physical
-spatial search.
+`ST_Crosses()` covers dimension-sensitive crossing checks. Point/MultiPoint
+constructive set operators cover difference, intersection, symmetric
+difference, and union for same-SRID inputs, and buffer/transform support covers
+bounded identity cases. Geohash helpers support coordinate encoding/decoding
+plus SRID 0 and 4326 point round-trips. GeoJSON helpers support 2D geometry,
+Feature extraction, and FeatureCollection extraction for SRID 0 and 4326.
+Geographic point accessors support SRID 4326 latitude/longitude getters. It
+does not yet implement a general SRS catalog, full topology predicate coverage,
+general constructive geometry operations, coordinate transformation pipelines,
+nonzero buffer construction, or physical spatial search.
 
 | Function | Status | Notes |
 | --- | --- | --- |
@@ -49,14 +52,14 @@ spatial search.
 | `ST_AsBinary(), ST_AsWKB()` | ✅ | Convert internal geometry bytes to WKB |
 | `ST_AsGeoJSON()` | ✅ | Generate 2D GeoJSON for supported geometry values |
 | `ST_AsText(), ST_AsWKT()` | ✅ | Convert internal geometry bytes to WKT |
-| `ST_Buffer()` | ❌ | Geometry buffer result |
-| `ST_Buffer_Strategy()` | ❌ | Produce strategy option for ST_Buffer() |
+| `ST_Buffer()` | 🟡 | `NULL` propagation and zero-distance identity result; nonzero buffer construction deferred |
+| `ST_Buffer_Strategy()` | ✅ | Produce MySQL-compatible binary strategy options for `ST_Buffer()` |
 | `ST_Centroid()` | ✅ | SRID-0 centroid for Point, LineString, Polygon, Multi*, and collections |
 | `ST_Collect()` | ✅ | Descriptor-backed grouped and ungrouped geometry aggregation |
 | `ST_Contains()` | 🟡 | SRID-0 object-shape containment for Point, LineString, Polygon, and child-decomposed collections; full collection-union topology and geographic SRS deferred |
 | `ST_ConvexHull()` | ✅ | SRID-0 Point, LineString, Polygon, Multi*, and collection convex hull |
 | `ST_Crosses()` | 🟡 | SRID-0 object-shape crosses for Point, LineString, Polygon, and child-decomposed collections; full DE-9IM coverage and geographic SRS deferred |
-| `ST_Difference()` | ❌ | Return point set difference of two geometries |
+| `ST_Difference()` | 🟡 | Point/MultiPoint set difference with SRID preservation; general topology deferred |
 | `ST_Dimension()` | ✅ | Return SRID-0 geometry dimension |
 | `ST_Disjoint()` | ✅ | SRID-0 object-shape disjoint predicate for representable geometry values |
 | `ST_Distance()` | 🟡 | Cartesian SRID-0 geometry distance; geographic distance and unit conversion deferred |
@@ -76,7 +79,7 @@ spatial search.
 | `ST_GeomFromWKB(), ST_GeometryFromWKB()` | ✅ | Construct SRID-0 geometry from WKB |
 | `ST_HausdorffDistance()` | ✅ | Directed SRID-0 discrete Hausdorff distance for supported Point/MultiPoint and LineString/MultiLineString combinations |
 | `ST_InteriorRingN()` | ✅ | Return one-based Polygon interior ring |
-| `ST_Intersection()` | ❌ | Return point set intersection of two geometries |
+| `ST_Intersection()` | 🟡 | Point/MultiPoint set intersection with SRID preservation; general topology deferred |
 | `ST_Intersects()` | ✅ | SRID-0 object-shape intersects predicate for representable geometry values |
 | `ST_IsClosed()` | ✅ | Return LineString/MultiLineString closed state |
 | `ST_IsEmpty()` | ✅ | Return empty geometry collection state |
@@ -113,10 +116,10 @@ spatial search.
 | `ST_SRID()` | ✅ | Return spatial reference system ID for geometry |
 | `ST_StartPoint()` | ✅ | Return LineString start point |
 | `ST_SwapXY()` | ✅ | Return SRID-preserving X/Y-swapped geometry |
-| `ST_SymDifference()` | ❌ | Return point set symmetric difference of two geometries |
+| `ST_SymDifference()` | 🟡 | Point/MultiPoint set symmetric difference with SRID preservation; general topology deferred |
 | `ST_Touches()` | 🟡 | SRID-0 object-shape touches for Point, LineString, Polygon, and child-decomposed collections; full DE-9IM coverage and geographic SRS deferred |
-| `ST_Transform()` | ❌ | Transform coordinates of geometry |
-| `ST_Union()` | ❌ | Return point set union of two geometries |
+| `ST_Transform()` | 🟡 | Identity transforms for SRID 0 and 4326 plus MySQL diagnostics; coordinate transforms deferred |
+| `ST_Union()` | 🟡 | Point/MultiPoint set union with SRID preservation; general topology deferred |
 | `ST_Validate()` | ✅ | Return valid representable geometry values, otherwise `NULL` |
 | `ST_Within()` | 🟡 | SRID-0 inverse containment for Point, LineString, Polygon, and child-decomposed collections; full collection-union topology and geographic SRS deferred |
 | `ST_X()` | ✅ | Return X coordinate of Point |

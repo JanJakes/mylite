@@ -397,6 +397,21 @@ static int spatial_function_session_scalar_value(
     const struct mylite_sql_ast_node *expression,
     struct session_scalar_cell *out_cell
 );
+static int spatial_function_session_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell,
+    struct mylite_spatial_argument *out_argument
+);
+static bool spatial_function_numeric_literal_expression(
+    const struct mylite_sql_ast_node *expression
+);
+static int spatial_function_numeric_literal_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell,
+    struct mylite_spatial_argument *out_argument
+);
 static int spatial_function_session_scalar_result(
     struct mylite_db *database,
     const struct mylite_spatial_result *result,

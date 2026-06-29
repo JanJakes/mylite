@@ -537,6 +537,10 @@
     COMMAND mylite_runtime_spatial_simplify_function_test
   )
   add_test(
+    NAME libmylite.runtime.spatial_constructive_operator_functions
+    COMMAND mylite_runtime_spatial_constructive_operator_functions_test
+  )
+  add_test(
     NAME libmylite.runtime.spatial_disjoint_intersects_functions
     COMMAND mylite_runtime_spatial_disjoint_intersects_functions_test
   )

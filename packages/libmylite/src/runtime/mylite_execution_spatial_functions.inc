@@ -98,15 +98,12 @@ static int spatial_function_session_scalar_value(
         }
     }
     for (size_t index = 0U; rc == MYLITE_OK && index < argument_count; ++index) {
-        rc = session_scalar_value(database, child_at(arguments_node, index), &cells[index]);
-        if (rc == MYLITE_OK) {
-            arguments[index] = (struct mylite_spatial_argument){
-                .bytes = cells[index].value,
-                .byte_count = scalar_cell_text_length(&cells[index]),
-                .is_null = cells[index].value == NULL,
-                .has_numeric = false,
-            };
-        }
+        rc = spatial_function_session_scalar_argument(
+            database,
+            child_at(arguments_node, index),
+            &cells[index],
+            &arguments[index]
+        );
     }
     if (rc == MYLITE_OK) {
         rc = mylite_spatial_evaluate(kind, arguments, argument_count, &result, &error);
@@ -130,6 +127,146 @@ static int spatial_function_session_scalar_value(
     session_scalar_cell_array_deinit(cells, argument_count);
     free(arguments);
     return rc;
+}
+
+static int spatial_function_session_scalar_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell,
+    struct mylite_spatial_argument *out_argument
+) {
+    int rc = MYLITE_OK;
+
+    if (out_cell == NULL || out_argument == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_cell = (struct session_scalar_cell){0};
+    *out_argument = (struct mylite_spatial_argument){0};
+    if (spatial_function_numeric_literal_expression(expression)) {
+        return spatial_function_numeric_literal_argument(
+            database,
+            expression,
+            out_cell,
+            out_argument
+        );
+    }
+
+    rc = session_scalar_value(database, expression, out_cell);
+    if (rc == MYLITE_OK) {
+        *out_argument = (struct mylite_spatial_argument){
+            .bytes = out_cell->value,
+            .byte_count = scalar_cell_text_length(out_cell),
+            .is_null = out_cell->value == NULL,
+            .has_numeric = false,
+        };
+    }
+    return rc;
+}
+
+static bool spatial_function_numeric_literal_expression(
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_ast_node *literal = unwrap_parenthesized_expression(expression);
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+
+    if (literal != NULL && literal->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(literal);
+
+        if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE &&
+            operator_kind != MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            return false;
+        }
+        literal = unwrap_parenthesized_expression(child_at(literal, 0U));
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        return false;
+    }
+    literal_kind = mylite_sql_ast_node_literal_kind(literal);
+    return literal_kind == MYLITE_SQL_AST_LITERAL_INTEGER ||
+           literal_kind == MYLITE_SQL_AST_LITERAL_DECIMAL ||
+           literal_kind == MYLITE_SQL_AST_LITERAL_FLOAT;
+}
+
+static int spatial_function_numeric_literal_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    struct session_scalar_cell *out_cell,
+    struct mylite_spatial_argument *out_argument
+) {
+    const struct mylite_sql_ast_node *numeric = unwrap_parenthesized_expression(expression);
+    const struct mylite_sql_ast_node *literal = numeric;
+    char *text = NULL;
+    char *parse_end = NULL;
+    double value = 0.0;
+    size_t text_length = 0U;
+    bool is_negative = false;
+
+    if (database == NULL || numeric == NULL || out_cell == NULL || out_argument == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (numeric->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(numeric);
+
+        if (operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE) {
+            is_negative = true;
+        } else if (operator_kind != MYLITE_SQL_AST_OPERATOR_POSITIVE) {
+            set_runtime_error(database, "failed to parse spatial numeric literal");
+            return MYLITE_ERROR;
+        }
+        literal = unwrap_parenthesized_expression(child_at(numeric, 0U));
+    }
+    if (literal == NULL || literal->kind != MYLITE_SQL_AST_LITERAL) {
+        set_runtime_error(database, "failed to parse spatial numeric literal");
+        return MYLITE_ERROR;
+    }
+    if (literal->span.length > SIZE_MAX - (is_negative ? 2U : 1U)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    text_length = literal->span.length + (is_negative ? 1U : 0U);
+    text = (char *)malloc(text_length + 1U);
+    if (text == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    if (is_negative) {
+        text[0] = '-';
+        if (literal->span.length != 0U) {
+            memcpy(text + 1U, literal->span.text, literal->span.length);
+        }
+    } else if (literal->span.length != 0U) {
+        memcpy(text, literal->span.text, literal->span.length);
+    }
+    text[text_length] = '\0';
+
+    errno = 0;
+    if (mylite_execution_parse_c_locale_double(text, &parse_end, &value) != MYLITE_OK ||
+        parse_end == text) {
+        free(text);
+        set_runtime_error(database, "failed to parse spatial numeric literal");
+        return MYLITE_ERROR;
+    }
+    while (parse_end != NULL && *parse_end != '\0' && isspace((unsigned char)*parse_end)) {
+        ++parse_end;
+    }
+    if (parse_end == NULL || *parse_end != '\0') {
+        free(text);
+        set_runtime_error(database, "failed to parse spatial numeric literal");
+        return MYLITE_ERROR;
+    }
+
+    out_cell->owned_text = text;
+    out_cell->value = text;
+    out_cell->value_size = text_length;
+    out_cell->has_value_size = true;
+    *out_argument = (struct mylite_spatial_argument){
+        .bytes = out_cell->value,
+        .byte_count = out_cell->value_size,
+        .is_null = false,
+        .has_numeric = true,
+        .numeric = value,
+    };
+    return MYLITE_OK;
 }
 
 static int spatial_function_session_scalar_result(

@@ -136,6 +136,13 @@ static const struct spatial_sqlite_function_descriptor spatial_sqlite_function_d
     {"ST_FrechetDistance", MYLITE_SPATIAL_FUNCTION_ST_FRECHETDISTANCE},
     {"ST_HausdorffDistance", MYLITE_SPATIAL_FUNCTION_ST_HAUSDORFFDISTANCE},
     {"ST_ConvexHull", MYLITE_SPATIAL_FUNCTION_ST_CONVEXHULL},
+    {"ST_Buffer", MYLITE_SPATIAL_FUNCTION_ST_BUFFER},
+    {"ST_Buffer_Strategy", MYLITE_SPATIAL_FUNCTION_ST_BUFFER_STRATEGY},
+    {"ST_Difference", MYLITE_SPATIAL_FUNCTION_ST_DIFFERENCE},
+    {"ST_Intersection", MYLITE_SPATIAL_FUNCTION_ST_INTERSECTION},
+    {"ST_SymDifference", MYLITE_SPATIAL_FUNCTION_ST_SYMDIFFERENCE},
+    {"ST_Transform", MYLITE_SPATIAL_FUNCTION_ST_TRANSFORM},
+    {"ST_Union", MYLITE_SPATIAL_FUNCTION_ST_UNION},
 };
 
 int mylite_sqlite_register_spatial_functions(sqlite3 *sqlite) {

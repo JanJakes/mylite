@@ -137,6 +137,11 @@ static int test_persistent_comments_metadata_and_persistence(void) {
         database,
         "CREATE TABLE dup_comment (id INT) COMMENT='first' COMMENT='second'"
     );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE ndb_comment_table (id INT) "
+        "COMMENT='NDB_TABLE=READ_BACKUP=1,PARTITION_BALANCE=FOR_RA_BY_LDM'"
+    );
 
     failures += expect_single_cell_contains(
         database,
@@ -173,6 +178,28 @@ static int test_persistent_comments_metadata_and_persistence(void) {
         0U,
         "second",
         "information schema table comment"
+    );
+    failures += expect_single_cell_contains(
+        database,
+        "SHOW CREATE TABLE ndb_comment_table",
+        1U,
+        "COMMENT='NDB_TABLE=READ_BACKUP=1,PARTITION_BALANCE=FOR_RA_BY_LDM'",
+        "NDB-shaped table comment SHOW CREATE"
+    );
+    failures += expect_single_cell(
+        database,
+        "SHOW TABLE STATUS WHERE Name = 'ndb_comment_table'",
+        show_table_status_comment_column,
+        "NDB_TABLE=READ_BACKUP=1,PARTITION_BALANCE=FOR_RA_BY_LDM",
+        "NDB-shaped table comment SHOW TABLE STATUS"
+    );
+    failures += expect_single_cell(
+        database,
+        "SELECT TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ndb_comment_table'",
+        0U,
+        "NDB_TABLE=READ_BACKUP=1,PARTITION_BALANCE=FOR_RA_BY_LDM",
+        "NDB-shaped table comment information schema"
     );
 
     failures += execute_statement_ok(database, "RENAME TABLE plain_comment TO renamed_comment");

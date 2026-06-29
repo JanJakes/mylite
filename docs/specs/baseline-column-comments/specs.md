@@ -100,6 +100,8 @@ Supported:
 - valid UTF-8, NUL-free comment text up to 1024 characters;
 - duplicate column comments where the final value wins;
 - empty comments, represented as an empty descriptor string;
+- NDB-shaped `NDB_COLUMN=...` strings as ordinary comment text, without NDB
+  engine validation or effects;
 - durable catalog migration for existing files, with existing columns receiving
   empty comments;
 - descriptor-driven rendering in:
@@ -244,7 +246,7 @@ Required fast C coverage:
   rejection of `COMMENT='text'`, numeric comments, and `COMMENT NULL`;
 - duplicate comments where the final value wins;
 - create-time comments for numeric, string, temporal, and auto-increment
-  columns;
+  columns, plus NDB-shaped comment text;
 - `SHOW CREATE TABLE`, `SHOW FULL COLUMNS`, and
   `INFORMATION_SCHEMA.COLUMNS.COLUMN_COMMENT`;
 - empty comments omitted from `SHOW CREATE TABLE` and rendered as empty

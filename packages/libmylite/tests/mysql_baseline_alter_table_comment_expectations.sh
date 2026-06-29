@@ -121,6 +121,8 @@ run_mysql \
      ALTER TABLE double_comment COMMENT = \"double\";
      CREATE TABLE escaped_comment(id INT) ENGINE=InnoDB COMMENT='old';
      ALTER TABLE escaped_comment COMMENT='a\\'b\\\\c';
+     CREATE TABLE ndb_comment_table(id INT) ENGINE=InnoDB
+       COMMENT='NDB_TABLE=READ_BACKUP=1,PARTITION_BALANCE=FOR_RA_BY_LDM';
      CREATE TABLE algorithm_lock(id INT) ENGINE=InnoDB;
      ALTER TABLE algorithm_lock COMMENT='copy', ALGORITHM=COPY;
      ALTER TABLE algorithm_lock COMMENT='inplace', ALGORITHM=INPLACE;
@@ -142,6 +144,12 @@ expect_contains "double quoted comment value" "$double_show" "COMMENT='double'"
 escaped_show=$(run_mysql "SHOW CREATE TABLE ${DATABASE}.escaped_comment;")
 expect_contains "escaped_comment altered comment" "$escaped_show" "COMMENT='a''b\\\\c'"
 
+ndb_show=$(run_mysql "SHOW CREATE TABLE ${DATABASE}.ndb_comment_table;")
+expect_contains \
+    "NDB-shaped table comment preserved in show create" \
+    "$ndb_show" \
+    "COMMENT='NDB_TABLE=READ_BACKUP=1,PARTITION_BALANCE=FOR_RA_BY_LDM'"
+
 algorithm_show=$(run_mysql "SHOW CREATE TABLE ${DATABASE}.algorithm_lock;")
 expect_contains "algorithm lock final comment" "$algorithm_show" "COMMENT='locked'"
 
@@ -150,7 +158,10 @@ metadata=$(
         "SELECT TABLE_NAME, TABLE_COMMENT, CREATE_OPTIONS
          FROM INFORMATION_SCHEMA.TABLES
          WHERE TABLE_SCHEMA = '${DATABASE}'
-           AND TABLE_NAME IN ('altered','noeq','double_comment','escaped_comment','algorithm_lock')
+           AND TABLE_NAME IN (
+             'altered','noeq','double_comment','escaped_comment','algorithm_lock',
+             'ndb_comment_table'
+           )
          ORDER BY TABLE_NAME;"
 )
 expected_metadata=$(
@@ -158,6 +169,9 @@ expected_metadata=$(
     printf '%s\t%s\t\n' "altered" "new"
     printf '%s\t%s\t\n' "double_comment" "double"
     printf '%s\t%s\t\n' "escaped_comment" "a'b\\c"
+    printf '%s\t%s\t\n' \
+        "ndb_comment_table" \
+        "NDB_TABLE=READ_BACKUP=1,PARTITION_BALANCE=FOR_RA_BY_LDM"
     printf '%s\t%s\t\n' "noeq" "noeq"
 )
 expect_value "information schema table comments" "$expected_metadata" "$metadata"
@@ -171,6 +185,15 @@ expect_contains "show table status headers include Comment" "$status_rows" "Crea
 expect_contains "show table status changed row" "$status_rows" "altered	InnoDB"
 expect_contains "show table status altered value" "$status_rows" "	new"
 expect_contains "show table status escaped_comment value" "$status_rows" "a'b\\c"
+
+ndb_status=$(
+    run_mysql_with_headers \
+        "SHOW TABLE STATUS FROM ${DATABASE} WHERE Name = 'ndb_comment_table';"
+)
+expect_contains \
+    "show table status NDB-shaped comment value" \
+    "$ndb_status" \
+    "NDB_TABLE=READ_BACKUP=1,PARTITION_BALANCE=FOR_RA_BY_LDM"
 
 clear_show=$(
     run_mysql \

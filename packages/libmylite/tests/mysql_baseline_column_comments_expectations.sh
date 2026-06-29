@@ -222,6 +222,28 @@ expect_output \
 "SHOW CREATE TABLE unique_comment;" \
     "$DATABASE"
 
+ndb_expected=$(cat <<\EXPECTED
+ndb_column_comment	CREATE TABLE `ndb_column_comment` (
+  `id` int DEFAULT NULL,
+  `body` text COMMENT 'NDB_COLUMN=BLOB_INLINE_SIZE=4096,MAX_BLOB_PART_SIZE'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+body	text	utf8mb4_0900_ai_ci	YES		NULL		select,insert,update,references	NDB_COLUMN=BLOB_INLINE_SIZE=4096,MAX_BLOB_PART_SIZE
+body	NDB_COLUMN=BLOB_INLINE_SIZE=4096,MAX_BLOB_PART_SIZE
+EXPECTED
+)
+expect_output \
+    "NDB-shaped column comment is ordinary metadata" \
+    "$ndb_expected" \
+    "CREATE TABLE ndb_column_comment ("\
+"id INT, "\
+"body TEXT COMMENT 'NDB_COLUMN=BLOB_INLINE_SIZE=4096,MAX_BLOB_PART_SIZE'); "\
+"SHOW CREATE TABLE ndb_column_comment; "\
+"SHOW FULL COLUMNS FROM ndb_column_comment WHERE Field = 'body'; "\
+"SELECT COLUMN_NAME, COLUMN_COMMENT FROM INFORMATION_SCHEMA.COLUMNS "\
+"WHERE TABLE_SCHEMA = '${DATABASE}' AND TABLE_NAME = 'ndb_column_comment' "\
+"AND COLUMN_NAME = 'body';" \
+    "$DATABASE"
+
 long_ok_expected=$(cat <<\EXPECTED
 0	0
 EXPECTED

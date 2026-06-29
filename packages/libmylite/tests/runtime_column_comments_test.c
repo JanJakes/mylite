@@ -118,6 +118,12 @@ static int test_create_clone_metadata_and_persistence(void) {
         "id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'identifier', "
         "PRIMARY KEY (id))"
     );
+    failures += execute_statement_ok(
+        database,
+        "CREATE TABLE ndb_column_comment ("
+        "id INT, "
+        "body TEXT COMMENT 'NDB_COLUMN=BLOB_INLINE_SIZE=4096,MAX_BLOB_PART_SIZE')"
+    );
     failures += expect_cell_contains(
         database,
         "SHOW CREATE TABLE commented",
@@ -151,6 +157,32 @@ static int test_create_clone_metadata_and_persistence(void) {
         0U,
         "identifier",
         "information schema column comment"
+    );
+    failures += expect_cell_contains(
+        database,
+        "SHOW CREATE TABLE ndb_column_comment",
+        0U,
+        1U,
+        "`body` text COMMENT 'NDB_COLUMN=BLOB_INLINE_SIZE=4096,MAX_BLOB_PART_SIZE'",
+        "NDB-shaped column comment SHOW CREATE"
+    );
+    failures += expect_cell(
+        database,
+        "SHOW FULL COLUMNS FROM ndb_column_comment",
+        1U,
+        show_full_columns_comment_column,
+        "NDB_COLUMN=BLOB_INLINE_SIZE=4096,MAX_BLOB_PART_SIZE",
+        "NDB-shaped column comment SHOW FULL COLUMNS"
+    );
+    failures += expect_cell(
+        database,
+        "SELECT COLUMN_COMMENT FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ndb_column_comment' "
+        "AND COLUMN_NAME = 'body'",
+        0U,
+        0U,
+        "NDB_COLUMN=BLOB_INLINE_SIZE=4096,MAX_BLOB_PART_SIZE",
+        "NDB-shaped column comment information schema"
     );
     failures += execute_statement_ok(database, "CREATE TABLE clone LIKE commented");
     failures += expect_cell(

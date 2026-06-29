@@ -226,8 +226,9 @@ Runtime and parser tests must cover:
 - Multi-action `ALTER TABLE` lists, including duplicate `COMMENT` actions where
   MySQL lets the last one win.
 - Broader table options such as `ROW_FORMAT`, `KEY_BLOCK_SIZE`,
-  `STATS_PERSISTENT`, `ENGINE_ATTRIBUTE`, partition comments, and NDB comment
-  options.
+  `STATS_PERSISTENT`, `ENGINE_ATTRIBUTE`, and partition comments. NDB-shaped
+  table comment strings are preserved as ordinary comments, but NDB option
+  semantics remain unsupported.
 - Privileges, metadata locks, binary logging, and online-DDL concurrency
   semantics.
 - Character-set conversion or collation behavior for comment text.

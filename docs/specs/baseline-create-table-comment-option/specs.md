@@ -6,9 +6,10 @@ limited to storing a MyLite-owned table descriptor comment and exposing it
 through existing descriptor-driven metadata surfaces. Later
 `ALTER TABLE ... COMMENT` support is specified separately in
 `docs/specs/baseline-alter-table-comment/specs.md`. This slice does not
-implement column comments, index comments, NDB comment options, or broader
+implement column comments, index comments, NDB option semantics, or broader
 table option handling such as `ROW_FORMAT`, `KEY_BLOCK_SIZE`, or statistics
-options.
+options. Later boundary coverage verifies that NDB-shaped `NDB_TABLE=...`
+strings are preserved as ordinary table comments.
 
 ## Compatibility Authority
 
@@ -193,6 +194,7 @@ Runtime tests must cover:
 - `ROW_FORMAT`, `KEY_BLOCK_SIZE`, `STATS_PERSISTENT`,
   `STATS_AUTO_RECALC`, `STATS_SAMPLE_PAGES`, and related
   `CREATE_OPTIONS` metadata
-- NDB comment option parsing
+- semantic NDB comment option interpretation beyond ordinary string
+  preservation
 - comment privilege semantics
 - complete character-set conversion or collation behavior for comment text

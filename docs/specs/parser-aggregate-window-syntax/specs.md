@@ -29,9 +29,12 @@ frames.
 Out of scope:
 
 - execution of aggregate window functions;
-- JSON and statistical aggregate windows, which are covered by the later
+- JSON aggregate windows, which are covered by the later
   [parser corpus JSON/statistical aggregate window surfaces](../parser-corpus-json-stat-aggregate-window-surfaces/specs.md)
   placeholder slice;
+- statistical aggregate-window execution, which is covered by the later
+  [baseline statistical aggregate window functions](../baseline-statistical-aggregate-window-functions/specs.md)
+  slice;
 - window-function result metadata beyond parser AST shape;
 - real aggregate-window planning, SQLite SQL generation, frame evaluation, or
   MySQL exact numeric widening semantics.

@@ -20,9 +20,12 @@ grouped statistical aggregate-alias ordering, selected statistical
 aggregate-expression ordering, and selected grouped statistical aggregate
 `HAVING`.
 
-The implementation does not cover executable aggregate windows, `DISTINCT`,
-string-to-double conversion warnings, decimal widening metadata, or full MySQL
-grouping semantics outside the current grouped aggregate planner envelope.
+The original implementation did not cover executable aggregate windows.
+Projection-only statistical aggregate windows are covered by
+`docs/specs/baseline-statistical-aggregate-window-functions/specs.md`.
+`DISTINCT`, string-to-double conversion warnings, decimal widening metadata,
+and full MySQL grouping semantics outside the current grouped aggregate
+planner envelope remain deferred.
 
 ## Compatibility Authority
 
@@ -46,8 +49,9 @@ Runtime probes were executed against `mysql:8.4.9` in the
 - `STD()` and `STDDEV()` are aliases for `STDDEV_POP()`.
 - `VARIANCE()` is an alias for `VAR_POP()`.
 - `STDDEV_POP(DISTINCT n)` is a MySQL syntax error.
-- Aggregate-window forms are valid MySQL syntax but remain an explicit MyLite
-  runtime gap for this slice.
+- Aggregate-window forms are valid MySQL syntax. They were an explicit runtime
+  gap for this slice and are covered by the later statistical aggregate-window
+  baseline.
 - Selected grouped statistical aggregate aliases and descriptor-column
   aggregate expressions sort by their aggregate double/`NULL` value. `NULL`
   aggregate results sort first for ascending order and last for descending
@@ -100,7 +104,8 @@ remain outside this slice.
 Unsupported forms must fail deterministically rather than falling through to
 SQLite:
 
-- aggregate windows: existing aggregate-window unsupported diagnostic;
+- unsupported aggregate-window forms beyond the later projection-window
+  baseline: existing aggregate-window unsupported diagnostic;
 - `DISTINCT`: parser/runtime unsupported where the syntax is admitted;
 - unsupported sources, clauses, argument columns, and expression shapes:
   statistical aggregate-specific unsupported messages matching the existing

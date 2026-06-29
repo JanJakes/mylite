@@ -783,15 +783,6 @@ static int test_statistical_diagnostics(void) {
     );
     failures += execute_error(
         database,
-        "SELECT STDDEV_POP(n) OVER () FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "aggregate window functions are not supported",
-        }
-    );
-    failures += execute_error(
-        database,
         "SELECT STDDEV_POP(DISTINCT n) FROM numbers",
         (struct expected_sql_error){
             .code = mysql_error_parse,

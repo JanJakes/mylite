@@ -921,6 +921,17 @@ static const char *window_function_sql_name(enum planned_window_function_kind ki
         return "_mylite_bit_or";
     case PLANNED_WINDOW_FUNCTION_BIT_XOR:
         return "_mylite_bit_xor";
+    case PLANNED_WINDOW_FUNCTION_STD:
+    case PLANNED_WINDOW_FUNCTION_STDDEV:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_POP:
+        return "_mylite_stddev_pop";
+    case PLANNED_WINDOW_FUNCTION_STDDEV_SAMP:
+        return "_mylite_stddev_samp";
+    case PLANNED_WINDOW_FUNCTION_VAR_POP:
+    case PLANNED_WINDOW_FUNCTION_VARIANCE:
+        return "_mylite_var_pop";
+    case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
+        return "_mylite_var_samp";
     case PLANNED_WINDOW_FUNCTION_NONE:
         break;
     }

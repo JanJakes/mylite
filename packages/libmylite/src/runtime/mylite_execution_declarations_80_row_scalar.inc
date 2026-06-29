@@ -422,6 +422,7 @@ static bool window_function_has_arguments(enum planned_window_function_kind kind
 static bool window_function_is_core_aggregate(enum planned_window_function_kind kind);
 static bool window_function_is_numeric_core_aggregate(enum planned_window_function_kind kind);
 static bool window_function_is_bitwise_aggregate(enum planned_window_function_kind kind);
+static bool window_function_is_statistical_aggregate(enum planned_window_function_kind kind);
 static bool aggregate_window_function_is_distinct(const struct mylite_sql_ast_node *expression);
 static const struct mylite_sql_ast_node *aggregate_window_argument_node(
     const struct mylite_sql_ast_node *expression

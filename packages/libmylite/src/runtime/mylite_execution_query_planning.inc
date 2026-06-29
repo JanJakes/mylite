@@ -1843,6 +1843,41 @@ static enum planned_window_function_kind planned_window_function_kind_from_ast(
             return PLANNED_WINDOW_FUNCTION_BIT_XOR;
         }
         break;
+    case MYLITE_SQL_AST_STD_AGGREGATE_FUNCTION:
+        if (aggregate_function_has_window_clause(expression)) {
+            return PLANNED_WINDOW_FUNCTION_STD;
+        }
+        break;
+    case MYLITE_SQL_AST_STDDEV_AGGREGATE_FUNCTION:
+        if (aggregate_function_has_window_clause(expression)) {
+            return PLANNED_WINDOW_FUNCTION_STDDEV;
+        }
+        break;
+    case MYLITE_SQL_AST_STDDEV_POP_AGGREGATE_FUNCTION:
+        if (aggregate_function_has_window_clause(expression)) {
+            return PLANNED_WINDOW_FUNCTION_STDDEV_POP;
+        }
+        break;
+    case MYLITE_SQL_AST_STDDEV_SAMP_AGGREGATE_FUNCTION:
+        if (aggregate_function_has_window_clause(expression)) {
+            return PLANNED_WINDOW_FUNCTION_STDDEV_SAMP;
+        }
+        break;
+    case MYLITE_SQL_AST_VAR_POP_AGGREGATE_FUNCTION:
+        if (aggregate_function_has_window_clause(expression)) {
+            return PLANNED_WINDOW_FUNCTION_VAR_POP;
+        }
+        break;
+    case MYLITE_SQL_AST_VAR_SAMP_AGGREGATE_FUNCTION:
+        if (aggregate_function_has_window_clause(expression)) {
+            return PLANNED_WINDOW_FUNCTION_VAR_SAMP;
+        }
+        break;
+    case MYLITE_SQL_AST_VARIANCE_AGGREGATE_FUNCTION:
+        if (aggregate_function_has_window_clause(expression)) {
+            return PLANNED_WINDOW_FUNCTION_VARIANCE;
+        }
+        break;
     default:
         break;
     }
@@ -1910,6 +1945,13 @@ static bool window_function_has_arguments(enum planned_window_function_kind kind
     case PLANNED_WINDOW_FUNCTION_BIT_AND:
     case PLANNED_WINDOW_FUNCTION_BIT_OR:
     case PLANNED_WINDOW_FUNCTION_BIT_XOR:
+    case PLANNED_WINDOW_FUNCTION_STD:
+    case PLANNED_WINDOW_FUNCTION_STDDEV:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_POP:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VAR_POP:
+    case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VARIANCE:
     case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
     case PLANNED_WINDOW_FUNCTION_RANK:
     case PLANNED_WINDOW_FUNCTION_DENSE_RANK:
@@ -1931,6 +1973,13 @@ static bool window_function_is_core_aggregate(enum planned_window_function_kind 
     case PLANNED_WINDOW_FUNCTION_BIT_AND:
     case PLANNED_WINDOW_FUNCTION_BIT_OR:
     case PLANNED_WINDOW_FUNCTION_BIT_XOR:
+    case PLANNED_WINDOW_FUNCTION_STD:
+    case PLANNED_WINDOW_FUNCTION_STDDEV:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_POP:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VAR_POP:
+    case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VARIANCE:
         return true;
     case PLANNED_WINDOW_FUNCTION_NONE:
     case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
@@ -1973,6 +2022,13 @@ static bool window_function_is_numeric_core_aggregate(enum planned_window_functi
     case PLANNED_WINDOW_FUNCTION_BIT_AND:
     case PLANNED_WINDOW_FUNCTION_BIT_OR:
     case PLANNED_WINDOW_FUNCTION_BIT_XOR:
+    case PLANNED_WINDOW_FUNCTION_STD:
+    case PLANNED_WINDOW_FUNCTION_STDDEV:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_POP:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VAR_POP:
+    case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VARIANCE:
         break;
     }
     return false;
@@ -2002,6 +2058,49 @@ static bool window_function_is_bitwise_aggregate(enum planned_window_function_ki
     case PLANNED_WINDOW_FUNCTION_AVG:
     case PLANNED_WINDOW_FUNCTION_MIN:
     case PLANNED_WINDOW_FUNCTION_MAX:
+    case PLANNED_WINDOW_FUNCTION_STD:
+    case PLANNED_WINDOW_FUNCTION_STDDEV:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_POP:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VAR_POP:
+    case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VARIANCE:
+        break;
+    }
+    return false;
+}
+
+static bool window_function_is_statistical_aggregate(enum planned_window_function_kind kind) {
+    switch (kind) {
+    case PLANNED_WINDOW_FUNCTION_STD:
+    case PLANNED_WINDOW_FUNCTION_STDDEV:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_POP:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VAR_POP:
+    case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VARIANCE:
+        return true;
+    case PLANNED_WINDOW_FUNCTION_NONE:
+    case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
+    case PLANNED_WINDOW_FUNCTION_RANK:
+    case PLANNED_WINDOW_FUNCTION_DENSE_RANK:
+    case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
+    case PLANNED_WINDOW_FUNCTION_CUME_DIST:
+    case PLANNED_WINDOW_FUNCTION_NTILE:
+    case PLANNED_WINDOW_FUNCTION_LAG:
+    case PLANNED_WINDOW_FUNCTION_LEAD:
+    case PLANNED_WINDOW_FUNCTION_FIRST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_LAST_VALUE:
+    case PLANNED_WINDOW_FUNCTION_NTH_VALUE:
+    case PLANNED_WINDOW_FUNCTION_COUNT_STAR:
+    case PLANNED_WINDOW_FUNCTION_COUNT_VALUE:
+    case PLANNED_WINDOW_FUNCTION_SUM:
+    case PLANNED_WINDOW_FUNCTION_AVG:
+    case PLANNED_WINDOW_FUNCTION_MIN:
+    case PLANNED_WINDOW_FUNCTION_MAX:
+    case PLANNED_WINDOW_FUNCTION_BIT_AND:
+    case PLANNED_WINDOW_FUNCTION_BIT_OR:
+    case PLANNED_WINDOW_FUNCTION_BIT_XOR:
         break;
     }
     return false;
@@ -2090,6 +2189,13 @@ static bool window_function_accepts_ignored_frame_clause(enum planned_window_fun
     case PLANNED_WINDOW_FUNCTION_BIT_AND:
     case PLANNED_WINDOW_FUNCTION_BIT_OR:
     case PLANNED_WINDOW_FUNCTION_BIT_XOR:
+    case PLANNED_WINDOW_FUNCTION_STD:
+    case PLANNED_WINDOW_FUNCTION_STDDEV:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_POP:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VAR_POP:
+    case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VARIANCE:
         break;
     }
     return false;
@@ -2109,6 +2215,13 @@ static bool window_function_uses_frame_clause(enum planned_window_function_kind 
     case PLANNED_WINDOW_FUNCTION_BIT_AND:
     case PLANNED_WINDOW_FUNCTION_BIT_OR:
     case PLANNED_WINDOW_FUNCTION_BIT_XOR:
+    case PLANNED_WINDOW_FUNCTION_STD:
+    case PLANNED_WINDOW_FUNCTION_STDDEV:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_POP:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VAR_POP:
+    case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VARIANCE:
         return true;
     case PLANNED_WINDOW_FUNCTION_NONE:
     case PLANNED_WINDOW_FUNCTION_ROW_NUMBER:
@@ -2230,7 +2343,8 @@ static int plan_row_scalar_aggregate_window_function_arguments(
     );
     if (rc == MYLITE_OK &&
         (window_function_is_numeric_core_aggregate(kind) ||
-         window_function_is_bitwise_aggregate(kind))) {
+         window_function_is_bitwise_aggregate(kind) ||
+         window_function_is_statistical_aggregate(kind))) {
         rc = validate_aggregate_window_numeric_argument(database, function_name, out_expression);
     }
     return rc;
@@ -2329,6 +2443,13 @@ static int validate_window_function_argument_count(
     case PLANNED_WINDOW_FUNCTION_BIT_AND:
     case PLANNED_WINDOW_FUNCTION_BIT_OR:
     case PLANNED_WINDOW_FUNCTION_BIT_XOR:
+    case PLANNED_WINDOW_FUNCTION_STD:
+    case PLANNED_WINDOW_FUNCTION_STDDEV:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_POP:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VAR_POP:
+    case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VARIANCE:
         min_count = 1U;
         max_count = 1U;
         break;
@@ -2452,6 +2573,13 @@ static bool window_function_argument_is_row_scalar_value_expression(
     case PLANNED_WINDOW_FUNCTION_BIT_AND:
     case PLANNED_WINDOW_FUNCTION_BIT_OR:
     case PLANNED_WINDOW_FUNCTION_BIT_XOR:
+    case PLANNED_WINDOW_FUNCTION_STD:
+    case PLANNED_WINDOW_FUNCTION_STDDEV:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_POP:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VAR_POP:
+    case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VARIANCE:
         break;
     }
     return false;
@@ -2564,6 +2692,13 @@ static const char *window_function_integer_argument_unsupported_message(
     case PLANNED_WINDOW_FUNCTION_BIT_AND:
     case PLANNED_WINDOW_FUNCTION_BIT_OR:
     case PLANNED_WINDOW_FUNCTION_BIT_XOR:
+    case PLANNED_WINDOW_FUNCTION_STD:
+    case PLANNED_WINDOW_FUNCTION_STDDEV:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_POP:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VAR_POP:
+    case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VARIANCE:
         break;
     }
     return "arguments support only scalar literals";
@@ -2736,6 +2871,13 @@ static bool window_function_null_integer_argument_is_syntax_error(
     case PLANNED_WINDOW_FUNCTION_BIT_AND:
     case PLANNED_WINDOW_FUNCTION_BIT_OR:
     case PLANNED_WINDOW_FUNCTION_BIT_XOR:
+    case PLANNED_WINDOW_FUNCTION_STD:
+    case PLANNED_WINDOW_FUNCTION_STDDEV:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_POP:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VAR_POP:
+    case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VARIANCE:
         break;
     }
     return false;
@@ -2766,6 +2908,13 @@ static size_t window_function_integer_argument_index(enum planned_window_functio
     case PLANNED_WINDOW_FUNCTION_BIT_AND:
     case PLANNED_WINDOW_FUNCTION_BIT_OR:
     case PLANNED_WINDOW_FUNCTION_BIT_XOR:
+    case PLANNED_WINDOW_FUNCTION_STD:
+    case PLANNED_WINDOW_FUNCTION_STDDEV:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_POP:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VAR_POP:
+    case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VARIANCE:
         break;
     }
     return SIZE_MAX;
@@ -3176,6 +3325,20 @@ static const char *window_function_display_name(enum planned_window_function_kin
         return "BIT_OR";
     case PLANNED_WINDOW_FUNCTION_BIT_XOR:
         return "BIT_XOR";
+    case PLANNED_WINDOW_FUNCTION_STD:
+        return "STD";
+    case PLANNED_WINDOW_FUNCTION_STDDEV:
+        return "STDDEV";
+    case PLANNED_WINDOW_FUNCTION_STDDEV_POP:
+        return "STDDEV_POP";
+    case PLANNED_WINDOW_FUNCTION_STDDEV_SAMP:
+        return "STDDEV_SAMP";
+    case PLANNED_WINDOW_FUNCTION_VAR_POP:
+        return "VAR_POP";
+    case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
+        return "VAR_SAMP";
+    case PLANNED_WINDOW_FUNCTION_VARIANCE:
+        return "VARIANCE";
     case PLANNED_WINDOW_FUNCTION_NONE:
         break;
     }

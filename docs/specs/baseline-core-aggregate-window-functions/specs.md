@@ -185,5 +185,4 @@ SQLite API.
 - `packages/libmylite/tests/mysql_baseline_core_aggregate_window_functions_expectations.sh`
   records equivalent MySQL 8.4.9 result and error expectations.
 - The parser-corpus aggregate-window runtime test is updated so `SUM(1) OVER ()`
-  is a supported execution path while JSON/statistical aggregate windows remain
-  rejected.
+  is a supported execution path while JSON aggregate windows remain rejected.

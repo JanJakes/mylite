@@ -41,6 +41,10 @@ static int test_aggregate_window_surfaces(void) {
     static const char *const supported_sum_window_rows[] = {"2", "2"};
     static const char *const supported_group_concat_rows[] = {"ann|bob"};
     static const char *const supported_group_concat_multi_arg_rows[] = {"ann|,bob|"};
+    static const char *const supported_statistical_window_rows[] = {
+        NULL,
+        "7.0710678118654755",
+    };
     static const char *const nth_from_first_rows[] = {"1", "1", "2", "1"};
     mylite_db *database = NULL;
     int failures = 0;
@@ -125,13 +129,14 @@ static int test_aggregate_window_surfaces(void) {
             .message_part = "aggregate window functions are not supported",
         }
     );
-    failures += execute_error(
+    failures += expect_query_values(
         database,
-        "SELECT STDDEV_SAMP(j) OVER (ORDER BY id) FROM numbers",
-        (struct expected_sql_error){
-            .code = mysql_error_parse,
-            .sqlstate = "42000",
-            .message_part = "aggregate window functions are not supported",
+        (struct expected_query){
+            .sql = "SELECT STDDEV_SAMP(j) OVER (ORDER BY id) FROM numbers",
+            .values = supported_statistical_window_rows,
+            .column_count = 1U,
+            .row_count = 2U,
+            .context = "supported STDDEV_SAMP aggregate window subset",
         }
     );
     failures += execute_error(

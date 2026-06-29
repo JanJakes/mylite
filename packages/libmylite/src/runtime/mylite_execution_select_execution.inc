@@ -2725,6 +2725,24 @@ static int populate_window_function_result_column_descriptor(
             }
         );
         return MYLITE_OK;
+    case PLANNED_WINDOW_FUNCTION_STD:
+    case PLANNED_WINDOW_FUNCTION_STDDEV:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_POP:
+    case PLANNED_WINDOW_FUNCTION_STDDEV_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VAR_POP:
+    case PLANNED_WINDOW_FUNCTION_VAR_SAMP:
+    case PLANNED_WINDOW_FUNCTION_VARIANCE:
+        populate_scalar_binary_numeric_result_column_descriptor(
+            descriptor,
+            (struct scalar_binary_numeric_result_column_shape){
+                .logical_type = MYLITE_RESULT_LOGICAL_TYPE_DOUBLE,
+                .display_length = mysql_scalar_double_display_length,
+                .decimals = mysql_approximate_decimals,
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
     case PLANNED_WINDOW_FUNCTION_PERCENT_RANK:
     case PLANNED_WINDOW_FUNCTION_CUME_DIST:
         populate_scalar_binary_numeric_result_column_descriptor(

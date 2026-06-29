@@ -24,10 +24,11 @@ including:
   `VAR_POP(expr)`, `VAR_SAMP(expr)`, and `VARIANCE(expr)` with an `OVER`
   clause.
 
-MyLite currently does not implement executable JSON or statistical aggregate
-semantics. This slice admits the syntax as parser placeholders so applications
-and corpus probes reach a deterministic unsupported diagnostic instead of a
-syntax error.
+MyLite did not implement executable JSON or statistical aggregate-window
+semantics when this parser slice landed. Statistical aggregate windows are now
+covered by `docs/specs/baseline-statistical-aggregate-window-functions/specs.md`.
+JSON aggregate windows remain parser placeholders so applications and corpus
+probes reach a deterministic unsupported diagnostic instead of a syntax error.
 
 The parser must continue to reject arbitrary scalar or unknown function names
 with `OVER`; `foo(...) OVER ()` is not part of this placeholder surface.
@@ -55,10 +56,11 @@ aggregate names and appends the window spec/reference as the last child.
 
 ## Runtime Behavior
 
-No SQLite fork hook is needed. Runtime must keep aggregate-window execution
-unsupported. Parsed JSON/statistical aggregate-window placeholders must trigger
-the same deterministic unsupported aggregate-window diagnostic as the existing
-`SUM(...) OVER ...` placeholder path.
+No SQLite fork hook is needed for the parser placeholder behavior. Parsed JSON
+aggregate-window placeholders must trigger the same deterministic unsupported
+aggregate-window diagnostic as the existing unsupported aggregate-window paths.
+Statistical aggregate-window execution uses public SQLite window callbacks in
+the later statistical baseline.
 
 Non-window `JSON_ARRAYAGG(...)`, `JSON_OBJECTAGG(...)`, `STDDEV(...)`,
 `VARIANCE(...)`, and similar generic calls keep the existing unsupported
@@ -69,8 +71,9 @@ generic-function behavior until a later aggregate implementation slice lands.
 MySQL 8.4.9 expectations cover representative accepted JSON and statistical
 aggregate-window syntax. MyLite parser tests cover AST admission and ensure
 arbitrary generic functions with `OVER` still fail to parse. Runtime tests
-verify that admitted placeholders return the existing unsupported
-aggregate-window diagnostic.
+verify that admitted JSON placeholders return the existing unsupported
+aggregate-window diagnostic. Statistical runtime coverage lives with the
+statistical aggregate-window baseline.
 
 The parser corpus benchmark over the WordPress mysql-on-sqlite
 `mysql-server-tests-queries.csv` must be rerun before commit to measure accepted
@@ -79,5 +82,5 @@ query movement.
 ## Compatibility Status
 
 This slice improves parser compatibility for JSON and statistical aggregate
-window syntax. It does not mark JSON aggregate execution, statistical aggregate
-execution, or executable aggregate windows as supported.
+window syntax. JSON aggregate-window execution remains unsupported here;
+statistical aggregate-window execution is documented by the later baseline.

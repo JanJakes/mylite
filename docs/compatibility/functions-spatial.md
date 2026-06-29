@@ -15,7 +15,8 @@ representable object-shape disjoint/intersection checks, and SRID-0
 representable Point, LineString, Polygon, and child-decomposed collection
 values. SRID-0 `ST_Equals()` covers object-shape equality for the same
 representable geometry surface, and SRID-0 `ST_Touches()` covers
-boundary-contact checks for that surface. Geohash helpers support coordinate
+boundary-contact checks for that surface. SRID-0 `ST_Overlaps()` covers
+same-dimension partial overlap checks for that surface. Geohash helpers support coordinate
 encoding/decoding plus SRID 0 and 4326 point round-trips. GeoJSON helpers
 support 2D geometry, Feature extraction, and FeatureCollection extraction for
 SRID 0 and 4326. Geographic point accessors support SRID 4326
@@ -98,7 +99,7 @@ spatial search.
 | `ST_NumGeometries()` | ✅ | Return GeometryCollection member count |
 | `ST_NumInteriorRing(), ST_NumInteriorRings()` | ✅ | Return Polygon interior ring count |
 | `ST_NumPoints()` | ✅ | Return LineString point count |
-| `ST_Overlaps()` | ❌ | Whether one geometry overlaps another |
+| `ST_Overlaps()` | 🟡 | SRID-0 same-dimension object-shape overlaps for Point, LineString, Polygon, and child-decomposed collections; full DE-9IM coverage and geographic SRS deferred |
 | `ST_PointAtDistance()` | ✅ | Cartesian SRID-0 point at LineString distance |
 | `ST_PointFromGeoHash()` | ✅ | Convert geohash value to SRID 0 or 4326 Point |
 | `ST_PointFromText()` | ✅ | Construct SRID-0 Point from WKT |

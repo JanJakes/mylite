@@ -1392,6 +1392,17 @@
   )
   mylite_configure_c_target(mylite_runtime_json_aggregate_window_functions_test)
 
+  add_executable(mylite_runtime_json_table_literal_test
+    tests/runtime_json_table_literal_test.c
+  )
+  target_link_libraries(mylite_runtime_json_table_literal_test PRIVATE
+    MyLite::mylite
+  )
+  target_include_directories(mylite_runtime_json_table_literal_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  )
+  mylite_configure_c_target(mylite_runtime_json_table_literal_test)
+
   add_executable(mylite_runtime_json_set_function_test
     tests/runtime_json_set_function_test.c
   )

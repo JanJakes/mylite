@@ -1373,6 +1373,12 @@ struct planned_diagnostics_show_limit {
     uint64_t offset;
 };
 
+struct planned_json_table_source {
+    struct planned_value *values;
+    size_t row_count;
+    size_t column_count;
+};
+
 struct planned_select_source {
     struct table_name_resolution source;
     struct mylite_catalog_table_descriptor table;
@@ -1381,6 +1387,8 @@ struct planned_select_source {
     char alias[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     bool has_alias;
     bool is_derived;
+    bool is_json_table;
+    struct planned_json_table_source json_table;
     struct planned_select *derived_select;
     struct planned_row_scalar_select *derived_row_scalar_select;
     struct planned_grouped_aggregate *derived_grouped_aggregate;

@@ -182,6 +182,158 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_derived_table_source(
     return derived;
 }
 
+struct mylite_sql_ast_node *mylite_sql_parser_make_json_table_source(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token json_table_token,
+    struct mylite_sql_ast_node *document,
+    struct mylite_sql_ast_node *row_path,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_token right_parenthesis,
+    struct mylite_sql_ast_node *alias
+) {
+    struct mylite_sql_source_span span = mylite_sql_parser_span_join(
+        mylite_sql_parser_span_from_token(&json_table_token),
+        mylite_sql_parser_span_from_token(&right_parenthesis)
+    );
+    struct mylite_sql_ast_node *source = NULL;
+
+    if (document != NULL) {
+        span = mylite_sql_parser_span_join(span, document->span);
+    }
+    if (row_path != NULL) {
+        span = mylite_sql_parser_span_join(span, row_path->span);
+    }
+    if (columns != NULL) {
+        span = mylite_sql_parser_span_join(span, columns->span);
+    }
+    if (alias != NULL) {
+        span = mylite_sql_parser_span_join(span, alias->span);
+    }
+
+    source = mylite_sql_parser_make_node(state, MYLITE_SQL_AST_FROM_JSON_TABLE, span);
+    if (source == NULL) {
+        return NULL;
+    }
+
+    mylite_sql_ast_node_append_child(source, document);
+    mylite_sql_ast_node_append_child(source, row_path);
+    mylite_sql_ast_node_append_child(source, columns);
+    if (alias != NULL) {
+        mylite_sql_ast_node_append_child(source, alias);
+    }
+    return source;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_json_table_column_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column
+) {
+    struct mylite_sql_source_span span =
+        column == NULL ? (struct mylite_sql_source_span){0} : column->span;
+    struct mylite_sql_ast_node *list =
+        mylite_sql_parser_make_node(state, MYLITE_SQL_AST_JSON_TABLE_COLUMN_LIST, span);
+
+    if (list == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_append_child(list, column);
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_append_json_table_column(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *column
+) {
+    if (!mylite_sql_parser_is_parse_ok(state) || list == NULL) {
+        return list;
+    }
+
+    mylite_sql_ast_node_append_child(list, column);
+    if (column != NULL) {
+        mylite_sql_ast_node_set_span(list, mylite_sql_parser_span_join(list->span, column->span));
+    }
+    return list;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_json_table_ordinality_column(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_token ordinality_token
+) {
+    struct mylite_sql_source_span span =
+        name == NULL ? (struct mylite_sql_source_span){0} : name->span;
+    struct mylite_sql_ast_node *column = NULL;
+
+    span = mylite_sql_parser_span_join(span, mylite_sql_parser_span_from_token(&ordinality_token));
+    column = mylite_sql_parser_make_node(state, MYLITE_SQL_AST_JSON_TABLE_ORDINALITY_COLUMN, span);
+    if (column == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_append_child(column, name);
+    return column;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_json_table_path_column(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *type,
+    struct mylite_sql_token path_token,
+    struct mylite_sql_ast_node *path
+) {
+    struct mylite_sql_source_span span =
+        name == NULL ? (struct mylite_sql_source_span){0} : name->span;
+    struct mylite_sql_ast_node *column = NULL;
+
+    if (type != NULL) {
+        span = mylite_sql_parser_span_join(span, type->span);
+    }
+    span = mylite_sql_parser_span_join(span, mylite_sql_parser_span_from_token(&path_token));
+    if (path != NULL) {
+        span = mylite_sql_parser_span_join(span, path->span);
+    }
+
+    column = mylite_sql_parser_make_node(state, MYLITE_SQL_AST_JSON_TABLE_PATH_COLUMN, span);
+    if (column == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_append_child(column, name);
+    mylite_sql_ast_node_append_child(column, type);
+    mylite_sql_ast_node_append_child(column, path);
+    return column;
+}
+
+struct mylite_sql_ast_node *mylite_sql_parser_make_json_table_exists_column(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *type,
+    struct mylite_sql_token exists_token, // NOLINT(bugprone-easily-swappable-parameters)
+    struct mylite_sql_token path_token,
+    struct mylite_sql_ast_node *path
+) {
+    struct mylite_sql_source_span span =
+        name == NULL ? (struct mylite_sql_source_span){0} : name->span;
+    struct mylite_sql_ast_node *column = NULL;
+
+    if (type != NULL) {
+        span = mylite_sql_parser_span_join(span, type->span);
+    }
+    span = mylite_sql_parser_span_join(span, mylite_sql_parser_span_from_token(&exists_token));
+    span = mylite_sql_parser_span_join(span, mylite_sql_parser_span_from_token(&path_token));
+    if (path != NULL) {
+        span = mylite_sql_parser_span_join(span, path->span);
+    }
+
+    column = mylite_sql_parser_make_node(state, MYLITE_SQL_AST_JSON_TABLE_EXISTS_COLUMN, span);
+    if (column == NULL) {
+        return NULL;
+    }
+    mylite_sql_ast_node_append_child(column, name);
+    mylite_sql_ast_node_append_child(column, type);
+    mylite_sql_ast_node_append_child(column, path);
+    return column;
+}
+
 struct mylite_sql_ast_node *mylite_sql_parser_make_from_join(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token from_token,

@@ -615,6 +615,28 @@ static int make_select_result_column_descriptor(
     };
 
     if (metadata_context == NULL || !metadata_context->has_single_source_metadata) {
+        if (plan->source_count == 1U && plan->sources != NULL && plan->sources[0].is_json_table &&
+            plan->column_source_indexes != NULL &&
+            plan->column_source_indexes[column_index] == 0U) {
+            const struct planned_select_source *source = &plan->sources[0];
+            struct result_column_metadata_context synthetic_context =
+                result_column_metadata_context_init();
+
+            out_descriptor->schema_name = source->source.schema.name;
+            out_descriptor->table_name =
+                source->has_alias ? source->alias : source->source.table_name;
+            out_descriptor->origin_schema_name = "";
+            out_descriptor->origin_table_name = "";
+            out_descriptor->origin_column_name = column->name;
+            out_descriptor->nullable = column->is_nullable;
+            return populate_select_result_column_descriptor(
+                database,
+                &source->table,
+                column,
+                &synthetic_context,
+                out_descriptor
+            );
+        }
         return MYLITE_OK;
     }
 

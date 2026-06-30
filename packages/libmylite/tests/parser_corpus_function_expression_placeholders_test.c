@@ -28,8 +28,6 @@ static int test_function_expression_placeholders(void) {
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "SELECT * FROM t1 WHERE word = CAST(0xDF AS CHAR)",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
-        {.sql = "SELECT * FROM JSON_TABLE('[]', '$[*]' COLUMNS (p NCHAR PATH '$.a')) AS jt",
-         .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "INSERT INTO t1 VALUES (DATE_FORMAT('2004-02-02','%M'))",
          .kind = MYLITE_SQL_AST_UNSUPPORTED_UTILITY_STATEMENT},
         {.sql = "UPDATE t1 SET a = DATE_ADD(NULL, INTERVAL 1 DAY)",
@@ -53,6 +51,8 @@ static int test_function_expression_placeholders(void) {
     failures += expect_syntax_error("DELETE FROM t2 WHERE fld3 = 'd%' ORDER BY");
     failures += parse_ok("DELETE FROM t2 WHERE fld3 = 'd%' ORDER BY RAND()");
     failures += parse_ok("SELECT * FROM t1 WHERE a = IF(b < 10, _ucs2 0x0061, _ucs2 0x0062)");
+    failures +=
+        parse_ok("SELECT * FROM JSON_TABLE('[]', '$[*]' COLUMNS (p NCHAR PATH '$.a')) AS jt");
 
     for (size_t index = 0U; index < sizeof(placeholders) / sizeof(placeholders[0]); ++index) {
         failures += expect_statement_kind(placeholders[index]);

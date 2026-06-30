@@ -859,7 +859,8 @@ static int append_select_sql_work_source(
     struct mylite_dynamic_string *string,
     struct select_sql_work_stack *stack,
     const struct planned_select_source *source,
-    size_t source_index
+    size_t source_index,
+    size_t *next_parameter
 );
 static int select_sql_work_stack_push(
     struct select_sql_work_stack *stack,

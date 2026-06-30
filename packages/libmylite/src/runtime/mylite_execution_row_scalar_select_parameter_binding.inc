@@ -79,6 +79,13 @@ static int bind_select_parameter_work_item(
     case SELECT_PARAMETER_BIND_SOURCE: {
         enum select_parameter_bind_item_kind kind = SELECT_PARAMETER_BIND_PLAN;
 
+        if (item->source != NULL && item->source->is_json_table) {
+            return bind_json_table_source_parameters(
+                statement,
+                &item->source->json_table,
+                parameter_index
+            );
+        }
         if (item->source == NULL || !item->source->is_derived) {
             return MYLITE_OK;
         }

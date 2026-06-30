@@ -56,7 +56,8 @@ static const struct mylite_sql_ast_node *select_statement_source_clause(
         return NULL;
     }
     if (source->kind == MYLITE_SQL_AST_FROM_DUAL || source->kind == MYLITE_SQL_AST_FROM_TABLE ||
-        source->kind == MYLITE_SQL_AST_FROM_JOIN || source->kind == MYLITE_SQL_AST_FROM_DERIVED) {
+        source->kind == MYLITE_SQL_AST_FROM_JOIN || source->kind == MYLITE_SQL_AST_FROM_DERIVED ||
+        source->kind == MYLITE_SQL_AST_FROM_JSON_TABLE) {
         return source;
     }
     return NULL;

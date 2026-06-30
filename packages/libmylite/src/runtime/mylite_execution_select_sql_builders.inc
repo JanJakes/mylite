@@ -94,7 +94,13 @@ static int append_select_sql_work_item(
     case SELECT_SQL_WORK_FROM:
         return append_select_sql_work_from(string, stack, item->plan);
     case SELECT_SQL_WORK_SOURCE:
-        return append_select_sql_work_source(string, stack, item->source, item->source_index);
+        return append_select_sql_work_source(
+            string,
+            stack,
+            item->source,
+            item->source_index,
+            next_parameter
+        );
     case SELECT_SQL_WORK_JOIN_CONDITION:
         return append_select_join_condition_sql(string, item->join_condition, next_parameter);
     case SELECT_SQL_WORK_PREDICATE:
@@ -269,12 +275,17 @@ static int append_select_sql_work_source(
     struct mylite_dynamic_string *string,
     struct select_sql_work_stack *stack,
     const struct planned_select_source *source,
-    size_t source_index
+    size_t source_index,
+    size_t *next_parameter
 ) {
     int rc = MYLITE_OK;
 
     if (source == NULL) {
         return MYLITE_ERROR;
+    }
+    if (source->is_json_table) {
+        (void)stack;
+        return append_json_table_source_sql(string, source, source_index, next_parameter);
     }
     if (source->is_derived) {
         enum select_sql_work_item_kind query_kind = SELECT_SQL_WORK_QUERY;
@@ -459,6 +470,9 @@ static int append_select_source_sql(
 
     if (source == NULL) {
         return MYLITE_ERROR;
+    }
+    if (source->is_json_table) {
+        return append_json_table_source_sql(string, source, source_index, next_parameter);
     }
     if (source->is_derived) {
         if (source->derived_select == NULL && source->derived_row_scalar_select == NULL &&

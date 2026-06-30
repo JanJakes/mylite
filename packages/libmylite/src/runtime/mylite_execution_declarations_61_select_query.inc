@@ -192,6 +192,11 @@ static int plan_joined_select_derived_source(
     const struct mylite_sql_ast_node *source_node,
     struct planned_select_source *out_source
 );
+static int plan_json_table_select_source(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *source_node,
+    struct planned_select_source *out_source
+);
 static int plan_derived_select_source_child(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *select_statement,
@@ -324,6 +329,7 @@ static void planned_select_order_deinit(struct planned_select_order *order);
 static void planned_compound_select_deinit(struct planned_compound_select *plan);
 static void planned_select_source_deinit(struct planned_select_source *source);
 static void planned_select_source_deinit_shallow(struct planned_select_source *source);
+static void planned_json_table_source_deinit(struct planned_json_table_source *source);
 static void planned_select_join_condition_deinit(struct planned_select_join_condition *condition);
 static void planned_select_deinit(struct planned_select *plan);
 static void planned_select_deinit_shallow(struct planned_select *plan);

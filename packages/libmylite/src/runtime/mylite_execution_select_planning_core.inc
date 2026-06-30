@@ -66,6 +66,86 @@ static int plan_select(
         };
         return plan_joined_select(database, &joined_select, out_plan);
     }
+    if (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_JSON_TABLE) {
+        rc = collect_select_optional_clauses(database, statement, &clauses);
+        if (rc == MYLITE_OK) {
+            out_plan->source_count = 1U;
+            out_plan->sources = calloc(1U, sizeof(*out_plan->sources));
+            if (out_plan->sources == NULL) {
+                set_nomem_error(database);
+                rc = MYLITE_NOMEM;
+            }
+        }
+        if (rc == MYLITE_OK) {
+            rc = plan_joined_select_source(database, from_clause, &out_plan->sources[0]);
+        }
+        if (rc == MYLITE_OK) {
+            rc = init_join_select_source_context(
+                out_plan->sources,
+                out_plan->source_count,
+                &source_context
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = reject_joined_select_order_ambiguity_for_literal_projection(
+                database,
+                select_list,
+                clauses.order_clause,
+                &source_context
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = plan_select_columns(database, select_list, &source_context, NULL, 0U, out_plan);
+        }
+        if (rc == MYLITE_OK && out_plan->is_distinct) {
+            rc = validate_select_distinct_columns(database, out_plan);
+        }
+        if (rc == MYLITE_OK) {
+            rc = plan_joined_select_predicate(
+                database,
+                clauses.where_clause,
+                &source_context,
+                &out_plan->predicate
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = plan_joined_select_having_predicate(
+                database,
+                select_list,
+                clauses.having_clause,
+                &source_context,
+                &having_predicate
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = merge_select_predicate_with_and(database, &out_plan->predicate, &having_predicate);
+        }
+        if (rc == MYLITE_OK) {
+            rc = plan_select_order(
+                database,
+                clauses.order_clause,
+                &source_context,
+                out_plan,
+                NULL,
+                0U,
+                !out_plan->is_distinct,
+                false,
+                &out_plan->order
+            );
+        }
+        if (rc == MYLITE_OK) {
+            rc = validate_select_distinct_order(database, out_plan);
+        }
+        if (rc == MYLITE_OK) {
+            rc = plan_select_limit(database, clauses.limit_clause, &out_plan->limit);
+        }
+
+        planned_select_predicate_deinit(&having_predicate);
+        if (rc != MYLITE_OK) {
+            planned_select_deinit(out_plan);
+        }
+        return rc;
+    }
     if (from_clause != NULL && from_clause->kind == MYLITE_SQL_AST_FROM_DERIVED) {
         const struct mylite_sql_ast_node *inner_statement = child_at(from_clause, 0U);
 
@@ -988,7 +1068,8 @@ static size_t joined_select_source_count(const struct mylite_sql_ast_node *from_
 
 static bool joined_select_source_node_is_supported(const struct mylite_sql_ast_node *node) {
     return node != NULL &&
-           (node->kind == MYLITE_SQL_AST_FROM_TABLE || node->kind == MYLITE_SQL_AST_FROM_DERIVED);
+           (node->kind == MYLITE_SQL_AST_FROM_TABLE || node->kind == MYLITE_SQL_AST_FROM_DERIVED ||
+            node->kind == MYLITE_SQL_AST_FROM_JSON_TABLE);
 }
 
 static int collect_joined_select_parts(
@@ -1137,6 +1218,9 @@ static int plan_joined_select_source(
     struct planned_select_source *out_source
 ) {
     *out_source = (struct planned_select_source){0};
+    if (source_node != NULL && source_node->kind == MYLITE_SQL_AST_FROM_JSON_TABLE) {
+        return plan_json_table_select_source(database, source_node, out_source);
+    }
     if (source_node != NULL && source_node->kind == MYLITE_SQL_AST_FROM_DERIVED) {
         return plan_joined_select_derived_source(database, source_node, out_source);
     }
@@ -2545,6 +2629,10 @@ static void planned_select_source_deinit(struct planned_select_source *source) {
         free(source->derived_compound_select);
         source->derived_compound_select = NULL;
     }
+    if (source->is_json_table) {
+        planned_json_table_source_deinit(&source->json_table);
+        source->is_json_table = false;
+    }
     planned_select_source_deinit_shallow(source);
 }
 
@@ -2556,6 +2644,11 @@ static void planned_select_source_deinit_shallow(struct planned_select_source *s
     assert(source->derived_row_scalar_select == NULL);
     assert(source->derived_grouped_aggregate == NULL);
     assert(source->derived_compound_select == NULL);
+    if (source->is_json_table) {
+        planned_json_table_source_deinit(&source->json_table);
+        source->is_json_table = false;
+    }
+    assert(source->json_table.values == NULL);
     free(source->columns);
     *source = (struct planned_select_source){0};
 }

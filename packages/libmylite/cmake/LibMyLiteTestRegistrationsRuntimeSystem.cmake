@@ -497,6 +497,10 @@
     COMMAND mylite_runtime_json_aggregate_window_functions_test
   )
   add_test(
+    NAME libmylite.runtime.json_table_literal
+    COMMAND mylite_runtime_json_table_literal_test
+  )
+  add_test(
     NAME libmylite.runtime.json_set_function
     COMMAND mylite_runtime_json_set_function_test
   )

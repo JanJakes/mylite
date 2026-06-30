@@ -1703,6 +1703,44 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_derived_table_source(
     struct mylite_sql_token right_parenthesis,
     struct mylite_sql_ast_node *alias
 );
+struct mylite_sql_ast_node *mylite_sql_parser_make_json_table_source(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_token json_table_token,
+    struct mylite_sql_ast_node *document,
+    struct mylite_sql_ast_node *row_path,
+    struct mylite_sql_ast_node *columns,
+    struct mylite_sql_token right_parenthesis,
+    struct mylite_sql_ast_node *alias
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_json_table_column_list(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *column
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_json_table_column(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *list,
+    struct mylite_sql_ast_node *column
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_json_table_ordinality_column(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_token ordinality_token
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_json_table_path_column(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *type,
+    struct mylite_sql_token path_token,
+    struct mylite_sql_ast_node *path
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_json_table_exists_column(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *type,
+    struct mylite_sql_token exists_token, // NOLINT(bugprone-easily-swappable-parameters)
+    struct mylite_sql_token path_token,
+    struct mylite_sql_ast_node *path
+);
 struct mylite_sql_ast_node *mylite_sql_parser_make_from_join(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token from_token,

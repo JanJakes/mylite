@@ -1140,12 +1140,14 @@ static bool map_keyword_index(unsigned int keyword_index, int *out_parser_token)
         [194U] = MYLITE_SQL_PARSE_DYNAMIC,             /* DYNAMIC */
         [196U] = MYLITE_SQL_PARSE_ELSE,                /* ELSE */
         [198U] = MYLITE_SQL_PARSE_ELT,                 /* ELT */
+        [199U] = MYLITE_SQL_PARSE_EMPTY,               /* EMPTY */
         [200U] = MYLITE_SQL_PARSE_ENABLE,              /* ENABLE */
         [203U] = MYLITE_SQL_PARSE_END,                 /* END */
         [205U] = MYLITE_SQL_PARSE_ENFORCED,            /* ENFORCED */
         [206U] = MYLITE_SQL_PARSE_ENGINE,              /* ENGINE */
         [207U] = MYLITE_SQL_PARSE_ENGINES,             /* ENGINES */
         [209U] = MYLITE_SQL_PARSE_ENUM,                /* ENUM */
+        [210U] = MYLITE_SQL_PARSE_ERROR,               /* ERROR */
         [211U] = MYLITE_SQL_PARSE_ERRORS,              /* ERRORS */
         [212U] = MYLITE_SQL_PARSE_ESCAPE,              /* ESCAPE */
         [214U] = MYLITE_SQL_PARSE_EVENT,               /* EVENT */
@@ -1244,6 +1246,7 @@ static bool map_keyword_index(unsigned int keyword_index, int *out_parser_token)
         [358U] = MYLITE_SQL_PARSE_JSON_REMOVE,         /* JSON_REMOVE */
         [359U] = MYLITE_SQL_PARSE_JSON_REPLACE,        /* JSON_REPLACE */
         [360U] = MYLITE_SQL_PARSE_JSON_SET,            /* JSON_SET */
+        [361U] = MYLITE_SQL_PARSE_JSON_TABLE,          /* JSON_TABLE */
         [362U] = MYLITE_SQL_PARSE_JSON_TYPE,           /* JSON_TYPE */
         [363U] = MYLITE_SQL_PARSE_JSON_UNQUOTE,        /* JSON_UNQUOTE */
         [364U] = MYLITE_SQL_PARSE_JSON_VALID,          /* JSON_VALID */
@@ -1345,10 +1348,12 @@ static bool map_keyword_index(unsigned int keyword_index, int *out_parser_token)
         [504U] = MYLITE_SQL_PARSE_OR,                  /* OR */
         [505U] = MYLITE_SQL_PARSE_ORD,                 /* ORD */
         [506U] = MYLITE_SQL_PARSE_ORDER,               /* ORDER */
+        [507U] = MYLITE_SQL_PARSE_ORDINALITY,          /* ORDINALITY */
         [511U] = MYLITE_SQL_PARSE_OUTER,               /* OUTER */
         [513U] = MYLITE_SQL_PARSE_OVER,                /* OVER */
         [515U] = MYLITE_SQL_PARSE_PACK_KEYS,           /* PACK_KEYS */
         [521U] = MYLITE_SQL_PARSE_PARTITION,           /* PARTITION */
+        [526U] = MYLITE_SQL_PARSE_PATH,                /* PATH */
         [527U] = MYLITE_SQL_PARSE_PERCENT_RANK,        /* PERCENT_RANK */
         [528U] = MYLITE_SQL_PARSE_PERIOD_ADD,          /* PERIOD_ADD */
         [529U] = MYLITE_SQL_PARSE_PERIOD_DIFF,         /* PERIOD_DIFF */

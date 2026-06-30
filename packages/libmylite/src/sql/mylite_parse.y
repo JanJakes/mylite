@@ -5583,6 +5583,36 @@ select_statement(A) ::=
         PI);
 }
 select_statement(A) ::=
+    SELECT(T) select_modifiers(M) select_item_list(B) FROM(F) json_table_source(J)
+    where_clause_opt(W) group_clause_opt(G) having_clause_opt(H) window_clause_opt(WN)
+    select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K)
+    select_into_opt(AI). {
+    (void)F;
+    A = mylite_sql_parser_attach_select_into_clause(
+        state,
+        mylite_sql_parser_attach_select_window_clause(
+            state,
+            mylite_sql_parser_make_select_statement_with_modifiers(
+                state, T, M, B, J, W, G, H, O, L, K),
+            WN),
+        AI);
+}
+select_statement(A) ::=
+    SELECT(T) select_modifiers(M) select_item_list(B) INTO select_into_list(PI)
+    FROM(F) json_table_source(J) where_clause_opt(W) group_clause_opt(G) having_clause_opt(H)
+    window_clause_opt(WN) select_order_clause_opt(O) limit_clause_opt(L)
+    select_locking_clause_opt(K). {
+    (void)F;
+    A = mylite_sql_parser_attach_select_into_clause(
+        state,
+        mylite_sql_parser_attach_select_window_clause(
+            state,
+            mylite_sql_parser_make_select_statement_with_modifiers(
+                state, T, M, B, J, W, G, H, O, L, K),
+            WN),
+        PI);
+}
+select_statement(A) ::=
     SELECT(T) select_modifiers(M) select_item_list(B) FROM joined_table_source(JT)
     where_clause_opt(W) group_clause_opt(G) having_clause_opt(H) window_clause_opt(WN)
     select_order_clause_opt(O) limit_clause_opt(L) select_locking_clause_opt(K)
@@ -5787,6 +5817,9 @@ table_source(A) ::=
 table_source(A) ::= derived_table_source(D). {
     A = D;
 }
+table_source(A) ::= json_table_source(J). {
+    A = J;
+}
 
 derived_table_source(A) ::= LPAREN(L) select_statement(S) RPAREN(R) derived_table_alias_opt(AL). {
     A = mylite_sql_parser_make_derived_table_source(state, L, S, R, AL);
@@ -5809,6 +5842,38 @@ derived_table_source(A) ::=
     LPAREN(L) parenthesized_query_expression(S) RPAREN(R) derived_table_alias_opt(AL). {
     A = mylite_sql_parser_make_derived_table_source(state, L, S, R, AL);
 }
+
+json_table_source(A) ::=
+    JSON_TABLE(T) LPAREN expression(D) COMMA string_text_literal(RP) COLUMNS LPAREN
+    json_table_column_list(C) RPAREN RPAREN(R) derived_table_alias_opt(AL). {
+    A = mylite_sql_parser_make_json_table_source(state, T, D, RP, C, R, AL);
+}
+
+json_table_column_list(A) ::= json_table_column(C). {
+    A = mylite_sql_parser_make_json_table_column_list(state, C);
+}
+json_table_column_list(A) ::= json_table_column_list(L) COMMA json_table_column(C). {
+    A = mylite_sql_parser_append_json_table_column(state, L, C);
+}
+
+json_table_column(A) ::= identifier(N) FOR ORDINALITY(O). {
+    A = mylite_sql_parser_make_json_table_ordinality_column(state, N, O);
+}
+json_table_column(A) ::= identifier(N) column_type(T) PATH(P) string_text_literal(V)
+    json_table_null_behavior_opt. {
+    A = mylite_sql_parser_make_json_table_path_column(state, N, T, P, V);
+}
+json_table_column(A) ::= identifier(N) column_type(T) EXISTS(E) PATH(P) string_text_literal(V)
+    json_table_null_behavior_opt. {
+    A = mylite_sql_parser_make_json_table_exists_column(state, N, T, E, P, V);
+}
+
+json_table_null_behavior_opt ::= .
+json_table_null_behavior_opt ::= json_table_null_behavior.
+json_table_null_behavior_opt ::= json_table_null_behavior json_table_null_behavior.
+
+json_table_null_behavior ::= NULL ON EMPTY.
+json_table_null_behavior ::= NULL ON ERROR.
 
 joined_table_source(A) ::=
     table_source(LT) inner_join_operator(JO) table_source(RT) join_condition_opt(J). {
@@ -14054,6 +14119,15 @@ identifier(A) ::= LAST_INSERT_ID(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= COLUMNS(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ERROR(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= ORDINALITY(T). {
+    A = mylite_sql_parser_make_identifier(state, T);
+}
+identifier(A) ::= PATH(T). {
     A = mylite_sql_parser_make_identifier(state, T);
 }
 identifier(A) ::= TABLES(T). {

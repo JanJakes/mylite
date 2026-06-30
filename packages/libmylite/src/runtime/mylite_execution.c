@@ -35,6 +35,7 @@
 #include "mylite_execution_text_internal.h"
 #include "mylite_integer_arithmetic.h"
 #include "mylite_json.h"
+#include "mylite_json_internal.h"
 #include "mylite_lexer.h"
 #include "mylite_mysql_error_codes.h"
 #include "mylite_mysql_server_identity.h"
@@ -1417,6 +1418,8 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 #include "mylite_execution_update_execution.inc"
 
 #include "mylite_execution_select_planning_core.inc"
+
+#include "mylite_execution_select_json_table_source.inc"
 
 #include "mylite_execution_grouped_aggregate_entry.inc"
 

@@ -2271,6 +2271,16 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "some_subquery_predicate";
     case MYLITE_SQL_AST_ALL_SUBQUERY_PREDICATE:
         return "all_subquery_predicate";
+    case MYLITE_SQL_AST_FROM_JSON_TABLE:
+        return "from_json_table";
+    case MYLITE_SQL_AST_JSON_TABLE_COLUMN_LIST:
+        return "json_table_column_list";
+    case MYLITE_SQL_AST_JSON_TABLE_ORDINALITY_COLUMN:
+        return "json_table_ordinality_column";
+    case MYLITE_SQL_AST_JSON_TABLE_PATH_COLUMN:
+        return "json_table_path_column";
+    case MYLITE_SQL_AST_JSON_TABLE_EXISTS_COLUMN:
+        return "json_table_exists_column";
     case MYLITE_SQL_AST_ANY_VALUE_FUNCTION:
         return "any_value_function";
     case MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR:

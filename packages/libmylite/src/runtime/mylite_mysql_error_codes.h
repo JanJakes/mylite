@@ -107,6 +107,7 @@ enum {
     mysql_error_trigger_does_not_exist = 1360,
     mysql_error_operation_failed = 1396,
     mysql_error_check_option_on_non_updatable_view = 1368,
+    mysql_error_table_function_alias = 3667,
     mysql_warning_innodb_rebuild_fulltext = 124,
     mysql_warning_consistent_snapshot_ignored = 138,
     mysql_warning_deprecated_system_variable = 1287,

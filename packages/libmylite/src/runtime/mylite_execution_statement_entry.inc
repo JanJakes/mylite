@@ -183,6 +183,11 @@ static int execute_parsed_statement(
     case MYLITE_SQL_AST_SHOW_LOG_EVENTS_IN_OPTION:
     case MYLITE_SQL_AST_SHOW_LOG_EVENTS_FROM_OPTION:
     case MYLITE_SQL_AST_SHOW_LOG_EVENTS_LIMIT_OPTION:
+    case MYLITE_SQL_AST_FROM_JSON_TABLE:
+    case MYLITE_SQL_AST_JSON_TABLE_COLUMN_LIST:
+    case MYLITE_SQL_AST_JSON_TABLE_ORDINALITY_COLUMN:
+    case MYLITE_SQL_AST_JSON_TABLE_PATH_COLUMN:
+    case MYLITE_SQL_AST_JSON_TABLE_EXISTS_COLUMN:
         break;
     default:
         return execute_non_prepared_statement(database, context, statement, out_result);
@@ -285,6 +290,11 @@ static int execute_non_prepared_statement(
     case MYLITE_SQL_AST_SHOW_LOG_EVENTS_IN_OPTION:
     case MYLITE_SQL_AST_SHOW_LOG_EVENTS_FROM_OPTION:
     case MYLITE_SQL_AST_SHOW_LOG_EVENTS_LIMIT_OPTION:
+    case MYLITE_SQL_AST_FROM_JSON_TABLE:
+    case MYLITE_SQL_AST_JSON_TABLE_COLUMN_LIST:
+    case MYLITE_SQL_AST_JSON_TABLE_ORDINALITY_COLUMN:
+    case MYLITE_SQL_AST_JSON_TABLE_PATH_COLUMN:
+    case MYLITE_SQL_AST_JSON_TABLE_EXISTS_COLUMN:
         break;
     case MYLITE_SQL_AST_DROP_INDEX_STATEMENT:
         return execute_drop_index_statement(database, statement, out_result);

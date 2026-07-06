@@ -28,11 +28,14 @@ extern "C" {
 
 typedef struct mylite_db mylite_db;
 typedef struct mylite_result mylite_result;
+typedef struct mylite_stmt mylite_stmt;
 
 #define MYLITE_OK 0
 #define MYLITE_ERROR 1
 #define MYLITE_NOMEM 7
 #define MYLITE_MISUSE 21
+#define MYLITE_ROW 100
+#define MYLITE_DONE 101
 
 enum mylite_result_column_type {
     MYLITE_RESULT_COLUMN_TYPE_UNKNOWN = -1,
@@ -87,6 +90,20 @@ MYLITE_API int mylite_execute(
     size_t sql_size,
     mylite_result **out_result
 );
+
+MYLITE_API int mylite_prepare(
+    mylite_db *database,
+    const char *sql,
+    size_t sql_size,
+    mylite_stmt **out_stmt
+);
+MYLITE_API int mylite_stmt_step(mylite_stmt *stmt);
+MYLITE_API int mylite_stmt_finalize(mylite_stmt *stmt);
+MYLITE_API size_t mylite_stmt_column_count(const mylite_stmt *stmt);
+MYLITE_API const char *mylite_stmt_column_name(const mylite_stmt *stmt, size_t column_index);
+MYLITE_API const char *mylite_stmt_value_text(const mylite_stmt *stmt, size_t column_index);
+MYLITE_API const void *mylite_stmt_value_bytes(const mylite_stmt *stmt, size_t column_index);
+MYLITE_API size_t mylite_stmt_value_size(const mylite_stmt *stmt, size_t column_index);
 
 MYLITE_API void mylite_result_free(mylite_result *result);
 MYLITE_API size_t mylite_result_column_count(const mylite_result *result);

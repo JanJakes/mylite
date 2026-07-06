@@ -117,6 +117,11 @@ static int append_information_schema_row(
     struct information_schema_row_set *rows,
     const char *const *values
 );
+static int reserve_information_schema_rows(
+    struct mylite_db *database,
+    struct information_schema_row_set *rows,
+    size_t required_capacity
+);
 static int append_information_schema_schemata_system_rows(
     struct mylite_db *database,
     struct information_schema_row_set *rows
@@ -1187,10 +1192,33 @@ static int information_schema_append_grouped_statistics_result_rows(
     size_t *out_read_row_count
 );
 static int information_schema_sort_grouped_statistics_row_indexes(
+    struct mylite_db *database,
     const struct information_schema_query *query,
     const struct information_schema_row_set *rows,
     size_t *indexes,
     size_t index_count
+);
+static int information_schema_sort_row_indexes_by(
+    struct mylite_db *database,
+    const struct information_schema_row_index_sort *sort,
+    size_t *indexes,
+    size_t index_count
+);
+static void information_schema_insertion_sort_row_indexes_by(
+    const struct information_schema_row_index_sort *sort,
+    size_t *indexes,
+    size_t index_count
+);
+static void information_schema_merge_row_index_runs(
+    const struct information_schema_row_index_sort *sort,
+    size_t *indexes,
+    size_t *scratch,
+    struct information_schema_merge_range range
+);
+static int information_schema_compare_row_index_sort(
+    const struct information_schema_row_index_sort *sort,
+    size_t left_row,
+    size_t right_row
 );
 static int information_schema_compare_grouped_statistics_rows(
     const struct information_schema_query *query,
@@ -1371,7 +1399,8 @@ static int information_schema_sort_row_indexes(
     size_t *indexes,
     size_t index_count
 );
-static void information_schema_sort_tables_default_row_indexes(
+static int information_schema_sort_tables_default_row_indexes(
+    struct mylite_db *database,
     const struct information_schema_row_set *rows,
     size_t *indexes,
     size_t index_count

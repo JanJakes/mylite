@@ -1111,7 +1111,21 @@ static int append_selected_sqlite_row(
     sqlite3_stmt *statement,
     mylite_result *result,
     const struct mylite_catalog_column_descriptor *columns,
-    size_t descriptor_count
+    size_t descriptor_count,
+    struct sqlite_result_row_storage *storage
+);
+static int read_selected_sqlite_row(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    size_t column_count,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t descriptor_count,
+    struct sqlite_result_row_storage *storage
+);
+static void sqlite_result_row_storage_deinit(struct sqlite_result_row_storage *storage);
+static int sqlite_result_row_storage_reserve(
+    struct sqlite_result_row_storage *storage,
+    size_t column_count
 );
 static int append_selected_sqlite_row_value(
     struct mylite_db *database,

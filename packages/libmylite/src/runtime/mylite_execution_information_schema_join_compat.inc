@@ -1384,7 +1384,7 @@ static int information_schema_join_compat_append_tables_grouped_size_rows(
     );
 
     if (rc == MYLITE_OK) {
-        information_schema_sort_tables_default_row_indexes(rows, indexes, index_count);
+        rc = information_schema_sort_tables_default_row_indexes(database, rows, indexes, index_count);
     }
     for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
         rc = information_schema_join_compat_append_tables_grouped_size_row(

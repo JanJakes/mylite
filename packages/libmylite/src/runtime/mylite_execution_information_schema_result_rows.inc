@@ -141,6 +141,7 @@ static int information_schema_append_grouped_statistics_result_rows(
     }
     if (rc == MYLITE_OK) {
         rc = information_schema_sort_grouped_statistics_row_indexes(
+            database,
             query,
             rows,
             indexes,
@@ -186,28 +187,153 @@ static int information_schema_append_grouped_statistics_result_rows(
 }
 
 static int information_schema_sort_grouped_statistics_row_indexes(
+    struct mylite_db *database,
     const struct information_schema_query *query,
     const struct information_schema_row_set *rows,
     size_t *indexes,
     size_t index_count
 ) {
-    for (size_t index = 1U; index < index_count; ++index) {
-        size_t row_index = indexes[index];
-        size_t scan = index;
+    const struct information_schema_row_index_sort sort = {
+        .query = query,
+        .rows = rows,
+        .kind = INFORMATION_SCHEMA_ROW_INDEX_SORT_GROUPED_STATISTICS,
+    };
 
-        while (scan > 0U &&
-               information_schema_compare_grouped_statistics_rows(
-                   query,
-                   rows,
-                   row_index,
-                   indexes[scan - 1U]
-               ) < 0) {
-            indexes[scan] = indexes[scan - 1U];
-            --scan;
-        }
-        indexes[scan] = row_index;
+    return information_schema_sort_row_indexes_by(database, &sort, indexes, index_count);
+}
+
+static int information_schema_sort_row_indexes_by(
+    struct mylite_db *database,
+    const struct information_schema_row_index_sort *sort,
+    size_t *indexes,
+    size_t index_count
+) {
+    enum { insertion_sort_threshold = 32 };
+
+    size_t *scratch = NULL;
+
+    if (sort == NULL || indexes == NULL) {
+        return MYLITE_MISUSE;
     }
+    if (index_count < 2U) {
+        return MYLITE_OK;
+    }
+    if (index_count <= insertion_sort_threshold) {
+        information_schema_insertion_sort_row_indexes_by(sort, indexes, index_count);
+        return MYLITE_OK;
+    }
+    if (index_count > SIZE_MAX / sizeof(*scratch)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    scratch = malloc(index_count * sizeof(*scratch));
+    if (scratch == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    for (size_t width = 1U; width < index_count;) {
+        size_t run_width = width > SIZE_MAX / 2U ? SIZE_MAX : width * 2U;
+
+        for (size_t left = 0U; left < index_count; left += run_width) {
+            size_t middle = left > index_count - width ? index_count : left + width;
+            size_t right = left > index_count - run_width ? index_count : left + run_width;
+
+            information_schema_merge_row_index_runs(
+                sort,
+                indexes,
+                scratch,
+                (struct information_schema_merge_range){
+                    .left = left,
+                    .middle = middle,
+                    .right = right,
+                }
+            );
+        }
+        memcpy(indexes, scratch, index_count * sizeof(*indexes));
+        if (width > index_count / 2U) {
+            break;
+        }
+        width *= 2U;
+    }
+    free(scratch);
     return MYLITE_OK;
+}
+
+static void information_schema_insertion_sort_row_indexes_by(
+    const struct information_schema_row_index_sort *sort,
+    size_t *indexes,
+    size_t index_count
+) {
+    for (size_t index = 1U; index < index_count; ++index) {
+        size_t value = indexes[index];
+        size_t position = index;
+
+        while (position > 0U &&
+               information_schema_compare_row_index_sort(sort, indexes[position - 1U], value) >
+                   0) {
+            indexes[position] = indexes[position - 1U];
+            --position;
+        }
+        indexes[position] = value;
+    }
+}
+
+static void information_schema_merge_row_index_runs(
+    const struct information_schema_row_index_sort *sort,
+    size_t *indexes,
+    size_t *scratch,
+    struct information_schema_merge_range range
+) {
+    size_t left = range.left;
+    size_t right = range.middle;
+    size_t output = range.left;
+
+    while (left < range.middle && right < range.right) {
+        if (information_schema_compare_row_index_sort(sort, indexes[left], indexes[right]) <= 0) {
+            scratch[output] = indexes[left];
+            ++left;
+        } else {
+            scratch[output] = indexes[right];
+            ++right;
+        }
+        ++output;
+    }
+    while (left < range.middle) {
+        scratch[output] = indexes[left];
+        ++left;
+        ++output;
+    }
+    while (right < range.right) {
+        scratch[output] = indexes[right];
+        ++right;
+        ++output;
+    }
+}
+
+static int information_schema_compare_row_index_sort(
+    const struct information_schema_row_index_sort *sort,
+    size_t left_row,
+    size_t right_row
+) {
+    if (sort->kind == INFORMATION_SCHEMA_ROW_INDEX_SORT_TABLES_DEFAULT) {
+        return information_schema_compare_tables_default_rows(sort->rows, left_row, right_row);
+    }
+    if (sort->kind == INFORMATION_SCHEMA_ROW_INDEX_SORT_GROUPED_STATISTICS) {
+        return information_schema_compare_grouped_statistics_rows(
+            sort->query,
+            sort->rows,
+            left_row,
+            right_row
+        );
+    }
+    return information_schema_compare_rows(
+        sort->query,
+        sort->rows,
+        (struct information_schema_row_order_pair){
+            .left_row = left_row,
+            .right_row = right_row,
+        }
+    );
 }
 
 static int information_schema_compare_grouped_statistics_rows(
@@ -1194,50 +1320,39 @@ static int information_schema_sort_row_indexes(
     int rc = MYLITE_OK;
 
     if (!query->has_order) {
-        (void)database;
         (void)statement;
         if (query->definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_TABLES) {
-            information_schema_sort_tables_default_row_indexes(rows, indexes, index_count);
+            rc = information_schema_sort_tables_default_row_indexes(
+                database,
+                rows,
+                indexes,
+                index_count
+            );
         }
         return rc;
     }
-    for (size_t index = 1U; index < index_count; ++index) {
-        size_t row_index = indexes[index];
-        size_t scan = index;
+    const struct information_schema_row_index_sort sort = {
+        .query = query,
+        .rows = rows,
+        .kind = INFORMATION_SCHEMA_ROW_INDEX_SORT_ORDER,
+    };
 
-        while (scan > 0U && information_schema_compare_rows(
-                                query,
-                                rows,
-                                (struct information_schema_row_order_pair){
-                                    .left_row = row_index,
-                                    .right_row = indexes[scan - 1U],
-                                }
-                            ) < 0) {
-            indexes[scan] = indexes[scan - 1U];
-            --scan;
-        }
-        indexes[scan] = row_index;
-    }
-    return MYLITE_OK;
+    return information_schema_sort_row_indexes_by(database, &sort, indexes, index_count);
 }
 
-static void information_schema_sort_tables_default_row_indexes(
+static int information_schema_sort_tables_default_row_indexes(
+    struct mylite_db *database,
     const struct information_schema_row_set *rows,
     size_t *indexes,
     size_t index_count
 ) {
-    for (size_t index = 1U; index < index_count; ++index) {
-        size_t row_index = indexes[index];
-        size_t scan = index;
+    const struct information_schema_row_index_sort sort = {
+        .query = NULL,
+        .rows = rows,
+        .kind = INFORMATION_SCHEMA_ROW_INDEX_SORT_TABLES_DEFAULT,
+    };
 
-        while (scan > 0U &&
-               information_schema_compare_tables_default_rows(rows, row_index, indexes[scan - 1U]) <
-                   0) {
-            indexes[scan] = indexes[scan - 1U];
-            --scan;
-        }
-        indexes[scan] = row_index;
-    }
+    return information_schema_sort_row_indexes_by(database, &sort, indexes, index_count);
 }
 
 static int information_schema_compare_tables_default_rows(

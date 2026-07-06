@@ -1088,5 +1088,9 @@
     NAME libmylite.runtime.statement_context
     COMMAND mylite_runtime_statement_context_test
   )
+  add_test(
+    NAME libmylite.runtime.cursor_api
+    COMMAND mylite_runtime_cursor_api_test
+  )
   add_test(NAME libmylite.sqlite COMMAND mylite_sqlite_test)
   add_test(NAME libmylite.version COMMAND mylite_version_test)

@@ -216,6 +216,19 @@ static const struct benchmark_query wordpress_metadata_queries[] = {
     QUERY("SHOW CREATE TABLE wp_postmeta"),
 };
 
+static const struct benchmark_query wordpress_cursor_queries[] = {
+    QUERY("SELECT option_value FROM wp_options WHERE option_name = 'siteurl' LIMIT 1"),
+    QUERY("SELECT option_name, option_value FROM wp_options WHERE autoload = 'yes'"),
+    QUERY("SELECT ID, post_title FROM wp_posts "
+          "WHERE post_type = 'post' AND post_status = 'publish' "
+          "ORDER BY post_date DESC LIMIT 10"),
+    QUERY("SELECT p.ID, pm.meta_value FROM wp_posts p "
+          "LEFT JOIN wp_postmeta pm ON pm.post_id = p.ID AND pm.meta_key = '_thumbnail_id' "
+          "WHERE p.ID = 1"),
+    QUERY("SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
+          "WHERE TABLE_SCHEMA = 'wp' AND TABLE_NAME = 'wp_options'"),
+};
+
 static const struct benchmark_query parser_wordpress_queries[] = {
     QUERY("SELECT option_value FROM wp_options WHERE option_name = 'siteurl' LIMIT 1"),
     QUERY("SELECT option_name, option_value FROM wp_options WHERE autoload = 'yes'"),
@@ -264,6 +277,16 @@ static const struct runtime_scenario runtime_scenarios[] = {
     },
 };
 
+static const struct runtime_scenario runtime_cursor_scenarios[] = {
+    {
+        .name = "runtime.wp_select_cursor",
+        .setup_queries = wordpress_setup_queries,
+        .setup_query_count = sizeof(wordpress_setup_queries) / sizeof(wordpress_setup_queries[0]),
+        .queries = wordpress_cursor_queries,
+        .query_count = sizeof(wordpress_cursor_queries) / sizeof(wordpress_cursor_queries[0]),
+    },
+};
+
 static int parse_options(int argc, char **argv, struct benchmark_options *out_options);
 static int parse_option(
     int argc,
@@ -288,8 +311,14 @@ static int run_runtime_scenario(
     size_t iterations,
     struct benchmark_measurement *out_measurement
 );
+static int run_runtime_cursor_scenario(
+    const struct runtime_scenario *scenario,
+    size_t iterations,
+    struct benchmark_measurement *out_measurement
+);
 static int setup_runtime_database(mylite_db *database, const struct runtime_scenario *scenario);
 static int execute_query(mylite_db *database, const struct benchmark_query *query);
+static int execute_cursor_query(mylite_db *database, const struct benchmark_query *query);
 static int printf_precision_from_size(size_t length);
 static int make_runtime_database_path(char *path, size_t path_size, const char *scenario_name);
 static int current_process_id(void);
@@ -564,6 +593,7 @@ static void print_scenario_list(void) {
     puts("runtime.wp_options_hot");
     puts("runtime.wp_posts_meta_hot");
     puts("runtime.wp_metadata_hot");
+    puts("runtime.wp_select_cursor");
     puts("lexer.csv.mysql_server_tests");
     puts("parse.csv.mysql_server_tests");
 }
@@ -734,6 +764,27 @@ static int run_runtime_benchmarks(const struct benchmark_options *options) {
             &measurement
         );
     }
+    for (size_t scenario_index = 0U;
+         scenario_index < sizeof(runtime_cursor_scenarios) / sizeof(runtime_cursor_scenarios[0]);
+         ++scenario_index) {
+        struct benchmark_measurement measurement = {0};
+        int rc = run_runtime_cursor_scenario(
+            &runtime_cursor_scenarios[scenario_index],
+            options->iterations,
+            &measurement
+        );
+
+        if (rc != 0) {
+            return rc;
+        }
+        print_result(
+            runtime_cursor_scenarios[scenario_index].name,
+            "cursor",
+            options->iterations,
+            runtime_cursor_scenarios[scenario_index].query_count,
+            &measurement
+        );
+    }
     return 0;
 }
 
@@ -789,6 +840,58 @@ static int run_runtime_scenario(
     return 0;
 }
 
+static int run_runtime_cursor_scenario(
+    const struct runtime_scenario *scenario,
+    size_t iterations,
+    struct benchmark_measurement *out_measurement
+) {
+    mylite_db *database = NULL;
+    char path[runtime_database_path_capacity];
+    uint64_t started = 0U;
+    uint64_t ended = 0U;
+    int rc = make_runtime_database_path(path, sizeof(path), scenario->name);
+
+    if (rc != 0) {
+        return 1;
+    }
+    remove_related_database_files(path);
+    rc = mylite_open(path, &database);
+    if (rc != MYLITE_OK) {
+        fprintf(stderr, "%s: failed to open benchmark database: %d\n", scenario->name, rc);
+        remove_related_database_files(path);
+        return 1;
+    }
+    if (setup_runtime_database(database, scenario) != 0) {
+        mylite_close(database);
+        remove_related_database_files(path);
+        return 1;
+    }
+
+    started = monotonic_now_ns();
+    for (size_t iteration = 0U; iteration < iterations; ++iteration) {
+        for (size_t query_index = 0U; query_index < scenario->query_count; ++query_index) {
+            const struct benchmark_query *query = &scenario->queries[query_index];
+
+            ++out_measurement->operations;
+            out_measurement->bytes += query->length;
+            if (execute_cursor_query(database, query) == 0) {
+                ++out_measurement->ok_count;
+            } else {
+                ++out_measurement->error_count;
+                mylite_close(database);
+                remove_related_database_files(path);
+                return 1;
+            }
+        }
+    }
+    ended = monotonic_now_ns();
+    out_measurement->elapsed_ns = ended - started;
+
+    mylite_close(database);
+    remove_related_database_files(path);
+    return 0;
+}
+
 static int setup_runtime_database(mylite_db *database, const struct runtime_scenario *scenario) {
     for (size_t query_index = 0U; query_index < scenario->setup_query_count; ++query_index) {
         if (execute_query(database, &scenario->setup_queries[query_index]) != 0) {
@@ -819,6 +922,73 @@ static int execute_query(mylite_db *database, const struct benchmark_query *quer
         return 1;
     }
     mylite_result_free(result);
+    return 0;
+}
+
+static int execute_cursor_query(mylite_db *database, const struct benchmark_query *query) {
+    mylite_stmt *stmt = NULL;
+    size_t value_bytes = 0U;
+    int rc = mylite_prepare(database, query->sql, query->length, &stmt);
+
+    if (rc != MYLITE_OK) {
+        int display_length = printf_precision_from_size(query->length);
+
+        fprintf(
+            stderr,
+            "cursor prepare failed: rc=%d err=%d state=%s message=%s\n",
+            rc,
+            mylite_errcode(database),
+            mylite_sqlstate(database),
+            mylite_errmsg(database)
+        );
+        fprintf(stderr, "sql: %.*s\n", display_length, query->sql);
+        return 1;
+    }
+    for (;;) {
+        rc = mylite_stmt_step(stmt);
+        if (rc == MYLITE_ROW) {
+            size_t column_count = mylite_stmt_column_count(stmt);
+
+            for (size_t column = 0U; column < column_count; ++column) {
+                value_bytes += mylite_stmt_value_size(stmt, column);
+            }
+            continue;
+        }
+        if (rc == MYLITE_DONE) {
+            break;
+        }
+        {
+            int display_length = printf_precision_from_size(query->length);
+
+            fprintf(
+                stderr,
+                "cursor step failed: rc=%d err=%d state=%s message=%s\n",
+                rc,
+                mylite_errcode(database),
+                mylite_sqlstate(database),
+                mylite_errmsg(database)
+            );
+            fprintf(stderr, "sql: %.*s\n", display_length, query->sql);
+        }
+        (void)mylite_stmt_finalize(stmt);
+        return 1;
+    }
+    rc = mylite_stmt_finalize(stmt);
+    if (rc != MYLITE_OK) {
+        int display_length = printf_precision_from_size(query->length);
+
+        fprintf(
+            stderr,
+            "cursor finalize failed: rc=%d err=%d state=%s message=%s\n",
+            rc,
+            mylite_errcode(database),
+            mylite_sqlstate(database),
+            mylite_errmsg(database)
+        );
+        fprintf(stderr, "sql: %.*s\n", display_length, query->sql);
+        return 1;
+    }
+    (void)value_bytes;
     return 0;
 }
 

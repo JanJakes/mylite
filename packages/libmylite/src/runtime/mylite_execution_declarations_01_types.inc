@@ -44,6 +44,13 @@ struct savepoint_control_sql_request {
     const char *sqlite_name;
 };
 
+struct sqlite_result_row_storage {
+    struct mylite_result_cell *values;
+    char *texts;
+    size_t column_capacity;
+    size_t text_capacity;
+};
+
 struct user_savepoint_values {
     const char *name;
     const char *sqlite_name;
@@ -2533,6 +2540,31 @@ struct result_column_metadata_context {
     bool has_single_source_metadata;
 };
 
+struct mylite_stmt {
+    struct mylite_db *database;
+    struct mylite_statement_context context;
+    struct mylite_sql_parse_result parse_result;
+    struct mylite_execution_normalized_sql normalized_sql;
+    const struct mylite_sql_ast_node *statement;
+    struct planned_select select_plan;
+    struct result_column_metadata_context metadata_context;
+    struct sqlite_result_row_storage row_storage;
+    sqlite3_stmt *sqlite_statement;
+    mylite_result *metadata_result;
+    char *sqlite_sql;
+    uint64_t found_row_count;
+    size_t row_count;
+    size_t materialized_row_index;
+    size_t current_materialized_row;
+    bool has_context;
+    bool has_parse_result;
+    bool has_normalized_sql;
+    bool has_select_plan;
+    bool has_materialized_rows;
+    bool current_row_available;
+    bool done;
+};
+
 struct find_check_constraint_name_context {
     const char *name;
     bool found;
@@ -2698,6 +2730,7 @@ struct information_schema_row_set {
     const struct mylite_execution_catalog_table_definition *definition;
     char ***rows;
     size_t row_count;
+    size_t row_capacity;
 };
 
 struct information_schema_columns_numeric_metadata_buffers {
@@ -2711,6 +2744,24 @@ struct information_schema_columns_numeric_metadata_buffers {
 struct information_schema_row_order_pair {
     size_t left_row;
     size_t right_row;
+};
+
+enum information_schema_row_index_sort_kind {
+    INFORMATION_SCHEMA_ROW_INDEX_SORT_ORDER = 0,
+    INFORMATION_SCHEMA_ROW_INDEX_SORT_TABLES_DEFAULT = 1,
+    INFORMATION_SCHEMA_ROW_INDEX_SORT_GROUPED_STATISTICS = 2,
+};
+
+struct information_schema_row_index_sort {
+    const struct information_schema_query *query;
+    const struct information_schema_row_set *rows;
+    enum information_schema_row_index_sort_kind kind;
+};
+
+struct information_schema_merge_range {
+    size_t left;
+    size_t middle;
+    size_t right;
 };
 
 struct information_schema_group_concat_order {

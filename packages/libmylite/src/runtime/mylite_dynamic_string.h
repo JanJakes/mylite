@@ -18,6 +18,8 @@ int mylite_dynamic_string_append_bytes(
     const char *text,
     size_t text_size
 );
+#define mylite_dynamic_string_append_literal(string, literal)                                      \
+    mylite_dynamic_string_append_bytes((string), (literal), sizeof(literal) - 1U)
 int mylite_dynamic_string_append_char(struct mylite_dynamic_string *string, char byte);
 int mylite_dynamic_string_append_quoted_identifier(
     struct mylite_dynamic_string *string,

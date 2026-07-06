@@ -3,28 +3,47 @@ static int append_selected_sqlite_row(
     sqlite3_stmt *statement,
     mylite_result *result,
     const struct mylite_catalog_column_descriptor *columns,
-    size_t descriptor_count
+    size_t descriptor_count,
+    struct sqlite_result_row_storage *storage
 ) {
     size_t column_count = mylite_result_column_count(result);
-    struct mylite_result_cell *values = NULL;
-    char *texts = NULL;
-    size_t text_capacity = approximate_numeric_text_capacity;
     int rc = MYLITE_OK;
 
-    if (column_count > (size_t)INT_MAX || column_count > SIZE_MAX / text_capacity) {
-        return MYLITE_NOMEM;
+    rc = read_selected_sqlite_row(
+        database,
+        statement,
+        column_count,
+        columns,
+        descriptor_count,
+        storage
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_bytes_row(result, storage->values);
     }
 
-    values = calloc(column_count, sizeof(*values));
-    texts = calloc(column_count, text_capacity);
-    if (values == NULL || texts == NULL) {
-        free(values);
-        free(texts);
-        return MYLITE_NOMEM;
+    return rc;
+}
+
+static int read_selected_sqlite_row(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    size_t column_count,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t descriptor_count,
+    struct sqlite_result_row_storage *storage
+) {
+    int rc = MYLITE_OK;
+
+    if (storage == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = sqlite_result_row_storage_reserve(storage, column_count);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
 
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < column_count; ++column_index) {
-        char *text = &texts[column_index * text_capacity];
+        char *text = &storage->texts[column_index * storage->text_capacity];
 
         rc = append_selected_sqlite_row_value(
             database,
@@ -33,18 +52,56 @@ static int append_selected_sqlite_row(
             columns,
             descriptor_count,
             text,
-            text_capacity,
-            &values[column_index]
+            storage->text_capacity,
+            &storage->values[column_index]
         );
     }
-    if (rc == MYLITE_OK) {
-        rc = mylite_result_append_bytes_row(result, values);
+    return rc;
+}
+
+static void sqlite_result_row_storage_deinit(struct sqlite_result_row_storage *storage) {
+    if (storage == NULL) {
+        return;
     }
 
-    free(values);
-    free(texts);
+    free(storage->values);
+    free(storage->texts);
+    *storage = (struct sqlite_result_row_storage){0};
+}
 
-    return rc;
+static int sqlite_result_row_storage_reserve(
+    struct sqlite_result_row_storage *storage,
+    size_t column_count
+) {
+    struct mylite_result_cell *values = NULL;
+    char *texts = NULL;
+    size_t text_capacity = approximate_numeric_text_capacity;
+
+    if (storage == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (column_count > (size_t)INT_MAX || column_count > SIZE_MAX / text_capacity) {
+        return MYLITE_NOMEM;
+    }
+    if (column_count <= storage->column_capacity) {
+        return MYLITE_OK;
+    }
+    if (column_count > SIZE_MAX / sizeof(*values)) {
+        return MYLITE_NOMEM;
+    }
+    values = realloc(storage->values, column_count * sizeof(*values));
+    if (values == NULL && column_count != 0U) {
+        return MYLITE_NOMEM;
+    }
+    storage->values = values;
+    texts = realloc(storage->texts, column_count * text_capacity);
+    if (texts == NULL && column_count != 0U) {
+        return MYLITE_NOMEM;
+    }
+    storage->texts = texts;
+    storage->column_capacity = column_count;
+    storage->text_capacity = text_capacity;
+    return MYLITE_OK;
 }
 
 static int append_selected_sqlite_row_value(

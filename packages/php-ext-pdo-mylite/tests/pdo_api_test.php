@@ -44,8 +44,17 @@ expect_true($stmt->execute([2, 'Grace']), 'prepared INSERT failed');
 
 $stmt = $pdo->prepare('SELECT name FROM people WHERE name = ?');
 expect_true($stmt->execute(['Grace']), 'prepared SELECT failed');
+expect_true($stmt->columnCount() === 1, 'prepared SELECT column count mismatch');
 expect_true($stmt->fetch() === ['name' => 'Grace'], 'prepared SELECT row mismatch');
 expect_true($stmt->fetch() === false, 'prepared SELECT should be exhausted');
+
+$stream = $pdo->prepare('SELECT id, name FROM people ORDER BY id');
+expect_true($stream->execute(), 'streaming SELECT failed');
+expect_true($stream->columnCount() === 2, 'streaming SELECT column count mismatch');
+expect_true($stream->fetch(PDO::FETCH_NUM) === ['1', 'Ada'], 'streaming SELECT first row mismatch');
+expect_true($stream->closeCursor(), 'streaming SELECT closeCursor failed');
+expect_true($stream->execute(), 'streaming SELECT re-execute failed');
+expect_true($stream->fetch(PDO::FETCH_ASSOC) === ['id' => '1', 'name' => 'Ada'], 'streaming SELECT re-execute row mismatch');
 
 expect_true($pdo->beginTransaction(), 'beginTransaction failed');
 expect_true($pdo->exec("INSERT INTO people VALUES (3, 'Katherine')") === 1, 'transaction INSERT failed');

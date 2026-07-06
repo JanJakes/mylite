@@ -229,6 +229,456 @@ int mylite_execute(
     return rc;
 }
 
+int mylite_prepare(mylite_db *database, const char *sql, size_t sql_size, mylite_stmt **out_stmt) {
+    mylite_stmt *stmt = NULL;
+    int rc = MYLITE_OK;
+
+    if (out_stmt == NULL) {
+        if (database != NULL) {
+            mylite_diagnostics_set_error(
+                mylite_connection_diagnostics(database),
+                MYLITE_MISUSE,
+                "HY000",
+                mylite_diagnostics_misuse_message()
+            );
+        }
+        return MYLITE_MISUSE;
+    }
+    *out_stmt = NULL;
+    if (database == NULL || sql == NULL) {
+        if (database != NULL) {
+            mylite_diagnostics_set_error(
+                mylite_connection_diagnostics(database),
+                MYLITE_MISUSE,
+                "HY000",
+                mylite_diagnostics_misuse_message()
+            );
+        }
+        return MYLITE_MISUSE;
+    }
+
+    stmt = calloc(1U, sizeof(*stmt));
+    if (stmt == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    stmt->metadata_context = result_column_metadata_context_init();
+    rc = prepare_cursor_select_statement(database, sql, sql_size, stmt);
+    if (rc != MYLITE_OK) {
+        destroy_cursor_statement(stmt);
+        return rc;
+    }
+
+    *out_stmt = stmt;
+    return MYLITE_OK;
+}
+
+int mylite_stmt_step(mylite_stmt *stmt) {
+    int sqlite_rc = SQLITE_OK;
+    int rc = MYLITE_OK;
+
+    if (stmt == NULL || stmt->database == NULL ||
+        (stmt->sqlite_statement == NULL && !stmt->has_materialized_rows)) {
+        return stmt != NULL && stmt->done ? MYLITE_DONE : MYLITE_MISUSE;
+    }
+    if (stmt->done) {
+        return MYLITE_DONE;
+    }
+
+    stmt->current_row_available = false;
+    if (stmt->has_materialized_rows) {
+        if (stmt->materialized_row_index >= mylite_result_row_count(stmt->metadata_result)) {
+            stmt->done = true;
+            rc = set_materialized_cursor_found_row_count(stmt);
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            rc = finish_cursor_statement(stmt, true);
+            return rc == MYLITE_OK ? MYLITE_DONE : rc;
+        }
+        stmt->current_materialized_row = stmt->materialized_row_index;
+        ++stmt->materialized_row_index;
+        ++stmt->row_count;
+        stmt->current_row_available = true;
+        return MYLITE_ROW;
+    }
+
+    sqlite_rc = sqlite3_step(stmt->sqlite_statement);
+    if (sqlite_rc == SQLITE_ROW) {
+        rc = read_selected_sqlite_row(
+            stmt->database,
+            stmt->sqlite_statement,
+            mylite_result_column_count(stmt->metadata_result),
+            stmt->select_plan.columns,
+            stmt->select_plan.column_count,
+            &stmt->row_storage
+        );
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        ++stmt->row_count;
+        stmt->current_row_available = true;
+        return MYLITE_ROW;
+    }
+    if (sqlite_rc != SQLITE_DONE) {
+        rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        rc = finalize_sqlite_statement(stmt->sqlite_statement, rc);
+        stmt->sqlite_statement = NULL;
+        stmt->done = true;
+        mylite_result *result = NULL;
+
+        return finish_failed_statement(stmt->database, rc, &result);
+    }
+
+    rc = finalize_sqlite_statement(stmt->sqlite_statement, MYLITE_OK);
+    stmt->sqlite_statement = NULL;
+    stmt->done = true;
+    if (rc == MYLITE_OK) {
+        rc = set_cursor_found_row_count(stmt);
+    }
+    if (rc == MYLITE_OK) {
+        rc = finish_cursor_statement(stmt, true);
+    }
+    return rc == MYLITE_OK ? MYLITE_DONE : rc;
+}
+
+int mylite_stmt_finalize(mylite_stmt *stmt) {
+    int rc = MYLITE_OK;
+
+    if (stmt == NULL) {
+        return MYLITE_OK;
+    }
+    if (stmt->sqlite_statement != NULL) {
+        rc = finalize_sqlite_statement(stmt->sqlite_statement, MYLITE_OK);
+        stmt->sqlite_statement = NULL;
+    }
+    if (rc == MYLITE_OK && !stmt->done) {
+        stmt->found_row_count = (uint64_t)stmt->row_count;
+        rc = finish_cursor_statement(stmt, false);
+    }
+    destroy_cursor_statement(stmt);
+    return rc;
+}
+
+size_t mylite_stmt_column_count(const mylite_stmt *stmt) {
+    if (stmt == NULL || stmt->metadata_result == NULL) {
+        return 0U;
+    }
+    return mylite_result_column_count(stmt->metadata_result);
+}
+
+const char *mylite_stmt_column_name(const mylite_stmt *stmt, size_t column_index) {
+    if (stmt == NULL || stmt->metadata_result == NULL) {
+        return NULL;
+    }
+    return mylite_result_column_name(stmt->metadata_result, column_index);
+}
+
+const char *mylite_stmt_value_text(const mylite_stmt *stmt, size_t column_index) {
+    return (const char *)mylite_stmt_value_bytes(stmt, column_index);
+}
+
+const void *mylite_stmt_value_bytes(const mylite_stmt *stmt, size_t column_index) {
+    const struct mylite_result_cell *cell = NULL;
+
+    if (stmt == NULL || !stmt->current_row_available ||
+        column_index >= mylite_stmt_column_count(stmt)) {
+        return NULL;
+    }
+    if (stmt->has_materialized_rows) {
+        return mylite_result_value_bytes(
+            stmt->metadata_result,
+            stmt->current_materialized_row,
+            column_index
+        );
+    }
+    cell = &stmt->row_storage.values[column_index];
+    return cell->is_null ? NULL : cell->bytes;
+}
+
+size_t mylite_stmt_value_size(const mylite_stmt *stmt, size_t column_index) {
+    const struct mylite_result_cell *cell = NULL;
+
+    if (stmt == NULL || !stmt->current_row_available ||
+        column_index >= mylite_stmt_column_count(stmt)) {
+        return 0U;
+    }
+    if (stmt->has_materialized_rows) {
+        return mylite_result_value_size(
+            stmt->metadata_result,
+            stmt->current_materialized_row,
+            column_index
+        );
+    }
+    cell = &stmt->row_storage.values[column_index];
+    return cell->is_null ? 0U : cell->size;
+}
+
+static int prepare_cursor_select_statement(
+    struct mylite_db *database,
+    const char *sql,
+    size_t sql_size,
+    mylite_stmt *stmt
+) {
+    size_t statement_count = 0U;
+    int rc = MYLITE_OK;
+
+    stmt->database = database;
+    if (database->session.statement_id != UINT64_MAX) {
+        ++database->session.statement_id;
+    }
+
+    rc =
+        mylite_execution_normalize_mysql_compat_sql(database, sql, sql_size, &stmt->normalized_sql);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    stmt->has_normalized_sql = true;
+
+    mylite_statement_context_init(&stmt->context);
+    rc = mylite_statement_context_begin(
+        &stmt->context,
+        database,
+        stmt->normalized_sql.sql,
+        stmt->normalized_sql.sql_size
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    stmt->has_context = true;
+    mylite_statement_context_set_previous_row_count(
+        &stmt->context,
+        database->session.previous_row_count
+    );
+    mylite_statement_context_set_previous_found_rows(&stmt->context, database->session.found_rows);
+
+    rc = status_from_parse_status(mylite_sql_parse(
+        (struct mylite_sql_parse_config){
+            .input = stmt->normalized_sql.sql,
+            .length = stmt->normalized_sql.sql_size,
+            .modes = lexer_modes_for_session_sql_mode(&database->session),
+        },
+        &stmt->parse_result
+    ));
+    stmt->has_parse_result = true;
+    if (rc != MYLITE_OK) {
+        rc = finish_parse_failure(database, &stmt->parse_result, rc);
+        (void)mylite_statement_context_end(&stmt->context, rc);
+        mylite_statement_context_deinit(&stmt->context);
+        stmt->has_context = false;
+        return rc;
+    }
+
+    rc = script_statement_count(stmt->parse_result.root, &statement_count);
+    if (rc == MYLITE_OK && statement_count != 1U) {
+        set_unsupported_error(database, "cursor prepare supports exactly one SELECT statement");
+        rc = MYLITE_ERROR;
+    }
+    if (rc == MYLITE_OK) {
+        stmt->statement = child_at(stmt->parse_result.root, 0U);
+        if (stmt->statement == NULL || stmt->statement->kind != MYLITE_SQL_AST_SELECT_STATEMENT ||
+            select_statement_into_list(stmt->statement) != NULL) {
+            set_unsupported_error(database, "cursor prepare supports only SELECT statements");
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        database->session.active_statement_time =
+            (int64_t)mylite_statement_context_time(&stmt->context);
+        rc = prepare_statement_transaction_boundary(database, stmt->statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = prepare_cursor_select_plan(stmt);
+        if (rc != MYLITE_OK && rc != MYLITE_NOMEM) {
+            clear_cursor_select_plan_resources(stmt);
+            mylite_diagnostics_clear_condition(mylite_connection_diagnostics(database));
+            rc = prepare_cursor_materialized_select_statement(stmt);
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result *result = NULL;
+
+        rc = finish_failed_statement(database, rc, &result);
+        (void)mylite_statement_context_end(&stmt->context, rc);
+        mylite_statement_context_deinit(&stmt->context);
+        stmt->has_context = false;
+    }
+    return rc;
+}
+
+static int prepare_cursor_materialized_select_statement(mylite_stmt *stmt) {
+    mylite_result *result = NULL;
+    int rc =
+        execute_select_statement(stmt->database, &stmt->context, stmt->statement, true, &result);
+
+    if (rc == MYLITE_OK) {
+        stmt->metadata_result = result;
+        stmt->has_materialized_rows = true;
+    }
+    return rc;
+}
+
+static int prepare_cursor_select_plan(mylite_stmt *stmt) {
+    struct mylite_db *database = stmt->database;
+    int rc = plan_select(database, stmt->statement, true, &stmt->select_plan);
+
+    if (rc == MYLITE_OK) {
+        stmt->has_select_plan = true;
+        rc = mylite_result_create(&stmt->metadata_result);
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_result_column_metadata_context(
+            database,
+            &stmt->select_plan,
+            &stmt->metadata_context
+        );
+    }
+    for (size_t column_index = 0U; rc == MYLITE_OK && column_index < stmt->select_plan.column_count;
+         ++column_index) {
+        rc = append_select_result_column(
+            database,
+            stmt->metadata_result,
+            &stmt->select_plan,
+            &stmt->metadata_context,
+            column_index
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = build_select_sql(&stmt->select_plan, &stmt->sqlite_sql);
+    }
+    if (rc == MYLITE_OK) {
+        rc = prepare_sqlite_statement(database, stmt->sqlite_sql, &stmt->sqlite_statement);
+    }
+    if (rc == MYLITE_OK) {
+        rc = bind_select_parameters(stmt->sqlite_statement, &stmt->select_plan);
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    } else if (rc != MYLITE_OK &&
+               mylite_diagnostics_errcode(mylite_connection_diagnostics(database)) == MYLITE_OK) {
+        set_physical_sqlite_row_error(database);
+        rc = MYLITE_ERROR;
+    }
+    return rc;
+}
+
+static void clear_cursor_select_plan_resources(mylite_stmt *stmt) {
+    if (stmt->sqlite_statement != NULL) {
+        (void)finalize_sqlite_statement(stmt->sqlite_statement, MYLITE_OK);
+        stmt->sqlite_statement = NULL;
+    }
+    free(stmt->sqlite_sql);
+    stmt->sqlite_sql = NULL;
+    sqlite_result_row_storage_deinit(&stmt->row_storage);
+    if (stmt->has_select_plan) {
+        planned_select_deinit(&stmt->select_plan);
+        stmt->has_select_plan = false;
+    }
+    mylite_result_free(stmt->metadata_result);
+    stmt->metadata_result = NULL;
+    result_column_metadata_context_deinit(&stmt->metadata_context);
+    stmt->metadata_context = result_column_metadata_context_init();
+}
+
+static int finish_cursor_statement(mylite_stmt *stmt, bool exhausted) {
+    struct mylite_db *database = stmt->database;
+    int rc = MYLITE_OK;
+
+    if (stmt->row_count > (size_t)INT64_MAX) {
+        set_runtime_error(database, "SELECT row count is out of range");
+        return MYLITE_ERROR;
+    }
+    if (!exhausted) {
+        stmt->found_row_count = (uint64_t)stmt->row_count;
+    }
+    mylite_diagnostics_clear_condition(mylite_connection_diagnostics(database));
+    rc = snapshot_current_diagnostics(database);
+    if (rc != MYLITE_OK) {
+        database->session.previous_row_count = -1;
+        return rc;
+    }
+
+    database->session.previous_row_count = (int64_t)stmt->row_count;
+    database->session.found_rows = stmt->found_row_count;
+    if (stmt->has_context) {
+        (void)mylite_statement_context_end(&stmt->context, MYLITE_OK);
+        mylite_statement_context_deinit(&stmt->context);
+        stmt->has_context = false;
+    }
+    clear_select_consumed_next_transaction_characteristics(database);
+    return MYLITE_OK;
+}
+
+static void destroy_cursor_statement(mylite_stmt *stmt) {
+    if (stmt == NULL) {
+        return;
+    }
+    if (stmt->sqlite_statement != NULL) {
+        (void)finalize_sqlite_statement(stmt->sqlite_statement, MYLITE_OK);
+    }
+    free(stmt->sqlite_sql);
+    sqlite_result_row_storage_deinit(&stmt->row_storage);
+    result_column_metadata_context_deinit(&stmt->metadata_context);
+    if (stmt->has_select_plan) {
+        planned_select_deinit(&stmt->select_plan);
+    }
+    mylite_result_free(stmt->metadata_result);
+    if (stmt->has_parse_result) {
+        mylite_sql_parse_result_deinit(&stmt->parse_result);
+    }
+    if (stmt->has_context) {
+        (void)mylite_statement_context_end(&stmt->context, MYLITE_OK);
+        mylite_statement_context_deinit(&stmt->context);
+    }
+    if (stmt->has_normalized_sql) {
+        mylite_execution_normalized_sql_deinit(&stmt->normalized_sql);
+    }
+    free(stmt);
+}
+
+static int set_materialized_cursor_found_row_count(mylite_stmt *stmt) {
+    if (mylite_result_has_found_row_count(stmt->metadata_result)) {
+        stmt->found_row_count = mylite_result_found_row_count(stmt->metadata_result);
+        return MYLITE_OK;
+    }
+    if (mylite_result_row_count(stmt->metadata_result) > UINT64_MAX) {
+        set_runtime_error(stmt->database, "SELECT found-row count is out of range");
+        return MYLITE_ERROR;
+    }
+    stmt->found_row_count = (uint64_t)mylite_result_row_count(stmt->metadata_result);
+    return MYLITE_OK;
+}
+
+static int set_cursor_found_row_count(mylite_stmt *stmt) {
+    int64_t count = 0;
+    uint64_t found_row_count = 0U;
+    int rc = MYLITE_OK;
+
+    if (stmt->select_plan.calc_found_rows) {
+        rc = read_select_found_row_count(stmt->database, &stmt->select_plan, &count);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (count < 0) {
+            set_runtime_error(stmt->database, "invalid SQL_CALC_FOUND_ROWS count");
+            return MYLITE_ERROR;
+        }
+        stmt->found_row_count = (uint64_t)count;
+        return append_sql_calc_found_rows_deprecation_warning(stmt->database);
+    }
+
+    rc = found_row_count_for_select_limit_envelope(
+        stmt->database,
+        &stmt->select_plan,
+        stmt->row_count,
+        &found_row_count
+    );
+    if (rc == MYLITE_OK) {
+        stmt->found_row_count = found_row_count;
+    }
+    return rc;
+}
+
 static int finish_parse_failure(
     struct mylite_db *database,
     const struct mylite_sql_parse_result *parse_result,

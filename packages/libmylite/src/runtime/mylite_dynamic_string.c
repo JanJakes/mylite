@@ -6,6 +6,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int append_quoted_identifier(
+    struct mylite_dynamic_string *string,
+    const char *text,
+    char quote
+);
+
 void mylite_dynamic_string_init(struct mylite_dynamic_string *string) {
     *string = (struct mylite_dynamic_string){0};
 }
@@ -96,52 +102,14 @@ int mylite_dynamic_string_append_quoted_identifier(
     struct mylite_dynamic_string *string,
     const char *text
 ) {
-    int rc = MYLITE_OK;
-
-    if (string == NULL || text == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    rc = mylite_dynamic_string_append_char(string, '"');
-
-    for (size_t index = 0U; rc == MYLITE_OK && text[index] != '\0'; ++index) {
-        if (text[index] == '"') {
-            rc = mylite_dynamic_string_append(string, "\"\"");
-        } else {
-            rc = mylite_dynamic_string_append_char(string, text[index]);
-        }
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_char(string, '"');
-    }
-
-    return rc;
+    return append_quoted_identifier(string, text, '"');
 }
 
 int mylite_dynamic_string_append_mysql_quoted_identifier(
     struct mylite_dynamic_string *string,
     const char *text
 ) {
-    int rc = MYLITE_OK;
-
-    if (string == NULL || text == NULL) {
-        return MYLITE_MISUSE;
-    }
-
-    rc = mylite_dynamic_string_append_char(string, '`');
-
-    for (size_t index = 0U; rc == MYLITE_OK && text[index] != '\0'; ++index) {
-        if (text[index] == '`') {
-            rc = mylite_dynamic_string_append(string, "``");
-        } else {
-            rc = mylite_dynamic_string_append_char(string, text[index]);
-        }
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append_char(string, '`');
-    }
-
-    return rc;
+    return append_quoted_identifier(string, text, '`');
 }
 
 int mylite_dynamic_string_reserve(struct mylite_dynamic_string *string, size_t required_capacity) {
@@ -195,4 +163,50 @@ char *mylite_dynamic_string_take(struct mylite_dynamic_string *string) {
     string->capacity = 0U;
 
     return text;
+}
+
+static int append_quoted_identifier(
+    struct mylite_dynamic_string *string,
+    const char *text,
+    char quote
+) {
+    size_t append_size = 2U;
+    size_t output = 0U;
+    int rc = MYLITE_OK;
+
+    if (string == NULL || text == NULL) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t index = 0U; text[index] != '\0'; ++index) {
+        size_t increment = text[index] == quote ? 2U : 1U;
+
+        if (append_size > SIZE_MAX - increment) {
+            return MYLITE_NOMEM;
+        }
+        append_size += increment;
+    }
+    if (append_size > SIZE_MAX - string->length - 1U) {
+        return MYLITE_NOMEM;
+    }
+    rc = mylite_dynamic_string_reserve(string, string->length + append_size + 1U);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    output = string->length;
+    string->text[output] = quote;
+    ++output;
+    for (size_t index = 0U; text[index] != '\0'; ++index) {
+        string->text[output] = text[index];
+        ++output;
+        if (text[index] == quote) {
+            string->text[output] = quote;
+            ++output;
+        }
+    }
+    string->text[output] = quote;
+    ++output;
+    string->text[output] = '\0';
+    string->length = output;
+    return MYLITE_OK;
 }

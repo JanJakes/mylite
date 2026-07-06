@@ -4,6 +4,19 @@ static int execute_parsed_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int prepare_cursor_select_statement(
+    struct mylite_db *database,
+    const char *sql,
+    size_t sql_size,
+    mylite_stmt *stmt
+);
+static int prepare_cursor_select_plan(mylite_stmt *stmt);
+static int prepare_cursor_materialized_select_statement(mylite_stmt *stmt);
+static void clear_cursor_select_plan_resources(mylite_stmt *stmt);
+static int finish_cursor_statement(mylite_stmt *stmt, bool exhausted);
+static void destroy_cursor_statement(mylite_stmt *stmt);
+static int set_materialized_cursor_found_row_count(mylite_stmt *stmt);
+static int set_cursor_found_row_count(mylite_stmt *stmt);
 static int execute_non_prepared_statement(
     struct mylite_db *database,
     const struct mylite_statement_context *context,

@@ -280,11 +280,6 @@ static int bind_row_scalar_expression_parameters(
         );
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SCHEMA_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SCHEMA_VALIDATION_REPORT:
-        return bind_row_scalar_json_search_expression_parameters(
-            statement,
-            expression,
-            parameter_index
-        );
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SEARCH:

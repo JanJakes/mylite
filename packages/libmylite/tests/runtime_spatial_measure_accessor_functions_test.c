@@ -11,6 +11,8 @@
 #  include <unistd.h>
 #endif
 
+static const double distance_sphere_double_tolerance = 1.0e-8;
+
 enum {
     test_path_capacity = 1024,
     row_spatial_measure_column_count = 5,
@@ -398,7 +400,7 @@ static int test_scalar_spatial_measure_accessors(void) {
             .values = distance_sphere_values,
             .row_count = 1U,
             .context = "distance sphere measurements",
-            .double_tolerance = 1.0e-8,
+            .double_tolerance = distance_sphere_double_tolerance,
         }
     );
     failures += expect_query(
@@ -702,7 +704,7 @@ static int test_table_backed_spatial_measure_accessors(void) {
             .values = distance_sphere_values,
             .row_count = 2U,
             .context = "row-backed distance sphere projection",
-            .double_tolerance = 1.0e-8,
+            .double_tolerance = distance_sphere_double_tolerance,
         }
     );
     failures += execute_ok(

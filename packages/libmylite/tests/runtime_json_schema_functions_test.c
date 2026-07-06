@@ -180,16 +180,18 @@ static int test_json_schema_validation_reports(void) {
 
 static int test_json_schema_row_backed_values(void) {
     static const char *const columns[] = {"id", "ok", "report"};
+    static const char invalid_report[] =
+        "{\"valid\": false, \"reason\": \"The JSON document location '#/score' failed "
+        "requirement 'maximum' at JSON Schema location '#/properties/score'\", "
+        "\"schema-location\": \"#/properties/score\", \"document-location\": \"#/score\", "
+        "\"schema-failed-keyword\": \"maximum\"}";
     static const char *const values[] = {
         "1",
         "1",
         "{\"valid\": true}",
         "2",
         "0",
-        "{\"valid\": false, \"reason\": \"The JSON document location '#/score' failed "
-        "requirement 'maximum' at JSON Schema location '#/properties/score'\", "
-        "\"schema-location\": \"#/properties/score\", \"document-location\": \"#/score\", "
-        "\"schema-failed-keyword\": \"maximum\"}",
+        invalid_report,
     };
     char path[test_path_capacity];
     mylite_db *database = NULL;

@@ -954,6 +954,7 @@ static int spatial_buffer_reserve(struct spatial_buffer *buffer, size_t required
 static void spatial_buffer_deinit(struct spatial_buffer *buffer);
 static uint32_t read_u32_endian(const unsigned char *bytes, bool little_endian);
 static double read_double_endian(const unsigned char *bytes, bool little_endian);
+static bool spatial_u32_count_exceeds_allocation_limit(uint32_t count, size_t element_size);
 static int validate_internal_geometry(
     const void *bytes,
     size_t byte_count,
@@ -7344,7 +7345,7 @@ static int point_collection_read_multipoint(
     if (point_count == 0U) {
         return 0;
     }
-    if ((size_t)point_count > SIZE_MAX / sizeof(*points)) {
+    if (spatial_u32_count_exceeds_allocation_limit(point_count, sizeof(*points))) {
         return set_nomem_error(error);
     }
     points = calloc((size_t)point_count, sizeof(*points));
@@ -8772,7 +8773,7 @@ static int simplify_polygon_geometry(
         source->ring_count == 0U) {
         return set_invalid_gis_data_error(error, function_name);
     }
-    if ((size_t)source->ring_count > SIZE_MAX / sizeof(*rings)) {
+    if (spatial_u32_count_exceeds_allocation_limit(source->ring_count, sizeof(*rings))) {
         return set_nomem_error(error);
     }
     rings = calloc(source->ring_count, sizeof(*rings));
@@ -8850,7 +8851,7 @@ static int simplify_collection_geometry(
         *out_has_geometry = false;
         return 0;
     }
-    if ((size_t)source->child_count > SIZE_MAX / sizeof(*children)) {
+    if (spatial_u32_count_exceeds_allocation_limit(source->child_count, sizeof(*children))) {
         return set_nomem_error(error);
     }
     children = calloc(source->child_count, sizeof(*children));
@@ -8917,7 +8918,7 @@ static int simplify_points(
     if (point_count <= 2U) {
         return simplify_point_copy(points, point_count, out_points, out_point_count, error);
     }
-    if (points == NULL || (size_t)point_count > SIZE_MAX / sizeof(*keep)) {
+    if (points == NULL || spatial_u32_count_exceeds_allocation_limit(point_count, sizeof(*keep))) {
         return set_nomem_error(error);
     }
     keep = calloc(point_count, sizeof(*keep));
@@ -8932,7 +8933,7 @@ static int simplify_points(
             keep[0] = true;
             keep[point_count - 1U] = true;
         }
-        if ((size_t)output_count > SIZE_MAX / sizeof(*simplified)) {
+        if (spatial_u32_count_exceeds_allocation_limit(output_count, sizeof(*simplified))) {
             rc = set_nomem_error(error);
         }
     }
@@ -9011,7 +9012,7 @@ static int simplify_point_copy(
     if (point_count != 0U && points == NULL) {
         return set_invalid_gis_data_error(error, "st_simplify");
     }
-    if ((size_t)point_count > SIZE_MAX / sizeof(*copy)) {
+    if (spatial_u32_count_exceeds_allocation_limit(point_count, sizeof(*copy))) {
         return set_nomem_error(error);
     }
     copy = calloc(point_count == 0U ? 1U : point_count, sizeof(*copy));
@@ -9040,7 +9041,7 @@ static int simplify_keep_mask(
     if (points == NULL || keep == NULL || point_count < 2U) {
         return set_invalid_gis_data_error(error, "st_simplify");
     }
-    if ((size_t)point_count > SIZE_MAX / sizeof(*ranges)) {
+    if (spatial_u32_count_exceeds_allocation_limit(point_count, sizeof(*ranges))) {
         return set_nomem_error(error);
     }
     ranges = calloc(point_count, sizeof(*ranges));
@@ -9379,7 +9380,10 @@ static int distance_geometry_read(
         if (rc == 0) {
             out_geometry->ring_count = count;
             if (count > 0U) {
-                if ((size_t)count > SIZE_MAX / sizeof(*out_geometry->rings)) {
+                if (spatial_u32_count_exceeds_allocation_limit(
+                        count,
+                        sizeof(*out_geometry->rings)
+                    )) {
                     return set_nomem_error(error);
                 }
                 out_geometry->rings = calloc((size_t)count, sizeof(*out_geometry->rings));
@@ -9446,7 +9450,7 @@ static int distance_geometry_read_points(
     if (point_count == 0U) {
         return 0;
     }
-    if ((size_t)point_count > SIZE_MAX / sizeof(*points)) {
+    if (spatial_u32_count_exceeds_allocation_limit(point_count, sizeof(*points))) {
         return set_nomem_error(error);
     }
     points = calloc((size_t)point_count, sizeof(*points));
@@ -9498,7 +9502,7 @@ static int distance_geometry_read_children(
     if (count == 0U) {
         return 0;
     }
-    if ((size_t)count > SIZE_MAX / sizeof(*out_geometry->children)) {
+    if (spatial_u32_count_exceeds_allocation_limit(count, sizeof(*out_geometry->children))) {
         return set_nomem_error(error);
     }
     out_geometry->children = calloc((size_t)count, sizeof(*out_geometry->children));
@@ -12005,7 +12009,7 @@ static int line_points_from_wkb(
     if (point_count == 0U) {
         return 0;
     }
-    if ((size_t)point_count > SIZE_MAX / sizeof(*points)) {
+    if (spatial_u32_count_exceeds_allocation_limit(point_count, sizeof(*points))) {
         return set_nomem_error(error);
     }
     points = calloc((size_t)point_count, sizeof(*points));
@@ -12120,7 +12124,7 @@ static int interpolated_line_points(
         }
         point_count = (uint32_t)raw_point_count;
     }
-    if ((size_t)point_count > SIZE_MAX / sizeof(*points)) {
+    if (spatial_u32_count_exceeds_allocation_limit(point_count, sizeof(*points))) {
         return set_nomem_error(error);
     }
     points = calloc((size_t)point_count, sizeof(*points));
@@ -12706,10 +12710,20 @@ static int skip_wkb_points(
     struct mylite_spatial_error *error,
     const char *function_name
 ) {
-    if ((size_t)point_count > (SIZE_MAX / spatial_coordinate_size)) {
+    if (spatial_u32_count_exceeds_allocation_limit(point_count, spatial_coordinate_size)) {
         return set_invalid_gis_data_error(error, function_name);
     }
     return cursor_skip(cursor, (size_t)point_count * spatial_coordinate_size, error, function_name);
+}
+
+static bool spatial_u32_count_exceeds_allocation_limit(uint32_t count, size_t element_size) {
+#if SIZE_MAX <= UINT32_MAX
+    return element_size == 0U || (size_t)count > SIZE_MAX / element_size;
+#else
+    (void)count;
+    (void)element_size;
+    return false;
+#endif
 }
 
 static int cursor_read_header(

@@ -58,6 +58,7 @@ enum {
     avg_window_result_fraction_digits = 4,
     avg_window_result_fraction_scale = 10000,
     avg_window_result_round_half_digit = 5,
+    avg_window_result_decimal_base = 10,
     avg_window_result_capacity = 64,
 };
 
@@ -1631,7 +1632,7 @@ static bool format_avg_window_result(
         if (digit < 0) {
             return false;
         }
-        fraction = (fraction * integer_parse_base) + (unsigned int)digit;
+        fraction = (fraction * avg_window_result_decimal_base) + (unsigned int)digit;
     }
 
     round_digit = avg_order_next_decimal_digit(&remainder, denominator);

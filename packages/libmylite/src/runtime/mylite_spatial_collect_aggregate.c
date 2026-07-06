@@ -490,7 +490,7 @@ static int spatial_collect_result_bytes(
     bytes[spatial_collect_internal_srid_size] = spatial_collect_wkb_little_endian;
     spatial_collect_write_u32(
         bytes + spatial_collect_internal_srid_size + spatial_collect_wkb_type_offset,
-        state->result_type
+        (uint32_t)state->result_type
     );
     spatial_collect_write_u32(
         bytes + spatial_collect_internal_srid_size + spatial_collect_wkb_collection_count_offset,

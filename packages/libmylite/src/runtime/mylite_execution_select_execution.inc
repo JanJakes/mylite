@@ -244,7 +244,9 @@ static bool expression_is_supported_row_scalar_system_function(
            generic_function_name_equals(expression, "NAME_CONST") ||
            generic_function_name_equals(expression, "LOAD_FILE") ||
            generic_function_name_equals(expression, "EXTRACTVALUE") ||
-           generic_function_name_equals(expression, "UPDATEXML");
+           generic_function_name_equals(expression, "UPDATEXML") ||
+           generic_function_name_equals(expression, "JSON_SCHEMA_VALID") ||
+           generic_function_name_equals(expression, "JSON_SCHEMA_VALIDATION_REPORT");
 }
 
 static bool expression_contains_supported_row_scalar_system_function(
@@ -545,6 +547,7 @@ static int row_scalar_select_step_error(
     if (map_system_function_row_scalar_step_error(database, message) ||
         map_numeric_row_scalar_step_error(database, message) ||
         map_json_extract_row_scalar_step_error(database, message) ||
+        map_json_schema_row_scalar_step_error(database, message) ||
         map_json_mutation_row_scalar_step_error(database, message) ||
         map_json_search_row_scalar_step_error(database, message) ||
         map_json_type_row_scalar_step_error(database, message) ||
@@ -697,6 +700,65 @@ static bool map_json_extract_row_scalar_step_error(
     }
     if (strcmp(message, "Unsupported JSON path or JSON document in JSON_KEYS()") == 0) {
         set_unsupported_error(database, "JSON_KEYS() path or document shape is not supported");
+        return true;
+    }
+    return false;
+}
+
+static bool map_json_schema_row_scalar_step_error(struct mylite_db *database, const char *message) {
+    if (strncmp(message, "Invalid JSON text in argument ", strlen("Invalid JSON text in argument ")) ==
+        0) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            mysql_error_invalid_json_text_in_function,
+            "22032",
+            message
+        );
+        return true;
+    }
+    if (strncmp(
+            message,
+            "Invalid data type for JSON data in argument ",
+            strlen("Invalid data type for JSON data in argument ")
+        ) == 0) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            mysql_error_invalid_json_data,
+            "22032",
+            message
+        );
+        return true;
+    }
+    if (strncmp(
+            message,
+            "Invalid JSON type in argument 1 to function ",
+            strlen("Invalid JSON type in argument 1 to function ")
+        ) == 0) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            mysql_error_invalid_json_type,
+            "22032",
+            message
+        );
+        return true;
+    }
+    if (strcmp(
+            message,
+            "This version of MySQL doesn't yet support 'references in JSON Schema'"
+        ) == 0) {
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            mysql_error_not_supported_yet,
+            "42000",
+            message
+        );
+        return true;
+    }
+    if (strcmp(
+            message,
+            "JSON schema validation supports type, required, properties, minimum, and maximum"
+        ) == 0) {
+        set_unsupported_error(database, message);
         return true;
     }
     return false;
@@ -2150,6 +2212,7 @@ static int populate_row_scalar_expression_result_column_descriptor(
         );
         return MYLITE_OK;
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SCHEMA_VALID:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_OVERLAPS:
@@ -2172,6 +2235,17 @@ static int populate_row_scalar_expression_result_column_descriptor(
                 .logical_type = MYLITE_RESULT_LOGICAL_TYPE_LONGLONG,
                 .display_length = mysql_scalar_bigint_display_length,
                 .decimals = 0U,
+                .extra_flags = 0U,
+                .nullable = true,
+            }
+        );
+        return MYLITE_OK;
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SCHEMA_VALIDATION_REPORT:
+        populate_scalar_connection_string_result_column_descriptor(
+            database,
+            descriptor,
+            (struct scalar_connection_string_result_column_shape){
+                .display_length = mysql_json_document_display_length,
                 .extra_flags = 0U,
                 .nullable = true,
             }

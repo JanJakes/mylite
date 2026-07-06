@@ -205,6 +205,39 @@ static void json_storage_free_sqlite_callback(
 static void json_quote_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_set_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void json_insert_sqlite_callback(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void json_schema_valid_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+);
+static void json_schema_validation_report_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+);
+static void json_schema_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv,
+    bool report
+);
+static void json_schema_sqlite_argument_type_error(
+    sqlite3_context *context,
+    const char *function_name,
+    size_t argument_index
+);
+static void json_schema_sqlite_invalid_json_text_error(
+    sqlite3_context *context,
+    const char *function_name,
+    size_t argument_index,
+    const struct mylite_json_normalize_result *result
+);
+static void json_schema_sqlite_finish_error(
+    sqlite3_context *context,
+    const char *function_name,
+    const struct mylite_json_schema_validation_result *validation,
+    int rc
+);
 static void json_array_append_sqlite_callback(
     sqlite3_context *context,
     int argc,
@@ -453,6 +486,34 @@ int mylite_sqlite_register_json_functions(sqlite3 *sqlite) {
             .text_representation = SQLITE_UTF8 | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
             .application_data = NULL,
             .scalar_callback = json_valid_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_json_schema_valid",
+            .argument_count = 2,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = NULL,
+            .scalar_callback = json_schema_valid_sqlite_callback,
+            .step_callback = NULL,
+            .final_callback = NULL,
+            .value_callback = NULL,
+            .inverse_callback = NULL,
+            .destroy_callback = NULL,
+        },
+        {
+            .kind = MYLITE_SQLITE_FUNCTION_SCALAR,
+            .name = "_mylite_json_schema_validation_report",
+            .argument_count = 2,
+            .text_representation =
+                SQLITE_UTF8 | SQLITE_DIRECTONLY | SQLITE_INNOCUOUS | SQLITE_DETERMINISTIC,
+            .application_data = NULL,
+            .scalar_callback = json_schema_validation_report_sqlite_callback,
             .step_callback = NULL,
             .final_callback = NULL,
             .value_callback = NULL,
@@ -3370,6 +3431,223 @@ static void json_valid_sqlite_callback(sqlite3_context *context, int argc, sqlit
     } else {
         sqlite3_result_int64(context, 0);
     }
+}
+
+static void json_schema_valid_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+) {
+    json_schema_sqlite_callback(context, argc, argv, false);
+}
+
+static void json_schema_validation_report_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv
+) {
+    json_schema_sqlite_callback(context, argc, argv, true);
+}
+
+static void json_schema_sqlite_callback(
+    sqlite3_context *context,
+    int argc,
+    sqlite3_value **argv,
+    bool report
+) {
+    const unsigned char *schema = NULL;
+    const unsigned char *document = NULL;
+    const char *function_name = report ? "json_schema_validation_report" : "json_schema_valid";
+    int schema_length = 0;
+    int document_length = 0;
+    char *report_text = NULL;
+    size_t report_text_length = 0U;
+    struct mylite_json_schema_validation_result validation = {0};
+    int rc = MYLITE_OK;
+
+    if (context == NULL || argc != 2 || argv == NULL || argv[0] == NULL || argv[1] == NULL) {
+        sqlite3_result_error(context, "invalid MyLite JSON schema callback", -1);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) == SQLITE_NULL || sqlite3_value_type(argv[1]) == SQLITE_NULL) {
+        sqlite3_result_null(context);
+        return;
+    }
+    if (sqlite3_value_type(argv[0]) != SQLITE_TEXT) {
+        json_schema_sqlite_argument_type_error(context, function_name, 1U);
+        return;
+    }
+    if (sqlite3_value_type(argv[1]) != SQLITE_TEXT) {
+        json_schema_sqlite_argument_type_error(context, function_name, 2U);
+        return;
+    }
+
+    schema = sqlite3_value_text(argv[0]);
+    schema_length = sqlite3_value_bytes(argv[0]);
+    document = sqlite3_value_text(argv[1]);
+    document_length = sqlite3_value_bytes(argv[1]);
+    if (schema == NULL || document == NULL || schema_length < 0 || document_length < 0) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+
+    if (report) {
+        rc = mylite_json_schema_validation_report(
+            (const char *)schema,
+            (size_t)schema_length,
+            (const char *)document,
+            (size_t)document_length,
+            &report_text,
+            &report_text_length,
+            &validation
+        );
+    } else {
+        rc = mylite_json_schema_validate(
+            (const char *)schema,
+            (size_t)schema_length,
+            (const char *)document,
+            (size_t)document_length,
+            &validation
+        );
+    }
+    if (rc == MYLITE_OK && validation.status == MYLITE_JSON_SCHEMA_VALIDATION_OK) {
+        if (report) {
+            if (report_text_length > (size_t)INT_MAX) {
+                free(report_text);
+                mylite_json_schema_validation_result_deinit(&validation);
+                sqlite3_result_error_nomem(context);
+                return;
+            }
+            sqlite3_result_text(context, report_text, (int)report_text_length, free);
+            report_text = NULL;
+        } else {
+            sqlite3_result_int64(context, validation.is_valid ? 1 : 0);
+        }
+    } else {
+        json_schema_sqlite_finish_error(context, function_name, &validation, rc);
+    }
+
+    free(report_text);
+    mylite_json_schema_validation_result_deinit(&validation);
+}
+
+static void json_schema_sqlite_argument_type_error(
+    sqlite3_context *context,
+    const char *function_name,
+    size_t argument_index
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Invalid data type for JSON data in argument %zu to function %s; a JSON string or JSON "
+        "type is required.",
+        argument_index,
+        function_name == NULL ? "json_schema_valid" : function_name
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        sqlite3_result_error(
+            context,
+            "Invalid data type for JSON data in JSON schema function",
+            -1
+        );
+        return;
+    }
+    sqlite3_result_error(context, message, -1);
+}
+
+static void json_schema_sqlite_invalid_json_text_error(
+    sqlite3_context *context,
+    const char *function_name,
+    size_t argument_index,
+    const struct mylite_json_normalize_result *result
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    size_t position = result == NULL ? 0U : result->position;
+    int written = snprintf(
+        message,
+        sizeof(message),
+        "Invalid JSON text in argument %zu to function %s: \"%s\" at position %zu.",
+        argument_index,
+        function_name == NULL ? "json_schema_valid" : function_name,
+        mylite_json_invalid_text_error_message(result),
+        position
+    );
+
+    if (written < 0 || (size_t)written >= sizeof(message)) {
+        sqlite3_result_error(context, "Invalid JSON text in JSON schema function", -1);
+        return;
+    }
+    sqlite3_result_error(context, message, -1);
+}
+
+static void json_schema_sqlite_finish_error(
+    sqlite3_context *context,
+    const char *function_name,
+    const struct mylite_json_schema_validation_result *validation,
+    int rc
+) {
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    int written = 0;
+
+    if (rc == MYLITE_NOMEM) {
+        sqlite3_result_error_nomem(context);
+        return;
+    }
+    if (validation == NULL) {
+        sqlite3_result_error(context, "MyLite JSON schema validation failed", -1);
+        return;
+    }
+    if (validation->status == MYLITE_JSON_SCHEMA_VALIDATION_INVALID_SCHEMA_JSON) {
+        json_schema_sqlite_invalid_json_text_error(
+            context,
+            function_name,
+            1U,
+            &validation->schema_result
+        );
+        return;
+    }
+    if (validation->status == MYLITE_JSON_SCHEMA_VALIDATION_INVALID_DOCUMENT_JSON) {
+        json_schema_sqlite_invalid_json_text_error(
+            context,
+            function_name,
+            2U,
+            &validation->document_result
+        );
+        return;
+    }
+    if (validation->status == MYLITE_JSON_SCHEMA_VALIDATION_INVALID_SCHEMA_TYPE) {
+        written = snprintf(
+            message,
+            sizeof(message),
+            "Invalid JSON type in argument 1 to function %s; an object is required.",
+            function_name == NULL ? "json_schema_valid" : function_name
+        );
+        if (written < 0 || (size_t)written >= sizeof(message)) {
+            sqlite3_result_error(context, "Invalid JSON type in JSON schema function", -1);
+            return;
+        }
+        sqlite3_result_error(context, message, -1);
+        return;
+    }
+    if (validation->status == MYLITE_JSON_SCHEMA_VALIDATION_UNSUPPORTED_REFERENCE) {
+        sqlite3_result_error(
+            context,
+            "This version of MySQL doesn't yet support 'references in JSON Schema'",
+            -1
+        );
+        return;
+    }
+    if (validation->status == MYLITE_JSON_SCHEMA_VALIDATION_UNSUPPORTED_SCHEMA) {
+        sqlite3_result_error(
+            context,
+            "JSON schema validation supports type, required, properties, minimum, and maximum",
+            -1
+        );
+        return;
+    }
+    sqlite3_result_error(context, "MyLite JSON schema validation failed", -1);
 }
 
 static int collect_json_array_sql_values(

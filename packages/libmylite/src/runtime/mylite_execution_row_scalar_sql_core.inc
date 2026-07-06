@@ -155,6 +155,20 @@ static int append_row_scalar_expression_sql(
         return append_row_scalar_regexp_string_expression_sql(string, expression, next_parameter);
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
         return append_row_scalar_json_valid_expression_sql(string, expression, next_parameter);
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SCHEMA_VALID:
+        return append_row_scalar_json_schema_expression_sql(
+            string,
+            "_mylite_json_schema_valid",
+            expression,
+            next_parameter
+        );
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SCHEMA_VALIDATION_REPORT:
+        return append_row_scalar_json_schema_expression_sql(
+            string,
+            "_mylite_json_schema_validation_report",
+            expression,
+            next_parameter
+        );
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
         return append_row_scalar_json_search_expression_sql(
             string,
@@ -1194,6 +1208,8 @@ static int append_row_scalar_conversion_base_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_SUBSTR:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SCHEMA_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SCHEMA_VALIDATION_REPORT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SEARCH:
@@ -1357,6 +1373,8 @@ static int append_row_scalar_non_concat_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_SUBSTR:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SCHEMA_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SCHEMA_VALIDATION_REPORT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SEARCH:
@@ -1486,6 +1504,8 @@ static int append_row_scalar_non_control_flow_expression_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_SUBSTR:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SCHEMA_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SCHEMA_VALIDATION_REPORT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SEARCH:
@@ -1845,6 +1865,8 @@ static int append_row_scalar_integer_arithmetic_enter_sql(
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_SUBSTR:
     case PLANNED_ROW_SCALAR_EXPRESSION_REGEXP_REPLACE:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SCHEMA_VALID:
+    case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SCHEMA_VALIDATION_REPORT:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_CONTAINS_PATH:
     case PLANNED_ROW_SCALAR_EXPRESSION_JSON_SEARCH:

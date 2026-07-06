@@ -189,6 +189,188 @@ static bool json_valid_column_descriptor_is_supported(
     return false;
 }
 
+static int plan_row_scalar_json_schema_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    const struct mylite_sql_ast_node *arguments = NULL;
+    const char *function_name = NULL;
+    const char *diagnostic_function_name = NULL;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (generic_function_name_equals(expression, "JSON_SCHEMA_VALID")) {
+        function_name = "JSON_SCHEMA_VALID";
+        diagnostic_function_name = "json_schema_valid";
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_JSON_SCHEMA_VALID;
+    } else if (generic_function_name_equals(expression, "JSON_SCHEMA_VALIDATION_REPORT")) {
+        function_name = "JSON_SCHEMA_VALIDATION_REPORT";
+        diagnostic_function_name = "json_schema_validation_report";
+        out_expression->kind = PLANNED_ROW_SCALAR_EXPRESSION_JSON_SCHEMA_VALIDATION_REPORT;
+    } else {
+        set_parse_error(database, NULL);
+        return MYLITE_ERROR;
+    }
+
+    arguments = expression == NULL ? NULL : expression->first_child;
+    while (arguments != NULL && arguments->kind != MYLITE_SQL_AST_FUNCTION_ARGUMENT_LIST) {
+        arguments = arguments->next_sibling;
+    }
+    if (arguments == NULL || mylite_sql_ast_node_child_count(arguments) != 2U) {
+        set_native_function_parameter_count_error(database, function_name);
+        return MYLITE_ERROR;
+    }
+
+    return plan_row_scalar_json_schema_arguments(
+        database,
+        arguments,
+        diagnostic_function_name,
+        has_source,
+        source_context,
+        table_columns,
+        table_column_count,
+        out_expression
+    );
+}
+
+static int plan_row_scalar_json_schema_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    const char *diagnostic_function_name,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    int rc = MYLITE_OK;
+
+    out_expression->arguments =
+        (struct planned_row_scalar_expression *)calloc(2U, sizeof(*out_expression->arguments));
+    if (out_expression->arguments == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    out_expression->argument_count = 2U;
+
+    for (size_t index = 0U; rc == MYLITE_OK && index < 2U; ++index) {
+        rc = plan_row_scalar_json_schema_argument(
+            database,
+            child_at(arguments, index),
+            diagnostic_function_name,
+            index + 1U,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            &out_expression->arguments[index]
+        );
+    }
+    if (rc != MYLITE_OK) {
+        planned_row_scalar_expression_deinit(out_expression);
+    }
+    return rc;
+}
+
+static int plan_row_scalar_json_schema_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *diagnostic_function_name,
+    size_t argument_index,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+) {
+    enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
+    enum mylite_session_user_variable_value_kind variable_kind =
+        MYLITE_SESSION_USER_VARIABLE_VALUE_NULL;
+
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        set_unsupported_error(
+            database,
+            "JSON schema validation supports string, JSON, NULL, user-variable, and descriptor "
+            "column arguments"
+        );
+        return MYLITE_ERROR;
+    }
+    if (expression->kind == MYLITE_SQL_AST_IDENTIFIER ||
+        expression->kind == MYLITE_SQL_AST_QUALIFIED_IDENTIFIER) {
+        if (!has_source) {
+            char parts[table_name_part_capacity][MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            char column_name[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
+            size_t part_count = 0U;
+            int rc = collect_column_reference_parts(database, expression, parts, &part_count);
+
+            if (rc == MYLITE_OK) {
+                rc = format_column_reference_name(
+                    database,
+                    parts,
+                    part_count,
+                    column_name,
+                    sizeof(column_name)
+                );
+            }
+            if (rc != MYLITE_OK) {
+                return rc;
+            }
+            set_unknown_column_error(database, column_name);
+            return MYLITE_ERROR;
+        }
+        return plan_row_scalar_json_text_column(
+            database,
+            expression,
+            source_context,
+            table_columns,
+            table_column_count,
+            COLUMN_REFERENCE_FIELD,
+            "JSON schema validation supports only JSON and nonbinary string descriptor columns",
+            out_expression
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_LITERAL) {
+        literal_kind = mylite_sql_ast_node_literal_kind(expression);
+        if (literal_kind == MYLITE_SQL_AST_LITERAL_STRING ||
+            literal_kind == MYLITE_SQL_AST_LITERAL_NULL) {
+            return plan_row_scalar_literal_value(database, expression, out_expression);
+        }
+        return set_json_schema_invalid_data_type_error(
+            database,
+            diagnostic_function_name,
+            argument_index
+        );
+    }
+    if (expression->kind == MYLITE_SQL_AST_USER_VARIABLE) {
+        int rc = session_user_variable_value_kind(database, expression, &variable_kind);
+
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
+        if (variable_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_NULL &&
+            variable_kind != MYLITE_SESSION_USER_VARIABLE_VALUE_STRING) {
+            return set_json_schema_invalid_data_type_error(
+                database,
+                diagnostic_function_name,
+                argument_index
+            );
+        }
+        return plan_row_scalar_session_value(database, expression, out_expression);
+    }
+
+    set_unsupported_error(
+        database,
+        "JSON schema validation supports string, JSON, NULL, user-variable, and descriptor column "
+        "arguments"
+    );
+    return MYLITE_ERROR;
+}
+
 static int plan_row_scalar_json_contains_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

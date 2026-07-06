@@ -55,9 +55,9 @@ This slice does not implement:
   `minLength`, `maxLength`, `minItems`, `maxItems`, `multipleOf`,
   `exclusiveMinimum`, and `exclusiveMaximum`;
 - JSON Schema formats or external resources;
-- use in stored CHECK constraints, row-backed table projections, predicates,
-  DML assignment expressions, arbitrary nested expression arguments, or
-  protocol metadata beyond the current scalar `mylite_result` descriptors;
+- use in stored CHECK constraints, predicates, DML assignment expressions,
+  arbitrary nested expression arguments, or protocol metadata beyond the current
+  scalar and row-scalar `mylite_result` descriptors;
 - a new dependency or SQLite fork hook.
 
 Unsupported schema keywords must not be ignored. They return an explicit MyLite
@@ -135,6 +135,7 @@ MyLite runtime coverage lives in
 - validation report success and failure JSON;
 - SQL `NULL` propagation;
 - session user-variable arguments;
+- row-backed JSON/nonbinary string column arguments in single-table projections;
 - `DO` status counters;
 - wrong argument counts, invalid JSON text, invalid schema type, invalid SQL
   data type, `$ref`, and unsupported keyword diagnostics.

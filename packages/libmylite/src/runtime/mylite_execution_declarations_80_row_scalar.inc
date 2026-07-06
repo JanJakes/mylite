@@ -1432,6 +1432,36 @@ static bool json_valid_column_descriptor_is_supported(
     struct mylite_db *database,
     const struct mylite_catalog_column_descriptor *column
 );
+static int plan_row_scalar_json_schema_function(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_json_schema_arguments(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *arguments,
+    const char *diagnostic_function_name,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
+static int plan_row_scalar_json_schema_argument(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *expression,
+    const char *diagnostic_function_name,
+    size_t argument_index,
+    bool has_source,
+    const struct select_source_context *source_context,
+    const struct mylite_catalog_column_descriptor *table_columns,
+    size_t table_column_count,
+    struct planned_row_scalar_expression *out_expression
+);
 static int plan_row_scalar_json_contains_expression(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression,

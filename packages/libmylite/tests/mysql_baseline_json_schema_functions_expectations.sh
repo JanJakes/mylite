@@ -125,6 +125,28 @@ expect_output \
 "JSON_SCHEMA_VALID('{\"minimum\":2}', '1'), JSON_SCHEMA_VALID('{\"maximum\":2}', '3');" \
     "$DATABASE"
 
+run_mysql \
+    "CREATE TABLE js_rows (id INT PRIMARY KEY, doc JSON, schema_text TEXT);" \
+    "$DATABASE" >/dev/null
+run_mysql \
+    "INSERT INTO js_rows VALUES "\
+"(1, '{\"id\":1,\"score\":7}', '{\"type\":\"object\",\"required\":[\"id\"]}'), "\
+"(2, '{\"score\":11}', '{\"type\":\"object\",\"required\":[\"id\"]}');" \
+    "$DATABASE" >/dev/null
+
+row_backed_expected=$(cat <<EXPECTED
+1	1	{"valid": true}
+2	0	{"valid": false, "reason": "The JSON document location '#/score' failed requirement 'maximum' at JSON Schema location '#/properties/score'", "schema-location": "#/properties/score", "document-location": "#/score", "schema-failed-keyword": "maximum"}
+EXPECTED
+)
+expect_output \
+    "JSON_SCHEMA row-backed values" \
+    "$row_backed_expected" \
+    "SELECT id, JSON_SCHEMA_VALID(schema_text, doc) AS ok, "\
+"JSON_SCHEMA_VALIDATION_REPORT('{\"properties\":{\"score\":{\"maximum\":10}}}', doc) "\
+"AS report FROM js_rows ORDER BY id;" \
+    "$DATABASE"
+
 expect_error \
     "JSON_SCHEMA_VALID zero arguments" \
     1582 \

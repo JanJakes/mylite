@@ -5,7 +5,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+#  include <process.h>
+#else
+#  include <unistd.h>
+#endif
+
 enum {
+    test_path_capacity = 1024,
+    path_suffix_capacity = 16,
     mysql_error_parse = 1064,
     mysql_error_native_function_argument_count = 1582,
     mysql_error_invalid_json_text = 3141,
@@ -31,11 +39,16 @@ struct expected_query {
 
 static int test_json_schema_valid_values(void);
 static int test_json_schema_validation_reports(void);
+static int test_json_schema_row_backed_values(void);
 static int test_json_schema_nulls_user_variables_and_do(void);
 static int test_json_schema_diagnostics(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_query(mylite_db *database, struct expected_query expected);
+static int make_test_path(char *path, size_t path_size, const char *name);
+static int current_process_id(void);
+static void remove_related_files(const char *path);
+static void remove_with_suffix(const char *path, const char *suffix);
 static int expect_result_value(
     const mylite_result *result,
     size_t row,
@@ -54,6 +67,7 @@ int main(void) {
 
     failures += test_json_schema_valid_values();
     failures += test_json_schema_validation_reports();
+    failures += test_json_schema_row_backed_values();
     failures += test_json_schema_nulls_user_variables_and_do();
     failures += test_json_schema_diagnostics();
 
@@ -161,6 +175,62 @@ static int test_json_schema_validation_reports(void) {
     );
 
     mylite_close(database);
+    return failures;
+}
+
+static int test_json_schema_row_backed_values(void) {
+    static const char *const columns[] = {"id", "ok", "report"};
+    static const char *const values[] = {
+        "1",
+        "1",
+        "{\"valid\": true}",
+        "2",
+        "0",
+        "{\"valid\": false, \"reason\": \"The JSON document location '#/score' failed "
+        "requirement 'maximum' at JSON Schema location '#/properties/score'\", "
+        "\"schema-location\": \"#/properties/score\", \"document-location\": \"#/score\", "
+        "\"schema-failed-keyword\": \"maximum\"}",
+    };
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "rows") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open rows database");
+    failures += execute_ok(database, "CREATE DATABASE app", NULL);
+    failures += execute_ok(database, "USE app", NULL);
+    failures += execute_ok(
+        database,
+        "CREATE TABLE js_rows (id INT PRIMARY KEY, doc JSON, schema_text TEXT)",
+        NULL
+    );
+    failures += execute_ok(
+        database,
+        "INSERT INTO js_rows VALUES "
+        "(1, '{\"id\":1,\"score\":7}', '{\"type\":\"object\",\"required\":[\"id\"]}'), "
+        "(2, '{\"score\":11}', '{\"type\":\"object\",\"required\":[\"id\"]}')",
+        NULL
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, JSON_SCHEMA_VALID(schema_text, doc) AS ok, "
+                   "JSON_SCHEMA_VALIDATION_REPORT('{\"properties\":{\"score\":{\"maximum\":"
+                   "10}}}', doc) AS report FROM js_rows ORDER BY id",
+            .columns = columns,
+            .column_count = sizeof(columns) / sizeof(columns[0]),
+            .values = values,
+            .row_count = 2U,
+            .context = "json schema row-backed values",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
     return failures;
 }
 
@@ -381,6 +451,42 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
 
     mylite_result_free(result);
     return failures;
+}
+
+static int make_test_path(char *path, size_t path_size, const char *name) {
+    int written = snprintf(
+        path,
+        path_size,
+        "runtime-json-schema-functions-%s-%d.mylite",
+        name,
+        current_process_id()
+    );
+
+    return written < 0 || (size_t)written >= path_size ? -1 : 0;
+}
+
+static int current_process_id(void) {
+#ifdef _WIN32
+    return _getpid();
+#else
+    return getpid();
+#endif
+}
+
+static void remove_related_files(const char *path) {
+    remove(path);
+    remove_with_suffix(path, "-journal");
+    remove_with_suffix(path, "-wal");
+    remove_with_suffix(path, "-shm");
+}
+
+static void remove_with_suffix(const char *path, const char *suffix) {
+    char buffer[test_path_capacity + path_suffix_capacity];
+    int written = snprintf(buffer, sizeof(buffer), "%s%s", path, suffix);
+
+    if (written >= 0 && (size_t)written < sizeof(buffer)) {
+        remove(buffer);
+    }
 }
 
 static int expect_result_value(

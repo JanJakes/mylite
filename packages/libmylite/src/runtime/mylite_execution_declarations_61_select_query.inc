@@ -620,6 +620,7 @@ static bool map_system_function_row_scalar_step_error(
 );
 static bool map_numeric_row_scalar_step_error(struct mylite_db *database, const char *message);
 static bool map_json_extract_row_scalar_step_error(struct mylite_db *database, const char *message);
+static bool map_json_schema_row_scalar_step_error(struct mylite_db *database, const char *message);
 static bool map_json_mutation_row_scalar_step_error(
     struct mylite_db *database,
     const char *message

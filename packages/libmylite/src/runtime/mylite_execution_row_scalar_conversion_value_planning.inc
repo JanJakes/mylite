@@ -74,6 +74,18 @@ static int plan_row_scalar_non_control_flow_expression(
             out_expression
         );
     }
+    if (generic_function_name_equals(expression, "JSON_SCHEMA_VALID") ||
+        generic_function_name_equals(expression, "JSON_SCHEMA_VALIDATION_REPORT")) {
+        return plan_row_scalar_json_schema_function(
+            database,
+            expression,
+            has_source,
+            source_context,
+            table_columns,
+            table_column_count,
+            out_expression
+        );
+    }
     if (expression->kind == MYLITE_SQL_AST_LITERAL) {
         return plan_row_scalar_literal_value(database, expression, out_expression);
     }

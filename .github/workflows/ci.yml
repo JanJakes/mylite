@@ -53,7 +53,8 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then
             cmake --preset ci \
               -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" \
-              -DVCPKG_TARGET_TRIPLET=x64-windows
+              -DVCPKG_TARGET_TRIPLET=x64-windows \
+              -DX_VCPKG_APPLOCAL_DEPS_SERIALIZED=ON
           else
             cmake --preset ci
           fi

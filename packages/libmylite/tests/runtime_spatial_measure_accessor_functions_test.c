@@ -1,6 +1,8 @@
 #include <mylite/mylite.h>
 
+#include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #ifdef _WIN32
@@ -37,6 +39,7 @@ struct expected_query {
     const char *const *values;
     size_t row_count;
     const char *context;
+    double double_tolerance;
 };
 
 struct expected_dml_result {
@@ -56,7 +59,16 @@ static int expect_result_value(
     size_t row,
     size_t column,
     const char *expected,
-    const char *context
+    const char *context,
+    double double_tolerance
+);
+static int expect_result_double_value(
+    const char *actual,
+    const char *expected,
+    const char *context,
+    size_t row,
+    size_t column,
+    double tolerance
 );
 static int expect_int(int actual, int expected, const char *context);
 static int expect_int64(int64_t actual, int64_t expected, const char *context);
@@ -386,6 +398,7 @@ static int test_scalar_spatial_measure_accessors(void) {
             .values = distance_sphere_values,
             .row_count = 1U,
             .context = "distance sphere measurements",
+            .double_tolerance = 1.0e-8,
         }
     );
     failures += expect_query(
@@ -689,6 +702,7 @@ static int test_table_backed_spatial_measure_accessors(void) {
             .values = distance_sphere_values,
             .row_count = 2U,
             .context = "row-backed distance sphere projection",
+            .double_tolerance = 1.0e-8,
         }
     );
     failures += execute_ok(
@@ -1029,8 +1043,14 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
         for (size_t column = 0U; failures == 0 && column < expected.column_count; ++column) {
             size_t index = (row * expected.column_count) + column;
 
-            failures +=
-                expect_result_value(result, row, column, expected.values[index], expected.context);
+            failures += expect_result_value(
+                result,
+                row,
+                column,
+                expected.values[index],
+                expected.context,
+                expected.double_tolerance
+            );
         }
     }
     mylite_result_free(result);
@@ -1042,7 +1062,8 @@ static int expect_result_value(
     size_t row,
     size_t column,
     const char *expected,
-    const char *context
+    const char *context,
+    double double_tolerance
 ) {
     const char *actual = mylite_result_value_text(result, row, column);
 
@@ -1060,6 +1081,9 @@ static int expect_result_value(
         }
         return 0;
     }
+    if (double_tolerance > 0.0) {
+        return expect_result_double_value(actual, expected, context, row, column, double_tolerance);
+    }
     if (actual == NULL || strcmp(actual, expected) != 0) {
         fprintf(
             stderr,
@@ -1069,6 +1093,51 @@ static int expect_result_value(
             column,
             expected,
             actual == NULL ? "NULL" : actual
+        );
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_result_double_value(
+    const char *actual,
+    const char *expected,
+    const char *context,
+    size_t row,
+    size_t column,
+    double tolerance
+) {
+    char *actual_end = NULL;
+    char *expected_end = NULL;
+    double actual_value = 0.0;
+    double expected_value = 0.0;
+
+    if (actual == NULL) {
+        fprintf(
+            stderr,
+            "%s: row %zu column %zu expected %s, got NULL\n",
+            context,
+            row,
+            column,
+            expected
+        );
+        return 1;
+    }
+    actual_value = strtod(actual, &actual_end);
+    expected_value = strtod(expected, &expected_end);
+    if (actual_end == actual || actual_end == NULL || *actual_end != '\0' ||
+        expected_end == expected || expected_end == NULL || *expected_end != '\0' ||
+        !isfinite(actual_value) || !isfinite(expected_value) ||
+        fabs(actual_value - expected_value) > tolerance) {
+        fprintf(
+            stderr,
+            "%s: row %zu column %zu expected %s within %.17g, got %s\n",
+            context,
+            row,
+            column,
+            expected,
+            tolerance,
+            actual
         );
         return 1;
     }

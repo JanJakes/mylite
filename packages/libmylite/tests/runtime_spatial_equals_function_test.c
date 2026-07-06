@@ -4,7 +4,14 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef _WIN32
+#  include <process.h>
+#else
+#  include <unistd.h>
+#endif
+
 enum {
+    test_path_capacity = 1024,
     spatial_equals_scalar_case_count = 15,
     spatial_equals_row_count = 5,
     mysql_error_native_function_parameter_count = 1582,
@@ -51,6 +58,10 @@ static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_text(const char *actual, const char *expected, const char *context);
 static int expect_contains(const char *actual, const char *needle, const char *context);
+static int make_test_path(char *path, size_t path_size, const char *name);
+static int current_process_id(void);
+static void remove_related_files(const char *path);
+static void remove_with_suffix(const char *path, const char *suffix);
 
 int main(void) {
     int failures = 0;
@@ -71,8 +82,7 @@ static int test_scalar_spatial_equals_function(void) {
         "multiline_order",  "1",  "multipolygon_order", "1", "collection_order", "1",
     };
     mylite_db *database = NULL;
-    int failures =
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open scalar database");
+    int failures = expect_int(mylite_open_memory(&database), MYLITE_OK, "open scalar database");
 
     failures += expect_query(
         database,
@@ -155,10 +165,15 @@ static int test_table_backed_spatial_equals_function(void) {
         "5",
         NULL,
     };
+    char path[test_path_capacity];
     mylite_db *database = NULL;
-    int failures =
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open row-backed database");
+    int failures = 0;
 
+    if (make_test_path(path, sizeof(path), "row") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open row-backed database");
     failures += execute_ok(database, "CREATE DATABASE spatial_equals", NULL);
     failures += execute_ok(database, "USE spatial_equals", NULL);
     failures += execute_ok(
@@ -208,13 +223,14 @@ static int test_table_backed_spatial_equals_function(void) {
     );
 
     mylite_close(database);
+    remove_related_files(path);
     return failures;
 }
 
 static int test_spatial_equals_diagnostics(void) {
     mylite_db *database = NULL;
     int failures =
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics database");
+        expect_int(mylite_open_memory(&database), MYLITE_OK, "open diagnostics database");
 
     failures += execute_error(
         database,
@@ -437,4 +453,41 @@ static int expect_contains(const char *actual, const char *needle, const char *c
         return 1;
     }
     return 0;
+}
+
+static int make_test_path(char *path, size_t path_size, const char *name) {
+    int written = snprintf(
+        path,
+        path_size,
+        "/tmp/mylite_spatial_equals_%s_%d.mylite",
+        name,
+        current_process_id()
+    );
+
+    return written < 0 || (size_t)written >= path_size ? -1 : 0;
+}
+
+static int current_process_id(void) {
+#ifdef _WIN32
+    return _getpid();
+#else
+    return getpid();
+#endif
+}
+
+static void remove_related_files(const char *path) {
+    remove_with_suffix(path, "");
+    remove_with_suffix(path, "-journal");
+    remove_with_suffix(path, "-wal");
+    remove_with_suffix(path, "-shm");
+}
+
+static void remove_with_suffix(const char *path, const char *suffix) {
+    char file_path[test_path_capacity];
+    int written = snprintf(file_path, sizeof(file_path), "%s%s", path, suffix);
+
+    if (written < 0 || (size_t)written >= sizeof(file_path)) {
+        return;
+    }
+    (void)remove(file_path);
 }

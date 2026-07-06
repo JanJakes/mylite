@@ -92,8 +92,7 @@ static int test_scalar_spatial_validity_functions(void) {
         "0",  NULL,
     };
     mylite_db *database = NULL;
-    int failures =
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open scalar database");
+    int failures = expect_int(mylite_open_memory(&database), MYLITE_OK, "open scalar database");
 
     failures += expect_query(
         database,
@@ -248,7 +247,7 @@ static int test_table_backed_spatial_validity_functions(void) {
 static int test_spatial_validity_diagnostics(void) {
     mylite_db *database = NULL;
     int failures =
-        expect_int(mylite_open(":memory:", &database), MYLITE_OK, "open diagnostics database");
+        expect_int(mylite_open_memory(&database), MYLITE_OK, "open diagnostics database");
 
     failures += execute_error(
         database,

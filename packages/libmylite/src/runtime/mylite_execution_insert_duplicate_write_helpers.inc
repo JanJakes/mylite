@@ -129,7 +129,7 @@ static int apply_insert_duplicate_key_update(
         rc = build_insert_duplicate_update_sql(plan, conflicting_index, assignment_values, &sql);
     }
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
     }
     if (rc == MYLITE_OK) {
         rc = bind_insert_duplicate_update_parameters(
@@ -153,7 +153,7 @@ static int apply_insert_duplicate_key_update(
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         }
     }
-    rc = finalize_sqlite_statement(statement, rc);
+    rc = finish_cached_sqlite_statement(database, statement, rc);
     insert_duplicate_update_values_deinit(
         &assignment_values,
         plan->duplicate_update.assignment_count
@@ -319,7 +319,7 @@ static int fetch_insert_duplicate_current_row_values(
 
     rc = build_insert_duplicate_current_row_select_sql(plan, conflicting_index, &sql);
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
     }
     if (rc == MYLITE_OK) {
         int parameter_index = 1;
@@ -355,7 +355,7 @@ static int fetch_insert_duplicate_current_row_values(
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         }
     }
-    rc = finalize_sqlite_statement(statement, rc);
+    rc = finish_cached_sqlite_statement(database, statement, rc);
     free(sql);
     if (rc != MYLITE_OK) {
         insert_duplicate_update_values_deinit(&values, plan->column_count);
@@ -542,7 +542,7 @@ static int unique_key_tuple_exists_excluding_insert_duplicate_row(
         &sql
     );
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
     }
     if (rc == MYLITE_OK) {
         rc = bind_insert_duplicate_key_tuple_parameters(
@@ -570,7 +570,7 @@ static int unique_key_tuple_exists_excluding_insert_duplicate_row(
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         }
     }
-    rc = finalize_sqlite_statement(statement, rc);
+    rc = finish_cached_sqlite_statement(database, statement, rc);
     free(sql);
 
     return rc;

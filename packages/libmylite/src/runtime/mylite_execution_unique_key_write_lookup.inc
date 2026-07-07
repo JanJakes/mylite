@@ -14,7 +14,7 @@ static int unique_key_tuple_exists(
     *out_exists = false;
     rc = build_unique_key_lookup_sql(physical_table_name, index, &sql);
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
     }
     if (rc == MYLITE_OK) {
         rc = bind_unique_key_tuple_parameters(statement, index, values, value_count);
@@ -27,7 +27,7 @@ static int unique_key_tuple_exists(
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         }
     }
-    rc = finalize_sqlite_statement(statement, rc);
+    rc = finish_cached_sqlite_statement(database, statement, rc);
     free(sql);
 
     return rc;
@@ -114,7 +114,7 @@ static int unique_key_single_value_exists(
     *out_exists = false;
     rc = build_unique_key_lookup_sql(physical_table_name, index, &sql);
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
     }
     if (rc == MYLITE_OK) {
         rc = bind_planned_value_parameter(statement, 1, value);
@@ -127,7 +127,7 @@ static int unique_key_single_value_exists(
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         }
     }
-    rc = finalize_sqlite_statement(statement, rc);
+    rc = finish_cached_sqlite_statement(database, statement, rc);
     free(sql);
 
     return rc;
@@ -151,7 +151,7 @@ static int find_update_unique_key_conflict_tuple(
     destination[0] = '\0';
     rc = build_update_unique_key_conflict_sql(executable_plan, index, &sql);
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
     }
     if (rc == MYLITE_OK) {
         const struct update_unique_key_conflict_bind_request request = {
@@ -178,14 +178,14 @@ static int find_update_unique_key_conflict_tuple(
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         }
     }
-    rc = finalize_sqlite_statement(statement, rc);
+    rc = finish_cached_sqlite_statement(database, statement, rc);
     free(sql);
     statement = NULL;
     sql = NULL;
     if (rc == MYLITE_OK && !*out_found) {
         rc = build_update_unique_key_internal_conflict_sql(executable_plan, index, &sql);
         if (rc == MYLITE_OK) {
-            rc = prepare_sqlite_statement(database, sql, &statement);
+            rc = prepare_cached_sqlite_statement(database, sql, &statement);
         }
         if (rc == MYLITE_OK) {
             const struct update_unique_key_conflict_bind_request request = {
@@ -212,7 +212,7 @@ static int find_update_unique_key_conflict_tuple(
                 rc = mylite_sqlite_status_to_mylite(sqlite_rc);
             }
         }
-        rc = finalize_sqlite_statement(statement, rc);
+        rc = finish_cached_sqlite_statement(database, statement, rc);
         free(sql);
     }
 

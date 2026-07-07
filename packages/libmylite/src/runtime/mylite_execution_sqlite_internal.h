@@ -13,6 +13,17 @@ int mylite_execution_prepare_sqlite_statement(
     sqlite3_stmt **out_statement
 );
 int mylite_execution_finalize_sqlite_statement(sqlite3_stmt *statement, int rc);
+int mylite_execution_prepare_cached_sqlite_statement(
+    struct mylite_db *database,
+    const char *sql,
+    sqlite3_stmt **out_statement
+);
+int mylite_execution_finish_cached_sqlite_statement(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int rc
+);
+void mylite_execution_statement_cache_deinit(struct mylite_db *database);
 
 static inline int execute_sqlite_schema_sql(struct mylite_db *database, const char *sql) {
     return mylite_execution_execute_sqlite_schema_sql(database, sql);
@@ -32,6 +43,22 @@ static inline int prepare_sqlite_statement(
 
 static inline int finalize_sqlite_statement(sqlite3_stmt *statement, int rc) {
     return mylite_execution_finalize_sqlite_statement(statement, rc);
+}
+
+static inline int prepare_cached_sqlite_statement(
+    struct mylite_db *database,
+    const char *sql,
+    sqlite3_stmt **out_statement
+) {
+    return mylite_execution_prepare_cached_sqlite_statement(database, sql, out_statement);
+}
+
+static inline int finish_cached_sqlite_statement(
+    struct mylite_db *database,
+    sqlite3_stmt *statement,
+    int rc
+) {
+    return mylite_execution_finish_cached_sqlite_statement(database, statement, rc);
 }
 
 #endif

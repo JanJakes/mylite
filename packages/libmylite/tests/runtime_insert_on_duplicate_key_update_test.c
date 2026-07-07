@@ -54,6 +54,7 @@ struct expected_dml {
 static int test_duplicate_update_success_warnings_and_persistence(void);
 static int test_duplicate_update_diagnostics(void);
 static int test_duplicate_update_independent_handles(void);
+static int test_duplicate_update_cache_invalidation_after_schema_change(void);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_statement_ok(mylite_db *database, const char *sql);
@@ -89,6 +90,7 @@ int main(void) {
     failures += test_duplicate_update_success_warnings_and_persistence();
     failures += test_duplicate_update_diagnostics();
     failures += test_duplicate_update_independent_handles();
+    failures += test_duplicate_update_cache_invalidation_after_schema_change();
 
     return failures == 0 ? 0 : 1;
 }
@@ -2298,6 +2300,56 @@ static int test_duplicate_update_independent_handles(void) {
     mylite_close(second);
     remove_related_files(first_path);
     remove_related_files(second_path);
+    return failures;
+}
+
+static int test_duplicate_update_cache_invalidation_after_schema_change(void) {
+    static const char upsert_sql[] =
+        "INSERT INTO t (id, v) VALUES (1, 11) ON DUPLICATE KEY UPDATE v = 11";
+    static const char *const rows[] = {"1", "11", "5"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "schema-cache") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open schema cache file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(database, "CREATE TABLE t(id INT PRIMARY KEY, v INT)");
+    failures += expect_dml_ok(
+        database,
+        "INSERT INTO t (id, v) VALUES (1, 10)",
+        (struct expected_dml){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_dml_ok(
+        database,
+        upsert_sql,
+        (struct expected_dml){.affected_rows = 2, .warning_count = 0U}
+    );
+    failures +=
+        expect_statement_ok(database, "ALTER TABLE t ADD COLUMN extra INT NOT NULL DEFAULT 5");
+    failures += expect_dml_ok(
+        database,
+        upsert_sql,
+        (struct expected_dml){.affected_rows = 0, .warning_count = 0U}
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v, extra FROM t",
+            .values = rows,
+            .column_count = 3U,
+            .row_count = 1U,
+            .context = "duplicate update after schema change",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
     return failures;
 }
 

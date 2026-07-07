@@ -1,5 +1,6 @@
 #include "mylite_connection.h"
 
+#include "mylite_execution_sqlite_internal.h"
 #include "mylite_file_open.h"
 #include "mylite_named_locks.h"
 #include "sqlite3.h"
@@ -397,6 +398,7 @@ static void destroy_database_handle(struct mylite_db *database) {
     database->session.auto_increment_high_water_count = 0U;
     database->session.auto_increment_high_water_capacity = 0U;
     mylite_temporary_catalog_deinit(&database->session.temporary_catalog);
+    mylite_execution_statement_cache_deinit(database);
     mylite_catalog_deinit(&database->catalog);
     mylite_sqlite_bootstrap_deinit(database->sqlite, &database->sqlite_bootstrap);
     if (database->sqlite != NULL) {

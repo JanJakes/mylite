@@ -49,6 +49,7 @@ enum {
     MYLITE_SESSION_SORT_BUFFER_SIZE_DEFAULT_VALUE = 262144,
     MYLITE_SESSION_SORT_BUFFER_SIZE_MIN_VALUE = 32768,
     MYLITE_SESSION_UUID_NODE_SIZE = 6,
+    MYLITE_EXECUTION_STATEMENT_CACHE_LIMIT = 32,
 };
 
 #define MYLITE_SESSION_SQL_MODE_DEFAULT_TEXT                                                       \
@@ -321,6 +322,14 @@ struct mylite_processlist_session_snapshot {
     char client_user_identity[MYLITE_SESSION_IDENTIFIER_CAPACITY];
 };
 
+struct mylite_execution_statement_cache_entry {
+    char *sql;
+    struct sqlite3_stmt *statement;
+    uint64_t catalog_generation;
+    uint64_t sqlite_schema_generation;
+    bool in_use;
+};
+
 struct mylite_db {
     struct sqlite3 *sqlite;
     struct mylite_diagnostics diagnostics;
@@ -328,6 +337,9 @@ struct mylite_db {
     struct mylite_session_state session;
     struct mylite_sqlite_bootstrap_state sqlite_bootstrap;
     struct mylite_catalog catalog;
+    struct mylite_execution_statement_cache_entry
+        execution_statement_cache[MYLITE_EXECUTION_STATEMENT_CACHE_LIMIT];
+    size_t execution_statement_cache_count;
     struct mylite_db *processlist_next;
 };
 

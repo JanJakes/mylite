@@ -38,7 +38,13 @@ enum {
     milliseconds_per_second = 1000,
     microseconds_per_second = 1000000,
     parse_status_bucket_count = MYLITE_SQL_PARSE_STACK_OVERFLOW + 1,
+    percentile_median = 50,
+    percentile_p95 = 95,
+    percentile_max = 100,
+    percentile_rounding_offset = percentile_max - 1,
 };
+
+static const double percentile_pair_average_divisor = 2.0;
 
 enum benchmark_filter {
     benchmark_filter_all,
@@ -60,6 +66,11 @@ struct benchmark_options {
     bool runtime_per_query;
     bool list_only;
     bool show_usage;
+};
+
+struct runtime_repetition_options {
+    size_t iterations;
+    size_t samples;
 };
 
 struct benchmark_query {
@@ -300,6 +311,26 @@ static int parse_option(
     const char *program_name,
     struct benchmark_options *out_options
 );
+static int parse_size_argument(
+    int argc,
+    char **argv,
+    int *index,
+    const char *option_name,
+    size_t *out_value
+);
+static int parse_text_argument(
+    int argc,
+    char **argv,
+    int *index,
+    const char *option_name,
+    const char **out_value
+);
+static int parse_filter_argument(
+    int argc,
+    char **argv,
+    int *index,
+    enum benchmark_filter *out_filter
+);
 static const char *consume_option_value(int argc, char **argv, int *index, const char *option_name);
 static int parse_filter_option(const char *text, enum benchmark_filter *out_filter);
 static int parse_size_option(const char *text, size_t *out_value);
@@ -324,15 +355,13 @@ static int run_runtime_query_samples(
     const struct runtime_scenario *scenario,
     const char *kind,
     runtime_scenario_runner runner,
-    size_t iterations,
-    size_t samples
+    struct runtime_repetition_options repeat_options
 );
 static int run_repeated_runtime_scenario(
     const struct runtime_scenario *scenario,
     const char *kind,
     runtime_scenario_runner runner,
-    size_t iterations,
-    size_t samples
+    struct runtime_repetition_options repeat_options
 );
 static int run_runtime_scenario(
     const struct runtime_scenario *scenario,
@@ -437,6 +466,7 @@ static void print_runtime_summary(
     const double *average_us_values
 );
 static double sorted_percentile_value(const double *values, size_t count, size_t percentile);
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters): qsort fixes this callback shape.
 static int compare_double_values(const void *left, const void *right);
 static void print_parse_status_counts(const struct benchmark_measurement *measurement);
 static double ns_to_ms(uint64_t ns);
@@ -505,37 +535,22 @@ static int parse_option(
         return 0;
     }
     if (strcmp(argument, "--iterations") == 0) {
-        const char *value = consume_option_value(argc, argv, index, "--iterations");
-
-        if (value == NULL || parse_size_option(value, &out_options->iterations) != 0) {
-            return 1;
-        }
-        return 0;
+        return parse_size_argument(argc, argv, index, "--iterations", &out_options->iterations);
     }
     if (strcmp(argument, "--csv-iterations") == 0) {
-        const char *value = consume_option_value(argc, argv, index, "--csv-iterations");
-
-        if (value == NULL || parse_size_option(value, &out_options->csv_iterations) != 0) {
-            return 1;
-        }
-        return 0;
+        return parse_size_argument(
+            argc,
+            argv,
+            index,
+            "--csv-iterations",
+            &out_options->csv_iterations
+        );
     }
     if (strcmp(argument, "--samples") == 0) {
-        const char *value = consume_option_value(argc, argv, index, "--samples");
-
-        if (value == NULL || parse_size_option(value, &out_options->samples) != 0) {
-            return 1;
-        }
-        return 0;
+        return parse_size_argument(argc, argv, index, "--samples", &out_options->samples);
     }
     if (strcmp(argument, "--csv") == 0) {
-        const char *value = consume_option_value(argc, argv, index, "--csv");
-
-        if (value == NULL) {
-            return 1;
-        }
-        out_options->csv_path = value;
-        return 0;
+        return parse_text_argument(argc, argv, index, "--csv", &out_options->csv_path);
     }
     if (strcmp(argument, "--csv-replay-sql-mode") == 0) {
         out_options->csv_replay_sql_mode = true;
@@ -546,44 +561,84 @@ static int parse_option(
         return 0;
     }
     if (strcmp(argument, "--scenario") == 0) {
-        const char *value = consume_option_value(argc, argv, index, "--scenario");
-
-        if (value == NULL) {
-            return 1;
-        }
-        out_options->runtime_scenario_name = value;
-        return 0;
+        return parse_text_argument(
+            argc,
+            argv,
+            index,
+            "--scenario",
+            &out_options->runtime_scenario_name
+        );
     }
     if (strcmp(argument, "--dump-parse-failures") == 0) {
-        const char *value = consume_option_value(argc, argv, index, "--dump-parse-failures");
-
-        if (value == NULL) {
-            return 1;
-        }
-        out_options->parse_failure_dump_path = value;
-        return 0;
+        return parse_text_argument(
+            argc,
+            argv,
+            index,
+            "--dump-parse-failures",
+            &out_options->parse_failure_dump_path
+        );
     }
     if (strcmp(argument, "--expected-parse-failures") == 0) {
-        const char *value = consume_option_value(argc, argv, index, "--expected-parse-failures");
-
-        if (value == NULL) {
-            return 1;
-        }
-        out_options->expected_parse_failures_path = value;
-        return 0;
+        return parse_text_argument(
+            argc,
+            argv,
+            index,
+            "--expected-parse-failures",
+            &out_options->expected_parse_failures_path
+        );
     }
     if (strcmp(argument, "--only") == 0) {
-        const char *value = consume_option_value(argc, argv, index, "--only");
-
-        if (value == NULL || parse_filter_option(value, &out_options->filter) != 0) {
-            return 1;
-        }
-        return 0;
+        return parse_filter_argument(argc, argv, index, &out_options->filter);
     }
 
     fprintf(stderr, "unknown argument: %s\n", argument);
     print_usage(program_name, stderr);
     return 1;
+}
+
+static int parse_size_argument(
+    int argc,
+    char **argv,
+    int *index,
+    const char *option_name,
+    size_t *out_value
+) {
+    const char *value = consume_option_value(argc, argv, index, option_name);
+
+    if (value == NULL || parse_size_option(value, out_value) != 0) {
+        return 1;
+    }
+    return 0;
+}
+
+static int parse_text_argument(
+    int argc,
+    char **argv,
+    int *index,
+    const char *option_name,
+    const char **out_value
+) {
+    const char *value = consume_option_value(argc, argv, index, option_name);
+
+    if (value == NULL) {
+        return 1;
+    }
+    *out_value = value;
+    return 0;
+}
+
+static int parse_filter_argument(
+    int argc,
+    char **argv,
+    int *index,
+    enum benchmark_filter *out_filter
+) {
+    const char *value = consume_option_value(argc, argv, index, "--only");
+
+    if (value == NULL || parse_filter_option(value, out_filter) != 0) {
+        return 1;
+    }
+    return 0;
 }
 
 static const char *consume_option_value(
@@ -810,6 +865,10 @@ static int run_csv_benchmarks(const struct benchmark_options *options) {
 
 static int run_runtime_benchmarks(const struct benchmark_options *options) {
     bool matched_scenario = false;
+    struct runtime_repetition_options repeat_options = {
+        .iterations = options->iterations,
+        .samples = options->samples,
+    };
 
     for (size_t scenario_index = 0U;
          scenario_index < sizeof(runtime_scenarios) / sizeof(runtime_scenarios[0]);
@@ -824,8 +883,7 @@ static int run_runtime_benchmarks(const struct benchmark_options *options) {
             &runtime_scenarios[scenario_index],
             "execute",
             run_runtime_scenario,
-            options->iterations,
-            options->samples
+            repeat_options
         );
 
         if (rc != 0) {
@@ -836,8 +894,7 @@ static int run_runtime_benchmarks(const struct benchmark_options *options) {
                 &runtime_scenarios[scenario_index],
                 "execute",
                 run_runtime_scenario,
-                options->iterations,
-                options->samples
+                repeat_options
             );
             if (rc != 0) {
                 return rc;
@@ -857,8 +914,7 @@ static int run_runtime_benchmarks(const struct benchmark_options *options) {
             &runtime_cursor_scenarios[scenario_index],
             "cursor",
             run_runtime_cursor_scenario,
-            options->iterations,
-            options->samples
+            repeat_options
         );
 
         if (rc != 0) {
@@ -869,8 +925,7 @@ static int run_runtime_benchmarks(const struct benchmark_options *options) {
                 &runtime_cursor_scenarios[scenario_index],
                 "cursor",
                 run_runtime_cursor_scenario,
-                options->iterations,
-                options->samples
+                repeat_options
             );
             if (rc != 0) {
                 return rc;
@@ -899,8 +954,7 @@ static int run_runtime_query_samples(
     const struct runtime_scenario *scenario,
     const char *kind,
     runtime_scenario_runner runner,
-    size_t iterations,
-    size_t samples
+    struct runtime_repetition_options repeat_options
 ) {
     for (size_t query_index = 0U; query_index < scenario->query_count; ++query_index) {
         char query_scenario_name[runtime_query_scenario_name_capacity];
@@ -920,8 +974,7 @@ static int run_runtime_query_samples(
         query_scenario.name = query_scenario_name;
         query_scenario.queries = &scenario->queries[query_index];
         query_scenario.query_count = 1U;
-        if (run_repeated_runtime_scenario(&query_scenario, kind, runner, iterations, samples) !=
-            0) {
+        if (run_repeated_runtime_scenario(&query_scenario, kind, runner, repeat_options) != 0) {
             return 1;
         }
     }
@@ -932,35 +985,40 @@ static int run_repeated_runtime_scenario(
     const struct runtime_scenario *scenario,
     const char *kind,
     runtime_scenario_runner runner,
-    size_t iterations,
-    size_t samples
+    struct runtime_repetition_options repeat_options
 ) {
     double *average_us_values = NULL;
 
-    if (samples > 1U) {
-        average_us_values = (double *)calloc(samples, sizeof(*average_us_values));
+    if (repeat_options.samples > 1U) {
+        average_us_values = (double *)calloc(repeat_options.samples, sizeof(*average_us_values));
         if (average_us_values == NULL) {
             fprintf(stderr, "%s: failed to allocate benchmark sample summary\n", scenario->name);
             return 1;
         }
     }
-    for (size_t sample_index = 0U; sample_index < samples; ++sample_index) {
+    for (size_t sample_index = 0U; sample_index < repeat_options.samples; ++sample_index) {
         struct benchmark_measurement measurement = {0};
-        int rc = runner(scenario, iterations, &measurement);
+        int rc = runner(scenario, repeat_options.iterations, &measurement);
 
         if (rc != 0) {
             free(average_us_values);
             return rc;
         }
-        if (samples > 1U) {
+        if (repeat_options.samples > 1U) {
             average_us_values[sample_index] =
                 ns_to_average_us(measurement.elapsed_ns, measurement.operations);
-            print_runtime_sample_marker(scenario->name, kind, sample_index, samples);
+            print_runtime_sample_marker(scenario->name, kind, sample_index, repeat_options.samples);
         }
-        print_result(scenario->name, kind, iterations, scenario->query_count, &measurement);
+        print_result(
+            scenario->name,
+            kind,
+            repeat_options.iterations,
+            scenario->query_count,
+            &measurement
+        );
     }
-    if (samples > 1U) {
-        print_runtime_summary(scenario->name, kind, samples, average_us_values);
+    if (repeat_options.samples > 1U) {
+        print_runtime_summary(scenario->name, kind, repeat_options.samples, average_us_values);
     }
     free(average_us_values);
     return 0;
@@ -1727,8 +1785,8 @@ static void print_runtime_summary(
         kind,
         samples,
         sorted_values[0],
-        sorted_percentile_value(sorted_values, samples, 50U),
-        sorted_percentile_value(sorted_values, samples, 95U),
+        sorted_percentile_value(sorted_values, samples, percentile_median),
+        sorted_percentile_value(sorted_values, samples, percentile_p95),
         sorted_values[samples - 1U]
     );
     free(sorted_values);
@@ -1740,15 +1798,15 @@ static double sorted_percentile_value(const double *values, size_t count, size_t
     if (count == 0U) {
         return 0.0;
     }
-    if (percentile <= 50U && (count % 2U) == 0U) {
+    if (percentile <= percentile_median && (count % 2U) == 0U) {
         size_t upper = count / 2U;
 
-        return (values[upper - 1U] + values[upper]) / 2.0;
+        return (values[upper - 1U] + values[upper]) / percentile_pair_average_divisor;
     }
-    if (percentile > 100U) {
-        percentile = 100U;
+    if (percentile > percentile_max) {
+        percentile = percentile_max;
     }
-    index = ((count * percentile) + 99U) / 100U;
+    index = ((count * percentile) + percentile_rounding_offset) / percentile_max;
     if (index == 0U) {
         return values[0];
     }
@@ -1759,6 +1817,7 @@ static double sorted_percentile_value(const double *values, size_t count, size_t
     return values[index];
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters): qsort fixes this callback shape.
 static int compare_double_values(const void *left, const void *right) {
     const double left_value = *(const double *)left;
     const double right_value = *(const double *)right;

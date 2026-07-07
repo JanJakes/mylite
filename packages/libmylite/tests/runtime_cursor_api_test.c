@@ -15,15 +15,19 @@ enum {
     path_suffix_capacity = 16,
 };
 
+struct expected_query_scalar_text {
+    const char *sql;
+    const char *expected;
+    const char *context;
+};
+
 static int test_cursor_select_streams_rows_and_metadata(void);
 static int test_cursor_materializes_information_schema_selects(void);
 static int test_cursor_prepare_rejects_unsupported_statements(void);
 static int execute_ok(mylite_db *database, const char *sql);
 static int expect_query_scalar_text(
     mylite_db *database,
-    const char *sql,
-    const char *expected,
-    const char *context
+    struct expected_query_scalar_text expected
 );
 static int make_test_path(char *path, size_t path_size, const char *name);
 static int current_process_id(void);
@@ -185,9 +189,11 @@ static int test_cursor_materializes_information_schema_selects(void) {
     stmt = NULL;
     failures += expect_query_scalar_text(
         database,
-        "SELECT FOUND_ROWS()",
-        "3",
-        "materialized cursor found rows"
+        (struct expected_query_scalar_text){
+            .sql = "SELECT FOUND_ROWS()",
+            .expected = "3",
+            .context = "materialized cursor found rows",
+        }
     );
 
     mylite_close(database);
@@ -257,30 +263,32 @@ static int execute_ok(mylite_db *database, const char *sql) {
 
 static int expect_query_scalar_text(
     mylite_db *database,
-    const char *sql,
-    const char *expected,
-    const char *context
+    struct expected_query_scalar_text expected
 ) {
     mylite_result *result = NULL;
     int failures = 0;
-    int rc = mylite_execute(database, sql, strlen(sql), &result);
+    int rc = mylite_execute(database, expected.sql, strlen(expected.sql), &result);
 
     if (rc != MYLITE_OK) {
         fprintf(
             stderr,
             "%s: rc=%d err=%d state=%s msg=%s\n",
-            sql,
+            expected.sql,
             rc,
             mylite_errcode(database),
             mylite_sqlstate(database),
             mylite_errmsg(database)
         );
     }
-    failures += expect_int(rc, MYLITE_OK, context);
+    failures += expect_int(rc, MYLITE_OK, expected.context);
     if (rc == MYLITE_OK) {
-        failures += expect_size(mylite_result_column_count(result), 1U, context);
-        failures += expect_size(mylite_result_row_count(result), 1U, context);
-        failures += expect_text(mylite_result_value_text(result, 0U, 0U), expected, context);
+        failures += expect_size(mylite_result_column_count(result), 1U, expected.context);
+        failures += expect_size(mylite_result_row_count(result), 1U, expected.context);
+        failures += expect_text(
+            mylite_result_value_text(result, 0U, 0U),
+            expected.expected,
+            expected.context
+        );
     }
     mylite_result_free(result);
     return failures;

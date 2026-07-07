@@ -36,6 +36,8 @@ jobs:
             command -v ninja >/dev/null 2>&1 || choco install ninja --no-progress -y
             command -v clang >/dev/null 2>&1 || choco install llvm --no-progress -y
             vcpkg install zlib:x64-windows
+            vcpkg_bin="$(cygpath -w "$VCPKG_INSTALLATION_ROOT/installed/x64-windows/bin")"
+            printf '%s\n' "$vcpkg_bin" >> "$GITHUB_PATH"
           elif command -v ninja >/dev/null 2>&1; then
             exit 0
           elif [ "$RUNNER_OS" = "macOS" ]; then
@@ -54,7 +56,7 @@ jobs:
             cmake --preset ci \
               -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" \
               -DVCPKG_TARGET_TRIPLET=x64-windows \
-              -DX_VCPKG_APPLOCAL_DEPS_SERIALIZED=ON
+              -DVCPKG_APPLOCAL_DEPS=OFF
           else
             cmake --preset ci
           fi

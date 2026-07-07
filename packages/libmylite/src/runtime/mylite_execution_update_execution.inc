@@ -211,10 +211,14 @@ static int read_single_table_update_matched_row_count(
     sqlite3_stmt *statement = NULL;
     char *sql = NULL;
     int sqlite_rc = SQLITE_OK;
+    bool statement_is_cached = false;
     int rc = build_single_table_update_matched_count_sql(plan, &sql);
 
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
+        if (rc == MYLITE_OK) {
+            statement_is_cached = true;
+        }
     }
     if (rc == MYLITE_OK) {
         rc = bind_update_matched_count_parameters(statement, plan);
@@ -233,7 +237,11 @@ static int read_single_table_update_matched_row_count(
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         }
     }
-    rc = finalize_sqlite_statement(statement, rc);
+    if (statement_is_cached) {
+        rc = finish_cached_sqlite_statement(database, statement, rc);
+    } else {
+        rc = finalize_sqlite_statement(statement, rc);
+    }
     free(sql);
 
     return rc;
@@ -1795,10 +1803,14 @@ static int execute_matching_update_statement(
 ) {
     sqlite3_stmt *statement = NULL;
     char *sql = NULL;
+    bool statement_is_cached = false;
     int rc = build_update_sql(executable_plan, &sql);
 
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
+        if (rc == MYLITE_OK) {
+            statement_is_cached = true;
+        }
     }
     if (rc == MYLITE_OK) {
         rc = bind_update_parameters(statement, executable_plan);
@@ -1806,7 +1818,11 @@ static int execute_matching_update_statement(
     if (rc == MYLITE_OK) {
         rc = step_update_statement(database, statement, executable_plan, out_affected_rows, plan);
     }
-    rc = finalize_sqlite_statement(statement, rc);
+    if (statement_is_cached) {
+        rc = finish_cached_sqlite_statement(database, statement, rc);
+    } else {
+        rc = finalize_sqlite_statement(statement, rc);
+    }
     free(sql);
     return rc;
 }

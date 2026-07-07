@@ -4,6 +4,9 @@
 
 #include "mysqli_extension.h"
 
+#include <stdlib.h>
+#include <time.h>
+
 static bool mylite_mysqli_execute_sql(
     mylite_mysqli_link *link,
     const char *sql,
@@ -15,6 +18,27 @@ static bool mylite_mysqli_execute_bridge_statement(
     const char *sql,
     size_t sql_length,
     zval *out_result
+);
+static uint64_t mylite_mysqli_profile_now_ns(void);
+static uint64_t mylite_mysqli_profile_elapsed_ns(uint64_t start_ns);
+static void mylite_mysqli_profile_record(
+    const char *sql,
+    size_t sql_length,
+    bool bridge,
+    bool error,
+    uint64_t execute_ns,
+    uint64_t buffer_ns,
+    size_t row_count,
+    size_t column_count
+);
+static mylite_mysqli_profile_slot *mylite_mysqli_profile_slot_for(
+    const char *sql,
+    size_t sql_length
+);
+static void mylite_mysqli_profile_normalize_sql(
+    const char *sql,
+    size_t sql_length,
+    char out_sql[MYLITE_MYSQLI_PROFILE_SQL_LENGTH]
 );
 static bool mylite_mysqli_reject_oversized_packet(mylite_mysqli_link *link, size_t sql_length);
 static bool mylite_mysqli_buffer_result(
@@ -441,6 +465,13 @@ static bool mylite_mysqli_execute_sql(
 ) {
     mylite_result *source = NULL;
     const char *sqlstate = "HY000";
+    uint64_t execute_start_ns = 0U;
+    uint64_t execute_ns = 0U;
+    uint64_t buffer_start_ns = 0U;
+    uint64_t buffer_ns = 0U;
+    size_t column_count = 0U;
+    size_t row_count = 0U;
+    bool profile_enabled = MYLITE_MYSQLI_G(profile_enabled);
     int status = MYLITE_OK;
 
     ZVAL_UNDEF(out_result);
@@ -460,12 +491,24 @@ static bool mylite_mysqli_execute_sql(
         return false;
     }
     if (mylite_mysqli_execute_bridge_statement(link, sql, sql_length, out_result)) {
+        if (profile_enabled) {
+            mylite_mysqli_profile_record(sql, sql_length, true, false, 0U, 0U, 0U, 0U);
+        }
         return true;
     }
+    if (profile_enabled) {
+        execute_start_ns = mylite_mysqli_profile_now_ns();
+    }
     status = mylite_execute(link->database, sql, sql_length, &source);
+    if (profile_enabled) {
+        execute_ns = mylite_mysqli_profile_elapsed_ns(execute_start_ns);
+    }
     if (status != MYLITE_OK) {
         int error_code = mylite_errcode(link->database);
 
+        if (profile_enabled) {
+            mylite_mysqli_profile_record(sql, sql_length, false, true, execute_ns, 0U, 0U, 0U);
+        }
         if (error_code == 0) {
             error_code = mylite_mysqli_error_from_status(status, &sqlstate);
         } else {
@@ -476,13 +519,203 @@ static bool mylite_mysqli_execute_sql(
         return false;
     }
 
+    row_count = mylite_result_row_count(source);
+    column_count = mylite_result_column_count(source);
+    if (profile_enabled) {
+        buffer_start_ns = mylite_mysqli_profile_now_ns();
+    }
     if (!mylite_mysqli_buffer_result(link, source, out_result)) {
+        if (profile_enabled) {
+            buffer_ns = mylite_mysqli_profile_elapsed_ns(buffer_start_ns);
+            mylite_mysqli_profile_record(
+                sql,
+                sql_length,
+                false,
+                true,
+                execute_ns,
+                buffer_ns,
+                row_count,
+                column_count
+            );
+        }
         mylite_result_free(source);
         return false;
     }
+    if (profile_enabled) {
+        buffer_ns = mylite_mysqli_profile_elapsed_ns(buffer_start_ns);
+        mylite_mysqli_profile_record(
+            sql,
+            sql_length,
+            false,
+            false,
+            execute_ns,
+            buffer_ns,
+            row_count,
+            column_count
+        );
+    }
     mylite_result_free(source);
-    mylite_mysqli_update_link_properties(link);
+    mylite_mysqli_update_link_status_properties(link);
     return true;
+}
+
+static uint64_t mylite_mysqli_profile_now_ns(void) {
+    if (!MYLITE_MYSQLI_G(profile_enabled)) {
+        return 0U;
+    }
+#if defined(CLOCK_MONOTONIC)
+    struct timespec now;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &now) == 0) {
+        return (uint64_t)now.tv_sec * 1000000000ULL + (uint64_t)now.tv_nsec;
+    }
+#endif
+    return 0U;
+}
+
+static uint64_t mylite_mysqli_profile_elapsed_ns(uint64_t start_ns) {
+    uint64_t end_ns = 0U;
+
+    if (start_ns == 0U) {
+        return 0U;
+    }
+    end_ns = mylite_mysqli_profile_now_ns();
+    return end_ns >= start_ns ? end_ns - start_ns : 0U;
+}
+
+static void mylite_mysqli_profile_record(
+    const char *sql,
+    size_t sql_length,
+    bool bridge,
+    bool error,
+    uint64_t execute_ns,
+    uint64_t buffer_ns,
+    size_t row_count,
+    size_t column_count
+) {
+    mylite_mysqli_profile_slot *slot = NULL;
+    uint64_t cell_count = 0U;
+
+    if (!MYLITE_MYSQLI_G(profile_enabled)) {
+        return;
+    }
+
+    if (column_count != 0U && row_count > UINT64_MAX / column_count) {
+        cell_count = UINT64_MAX;
+    } else {
+        cell_count = (uint64_t)row_count * (uint64_t)column_count;
+    }
+
+    MYLITE_MYSQLI_G(profile_calls)++;
+    MYLITE_MYSQLI_G(profile_execute_ns) += execute_ns;
+    MYLITE_MYSQLI_G(profile_buffer_ns) += buffer_ns;
+    MYLITE_MYSQLI_G(profile_rows) += (uint64_t)row_count;
+    MYLITE_MYSQLI_G(profile_cells) += cell_count;
+    if (bridge) {
+        MYLITE_MYSQLI_G(profile_bridge_calls)++;
+    }
+    if (error) {
+        MYLITE_MYSQLI_G(profile_errors)++;
+    }
+    if (column_count > 0U) {
+        MYLITE_MYSQLI_G(profile_result_sets)++;
+    }
+
+    slot = mylite_mysqli_profile_slot_for(sql, sql_length);
+    slot->calls++;
+    slot->execute_ns += execute_ns;
+    slot->buffer_ns += buffer_ns;
+    slot->rows += (uint64_t)row_count;
+    slot->cells += cell_count;
+    if (bridge) {
+        slot->bridge_calls++;
+    }
+    if (error) {
+        slot->errors++;
+    }
+    if (column_count > 0U) {
+        slot->result_sets++;
+    }
+}
+
+static mylite_mysqli_profile_slot *mylite_mysqli_profile_slot_for(
+    const char *sql,
+    size_t sql_length
+) {
+    char normalized[MYLITE_MYSQLI_PROFILE_SQL_LENGTH];
+    mylite_mysqli_profile_slot *fallback =
+        &MYLITE_MYSQLI_G(profile_slots)[MYLITE_MYSQLI_PROFILE_SLOT_COUNT - 1U];
+
+    mylite_mysqli_profile_normalize_sql(sql, sql_length, normalized);
+    for (uint32_t index = 0U; index < MYLITE_MYSQLI_PROFILE_SLOT_COUNT - 1U; index++) {
+        mylite_mysqli_profile_slot *slot = &MYLITE_MYSQLI_G(profile_slots)[index];
+
+        if (slot->sql[0] == '\0') {
+            snprintf(slot->sql, sizeof(slot->sql), "%s", normalized);
+            return slot;
+        }
+        if (strcmp(slot->sql, normalized) == 0) {
+            return slot;
+        }
+    }
+
+    if (fallback->sql[0] == '\0') {
+        snprintf(fallback->sql, sizeof(fallback->sql), "%s", "<other>");
+    }
+    return fallback;
+}
+
+static void mylite_mysqli_profile_normalize_sql(
+    const char *sql,
+    size_t sql_length,
+    char out_sql[MYLITE_MYSQLI_PROFILE_SQL_LENGTH]
+) {
+    size_t out_index = 0U;
+    bool pending_space = false;
+
+    for (size_t index = 0U; index < sql_length && out_index + 1U < MYLITE_MYSQLI_PROFILE_SQL_LENGTH;
+         index++) {
+        unsigned char ch = (unsigned char)sql[index];
+
+        if (isspace(ch)) {
+            pending_space = out_index > 0U;
+            continue;
+        }
+        if (pending_space && out_index + 1U < MYLITE_MYSQLI_PROFILE_SQL_LENGTH) {
+            out_sql[out_index++] = ' ';
+            pending_space = false;
+        }
+        if (ch == '\'' || ch == '"' || ch == '`') {
+            unsigned char quote = ch;
+
+            out_sql[out_index++] = '?';
+            while (index + 1U < sql_length) {
+                index++;
+                ch = (unsigned char)sql[index];
+                if (ch == '\\' && index + 1U < sql_length) {
+                    index++;
+                    continue;
+                }
+                if (ch == quote) {
+                    break;
+                }
+            }
+            continue;
+        }
+        if (isdigit(ch)) {
+            out_sql[out_index++] = '?';
+            while (index + 1U < sql_length && isdigit((unsigned char)sql[index + 1U])) {
+                index++;
+            }
+            continue;
+        }
+        out_sql[out_index++] = (char)tolower(ch);
+    }
+
+    while (out_index > 0U && out_sql[out_index - 1U] == ' ') {
+        out_index--;
+    }
+    out_sql[out_index] = '\0';
 }
 
 static bool mylite_mysqli_execute_bridge_statement(
@@ -615,7 +848,10 @@ static bool mylite_mysqli_buffer_result(
 }
 
 static zend_string *mylite_mysqli_column_string(const char *value) {
-    return zend_string_init(value == NULL ? "" : value, value == NULL ? 0U : strlen(value), false);
+    if (value == NULL || value[0] == '\0') {
+        return zend_string_copy(zend_empty_string);
+    }
+    return zend_string_init(value, strlen(value), false);
 }
 
 static int mylite_mysqli_column_type(enum mylite_result_column_type type) {
@@ -626,11 +862,19 @@ static int mylite_mysqli_column_type(enum mylite_result_column_type type) {
 }
 
 void mylite_mysqli_result_fetch(mylite_mysqli_result *result, int mode, zval *return_value) {
+    uint32_t element_count = 0U;
+
     if (result->cursor >= result->row_count) {
         RETURN_NULL();
     }
 
-    array_init(return_value);
+    if ((mode & MYLITE_MYSQLI_NUM) != 0) {
+        element_count += result->column_count;
+    }
+    if ((mode & MYLITE_MYSQLI_ASSOC) != 0) {
+        element_count += result->column_count;
+    }
+    array_init_size(return_value, element_count);
     for (uint32_t column = 0; column < result->column_count; column++) {
         zval *source = &result->values[result->cursor * result->column_count + column];
         zval value;
@@ -937,7 +1181,7 @@ static void mylite_mysqli_set_ok_result(mylite_mysqli_link *link, zval *out_resu
         return;
     }
     ZVAL_TRUE(out_result);
-    mylite_mysqli_update_link_properties(link);
+    mylite_mysqli_update_link_status_properties(link);
 }
 
 static bool mylite_mysqli_set_link_info(mylite_mysqli_link *link, const char *info) {
@@ -1189,7 +1433,7 @@ void mylite_mysqli_set_error(
     link->error_code = error_code;
     memcpy(link->sqlstate, sqlstate, 5U);
     link->sqlstate[5] = '\0';
-    mylite_mysqli_update_link_properties(link);
+    mylite_mysqli_update_link_status_properties(link);
 }
 
 void mylite_mysqli_set_stmt_error(
@@ -1215,7 +1459,6 @@ static void mylite_mysqli_clear_error(mylite_mysqli_link *link) {
     zend_string_addref(link->error);
     link->error_code = 0;
     memcpy(link->sqlstate, "00000", sizeof(link->sqlstate));
-    mylite_mysqli_update_link_properties(link);
 }
 
 static void mylite_mysqli_clear_stmt_error(mylite_mysqli_stmt *stmt) {
@@ -1289,13 +1532,6 @@ static int mylite_mysqli_error_from_status(int status, const char **out_sqlstate
 }
 
 void mylite_mysqli_update_link_properties(mylite_mysqli_link *link) {
-    zend_update_property_long(
-        mylite_mysqli_link_ce,
-        &link->std,
-        "affected_rows",
-        strlen("affected_rows"),
-        link->affected_rows
-    );
     zend_update_property_string(
         mylite_mysqli_link_ce,
         &link->std,
@@ -1309,6 +1545,52 @@ void mylite_mysqli_update_link_properties(mylite_mysqli_link *link) {
         "client_version",
         strlen("client_version"),
         100
+    );
+    zend_update_property_string(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "host_info",
+        strlen("host_info"),
+        "MyLite embedded"
+    );
+    zend_update_property_string(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "server_info",
+        strlen("server_info"),
+        MYLITE_MYSQLI_SERVER_INFO
+    );
+    zend_update_property_long(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "server_version",
+        strlen("server_version"),
+        MYLITE_MYSQLI_SERVER_VERSION
+    );
+    zend_update_property_long(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "protocol_version",
+        strlen("protocol_version"),
+        10
+    );
+    zend_update_property_long(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "thread_id",
+        strlen("thread_id"),
+        1
+    );
+    mylite_mysqli_update_link_status_properties(link);
+}
+
+void mylite_mysqli_update_link_status_properties(mylite_mysqli_link *link) {
+    zend_update_property_long(
+        mylite_mysqli_link_ce,
+        &link->std,
+        "affected_rows",
+        strlen("affected_rows"),
+        link->affected_rows
     );
     zend_update_property_long(
         mylite_mysqli_link_ce,
@@ -1345,13 +1627,6 @@ void mylite_mysqli_update_link_properties(mylite_mysqli_link *link) {
         strlen("field_count"),
         link->field_count
     );
-    zend_update_property_string(
-        mylite_mysqli_link_ce,
-        &link->std,
-        "host_info",
-        strlen("host_info"),
-        "MyLite embedded"
-    );
     if (link->info == NULL) {
         zend_update_property_null(mylite_mysqli_link_ce, &link->std, "info", strlen("info"));
     } else {
@@ -1373,37 +1648,9 @@ void mylite_mysqli_update_link_properties(mylite_mysqli_link *link) {
     zend_update_property_string(
         mylite_mysqli_link_ce,
         &link->std,
-        "server_info",
-        strlen("server_info"),
-        MYLITE_MYSQLI_SERVER_INFO
-    );
-    zend_update_property_long(
-        mylite_mysqli_link_ce,
-        &link->std,
-        "server_version",
-        strlen("server_version"),
-        MYLITE_MYSQLI_SERVER_VERSION
-    );
-    zend_update_property_string(
-        mylite_mysqli_link_ce,
-        &link->std,
         "sqlstate",
         strlen("sqlstate"),
         link->sqlstate
-    );
-    zend_update_property_long(
-        mylite_mysqli_link_ce,
-        &link->std,
-        "protocol_version",
-        strlen("protocol_version"),
-        10
-    );
-    zend_update_property_long(
-        mylite_mysqli_link_ce,
-        &link->std,
-        "thread_id",
-        strlen("thread_id"),
-        1
     );
     zend_update_property_long(
         mylite_mysqli_link_ce,
@@ -1516,8 +1763,154 @@ static void mylite_mysqli_set_global_connect_error(int error_code, const char *m
     );
 }
 
+void mylite_mysqli_flush_profile(void) {
+    bool printed[MYLITE_MYSQLI_PROFILE_SLOT_COUNT] = {false};
+    FILE *output = NULL;
+
+    if (!MYLITE_MYSQLI_G(profile_enabled) || MYLITE_MYSQLI_G(profile_calls) == 0U) {
+        return;
+    }
+
+    output = MYLITE_MYSQLI_G(profile_stderr) ? stderr : fopen(MYLITE_MYSQLI_G(profile_path), "a");
+    if (output == NULL) {
+        output = stderr;
+    }
+
+    fprintf(
+        output,
+        "mylite_mysqli_profile_calls=%llu\n",
+        (unsigned long long)MYLITE_MYSQLI_G(profile_calls)
+    );
+    fprintf(
+        output,
+        "mylite_mysqli_profile_errors=%llu\n",
+        (unsigned long long)MYLITE_MYSQLI_G(profile_errors)
+    );
+    fprintf(
+        output,
+        "mylite_mysqli_profile_bridge_calls=%llu\n",
+        (unsigned long long)MYLITE_MYSQLI_G(profile_bridge_calls)
+    );
+    fprintf(
+        output,
+        "mylite_mysqli_profile_result_sets=%llu\n",
+        (unsigned long long)MYLITE_MYSQLI_G(profile_result_sets)
+    );
+    fprintf(
+        output,
+        "mylite_mysqli_profile_rows=%llu\n",
+        (unsigned long long)MYLITE_MYSQLI_G(profile_rows)
+    );
+    fprintf(
+        output,
+        "mylite_mysqli_profile_cells=%llu\n",
+        (unsigned long long)MYLITE_MYSQLI_G(profile_cells)
+    );
+    fprintf(
+        output,
+        "mylite_mysqli_profile_execute_ms=%.3f\n",
+        (double)MYLITE_MYSQLI_G(profile_execute_ns) / 1000000.0
+    );
+    fprintf(
+        output,
+        "mylite_mysqli_profile_buffer_ms=%.3f\n",
+        (double)MYLITE_MYSQLI_G(profile_buffer_ns) / 1000000.0
+    );
+    fprintf(output, "mylite_mysqli_profile_top_sql:\n");
+
+    for (uint32_t rank = 0U; rank < MYLITE_MYSQLI_G(profile_limit); rank++) {
+        uint32_t best_index = MYLITE_MYSQLI_PROFILE_SLOT_COUNT;
+        uint64_t best_ns = 0U;
+
+        for (uint32_t index = 0U; index < MYLITE_MYSQLI_PROFILE_SLOT_COUNT; index++) {
+            const mylite_mysqli_profile_slot *slot = &MYLITE_MYSQLI_G(profile_slots)[index];
+            uint64_t total_ns = slot->execute_ns + slot->buffer_ns;
+
+            if (printed[index] || slot->calls == 0U) {
+                continue;
+            }
+            if (best_index == MYLITE_MYSQLI_PROFILE_SLOT_COUNT || total_ns > best_ns) {
+                best_index = index;
+                best_ns = total_ns;
+            }
+        }
+        if (best_index == MYLITE_MYSQLI_PROFILE_SLOT_COUNT) {
+            break;
+        }
+
+        const mylite_mysqli_profile_slot *slot = &MYLITE_MYSQLI_G(profile_slots)[best_index];
+
+        printed[best_index] = true;
+        fprintf(
+            output,
+            "%u\tcalls=%llu\terrors=%llu\tbridge=%llu\tresults=%llu\trows=%llu\tcells=%llu\t"
+            "execute_ms=%.3f\tbuffer_ms=%.3f\tsql=%s\n",
+            rank + 1U,
+            (unsigned long long)slot->calls,
+            (unsigned long long)slot->errors,
+            (unsigned long long)slot->bridge_calls,
+            (unsigned long long)slot->result_sets,
+            (unsigned long long)slot->rows,
+            (unsigned long long)slot->cells,
+            (double)slot->execute_ns / 1000000.0,
+            (double)slot->buffer_ns / 1000000.0,
+            slot->sql
+        );
+    }
+    fprintf(output, "mylite_mysqli_profile_end\n");
+
+    if (output != stderr) {
+        fclose(output);
+    }
+
+    MYLITE_MYSQLI_G(profile_calls) = 0U;
+    MYLITE_MYSQLI_G(profile_errors) = 0U;
+    MYLITE_MYSQLI_G(profile_bridge_calls) = 0U;
+    MYLITE_MYSQLI_G(profile_result_sets) = 0U;
+    MYLITE_MYSQLI_G(profile_rows) = 0U;
+    MYLITE_MYSQLI_G(profile_cells) = 0U;
+    MYLITE_MYSQLI_G(profile_execute_ns) = 0U;
+    MYLITE_MYSQLI_G(profile_buffer_ns) = 0U;
+    memset(MYLITE_MYSQLI_G(profile_slots), 0, sizeof(MYLITE_MYSQLI_G(profile_slots)));
+}
+
 void mylite_mysqli_init_globals(zend_mylite_mysqli_globals *globals) {
+    const char *profile = getenv("MYLITE_MYSQLI_PROFILE");
+    const char *profile_limit = getenv("MYLITE_MYSQLI_PROFILE_LIMIT");
+    unsigned long parsed_limit = 20UL;
+
     globals->report_mode = MYLITE_MYSQLI_REPORT_ERROR | MYLITE_MYSQLI_REPORT_STRICT;
     globals->connect_errno = 0;
     globals->connect_error[0] = '\0';
+    globals->profile_enabled = profile != NULL && profile[0] != '\0' && strcmp(profile, "0") != 0;
+    globals->profile_stderr = false;
+    globals->profile_path[0] = '\0';
+    globals->profile_limit = 20U;
+    globals->profile_calls = 0U;
+    globals->profile_errors = 0U;
+    globals->profile_bridge_calls = 0U;
+    globals->profile_result_sets = 0U;
+    globals->profile_rows = 0U;
+    globals->profile_cells = 0U;
+    globals->profile_execute_ns = 0U;
+    globals->profile_buffer_ns = 0U;
+    memset(globals->profile_slots, 0, sizeof(globals->profile_slots));
+
+    if (!globals->profile_enabled) {
+        return;
+    }
+    globals->profile_stderr = strcmp(profile, "1") == 0 || strcmp(profile, "stderr") == 0;
+    if (!globals->profile_stderr) {
+        snprintf(globals->profile_path, sizeof(globals->profile_path), "%s", profile);
+    }
+    if (profile_limit != NULL && profile_limit[0] != '\0') {
+        parsed_limit = strtoul(profile_limit, NULL, 10);
+        if (parsed_limit == 0UL) {
+            parsed_limit = 20UL;
+        }
+    }
+    if (parsed_limit > MYLITE_MYSQLI_PROFILE_SLOT_COUNT) {
+        parsed_limit = MYLITE_MYSQLI_PROFILE_SLOT_COUNT;
+    }
+    globals->profile_limit = (uint32_t)parsed_limit;
 }

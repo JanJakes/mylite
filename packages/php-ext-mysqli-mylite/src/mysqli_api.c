@@ -273,7 +273,7 @@ PHP_FUNCTION(mysqli_error_list) {
     ZEND_PARSE_PARAMETERS_END();
 
     link = mylite_mysqli_link_from_obj(Z_OBJ_P(mysql));
-    array_init(return_value);
+    array_init_size(return_value, link->error_code == 0 ? 0U : 1U);
     if (link->error_code == 0) {
         return;
     }
@@ -1038,7 +1038,7 @@ PHP_FUNCTION(mysqli_fetch_all) {
     ZEND_PARSE_PARAMETERS_END();
 
     result = mylite_mysqli_result_from_obj(Z_OBJ_P(result_zval));
-    array_init(return_value);
+    array_init_size(return_value, result->row_count - result->cursor);
     while (result->cursor < result->row_count) {
         zval row;
 
@@ -1128,7 +1128,7 @@ PHP_FUNCTION(mysqli_fetch_fields) {
     ZEND_PARSE_PARAMETERS_END();
 
     result = mylite_mysqli_result_from_obj(Z_OBJ_P(result_zval));
-    array_init(return_value);
+    array_init_size(return_value, result->column_count);
     for (uint32_t index = 0; index < result->column_count; index++) {
         zval field;
 
@@ -1169,7 +1169,7 @@ PHP_FUNCTION(mysqli_fetch_lengths) {
     }
 
     row_index = result->cursor - 1U;
-    array_init(return_value);
+    array_init_size(return_value, result->column_count);
     for (uint32_t column = 0; column < result->column_count; column++) {
         zval *value = &result->values[row_index * result->column_count + column];
 
@@ -1563,7 +1563,7 @@ PHP_FUNCTION(mysqli_stmt_error_list) {
     ZEND_PARSE_PARAMETERS_END();
 
     stmt = mylite_mysqli_stmt_from_obj(Z_OBJ_P(stmt_zval));
-    array_init(return_value);
+    array_init_size(return_value, stmt->error_code == 0 ? 0U : 1U);
     if (stmt->error_code == 0) {
         return;
     }
@@ -2473,7 +2473,7 @@ PHP_METHOD(mysqli_result, fetch_all) {
     ZEND_PARSE_PARAMETERS_END();
 
     result = mylite_mysqli_result_from_obj(Z_OBJ_P(getThis()));
-    array_init(return_value);
+    array_init_size(return_value, result->row_count - result->cursor);
     while (result->cursor < result->row_count) {
         zval row;
 
@@ -2554,7 +2554,7 @@ PHP_METHOD(mysqli_result, fetch_fields) {
     mylite_mysqli_result *result = mylite_mysqli_result_from_obj(Z_OBJ_P(getThis()));
 
     ZEND_PARSE_PARAMETERS_NONE();
-    array_init(return_value);
+    array_init_size(return_value, result->column_count);
     for (uint32_t index = 0; index < result->column_count; index++) {
         zval field;
 
@@ -2598,7 +2598,7 @@ PHP_METHOD(mysqli_result, getIterator) {
 
     ZEND_PARSE_PARAMETERS_NONE();
     result->cursor = 0;
-    array_init(return_value);
+    array_init_size(return_value, result->row_count);
     while (result->cursor < result->row_count) {
         zval row;
 

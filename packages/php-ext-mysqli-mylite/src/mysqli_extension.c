@@ -12,6 +12,11 @@ PHP_MINIT_FUNCTION(mysqli) {
     return SUCCESS;
 }
 
+PHP_RSHUTDOWN_FUNCTION(mysqli) {
+    mylite_mysqli_flush_profile();
+    return SUCCESS;
+}
+
 PHP_MINFO_FUNCTION(mysqli) {
     php_info_print_table_start();
     php_info_print_table_header(2, "MyLite mysqli support", "enabled");
@@ -44,7 +49,7 @@ zend_module_entry mysqli_module_entry = {
     PHP_MINIT(mysqli),
     NULL,
     NULL,
-    NULL,
+    PHP_RSHUTDOWN(mysqli),
     PHP_MINFO(mysqli),
     PHP_MYLITE_MYSQLI_VERSION,
     PHP_MODULE_GLOBALS(mylite_mysqli),

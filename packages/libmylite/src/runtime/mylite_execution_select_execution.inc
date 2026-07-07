@@ -9,6 +9,7 @@ static int execute_select_from_plan(
     struct result_column_metadata_context metadata_context = result_column_metadata_context_init();
     struct sqlite_result_row_storage row_storage = {0};
     int sqlite_rc = SQLITE_OK;
+    bool statement_is_cached = false;
     int rc = mylite_result_create(&result);
 
     if (rc != MYLITE_OK) {
@@ -25,7 +26,10 @@ static int execute_select_from_plan(
         rc = build_select_sql(plan, &sql);
     }
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
+        if (rc == MYLITE_OK) {
+            statement_is_cached = true;
+        }
     }
     if (rc == MYLITE_OK) {
         rc = bind_select_parameters(statement, plan);
@@ -48,7 +52,11 @@ static int execute_select_from_plan(
             &row_storage
         );
     }
-    rc = finalize_sqlite_statement(statement, rc);
+    if (statement_is_cached) {
+        rc = finish_cached_sqlite_statement(database, statement, rc);
+    } else {
+        rc = finalize_sqlite_statement(statement, rc);
+    }
     sqlite_result_row_storage_deinit(&row_storage);
     free(sql);
     result_column_metadata_context_deinit(&metadata_context);

@@ -7,6 +7,7 @@ static int execute_insert_from_plan(
     char *sql = NULL;
     struct insert_execution_counters counters = {0};
     struct mylite_statement_transaction transaction = {0};
+    bool statement_is_cached = false;
     int rc = build_insert_sql(plan, &sql);
 
     if (plan->has_auto_increment) {
@@ -19,12 +20,19 @@ static int execute_insert_from_plan(
         rc = begin_statement_transaction(database, &transaction);
     }
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
+        if (rc == MYLITE_OK) {
+            statement_is_cached = true;
+        }
     }
     if (rc == MYLITE_OK) {
         rc = execute_insert_plan_rows(database, statement, plan, &counters);
     }
-    rc = finalize_sqlite_statement(statement, rc);
+    if (statement_is_cached) {
+        rc = finish_cached_sqlite_statement(database, statement, rc);
+    } else {
+        rc = finalize_sqlite_statement(statement, rc);
+    }
     statement = NULL;
     if (rc == MYLITE_OK && plan->has_auto_increment &&
         counters.auto_increment_next_after_rows != plan->auto_increment_next) {

@@ -62,6 +62,20 @@
 #define MYLITE_MYSQLI_FIELD_TYPE_VAR_STRING 253
 #define MYLITE_MYSQLI_FIELD_TYPE_STRING 254
 #define MYLITE_MYSQLI_MAX_ALLOWED_PACKET 67108864U
+#define MYLITE_MYSQLI_PROFILE_SLOT_COUNT 64U
+#define MYLITE_MYSQLI_PROFILE_SQL_LENGTH 160U
+
+typedef struct {
+    char sql[MYLITE_MYSQLI_PROFILE_SQL_LENGTH];
+    uint64_t calls;
+    uint64_t errors;
+    uint64_t bridge_calls;
+    uint64_t result_sets;
+    uint64_t rows;
+    uint64_t cells;
+    uint64_t execute_ns;
+    uint64_t buffer_ns;
+} mylite_mysqli_profile_slot;
 
 enum mylite_mysqli_error_code {
     MYLITE_MYSQLI_ERROR_NONE = 0,
@@ -140,6 +154,19 @@ ZEND_BEGIN_MODULE_GLOBALS(mylite_mysqli)
 int report_mode;
 int connect_errno;
 char connect_error[512];
+bool profile_enabled;
+bool profile_stderr;
+char profile_path[512];
+uint32_t profile_limit;
+uint64_t profile_calls;
+uint64_t profile_errors;
+uint64_t profile_bridge_calls;
+uint64_t profile_result_sets;
+uint64_t profile_rows;
+uint64_t profile_cells;
+uint64_t profile_execute_ns;
+uint64_t profile_buffer_ns;
+mylite_mysqli_profile_slot profile_slots[MYLITE_MYSQLI_PROFILE_SLOT_COUNT];
 ZEND_END_MODULE_GLOBALS(mylite_mysqli)
 
 ZEND_EXTERN_MODULE_GLOBALS(mylite_mysqli)
@@ -230,9 +257,11 @@ void mylite_mysqli_set_stmt_error(
 void mylite_mysqli_report_link_error(mylite_mysqli_link *link);
 void mylite_mysqli_report_stmt_error(mylite_mysqli_stmt *stmt);
 void mylite_mysqli_update_link_properties(mylite_mysqli_link *link);
+void mylite_mysqli_update_link_status_properties(mylite_mysqli_link *link);
 void mylite_mysqli_update_result_properties(mylite_mysqli_result *result);
 void mylite_mysqli_update_stmt_properties(mylite_mysqli_stmt *stmt);
 void mylite_mysqli_init_globals(zend_mylite_mysqli_globals *globals);
+void mylite_mysqli_flush_profile(void);
 void mylite_mysqli_register_constants(int module_number);
 void mylite_mysqli_register_classes(void);
 

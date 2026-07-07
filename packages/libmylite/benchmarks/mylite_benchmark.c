@@ -29,8 +29,10 @@
 enum {
     default_iterations = 1000,
     default_csv_iterations = 1,
+    default_samples = 1,
     runtime_database_path_capacity = 1024,
     runtime_database_suffix_capacity = 16,
+    runtime_query_scenario_name_capacity = 256,
     decimal_option_base = 10,
     nanoseconds_per_second = 1000000000ULL,
     milliseconds_per_second = 1000,
@@ -50,9 +52,12 @@ struct benchmark_options {
     const char *csv_path;
     const char *parse_failure_dump_path;
     const char *expected_parse_failures_path;
+    const char *runtime_scenario_name;
     size_t iterations;
     size_t csv_iterations;
+    size_t samples;
     bool csv_replay_sql_mode;
+    bool runtime_per_query;
     bool list_only;
     bool show_usage;
 };
@@ -306,6 +311,29 @@ static int run_builtin_lexer_benchmark(const struct benchmark_options *options);
 static int run_builtin_parse_benchmark(const struct benchmark_options *options);
 static int run_csv_benchmarks(const struct benchmark_options *options);
 static int run_runtime_benchmarks(const struct benchmark_options *options);
+static bool runtime_scenario_matches_filter(
+    const struct benchmark_options *options,
+    const struct runtime_scenario *scenario
+);
+typedef int (*runtime_scenario_runner)(
+    const struct runtime_scenario *scenario,
+    size_t iterations,
+    struct benchmark_measurement *out_measurement
+);
+static int run_runtime_query_samples(
+    const struct runtime_scenario *scenario,
+    const char *kind,
+    runtime_scenario_runner runner,
+    size_t iterations,
+    size_t samples
+);
+static int run_repeated_runtime_scenario(
+    const struct runtime_scenario *scenario,
+    const char *kind,
+    runtime_scenario_runner runner,
+    size_t iterations,
+    size_t samples
+);
 static int run_runtime_scenario(
     const struct runtime_scenario *scenario,
     size_t iterations,
@@ -396,6 +424,20 @@ static void print_result(
     size_t query_count,
     const struct benchmark_measurement *measurement
 );
+static void print_runtime_sample_marker(
+    const char *scenario,
+    const char *kind,
+    size_t sample_index,
+    size_t samples
+);
+static void print_runtime_summary(
+    const char *scenario,
+    const char *kind,
+    size_t samples,
+    const double *average_us_values
+);
+static double sorted_percentile_value(const double *values, size_t count, size_t percentile);
+static int compare_double_values(const void *left, const void *right);
 static void print_parse_status_counts(const struct benchmark_measurement *measurement);
 static double ns_to_ms(uint64_t ns);
 static double ns_to_average_us(uint64_t ns, size_t operations);
@@ -407,9 +449,12 @@ int main(int argc, char **argv) {
         .csv_path = NULL,
         .parse_failure_dump_path = NULL,
         .expected_parse_failures_path = NULL,
+        .runtime_scenario_name = NULL,
         .iterations = default_iterations,
         .csv_iterations = default_csv_iterations,
+        .samples = default_samples,
         .csv_replay_sql_mode = false,
+        .runtime_per_query = false,
         .list_only = false,
         .show_usage = false,
     };
@@ -475,6 +520,14 @@ static int parse_option(
         }
         return 0;
     }
+    if (strcmp(argument, "--samples") == 0) {
+        const char *value = consume_option_value(argc, argv, index, "--samples");
+
+        if (value == NULL || parse_size_option(value, &out_options->samples) != 0) {
+            return 1;
+        }
+        return 0;
+    }
     if (strcmp(argument, "--csv") == 0) {
         const char *value = consume_option_value(argc, argv, index, "--csv");
 
@@ -486,6 +539,19 @@ static int parse_option(
     }
     if (strcmp(argument, "--csv-replay-sql-mode") == 0) {
         out_options->csv_replay_sql_mode = true;
+        return 0;
+    }
+    if (strcmp(argument, "--per-query") == 0) {
+        out_options->runtime_per_query = true;
+        return 0;
+    }
+    if (strcmp(argument, "--scenario") == 0) {
+        const char *value = consume_option_value(argc, argv, index, "--scenario");
+
+        if (value == NULL) {
+            return 1;
+        }
+        out_options->runtime_scenario_name = value;
         return 0;
     }
     if (strcmp(argument, "--dump-parse-failures") == 0) {
@@ -579,9 +645,9 @@ static int parse_size_option(const char *text, size_t *out_value) {
 static void print_usage(const char *program_name, FILE *stream) {
     fprintf(
         stream,
-        "usage: %s [--iterations N] [--csv PATH] [--csv-iterations N] "
-        "[--csv-replay-sql-mode] [--dump-parse-failures PATH] "
-        "[--expected-parse-failures PATH] "
+        "usage: %s [--iterations N] [--samples N] [--csv PATH] [--csv-iterations N] "
+        "[--csv-replay-sql-mode] [--per-query] [--scenario NAME] "
+        "[--dump-parse-failures PATH] [--expected-parse-failures PATH] "
         "[--only all|lexer|parse|runtime] [--list]\n",
         program_name
     );
@@ -743,48 +809,160 @@ static int run_csv_benchmarks(const struct benchmark_options *options) {
 }
 
 static int run_runtime_benchmarks(const struct benchmark_options *options) {
+    bool matched_scenario = false;
+
     for (size_t scenario_index = 0U;
          scenario_index < sizeof(runtime_scenarios) / sizeof(runtime_scenarios[0]);
          ++scenario_index) {
-        struct benchmark_measurement measurement = {0};
-        int rc = run_runtime_scenario(
+        int rc = 0;
+
+        if (!runtime_scenario_matches_filter(options, &runtime_scenarios[scenario_index])) {
+            continue;
+        }
+        matched_scenario = true;
+        rc = run_repeated_runtime_scenario(
             &runtime_scenarios[scenario_index],
+            "execute",
+            run_runtime_scenario,
             options->iterations,
-            &measurement
+            options->samples
         );
 
         if (rc != 0) {
             return rc;
         }
-        print_result(
-            runtime_scenarios[scenario_index].name,
-            "execute",
-            options->iterations,
-            runtime_scenarios[scenario_index].query_count,
-            &measurement
-        );
+        if (options->runtime_per_query) {
+            rc = run_runtime_query_samples(
+                &runtime_scenarios[scenario_index],
+                "execute",
+                run_runtime_scenario,
+                options->iterations,
+                options->samples
+            );
+            if (rc != 0) {
+                return rc;
+            }
+        }
     }
     for (size_t scenario_index = 0U;
          scenario_index < sizeof(runtime_cursor_scenarios) / sizeof(runtime_cursor_scenarios[0]);
          ++scenario_index) {
-        struct benchmark_measurement measurement = {0};
-        int rc = run_runtime_cursor_scenario(
+        int rc = 0;
+
+        if (!runtime_scenario_matches_filter(options, &runtime_cursor_scenarios[scenario_index])) {
+            continue;
+        }
+        matched_scenario = true;
+        rc = run_repeated_runtime_scenario(
             &runtime_cursor_scenarios[scenario_index],
+            "cursor",
+            run_runtime_cursor_scenario,
             options->iterations,
-            &measurement
+            options->samples
         );
 
         if (rc != 0) {
             return rc;
         }
-        print_result(
-            runtime_cursor_scenarios[scenario_index].name,
-            "cursor",
-            options->iterations,
-            runtime_cursor_scenarios[scenario_index].query_count,
-            &measurement
-        );
+        if (options->runtime_per_query) {
+            rc = run_runtime_query_samples(
+                &runtime_cursor_scenarios[scenario_index],
+                "cursor",
+                run_runtime_cursor_scenario,
+                options->iterations,
+                options->samples
+            );
+            if (rc != 0) {
+                return rc;
+            }
+        }
     }
+    if (options->runtime_scenario_name != NULL && !matched_scenario) {
+        fprintf(stderr, "unknown runtime scenario: %s\n", options->runtime_scenario_name);
+        return 1;
+    }
+    return 0;
+}
+
+static bool runtime_scenario_matches_filter(
+    const struct benchmark_options *options,
+    const struct runtime_scenario *scenario
+) {
+    if (options == NULL || scenario == NULL || options->runtime_scenario_name == NULL) {
+        return true;
+    }
+
+    return strcmp(options->runtime_scenario_name, scenario->name) == 0;
+}
+
+static int run_runtime_query_samples(
+    const struct runtime_scenario *scenario,
+    const char *kind,
+    runtime_scenario_runner runner,
+    size_t iterations,
+    size_t samples
+) {
+    for (size_t query_index = 0U; query_index < scenario->query_count; ++query_index) {
+        char query_scenario_name[runtime_query_scenario_name_capacity];
+        struct runtime_scenario query_scenario = *scenario;
+        int written = snprintf(
+            query_scenario_name,
+            sizeof(query_scenario_name),
+            "%s.query%zu",
+            scenario->name,
+            query_index + 1U
+        );
+
+        if (written < 0 || (size_t)written >= sizeof(query_scenario_name)) {
+            fprintf(stderr, "%s: per-query scenario name is too long\n", scenario->name);
+            return 1;
+        }
+        query_scenario.name = query_scenario_name;
+        query_scenario.queries = &scenario->queries[query_index];
+        query_scenario.query_count = 1U;
+        if (run_repeated_runtime_scenario(&query_scenario, kind, runner, iterations, samples) !=
+            0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int run_repeated_runtime_scenario(
+    const struct runtime_scenario *scenario,
+    const char *kind,
+    runtime_scenario_runner runner,
+    size_t iterations,
+    size_t samples
+) {
+    double *average_us_values = NULL;
+
+    if (samples > 1U) {
+        average_us_values = (double *)calloc(samples, sizeof(*average_us_values));
+        if (average_us_values == NULL) {
+            fprintf(stderr, "%s: failed to allocate benchmark sample summary\n", scenario->name);
+            return 1;
+        }
+    }
+    for (size_t sample_index = 0U; sample_index < samples; ++sample_index) {
+        struct benchmark_measurement measurement = {0};
+        int rc = runner(scenario, iterations, &measurement);
+
+        if (rc != 0) {
+            free(average_us_values);
+            return rc;
+        }
+        if (samples > 1U) {
+            average_us_values[sample_index] =
+                ns_to_average_us(measurement.elapsed_ns, measurement.operations);
+            print_runtime_sample_marker(scenario->name, kind, sample_index, samples);
+        }
+        print_result(scenario->name, kind, iterations, scenario->query_count, &measurement);
+    }
+    if (samples > 1U) {
+        print_runtime_summary(scenario->name, kind, samples, average_us_values);
+    }
+    free(average_us_values);
     return 0;
 }
 
@@ -1507,6 +1685,91 @@ static void print_result(
         ns_to_average_us(measurement->elapsed_ns, measurement->operations),
         ns_to_ops_per_second(measurement->elapsed_ns, measurement->operations)
     );
+}
+
+static void print_runtime_sample_marker(
+    const char *scenario,
+    const char *kind,
+    size_t sample_index,
+    size_t samples
+) {
+    printf(
+        "# sample scenario=%s kind=%s index=%zu/%zu\n",
+        scenario,
+        kind,
+        sample_index + 1U,
+        samples
+    );
+}
+
+static void print_runtime_summary(
+    const char *scenario,
+    const char *kind,
+    size_t samples,
+    const double *average_us_values
+) {
+    double *sorted_values = NULL;
+
+    if (samples == 0U) {
+        return;
+    }
+    sorted_values = (double *)malloc(samples * sizeof(*sorted_values));
+    if (sorted_values == NULL) {
+        fprintf(stderr, "%s: failed to allocate benchmark summary sorting buffer\n", scenario);
+        return;
+    }
+    memcpy(sorted_values, average_us_values, samples * sizeof(*sorted_values));
+    qsort(sorted_values, samples, sizeof(*sorted_values), compare_double_values);
+    printf(
+        "# summary scenario=%s kind=%s samples=%zu min_avg_us=%.3f median_avg_us=%.3f "
+        "p95_avg_us=%.3f max_avg_us=%.3f\n",
+        scenario,
+        kind,
+        samples,
+        sorted_values[0],
+        sorted_percentile_value(sorted_values, samples, 50U),
+        sorted_percentile_value(sorted_values, samples, 95U),
+        sorted_values[samples - 1U]
+    );
+    free(sorted_values);
+}
+
+static double sorted_percentile_value(const double *values, size_t count, size_t percentile) {
+    size_t index = 0U;
+
+    if (count == 0U) {
+        return 0.0;
+    }
+    if (percentile <= 50U && (count % 2U) == 0U) {
+        size_t upper = count / 2U;
+
+        return (values[upper - 1U] + values[upper]) / 2.0;
+    }
+    if (percentile > 100U) {
+        percentile = 100U;
+    }
+    index = ((count * percentile) + 99U) / 100U;
+    if (index == 0U) {
+        return values[0];
+    }
+    --index;
+    if (index >= count) {
+        index = count - 1U;
+    }
+    return values[index];
+}
+
+static int compare_double_values(const void *left, const void *right) {
+    const double left_value = *(const double *)left;
+    const double right_value = *(const double *)right;
+
+    if (left_value < right_value) {
+        return -1;
+    }
+    if (left_value > right_value) {
+        return 1;
+    }
+    return 0;
 }
 
 static void print_parse_status_counts(const struct benchmark_measurement *measurement) {

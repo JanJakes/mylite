@@ -12,7 +12,8 @@ static int prepare_cursor_select_statement(
 );
 static int prepare_cursor_select_plan(mylite_stmt *stmt);
 static int prepare_cursor_materialized_select_statement(mylite_stmt *stmt);
-static void clear_cursor_select_plan_resources(mylite_stmt *stmt);
+static int finish_cursor_sqlite_statement(mylite_stmt *stmt, int rc);
+static void clear_cursor_select_plan_resources(mylite_stmt *stmt, int rc);
 static int finish_cursor_statement(mylite_stmt *stmt, bool exhausted);
 static void destroy_cursor_statement(mylite_stmt *stmt);
 static int set_materialized_cursor_found_row_count(mylite_stmt *stmt);

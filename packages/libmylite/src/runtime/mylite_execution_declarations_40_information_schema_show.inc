@@ -1183,6 +1183,17 @@ static int information_schema_append_result_rows(
     mylite_result *result,
     size_t *out_read_row_count
 );
+static int information_schema_append_streamed_result_rows(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    mylite_result *result,
+    size_t *out_read_row_count
+);
+static bool information_schema_result_rows_can_stream(
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *where_clause
+);
 static int information_schema_append_grouped_statistics_result_rows(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
@@ -1260,6 +1271,12 @@ static int information_schema_result_projection_buffers_init(
     const struct information_schema_query *query,
     struct information_schema_result_projection_buffers *buffers
 );
+static bool information_schema_query_needs_computed_projection_buffers(
+    const struct information_schema_query *query
+);
+static bool information_schema_projection_needs_computed_buffer(
+    enum information_schema_projection_kind kind
+);
 static void information_schema_result_projection_buffers_deinit(
     struct information_schema_result_projection_buffers *buffers
 );
@@ -1277,6 +1294,10 @@ static int information_schema_append_count_result(
     const struct information_schema_row_set *rows,
     mylite_result *result,
     size_t *out_read_row_count
+);
+static char *information_schema_projection_computed_buffer(
+    const struct information_schema_result_projection_buffers *buffers,
+    size_t projection_index
 );
 static int information_schema_projection_value(
     struct mylite_db *database,
@@ -1364,8 +1385,19 @@ static int information_schema_matching_row_indexes(
     const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct information_schema_row_set *rows,
-    size_t **out_indexes,
-    size_t *out_index_count
+    struct information_schema_row_index_set *out_indexes
+);
+static const struct mylite_sql_ast_node *information_schema_statement_where_clause(
+    const struct mylite_sql_ast_node *statement
+);
+static void information_schema_row_index_set_init(struct information_schema_row_index_set *indexes);
+static int information_schema_row_index_set_append(
+    struct mylite_db *database,
+    struct information_schema_row_index_set *indexes,
+    size_t value
+);
+static void information_schema_row_index_set_deinit(
+    struct information_schema_row_index_set *indexes
 );
 static int information_schema_includes_connection_control_failed_login_attempts(
     struct mylite_db *database,

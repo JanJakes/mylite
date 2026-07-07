@@ -3,6 +3,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+enum {
+    text_row_stack_cell_capacity = 32,
+};
+
 static int reserve_columns(mylite_result *result, size_t required_capacity);
 static int reserve_rows(mylite_result *result, size_t required_capacity);
 static int duplicate_bytes(const void *bytes, size_t size, char **out_copy);
@@ -136,16 +140,22 @@ int mylite_result_append_bytes_row(mylite_result *result, const struct mylite_re
 }
 
 int mylite_result_append_text_row(mylite_result *result, const char *const *values) {
-    struct mylite_result_cell *cells = NULL;
+    struct mylite_result_cell stack_cells[text_row_stack_cell_capacity];
+    struct mylite_result_cell *cells = stack_cells;
     int rc = MYLITE_OK;
 
     if (result == NULL || values == NULL || result->column_count == 0U) {
         return MYLITE_MISUSE;
     }
 
-    cells = calloc(result->column_count, sizeof(*cells));
-    if (cells == NULL) {
-        return MYLITE_NOMEM;
+    if (result->column_count > text_row_stack_cell_capacity) {
+        if (result->column_count > SIZE_MAX / sizeof(*cells)) {
+            return MYLITE_NOMEM;
+        }
+        cells = (struct mylite_result_cell *)malloc(result->column_count * sizeof(*cells));
+        if (cells == NULL) {
+            return MYLITE_NOMEM;
+        }
     }
     for (size_t column_index = 0U; column_index < result->column_count; ++column_index) {
         if (values[column_index] == NULL) {
@@ -159,7 +169,9 @@ int mylite_result_append_text_row(mylite_result *result, const char *const *valu
         }
     }
     rc = mylite_result_append_bytes_row(result, cells);
-    free(cells);
+    if (cells != stack_cells) {
+        free(cells);
+    }
 
     return rc;
 }

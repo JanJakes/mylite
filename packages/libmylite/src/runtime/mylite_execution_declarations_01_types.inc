@@ -2561,6 +2561,7 @@ struct mylite_stmt {
     bool has_normalized_sql;
     bool has_select_plan;
     bool has_materialized_rows;
+    bool sqlite_statement_is_cached;
     bool current_row_available;
     bool done;
 };
@@ -2733,6 +2734,14 @@ struct information_schema_row_set {
     size_t row_capacity;
 };
 
+struct information_schema_row_index_set {
+    size_t *items;
+    size_t count;
+    size_t capacity;
+    size_t stack_items[information_schema_row_index_stack_capacity];
+    bool uses_heap;
+};
+
 struct information_schema_columns_numeric_metadata_buffers {
     char *numeric_precision_text;
     size_t numeric_precision_text_size;
@@ -2897,7 +2906,11 @@ struct information_schema_projection_slot_request {
 
 struct information_schema_result_projection_buffers {
     const char **values;
+    const char *stack_values[information_schema_projection_stack_capacity];
     char *computed_values;
+    char stack_computed_values[information_schema_projection_stack_capacity][integer_text_capacity];
+    bool values_use_heap;
+    bool computed_values_use_heap;
 };
 
 enum information_schema_numeric_eval_action {

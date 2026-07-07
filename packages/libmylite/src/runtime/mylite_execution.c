@@ -322,16 +322,14 @@ int mylite_stmt_step(mylite_stmt *stmt) {
     }
     if (sqlite_rc != SQLITE_DONE) {
         rc = mylite_sqlite_status_to_mylite(sqlite_rc);
-        rc = finalize_sqlite_statement(stmt->sqlite_statement, rc);
-        stmt->sqlite_statement = NULL;
+        rc = finish_cursor_sqlite_statement(stmt, rc);
         stmt->done = true;
         mylite_result *result = NULL;
 
         return finish_failed_statement(stmt->database, rc, &result);
     }
 
-    rc = finalize_sqlite_statement(stmt->sqlite_statement, MYLITE_OK);
-    stmt->sqlite_statement = NULL;
+    rc = finish_cursor_sqlite_statement(stmt, MYLITE_OK);
     stmt->done = true;
     if (rc == MYLITE_OK) {
         rc = set_cursor_found_row_count(stmt);
@@ -349,8 +347,7 @@ int mylite_stmt_finalize(mylite_stmt *stmt) {
         return MYLITE_OK;
     }
     if (stmt->sqlite_statement != NULL) {
-        rc = finalize_sqlite_statement(stmt->sqlite_statement, MYLITE_OK);
-        stmt->sqlite_statement = NULL;
+        rc = finish_cursor_sqlite_statement(stmt, MYLITE_OK);
     }
     if (rc == MYLITE_OK && !stmt->done) {
         stmt->found_row_count = (uint64_t)stmt->row_count;
@@ -490,7 +487,7 @@ static int prepare_cursor_select_statement(
     if (rc == MYLITE_OK) {
         rc = prepare_cursor_select_plan(stmt);
         if (rc != MYLITE_OK && rc != MYLITE_NOMEM) {
-            clear_cursor_select_plan_resources(stmt);
+            clear_cursor_select_plan_resources(stmt, rc);
             mylite_diagnostics_clear_condition(mylite_connection_diagnostics(database));
             rc = prepare_cursor_materialized_select_statement(stmt);
         }
@@ -547,10 +544,16 @@ static int prepare_cursor_select_plan(mylite_stmt *stmt) {
         rc = build_select_sql(&stmt->select_plan, &stmt->sqlite_sql);
     }
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, stmt->sqlite_sql, &stmt->sqlite_statement);
+        rc = prepare_cached_sqlite_statement(database, stmt->sqlite_sql, &stmt->sqlite_statement);
+        if (rc == MYLITE_OK) {
+            stmt->sqlite_statement_is_cached = true;
+        }
     }
     if (rc == MYLITE_OK) {
         rc = bind_select_parameters(stmt->sqlite_statement, &stmt->select_plan);
+    }
+    if (rc != MYLITE_OK && stmt->sqlite_statement != NULL) {
+        rc = finish_cursor_sqlite_statement(stmt, rc);
     }
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);
@@ -562,11 +565,21 @@ static int prepare_cursor_select_plan(mylite_stmt *stmt) {
     return rc;
 }
 
-static void clear_cursor_select_plan_resources(mylite_stmt *stmt) {
+static int finish_cursor_sqlite_statement(mylite_stmt *stmt, int rc) {
     if (stmt->sqlite_statement != NULL) {
-        (void)finalize_sqlite_statement(stmt->sqlite_statement, MYLITE_OK);
+        if (stmt->sqlite_statement_is_cached) {
+            rc = finish_cached_sqlite_statement(stmt->database, stmt->sqlite_statement, rc);
+        } else {
+            rc = finalize_sqlite_statement(stmt->sqlite_statement, rc);
+        }
         stmt->sqlite_statement = NULL;
+        stmt->sqlite_statement_is_cached = false;
     }
+    return rc;
+}
+
+static void clear_cursor_select_plan_resources(mylite_stmt *stmt, int rc) {
+    (void)finish_cursor_sqlite_statement(stmt, rc);
     free(stmt->sqlite_sql);
     stmt->sqlite_sql = NULL;
     sqlite_result_row_storage_deinit(&stmt->row_storage);
@@ -614,7 +627,7 @@ static void destroy_cursor_statement(mylite_stmt *stmt) {
         return;
     }
     if (stmt->sqlite_statement != NULL) {
-        (void)finalize_sqlite_statement(stmt->sqlite_statement, MYLITE_OK);
+        (void)finish_cursor_sqlite_statement(stmt, MYLITE_OK);
     }
     free(stmt->sqlite_sql);
     sqlite_result_row_storage_deinit(&stmt->row_storage);

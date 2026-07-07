@@ -1372,28 +1372,31 @@ static int information_schema_join_compat_append_tables_grouped_size_rows(
     const struct information_schema_row_set *rows,
     mylite_result *result
 ) {
-    size_t *indexes = NULL;
-    size_t index_count = 0U;
+    struct information_schema_row_index_set indexes = {0};
     int rc = information_schema_matching_row_indexes(
         database,
         statement,
         query,
         rows,
-        &indexes,
-        &index_count
+        &indexes
     );
 
     if (rc == MYLITE_OK) {
-        rc = information_schema_sort_tables_default_row_indexes(database, rows, indexes, index_count);
+        rc = information_schema_sort_tables_default_row_indexes(
+            database,
+            rows,
+            indexes.items,
+            indexes.count
+        );
     }
-    for (size_t index = 0U; rc == MYLITE_OK && index < index_count; ++index) {
+    for (size_t index = 0U; rc == MYLITE_OK && index < indexes.count; ++index) {
         rc = information_schema_join_compat_append_tables_grouped_size_row(
             database,
-            rows->rows[indexes[index]],
+            rows->rows[indexes.items[index]],
             result
         );
     }
-    free(indexes);
+    information_schema_row_index_set_deinit(&indexes);
     return rc;
 }
 

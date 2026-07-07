@@ -8,13 +8,13 @@ static int read_show_table_status_row_count(
     int rc = build_show_table_status_count_sql(table, &sql);
 
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
     }
     if (rc == MYLITE_OK) {
         rc = step_count_statement(statement, out_count);
     }
 
-    rc = finalize_sqlite_statement(statement, rc);
+    rc = finish_cached_sqlite_statement(database, statement, rc);
     free(sql);
 
     return rc;

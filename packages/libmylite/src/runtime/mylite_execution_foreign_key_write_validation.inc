@@ -98,7 +98,7 @@ static int validate_foreign_key_references(
     int rc = build_foreign_key_validation_sql(foreign_key, &sql);
 
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
     }
     if (rc == MYLITE_OK) {
         sqlite_rc = sqlite3_step(statement);
@@ -113,7 +113,7 @@ static int validate_foreign_key_references(
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         }
     }
-    rc = finalize_sqlite_statement(statement, rc);
+    rc = finish_cached_sqlite_statement(database, statement, rc);
     free(sql);
 
     if (rc == MYLITE_NOMEM) {

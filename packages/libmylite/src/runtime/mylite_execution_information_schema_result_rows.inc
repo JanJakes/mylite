@@ -45,28 +45,34 @@ static int information_schema_append_result_rows(
     mylite_result *result,
     size_t *out_read_row_count
 ) {
-    size_t *indexes = NULL;
-    size_t index_count = 0U;
+    const struct mylite_sql_ast_node *where_clause = information_schema_statement_where_clause(
+        statement
+    );
+    struct information_schema_row_index_set indexes = {0};
     size_t visible_count = 0U;
     struct information_schema_result_projection_buffers buffers = {0};
-    int rc = information_schema_matching_row_indexes(
-        database,
-        statement,
-        query,
-        rows,
-        &indexes,
-        &index_count
-    );
+    int rc = MYLITE_OK;
 
     if (out_read_row_count != NULL) {
         *out_read_row_count = 0U;
     }
-    if (rc == MYLITE_OK && index_count == 0U) {
-        free(indexes);
+    if (information_schema_result_rows_can_stream(query, where_clause)) {
+        return information_schema_append_streamed_result_rows(
+            database,
+            query,
+            rows,
+            result,
+            out_read_row_count
+        );
+    }
+
+    rc = information_schema_matching_row_indexes(database, statement, query, rows, &indexes);
+    if (rc == MYLITE_OK && indexes.count == 0U) {
+        information_schema_row_index_set_deinit(&indexes);
         return MYLITE_OK;
     }
     if (rc == MYLITE_OK && rows->rows == NULL) {
-        free(indexes);
+        information_schema_row_index_set_deinit(&indexes);
         set_runtime_error(database, "information_schema row set is inconsistent");
         return MYLITE_ERROR;
     }
@@ -76,15 +82,16 @@ static int information_schema_append_result_rows(
             statement,
             query,
             rows,
-            indexes,
-            index_count
+            indexes.items,
+            indexes.count
         );
     }
     if (rc == MYLITE_OK && query->projection_count != 0U) {
         rc = information_schema_result_projection_buffers_init(database, query, &buffers);
     }
-    for (size_t output_index = 0U; rc == MYLITE_OK && output_index < index_count; ++output_index) {
-        size_t row_index = indexes[output_index];
+    for (size_t output_index = 0U; rc == MYLITE_OK && output_index < indexes.count;
+         ++output_index) {
+        size_t row_index = indexes.items[output_index];
 
         if (query->limit.has_limit && visible_count >= (size_t)query->limit.row_count) {
             break;
@@ -102,8 +109,58 @@ static int information_schema_append_result_rows(
     if (rc == MYLITE_OK && out_read_row_count != NULL) {
         *out_read_row_count = visible_count;
     }
-    free(indexes);
+    information_schema_row_index_set_deinit(&indexes);
     return rc;
+}
+
+static int information_schema_append_streamed_result_rows(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct information_schema_row_set *rows,
+    mylite_result *result,
+    size_t *out_read_row_count
+) {
+    size_t visible_count = 0U;
+    struct information_schema_result_projection_buffers buffers = {0};
+    int rc = MYLITE_OK;
+
+    if (rows->row_count == 0U) {
+        return MYLITE_OK;
+    }
+    if (rows->rows == NULL) {
+        set_runtime_error(database, "information_schema row set is inconsistent");
+        return MYLITE_ERROR;
+    }
+    if (query->projection_count != 0U) {
+        rc = information_schema_result_projection_buffers_init(database, query, &buffers);
+    }
+    for (size_t row_index = 0U; rc == MYLITE_OK && row_index < rows->row_count; ++row_index) {
+        if (query->limit.has_limit && visible_count >= (size_t)query->limit.row_count) {
+            break;
+        }
+        rc = information_schema_append_projected_result_row(
+            database,
+            query,
+            (const char *const *)rows->rows[row_index],
+            &buffers,
+            result
+        );
+        ++visible_count;
+    }
+    information_schema_result_projection_buffers_deinit(&buffers);
+    if (rc == MYLITE_OK && out_read_row_count != NULL) {
+        *out_read_row_count = visible_count;
+    }
+    return rc;
+}
+
+static bool information_schema_result_rows_can_stream(
+    const struct information_schema_query *query,
+    const struct mylite_sql_ast_node *where_clause
+) {
+    return query != NULL && query->definition != NULL && where_clause == NULL &&
+           !query->has_order &&
+           query->definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_TABLES;
 }
 
 static int information_schema_append_grouped_statistics_result_rows(
@@ -114,28 +171,20 @@ static int information_schema_append_grouped_statistics_result_rows(
     mylite_result *result,
     size_t *out_read_row_count
 ) {
-    size_t *indexes = NULL;
-    size_t index_count = 0U;
+    struct information_schema_row_index_set indexes = {0};
     size_t visible_count = 0U;
     struct information_schema_result_projection_buffers buffers = {0};
-    int rc = information_schema_matching_row_indexes(
-        database,
-        statement,
-        query,
-        rows,
-        &indexes,
-        &index_count
-    );
+    int rc = information_schema_matching_row_indexes(database, statement, query, rows, &indexes);
 
     if (out_read_row_count != NULL) {
         *out_read_row_count = 0U;
     }
-    if (rc == MYLITE_OK && index_count == 0U) {
-        free(indexes);
+    if (rc == MYLITE_OK && indexes.count == 0U) {
+        information_schema_row_index_set_deinit(&indexes);
         return MYLITE_OK;
     }
     if (rc == MYLITE_OK && rows->rows == NULL) {
-        free(indexes);
+        information_schema_row_index_set_deinit(&indexes);
         set_runtime_error(database, "information_schema row set is inconsistent");
         return MYLITE_ERROR;
     }
@@ -144,22 +193,22 @@ static int information_schema_append_grouped_statistics_result_rows(
             database,
             query,
             rows,
-            indexes,
-            index_count
+            indexes.items,
+            indexes.count
         );
     }
     if (rc == MYLITE_OK) {
         rc = information_schema_result_projection_buffers_init(database, query, &buffers);
     }
-    for (size_t start_index = 0U; rc == MYLITE_OK && start_index < index_count;) {
+    for (size_t start_index = 0U; rc == MYLITE_OK && start_index < indexes.count;) {
         size_t end_index = start_index + 1U;
 
-        while (end_index < index_count &&
+        while (end_index < indexes.count &&
                information_schema_grouped_statistics_rows_same_group(
                    query,
                    rows,
-                   indexes[start_index],
-                   indexes[end_index]
+                   indexes.items[start_index],
+                   indexes.items[end_index]
                )) {
             ++end_index;
         }
@@ -168,7 +217,7 @@ static int information_schema_append_grouped_statistics_result_rows(
                 database,
                 query,
                 rows,
-                indexes,
+                indexes.items,
                 start_index,
                 end_index,
                 &buffers,
@@ -182,7 +231,7 @@ static int information_schema_append_grouped_statistics_result_rows(
     if (rc == MYLITE_OK && out_read_row_count != NULL) {
         *out_read_row_count = visible_count;
     }
-    free(indexes);
+    information_schema_row_index_set_deinit(&indexes);
     return rc;
 }
 
@@ -493,7 +542,7 @@ static int information_schema_append_grouped_statistics_projected_row(
                 query,
                 representative,
                 projection_index,
-                buffers->computed_values + (projection_index * integer_text_capacity),
+                information_schema_projection_computed_buffer(buffers, projection_index),
                 integer_text_capacity,
                 &buffers->values[projection_index]
             );
@@ -538,24 +587,67 @@ static int information_schema_result_projection_buffers_init(
     const struct information_schema_query *query,
     struct information_schema_result_projection_buffers *buffers
 ) {
+    bool needs_computed_values = false;
+
     if (query->projection_count == 0U) {
         return MYLITE_OK;
     }
-    buffers->values = (const char **)calloc(query->projection_count, sizeof(*buffers->values));
-    if (buffers->values == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
+    if (query->projection_count <= information_schema_projection_stack_capacity) {
+        buffers->values = buffers->stack_values;
+    } else {
+        if (query->projection_count > SIZE_MAX / sizeof(*buffers->values)) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        buffers->values =
+            (const char **)malloc(query->projection_count * sizeof(*buffers->values));
+        if (buffers->values == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        buffers->values_use_heap = true;
     }
-    if (query->projection_count > SIZE_MAX / integer_text_capacity) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
+    needs_computed_values = information_schema_query_needs_computed_projection_buffers(query);
+    if (!needs_computed_values) {
+        return MYLITE_OK;
     }
-    buffers->computed_values = calloc(query->projection_count, integer_text_capacity);
-    if (buffers->computed_values == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
+    if (query->projection_count <= information_schema_projection_stack_capacity) {
+        buffers->computed_values = &buffers->stack_computed_values[0][0];
+    } else {
+        if (query->projection_count > SIZE_MAX / integer_text_capacity) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        buffers->computed_values = malloc(query->projection_count * integer_text_capacity);
+        if (buffers->computed_values == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        buffers->computed_values_use_heap = true;
     }
     return MYLITE_OK;
+}
+
+static bool information_schema_query_needs_computed_projection_buffers(
+    const struct information_schema_query *query
+) {
+    for (size_t projection_index = 0U; projection_index < query->projection_count;
+         ++projection_index) {
+        if (information_schema_projection_needs_computed_buffer(
+                query->projection_kinds[projection_index]
+            )) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool information_schema_projection_needs_computed_buffer(
+    enum information_schema_projection_kind kind
+) {
+    return kind == INFORMATION_SCHEMA_PROJECTION_UNSIGNED_INTEGER_EXPRESSION ||
+           kind == INFORMATION_SCHEMA_PROJECTION_INTEGER_LITERAL ||
+           kind == INFORMATION_SCHEMA_PROJECTION_LOGICAL_NOT_COLUMN;
 }
 
 static void information_schema_result_projection_buffers_deinit(
@@ -564,8 +656,12 @@ static void information_schema_result_projection_buffers_deinit(
     if (buffers == NULL) {
         return;
     }
-    free(buffers->computed_values);
-    free((void *)buffers->values);
+    if (buffers->computed_values_use_heap) {
+        free(buffers->computed_values);
+    }
+    if (buffers->values_use_heap) {
+        free((void *)buffers->values);
+    }
     *buffers = (struct information_schema_result_projection_buffers){0};
 }
 
@@ -585,7 +681,7 @@ static int information_schema_append_projected_result_row(
             query,
             row,
             column_index,
-            buffers->computed_values + (column_index * integer_text_capacity),
+            information_schema_projection_computed_buffer(buffers, column_index),
             integer_text_capacity,
             &buffers->values[column_index]
         );
@@ -1059,17 +1155,9 @@ static int information_schema_append_count_result(
 ) {
     char count_text[integer_text_capacity];
     const char *values[1] = {count_text};
-    size_t *indexes = NULL;
-    size_t index_count = 0U;
+    struct information_schema_row_index_set indexes = {0};
     bool emits_count_row = true;
-    int rc = information_schema_matching_row_indexes(
-        database,
-        statement,
-        query,
-        rows,
-        &indexes,
-        &index_count
-    );
+    int rc = information_schema_matching_row_indexes(database, statement, query, rows, &indexes);
 
     if (out_read_row_count != NULL) {
         *out_read_row_count = 0U;
@@ -1080,7 +1168,7 @@ static int information_schema_append_count_result(
     if (rc == MYLITE_OK) {
         rc = information_schema_format_i64(
             database,
-            (int64_t)index_count,
+            (int64_t)indexes.count,
             count_text,
             sizeof(count_text)
         );
@@ -1092,10 +1180,20 @@ static int information_schema_append_count_result(
         }
     }
     if (rc == MYLITE_OK && emits_count_row && out_read_row_count != NULL) {
-        *out_read_row_count = index_count;
+        *out_read_row_count = indexes.count;
     }
-    free(indexes);
+    information_schema_row_index_set_deinit(&indexes);
     return rc;
+}
+
+static char *information_schema_projection_computed_buffer(
+    const struct information_schema_result_projection_buffers *buffers,
+    size_t projection_index
+) {
+    if (buffers == NULL || buffers->computed_values == NULL) {
+        return NULL;
+    }
+    return buffers->computed_values + (projection_index * integer_text_capacity);
 }
 
 static int information_schema_matching_row_indexes(
@@ -1103,26 +1201,18 @@ static int information_schema_matching_row_indexes(
     const struct mylite_sql_ast_node *statement,
     const struct information_schema_query *query,
     const struct information_schema_row_set *rows,
-    size_t **out_indexes,
-    size_t *out_index_count
+    struct information_schema_row_index_set *out_indexes
 ) {
-    const struct mylite_sql_ast_node *optional_clause =
-        select_statement_optional_clause_start(statement);
-    const struct mylite_sql_ast_node *where_clause = NULL;
-    size_t *indexes = NULL;
-    size_t index_count = 0U;
+    const struct mylite_sql_ast_node *where_clause = information_schema_statement_where_clause(
+        statement
+    );
     bool includes_connection_control_failed_login_attempts = false;
     int rc = MYLITE_OK;
 
-    *out_indexes = NULL;
-    *out_index_count = 0U;
-    while (optional_clause != NULL) {
-        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
-            where_clause = optional_clause;
-            break;
-        }
-        optional_clause = optional_clause->next_sibling;
+    if (out_indexes == NULL) {
+        return MYLITE_MISUSE;
     }
+    information_schema_row_index_set_init(out_indexes);
 
     rc = information_schema_includes_connection_control_failed_login_attempts(
         database,
@@ -1135,15 +1225,6 @@ static int information_schema_matching_row_indexes(
     }
     if (rows->row_count == 0U) {
         return MYLITE_OK;
-    }
-    if (rows->row_count > SIZE_MAX / sizeof(*indexes)) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    indexes = malloc(rows->row_count * sizeof(*indexes));
-    if (indexes == NULL && rows->row_count != 0U) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
     }
     for (size_t row_index = 0U; rc == MYLITE_OK && row_index < rows->row_count; ++row_index) {
         bool matches = true;
@@ -1164,18 +1245,90 @@ static int information_schema_matching_row_indexes(
             );
         }
         if (rc == MYLITE_OK && matches) {
-            indexes[index_count] = row_index;
-            ++index_count;
+            rc = information_schema_row_index_set_append(database, out_indexes, row_index);
         }
     }
     if (rc != MYLITE_OK) {
-        free(indexes);
+        information_schema_row_index_set_deinit(out_indexes);
         return rc;
     }
 
-    *out_indexes = indexes;
-    *out_index_count = index_count;
     return MYLITE_OK;
+}
+
+static const struct mylite_sql_ast_node *information_schema_statement_where_clause(
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *optional_clause =
+        select_statement_optional_clause_start(statement);
+
+    while (optional_clause != NULL) {
+        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
+            return optional_clause;
+        }
+        optional_clause = optional_clause->next_sibling;
+    }
+    return NULL;
+}
+
+static void information_schema_row_index_set_init(struct information_schema_row_index_set *indexes) {
+    *indexes = (struct information_schema_row_index_set){
+        .items = indexes->stack_items,
+        .count = 0U,
+        .capacity = information_schema_row_index_stack_capacity,
+        .uses_heap = false,
+    };
+}
+
+static int information_schema_row_index_set_append(
+    struct mylite_db *database,
+    struct information_schema_row_index_set *indexes,
+    size_t value
+) {
+    size_t *grown_items = NULL;
+    size_t capacity = 0U;
+
+    if (indexes->count == indexes->capacity) {
+        if (indexes->capacity > SIZE_MAX / 2U) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        capacity = indexes->capacity * 2U;
+        if (capacity > SIZE_MAX / sizeof(*grown_items)) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        if (indexes->uses_heap) {
+            grown_items = realloc(indexes->items, capacity * sizeof(*grown_items));
+        } else {
+            grown_items = malloc(capacity * sizeof(*grown_items));
+            if (grown_items != NULL) {
+                memcpy(grown_items, indexes->stack_items, indexes->count * sizeof(*grown_items));
+            }
+        }
+        if (grown_items == NULL) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        indexes->items = grown_items;
+        indexes->capacity = capacity;
+        indexes->uses_heap = true;
+    }
+    indexes->items[indexes->count] = value;
+    ++indexes->count;
+    return MYLITE_OK;
+}
+
+static void information_schema_row_index_set_deinit(
+    struct information_schema_row_index_set *indexes
+) {
+    if (indexes == NULL) {
+        return;
+    }
+    if (indexes->uses_heap) {
+        free(indexes->items);
+    }
+    *indexes = (struct information_schema_row_index_set){0};
 }
 
 static int information_schema_includes_connection_control_failed_login_attempts(
@@ -1195,17 +1348,14 @@ static int information_schema_includes_connection_control_failed_login_attempts(
         return MYLITE_OK;
     }
 
-    optional_clause = select_statement_optional_clause_start(statement);
-    while (optional_clause != NULL) {
-        if (optional_clause->kind == MYLITE_SQL_AST_WHERE_CLAUSE) {
-            return information_schema_predicate_includes_connection_control_failed_login_attempts(
-                database,
-                query,
-                child_at(optional_clause, 0U),
-                out_includes_table
-            );
-        }
-        optional_clause = optional_clause->next_sibling;
+    optional_clause = information_schema_statement_where_clause(statement);
+    if (optional_clause != NULL) {
+        return information_schema_predicate_includes_connection_control_failed_login_attempts(
+            database,
+            query,
+            child_at(optional_clause, 0U),
+            out_includes_table
+        );
     }
     return MYLITE_OK;
 }

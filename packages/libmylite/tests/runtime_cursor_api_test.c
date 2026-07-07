@@ -22,6 +22,7 @@ struct expected_query_scalar_text {
 };
 
 static int test_cursor_select_streams_rows_and_metadata(void);
+static int test_cursor_reuses_finalized_select_statements(void);
 static int test_cursor_materializes_information_schema_selects(void);
 static int test_cursor_prepare_rejects_unsupported_statements(void);
 static int execute_ok(mylite_db *database, const char *sql);
@@ -50,6 +51,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_cursor_select_streams_rows_and_metadata();
+    failures += test_cursor_reuses_finalized_select_statements();
     failures += test_cursor_materializes_information_schema_selects();
     failures += test_cursor_prepare_rejects_unsupported_statements();
 
@@ -121,6 +123,62 @@ static int test_cursor_select_streams_rows_and_metadata(void) {
     failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize cursor");
     stmt = NULL;
     failures += expect_int(mylite_stmt_finalize(NULL), MYLITE_OK, "finalize null cursor");
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_cursor_reuses_finalized_select_statements(void) {
+    char path[test_path_capacity];
+    const char query[] = "SELECT name FROM items WHERE id = 1";
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "reuse") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open cursor reuse file");
+    failures += execute_ok(database, "CREATE DATABASE app");
+    failures += execute_ok(database, "USE app");
+    failures += execute_ok(database, "CREATE TABLE items (id INT NOT NULL, name VARCHAR(20))");
+    failures += execute_ok(database, "INSERT INTO items VALUES (1, 'alpha')");
+
+    failures += expect_int(
+        mylite_prepare(database, query, strlen(query), &stmt),
+        MYLITE_OK,
+        "prepare first cached cursor"
+    );
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "first cached cursor row");
+    failures += expect_cursor_text(stmt, 0U, "alpha", "first cached cursor value");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "first cached cursor done");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize first cached cursor");
+    stmt = NULL;
+
+    failures += expect_int(
+        mylite_prepare(database, query, strlen(query), &stmt),
+        MYLITE_OK,
+        "prepare reused cached cursor"
+    );
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "reused cached cursor row");
+    failures += expect_cursor_text(stmt, 0U, "alpha", "reused cached cursor value");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize reused cached cursor");
+    stmt = NULL;
+
+    failures += execute_ok(database, "ALTER TABLE items ADD COLUMN marker INT NULL");
+    failures += execute_ok(database, "UPDATE items SET name = 'beta', marker = 2 WHERE id = 1");
+    failures += expect_int(
+        mylite_prepare(database, query, strlen(query), &stmt),
+        MYLITE_OK,
+        "prepare cursor after schema change"
+    );
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "schema changed cursor row");
+    failures += expect_cursor_text(stmt, 0U, "beta", "schema changed cursor value");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize schema changed cursor");
+    stmt = NULL;
 
     mylite_close(database);
     remove_related_files(path);

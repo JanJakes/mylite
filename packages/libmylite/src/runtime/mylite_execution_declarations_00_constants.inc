@@ -24,6 +24,8 @@ enum {
     ascii_text_max_byte = 0x7fU,
     table_name_part_capacity = 3,
     integer_text_capacity = mylite_execution_scalar_integer_text_capacity,
+    information_schema_projection_stack_capacity = 8,
+    information_schema_row_index_stack_capacity = 64,
     index_display_group_primary = 0,
     index_display_group_spatial = 1,
     index_display_group_not_null_unique = 2,

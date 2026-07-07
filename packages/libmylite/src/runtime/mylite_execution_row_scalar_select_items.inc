@@ -255,8 +255,7 @@ static int information_schema_exists_subquery_matches(
 ) {
     struct information_schema_query query = {0};
     struct information_schema_row_set rows = {0};
-    size_t *indexes = NULL;
-    size_t index_count = 0U;
+    struct information_schema_row_index_set indexes = {0};
     int rc = MYLITE_OK;
 
     if (out_matches == NULL) {
@@ -295,20 +294,13 @@ static int information_schema_exists_subquery_matches(
         rc = build_information_schema_rows(database, NULL, query.definition, &rows);
     }
     if (rc == MYLITE_OK) {
-        rc = information_schema_matching_row_indexes(
-            database,
-            statement,
-            &query,
-            &rows,
-            &indexes,
-            &index_count
-        );
+        rc = information_schema_matching_row_indexes(database, statement, &query, &rows, &indexes);
     }
     if (rc == MYLITE_OK) {
-        *out_matches = index_count != 0U && !(query.limit.has_limit && query.limit.row_count == 0);
+        *out_matches = indexes.count != 0U && !(query.limit.has_limit && query.limit.row_count == 0);
     }
 
-    free(indexes);
+    information_schema_row_index_set_deinit(&indexes);
     information_schema_row_set_deinit(&rows);
     information_schema_query_deinit(&query);
     return rc;

@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
+benchmark="${MYLITE_BENCHMARK:-"$repo_root/build/ci/packages/libmylite/mylite_benchmark"}"
+iterations="${MYLITE_PERF_ITERATIONS:-1000}"
+samples="${MYLITE_PERF_SAMPLES:-7}"
+output="${1:-"$repo_root/build/performance-snapshot.txt"}"
+scenario_args=()
+
+if [[ "${1:-}" == "--help" ]]; then
+    cat <<EOF
+usage: tools/run-performance-snapshot [OUTPUT]
+
+Runs the production benchmark binary and writes sampled runtime summary lines.
+
+Environment:
+  MYLITE_BENCHMARK         benchmark executable path
+  MYLITE_PERF_ITERATIONS   iterations per sample, default: 1000
+  MYLITE_PERF_SAMPLES      samples per scenario, default: 7
+  MYLITE_PERF_SCENARIO     optional runtime scenario or runtime.foo.queryN filter
+EOF
+    exit 0
+fi
+
+if [[ ! -x "$benchmark" ]]; then
+    printf 'benchmark executable not found: %s\n' "$benchmark" >&2
+    printf 'build it first with: cmake --build --preset ci --target mylite_benchmark\n' >&2
+    exit 1
+fi
+
+if [[ -n "${MYLITE_PERF_SCENARIO:-}" ]]; then
+    scenario_args=(--scenario "$MYLITE_PERF_SCENARIO")
+fi
+
+mkdir -p "$(dirname -- "$output")"
+
+{
+    printf '# mylite performance snapshot\n'
+    printf '# head=%s\n' "$(git -C "$repo_root" rev-parse --short HEAD 2>/dev/null || printf unknown)"
+    printf '# benchmark=%s\n' "$benchmark"
+    printf '# iterations=%s\n' "$iterations"
+    printf '# samples=%s\n' "$samples"
+    if [[ -n "${MYLITE_PERF_SCENARIO:-}" ]]; then
+        printf '# scenario=%s\n' "$MYLITE_PERF_SCENARIO"
+    fi
+    "$benchmark" \
+        --only runtime \
+        --per-query \
+        --samples "$samples" \
+        --iterations "$iterations" \
+        "${scenario_args[@]}" |
+        awk '/^# summary / { print }'
+} >"$output"
+
+printf '%s\n' "$output"

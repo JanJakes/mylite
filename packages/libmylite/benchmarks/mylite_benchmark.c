@@ -336,26 +336,61 @@ static int parse_filter_option(const char *text, enum benchmark_filter *out_filt
 static int parse_size_option(const char *text, size_t *out_value);
 static void print_usage(const char *program_name, FILE *stream);
 static void print_scenario_list(void);
+static void print_runtime_scenario_list(
+    const struct runtime_scenario *scenarios,
+    size_t scenario_count
+);
 static bool filter_includes(enum benchmark_filter filter, enum benchmark_filter candidate);
 static int run_benchmarks(const struct benchmark_options *options);
 static int run_builtin_lexer_benchmark(const struct benchmark_options *options);
 static int run_builtin_parse_benchmark(const struct benchmark_options *options);
 static int run_csv_benchmarks(const struct benchmark_options *options);
 static int run_runtime_benchmarks(const struct benchmark_options *options);
-static bool runtime_scenario_matches_filter(
-    const struct benchmark_options *options,
-    const struct runtime_scenario *scenario
-);
 typedef int (*runtime_scenario_runner)(
     const struct runtime_scenario *scenario,
     size_t iterations,
     struct benchmark_measurement *out_measurement
+);
+static int run_filtered_runtime_scenario(
+    const struct benchmark_options *options,
+    const struct runtime_scenario *scenario,
+    const char *kind,
+    runtime_scenario_runner runner,
+    struct runtime_repetition_options repeat_options,
+    bool *inout_matched_scenario
+);
+static bool runtime_scenario_matches_base_filter(
+    const struct benchmark_options *options,
+    const struct runtime_scenario *scenario
+);
+static bool runtime_scenario_filter_query_index(
+    const struct benchmark_options *options,
+    const struct runtime_scenario *scenario,
+    size_t *out_query_index
+);
+static bool runtime_query_name_index(
+    const char *name,
+    const struct runtime_scenario *scenario,
+    size_t *out_query_index
 );
 static int run_runtime_query_samples(
     const struct runtime_scenario *scenario,
     const char *kind,
     runtime_scenario_runner runner,
     struct runtime_repetition_options repeat_options
+);
+static int run_runtime_query_sample_at(
+    const struct runtime_scenario *scenario,
+    const char *kind,
+    runtime_scenario_runner runner,
+    size_t query_index,
+    struct runtime_repetition_options repeat_options
+);
+static int make_runtime_query_scenario_name(
+    const struct runtime_scenario *scenario,
+    size_t query_index,
+    char *name,
+    size_t name_size
 );
 static int run_repeated_runtime_scenario(
     const struct runtime_scenario *scenario,
@@ -711,12 +746,39 @@ static void print_usage(const char *program_name, FILE *stream) {
 static void print_scenario_list(void) {
     puts("lexer.wp_builtin");
     puts("parse.wp_builtin");
-    puts("runtime.wp_options_hot");
-    puts("runtime.wp_posts_meta_hot");
-    puts("runtime.wp_metadata_hot");
-    puts("runtime.wp_select_cursor");
+    print_runtime_scenario_list(
+        runtime_scenarios,
+        sizeof(runtime_scenarios) / sizeof(runtime_scenarios[0])
+    );
+    print_runtime_scenario_list(
+        runtime_cursor_scenarios,
+        sizeof(runtime_cursor_scenarios) / sizeof(runtime_cursor_scenarios[0])
+    );
     puts("lexer.csv.mysql_server_tests");
     puts("parse.csv.mysql_server_tests");
+}
+
+static void print_runtime_scenario_list(
+    const struct runtime_scenario *scenarios,
+    size_t scenario_count
+) {
+    for (size_t scenario_index = 0U; scenario_index < scenario_count; ++scenario_index) {
+        const struct runtime_scenario *scenario = &scenarios[scenario_index];
+
+        puts(scenario->name);
+        for (size_t query_index = 0U; query_index < scenario->query_count; ++query_index) {
+            char query_scenario_name[runtime_query_scenario_name_capacity];
+
+            if (make_runtime_query_scenario_name(
+                    scenario,
+                    query_index,
+                    query_scenario_name,
+                    sizeof(query_scenario_name)
+                ) == 0) {
+                puts(query_scenario_name);
+            }
+        }
+    }
 }
 
 static bool filter_includes(enum benchmark_filter filter, enum benchmark_filter candidate) {
@@ -873,63 +935,33 @@ static int run_runtime_benchmarks(const struct benchmark_options *options) {
     for (size_t scenario_index = 0U;
          scenario_index < sizeof(runtime_scenarios) / sizeof(runtime_scenarios[0]);
          ++scenario_index) {
-        int rc = 0;
-
-        if (!runtime_scenario_matches_filter(options, &runtime_scenarios[scenario_index])) {
-            continue;
-        }
-        matched_scenario = true;
-        rc = run_repeated_runtime_scenario(
+        int rc = run_filtered_runtime_scenario(
+            options,
             &runtime_scenarios[scenario_index],
             "execute",
             run_runtime_scenario,
-            repeat_options
+            repeat_options,
+            &matched_scenario
         );
 
         if (rc != 0) {
             return rc;
-        }
-        if (options->runtime_per_query) {
-            rc = run_runtime_query_samples(
-                &runtime_scenarios[scenario_index],
-                "execute",
-                run_runtime_scenario,
-                repeat_options
-            );
-            if (rc != 0) {
-                return rc;
-            }
         }
     }
     for (size_t scenario_index = 0U;
          scenario_index < sizeof(runtime_cursor_scenarios) / sizeof(runtime_cursor_scenarios[0]);
          ++scenario_index) {
-        int rc = 0;
-
-        if (!runtime_scenario_matches_filter(options, &runtime_cursor_scenarios[scenario_index])) {
-            continue;
-        }
-        matched_scenario = true;
-        rc = run_repeated_runtime_scenario(
+        int rc = run_filtered_runtime_scenario(
+            options,
             &runtime_cursor_scenarios[scenario_index],
             "cursor",
             run_runtime_cursor_scenario,
-            repeat_options
+            repeat_options,
+            &matched_scenario
         );
 
         if (rc != 0) {
             return rc;
-        }
-        if (options->runtime_per_query) {
-            rc = run_runtime_query_samples(
-                &runtime_cursor_scenarios[scenario_index],
-                "cursor",
-                run_runtime_cursor_scenario,
-                repeat_options
-            );
-            if (rc != 0) {
-                return rc;
-            }
         }
     }
     if (options->runtime_scenario_name != NULL && !matched_scenario) {
@@ -939,7 +971,37 @@ static int run_runtime_benchmarks(const struct benchmark_options *options) {
     return 0;
 }
 
-static bool runtime_scenario_matches_filter(
+static int run_filtered_runtime_scenario(
+    const struct benchmark_options *options,
+    const struct runtime_scenario *scenario,
+    const char *kind,
+    runtime_scenario_runner runner,
+    struct runtime_repetition_options repeat_options,
+    bool *inout_matched_scenario
+) {
+    size_t query_index = 0U;
+    bool has_query_filter = runtime_scenario_filter_query_index(options, scenario, &query_index);
+    int rc = 0;
+
+    if (!runtime_scenario_matches_base_filter(options, scenario) && !has_query_filter) {
+        return 0;
+    }
+    *inout_matched_scenario = true;
+    if (has_query_filter) {
+        return run_runtime_query_sample_at(scenario, kind, runner, query_index, repeat_options);
+    }
+
+    rc = run_repeated_runtime_scenario(scenario, kind, runner, repeat_options);
+    if (rc != 0) {
+        return rc;
+    }
+    if (options->runtime_per_query) {
+        return run_runtime_query_samples(scenario, kind, runner, repeat_options);
+    }
+    return 0;
+}
+
+static bool runtime_scenario_matches_base_filter(
     const struct benchmark_options *options,
     const struct runtime_scenario *scenario
 ) {
@@ -950,6 +1012,51 @@ static bool runtime_scenario_matches_filter(
     return strcmp(options->runtime_scenario_name, scenario->name) == 0;
 }
 
+static bool runtime_scenario_filter_query_index(
+    const struct benchmark_options *options,
+    const struct runtime_scenario *scenario,
+    size_t *out_query_index
+) {
+    if (options == NULL || options->runtime_scenario_name == NULL) {
+        return false;
+    }
+    return runtime_query_name_index(options->runtime_scenario_name, scenario, out_query_index);
+}
+
+static bool runtime_query_name_index(
+    const char *name,
+    const struct runtime_scenario *scenario,
+    size_t *out_query_index
+) {
+    const size_t scenario_name_length = scenario == NULL ? 0U : strlen(scenario->name);
+    const char query_suffix[] = ".query";
+    const size_t query_suffix_length = sizeof(query_suffix) - 1U;
+    const size_t name_length = name == NULL ? 0U : strlen(name);
+    const char *query_text = NULL;
+    char *end = NULL;
+    unsigned long long query_number = 0ULL;
+
+    if (name == NULL || scenario == NULL || out_query_index == NULL ||
+        name_length <= scenario_name_length + query_suffix_length ||
+        strncmp(name, scenario->name, scenario_name_length) != 0 ||
+        strncmp(name + scenario_name_length, query_suffix, query_suffix_length) != 0) {
+        return false;
+    }
+    query_text = name + scenario_name_length + query_suffix_length;
+    if (query_text[0] == '\0') {
+        return false;
+    }
+
+    errno = 0;
+    query_number = strtoull(query_text, &end, decimal_option_base);
+    if (errno != 0 || end == query_text || *end != '\0' || query_number == 0ULL ||
+        query_number > (unsigned long long)scenario->query_count) {
+        return false;
+    }
+    *out_query_index = (size_t)(query_number - 1ULL);
+    return true;
+}
+
 static int run_runtime_query_samples(
     const struct runtime_scenario *scenario,
     const char *kind,
@@ -957,28 +1064,47 @@ static int run_runtime_query_samples(
     struct runtime_repetition_options repeat_options
 ) {
     for (size_t query_index = 0U; query_index < scenario->query_count; ++query_index) {
-        char query_scenario_name[runtime_query_scenario_name_capacity];
-        struct runtime_scenario query_scenario = *scenario;
-        int written = snprintf(
-            query_scenario_name,
-            sizeof(query_scenario_name),
-            "%s.query%zu",
-            scenario->name,
-            query_index + 1U
-        );
-
-        if (written < 0 || (size_t)written >= sizeof(query_scenario_name)) {
-            fprintf(stderr, "%s: per-query scenario name is too long\n", scenario->name);
-            return 1;
-        }
-        query_scenario.name = query_scenario_name;
-        query_scenario.queries = &scenario->queries[query_index];
-        query_scenario.query_count = 1U;
-        if (run_repeated_runtime_scenario(&query_scenario, kind, runner, repeat_options) != 0) {
+        if (run_runtime_query_sample_at(scenario, kind, runner, query_index, repeat_options) != 0) {
             return 1;
         }
     }
     return 0;
+}
+
+static int run_runtime_query_sample_at(
+    const struct runtime_scenario *scenario,
+    const char *kind,
+    runtime_scenario_runner runner,
+    size_t query_index,
+    struct runtime_repetition_options repeat_options
+) {
+    char query_scenario_name[runtime_query_scenario_name_capacity];
+    struct runtime_scenario query_scenario = *scenario;
+
+    if (make_runtime_query_scenario_name(
+            scenario,
+            query_index,
+            query_scenario_name,
+            sizeof(query_scenario_name)
+        ) != 0) {
+        fprintf(stderr, "%s: per-query scenario name is too long\n", scenario->name);
+        return 1;
+    }
+    query_scenario.name = query_scenario_name;
+    query_scenario.queries = &scenario->queries[query_index];
+    query_scenario.query_count = 1U;
+    return run_repeated_runtime_scenario(&query_scenario, kind, runner, repeat_options);
+}
+
+static int make_runtime_query_scenario_name(
+    const struct runtime_scenario *scenario,
+    size_t query_index,
+    char *name,
+    size_t name_size
+) {
+    int written = snprintf(name, name_size, "%s.query%zu", scenario->name, query_index + 1U);
+
+    return written < 0 || (size_t)written >= name_size ? 1 : 0;
 }
 
 static int run_repeated_runtime_scenario(
@@ -1547,7 +1673,7 @@ static int classify_expected_parse_failures(
         );
 
         if (status != MYLITE_SQL_PARSE_OK) {
-            if (expectation == NULL) {
+            if (expectation == NULL || seen == NULL) {
                 ++out_summary->unexpected_count;
                 print_parse_failure_row(stderr, one_based_query_index, status, &result, query);
             } else {

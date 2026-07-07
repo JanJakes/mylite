@@ -235,8 +235,9 @@ static int information_schema_sort_row_indexes_by(
         size_t run_width = width > SIZE_MAX / 2U ? SIZE_MAX : width * 2U;
 
         for (size_t left = 0U; left < index_count; left += run_width) {
-            size_t middle = left > index_count - width ? index_count : left + width;
-            size_t right = left > index_count - run_width ? index_count : left + run_width;
+            size_t remaining = index_count - left;
+            size_t middle = remaining < width ? index_count : left + width;
+            size_t right = remaining < run_width ? index_count : left + run_width;
 
             information_schema_merge_row_index_runs(
                 sort,

@@ -100,28 +100,39 @@ typedef struct {
     int error_code;
     bool connected;
     zval last_result;
+    mylite_stmt *pending_stmt;
+    zend_string *pending_sql;
+    uint64_t pending_execute_ns;
     zend_object std;
 } mylite_mysqli_link;
 
 typedef struct {
-    zend_string **names;
-    zend_string **schemas;
-    zend_string **tables;
-    zend_string **origin_tables;
-    zend_string **origin_names;
-    int *types;
-    unsigned int *flags;
-    uint64_t *lengths;
-    uint64_t *max_lengths;
-    unsigned int *decimals;
-    unsigned int *charsets;
-    bool *nullable;
+    zend_string *name;
+    zend_string *schema;
+    zend_string *table;
+    zend_string *origin_table;
+    zend_string *origin_name;
+    int type;
+    unsigned int flags;
+    uint64_t length;
+    uint64_t max_length;
+    unsigned int decimals;
+    unsigned int charset;
+    bool nullable;
+} mylite_mysqli_field;
+
+typedef struct {
+    mylite_mysqli_field *fields;
     zval *values;
+    mylite_stmt *native_stmt;
     uint32_t column_count;
     uint32_t row_count;
     uint32_t row_capacity;
     uint32_t cursor;
     uint32_t field_cursor;
+    bool unbuffered;
+    bool current_row_valid;
+    bool unbuffered_finished;
     zend_object std;
 } mylite_mysqli_result;
 
@@ -211,13 +222,17 @@ bool mylite_mysqli_connect_link(
     const char *socket,
     size_t socket_length
 );
+void mylite_mysqli_close_link(mylite_mysqli_link *link);
 bool mylite_mysqli_link_query(
     mylite_mysqli_link *link,
     const char *sql,
     size_t sql_length,
+    zend_long result_mode,
     zval *out_result
 );
 bool mylite_mysqli_link_real_query(mylite_mysqli_link *link, const char *sql, size_t sql_length);
+bool mylite_mysqli_link_store_result(mylite_mysqli_link *link, zval *out_result);
+bool mylite_mysqli_link_use_result(mylite_mysqli_link *link, zval *out_result);
 bool mylite_mysqli_stmt_prepare_internal(
     mylite_mysqli_stmt *stmt,
     const char *sql,
@@ -235,7 +250,14 @@ void mylite_mysqli_result_fetch_field(
     uint32_t index,
     zval *return_value
 );
+zend_long mylite_mysqli_result_num_rows(const mylite_mysqli_result *result);
+void mylite_mysqli_result_discard(mylite_mysqli_result *result);
 zend_string *mylite_mysqli_interpolate_query(
+    zend_string *query,
+    zval *params,
+    uint32_t param_count
+);
+zend_string *mylite_mysqli_interpolate_bound_params(
     zend_string *query,
     zval *params,
     uint32_t param_count

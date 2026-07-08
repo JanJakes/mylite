@@ -371,6 +371,93 @@ const char *mylite_stmt_column_name(const mylite_stmt *stmt, size_t column_index
     return mylite_result_column_name(stmt->metadata_result, column_index);
 }
 
+const char *mylite_stmt_column_schema_name(const mylite_stmt *stmt, size_t column_index) {
+    if (stmt == NULL || stmt->metadata_result == NULL) {
+        return NULL;
+    }
+    return mylite_result_column_schema_name(stmt->metadata_result, column_index);
+}
+
+const char *mylite_stmt_column_table_name(const mylite_stmt *stmt, size_t column_index) {
+    if (stmt == NULL || stmt->metadata_result == NULL) {
+        return NULL;
+    }
+    return mylite_result_column_table_name(stmt->metadata_result, column_index);
+}
+
+const char *mylite_stmt_column_origin_schema_name(const mylite_stmt *stmt, size_t column_index) {
+    if (stmt == NULL || stmt->metadata_result == NULL) {
+        return NULL;
+    }
+    return mylite_result_column_origin_schema_name(stmt->metadata_result, column_index);
+}
+
+const char *mylite_stmt_column_origin_table_name(const mylite_stmt *stmt, size_t column_index) {
+    if (stmt == NULL || stmt->metadata_result == NULL) {
+        return NULL;
+    }
+    return mylite_result_column_origin_table_name(stmt->metadata_result, column_index);
+}
+
+const char *mylite_stmt_column_origin_name(const mylite_stmt *stmt, size_t column_index) {
+    if (stmt == NULL || stmt->metadata_result == NULL) {
+        return NULL;
+    }
+    return mylite_result_column_origin_name(stmt->metadata_result, column_index);
+}
+
+enum mylite_result_column_type mylite_stmt_column_type(
+    const mylite_stmt *stmt,
+    size_t column_index
+) {
+    if (stmt == NULL || stmt->metadata_result == NULL) {
+        return MYLITE_RESULT_COLUMN_TYPE_UNKNOWN;
+    }
+    return mylite_result_column_type(stmt->metadata_result, column_index);
+}
+
+uint32_t mylite_stmt_column_flags(const mylite_stmt *stmt, size_t column_index) {
+    if (stmt == NULL || stmt->metadata_result == NULL) {
+        return 0U;
+    }
+    return mylite_result_column_flags(stmt->metadata_result, column_index);
+}
+
+uint32_t mylite_stmt_column_charset_id(const mylite_stmt *stmt, size_t column_index) {
+    if (stmt == NULL || stmt->metadata_result == NULL) {
+        return 0U;
+    }
+    return mylite_result_column_charset_id(stmt->metadata_result, column_index);
+}
+
+uint32_t mylite_stmt_column_collation_id(const mylite_stmt *stmt, size_t column_index) {
+    if (stmt == NULL || stmt->metadata_result == NULL) {
+        return 0U;
+    }
+    return mylite_result_column_collation_id(stmt->metadata_result, column_index);
+}
+
+uint64_t mylite_stmt_column_display_length(const mylite_stmt *stmt, size_t column_index) {
+    if (stmt == NULL || stmt->metadata_result == NULL) {
+        return 0U;
+    }
+    return mylite_result_column_display_length(stmt->metadata_result, column_index);
+}
+
+uint16_t mylite_stmt_column_decimals(const mylite_stmt *stmt, size_t column_index) {
+    if (stmt == NULL || stmt->metadata_result == NULL) {
+        return 0U;
+    }
+    return mylite_result_column_decimals(stmt->metadata_result, column_index);
+}
+
+int mylite_stmt_column_nullable(const mylite_stmt *stmt, size_t column_index) {
+    if (stmt == NULL || stmt->metadata_result == NULL) {
+        return 1;
+    }
+    return mylite_result_column_nullable(stmt->metadata_result, column_index);
+}
+
 const char *mylite_stmt_value_text(const mylite_stmt *stmt, size_t column_index) {
     return (const char *)mylite_stmt_value_bytes(stmt, column_index);
 }

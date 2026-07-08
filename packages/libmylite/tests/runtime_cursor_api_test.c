@@ -13,6 +13,10 @@
 enum {
     test_path_capacity = 1024,
     path_suffix_capacity = 16,
+    mysql_collation_binary_id = 63,
+    mysql_collation_utf8mb4_0900_ai_ci_id = 255,
+    mysql_int_display_length = 11,
+    mysql_varchar_20_display_length = 80,
 };
 
 struct expected_query_scalar_text {
@@ -44,6 +48,8 @@ static int expect_cursor_null(const mylite_stmt *stmt, size_t column_index, cons
 static int expect_contains(const char *actual, const char *needle, const char *context);
 static int expect_int(int actual, int expected, const char *context);
 static int expect_size(size_t actual, size_t expected, const char *context);
+static int expect_uint32(uint32_t actual, uint32_t expected, const char *context);
+static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
 static int expect_text(const char *actual, const char *expected, const char *context);
 static int expect_true(int condition, const char *context);
 
@@ -96,6 +102,64 @@ static int test_cursor_select_streams_rows_and_metadata(void) {
     failures += expect_text(mylite_stmt_column_name(stmt, 0U), "id", "cursor id column name");
     failures += expect_text(mylite_stmt_column_name(stmt, 1U), "name", "cursor name column name");
     failures += expect_text(mylite_stmt_column_name(stmt, 2U), "note", "cursor note column name");
+    failures += expect_text(mylite_stmt_column_schema_name(stmt, 0U), "app", "cursor id schema");
+    failures += expect_text(mylite_stmt_column_table_name(stmt, 0U), "items", "cursor id table");
+    failures += expect_text(
+        mylite_stmt_column_origin_schema_name(stmt, 0U),
+        "app",
+        "cursor id origin schema"
+    );
+    failures += expect_text(
+        mylite_stmt_column_origin_table_name(stmt, 0U),
+        "items",
+        "cursor id origin table"
+    );
+    failures +=
+        expect_text(mylite_stmt_column_origin_name(stmt, 0U), "id", "cursor id origin name");
+    failures += expect_int(
+        mylite_stmt_column_type(stmt, 0U),
+        MYLITE_RESULT_COLUMN_TYPE_LONG,
+        "cursor id type"
+    );
+    failures += expect_uint32(
+        mylite_stmt_column_flags(stmt, 0U),
+        MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT |
+            MYLITE_RESULT_COLUMN_FLAG_NUM,
+        "cursor id flags"
+    );
+    failures += expect_uint32(
+        mylite_stmt_column_charset_id(stmt, 0U),
+        mysql_collation_binary_id,
+        "cursor id charset"
+    );
+    failures += expect_uint32(
+        mylite_stmt_column_collation_id(stmt, 0U),
+        mysql_collation_binary_id,
+        "cursor id collation"
+    );
+    failures += expect_uint64(
+        mylite_stmt_column_display_length(stmt, 0U),
+        mysql_int_display_length,
+        "cursor id display length"
+    );
+    failures += expect_int(mylite_stmt_column_nullable(stmt, 0U), 0, "cursor id nullable");
+    failures += expect_int(
+        mylite_stmt_column_type(stmt, 1U),
+        MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+        "cursor name type"
+    );
+    failures += expect_uint32(
+        mylite_stmt_column_collation_id(stmt, 1U),
+        mysql_collation_utf8mb4_0900_ai_ci_id,
+        "cursor name collation"
+    );
+    failures += expect_uint64(
+        mylite_stmt_column_display_length(stmt, 1U),
+        mysql_varchar_20_display_length,
+        "cursor name display length"
+    );
+    failures += expect_int(mylite_stmt_column_nullable(stmt, 1U), 1, "cursor name nullable");
+    failures += expect_int(mylite_stmt_column_decimals(stmt, 1U), 0, "cursor name decimals");
     failures +=
         expect_true(mylite_stmt_column_name(stmt, 3U) == NULL, "cursor out-of-range column name");
     failures +=
@@ -437,6 +501,30 @@ static int expect_int(int actual, int expected, const char *context) {
 static int expect_size(size_t actual, size_t expected, const char *context) {
     if (actual != expected) {
         fprintf(stderr, "%s: expected %zu, got %zu\n", context, expected, actual);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_uint32(uint32_t actual, uint32_t expected, const char *context) {
+    if (actual != expected) {
+        fprintf(stderr, "%s: expected %u, got %u\n", context, expected, actual);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int expect_uint64(uint64_t actual, uint64_t expected, const char *context) {
+    if (actual != expected) {
+        fprintf(
+            stderr,
+            "%s: expected %llu, got %llu\n",
+            context,
+            (unsigned long long)expected,
+            (unsigned long long)actual
+        );
         return 1;
     }
 

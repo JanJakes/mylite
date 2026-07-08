@@ -27,6 +27,29 @@ mysqli_data_seek($result, 0);
 expect_same('1', mysqli_fetch_column($result, 0), 'fetch column');
 expect_same(2, mysqli_num_fields($result), 'num fields');
 
+$stream = mysqli_query($mysqli, 'SELECT n, label FROM numbers ORDER BY n', MYSQLI_USE_RESULT);
+if (!$stream instanceof mysqli_result) {
+    throw new RuntimeException('procedural streaming result type');
+}
+expect_same(0, mysqli_num_rows($stream), 'procedural streaming initial rows');
+expect_same(['n' => '1', 'label' => '10'], mysqli_fetch_assoc($stream), 'procedural streaming first assoc row');
+expect_same([1, 2], mysqli_fetch_lengths($stream), 'procedural streaming first row lengths');
+expect_same(0, mysqli_num_rows($stream), 'procedural streaming partial rows');
+expect_false(mysqli_data_seek($stream, 0), 'procedural streaming seek unsupported');
+expect_same([['2', '20']], mysqli_fetch_all($stream, MYSQLI_NUM), 'procedural streaming fetch all remainder');
+expect_same(null, mysqli_fetch_assoc($stream), 'procedural streaming exhausted');
+expect_same(2, mysqli_num_rows($stream), 'procedural streaming exhausted rows');
+
+expect_true(mysqli_real_query($mysqli, 'SELECT n, label FROM numbers ORDER BY n'), 'procedural real query select');
+$real_stream = mysqli_use_result($mysqli);
+if (!$real_stream instanceof mysqli_result) {
+    throw new RuntimeException('procedural real query streaming result type');
+}
+expect_same(MYSQLI_USE_RESULT, $real_stream->type, 'procedural real query streaming type');
+expect_same(['n' => '1', 'label' => '10'], mysqli_fetch_assoc($real_stream), 'procedural real query first row');
+expect_same([['2', '20']], mysqli_fetch_all($real_stream, MYSQLI_NUM), 'procedural real query remainder');
+expect_same(2, mysqli_num_rows($real_stream), 'procedural real query exhausted rows');
+
 mysqli_free_result($result);
 expect_true(mysqli_close($mysqli), 'close');
 

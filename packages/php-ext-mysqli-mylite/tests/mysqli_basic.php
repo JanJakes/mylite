@@ -44,6 +44,49 @@ expect_same(['id' => '1', 'views' => '10'], $result->fetch_assoc(), 'first assoc
 expect_same(['2', '20'], $result->fetch_row(), 'second numeric row');
 expect_same(null, $result->fetch_assoc(), 'result exhausted');
 
+$stream = $mysqli->query('SELECT id, views FROM posts ORDER BY id', MYSQLI_USE_RESULT);
+if (!$stream instanceof mysqli_result) {
+    throw new RuntimeException('streaming query result type');
+}
+expect_same(MYSQLI_USE_RESULT, $stream->type, 'streaming result type');
+expect_same(0, mysqli_num_rows($stream), 'streaming initial row count');
+expect_same(['id' => '1', 'views' => '10'], $stream->fetch_assoc(), 'streaming first assoc row');
+expect_same([1, 2], mysqli_fetch_lengths($stream), 'streaming first row lengths');
+expect_same(0, mysqli_num_rows($stream), 'streaming partial row count');
+expect_false($stream->data_seek(0), 'streaming data seek unsupported');
+expect_same(['id' => '2', 'views' => '20'], $stream->fetch_assoc(), 'streaming second assoc row');
+expect_same(null, $stream->fetch_assoc(), 'streaming result exhausted');
+expect_same(2, mysqli_num_rows($stream), 'streaming exhausted row count');
+expect_same(2, $stream->num_rows, 'streaming exhausted row count property');
+
+$stream_all = $mysqli->query('SELECT id, views FROM posts ORDER BY id', MYSQLI_USE_RESULT);
+if (!$stream_all instanceof mysqli_result) {
+    throw new RuntimeException('streaming fetch_all result type');
+}
+expect_same([['1', '10'], ['2', '20']], $stream_all->fetch_all(MYSQLI_NUM), 'streaming fetch all rows');
+expect_same(null, $stream_all->fetch_assoc(), 'streaming fetch all exhausted');
+expect_same(2, mysqli_num_rows($stream_all), 'streaming fetch all row count');
+
+expect_true($mysqli->real_query('SELECT id, views FROM posts ORDER BY id'), 'real query select');
+$real_stream = $mysqli->use_result();
+if (!$real_stream instanceof mysqli_result) {
+    throw new RuntimeException('real query streaming result type');
+}
+expect_same(MYSQLI_USE_RESULT, $real_stream->type, 'real query streaming result type constant');
+expect_same(0, mysqli_num_rows($real_stream), 'real query streaming initial row count');
+expect_same(['id' => '1', 'views' => '10'], $real_stream->fetch_assoc(), 'real query streaming first row');
+expect_same([['2', '20']], $real_stream->fetch_all(MYSQLI_NUM), 'real query streaming remainder');
+expect_same(2, mysqli_num_rows($real_stream), 'real query streaming exhausted row count');
+
+expect_true($mysqli->real_query('SELECT id, views FROM posts ORDER BY id'), 'real query buffered select');
+$real_buffer = $mysqli->store_result();
+if (!$real_buffer instanceof mysqli_result) {
+    throw new RuntimeException('real query buffered result type');
+}
+expect_same(MYSQLI_STORE_RESULT, $real_buffer->type, 'real query buffered result type constant');
+expect_same(2, $real_buffer->num_rows, 'real query buffered row count');
+expect_same([['1', '10'], ['2', '20']], $real_buffer->fetch_all(MYSQLI_NUM), 'real query buffered rows');
+
 expect_true(
     $mysqli->query(
         "CREATE TABLE auto_posts (

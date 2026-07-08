@@ -101,6 +101,27 @@ MYLITE_API int mylite_stmt_step(mylite_stmt *stmt);
 MYLITE_API int mylite_stmt_finalize(mylite_stmt *stmt);
 MYLITE_API size_t mylite_stmt_column_count(const mylite_stmt *stmt);
 MYLITE_API const char *mylite_stmt_column_name(const mylite_stmt *stmt, size_t column_index);
+MYLITE_API const char *mylite_stmt_column_schema_name(const mylite_stmt *stmt, size_t column_index);
+MYLITE_API const char *mylite_stmt_column_table_name(const mylite_stmt *stmt, size_t column_index);
+MYLITE_API const char *mylite_stmt_column_origin_schema_name(
+    const mylite_stmt *stmt,
+    size_t column_index
+);
+MYLITE_API const char *mylite_stmt_column_origin_table_name(
+    const mylite_stmt *stmt,
+    size_t column_index
+);
+MYLITE_API const char *mylite_stmt_column_origin_name(const mylite_stmt *stmt, size_t column_index);
+MYLITE_API enum mylite_result_column_type mylite_stmt_column_type(
+    const mylite_stmt *stmt,
+    size_t column_index
+);
+MYLITE_API uint32_t mylite_stmt_column_flags(const mylite_stmt *stmt, size_t column_index);
+MYLITE_API uint32_t mylite_stmt_column_charset_id(const mylite_stmt *stmt, size_t column_index);
+MYLITE_API uint32_t mylite_stmt_column_collation_id(const mylite_stmt *stmt, size_t column_index);
+MYLITE_API uint64_t mylite_stmt_column_display_length(const mylite_stmt *stmt, size_t column_index);
+MYLITE_API uint16_t mylite_stmt_column_decimals(const mylite_stmt *stmt, size_t column_index);
+MYLITE_API int mylite_stmt_column_nullable(const mylite_stmt *stmt, size_t column_index);
 MYLITE_API const char *mylite_stmt_value_text(const mylite_stmt *stmt, size_t column_index);
 MYLITE_API const void *mylite_stmt_value_bytes(const mylite_stmt *stmt, size_t column_index);
 MYLITE_API size_t mylite_stmt_value_size(const mylite_stmt *stmt, size_t column_index);

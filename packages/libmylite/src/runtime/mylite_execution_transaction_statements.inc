@@ -3,7 +3,18 @@ static int execute_start_transaction_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
-    const struct mylite_sql_ast_node *characteristic_list = child_at(statement, 0U);
+    return execute_start_transaction_statement_with_characteristics(
+        database,
+        child_at(statement, 0U),
+        out_result
+    );
+}
+
+static int execute_start_transaction_statement_with_characteristics(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *characteristic_list,
+    mylite_result **out_result
+) {
     struct transaction_characteristics characteristics = {
         .has_isolation = false,
         .has_access_mode = false,
@@ -99,11 +110,22 @@ static int execute_commit_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
+    return execute_commit_statement_with_chain(
+        database,
+        transaction_completion_requests_chain(statement),
+        out_result
+    );
+}
+
+static int execute_commit_statement_with_chain(
+    struct mylite_db *database,
+    bool chain,
+    mylite_result **out_result
+) {
     mylite_result *result = NULL;
     enum mylite_transaction_isolation chained_isolation = current_transaction_isolation(database);
     enum mylite_transaction_access_mode chained_access_mode =
         current_transaction_access_mode(database);
-    bool chain = transaction_completion_requests_chain(statement);
     int rc = mylite_result_create(&result);
 
     if (rc != MYLITE_OK) {
@@ -147,11 +169,22 @@ static int execute_rollback_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 ) {
+    return execute_rollback_statement_with_chain(
+        database,
+        transaction_completion_requests_chain(statement),
+        out_result
+    );
+}
+
+static int execute_rollback_statement_with_chain(
+    struct mylite_db *database,
+    bool chain,
+    mylite_result **out_result
+) {
     mylite_result *result = NULL;
     enum mylite_transaction_isolation chained_isolation = current_transaction_isolation(database);
     enum mylite_transaction_access_mode chained_access_mode =
         current_transaction_access_mode(database);
-    bool chain = transaction_completion_requests_chain(statement);
     int rc = mylite_result_create(&result);
 
     if (rc != MYLITE_OK) {

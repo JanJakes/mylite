@@ -33,6 +33,34 @@ expect_true($mysqli->query("INSERT INTO posts (id, views) VALUES (1, 10), (2, 20
 expect_same(2, $mysqli->affected_rows, 'affected rows');
 expect_same(0, $mysqli->insert_id, 'insert id');
 
+expect_true(
+    $mysqli->query('CREATE TABLE transaction_fast_path (id INT NOT NULL, views INT NOT NULL)'),
+    'create transaction fast path table'
+);
+expect_true($mysqli->query(" \tSTART TRANSACTION; \n"), 'fast path start transaction');
+expect_same(0, $mysqli->affected_rows, 'fast path start affected rows');
+expect_true($mysqli->query('INSERT INTO transaction_fast_path VALUES (1, 10)'), 'fast path insert rollback row');
+expect_true($mysqli->query('rollback'), 'fast path rollback');
+expect_same(0, $mysqli->affected_rows, 'fast path rollback affected rows');
+$transactionCount = $mysqli->query('SELECT COUNT(*) AS row_count FROM transaction_fast_path');
+if (!$transactionCount instanceof mysqli_result) {
+    throw new RuntimeException('fast path rollback count result type');
+}
+expect_same(['row_count' => '0'], $transactionCount->fetch_assoc(), 'fast path rollback count');
+
+expect_true($mysqli->query('BEGIN;'), 'fast path begin');
+expect_true($mysqli->query('INSERT INTO transaction_fast_path VALUES (2, 20)'), 'fast path insert commit row');
+expect_true($mysqli->query('COMMIT'), 'fast path commit');
+$transactionRows = $mysqli->query('SELECT id, views FROM transaction_fast_path ORDER BY id');
+if (!$transactionRows instanceof mysqli_result) {
+    throw new RuntimeException('fast path commit result type');
+}
+expect_same([['2', '20']], $transactionRows->fetch_all(MYSQLI_NUM), 'fast path commit rows');
+expect_true($mysqli->query('ROLLBACK'), 'fast path no-op rollback');
+expect_same(0, $mysqli->affected_rows, 'fast path no-op rollback affected rows');
+expect_true($mysqli->query('BEGIN WORK'), 'parser begin work still supported');
+expect_true($mysqli->query('ROLLBACK WORK'), 'parser rollback work still supported');
+
 $result = $mysqli->query('SELECT id, views FROM posts ORDER BY id');
 if (!$result instanceof mysqli_result) {
     throw new RuntimeException('query result type');

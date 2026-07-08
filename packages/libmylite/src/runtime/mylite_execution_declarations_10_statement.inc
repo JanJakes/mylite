@@ -96,14 +96,29 @@ static int execute_start_transaction_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_start_transaction_statement_with_characteristics(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *characteristic_list,
+    mylite_result **out_result
+);
 static int execute_commit_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int execute_commit_statement_with_chain(
+    struct mylite_db *database,
+    bool chain,
+    mylite_result **out_result
+);
 static int execute_rollback_statement(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static int execute_rollback_statement_with_chain(
+    struct mylite_db *database,
+    bool chain,
     mylite_result **out_result
 );
 static bool transaction_completion_requests_chain(const struct mylite_sql_ast_node *statement);

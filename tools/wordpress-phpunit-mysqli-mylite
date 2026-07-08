@@ -18,6 +18,11 @@ container_cmake_build_dir="${container_root}${cmake_build_dir#"${root_dir}"}"
 container_path_for() {
   local path="$1"
 
+  if [[ "${path}" != /* ]]; then
+    printf '%s/%s\n' "${container_root}" "${path#./}"
+    return
+  fi
+
   if [[ "${path}" == "${root_dir}" || "${path}" == "${root_dir}/"* ]]; then
     printf '%s%s\n' "${container_root}" "${path#"${root_dir}"}"
     return
@@ -220,6 +225,28 @@ phpunit_output_has_nonpassing_summary() {
   grep -Eq '^(FAILURES!|ERRORS!|No tests executed!|There (was|were) [0-9]+ (failure|failures|error|errors))' "$1"
 }
 
+reset_mysqli_profile() {
+  if [ -z "${MYLITE_MYSQLI_PROFILE:-}" ] ||
+    [ "${MYLITE_MYSQLI_PROFILE}" = "1" ] ||
+    [ "${MYLITE_MYSQLI_PROFILE}" = "stderr" ]; then
+    return
+  fi
+  mkdir -p "$(dirname "${MYLITE_MYSQLI_PROFILE}")"
+  rm -f "${MYLITE_MYSQLI_PROFILE}"
+}
+
+print_mysqli_profile() {
+  if [ -z "${MYLITE_MYSQLI_PROFILE:-}" ] ||
+    [ "${MYLITE_MYSQLI_PROFILE}" = "1" ] ||
+    [ "${MYLITE_MYSQLI_PROFILE}" = "stderr" ] ||
+    [ ! -s "${MYLITE_MYSQLI_PROFILE}" ]; then
+    return
+  fi
+
+  phase "MyLite mysqli profile"
+  cat "${MYLITE_MYSQLI_PROFILE}"
+}
+
 run_wordpress_phpunit_suite() {
   require_executable "${php_wrapper}"
   require_executable "${MYLITE_WORDPRESS_PHPUNIT_TOOLS_DIR}/vendor/bin/phpunit"
@@ -244,6 +271,7 @@ if (!mysqli_query($db, "CREATE DATABASE IF NOT EXISTS wordpress_tests")) {
 ' "${MYLITE_WORDPRESS_DB_PATH}"
 
   write_wordpress_config
+  reset_mysqli_profile
 
   phase "Run WordPress PHPUnit test suite"
   suite_log="${MYLITE_WORDPRESS_CMAKE_BUILD_DIR}/wordpress-phpunit.log"
@@ -264,6 +292,7 @@ if (!mysqli_query($db, "CREATE DATABASE IF NOT EXISTS wordpress_tests")) {
     suite_status=1
   fi
   echo "wordpress_phpunit_seconds=$(seconds_since "${suite_start}")"
+  print_mysqli_profile
   return "${suite_status}"
 }
 

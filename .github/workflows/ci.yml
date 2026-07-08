@@ -158,6 +158,8 @@ jobs:
       MYLITE_WORDPRESS_REF: 6ddfc9d9b532c6e95c1266165149815895e2eb56
       MYLITE_WORDPRESS_CMAKE_BUILD_TYPE: Release
       MYLITE_WORDPRESS_DB_PATH: /dev/shm/mylite-wordpress-tests.mylite
+      MYLITE_MYSQLI_PROFILE: build/wordpress-mysqli-profile.log
+      MYLITE_MYSQLI_PROFILE_LIMIT: 20
 
     steps:
       - uses: actions/checkout@v6
@@ -202,6 +204,8 @@ jobs:
     env:
       MYLITE_DRUPAL_REF: 11.3.11
       MYLITE_DRUPAL_CMAKE_BUILD_TYPE: Release
+      MYLITE_MYSQLI_PROFILE: build/drupal-mysqli-profile.log
+      MYLITE_MYSQLI_PROFILE_LIMIT: 20
 
     steps:
       - uses: actions/checkout@v6

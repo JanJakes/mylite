@@ -229,6 +229,91 @@ int mylite_execute(
     return rc;
 }
 
+int mylite_execute_transaction_control(
+    mylite_db *database,
+    enum mylite_transaction_control_statement statement,
+    mylite_result **out_result
+) {
+    struct mylite_statement_context context;
+    const char *sql = NULL;
+    int64_t completed_row_count = 0;
+    int rc = MYLITE_OK;
+
+    if (out_result == NULL) {
+        if (database != NULL) {
+            mylite_diagnostics_set_error(
+                mylite_connection_diagnostics(database),
+                MYLITE_MISUSE,
+                "HY000",
+                mylite_diagnostics_misuse_message()
+            );
+        }
+        return MYLITE_MISUSE;
+    }
+    *out_result = NULL;
+    if (database == NULL) {
+        return MYLITE_MISUSE;
+    }
+
+    switch (statement) {
+    case MYLITE_TRANSACTION_CONTROL_START:
+        sql = "START TRANSACTION";
+        break;
+    case MYLITE_TRANSACTION_CONTROL_COMMIT:
+        sql = "COMMIT";
+        break;
+    case MYLITE_TRANSACTION_CONTROL_ROLLBACK:
+        sql = "ROLLBACK";
+        break;
+    default:
+        mylite_diagnostics_set_error(
+            mylite_connection_diagnostics(database),
+            MYLITE_MISUSE,
+            "HY000",
+            mylite_diagnostics_misuse_message()
+        );
+        return MYLITE_MISUSE;
+    }
+
+    if (database->session.statement_id != UINT64_MAX) {
+        ++database->session.statement_id;
+    }
+    mylite_statement_context_init(&context);
+    rc = mylite_statement_context_begin(&context, database, sql, strlen(sql));
+    if (rc != MYLITE_OK) {
+        mylite_statement_context_deinit(&context);
+        return rc;
+    }
+    mylite_statement_context_set_previous_row_count(&context, database->session.previous_row_count);
+    mylite_statement_context_set_previous_found_rows(&context, database->session.found_rows);
+    database->session.active_statement_time = (int64_t)mylite_statement_context_time(&context);
+
+    switch (statement) {
+    case MYLITE_TRANSACTION_CONTROL_START:
+        rc = execute_start_transaction_statement_with_characteristics(database, NULL, out_result);
+        break;
+    case MYLITE_TRANSACTION_CONTROL_COMMIT:
+        rc = execute_commit_statement_with_chain(database, false, out_result);
+        break;
+    case MYLITE_TRANSACTION_CONTROL_ROLLBACK:
+        rc = execute_rollback_statement_with_chain(database, false, out_result);
+        break;
+    default:
+        rc = MYLITE_MISUSE;
+        break;
+    }
+
+    if (rc != MYLITE_OK) {
+        rc = finish_failed_statement(database, rc, out_result);
+    } else {
+        completed_row_count = mylite_result_affected_rows(*out_result);
+        rc = finish_completed_statement(database, false, completed_row_count, false, out_result);
+    }
+    (void)mylite_statement_context_end(&context, rc);
+    mylite_statement_context_deinit(&context);
+    return rc;
+}
+
 int mylite_prepare(mylite_db *database, const char *sql, size_t sql_size, mylite_stmt **out_stmt) {
     mylite_stmt *stmt = NULL;
     int rc = MYLITE_OK;

@@ -41,6 +41,13 @@ static bool mylite_mysqli_execute_bridge_statement(
     size_t sql_length,
     zval *out_result
 );
+static bool mylite_mysqli_execute_transaction_control_statement(
+    mylite_mysqli_link *link,
+    const char *sql,
+    size_t sql_length,
+    zval *out_result,
+    bool *out_handled
+);
 static uint64_t mylite_mysqli_profile_now_ns(void);
 static uint64_t mylite_mysqli_profile_elapsed_ns(uint64_t start_ns);
 static void mylite_mysqli_profile_record(
@@ -116,6 +123,12 @@ static bool mylite_mysqli_sql_keyword_at(
     const char *keyword
 );
 static bool mylite_mysqli_match_autocommit_off_assignment(const char *sql, size_t sql_length);
+static bool mylite_mysqli_match_transaction_control_statement(
+    const char *sql,
+    size_t sql_length,
+    enum mylite_transaction_control_statement *out_statement
+);
+static bool mylite_mysqli_consume_statement_end(const char **cursor, const char *end);
 static void mylite_mysqli_set_ok_result(mylite_mysqli_link *link, zval *out_result);
 static bool mylite_mysqli_set_link_info(mylite_mysqli_link *link, const char *info);
 static const char *mylite_mysqli_skip_space(const char *cursor, const char *end);
@@ -592,6 +605,7 @@ static bool mylite_mysqli_execute_sql(
     size_t column_count = 0U;
     size_t row_count = 0U;
     bool profile_enabled = MYLITE_MYSQLI_G(profile_enabled);
+    bool handled_transaction_control = false;
     int status = MYLITE_OK;
 
     ZVAL_UNDEF(out_result);
@@ -610,6 +624,18 @@ static bool mylite_mysqli_execute_sql(
     if (mylite_mysqli_reject_oversized_packet(link, sql_length)) {
         return false;
     }
+    if (mylite_mysqli_execute_transaction_control_statement(
+            link,
+            sql,
+            sql_length,
+            out_result,
+            &handled_transaction_control
+        )) {
+        return true;
+    }
+    if (handled_transaction_control) {
+        return false;
+    }
     if (mylite_mysqli_execute_bridge_statement(link, sql, sql_length, out_result)) {
         if (profile_enabled) {
             mylite_mysqli_profile_record(sql, sql_length, true, false, 0U, 0U, 0U, 0U);
@@ -620,6 +646,94 @@ static bool mylite_mysqli_execute_sql(
         execute_start_ns = mylite_mysqli_profile_now_ns();
     }
     status = mylite_execute(link->database, sql, sql_length, &source);
+    if (profile_enabled) {
+        execute_ns = mylite_mysqli_profile_elapsed_ns(execute_start_ns);
+    }
+    if (status != MYLITE_OK) {
+        int error_code = mylite_errcode(link->database);
+
+        if (profile_enabled) {
+            mylite_mysqli_profile_record(sql, sql_length, false, true, execute_ns, 0U, 0U, 0U);
+        }
+        if (error_code == 0) {
+            error_code = mylite_mysqli_error_from_status(status, &sqlstate);
+        } else {
+            sqlstate = mylite_sqlstate(link->database);
+        }
+        mylite_mysqli_set_error(link, error_code, sqlstate, mylite_errmsg(link->database));
+        mylite_mysqli_report_link_error(link);
+        return false;
+    }
+
+    row_count = mylite_result_row_count(source);
+    column_count = mylite_result_column_count(source);
+    if (profile_enabled) {
+        buffer_start_ns = mylite_mysqli_profile_now_ns();
+    }
+    if (!mylite_mysqli_buffer_result(link, source, out_result)) {
+        if (profile_enabled) {
+            buffer_ns = mylite_mysqli_profile_elapsed_ns(buffer_start_ns);
+            mylite_mysqli_profile_record(
+                sql,
+                sql_length,
+                false,
+                true,
+                execute_ns,
+                buffer_ns,
+                row_count,
+                column_count
+            );
+        }
+        mylite_result_free(source);
+        return false;
+    }
+    if (profile_enabled) {
+        buffer_ns = mylite_mysqli_profile_elapsed_ns(buffer_start_ns);
+        mylite_mysqli_profile_record(
+            sql,
+            sql_length,
+            false,
+            false,
+            execute_ns,
+            buffer_ns,
+            row_count,
+            column_count
+        );
+    }
+    mylite_result_free(source);
+    mylite_mysqli_update_link_status_properties(link);
+    return true;
+}
+
+static bool mylite_mysqli_execute_transaction_control_statement(
+    mylite_mysqli_link *link,
+    const char *sql,
+    size_t sql_length,
+    zval *out_result,
+    bool *out_handled
+) {
+    enum mylite_transaction_control_statement statement = 0;
+    mylite_result *source = NULL;
+    const char *sqlstate = "HY000";
+    uint64_t execute_start_ns = 0U;
+    uint64_t execute_ns = 0U;
+    uint64_t buffer_start_ns = 0U;
+    uint64_t buffer_ns = 0U;
+    size_t column_count = 0U;
+    size_t row_count = 0U;
+    bool profile_enabled = MYLITE_MYSQLI_G(profile_enabled);
+    int status = MYLITE_OK;
+
+    *out_handled = false;
+    if (!mylite_mysqli_match_transaction_control_statement(sql, sql_length, &statement)) {
+        return false;
+    }
+    *out_handled = true;
+
+    if (profile_enabled) {
+        execute_start_ns = mylite_mysqli_profile_now_ns();
+    }
+    status = mylite_execute_transaction_control(link->database, statement, &source);
     if (profile_enabled) {
         execute_ns = mylite_mysqli_profile_elapsed_ns(execute_start_ns);
     }
@@ -2060,6 +2174,58 @@ static bool mylite_mysqli_match_autocommit_off_assignment(const char *sql, size_
         cursor = mylite_mysqli_skip_space(cursor, end);
     }
     return cursor == end;
+}
+
+static bool mylite_mysqli_match_transaction_control_statement(
+    const char *sql,
+    size_t sql_length,
+    enum mylite_transaction_control_statement *out_statement
+) {
+    const char *cursor = sql;
+    const char *end = sql + sql_length;
+
+    cursor = mylite_mysqli_skip_space(cursor, end);
+    if (mylite_mysqli_consume_keyword(&cursor, end, "START")) {
+        cursor = mylite_mysqli_skip_space(cursor, end);
+        if (!mylite_mysqli_consume_keyword(&cursor, end, "TRANSACTION") ||
+            !mylite_mysqli_consume_statement_end(&cursor, end)) {
+            return false;
+        }
+        *out_statement = MYLITE_TRANSACTION_CONTROL_START;
+        return true;
+    }
+    if (mylite_mysqli_consume_keyword(&cursor, end, "BEGIN")) {
+        if (!mylite_mysqli_consume_statement_end(&cursor, end)) {
+            return false;
+        }
+        *out_statement = MYLITE_TRANSACTION_CONTROL_START;
+        return true;
+    }
+    if (mylite_mysqli_consume_keyword(&cursor, end, "COMMIT")) {
+        if (!mylite_mysqli_consume_statement_end(&cursor, end)) {
+            return false;
+        }
+        *out_statement = MYLITE_TRANSACTION_CONTROL_COMMIT;
+        return true;
+    }
+    if (mylite_mysqli_consume_keyword(&cursor, end, "ROLLBACK")) {
+        if (!mylite_mysqli_consume_statement_end(&cursor, end)) {
+            return false;
+        }
+        *out_statement = MYLITE_TRANSACTION_CONTROL_ROLLBACK;
+        return true;
+    }
+
+    return false;
+}
+
+static bool mylite_mysqli_consume_statement_end(const char **cursor, const char *end) {
+    *cursor = mylite_mysqli_skip_space(*cursor, end);
+    if (*cursor < end && **cursor == ';') {
+        (*cursor)++;
+        *cursor = mylite_mysqli_skip_space(*cursor, end);
+    }
+    return *cursor == end;
 }
 
 static void mylite_mysqli_set_ok_result(mylite_mysqli_link *link, zval *out_result) {

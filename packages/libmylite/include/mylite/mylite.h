@@ -63,6 +63,12 @@ enum mylite_result_column_type {
     MYLITE_RESULT_COLUMN_TYPE_GEOMETRY = 255,
 };
 
+enum mylite_transaction_control_statement {
+    MYLITE_TRANSACTION_CONTROL_START = 1,
+    MYLITE_TRANSACTION_CONTROL_COMMIT = 2,
+    MYLITE_TRANSACTION_CONTROL_ROLLBACK = 3,
+};
+
 #define MYLITE_RESULT_COLUMN_FLAG_NOT_NULL 1u
 #define MYLITE_RESULT_COLUMN_FLAG_PRI_KEY 2u
 #define MYLITE_RESULT_COLUMN_FLAG_UNIQUE_KEY 4u
@@ -88,6 +94,11 @@ MYLITE_API int mylite_execute(
     mylite_db *database,
     const char *sql,
     size_t sql_size,
+    mylite_result **out_result
+);
+MYLITE_API int mylite_execute_transaction_control(
+    mylite_db *database,
+    enum mylite_transaction_control_statement statement,
     mylite_result **out_result
 );
 

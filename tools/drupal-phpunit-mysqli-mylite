@@ -15,6 +15,27 @@ container_root="/work"
 container_drupal_dir="${container_root}${drupal_dir#"${root_dir}"}"
 container_cmake_build_dir="${container_root}${cmake_build_dir#"${root_dir}"}"
 
+container_path_for() {
+  local path="$1"
+
+  if [[ "${path}" != /* ]]; then
+    printf '%s/%s\n' "${container_root}" "${path#./}"
+    return
+  fi
+
+  if [[ "${path}" == "${root_dir}" || "${path}" == "${root_dir}/"* ]]; then
+    printf '%s%s\n' "${container_root}" "${path#"${root_dir}"}"
+    return
+  fi
+
+  printf '%s\n' "${path}"
+}
+
+container_mysqli_profile="${MYLITE_MYSQLI_PROFILE:-}"
+if [[ -n "${container_mysqli_profile}" ]]; then
+  container_mysqli_profile="$(container_path_for "${container_mysqli_profile}")"
+fi
+
 build_image() {
   docker build -t "${image}" - <<'DOCKERFILE'
 FROM composer:2 AS composer
@@ -72,6 +93,8 @@ run_container() {
     -e MYLITE_DRUPAL_DB_FILE_NAME="${db_file_name}" \
     -e MYLITE_DRUPAL_DB_NAME="${db_name}" \
     -e MYLITE_DRUPAL_DB_PREFIX="${db_prefix}" \
+    -e MYLITE_MYSQLI_PROFILE="${container_mysqli_profile}" \
+    -e MYLITE_MYSQLI_PROFILE_LIMIT="${MYLITE_MYSQLI_PROFILE_LIMIT:-}" \
     -v "${root_dir}:${container_root}" \
     -w "${container_root}" \
     "${image}" \
@@ -219,6 +242,28 @@ phpunit_output_has_nonpassing_summary() {
   grep -Eq '^(FAILURES!|ERRORS!|No tests executed!|There (was|were) [0-9]+ (failure|failures|error|errors))' "$1"
 }
 
+reset_mysqli_profile() {
+  if [ -z "${MYLITE_MYSQLI_PROFILE:-}" ] ||
+    [ "${MYLITE_MYSQLI_PROFILE}" = "1" ] ||
+    [ "${MYLITE_MYSQLI_PROFILE}" = "stderr" ]; then
+    return
+  fi
+  mkdir -p "$(dirname "${MYLITE_MYSQLI_PROFILE}")"
+  rm -f "${MYLITE_MYSQLI_PROFILE}"
+}
+
+print_mysqli_profile() {
+  if [ -z "${MYLITE_MYSQLI_PROFILE:-}" ] ||
+    [ "${MYLITE_MYSQLI_PROFILE}" = "1" ] ||
+    [ "${MYLITE_MYSQLI_PROFILE}" = "stderr" ] ||
+    [ ! -s "${MYLITE_MYSQLI_PROFILE}" ]; then
+    return
+  fi
+
+  phase "MyLite mysqli profile"
+  cat "${MYLITE_MYSQLI_PROFILE}"
+}
+
 run_drupal_phpunit_suite() {
   require_executable "${php_wrapper}"
   require_executable "${MYLITE_DRUPAL_DIR}/vendor/bin/phpunit"
@@ -226,6 +271,7 @@ run_drupal_phpunit_suite() {
 
   prepare_drupal_database
   write_drupal_phpunit_config
+  reset_mysqli_profile
 
   phase "Run Drupal PHPUnit test suite"
   suite_log="${MYLITE_DRUPAL_CMAKE_BUILD_DIR}/drupal-phpunit.log"
@@ -250,6 +296,7 @@ run_drupal_phpunit_suite() {
     suite_status=1
   fi
   echo "drupal_phpunit_seconds=$(seconds_since "${suite_start}")"
+  print_mysqli_profile
   return "${suite_status}"
 }
 

@@ -43,6 +43,7 @@ struct expected_nonquery {
 };
 
 static int test_transaction_control_and_dml(void);
+static int test_public_transaction_control_api(void);
 static int test_set_transaction_lifecycle(void);
 static int test_transaction_system_variable_readback(void);
 static int test_transaction_system_variable_assignments(void);
@@ -55,6 +56,12 @@ static int test_drop_table_missing_implicitly_commits_transaction(void);
 static int test_file_close_rolls_back_transaction(void);
 static int seed_schema(mylite_db *database);
 static int expect_nonquery(mylite_db *database, const char *sql, int64_t affected_rows);
+static int expect_transaction_control(
+    mylite_db *database,
+    enum mylite_transaction_control_statement statement,
+    int64_t affected_rows,
+    const char *context
+);
 static int expect_nonquery_with_warnings(
     mylite_db *database,
     const char *sql,
@@ -69,7 +76,7 @@ static int expect_error_details(
     const char *expected_message
 );
 static int expect_query_values(mylite_db *database, struct expected_query query);
-static int expect_row_count_zero(mylite_db *database);
+static int expect_row_count_zero(mylite_db *database, const char *context);
 static int expect_result_value(
     const mylite_result *result,
     size_t row,
@@ -97,6 +104,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_transaction_control_and_dml();
+    failures += test_public_transaction_control_api();
     failures += test_set_transaction_lifecycle();
     failures += test_transaction_system_variable_readback();
     failures += test_transaction_system_variable_assignments();
@@ -132,12 +140,12 @@ static int test_transaction_control_and_dml(void) {
     failures += expect_nonquery(database, "CREATE TABLE t (id INT PRIMARY KEY, v INT)", 0);
 
     failures += expect_nonquery(database, "COMMIT", 0);
-    failures += expect_row_count_zero(database);
+    failures += expect_row_count_zero(database, "commit ROW_COUNT()");
     failures += expect_nonquery(database, "ROLLBACK WORK", 0);
-    failures += expect_row_count_zero(database);
+    failures += expect_row_count_zero(database, "rollback work ROW_COUNT()");
 
     failures += expect_nonquery(database, "START TRANSACTION", 0);
-    failures += expect_row_count_zero(database);
+    failures += expect_row_count_zero(database, "start transaction ROW_COUNT()");
     failures += expect_nonquery(database, "INSERT INTO t VALUES (1, 10)", 1);
     failures += expect_nonquery(database, "COMMIT WORK", 0);
     failures += expect_query_values(
@@ -182,7 +190,7 @@ static int test_transaction_control_and_dml(void) {
     failures +=
         expect_nonquery(database, "CREATE TABLE begin_immediate_t (id INT PRIMARY KEY, v INT)", 0);
     failures += expect_nonquery(database, "BEGIN IMMEDIATE", 0);
-    failures += expect_row_count_zero(database);
+    failures += expect_row_count_zero(database, "begin immediate ROW_COUNT()");
     failures += expect_nonquery(database, "INSERT INTO begin_immediate_t VALUES (1, 10)", 1);
     failures += expect_nonquery(database, "COMMIT", 0);
     failures += expect_query_values(
@@ -322,6 +330,70 @@ static int test_transaction_control_and_dml(void) {
     return failures;
 }
 
+static int test_public_transaction_control_api(void) {
+    static const char *const committed_rows[] = {"1", "10"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "public_transaction_control") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "open public transaction control file");
+    failures += seed_schema(database);
+    failures += expect_nonquery(database, "CREATE TABLE api_t (id INT PRIMARY KEY, v INT)", 0);
+
+    failures +=
+        expect_transaction_control(database, MYLITE_TRANSACTION_CONTROL_START, 0, "public start");
+    failures += expect_row_count_zero(database, "public start ROW_COUNT()");
+    failures += expect_nonquery(database, "INSERT INTO api_t VALUES (1, 10)", 1);
+    failures += expect_transaction_control(
+        database,
+        MYLITE_TRANSACTION_CONTROL_ROLLBACK,
+        0,
+        "public rollback"
+    );
+    failures += expect_row_count_zero(database, "public rollback ROW_COUNT()");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM api_t ORDER BY id",
+            .values = NULL,
+            .column_count = 2U,
+            .row_count = 0U,
+            .context = "public transaction control rolled back insert",
+        }
+    );
+
+    failures += expect_transaction_control(
+        database,
+        MYLITE_TRANSACTION_CONTROL_START,
+        0,
+        "public second start"
+    );
+    failures += expect_nonquery(database, "INSERT INTO api_t VALUES (1, 10)", 1);
+    failures +=
+        expect_transaction_control(database, MYLITE_TRANSACTION_CONTROL_COMMIT, 0, "public commit");
+    failures += expect_row_count_zero(database, "public commit ROW_COUNT()");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM api_t ORDER BY id",
+            .values = committed_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "public transaction control committed insert",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
 static int test_set_transaction_lifecycle(void) {
     static const char *const one_row[] = {"1", "10"};
     static const char *const two_rows[] = {"1", "10", "2", "20"};
@@ -346,7 +418,7 @@ static int test_set_transaction_lifecycle(void) {
     failures += expect_nonquery(database, "INSERT INTO t VALUES (1, 10)", 1);
 
     failures += expect_nonquery(database, "SET TRANSACTION ISOLATION LEVEL READ COMMITTED", 0);
-    failures += expect_row_count_zero(database);
+    failures += expect_row_count_zero(database, "set transaction ROW_COUNT()");
     failures += expect_nonquery(database, "SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED", 0);
     failures += expect_nonquery(database, "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ", 0);
     failures += expect_nonquery(database, "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE", 0);
@@ -1198,7 +1270,7 @@ static int test_savepoint_lifecycle(void) {
     failures += expect_nonquery(database, "CREATE TABLE t (id INT PRIMARY KEY, v INT)", 0);
 
     failures += expect_nonquery(database, "SAVEPOINT outside_sp", 0);
-    failures += expect_row_count_zero(database);
+    failures += expect_row_count_zero(database, "savepoint ROW_COUNT()");
     failures += expect_error_details(
         database,
         "ROLLBACK TO SAVEPOINT outside_sp",
@@ -1663,6 +1735,29 @@ static int expect_nonquery(mylite_db *database, const char *sql, int64_t affecte
     );
 }
 
+static int expect_transaction_control(
+    mylite_db *database,
+    enum mylite_transaction_control_statement statement,
+    int64_t affected_rows,
+    const char *context
+) {
+    mylite_result *result = NULL;
+    int failures = 0;
+    int rc = mylite_execute_transaction_control(database, statement, &result);
+
+    failures += expect_int(rc, MYLITE_OK, context);
+    if (rc == MYLITE_OK) {
+        failures += expect_size(mylite_result_column_count(result), 0U, context);
+        failures += expect_size(mylite_result_row_count(result), 0U, context);
+        failures += expect_int64(mylite_result_affected_rows(result), affected_rows, context);
+        failures += expect_size(mylite_result_warning_count(result), 0U, context);
+    } else {
+        fprintf(stderr, "%s failed: %s\n", context, mylite_errmsg(database));
+    }
+    mylite_result_free(result);
+    return failures;
+}
+
 static int expect_nonquery_with_warnings(
     mylite_db *database,
     const char *sql,
@@ -1748,7 +1843,7 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
     return failures;
 }
 
-static int expect_row_count_zero(mylite_db *database) {
+static int expect_row_count_zero(mylite_db *database, const char *context) {
     static const char *const values[] = {"0"};
 
     return expect_query_values(
@@ -1758,7 +1853,7 @@ static int expect_row_count_zero(mylite_db *database) {
             .values = values,
             .column_count = 1U,
             .row_count = 1U,
-            .context = "transaction ROW_COUNT()",
+            .context = context,
         }
     );
 }

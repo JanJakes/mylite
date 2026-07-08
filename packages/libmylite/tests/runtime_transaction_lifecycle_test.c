@@ -42,6 +42,12 @@ struct expected_nonquery {
     size_t warning_count;
 };
 
+struct expected_transaction_control {
+    enum mylite_transaction_control_statement statement;
+    int64_t affected_rows;
+    const char *context;
+};
+
 static int test_transaction_control_and_dml(void);
 static int test_public_transaction_control_api(void);
 static int test_set_transaction_lifecycle(void);
@@ -58,9 +64,7 @@ static int seed_schema(mylite_db *database);
 static int expect_nonquery(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_transaction_control(
     mylite_db *database,
-    enum mylite_transaction_control_statement statement,
-    int64_t affected_rows,
-    const char *context
+    struct expected_transaction_control expected
 );
 static int expect_nonquery_with_warnings(
     mylite_db *database,
@@ -346,15 +350,23 @@ static int test_public_transaction_control_api(void) {
     failures += seed_schema(database);
     failures += expect_nonquery(database, "CREATE TABLE api_t (id INT PRIMARY KEY, v INT)", 0);
 
-    failures +=
-        expect_transaction_control(database, MYLITE_TRANSACTION_CONTROL_START, 0, "public start");
+    failures += expect_transaction_control(
+        database,
+        (struct expected_transaction_control){
+            .statement = MYLITE_TRANSACTION_CONTROL_START,
+            .affected_rows = 0,
+            .context = "public start",
+        }
+    );
     failures += expect_row_count_zero(database, "public start ROW_COUNT()");
     failures += expect_nonquery(database, "INSERT INTO api_t VALUES (1, 10)", 1);
     failures += expect_transaction_control(
         database,
-        MYLITE_TRANSACTION_CONTROL_ROLLBACK,
-        0,
-        "public rollback"
+        (struct expected_transaction_control){
+            .statement = MYLITE_TRANSACTION_CONTROL_ROLLBACK,
+            .affected_rows = 0,
+            .context = "public rollback",
+        }
     );
     failures += expect_row_count_zero(database, "public rollback ROW_COUNT()");
     failures += expect_query_values(
@@ -370,13 +382,21 @@ static int test_public_transaction_control_api(void) {
 
     failures += expect_transaction_control(
         database,
-        MYLITE_TRANSACTION_CONTROL_START,
-        0,
-        "public second start"
+        (struct expected_transaction_control){
+            .statement = MYLITE_TRANSACTION_CONTROL_START,
+            .affected_rows = 0,
+            .context = "public second start",
+        }
     );
     failures += expect_nonquery(database, "INSERT INTO api_t VALUES (1, 10)", 1);
-    failures +=
-        expect_transaction_control(database, MYLITE_TRANSACTION_CONTROL_COMMIT, 0, "public commit");
+    failures += expect_transaction_control(
+        database,
+        (struct expected_transaction_control){
+            .statement = MYLITE_TRANSACTION_CONTROL_COMMIT,
+            .affected_rows = 0,
+            .context = "public commit",
+        }
+    );
     failures += expect_row_count_zero(database, "public commit ROW_COUNT()");
     failures += expect_query_values(
         database,
@@ -1737,22 +1757,24 @@ static int expect_nonquery(mylite_db *database, const char *sql, int64_t affecte
 
 static int expect_transaction_control(
     mylite_db *database,
-    enum mylite_transaction_control_statement statement,
-    int64_t affected_rows,
-    const char *context
+    struct expected_transaction_control expected
 ) {
     mylite_result *result = NULL;
     int failures = 0;
-    int rc = mylite_execute_transaction_control(database, statement, &result);
+    int rc = mylite_execute_transaction_control(database, expected.statement, &result);
 
-    failures += expect_int(rc, MYLITE_OK, context);
+    failures += expect_int(rc, MYLITE_OK, expected.context);
     if (rc == MYLITE_OK) {
-        failures += expect_size(mylite_result_column_count(result), 0U, context);
-        failures += expect_size(mylite_result_row_count(result), 0U, context);
-        failures += expect_int64(mylite_result_affected_rows(result), affected_rows, context);
-        failures += expect_size(mylite_result_warning_count(result), 0U, context);
+        failures += expect_size(mylite_result_column_count(result), 0U, expected.context);
+        failures += expect_size(mylite_result_row_count(result), 0U, expected.context);
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            expected.affected_rows,
+            expected.context
+        );
+        failures += expect_size(mylite_result_warning_count(result), 0U, expected.context);
     } else {
-        fprintf(stderr, "%s failed: %s\n", context, mylite_errmsg(database));
+        fprintf(stderr, "%s failed: %s\n", expected.context, mylite_errmsg(database));
     }
     mylite_result_free(result);
     return failures;

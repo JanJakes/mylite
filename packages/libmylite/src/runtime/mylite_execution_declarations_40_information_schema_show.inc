@@ -7,6 +7,60 @@ static int execute_information_schema_query(
     bool apply_sql_select_limit,
     mylite_result **out_result
 );
+static int information_schema_try_execute_tables_exact_base_table_query(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    const struct information_schema_catalog_filter *filter,
+    bool apply_sql_select_limit,
+    mylite_result **out_result,
+    bool *out_handled
+);
+static int information_schema_tables_exact_base_table_query_is_supported(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    const struct information_schema_catalog_filter *filter,
+    bool *out_supported
+);
+static int information_schema_exact_table_lookup_predicate_matches(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct information_schema_catalog_filter *filter,
+    const struct mylite_sql_ast_node *predicate,
+    bool *out_matches
+);
+static int information_schema_exact_table_lookup_comparison_matches(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct information_schema_catalog_filter *filter,
+    const struct mylite_sql_ast_node *predicate,
+    bool *out_matches
+);
+static bool information_schema_exact_table_lookup_value_matches(
+    const struct information_schema_query *query,
+    const struct information_schema_catalog_filter *filter,
+    size_t column_index,
+    const struct information_schema_predicate_value *value
+);
+static int information_schema_append_fast_table_existence_result(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    bool table_exists,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+);
+static int information_schema_append_fast_table_existence_count_row(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    bool table_exists,
+    mylite_result *result
+);
+static int information_schema_append_fast_table_existence_literal_row(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    mylite_result *result
+);
 static int build_information_schema_rows(
     struct mylite_db *database,
     const struct mylite_statement_context *context,

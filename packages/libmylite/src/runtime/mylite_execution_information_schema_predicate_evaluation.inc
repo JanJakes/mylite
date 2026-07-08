@@ -52,7 +52,9 @@ static void information_schema_predicate_frame_stack_deinit(
     if (stack == NULL) {
         return;
     }
-    free(stack->items);
+    if (stack->uses_heap) {
+        free(stack->items);
+    }
     *stack = (struct information_schema_predicate_frame_stack){0};
 }
 
@@ -62,25 +64,38 @@ static int information_schema_predicate_frame_stack_push(
     struct information_schema_predicate_eval_frame frame
 ) {
     struct information_schema_predicate_eval_frame *grown_items = NULL;
-    size_t new_capacity = stack->capacity == 0U ? if_stack_initial_capacity : stack->capacity * 2U;
+    size_t new_capacity = 0U;
 
+    if (stack->items == NULL) {
+        stack->items = stack->stack_items;
+        stack->capacity = if_stack_initial_capacity;
+    }
     if (stack->count < stack->capacity) {
         stack->items[stack->count] = frame;
         ++stack->count;
         return MYLITE_OK;
     }
+    new_capacity = stack->capacity * 2U;
     if (new_capacity < stack->capacity || new_capacity > SIZE_MAX / sizeof(*grown_items)) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
 
-    grown_items = realloc(stack->items, new_capacity * sizeof(*grown_items));
+    if (stack->uses_heap) {
+        grown_items = realloc(stack->items, new_capacity * sizeof(*grown_items));
+    } else {
+        grown_items = malloc(new_capacity * sizeof(*grown_items));
+        if (grown_items != NULL) {
+            memcpy(grown_items, stack->items, stack->count * sizeof(*grown_items));
+        }
+    }
     if (grown_items == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
     stack->items = grown_items;
     stack->capacity = new_capacity;
+    stack->uses_heap = true;
     stack->items[stack->count] = frame;
     ++stack->count;
     return MYLITE_OK;
@@ -102,7 +117,9 @@ static void information_schema_truth_stack_deinit(struct information_schema_trut
     if (stack == NULL) {
         return;
     }
-    free(stack->items);
+    if (stack->uses_heap) {
+        free(stack->items);
+    }
     *stack = (struct information_schema_truth_stack){0};
 }
 
@@ -112,25 +129,38 @@ static int information_schema_truth_stack_push(
     enum information_schema_truth_value value
 ) {
     enum information_schema_truth_value *grown_items = NULL;
-    size_t new_capacity = stack->capacity == 0U ? if_stack_initial_capacity : stack->capacity * 2U;
+    size_t new_capacity = 0U;
 
+    if (stack->items == NULL) {
+        stack->items = stack->stack_items;
+        stack->capacity = if_stack_initial_capacity;
+    }
     if (stack->count < stack->capacity) {
         stack->items[stack->count] = value;
         ++stack->count;
         return MYLITE_OK;
     }
+    new_capacity = stack->capacity * 2U;
     if (new_capacity < stack->capacity || new_capacity > SIZE_MAX / sizeof(*grown_items)) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
 
-    grown_items = realloc(stack->items, new_capacity * sizeof(*grown_items));
+    if (stack->uses_heap) {
+        grown_items = realloc(stack->items, new_capacity * sizeof(*grown_items));
+    } else {
+        grown_items = malloc(new_capacity * sizeof(*grown_items));
+        if (grown_items != NULL) {
+            memcpy(grown_items, stack->items, stack->count * sizeof(*grown_items));
+        }
+    }
     if (grown_items == NULL) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
     stack->items = grown_items;
     stack->capacity = new_capacity;
+    stack->uses_heap = true;
     stack->items[stack->count] = value;
     ++stack->count;
     return MYLITE_OK;

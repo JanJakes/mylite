@@ -108,6 +108,23 @@ static int execute_information_schema_query(
     );
 
     if (rc == MYLITE_OK) {
+        bool handled = false;
+
+        rc = information_schema_try_execute_tables_exact_base_table_query(
+            database,
+            statement,
+            query,
+            &filter,
+            apply_sql_select_limit,
+            out_result,
+            &handled
+        );
+        if (rc != MYLITE_OK || handled) {
+            information_schema_catalog_filter_deinit(&filter);
+            return rc;
+        }
+    }
+    if (rc == MYLITE_OK) {
         rc = build_information_schema_rows_with_filter(
             database,
             context,
@@ -176,6 +193,338 @@ static int execute_information_schema_query(
     return finish_successful_result(database, result, out_result);
 }
 
+static int information_schema_try_execute_tables_exact_base_table_query(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    const struct information_schema_catalog_filter *filter,
+    bool apply_sql_select_limit,
+    mylite_result **out_result,
+    bool *out_handled
+) {
+    enum mylite_catalog_table_kind table_kind = MYLITE_CATALOG_TABLE_KIND_INVALID;
+    bool supported = false;
+    bool found = false;
+    int rc = MYLITE_OK;
+
+    if (out_handled == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_handled = false;
+    rc = information_schema_tables_exact_base_table_query_is_supported(
+        database,
+        statement,
+        query,
+        filter,
+        &supported
+    );
+    if (rc != MYLITE_OK || !supported) {
+        return rc;
+    }
+
+    rc = mylite_catalog_try_read_table_kind_by_schema_table_name(
+        database,
+        filter->schema_name,
+        filter->table_name,
+        &table_kind,
+        &found
+    );
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+        return rc;
+    }
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "failed to read INFORMATION_SCHEMA table existence metadata");
+        return MYLITE_ERROR;
+    }
+
+    *out_handled = true;
+    return information_schema_append_fast_table_existence_result(
+        database,
+        query,
+        found && table_kind == MYLITE_CATALOG_TABLE_KIND_BASE,
+        apply_sql_select_limit,
+        out_result
+    );
+}
+
+static int information_schema_tables_exact_base_table_query_is_supported(
+    struct mylite_db *database,
+    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_query *query,
+    const struct information_schema_catalog_filter *filter,
+    bool *out_supported
+) {
+    const struct mylite_sql_ast_node *where_clause = information_schema_statement_where_clause(
+        statement
+    );
+
+    if (out_supported == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_supported = false;
+    if (query == NULL || query->definition == NULL || filter == NULL || where_clause == NULL ||
+        query->definition->kind != MYLITE_EXECUTION_CATALOG_TABLE_TABLES || query->has_group ||
+        !filter->has_schema_name || !filter->has_table_name || !filter->has_table_type ||
+        filter->schema_name == NULL || filter->table_name == NULL || filter->table_type == NULL ||
+        filter->schema_name[0] == '\0' || filter->table_name[0] == '\0' ||
+        strlen(filter->schema_name) >= MYLITE_CATALOG_IDENTIFIER_CAPACITY ||
+        strlen(filter->table_name) >= MYLITE_CATALOG_IDENTIFIER_CAPACITY ||
+        filter->schema_column_index >= query->definition->column_count ||
+        filter->table_column_index >= query->definition->column_count ||
+        filter->table_type_column_index >= query->definition->column_count) {
+        return MYLITE_OK;
+    }
+    if (information_schema_catalog_filter_allows_system_rows(query->definition, filter)) {
+        return MYLITE_OK;
+    }
+    if (information_schema_compare_text(
+            query->definition,
+            filter->table_type_column_index,
+            filter->table_type,
+            "BASE TABLE"
+        ) != 0) {
+        return MYLITE_OK;
+    }
+    if (
+        !query->is_count_star &&
+        (query->projection_count != 1U ||
+         query->projection_kinds[0] != INFORMATION_SCHEMA_PROJECTION_INTEGER_LITERAL)
+    ) {
+        return MYLITE_OK;
+    }
+
+    return information_schema_exact_table_lookup_predicate_matches(
+        database,
+        query,
+        filter,
+        child_at(where_clause, 0U),
+        out_supported
+    );
+}
+
+static int information_schema_exact_table_lookup_predicate_matches(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct information_schema_catalog_filter *filter,
+    const struct mylite_sql_ast_node *predicate,
+    bool *out_matches
+) {
+    predicate = unwrap_parenthesized_predicate(predicate);
+    if (out_matches == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_matches = false;
+    if (predicate == NULL) {
+        return MYLITE_OK;
+    }
+    if (predicate->kind == MYLITE_SQL_AST_AND_PREDICATE) {
+        bool left_matches = false;
+        bool right_matches = false;
+        int rc = information_schema_exact_table_lookup_predicate_matches(
+            database,
+            query,
+            filter,
+            child_at(predicate, 0U),
+            &left_matches
+        );
+
+        if (rc != MYLITE_OK || !left_matches) {
+            return rc;
+        }
+        rc = information_schema_exact_table_lookup_predicate_matches(
+            database,
+            query,
+            filter,
+            child_at(predicate, 1U),
+            &right_matches
+        );
+        if (rc == MYLITE_OK) {
+            *out_matches = right_matches;
+        }
+        return rc;
+    }
+    if (predicate->kind != MYLITE_SQL_AST_COMPARISON_PREDICATE) {
+        return MYLITE_OK;
+    }
+    return information_schema_exact_table_lookup_comparison_matches(
+        database,
+        query,
+        filter,
+        predicate,
+        out_matches
+    );
+}
+
+static int information_schema_exact_table_lookup_comparison_matches(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    const struct information_schema_catalog_filter *filter,
+    const struct mylite_sql_ast_node *predicate,
+    bool *out_matches
+) {
+    enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(predicate);
+    struct information_schema_predicate_value value = {0};
+    size_t column_index = 0U;
+    int rc = MYLITE_OK;
+
+    *out_matches = false;
+    if (operator_kind != MYLITE_SQL_AST_OPERATOR_EQUAL &&
+        operator_kind != MYLITE_SQL_AST_OPERATOR_NULL_SAFE_EQUAL) {
+        return MYLITE_OK;
+    }
+
+    rc = information_schema_resolve_column_reference(
+        database,
+        query,
+        child_at(predicate, 0U),
+        COLUMN_REFERENCE_WHERE,
+        &column_index
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = information_schema_predicate_value_text(database, child_at(predicate, 1U), &value);
+    if (rc == MYLITE_OK) {
+        *out_matches = information_schema_exact_table_lookup_value_matches(
+            query,
+            filter,
+            column_index,
+            &value
+        );
+    }
+    free(value.text);
+    return rc;
+}
+
+static bool information_schema_exact_table_lookup_value_matches(
+    const struct information_schema_query *query,
+    const struct information_schema_catalog_filter *filter,
+    size_t column_index,
+    const struct information_schema_predicate_value *value
+) {
+    const char *expected = NULL;
+
+    if (query == NULL || query->definition == NULL || filter == NULL || value == NULL ||
+        value->is_null || value->is_numeric || value->text == NULL) {
+        return false;
+    }
+    if (column_index == filter->schema_column_index) {
+        expected = filter->schema_name;
+    } else if (column_index == filter->table_column_index) {
+        expected = filter->table_name;
+    } else if (column_index == filter->table_type_column_index) {
+        expected = filter->table_type;
+    } else {
+        return false;
+    }
+    if (expected == NULL || column_index >= query->definition->column_count) {
+        return false;
+    }
+
+    return information_schema_compare_text(
+               query->definition,
+               column_index,
+               value->text,
+               expected
+           ) == 0;
+}
+
+static int information_schema_append_fast_table_existence_result(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    bool table_exists,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+) {
+    mylite_result *result = NULL;
+    int rc = mylite_result_create(&result);
+
+    if (rc != MYLITE_OK) {
+        set_nomem_error(database);
+        return rc;
+    }
+    rc = information_schema_append_result_columns(database, result, query);
+    if (rc == MYLITE_OK) {
+        if (query->is_count_star) {
+            rc = information_schema_append_fast_table_existence_count_row(
+                database,
+                query,
+                table_exists,
+                result
+            );
+        } else if (table_exists && !(query->limit.has_limit && query->limit.row_count == 0)) {
+            rc = information_schema_append_fast_table_existence_literal_row(
+                database,
+                query,
+                result
+            );
+        }
+    }
+    if (rc != MYLITE_OK) {
+        mylite_result_free(result);
+        return rc;
+    }
+
+    mylite_result_set_affected_rows(result, 0);
+    if (apply_sql_select_limit && !query->limit.has_limit) {
+        apply_sql_select_limit_to_result(database, result);
+    }
+    return finish_successful_result(database, result, out_result);
+}
+
+static int information_schema_append_fast_table_existence_count_row(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    bool table_exists,
+    mylite_result *result
+) {
+    char count_text[integer_text_capacity];
+    const char *values[1] = {count_text};
+    int rc = MYLITE_OK;
+
+    if (query->limit.has_limit && query->limit.row_count == 0) {
+        return MYLITE_OK;
+    }
+    rc = information_schema_format_i64(
+        database,
+        table_exists ? 1 : 0,
+        count_text,
+        sizeof(count_text)
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    return rc;
+}
+
+static int information_schema_append_fast_table_existence_literal_row(
+    struct mylite_db *database,
+    const struct information_schema_query *query,
+    mylite_result *result
+) {
+    char value_text[integer_text_capacity];
+    const char *values[1] = {NULL};
+    int rc = information_schema_integer_literal_projection_value(
+        database,
+        query->projection_expressions[0],
+        value_text,
+        sizeof(value_text),
+        &values[0]
+    );
+
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_text_row(result, values);
+        if (rc != MYLITE_OK) {
+            set_nomem_error(database);
+        }
+    }
+    return rc;
+}
+
 static int build_information_schema_rows(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
@@ -226,10 +575,13 @@ static int information_schema_catalog_filter_init_from_statement(
     *out_filter = (struct information_schema_catalog_filter){
         .schema_name = NULL,
         .table_name = NULL,
+        .table_type = NULL,
         .schema_column_index = SIZE_MAX,
         .table_column_index = SIZE_MAX,
+        .table_type_column_index = SIZE_MAX,
         .has_schema_name = false,
         .has_table_name = false,
+        .has_table_type = false,
     };
     if (query == NULL || query->definition == NULL) {
         return MYLITE_OK;
@@ -240,6 +592,13 @@ static int information_schema_catalog_filter_init_from_statement(
             &out_filter->table_column_index
         )) {
         return MYLITE_OK;
+    }
+    if (query->definition->kind == MYLITE_EXECUTION_CATALOG_TABLE_TABLES) {
+        (void)information_schema_table_definition_index(
+            query->definition,
+            "TABLE_TYPE",
+            &out_filter->table_type_column_index
+        );
     }
 
     while (optional_clause != NULL) {
@@ -311,6 +670,7 @@ static void information_schema_catalog_filter_deinit(
     }
     free(filter->schema_name);
     free(filter->table_name);
+    free(filter->table_type);
     *filter = (struct information_schema_catalog_filter){0};
 }
 
@@ -380,7 +740,8 @@ static int information_schema_catalog_filter_collect_comparison(
         return rc;
     }
     if (column_index != filter->schema_column_index &&
-        column_index != filter->table_column_index) {
+        column_index != filter->table_column_index &&
+        column_index != filter->table_type_column_index) {
         return MYLITE_OK;
     }
 
@@ -410,6 +771,9 @@ static int information_schema_catalog_filter_set_value(
     } else if (column_index == filter->table_column_index) {
         target = &filter->table_name;
         has_target = &filter->has_table_name;
+    } else if (column_index == filter->table_type_column_index) {
+        target = &filter->table_type;
+        has_target = &filter->has_table_type;
     } else {
         return MYLITE_OK;
     }

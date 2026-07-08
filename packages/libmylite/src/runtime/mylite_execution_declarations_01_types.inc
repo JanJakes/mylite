@@ -2845,15 +2845,19 @@ struct information_schema_predicate_eval_frame {
 };
 
 struct information_schema_predicate_frame_stack {
+    struct information_schema_predicate_eval_frame stack_items[if_stack_initial_capacity];
     struct information_schema_predicate_eval_frame *items;
     size_t count;
     size_t capacity;
+    bool uses_heap;
 };
 
 struct information_schema_truth_stack {
+    enum information_schema_truth_value stack_items[if_stack_initial_capacity];
     enum information_schema_truth_value *items;
     size_t count;
     size_t capacity;
+    bool uses_heap;
 };
 
 enum information_schema_projection_kind {
@@ -2891,10 +2895,13 @@ struct information_schema_query {
 struct information_schema_catalog_filter {
     char *schema_name;
     char *table_name;
+    char *table_type;
     size_t schema_column_index;
     size_t table_column_index;
+    size_t table_type_column_index;
     bool has_schema_name;
     bool has_table_name;
+    bool has_table_type;
 };
 
 struct information_schema_projection_slot_request {

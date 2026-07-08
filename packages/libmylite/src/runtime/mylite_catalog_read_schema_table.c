@@ -39,6 +39,10 @@ enum catalog_table_select_column_index {
     catalog_table_select_updated_generation_column = 26,
 };
 
+enum catalog_table_kind_lookup_column_index {
+    catalog_table_kind_lookup_kind_column = 0,
+};
+
 enum catalog_view_select_column_index {
     catalog_view_select_table_id_column = 0,
     catalog_view_select_view_definition_column = 1,
@@ -117,6 +121,13 @@ static int try_read_table_by_name(
     int64_t schema_id,
     const char *name,
     struct mylite_catalog_table_descriptor *out_table,
+    bool *out_found
+);
+static int try_read_table_kind_by_schema_table_name(
+    sqlite3 *sqlite,
+    const char *schema_name,
+    const char *table_name,
+    enum mylite_catalog_table_kind *out_kind,
     bool *out_found
 );
 
@@ -331,6 +342,41 @@ int mylite_catalog_try_read_table_by_name(
     return try_read_table_by_name(database->sqlite, schema_id, name, out_table, out_found);
 }
 
+int mylite_catalog_try_read_table_kind_by_schema_table_name(
+    struct mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    enum mylite_catalog_table_kind *out_kind,
+    bool *out_found
+) {
+    int rc = mylite_catalog_validate_ready_database(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (out_kind == NULL || out_found == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_kind = MYLITE_CATALOG_TABLE_KIND_INVALID;
+    *out_found = false;
+    rc = mylite_catalog_validate_required_name(schema_name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = mylite_catalog_validate_required_name(table_name, MYLITE_CATALOG_IDENTIFIER_CAPACITY);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    return try_read_table_kind_by_schema_table_name(
+        database->sqlite,
+        schema_name,
+        table_name,
+        out_kind,
+        out_found
+    );
+}
+
 int mylite_catalog_read_table_by_id(
     struct mylite_db *database,
     int64_t table_id,
@@ -526,6 +572,57 @@ static int try_read_table_by_name(
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         } else {
             *out_table = (struct mylite_catalog_table_descriptor){0};
+        }
+    }
+
+    return mylite_catalog_finalize_statement(statement, rc);
+}
+
+static int try_read_table_kind_by_schema_table_name(
+    sqlite3 *sqlite,
+    const char *schema_name,
+    const char *table_name,
+    enum mylite_catalog_table_kind *out_kind,
+    bool *out_found
+) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = mylite_catalog_prepare_statement(
+        sqlite,
+        "SELECT t.kind "
+        "FROM _mylite_catalog_tables AS t "
+        "JOIN _mylite_catalog_schemas AS s ON s.schema_id = t.schema_id "
+        "WHERE s.name = ?1 AND t.name = ?2",
+        &statement
+    );
+
+    *out_kind = MYLITE_CATALOG_TABLE_KIND_INVALID;
+    *out_found = false;
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_text(statement, 1, schema_name);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_text(statement, 2, table_name);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            int64_t kind = 0;
+
+            rc = mylite_catalog_checked_column_i64(
+                statement,
+                catalog_table_kind_lookup_kind_column,
+                &kind
+            );
+            if (rc == MYLITE_OK) {
+                rc = mylite_catalog_validate_table_kind((enum mylite_catalog_table_kind)kind);
+            }
+            if (rc == MYLITE_OK) {
+                *out_kind = (enum mylite_catalog_table_kind)kind;
+                *out_found = true;
+            }
+        } else if (sqlite_rc != SQLITE_DONE) {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         }
     }
 

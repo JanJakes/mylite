@@ -218,6 +218,8 @@ static int test_information_schema_core_queries(void) {
     static const char *const count_column[] = {"COUNT(*)"};
     static const char *const count_one[] = {"1"};
     static const char *const count_zero[] = {"0"};
+    static const char *const one_column[] = {"1"};
+    static const char *const expression_column[] = {"expression"};
     static const char *const builtin_schemata_columns[] = {
         "SCHEMA_NAME",
         "DEFAULT_CHARACTER_SET_NAME",
@@ -482,6 +484,73 @@ static int test_information_schema_core_queries(void) {
             .values = count_one,
             .row_count = 1U,
             .context = "count star database predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 AS expression FROM INFORMATION_SCHEMA.TABLES "
+                   "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 't' "
+                   "AND TABLE_TYPE = 'BASE TABLE'",
+            .column_names = expression_column,
+            .column_count = 1U,
+            .values = count_one,
+            .row_count = 1U,
+            .context = "tables existence predicate hit",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 FROM INFORMATION_SCHEMA.TABLES "
+                   "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'missing' "
+                   "AND TABLE_TYPE = 'BASE TABLE'",
+            .column_names = one_column,
+            .column_count = 1U,
+            .values = NULL,
+            .row_count = 0U,
+            .context = "tables existence predicate miss",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES "
+                   "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'missing' "
+                   "AND TABLE_TYPE = 'BASE TABLE'",
+            .column_names = count_column,
+            .column_count = 1U,
+            .values = count_zero,
+            .row_count = 1U,
+            .context = "tables existence count miss",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 FROM INFORMATION_SCHEMA.TABLES "
+                   "WHERE TABLE_SCHEMA = DATABASE() "
+                   "AND TABLE_NAME = "
+                   "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "
+                   "AND TABLE_TYPE = 'BASE TABLE'",
+            .column_names = one_column,
+            .column_count = 1U,
+            .values = NULL,
+            .row_count = 0U,
+            .context = "tables existence long table name predicate",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT 1 FROM INFORMATION_SCHEMA.TABLES "
+                   "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 't' "
+                   "AND TABLE_TYPE = 'BASE TABLE' AND ENGINE = 'not-mylite'",
+            .column_names = one_column,
+            .column_count = 1U,
+            .values = NULL,
+            .row_count = 0U,
+            .context = "tables existence predicate extra condition",
         }
     );
     failures += expect_query(

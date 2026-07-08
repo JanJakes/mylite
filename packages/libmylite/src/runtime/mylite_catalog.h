@@ -800,6 +800,13 @@ int mylite_catalog_try_read_table_by_name(
     struct mylite_catalog_table_descriptor *out_table,
     bool *out_found
 );
+int mylite_catalog_try_read_table_kind_by_schema_table_name(
+    struct mylite_db *database,
+    const char *schema_name,
+    const char *table_name,
+    enum mylite_catalog_table_kind *out_kind,
+    bool *out_found
+);
 int mylite_catalog_read_table_by_id(
     struct mylite_db *database,
     int64_t table_id,

@@ -232,6 +232,12 @@ static const struct benchmark_query wordpress_metadata_queries[] = {
     QUERY("SHOW CREATE TABLE wp_postmeta"),
 };
 
+static const struct benchmark_query information_schema_tables_lookup_queries[] = {
+    QUERY("SELECT 1 AS expression FROM INFORMATION_SCHEMA.TABLES "
+          "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wp_options' "
+          "AND TABLE_TYPE = 'BASE TABLE'"),
+};
+
 static const struct benchmark_query wordpress_cursor_queries[] = {
     QUERY("SELECT option_value FROM wp_options WHERE option_name = 'siteurl' LIMIT 1"),
     QUERY("SELECT option_name, option_value FROM wp_options WHERE autoload = 'yes'"),
@@ -290,6 +296,14 @@ static const struct runtime_scenario runtime_scenarios[] = {
         .setup_query_count = sizeof(wordpress_setup_queries) / sizeof(wordpress_setup_queries[0]),
         .queries = wordpress_metadata_queries,
         .query_count = sizeof(wordpress_metadata_queries) / sizeof(wordpress_metadata_queries[0]),
+    },
+    {
+        .name = "runtime.information_schema_tables_lookup",
+        .setup_queries = wordpress_setup_queries,
+        .setup_query_count = sizeof(wordpress_setup_queries) / sizeof(wordpress_setup_queries[0]),
+        .queries = information_schema_tables_lookup_queries,
+        .query_count = sizeof(information_schema_tables_lookup_queries) /
+                       sizeof(information_schema_tables_lookup_queries[0]),
     },
 };
 

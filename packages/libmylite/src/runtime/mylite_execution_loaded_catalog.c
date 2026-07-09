@@ -10,6 +10,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 struct load_columns_context {
     struct mylite_catalog_column_descriptor *columns;
@@ -171,6 +172,32 @@ static int note_check_constraint_presence(
     void *user_data
 );
 static int load_columns_reserve(struct load_columns_context *context, size_t required_capacity);
+static int load_table_columns_uncached(
+    struct mylite_db *database,
+    int64_t table_id,
+    struct mylite_catalog_column_descriptor **out_columns,
+    size_t *out_column_count
+);
+static int copy_loaded_table_columns(
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct mylite_catalog_column_descriptor **out_columns,
+    size_t *out_column_count
+);
+static void maybe_cache_loaded_table_columns(
+    struct mylite_db *database,
+    int64_t table_id,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+);
+static struct loaded_table_columns_cache_entry *find_table_columns_cache_entry(
+    struct mylite_db *database,
+    int64_t table_id
+);
+static struct loaded_table_columns_cache_entry *prepare_table_columns_cache_entry(
+    struct mylite_db *database
+);
+static void loaded_table_columns_cache_entry_deinit(struct loaded_table_columns_cache_entry *entry);
 static struct loaded_table_key_metadata_cache_entry *find_table_key_metadata_cache_entry(
     struct mylite_db *database,
     int64_t table_id
@@ -183,6 +210,61 @@ static void loaded_table_key_metadata_cache_entry_deinit(
 );
 
 int mylite_execution_load_table_columns(
+    struct mylite_db *database,
+    int64_t table_id,
+    struct mylite_catalog_column_descriptor **out_columns,
+    size_t *out_column_count
+) {
+    struct loaded_table_columns_cache_entry *entry = NULL;
+    int rc = MYLITE_OK;
+
+    if (database == NULL || out_columns == NULL || out_column_count == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_columns = NULL;
+    *out_column_count = 0U;
+    if (table_id < 0) {
+        return load_table_columns_uncached(database, table_id, out_columns, out_column_count);
+    }
+
+    entry = find_table_columns_cache_entry(database, table_id);
+    if (entry != NULL) {
+        rc = copy_loaded_table_columns(
+            entry->columns,
+            entry->column_count,
+            out_columns,
+            out_column_count
+        );
+        if (rc == MYLITE_NOMEM) {
+            mylite_execution_set_nomem_error(database);
+        }
+        return rc;
+    }
+
+    rc = load_table_columns_uncached(database, table_id, out_columns, out_column_count);
+    if (rc == MYLITE_OK) {
+        maybe_cache_loaded_table_columns(database, table_id, *out_columns, *out_column_count);
+    }
+
+    return rc;
+}
+
+void mylite_execution_table_columns_cache_invalidate(struct mylite_db *database) {
+    mylite_execution_table_columns_cache_deinit(database);
+}
+
+void mylite_execution_table_columns_cache_deinit(struct mylite_db *database) {
+    if (database == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < database->table_columns_cache_count; ++index) {
+        loaded_table_columns_cache_entry_deinit(&database->table_columns_cache[index]);
+    }
+    database->table_columns_cache_count = 0U;
+}
+
+static int load_table_columns_uncached(
     struct mylite_db *database,
     int64_t table_id,
     struct mylite_catalog_column_descriptor **out_columns,
@@ -227,6 +309,68 @@ int mylite_execution_load_table_columns(
     *out_column_count = context.count;
 
     return MYLITE_OK;
+}
+
+static int copy_loaded_table_columns(
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct mylite_catalog_column_descriptor **out_columns,
+    size_t *out_column_count
+) {
+    struct mylite_catalog_column_descriptor *copy = NULL;
+
+    *out_columns = NULL;
+    *out_column_count = 0U;
+    if (columns == NULL || column_count == 0U) {
+        return MYLITE_MISUSE;
+    }
+    if (column_count > SIZE_MAX / sizeof(*copy)) {
+        return MYLITE_NOMEM;
+    }
+    copy = (struct mylite_catalog_column_descriptor *)malloc(column_count * sizeof(*copy));
+    if (copy == NULL) {
+        return MYLITE_NOMEM;
+    }
+    memcpy(copy, columns, column_count * sizeof(*copy));
+    *out_columns = copy;
+    *out_column_count = column_count;
+    return MYLITE_OK;
+}
+
+static void maybe_cache_loaded_table_columns(
+    struct mylite_db *database,
+    int64_t table_id,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count
+) {
+    struct loaded_table_columns_cache_entry *entry = NULL;
+    struct mylite_catalog_column_descriptor *copy = NULL;
+
+    if (database == NULL || columns == NULL || column_count == 0U || table_id < 0 ||
+        column_count > SIZE_MAX / sizeof(*copy)) {
+        return;
+    }
+
+    copy = (struct mylite_catalog_column_descriptor *)malloc(column_count * sizeof(*copy));
+    if (copy == NULL) {
+        return;
+    }
+    memcpy(copy, columns, column_count * sizeof(*copy));
+
+    entry = prepare_table_columns_cache_entry(database);
+    if (entry == NULL) {
+        free(copy);
+        return;
+    }
+
+    *entry = (struct loaded_table_columns_cache_entry){
+        .is_valid = true,
+        .table_id = table_id,
+        .catalog_generation = database->session.catalog_generation,
+        .sqlite_schema_generation = database->session.sqlite_schema_generation,
+        .columns = copy,
+        .column_count = column_count,
+    };
 }
 
 struct loaded_table_key_metadata mylite_execution_loaded_table_key_metadata_init(void) {
@@ -374,6 +518,56 @@ static int append_loaded_column(
     ++context->count;
 
     return MYLITE_OK;
+}
+
+static struct loaded_table_columns_cache_entry *find_table_columns_cache_entry(
+    struct mylite_db *database,
+    int64_t table_id
+) {
+    if (database == NULL) {
+        return NULL;
+    }
+
+    for (size_t index = 0U; index < database->table_columns_cache_count; ++index) {
+        struct loaded_table_columns_cache_entry *entry = &database->table_columns_cache[index];
+
+        if (entry->is_valid && entry->table_id == table_id &&
+            entry->catalog_generation == database->session.catalog_generation &&
+            entry->sqlite_schema_generation == database->session.sqlite_schema_generation) {
+            return entry;
+        }
+    }
+
+    return NULL;
+}
+
+static struct loaded_table_columns_cache_entry *prepare_table_columns_cache_entry(
+    struct mylite_db *database
+) {
+    struct loaded_table_columns_cache_entry *entry = NULL;
+
+    if (database == NULL) {
+        return NULL;
+    }
+    if (database->table_columns_cache_count < MYLITE_EXECUTION_TABLE_COLUMNS_CACHE_LIMIT) {
+        entry = &database->table_columns_cache[database->table_columns_cache_count];
+        ++database->table_columns_cache_count;
+        return entry;
+    }
+
+    entry = &database->table_columns_cache[0];
+    loaded_table_columns_cache_entry_deinit(entry);
+    return entry;
+}
+
+static void loaded_table_columns_cache_entry_deinit(struct loaded_table_columns_cache_entry *entry
+) {
+    if (entry == NULL) {
+        return;
+    }
+
+    free(entry->columns);
+    *entry = (struct loaded_table_columns_cache_entry){0};
 }
 
 static struct loaded_table_key_metadata_cache_entry *find_table_key_metadata_cache_entry(

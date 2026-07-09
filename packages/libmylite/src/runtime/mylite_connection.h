@@ -341,6 +341,9 @@ struct mylite_db {
     struct mylite_execution_statement_cache_entry
         execution_statement_cache[MYLITE_EXECUTION_STATEMENT_CACHE_LIMIT];
     size_t execution_statement_cache_count;
+    struct loaded_table_columns_cache_entry
+        table_columns_cache[MYLITE_EXECUTION_TABLE_COLUMNS_CACHE_LIMIT];
+    size_t table_columns_cache_count;
     struct loaded_table_key_metadata_cache_entry
         table_key_metadata_cache[MYLITE_EXECUTION_TABLE_KEY_METADATA_CACHE_LIMIT];
     size_t table_key_metadata_cache_count;

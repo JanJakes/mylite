@@ -50,6 +50,7 @@ struct expected_query {
 };
 
 static int test_add_column_success_descriptor_persistence_and_dml(void);
+static int test_add_column_table_column_cache_invalidation(void);
 static int test_add_column_positioning(void);
 static int test_add_column_diagnostics(void);
 static int test_add_column_physical_failure_preserves_catalog(void);
@@ -99,6 +100,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_add_column_success_descriptor_persistence_and_dml();
+    failures += test_add_column_table_column_cache_invalidation();
     failures += test_add_column_positioning();
     failures += test_add_column_diagnostics();
     failures += test_add_column_physical_failure_preserves_catalog();
@@ -477,6 +479,76 @@ static int test_add_column_success_descriptor_persistence_and_dml(void) {
     mylite_close(database);
     remove_related_files(path);
 
+    return failures;
+}
+
+static int test_add_column_table_column_cache_invalidation(void) {
+    static const char *const initial_rows[] = {"1"};
+    static const char *const added_rows[] = {"1", "9"};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "column_cache_invalidation") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open column cache file");
+    failures += execute_ok(database, "CREATE DATABASE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "CREATE TABLE cached_columns (id INT PRIMARY KEY)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "INSERT INTO cached_columns VALUES (1)", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM cached_columns",
+            .values = initial_rows,
+            .row_count = 1U,
+            .column_count = 1U,
+            .context = "warm column cache",
+        }
+    );
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id FROM cached_columns",
+            .values = initial_rows,
+            .row_count = 1U,
+            .column_count = 1U,
+            .context = "reuse column cache",
+        }
+    );
+    failures += execute_ok(
+        database,
+        "ALTER TABLE cached_columns ADD COLUMN added INT NOT NULL DEFAULT 9",
+        &result
+    );
+    failures += expect_ddl_result(result, "add column invalidates column cache");
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, added FROM cached_columns",
+            .values = added_rows,
+            .row_count = 1U,
+            .column_count = 2U,
+            .context = "added column visible after cached descriptor invalidation",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
     return failures;
 }
 

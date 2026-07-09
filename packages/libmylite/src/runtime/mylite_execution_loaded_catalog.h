@@ -61,7 +61,17 @@ struct loaded_table_key_metadata {
 };
 
 enum {
+    MYLITE_EXECUTION_TABLE_COLUMNS_CACHE_LIMIT = 64,
     MYLITE_EXECUTION_TABLE_KEY_METADATA_CACHE_LIMIT = 64,
+};
+
+struct loaded_table_columns_cache_entry {
+    bool is_valid;
+    int64_t table_id;
+    uint64_t catalog_generation;
+    uint64_t sqlite_schema_generation;
+    struct mylite_catalog_column_descriptor *columns;
+    size_t column_count;
 };
 
 struct loaded_table_key_metadata_cache_entry {
@@ -78,6 +88,8 @@ int mylite_execution_load_table_columns(
     struct mylite_catalog_column_descriptor **out_columns,
     size_t *out_column_count
 );
+void mylite_execution_table_columns_cache_invalidate(struct mylite_db *database);
+void mylite_execution_table_columns_cache_deinit(struct mylite_db *database);
 struct loaded_table_key_metadata mylite_execution_loaded_table_key_metadata_init(void);
 void mylite_execution_loaded_table_key_metadata_deinit(struct loaded_table_key_metadata *metadata);
 int mylite_execution_load_table_key_metadata(

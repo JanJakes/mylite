@@ -171,6 +171,16 @@ static int note_check_constraint_presence(
     void *user_data
 );
 static int load_columns_reserve(struct load_columns_context *context, size_t required_capacity);
+static struct loaded_table_key_metadata_cache_entry *find_table_key_metadata_cache_entry(
+    struct mylite_db *database,
+    int64_t table_id
+);
+static struct loaded_table_key_metadata_cache_entry *prepare_table_key_metadata_cache_entry(
+    struct mylite_db *database
+);
+static void loaded_table_key_metadata_cache_entry_deinit(
+    struct loaded_table_key_metadata_cache_entry *entry
+);
 
 int mylite_execution_load_table_columns(
     struct mylite_db *database,
@@ -219,6 +229,131 @@ int mylite_execution_load_table_columns(
     return MYLITE_OK;
 }
 
+struct loaded_table_key_metadata mylite_execution_loaded_table_key_metadata_init(void) {
+    return (struct loaded_table_key_metadata){
+        .primary_key = mylite_execution_primary_key_info_init(),
+        .indexes = NULL,
+        .index_count = 0U,
+    };
+}
+
+void mylite_execution_loaded_table_key_metadata_deinit(struct loaded_table_key_metadata *metadata) {
+    if (metadata == NULL) {
+        return;
+    }
+
+    mylite_execution_primary_key_info_deinit(&metadata->primary_key);
+    mylite_execution_loaded_index_infos_deinit(&metadata->indexes, &metadata->index_count);
+    *metadata = mylite_execution_loaded_table_key_metadata_init();
+}
+
+int mylite_execution_load_table_key_metadata(
+    struct mylite_db *database,
+    int64_t table_id,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct loaded_table_key_metadata *out_metadata
+) {
+    int rc = MYLITE_OK;
+
+    if (out_metadata == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_metadata = mylite_execution_loaded_table_key_metadata_init();
+
+    rc = mylite_execution_load_primary_key_info(
+        database,
+        table_id,
+        columns,
+        column_count,
+        &out_metadata->primary_key
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_execution_load_table_index_infos(
+            database,
+            table_id,
+            columns,
+            column_count,
+            &out_metadata->indexes,
+            &out_metadata->index_count
+        );
+    }
+    if (rc != MYLITE_OK) {
+        mylite_execution_loaded_table_key_metadata_deinit(out_metadata);
+    }
+
+    return rc;
+}
+
+int mylite_execution_borrow_cached_table_key_metadata(
+    struct mylite_db *database,
+    int64_t table_id,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    const struct loaded_table_key_metadata **out_metadata
+) {
+    struct loaded_table_key_metadata_cache_entry *entry = NULL;
+    struct loaded_table_key_metadata metadata = mylite_execution_loaded_table_key_metadata_init();
+    int rc = MYLITE_OK;
+
+    if (database == NULL || columns == NULL || column_count == 0U || out_metadata == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_metadata = NULL;
+    if (table_id < 0) {
+        return MYLITE_MISUSE;
+    }
+
+    entry = find_table_key_metadata_cache_entry(database, table_id);
+    if (entry != NULL) {
+        *out_metadata = &entry->metadata;
+        return MYLITE_OK;
+    }
+
+    rc = mylite_execution_load_table_key_metadata(
+        database,
+        table_id,
+        columns,
+        column_count,
+        &metadata
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    entry = prepare_table_key_metadata_cache_entry(database);
+    if (entry == NULL) {
+        mylite_execution_loaded_table_key_metadata_deinit(&metadata);
+        return MYLITE_NOMEM;
+    }
+
+    *entry = (struct loaded_table_key_metadata_cache_entry){
+        .is_valid = true,
+        .table_id = table_id,
+        .catalog_generation = database->session.catalog_generation,
+        .sqlite_schema_generation = database->session.sqlite_schema_generation,
+        .metadata = metadata,
+    };
+    *out_metadata = &entry->metadata;
+
+    return MYLITE_OK;
+}
+
+void mylite_execution_table_key_metadata_cache_invalidate(struct mylite_db *database) {
+    mylite_execution_table_key_metadata_cache_deinit(database);
+}
+
+void mylite_execution_table_key_metadata_cache_deinit(struct mylite_db *database) {
+    if (database == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < database->table_key_metadata_cache_count; ++index) {
+        loaded_table_key_metadata_cache_entry_deinit(&database->table_key_metadata_cache[index]);
+    }
+    database->table_key_metadata_cache_count = 0U;
+}
+
 static int append_loaded_column(
     const struct mylite_catalog_column_descriptor *column,
     void *user_data
@@ -239,6 +374,59 @@ static int append_loaded_column(
     ++context->count;
 
     return MYLITE_OK;
+}
+
+static struct loaded_table_key_metadata_cache_entry *find_table_key_metadata_cache_entry(
+    struct mylite_db *database,
+    int64_t table_id
+) {
+    if (database == NULL) {
+        return NULL;
+    }
+
+    for (size_t index = 0U; index < database->table_key_metadata_cache_count; ++index) {
+        struct loaded_table_key_metadata_cache_entry *entry =
+            &database->table_key_metadata_cache[index];
+
+        if (entry->is_valid && entry->table_id == table_id &&
+            entry->catalog_generation == database->session.catalog_generation &&
+            entry->sqlite_schema_generation == database->session.sqlite_schema_generation) {
+            return entry;
+        }
+    }
+
+    return NULL;
+}
+
+static struct loaded_table_key_metadata_cache_entry *prepare_table_key_metadata_cache_entry(
+    struct mylite_db *database
+) {
+    struct loaded_table_key_metadata_cache_entry *entry = NULL;
+
+    if (database == NULL) {
+        return NULL;
+    }
+    if (database->table_key_metadata_cache_count <
+        MYLITE_EXECUTION_TABLE_KEY_METADATA_CACHE_LIMIT) {
+        entry = &database->table_key_metadata_cache[database->table_key_metadata_cache_count];
+        ++database->table_key_metadata_cache_count;
+        return entry;
+    }
+
+    entry = &database->table_key_metadata_cache[0];
+    loaded_table_key_metadata_cache_entry_deinit(entry);
+    return entry;
+}
+
+static void loaded_table_key_metadata_cache_entry_deinit(
+    struct loaded_table_key_metadata_cache_entry *entry
+) {
+    if (entry == NULL) {
+        return;
+    }
+
+    mylite_execution_loaded_table_key_metadata_deinit(&entry->metadata);
+    *entry = (struct loaded_table_key_metadata_cache_entry){0};
 }
 
 struct primary_key_info mylite_execution_primary_key_info_init(void) {

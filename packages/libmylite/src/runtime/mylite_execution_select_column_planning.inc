@@ -495,9 +495,8 @@ static int append_select_result_column(
 
 static struct result_column_metadata_context result_column_metadata_context_init(void) {
     return (struct result_column_metadata_context){
-        .primary_key = mylite_execution_primary_key_info_init(),
-        .indexes = NULL,
-        .index_count = 0U,
+        .owned_key_metadata = mylite_execution_loaded_table_key_metadata_init(),
+        .key_metadata = NULL,
         .has_single_source_metadata = false,
     };
 }
@@ -507,8 +506,7 @@ static void result_column_metadata_context_deinit(struct result_column_metadata_
         return;
     }
 
-    mylite_execution_primary_key_info_deinit(&context->primary_key);
-    mylite_execution_loaded_index_infos_deinit(&context->indexes, &context->index_count);
+    mylite_execution_loaded_table_key_metadata_deinit(&context->owned_key_metadata);
     *context = result_column_metadata_context_init();
 }
 
@@ -581,22 +579,25 @@ static int load_result_column_metadata_context_for_table_columns(
         return MYLITE_MISUSE;
     }
 
-    rc = mylite_execution_load_primary_key_info(
-        database,
-        table_id,
-        columns,
-        column_count,
-        &context->primary_key
-    );
-    if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_index_infos(
+    if (table_id >= 0) {
+        rc = mylite_execution_borrow_cached_table_key_metadata(
             database,
             table_id,
             columns,
             column_count,
-            &context->indexes,
-            &context->index_count
+            &context->key_metadata
         );
+    } else {
+        rc = mylite_execution_load_table_key_metadata(
+            database,
+            table_id,
+            columns,
+            column_count,
+            &context->owned_key_metadata
+        );
+        if (rc == MYLITE_OK) {
+            context->key_metadata = &context->owned_key_metadata;
+        }
     }
     if (rc != MYLITE_OK) {
         result_column_metadata_context_deinit(context);
@@ -1134,11 +1135,20 @@ static void apply_result_column_descriptor_flags(
     const struct result_column_metadata_context *metadata_context,
     struct mylite_result_column_descriptor *descriptor
 ) {
+    const struct loaded_table_key_metadata *key_metadata = metadata_context->key_metadata;
     struct loaded_index_info_span indexes = {
-        .indexes = metadata_context->indexes,
-        .count = metadata_context->index_count,
+        .indexes = NULL,
+        .count = 0U,
     };
     bool is_key_part = false;
+
+    if (key_metadata == NULL) {
+        key_metadata = &metadata_context->owned_key_metadata;
+    }
+    indexes = (struct loaded_index_info_span){
+        .indexes = key_metadata->indexes,
+        .count = key_metadata->index_count,
+    };
 
     if (!column->is_nullable) {
         descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_NOT_NULL;
@@ -1150,7 +1160,10 @@ static void apply_result_column_descriptor_flags(
         column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE) {
         descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT;
     }
-    if (mylite_execution_primary_key_info_contains_column_id(&metadata_context->primary_key, column->column_id)) {
+    if (mylite_execution_primary_key_info_contains_column_id(
+            &key_metadata->primary_key,
+            column->column_id
+        )) {
         descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_PRI_KEY;
         is_key_part = true;
     } else if (mylite_execution_column_has_unique_secondary_index(indexes, column->column_id)) {

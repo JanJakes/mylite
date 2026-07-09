@@ -2536,9 +2536,8 @@ struct show_variables_where_truth_stack {
 };
 
 struct result_column_metadata_context {
-    struct primary_key_info primary_key;
-    struct loaded_index_info *indexes;
-    size_t index_count;
+    struct loaded_table_key_metadata owned_key_metadata;
+    const struct loaded_table_key_metadata *key_metadata;
     bool has_single_source_metadata;
 };
 

@@ -399,6 +399,7 @@ static void destroy_database_handle(struct mylite_db *database) {
     database->session.auto_increment_high_water_capacity = 0U;
     mylite_temporary_catalog_deinit(&database->session.temporary_catalog);
     mylite_execution_statement_cache_deinit(database);
+    mylite_execution_table_key_metadata_cache_deinit(database);
     mylite_catalog_deinit(&database->catalog);
     mylite_sqlite_bootstrap_deinit(database->sqlite, &database->sqlite_bootstrap);
     if (database->sqlite != NULL) {

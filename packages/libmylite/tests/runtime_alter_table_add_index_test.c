@@ -49,6 +49,7 @@ struct expected_query {
 };
 
 static int test_alter_add_index_success_metadata_and_persistence(void);
+static int test_alter_add_index_result_metadata_cache_invalidation(void);
 static int test_alter_add_index_name_generation_and_auto_increment(void);
 static int test_alter_add_index_diagnostics(void);
 static int test_alter_add_index_independent_handles(void);
@@ -58,6 +59,12 @@ static int expect_statement_ok(mylite_db *database, const char *sql);
 static int expect_alter_index_ok(mylite_db *database, const char *sql);
 static int expect_dml_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_query_values(mylite_db *database, struct expected_query query);
+static int expect_select_column_key_flags(
+    mylite_db *database,
+    const char *sql,
+    uint32_t expected_key_flags,
+    const char *context
+);
 static int expect_physical_index_count(
     mylite_db *database,
     int expected_count,
@@ -91,6 +98,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_alter_add_index_success_metadata_and_persistence();
+    failures += test_alter_add_index_result_metadata_cache_invalidation();
     failures += test_alter_add_index_name_generation_and_auto_increment();
     failures += test_alter_add_index_diagnostics();
     failures += test_alter_add_index_independent_handles();
@@ -272,6 +280,55 @@ static int test_alter_add_index_success_metadata_and_persistence(void) {
             .row_count = 1U,
             .context = "reopened added indexes",
         }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_alter_add_index_result_metadata_cache_invalidation(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "metadata_cache") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open metadata cache file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE cached_flags (id INT PRIMARY KEY, v INT, u INT)"
+    );
+    failures += expect_select_column_key_flags(
+        database,
+        "SELECT v FROM cached_flags",
+        0U,
+        "metadata cache before ADD INDEX"
+    );
+    failures += expect_select_column_key_flags(
+        database,
+        "SELECT v FROM cached_flags",
+        0U,
+        "metadata cache repeat before ADD INDEX"
+    );
+    failures += expect_alter_index_ok(database, "ALTER TABLE cached_flags ADD INDEX k_v (v)");
+    failures += expect_select_column_key_flags(
+        database,
+        "SELECT v FROM cached_flags",
+        MYLITE_RESULT_COLUMN_FLAG_MULTIPLE_KEY | MYLITE_RESULT_COLUMN_FLAG_PART_KEY,
+        "metadata cache after ADD INDEX"
+    );
+    failures += expect_alter_index_ok(database, "ALTER TABLE cached_flags ADD UNIQUE KEY u_u (u)");
+    failures += expect_select_column_key_flags(
+        database,
+        "SELECT u FROM cached_flags",
+        MYLITE_RESULT_COLUMN_FLAG_UNIQUE_KEY | MYLITE_RESULT_COLUMN_FLAG_PART_KEY,
+        "metadata cache after ADD UNIQUE"
     );
 
     mylite_close(database);
@@ -623,6 +680,43 @@ static int expect_query_values(mylite_db *database, struct expected_query query)
 
             failures +=
                 expect_result_value(result, row, column, query.values[value_index], query.context);
+        }
+    }
+
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_select_column_key_flags(
+    mylite_db *database,
+    const char *sql,
+    uint32_t expected_key_flags,
+    const char *context
+) {
+    enum {
+        key_flags_mask = MYLITE_RESULT_COLUMN_FLAG_PRI_KEY | MYLITE_RESULT_COLUMN_FLAG_UNIQUE_KEY |
+                         MYLITE_RESULT_COLUMN_FLAG_MULTIPLE_KEY |
+                         MYLITE_RESULT_COLUMN_FLAG_PART_KEY,
+    };
+
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, sql, &result);
+
+    if (failures == 0) {
+        uint32_t actual_key_flags = mylite_result_column_flags(result, 0U) & key_flags_mask;
+
+        failures += expect_size(mylite_result_column_count(result), 1U, context);
+        failures += expect_size(mylite_result_row_count(result), 0U, context);
+        failures += expect_size(mylite_result_warning_count(result), 0U, context);
+        if (actual_key_flags != expected_key_flags) {
+            fprintf(
+                stderr,
+                "%s: expected key flags %u, got %u\n",
+                context,
+                expected_key_flags,
+                actual_key_flags
+            );
+            ++failures;
         }
     }
 

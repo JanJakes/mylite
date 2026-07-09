@@ -54,12 +54,48 @@ struct primary_key_info {
     size_t part_count;
 };
 
+struct loaded_table_key_metadata {
+    struct primary_key_info primary_key;
+    struct loaded_index_info *indexes;
+    size_t index_count;
+};
+
+enum {
+    MYLITE_EXECUTION_TABLE_KEY_METADATA_CACHE_LIMIT = 64,
+};
+
+struct loaded_table_key_metadata_cache_entry {
+    bool is_valid;
+    int64_t table_id;
+    uint64_t catalog_generation;
+    uint64_t sqlite_schema_generation;
+    struct loaded_table_key_metadata metadata;
+};
+
 int mylite_execution_load_table_columns(
     struct mylite_db *database,
     int64_t table_id,
     struct mylite_catalog_column_descriptor **out_columns,
     size_t *out_column_count
 );
+struct loaded_table_key_metadata mylite_execution_loaded_table_key_metadata_init(void);
+void mylite_execution_loaded_table_key_metadata_deinit(struct loaded_table_key_metadata *metadata);
+int mylite_execution_load_table_key_metadata(
+    struct mylite_db *database,
+    int64_t table_id,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct loaded_table_key_metadata *out_metadata
+);
+int mylite_execution_borrow_cached_table_key_metadata(
+    struct mylite_db *database,
+    int64_t table_id,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    const struct loaded_table_key_metadata **out_metadata
+);
+void mylite_execution_table_key_metadata_cache_invalidate(struct mylite_db *database);
+void mylite_execution_table_key_metadata_cache_deinit(struct mylite_db *database);
 struct primary_key_info mylite_execution_primary_key_info_init(void);
 void mylite_execution_primary_key_info_deinit(struct primary_key_info *info);
 int mylite_execution_load_primary_key_info(

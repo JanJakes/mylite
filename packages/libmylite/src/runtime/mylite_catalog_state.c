@@ -105,6 +105,7 @@ void mylite_catalog_invalidate_descriptor_cache(struct mylite_db *database) {
     }
 
     reset_descriptor_cache_state(&database->catalog);
+    mylite_execution_table_key_metadata_cache_invalidate(database);
 }
 
 void mylite_catalog_mutation_init(struct mylite_catalog_mutation *mutation) {
@@ -189,6 +190,7 @@ int mylite_catalog_commit_mutation(
     database->catalog.generation = mutation->next_generation;
     database->session.catalog_generation = mutation->next_generation;
     reset_descriptor_cache_state(&database->catalog);
+    mylite_execution_table_key_metadata_cache_invalidate(database);
     mylite_catalog_mutation_deinit(mutation);
 
     return MYLITE_OK;
@@ -256,6 +258,7 @@ int mylite_catalog_finish_generation_change(
     database->catalog.generation = change->next_generation;
     database->session.catalog_generation = change->next_generation;
     reset_descriptor_cache_state(&database->catalog);
+    mylite_execution_table_key_metadata_cache_invalidate(database);
 
     return MYLITE_OK;
 }

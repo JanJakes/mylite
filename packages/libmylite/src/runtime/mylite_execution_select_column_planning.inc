@@ -523,6 +523,15 @@ static int load_result_column_metadata_context(
     if (plan->source_count != 0U) {
         return MYLITE_OK;
     }
+    if (plan->source_columns != NULL && plan->source_column_count != 0U) {
+        return load_result_column_metadata_context_for_table_columns(
+            database,
+            plan->table.table_id,
+            plan->source_columns,
+            plan->source_column_count,
+            context
+        );
+    }
 
     return load_result_column_metadata_context_for_table(database, plan->table.table_id, context);
 }
@@ -542,9 +551,43 @@ static int load_result_column_metadata_context_for_table(
 
     rc = mylite_execution_load_table_columns(database, table_id, &columns, &column_count);
     if (rc == MYLITE_OK) {
-        rc =
-            mylite_execution_load_primary_key_info(database, table_id, columns, column_count, &context->primary_key);
+        rc = load_result_column_metadata_context_for_table_columns(
+            database,
+            table_id,
+            columns,
+            column_count,
+            context
+        );
     }
+    free(columns);
+    if (rc != MYLITE_OK) {
+        result_column_metadata_context_deinit(context);
+        return rc;
+    }
+
+    return MYLITE_OK;
+}
+
+static int load_result_column_metadata_context_for_table_columns(
+    struct mylite_db *database,
+    int64_t table_id,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct result_column_metadata_context *context
+) {
+    int rc = MYLITE_OK;
+
+    if (context == NULL || columns == NULL || column_count == 0U) {
+        return MYLITE_MISUSE;
+    }
+
+    rc = mylite_execution_load_primary_key_info(
+        database,
+        table_id,
+        columns,
+        column_count,
+        &context->primary_key
+    );
     if (rc == MYLITE_OK) {
         rc = mylite_execution_load_table_index_infos(
             database,
@@ -555,7 +598,6 @@ static int load_result_column_metadata_context_for_table(
             &context->index_count
         );
     }
-    free(columns);
     if (rc != MYLITE_OK) {
         result_column_metadata_context_deinit(context);
         return rc;

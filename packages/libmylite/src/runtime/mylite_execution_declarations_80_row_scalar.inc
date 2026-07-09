@@ -3805,4 +3805,11 @@ static int load_result_column_metadata_context_for_table(
     int64_t table_id,
     struct result_column_metadata_context *context
 );
+static int load_result_column_metadata_context_for_table_columns(
+    struct mylite_db *database,
+    int64_t table_id,
+    const struct mylite_catalog_column_descriptor *columns,
+    size_t column_count,
+    struct result_column_metadata_context *context
+);
 static struct mylite_result_column_descriptor unknown_result_column_descriptor(const char *label);

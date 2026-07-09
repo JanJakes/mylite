@@ -1453,6 +1453,8 @@ struct planned_select {
     bool source_has_alias;
     struct planned_select_source *sources;
     size_t source_count;
+    struct mylite_catalog_column_descriptor *source_columns;
+    size_t source_column_count;
     struct mylite_catalog_column_descriptor *columns;
     const struct mylite_sql_ast_node **column_aliases;
     size_t *column_source_indexes;

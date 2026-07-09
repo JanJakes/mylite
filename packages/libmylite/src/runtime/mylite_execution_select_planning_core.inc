@@ -188,12 +188,18 @@ static int plan_select(
         );
     }
     if (rc == MYLITE_OK) {
+        out_plan->source_columns = table_columns;
+        out_plan->source_column_count = table_column_count;
+        table_columns = NULL;
+        table_column_count = 0U;
+    }
+    if (rc == MYLITE_OK) {
         rc = plan_select_projection(
             database,
             select_list,
             &source_context,
-            table_columns,
-            table_column_count,
+            out_plan->source_columns,
+            out_plan->source_column_count,
             out_plan
         );
     }
@@ -202,8 +208,8 @@ static int plan_select(
             database,
             clauses.where_clause,
             &source_context,
-            table_columns,
-            table_column_count,
+            out_plan->source_columns,
+            out_plan->source_column_count,
             &predicate_options,
             &out_plan->predicate
         );
@@ -213,8 +219,8 @@ static int plan_select(
             database,
             clauses.having_clause,
             &source_context,
-            table_columns,
-            table_column_count,
+            out_plan->source_columns,
+            out_plan->source_column_count,
             &having_predicate_options,
             &having_predicate
         );
@@ -232,8 +238,8 @@ static int plan_select(
             clauses.order_clause,
             &source_context,
             out_plan,
-            table_columns,
-            table_column_count,
+            out_plan->source_columns,
+            out_plan->source_column_count,
             allow_field_order,
             true,
             &out_plan->order
@@ -2541,6 +2547,7 @@ static void planned_select_deinit_shallow(struct planned_select *plan) {
         planned_select_source_deinit_shallow(&plan->sources[source_index]);
     }
     free(plan->sources);
+    free(plan->source_columns);
     free(plan->columns);
     free((void *)plan->column_aliases);
     free(plan->column_source_indexes);

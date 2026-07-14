@@ -36,6 +36,7 @@ enum {
     mysql_error_incorrect_table_name = 1103,
     mysql_error_unknown_table_in_schema = 1109,
     mysql_error_unknown = 1105,
+    mysql_error_commands_out_of_sync = 2014,
     mysql_error_column_specified_twice = 1110,
     mysql_error_invalid_group_function = 1111,
     mysql_error_unknown_character_set = 1115,

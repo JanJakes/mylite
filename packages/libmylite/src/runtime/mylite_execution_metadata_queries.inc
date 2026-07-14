@@ -497,7 +497,12 @@ static int execute_descriptor_select_statement(
     mylite_result **out_result
 ) {
     struct planned_select plan = {0};
-    int rc = plan_select(database, statement, true, &plan);
+    struct mylite_statement_transaction read_transaction = {0};
+    int rc = begin_read_statement_transaction(database, &read_transaction);
+
+    if (rc == MYLITE_OK) {
+        rc = plan_select(database, statement, true, &plan);
+    }
 
     if (rc == MYLITE_OK && apply_sql_select_limit) {
         apply_sql_select_limit_to_plan_limit(database, &plan.limit);
@@ -507,6 +512,11 @@ static int execute_descriptor_select_statement(
     }
     if (rc == MYLITE_OK) {
         rc = execute_select_from_plan(database, &plan, out_result);
+    }
+    if (rc == MYLITE_OK) {
+        rc = commit_statement_transaction(database, &read_transaction);
+    } else {
+        rollback_statement_transaction(database, &read_transaction);
     }
     planned_select_deinit(&plan);
 

@@ -51,6 +51,32 @@ int mylite_execution_begin_statement_transaction(
     return rc;
 }
 
+int mylite_execution_begin_read_statement_transaction(
+    struct mylite_db *database,
+    struct mylite_statement_transaction *transaction
+) {
+    int rc = MYLITE_OK;
+
+    transaction->kind = MYLITE_STATEMENT_TRANSACTION_NONE;
+    transaction->active = false;
+    if (database->session.user_transaction_active || sqlite3_get_autocommit(database->sqlite) == 0) {
+        return MYLITE_OK;
+    }
+    if (!database->session.autocommit_enabled) {
+        return mylite_execution_begin_autocommit_disabled_transaction(database);
+    }
+
+    rc = mylite_execution_normalize_sqlite_control_rc(
+        database,
+        mylite_execution_execute_sqlite_control_sql(database, "BEGIN")
+    );
+    if (rc == MYLITE_OK) {
+        transaction->kind = MYLITE_STATEMENT_TRANSACTION_DIRECT;
+        transaction->active = true;
+    }
+    return rc;
+}
+
 int mylite_execution_begin_autocommit_disabled_transaction(struct mylite_db *database) {
     int rc = MYLITE_OK;
 

@@ -2548,6 +2548,7 @@ struct mylite_stmt {
     struct planned_select select_plan;
     struct result_column_metadata_context metadata_context;
     struct sqlite_result_row_storage row_storage;
+    struct mylite_statement_transaction read_transaction;
     sqlite3_stmt *sqlite_statement;
     mylite_result *metadata_result;
     char *sqlite_sql;

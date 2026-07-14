@@ -1,5 +1,8 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_connection.h"
+#include "sqlite3.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,6 +20,7 @@ enum {
     mysql_collation_utf8mb4_0900_ai_ci_id = 255,
     mysql_int_display_length = 11,
     mysql_varchar_20_display_length = 80,
+    mysql_error_commands_out_of_sync = 2014,
 };
 
 struct expected_query_scalar_text {
@@ -29,6 +33,7 @@ static int test_cursor_select_streams_rows_and_metadata(void);
 static int test_cursor_reuses_finalized_select_statements(void);
 static int test_cursor_materializes_information_schema_selects(void);
 static int test_cursor_prepare_rejects_unsupported_statements(void);
+static int test_cursor_read_transaction_lifecycle(void);
 static int execute_ok(mylite_db *database, const char *sql);
 static int expect_query_scalar_text(
     mylite_db *database,
@@ -60,8 +65,177 @@ int main(void) {
     failures += test_cursor_reuses_finalized_select_statements();
     failures += test_cursor_materializes_information_schema_selects();
     failures += test_cursor_prepare_rejects_unsupported_statements();
+    failures += test_cursor_read_transaction_lifecycle();
 
     return failures == 0 ? 0 : 1;
+}
+
+static int test_cursor_read_transaction_lifecycle(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    mylite_stmt *blocked_stmt = NULL;
+    mylite_result *blocked_result = NULL;
+    sqlite3 *sqlite = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "read_transaction") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open read transaction file");
+    failures += execute_ok(database, "CREATE DATABASE app");
+    failures += execute_ok(database, "USE app");
+    failures += execute_ok(database, "CREATE TABLE items (id INT NOT NULL)");
+    failures += execute_ok(database, "INSERT INTO items VALUES (1), (2)");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    failures += expect_int(sqlite3_get_autocommit(sqlite), 1, "initial SQLite autocommit");
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT id FROM items ORDER BY id",
+            strlen("SELECT id FROM items ORDER BY id"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare read transaction cursor"
+    );
+    failures += expect_int(sqlite3_get_autocommit(sqlite), 0, "cursor read transaction active");
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT id FROM items",
+            strlen("SELECT id FROM items"),
+            &blocked_stmt
+        ),
+        MYLITE_ERROR,
+        "reject second active cursor"
+    );
+    failures += expect_true(blocked_stmt == NULL, "rejected cursor handle");
+    failures += expect_int(
+        mylite_errcode(database),
+        mysql_error_commands_out_of_sync,
+        "active cursor error code"
+    );
+    failures += expect_contains(
+        mylite_errmsg(database),
+        "Commands out of sync",
+        "active cursor error message"
+    );
+    failures += expect_int(
+        mylite_execute(
+            database,
+            "UPDATE items SET id = id",
+            strlen("UPDATE items SET id = id"),
+            &blocked_result
+        ),
+        MYLITE_ERROR,
+        "reject command during active cursor"
+    );
+    failures += expect_true(blocked_result == NULL, "rejected command result");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "read transaction first row");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "early finalize read transaction");
+    stmt = NULL;
+    failures += expect_int(sqlite3_get_autocommit(sqlite), 1, "early finalize ends transaction");
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT id FROM items ORDER BY id",
+            strlen("SELECT id FROM items ORDER BY id"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare exhausted read transaction cursor"
+    );
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "exhausted cursor first row");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "exhausted cursor second row");
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_DONE, "exhausted cursor done");
+    failures += expect_int(sqlite3_get_autocommit(sqlite), 1, "exhaustion ends transaction");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize exhausted cursor");
+    stmt = NULL;
+
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'app'",
+            strlen("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'app'"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare materialized read transaction cursor"
+    );
+    failures += expect_int(
+        sqlite3_get_autocommit(sqlite),
+        1,
+        "materialized cursor releases read transaction"
+    );
+    failures += execute_ok(database, "SELECT id FROM items LIMIT 1");
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize materialized cursor");
+    stmt = NULL;
+
+    failures += execute_ok(database, "START TRANSACTION");
+    failures += expect_int(sqlite3_get_autocommit(sqlite), 0, "user transaction active");
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT id FROM items ORDER BY id",
+            strlen("SELECT id FROM items ORDER BY id"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare cursor in user transaction"
+    );
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize cursor in user transaction");
+    stmt = NULL;
+    failures += expect_int(
+        sqlite3_get_autocommit(sqlite),
+        0,
+        "cursor leaves user transaction active"
+    );
+    failures += execute_ok(database, "ROLLBACK");
+    failures += expect_int(sqlite3_get_autocommit(sqlite), 1, "rollback ends user transaction");
+
+    failures += execute_ok(database, "SET autocommit = 0");
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT id FROM items ORDER BY id",
+            strlen("SELECT id FROM items ORDER BY id"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare autocommit-disabled cursor"
+    );
+    failures += expect_int(
+        sqlite3_get_autocommit(sqlite),
+        0,
+        "autocommit-disabled cursor starts user transaction"
+    );
+    failures += expect_int(
+        mylite_stmt_finalize(stmt),
+        MYLITE_OK,
+        "finalize autocommit-disabled cursor"
+    );
+    stmt = NULL;
+    failures += expect_int(
+        sqlite3_get_autocommit(sqlite),
+        0,
+        "autocommit-disabled transaction remains active"
+    );
+    failures += execute_ok(database, "COMMIT");
+    failures += expect_int(
+        sqlite3_get_autocommit(sqlite),
+        1,
+        "commit ends autocommit-disabled transaction"
+    );
+    failures += execute_ok(database, "SET autocommit = 1");
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
 }
 
 static int test_cursor_select_streams_rows_and_metadata(void) {

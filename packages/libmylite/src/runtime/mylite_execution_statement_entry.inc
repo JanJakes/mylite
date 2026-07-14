@@ -71,6 +71,20 @@ static bool statement_result_is_select(
     return mylite_result_column_count(result) != 0U;
 }
 
+static int reject_command_with_active_cursor(struct mylite_db *database) {
+    if (database->active_cursor == NULL) {
+        return MYLITE_OK;
+    }
+
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_commands_out_of_sync,
+        "HY000",
+        "Commands out of sync; you can't run this command now"
+    );
+    return MYLITE_ERROR;
+}
+
 static int execute_parsed_statement(
     struct mylite_db *database,
     const struct mylite_statement_context *context,

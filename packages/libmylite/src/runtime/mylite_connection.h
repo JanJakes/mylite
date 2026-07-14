@@ -347,6 +347,7 @@ struct mylite_db {
     struct loaded_table_key_metadata_cache_entry
         table_key_metadata_cache[MYLITE_EXECUTION_TABLE_KEY_METADATA_CACHE_LIMIT];
     size_t table_key_metadata_cache_count;
+    mylite_stmt *active_cursor;
     struct mylite_db *processlist_next;
 };
 

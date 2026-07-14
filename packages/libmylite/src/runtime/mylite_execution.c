@@ -152,6 +152,10 @@ int mylite_execute(
         }
         return MYLITE_MISUSE;
     }
+    rc = reject_command_with_active_cursor(database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
 
     if (database->session.statement_id != UINT64_MAX) {
         ++database->session.statement_id;
@@ -254,6 +258,10 @@ int mylite_execute_transaction_control(
     if (database == NULL) {
         return MYLITE_MISUSE;
     }
+    rc = reject_command_with_active_cursor(database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
 
     switch (statement) {
     case MYLITE_TRANSACTION_CONTROL_START:
@@ -341,6 +349,10 @@ int mylite_prepare(mylite_db *database, const char *sql, size_t sql_size, mylite
         }
         return MYLITE_MISUSE;
     }
+    rc = reject_command_with_active_cursor(database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
 
     stmt = calloc(1U, sizeof(*stmt));
     if (stmt == NULL) {
@@ -408,6 +420,10 @@ int mylite_stmt_step(mylite_stmt *stmt) {
     if (sqlite_rc != SQLITE_DONE) {
         rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         rc = finish_cursor_sqlite_statement(stmt, rc);
+        rollback_statement_transaction(stmt->database, &stmt->read_transaction);
+        if (stmt->database->active_cursor == stmt) {
+            stmt->database->active_cursor = NULL;
+        }
         stmt->done = true;
         mylite_result *result = NULL;
 
@@ -657,6 +673,9 @@ static int prepare_cursor_select_statement(
         rc = prepare_statement_transaction_boundary(database, stmt->statement);
     }
     if (rc == MYLITE_OK) {
+        rc = begin_read_statement_transaction(database, &stmt->read_transaction);
+    }
+    if (rc == MYLITE_OK) {
         rc = prepare_cursor_select_plan(stmt);
         if (rc != MYLITE_OK && rc != MYLITE_NOMEM) {
             clear_cursor_select_plan_resources(stmt, rc);
@@ -664,9 +683,13 @@ static int prepare_cursor_select_statement(
             rc = prepare_cursor_materialized_select_statement(stmt);
         }
     }
+    if (rc == MYLITE_OK && !stmt->has_materialized_rows) {
+        database->active_cursor = stmt;
+    }
     if (rc != MYLITE_OK) {
         mylite_result *result = NULL;
 
+        rollback_statement_transaction(database, &stmt->read_transaction);
         rc = finish_failed_statement(database, rc, &result);
         (void)mylite_statement_context_end(&stmt->context, rc);
         mylite_statement_context_deinit(&stmt->context);
@@ -683,6 +706,7 @@ static int prepare_cursor_materialized_select_statement(mylite_stmt *stmt) {
     if (rc == MYLITE_OK) {
         stmt->metadata_result = result;
         stmt->has_materialized_rows = true;
+        rc = commit_statement_transaction(stmt->database, &stmt->read_transaction);
     }
     return rc;
 }
@@ -767,8 +791,11 @@ static void clear_cursor_select_plan_resources(mylite_stmt *stmt, int rc) {
 
 static int finish_cursor_statement(mylite_stmt *stmt, bool exhausted) {
     struct mylite_db *database = stmt->database;
-    int rc = MYLITE_OK;
+    int rc = commit_statement_transaction(database, &stmt->read_transaction);
 
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
     if (stmt->row_count > (size_t)INT64_MAX) {
         set_runtime_error(database, "SELECT row count is out of range");
         return MYLITE_ERROR;
@@ -791,12 +818,18 @@ static int finish_cursor_statement(mylite_stmt *stmt, bool exhausted) {
         stmt->has_context = false;
     }
     clear_select_consumed_next_transaction_characteristics(database);
+    if (database->active_cursor == stmt) {
+        database->active_cursor = NULL;
+    }
     return MYLITE_OK;
 }
 
 static void destroy_cursor_statement(mylite_stmt *stmt) {
     if (stmt == NULL) {
         return;
+    }
+    if (stmt->database != NULL && stmt->database->active_cursor == stmt) {
+        stmt->database->active_cursor = NULL;
     }
     if (stmt->sqlite_statement != NULL) {
         (void)finish_cursor_sqlite_statement(stmt, MYLITE_OK);
@@ -818,6 +851,7 @@ static void destroy_cursor_statement(mylite_stmt *stmt) {
     if (stmt->has_normalized_sql) {
         mylite_execution_normalized_sql_deinit(&stmt->normalized_sql);
     }
+    rollback_statement_transaction(stmt->database, &stmt->read_transaction);
     free(stmt);
 }
 

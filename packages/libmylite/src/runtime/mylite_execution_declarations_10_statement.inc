@@ -4,6 +4,7 @@ static int execute_parsed_statement(
     const struct mylite_sql_ast_node *statement,
     mylite_result **out_result
 );
+static int reject_command_with_active_cursor(struct mylite_db *database);
 static int prepare_cursor_select_statement(
     struct mylite_db *database,
     const char *sql,

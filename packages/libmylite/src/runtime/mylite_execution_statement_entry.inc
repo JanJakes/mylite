@@ -103,6 +103,10 @@ static int execute_parsed_statement(
     if (rc != MYLITE_OK) {
         return rc;
     }
+    rc = mylite_catalog_synchronize_snapshot(database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
     {
         rc = validate_alter_table_algorithm_lock_options(database, statement);
 

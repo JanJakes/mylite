@@ -1048,8 +1048,14 @@ static int test_same_file_schema_handles(void) {
     struct mylite_catalog_schema_descriptor schema = {0};
     struct mylite_catalog_table_descriptor first_table = {0};
     struct mylite_catalog_table_descriptor second_table = {0};
+    struct mylite_catalog_table_descriptor updated_second_table = {0};
+    const struct mylite_catalog *first_catalog = NULL;
+    const struct mylite_catalog *second_catalog = NULL;
     char first_physical[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
     char second_physical[MYLITE_CATALOG_PHYSICAL_NAME_CAPACITY];
+    uint64_t second_generation_before_drop = 0U;
+    size_t second_column_cache_count = 0U;
+    size_t second_key_cache_count = 0U;
     int has_first_physical = 1;
     int has_second_physical = 1;
     int failures = 0;
@@ -1078,6 +1084,117 @@ static int test_same_file_schema_handles(void) {
     failures += execute_ok(second, "CREATE TABLE second_table (id INT)", &result);
     mylite_result_free(result);
     result = NULL;
+    failures += execute_ok(second, "SELECT * FROM second_table", &result);
+    mylite_result_free(result);
+    result = NULL;
+    second_catalog = mylite_connection_catalog_for_test(second);
+    if (second_catalog != NULL) {
+        failures += expect_true(
+            second_catalog->descriptor_cache_is_valid,
+            "second handle descriptor cache populated"
+        );
+        second_generation_before_drop = second_catalog->generation;
+    }
+    failures += expect_int(
+        mylite_catalog_read_schema_by_name(second, "app", &schema),
+        MYLITE_OK,
+        "read cached shared app schema"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(second, schema.schema_id, "second_table", &second_table),
+        MYLITE_OK,
+        "read cached second shared table"
+    );
+    second_column_cache_count = second->table_columns_cache_count;
+    second_key_cache_count = second->table_key_metadata_cache_count;
+    failures += expect_int(
+        mylite_catalog_update_table_updated_time(second, second_table.table_id, 42),
+        MYLITE_OK,
+        "update second shared table status"
+    );
+    failures += expect_size(
+        second->table_columns_cache_count,
+        second_column_cache_count,
+        "table status update preserves column cache"
+    );
+    failures += expect_size(
+        second->table_key_metadata_cache_count,
+        second_key_cache_count,
+        "table status update preserves key cache"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_id(second, second_table.table_id, &updated_second_table),
+        MYLITE_OK,
+        "reload updated second shared table"
+    );
+    failures += expect_int64(
+        updated_second_table.updated_time_utc_epoch,
+        42,
+        "table status update evicts affected descriptor"
+    );
+    failures += execute_ok(second, "START TRANSACTION", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_catalog_update_table_updated_time(second, second_table.table_id, 84),
+        MYLITE_OK,
+        "update table status in transaction"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_id(second, second_table.table_id, &updated_second_table),
+        MYLITE_OK,
+        "cache uncommitted table status"
+    );
+    failures += expect_int64(
+        updated_second_table.updated_time_utc_epoch,
+        84,
+        "read uncommitted table status"
+    );
+    failures += execute_ok(second, "ROLLBACK", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_catalog_read_table_by_id(second, second_table.table_id, &updated_second_table),
+        MYLITE_OK,
+        "reload table status after rollback"
+    );
+    failures += expect_int64(
+        updated_second_table.updated_time_utc_epoch,
+        42,
+        "transaction rollback evicts uncommitted table status"
+    );
+    failures += execute_ok(second, "START TRANSACTION", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(second, "SAVEPOINT cached_status", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_catalog_update_table_updated_time(second, second_table.table_id, 126),
+        MYLITE_OK,
+        "update table status after savepoint"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_id(second, second_table.table_id, &updated_second_table),
+        MYLITE_OK,
+        "cache table status after savepoint"
+    );
+    failures += execute_ok(second, "ROLLBACK TO SAVEPOINT cached_status", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_catalog_read_table_by_id(second, second_table.table_id, &updated_second_table),
+        MYLITE_OK,
+        "reload table status after savepoint rollback"
+    );
+    failures += expect_int64(
+        updated_second_table.updated_time_utc_epoch,
+        42,
+        "savepoint rollback evicts uncommitted table status"
+    );
+    failures += execute_ok(second, "ROLLBACK", &result);
+    mylite_result_free(result);
+    result = NULL;
 
     failures += expect_int(
         mylite_catalog_read_schema_by_name(first, "app", &schema),
@@ -1093,6 +1210,29 @@ static int test_same_file_schema_handles(void) {
         mylite_catalog_read_table_by_name(first, schema.schema_id, "second_table", &second_table),
         MYLITE_OK,
         "read second shared table"
+    );
+    failures += expect_int64(
+        second_table.updated_time_utc_epoch,
+        42,
+        "first handle caches shared table status"
+    );
+    failures += expect_int(
+        mylite_catalog_update_table_updated_time(second, second_table.table_id, 43),
+        MYLITE_OK,
+        "update shared table status from second handle"
+    );
+    failures += execute_ok(first, "SELECT * FROM second_table", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_int(
+        mylite_catalog_read_table_by_id(first, second_table.table_id, &updated_second_table),
+        MYLITE_OK,
+        "reload externally updated table status"
+    );
+    failures += expect_int64(
+        updated_second_table.updated_time_utc_epoch,
+        43,
+        "data version invalidates routine table status"
     );
     memcpy(first_physical, first_table.physical_name, sizeof(first_physical));
     memcpy(second_physical, second_table.physical_name, sizeof(second_physical));
@@ -1119,6 +1259,24 @@ static int test_same_file_schema_handles(void) {
             .message_part = "Unknown database 'app'",
         }
     );
+    first_catalog = mylite_connection_catalog_for_test(first);
+    second_catalog = mylite_connection_catalog_for_test(second);
+    if (first_catalog != NULL && second_catalog != NULL) {
+        failures += expect_true(
+            second_catalog->generation > second_generation_before_drop,
+            "second handle observes newer catalog generation"
+        );
+        failures += expect_uint64(
+            second_catalog->generation,
+            first_catalog->generation,
+            "same-file handles converge on catalog generation"
+        );
+        failures += expect_bool(
+            second_catalog->descriptor_cache_is_valid,
+            false,
+            "external catalog mutation invalidates descriptor cache"
+        );
+    }
 
     mylite_close(first);
     mylite_close(second);

@@ -147,7 +147,7 @@ static int begin_persistent_auto_increment_high_water_reconciliation(
 );
 static int commit_persistent_auto_increment_high_water_reconciliation(struct mylite_db *database);
 static void rollback_persistent_auto_increment_high_water_reconciliation(
-    const struct mylite_db *database
+    struct mylite_db *database
 );
 static int apply_persistent_auto_increment_high_waters(
     struct mylite_db *database,

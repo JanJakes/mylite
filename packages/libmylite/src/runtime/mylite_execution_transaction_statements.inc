@@ -200,6 +200,7 @@ static int execute_rollback_statement_with_chain(
         rc =
             normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "ROLLBACK"));
         if (rc == MYLITE_OK) {
+            mylite_catalog_invalidate_descriptor_cache(database);
             database->session.user_transaction_active = false;
             clear_active_transaction_characteristics(database);
             clear_user_savepoints(database);
@@ -417,9 +418,10 @@ static int commit_persistent_auto_increment_high_water_reconciliation(struct myl
 }
 
 static void rollback_persistent_auto_increment_high_water_reconciliation(
-    const struct mylite_db *database
+    struct mylite_db *database
 ) {
     (void)execute_sqlite_control_sql(database, "ROLLBACK");
+    mylite_catalog_invalidate_descriptor_cache(database);
 }
 
 static int apply_persistent_auto_increment_high_waters(

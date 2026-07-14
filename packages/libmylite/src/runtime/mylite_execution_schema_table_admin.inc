@@ -328,6 +328,7 @@ static int execute_truncate_from_plan(
     }
     if (rc != MYLITE_OK && transaction_started) {
         (void)execute_sqlite_control_sql(database, "ROLLBACK");
+        mylite_catalog_invalidate_descriptor_cache(database);
     }
     free(sql);
 

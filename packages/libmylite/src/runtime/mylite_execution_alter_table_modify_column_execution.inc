@@ -857,6 +857,7 @@ static int execute_physical_alter_table_order_by(
     }
     if (rc != MYLITE_OK && transaction_started) {
         (void)execute_sqlite_control_sql(database, "ROLLBACK");
+        mylite_catalog_invalidate_descriptor_cache(database);
     }
     if (rc != MYLITE_OK && rc != MYLITE_NOMEM && copy_failed) {
         set_physical_sqlite_row_error(database);
@@ -943,6 +944,7 @@ static int execute_physical_alter_table_force(
     }
     if (rc != MYLITE_OK && transaction_started) {
         (void)execute_sqlite_control_sql(database, "ROLLBACK");
+        mylite_catalog_invalidate_descriptor_cache(database);
     }
     if (rc != MYLITE_OK && rc != MYLITE_NOMEM && copy_failed) {
         set_physical_sqlite_row_error(database);

@@ -5,6 +5,13 @@ static int execute_select_statement(
     bool apply_sql_select_limit,
     mylite_result **out_result
 );
+static int execute_select_statement_in_read_transaction(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+);
 static bool select_statement_has_unsupported_aggregate_window_expression(
     const struct mylite_sql_ast_node *statement
 );
@@ -85,6 +92,15 @@ static int execute_descriptor_select_statement(
     mylite_result **out_result
 );
 static int execute_compound_select_statement(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+);
+static bool compound_select_statement_has_table_source(
+    const struct mylite_sql_ast_node *statement
+);
+static int execute_compound_select_statement_in_read_transaction(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,

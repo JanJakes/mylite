@@ -700,8 +700,13 @@ static int prepare_cursor_select_statement(
 
 static int prepare_cursor_materialized_select_statement(mylite_stmt *stmt) {
     mylite_result *result = NULL;
-    int rc =
-        execute_select_statement(stmt->database, &stmt->context, stmt->statement, true, &result);
+    int rc = execute_select_statement_in_read_transaction(
+        stmt->database,
+        &stmt->context,
+        stmt->statement,
+        true,
+        &result
+    );
 
     if (rc == MYLITE_OK) {
         stmt->metadata_result = result;

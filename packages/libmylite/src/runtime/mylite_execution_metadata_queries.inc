@@ -90,6 +90,48 @@ static int execute_select_statement(
     bool apply_sql_select_limit,
     mylite_result **out_result
 ) {
+    const struct mylite_sql_ast_node *source = select_statement_source_clause(statement);
+    struct mylite_statement_transaction read_transaction = {0};
+    int rc = MYLITE_OK;
+
+    if (source == NULL || source->kind == MYLITE_SQL_AST_FROM_DUAL) {
+        return execute_select_statement_in_read_transaction(
+            database,
+            context,
+            statement,
+            apply_sql_select_limit,
+            out_result
+        );
+    }
+
+    rc = begin_read_statement_transaction(database, &read_transaction);
+    if (rc == MYLITE_OK) {
+        rc = execute_select_statement_in_read_transaction(
+            database,
+            context,
+            statement,
+            apply_sql_select_limit,
+            out_result
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = commit_statement_transaction(database, &read_transaction);
+        if (rc != MYLITE_OK) {
+            rollback_statement_transaction(database, &read_transaction);
+        }
+    } else {
+        rollback_statement_transaction(database, &read_transaction);
+    }
+    return rc;
+}
+
+static int execute_select_statement_in_read_transaction(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    bool apply_sql_select_limit,
+    mylite_result **out_result
+) {
     const char *argument_count_error_function = NULL;
     bool is_information_schema_query = false;
     bool is_mysql_data_dictionary_table_query = false;
@@ -497,12 +539,7 @@ static int execute_descriptor_select_statement(
     mylite_result **out_result
 ) {
     struct planned_select plan = {0};
-    struct mylite_statement_transaction read_transaction = {0};
-    int rc = begin_read_statement_transaction(database, &read_transaction);
-
-    if (rc == MYLITE_OK) {
-        rc = plan_select(database, statement, true, &plan);
-    }
+    int rc = plan_select(database, statement, true, &plan);
 
     if (rc == MYLITE_OK && apply_sql_select_limit) {
         apply_sql_select_limit_to_plan_limit(database, &plan.limit);
@@ -513,17 +550,72 @@ static int execute_descriptor_select_statement(
     if (rc == MYLITE_OK) {
         rc = execute_select_from_plan(database, &plan, out_result);
     }
-    if (rc == MYLITE_OK) {
-        rc = commit_statement_transaction(database, &read_transaction);
-    } else {
-        rollback_statement_transaction(database, &read_transaction);
-    }
     planned_select_deinit(&plan);
 
     return rc;
 }
 
 static int execute_compound_select_statement(
+    struct mylite_db *database,
+    const struct mylite_statement_context *context,
+    const struct mylite_sql_ast_node *statement,
+    mylite_result **out_result
+) {
+    struct mylite_statement_transaction read_transaction = {0};
+    int rc = MYLITE_OK;
+
+    if (!compound_select_statement_has_table_source(statement)) {
+        return execute_compound_select_statement_in_read_transaction(
+            database,
+            context,
+            statement,
+            out_result
+        );
+    }
+
+    rc = begin_read_statement_transaction(database, &read_transaction);
+    if (rc == MYLITE_OK) {
+        rc = execute_compound_select_statement_in_read_transaction(
+            database,
+            context,
+            statement,
+            out_result
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = commit_statement_transaction(database, &read_transaction);
+        if (rc != MYLITE_OK) {
+            rollback_statement_transaction(database, &read_transaction);
+        }
+    } else {
+        rollback_statement_transaction(database, &read_transaction);
+    }
+    return rc;
+}
+
+static bool compound_select_statement_has_table_source(
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *terms = child_at(statement, 1U);
+    const struct mylite_sql_ast_node *branch = child_at(statement, 0U);
+
+    const struct mylite_sql_ast_node *source = select_statement_source_clause(branch);
+
+    if (source != NULL && source->kind != MYLITE_SQL_AST_FROM_DUAL) {
+        return true;
+    }
+    for (const struct mylite_sql_ast_node *term = child_at(terms, 0U); term != NULL;
+         term = term->next_sibling) {
+        branch = child_at(term, 0U);
+        source = select_statement_source_clause(branch);
+        if (source != NULL && source->kind != MYLITE_SQL_AST_FROM_DUAL) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int execute_compound_select_statement_in_read_transaction(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
     const struct mylite_sql_ast_node *statement,

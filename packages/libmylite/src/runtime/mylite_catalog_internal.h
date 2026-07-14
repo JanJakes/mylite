@@ -56,6 +56,11 @@ struct mylite_catalog_table_descriptor_input {
     int64_t updated_time_utc_epoch;
 };
 
+void mylite_catalog_schema_table_cache_invalidate(struct mylite_catalog *catalog);
+void mylite_catalog_table_cache_invalidate(struct mylite_catalog *catalog);
+void mylite_catalog_table_cache_invalidate_entry(struct mylite_catalog *catalog, int64_t table_id);
+void mylite_catalog_schema_table_cache_deinit(struct mylite_catalog *catalog);
+
 int mylite_catalog_migrate_schema_one_step(sqlite3 *sqlite, uint32_t *schema_version);
 int mylite_catalog_begin_generation_change(
     struct mylite_db *database,

@@ -91,6 +91,7 @@ enum mylite_catalog_index_sort_direction {
 };
 
 struct mylite_db;
+struct mylite_catalog_descriptor_cache;
 struct sqlite3_stmt;
 
 enum {
@@ -108,7 +109,10 @@ struct mylite_catalog {
     uint32_t schema_version;
     uint64_t generation;
     uint64_t cached_generation;
+    uint64_t observed_data_version;
     bool descriptor_cache_is_valid;
+    bool has_observed_data_version;
+    struct mylite_catalog_descriptor_cache *descriptor_cache;
     struct mylite_catalog_statement_cache_entry
         statement_cache[MYLITE_CATALOG_STATEMENT_CACHE_LIMIT];
     size_t statement_cache_count;
@@ -316,6 +320,7 @@ void mylite_catalog_deinit(struct mylite_catalog *catalog);
 
 int mylite_catalog_initialize_file_backed(struct mylite_db *database);
 void mylite_catalog_invalidate_descriptor_cache(struct mylite_db *database);
+int mylite_catalog_synchronize_snapshot(struct mylite_db *database);
 
 void mylite_catalog_mutation_init(struct mylite_catalog_mutation *mutation);
 void mylite_catalog_mutation_deinit(struct mylite_catalog_mutation *mutation);

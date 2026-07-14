@@ -1,5 +1,6 @@
 #include "mylite_execution_statement_transaction.h"
 
+#include "mylite_catalog.h"
 #include "mylite_connection.h"
 #include "mylite_execution_diagnostics.h"
 #include "mylite_execution_sqlite_internal.h"
@@ -59,11 +60,13 @@ int mylite_execution_begin_read_statement_transaction(
 
     transaction->kind = MYLITE_STATEMENT_TRANSACTION_NONE;
     transaction->active = false;
-    if (database->session.user_transaction_active || sqlite3_get_autocommit(database->sqlite) == 0) {
-        return MYLITE_OK;
+    if (database->session.user_transaction_active ||
+        sqlite3_get_autocommit(database->sqlite) == 0) {
+        return mylite_catalog_synchronize_snapshot(database);
     }
     if (!database->session.autocommit_enabled) {
-        return mylite_execution_begin_autocommit_disabled_transaction(database);
+        rc = mylite_execution_begin_autocommit_disabled_transaction(database);
+        return rc == MYLITE_OK ? mylite_catalog_synchronize_snapshot(database) : rc;
     }
 
     rc = mylite_execution_normalize_sqlite_control_rc(
@@ -73,6 +76,7 @@ int mylite_execution_begin_read_statement_transaction(
     if (rc == MYLITE_OK) {
         transaction->kind = MYLITE_STATEMENT_TRANSACTION_DIRECT;
         transaction->active = true;
+        rc = mylite_catalog_synchronize_snapshot(database);
     }
     return rc;
 }
@@ -159,6 +163,7 @@ void mylite_execution_rollback_statement_transaction(
     } else {
         (void)mylite_execution_execute_sqlite_control_sql(database, "ROLLBACK");
     }
+    mylite_catalog_invalidate_descriptor_cache(database);
     transaction->active = false;
     transaction->kind = MYLITE_STATEMENT_TRANSACTION_NONE;
 }

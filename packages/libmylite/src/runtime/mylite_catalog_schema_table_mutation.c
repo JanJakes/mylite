@@ -1464,7 +1464,7 @@ int mylite_catalog_update_table_auto_increment_next(
     }
     rc = mylite_catalog_finalize_statement(statement, rc);
     if (rc == MYLITE_OK) {
-        mylite_catalog_invalidate_descriptor_cache(database);
+        mylite_catalog_table_cache_invalidate_entry(&database->catalog, table_id);
     }
     return rc;
 }
@@ -1507,7 +1507,7 @@ int mylite_catalog_update_table_auto_increment_status(
     }
     rc = mylite_catalog_finalize_statement(statement, rc);
     if (rc == MYLITE_OK) {
-        mylite_catalog_invalidate_descriptor_cache(database);
+        mylite_catalog_table_cache_invalidate_entry(&database->catalog, table_id);
     }
     return rc;
 }
@@ -1550,7 +1550,7 @@ int mylite_catalog_update_table_updated_time(
     }
     rc = mylite_catalog_finalize_statement(statement, rc);
     if (rc == MYLITE_OK) {
-        mylite_catalog_invalidate_descriptor_cache(database);
+        mylite_catalog_table_cache_invalidate_entry(&database->catalog, table_id);
     }
     return rc;
 }

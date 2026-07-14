@@ -1362,29 +1362,6 @@ static int bind_update_changed_condition_parameter(
     return bind_planned_value_parameter(statement, parameter_index, &plan->assignment_value);
 }
 
-static int bind_update_matched_parameters(
-    sqlite3_stmt *statement,
-    const struct planned_update *plan
-) {
-    int parameter_index = 1;
-    int rc = MYLITE_OK;
-
-    if (plan->is_joined) {
-        rc = bind_joined_update_source_parameters(statement, &parameter_index, plan);
-    }
-    if (rc == MYLITE_OK && plan->is_joined) {
-        rc = bind_select_join_condition_parameters(
-            statement,
-            &plan->join_condition,
-            &parameter_index
-        );
-    }
-    if (rc == MYLITE_OK) {
-        rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
-    }
-    return rc;
-}
-
 static int bind_update_matched_count_parameters(
     sqlite3_stmt *statement,
     const struct planned_update *plan

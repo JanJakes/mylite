@@ -2770,7 +2770,6 @@ static bool planned_update_column_has_auto_update(
     const struct mylite_catalog_column_descriptor *column
 );
 static size_t planned_update_auto_update_column_count(const struct planned_update *plan);
-static int build_update_matched_sql(const struct planned_update *plan, char **out_sql);
 static int append_single_update_matched_from_sql(
     struct mylite_dynamic_string *string,
     const struct planned_update *plan

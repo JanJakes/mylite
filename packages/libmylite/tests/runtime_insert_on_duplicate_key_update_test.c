@@ -1,5 +1,7 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_connection.h"
+#include "sqlite3.h"
 #include "storage/mylite_file_format.h"
 
 #include <stdint.h>
@@ -51,10 +53,20 @@ struct expected_dml {
     size_t warning_count;
 };
 
+struct duplicate_key_probe_trace {
+    size_t current_row_select_count;
+};
+
 static int test_duplicate_update_success_warnings_and_persistence(void);
 static int test_duplicate_update_diagnostics(void);
 static int test_duplicate_update_independent_handles(void);
 static int test_duplicate_update_cache_invalidation_after_schema_change(void);
+static int count_duplicate_current_row_select(
+    unsigned trace_kind,
+    void *user_data,
+    void *statement_handle,
+    void *unused_sql
+);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_statement_ok(mylite_db *database, const char *sql);
@@ -259,11 +271,13 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
     static const char *const string_values_row_scalar_rows[] = {"1", "base", "new:base"};
     static const char *const temporal_row_scalar_rows[] = {"1", "12", "12:34:56"};
     static const char *const arithmetic_unsigned_row_scalar_rows[] = {"1", "1"};
+    struct duplicate_key_probe_trace duplicate_trace = {0};
     char path[test_path_capacity];
     unsigned char expected_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     unsigned char actual_preamble[MYLITE_FILE_PREAMBLE_SIZE];
     mylite_db *database = NULL;
     mylite_result *result = NULL;
+    sqlite3 *sqlite = NULL;
     int failures = 0;
 
     if (make_test_path(path, sizeof(path), "success") != 0) {
@@ -802,10 +816,31 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
 
     failures += expect_statement_ok(database, "CREATE TABLE key_no_op(a INT UNIQUE, b INT, v INT)");
     failures += expect_statement_ok(database, "INSERT INTO key_no_op VALUES (1, 10, 100)");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    failures += expect_int(
+        sqlite3_trace_v2(
+            sqlite,
+            SQLITE_TRACE_STMT,
+            count_duplicate_current_row_select,
+            &duplicate_trace
+        ),
+        SQLITE_OK,
+        "install same-key duplicate trace"
+    );
     failures += expect_dml_ok(
         database,
         "INSERT INTO key_no_op VALUES (1, 20, 200) ON DUPLICATE KEY UPDATE a = VALUES(a)",
         (struct expected_dml){.affected_rows = 0, .warning_count = 1U}
+    );
+    failures += expect_int(
+        sqlite3_trace_v2(sqlite, 0U, NULL, NULL),
+        SQLITE_OK,
+        "remove same-key duplicate trace"
+    );
+    failures += expect_size(
+        duplicate_trace.current_row_select_count,
+        0U,
+        "same-key VALUES assignment skips current-row fetch"
     );
     failures += expect_query_values(
         database,
@@ -1665,6 +1700,27 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
     mylite_close(database);
     remove_related_files(path);
     return failures;
+}
+
+static int count_duplicate_current_row_select(
+    unsigned trace_kind,
+    void *user_data,
+    void *statement_handle,
+    void *unused_sql
+) {
+    struct duplicate_key_probe_trace *trace = user_data;
+    sqlite3_stmt *statement = statement_handle;
+    const char *sql = NULL;
+
+    (void)unused_sql;
+    if (trace_kind != SQLITE_TRACE_STMT || trace == NULL || statement == NULL) {
+        return 0;
+    }
+    sql = sqlite3_sql(statement);
+    if (sql != NULL && strstr(sql, "SELECT \"a\", \"b\", \"v\" FROM") != NULL) {
+        ++trace->current_row_select_count;
+    }
+    return 0;
 }
 
 static int test_duplicate_update_diagnostics(void) {

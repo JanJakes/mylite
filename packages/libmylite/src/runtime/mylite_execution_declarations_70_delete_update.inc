@@ -331,15 +331,11 @@ static int read_update_matched_row_count(
     const struct planned_update *plan,
     uint64_t *out_row_count
 );
-static int read_single_table_update_matched_row_count(
-    struct mylite_db *database,
-    const struct planned_update *plan,
-    uint64_t *out_row_count
-);
 static int build_single_table_update_matched_count_sql(
     const struct planned_update *plan,
     char **out_sql
 );
+static int build_joined_update_matched_count_sql(const struct planned_update *plan, char **out_sql);
 static int append_remaining_nonstrict_update_adjustment_warnings(
     struct mylite_db *database,
     const struct planned_update *plan,
@@ -505,9 +501,4 @@ static int touch_persistent_table_updated_time(
     const struct mylite_catalog_table_descriptor *table,
     int64_t affected_rows,
     bool force
-);
-static int update_matches_any_row(
-    struct mylite_db *database,
-    const struct planned_update *plan,
-    bool *out_matches
 );

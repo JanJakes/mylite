@@ -458,40 +458,6 @@ static size_t planned_update_auto_update_column_count(const struct planned_updat
     return count;
 }
 
-static int build_update_matched_sql(const struct planned_update *plan, char **out_sql) {
-    struct mylite_dynamic_string string;
-    size_t next_parameter = 1U;
-    int rc = MYLITE_OK;
-
-    *out_sql = NULL;
-    mylite_dynamic_string_init(&string);
-
-    rc = mylite_dynamic_string_append(&string, "SELECT 1 FROM ");
-    if (rc == MYLITE_OK && plan->is_joined) {
-        rc = append_joined_update_from_sql(&string, plan, &next_parameter);
-    } else if (rc == MYLITE_OK) {
-        rc = append_single_update_matched_from_sql(&string, plan);
-    }
-    if (rc == MYLITE_OK && plan->is_joined) {
-        rc = append_joined_update_matched_target_filter_sql(&string, plan, &next_parameter);
-    } else if (rc == MYLITE_OK) {
-        rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_dynamic_string_append(&string, " LIMIT 1");
-    }
-    if (rc == MYLITE_OK) {
-        *out_sql = mylite_dynamic_string_take(&string);
-        if (*out_sql == NULL) {
-            rc = MYLITE_NOMEM;
-        }
-    }
-
-    mylite_dynamic_string_deinit(&string);
-
-    return rc;
-}
-
 static int append_single_update_matched_from_sql(
     struct mylite_dynamic_string *string,
     const struct planned_update *plan

@@ -1028,6 +1028,12 @@ struct insert_duplicate_projected_row_inputs {
     const struct planned_value *assignment_values;
 };
 
+struct insert_duplicate_assignment_values {
+    struct planned_value *values;
+    const struct planned_insert_duplicate_update_assignment *assignments;
+    size_t count;
+};
+
 struct insert_duplicate_arithmetic_result_request {
     const struct mylite_catalog_column_descriptor *column;
     size_t row_number;

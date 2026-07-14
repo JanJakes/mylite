@@ -29,6 +29,7 @@ enum {
 struct expected_statement {
     int64_t affected_rows;
     size_t warning_count;
+    const char *info;
 };
 
 struct expected_sql_error {
@@ -184,7 +185,11 @@ static int test_create_dml_metadata_and_persistence(void) {
     failures += expect_statement_result(
         database,
         "UPDATE generated_values SET bonus = DEFAULT WHERE id = 1",
-        (struct expected_statement){.affected_rows = 0, .warning_count = 0U}
+        (struct expected_statement){
+            .affected_rows = 0,
+            .warning_count = 0U,
+            .info = "Rows matched: 1  Changed: 0  Warnings: 0",
+        }
     );
     failures += expect_query_values(
         database,
@@ -463,7 +468,11 @@ static int test_generated_column_diagnostics(void) {
     failures += expect_statement_result(
         database,
         "UPDATE multi_default SET b = DEFAULT, c = DEFAULT WHERE id = 1",
-        (struct expected_statement){.affected_rows = 0, .warning_count = 0U}
+        (struct expected_statement){
+            .affected_rows = 0,
+            .warning_count = 0U,
+            .info = "Rows matched: 1  Changed: 0  Warnings: 0",
+        }
     );
     failures += expect_query_values(
         database,
@@ -635,6 +644,9 @@ static int expect_statement_result(
         expect_int64(mylite_result_affected_rows(result), expected.affected_rows, "affected rows");
     failures +=
         expect_size(mylite_result_warning_count(result), expected.warning_count, "warning count");
+    if (expected.info != NULL) {
+        failures += expect_text(mylite_result_info(result), expected.info, "statement info");
+    }
     mylite_result_free(result);
 
     return failures;

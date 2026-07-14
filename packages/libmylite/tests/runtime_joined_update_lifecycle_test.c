@@ -58,6 +58,12 @@ static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_statement_ok(mylite_db *database, const char *sql);
 static int expect_update_ok(mylite_db *database, const char *sql, int64_t affected_rows);
+static int expect_update_info(
+    mylite_db *database,
+    const char *sql,
+    int64_t affected_rows,
+    const char *info
+);
 static int expect_query_values(mylite_db *database, struct expected_query query);
 static int expect_result_value(
     const mylite_result *result,
@@ -262,10 +268,11 @@ static int test_joined_update_success_persistence_and_table_lifecycle(void) {
             .context = "joined update duplicate matches update target rows once",
         }
     );
-    failures += expect_update_ok(
+    failures += expect_update_info(
         database,
         "UPDATE left_a JOIN right_a ON left_a.k = right_a.k SET left_a.v = 7",
-        0
+        0,
+        "Rows matched: 2  Changed: 0  Warnings: 0"
     );
 
     failures += create_join_tables(
@@ -1035,6 +1042,28 @@ static int expect_update_ok(mylite_db *database, const char *sql, int64_t affect
     failures += expect_size(mylite_result_row_count(result), 0U, "update row count");
     failures += expect_int64(mylite_result_affected_rows(result), affected_rows, "update affected");
     failures += expect_size(mylite_result_warning_count(result), 0U, "update warning count");
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_update_info(
+    mylite_db *database,
+    const char *sql,
+    int64_t affected_rows,
+    const char *info
+) {
+    mylite_result *result = NULL;
+    int failures = execute_ok(database, sql, &result);
+
+    if (failures != 0) {
+        mylite_result_free(result);
+        return failures;
+    }
+    failures += expect_size(mylite_result_column_count(result), 0U, "update column count");
+    failures += expect_size(mylite_result_row_count(result), 0U, "update row count");
+    failures += expect_int64(mylite_result_affected_rows(result), affected_rows, "update affected");
+    failures += expect_size(mylite_result_warning_count(result), 0U, "update warning count");
+    failures += expect_text(mylite_result_info(result), info, "update info");
     mylite_result_free(result);
     return failures;
 }

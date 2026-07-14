@@ -131,7 +131,17 @@ static int validate_insert_duplicate_key_assignment_conflicts(
     const struct planned_insert *plan,
     size_t row_index,
     const struct loaded_index_info *conflicting_index,
-    const struct planned_value *assignment_values
+    const struct planned_value *assignment_values,
+    const struct planned_value *known_current_values
+);
+static bool insert_duplicate_assignment_requires_key_conflict_validation(
+    const struct planned_insert *plan,
+    const struct loaded_index_info *conflicting_index
+);
+static bool insert_duplicate_index_has_assignment_requiring_validation(
+    const struct planned_insert *plan,
+    const struct loaded_index_info *index,
+    const struct loaded_index_info *conflicting_index
 );
 static int fetch_insert_duplicate_current_row_values(
     struct mylite_db *database,
@@ -150,10 +160,6 @@ static int project_insert_duplicate_updated_row_values(
     const struct planned_insert *plan,
     struct insert_duplicate_projected_row_inputs inputs,
     struct planned_value **out_values
-);
-static bool insert_duplicate_index_has_assigned_part(
-    const struct planned_insert *plan,
-    const struct loaded_index_info *index
 );
 static int insert_duplicate_key_tuple_has_null_part(
     const struct planned_insert *plan,
@@ -230,11 +236,15 @@ static int convert_insert_duplicate_update_values(
     const struct planned_insert *plan,
     size_t row_index,
     const struct loaded_index_info *conflicting_index,
-    struct planned_value **out_values
+    struct insert_duplicate_assignment_values *out_values,
+    struct planned_value **out_current_values
 );
 static void insert_duplicate_update_values_deinit(
     struct planned_value **values,
     size_t value_count
+);
+static void insert_duplicate_assignment_values_deinit(
+    struct insert_duplicate_assignment_values *values
 );
 static int copy_planned_value(
     struct mylite_db *database,
@@ -1088,10 +1098,6 @@ static int bind_update_row_scalar_changed_condition_parameters(
 static int bind_update_changed_condition_parameter(
     sqlite3_stmt *statement,
     int parameter_index,
-    const struct planned_update *plan
-);
-static int bind_update_matched_parameters(
-    sqlite3_stmt *statement,
     const struct planned_update *plan
 );
 static int bind_planned_value_parameter(

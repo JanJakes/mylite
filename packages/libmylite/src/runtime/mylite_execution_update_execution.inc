@@ -11,16 +11,13 @@ static int execute_update_from_plan(
     uint64_t matched_row_count = 0U;
     int64_t affected_rows = 0;
     int64_t auto_increment_next_after_update = plan->table.auto_increment_next;
+    bool executes_physical_update = !plan->generated_default_noop;
     int rc = MYLITE_OK;
-
-    if (plan->generated_default_noop) {
-        mylite_result_set_affected_rows(result, 0);
-        return MYLITE_OK;
-    }
 
     rc = copy_update_assignments_for_execution(database, plan, &executable_plan);
 
-    if (rc == MYLITE_OK && planned_update_assigns_auto_increment(plan)) {
+    if (rc == MYLITE_OK && executes_physical_update &&
+        planned_update_assigns_auto_increment(plan)) {
         rc = ensure_persistent_auto_increment_high_water_slot(database, &plan->table);
     }
     if (rc == MYLITE_OK) {
@@ -34,29 +31,29 @@ static int execute_update_from_plan(
             &matches_any_row
         );
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && executes_physical_update) {
         rc = prepare_executable_update_plan(database, plan, matches_any_row, &executable_plan);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && executes_physical_update) {
         rc = validate_update_date_interval_matched_assignment(database, plan, matches_any_row);
     }
-    if (rc == MYLITE_OK && matches_any_row) {
+    if (rc == MYLITE_OK && executes_physical_update && matches_any_row) {
         rc = append_remaining_nonstrict_update_adjustment_warnings(
             database,
             plan,
             matched_row_count
         );
     }
-    if (rc == MYLITE_OK && matches_any_row) {
+    if (rc == MYLITE_OK && executes_physical_update && matches_any_row) {
         rc = apply_parent_update_actions(database, &executable_plan);
     }
-    if (rc == MYLITE_OK && matches_any_row) {
+    if (rc == MYLITE_OK && executes_physical_update && matches_any_row) {
         rc = execute_matching_update_statement(database, &executable_plan, &affected_rows, plan);
     }
-    if (rc == MYLITE_OK && matches_any_row) {
+    if (rc == MYLITE_OK && executes_physical_update && matches_any_row) {
         rc = validate_parent_update_action_child_foreign_keys(database, &executable_plan);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && executes_physical_update) {
         rc = advance_auto_increment_after_update(
             database,
             plan,
@@ -65,13 +62,13 @@ static int execute_update_from_plan(
             &auto_increment_next_after_update
         );
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && executes_physical_update) {
         rc = touch_persistent_table_updated_time(database, &plan->table, affected_rows, false);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && executes_physical_update) {
         rc = validate_child_foreign_keys_after_write(database, plan->table.table_id);
     }
-    if (rc == MYLITE_OK) {
+    if (rc == MYLITE_OK && executes_physical_update) {
         rc = validate_parent_foreign_keys_after_write(database, plan->table.table_id);
     }
     if (rc == MYLITE_OK) {
@@ -177,7 +174,11 @@ static int read_update_matched_row_count(
     const struct planned_update *plan,
     uint64_t *out_row_count
 ) {
-    bool matches_any_row = false;
+    sqlite3_stmt *statement = NULL;
+    char *sql = NULL;
+    int sqlite_rc = SQLITE_OK;
+    bool statement_is_cached = false;
+    int rc = MYLITE_OK;
 
     if (out_row_count == NULL) {
         set_parse_error(database, NULL);
@@ -192,27 +193,10 @@ static int read_update_matched_row_count(
         return MYLITE_OK;
     }
     if (plan->is_joined) {
-        int rc = update_matches_any_row(database, plan, &matches_any_row);
-
-        if (rc == MYLITE_OK && matches_any_row) {
-            *out_row_count = 1U;
-        }
-        return rc;
+        rc = build_joined_update_matched_count_sql(plan, &sql);
+    } else {
+        rc = build_single_table_update_matched_count_sql(plan, &sql);
     }
-
-    return read_single_table_update_matched_row_count(database, plan, out_row_count);
-}
-
-static int read_single_table_update_matched_row_count(
-    struct mylite_db *database,
-    const struct planned_update *plan,
-    uint64_t *out_row_count
-) {
-    sqlite3_stmt *statement = NULL;
-    char *sql = NULL;
-    int sqlite_rc = SQLITE_OK;
-    bool statement_is_cached = false;
-    int rc = build_single_table_update_matched_count_sql(plan, &sql);
 
     if (rc == MYLITE_OK) {
         rc = prepare_cached_sqlite_statement(database, sql, &statement);
@@ -258,12 +242,62 @@ static int build_single_table_update_matched_count_sql(
     *out_sql = NULL;
     mylite_dynamic_string_init(&string);
 
-    rc = mylite_dynamic_string_append(&string, "SELECT COUNT(*) FROM ");
+    if (plan->limit.has_limit) {
+        rc = mylite_dynamic_string_append(&string, "SELECT COUNT(*) FROM (SELECT 1 FROM ");
+    } else {
+        rc = mylite_dynamic_string_append(&string, "SELECT COUNT(*) FROM ");
+    }
     if (rc == MYLITE_OK) {
         rc = append_single_update_matched_from_sql(&string, plan);
     }
-    if (rc == MYLITE_OK && planned_update_has_row_filter(plan)) {
+    if (rc == MYLITE_OK && plan->limit.has_limit) {
+        rc = append_select_predicate_sql(&string, &plan->predicate, &next_parameter);
+    } else if (rc == MYLITE_OK && planned_update_has_row_filter(plan)) {
         rc = append_update_row_filter_sql(&string, plan, &next_parameter);
+    }
+    if (rc == MYLITE_OK && plan->limit.has_limit) {
+        rc = append_select_order_sql(&string, &plan->order, &next_parameter);
+    }
+    if (rc == MYLITE_OK && plan->limit.has_limit) {
+        rc = append_select_limit_sql(&string, &plan->limit, &next_parameter);
+    }
+    if (rc == MYLITE_OK && plan->limit.has_limit) {
+        rc = mylite_dynamic_string_append_char(&string, ')');
+    }
+    if (rc == MYLITE_OK) {
+        *out_sql = mylite_dynamic_string_take(&string);
+        if (*out_sql == NULL) {
+            rc = MYLITE_NOMEM;
+        }
+    }
+
+    mylite_dynamic_string_deinit(&string);
+    return rc;
+}
+
+static int build_joined_update_matched_count_sql(
+    const struct planned_update *plan,
+    char **out_sql
+) {
+    struct mylite_dynamic_string string;
+    size_t next_parameter = 1U;
+    int rc = MYLITE_OK;
+
+    *out_sql = NULL;
+    mylite_dynamic_string_init(&string);
+
+    rc = mylite_dynamic_string_append(&string, "SELECT COUNT(DISTINCT ");
+    if (rc == MYLITE_OK) {
+        rc = append_joined_update_target_rowid_sql(&string, plan);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_dynamic_string_append(&string, ") FROM ");
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_joined_update_from_sql(&string, plan, &next_parameter);
+    }
+    if (rc == MYLITE_OK) {
+        rc = append_joined_update_matched_target_filter_sql(&string, plan, &next_parameter);
     }
     if (rc == MYLITE_OK) {
         *out_sql = mylite_dynamic_string_take(&string);
@@ -1571,12 +1605,16 @@ static int update_arithmetic_condition_matches_row(
     sqlite3_stmt *statement = NULL;
     char *sql = NULL;
     int sqlite_rc = SQLITE_OK;
+    bool statement_is_cached = false;
     int rc = MYLITE_OK;
 
     *out_matches = false;
     rc = build_update_arithmetic_condition_sql(plan, check->condition, &sql);
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
+        if (rc == MYLITE_OK) {
+            statement_is_cached = true;
+        }
     }
     if (rc == MYLITE_OK) {
         rc = bind_update_arithmetic_condition_parameters(statement, plan, check);
@@ -1589,7 +1627,11 @@ static int update_arithmetic_condition_matches_row(
             rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         }
     }
-    rc = finalize_sqlite_statement(statement, rc);
+    if (statement_is_cached) {
+        rc = finish_cached_sqlite_statement(database, statement, rc);
+    } else {
+        rc = finalize_sqlite_statement(statement, rc);
+    }
     free(sql);
 
     return rc;
@@ -2063,40 +2105,4 @@ static int step_update_statement(
     }
 
     return mylite_sqlite_status_to_mylite(sqlite_rc);
-}
-
-static int update_matches_any_row(
-    struct mylite_db *database,
-    const struct planned_update *plan,
-    bool *out_matches
-) {
-    sqlite3_stmt *statement = NULL;
-    char *sql = NULL;
-    int sqlite_rc = SQLITE_OK;
-    int rc = MYLITE_OK;
-
-    *out_matches = false;
-    if (plan->limit.has_limit && plan->limit.row_count == 0) {
-        return MYLITE_OK;
-    }
-
-    rc = build_update_matched_sql(plan, &sql);
-    if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
-    }
-    if (rc == MYLITE_OK) {
-        rc = bind_update_matched_parameters(statement, plan);
-    }
-    if (rc == MYLITE_OK) {
-        sqlite_rc = sqlite3_step(statement);
-        if (sqlite_rc == SQLITE_ROW) {
-            *out_matches = true;
-        } else if (sqlite_rc != SQLITE_DONE) {
-            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
-        }
-    }
-    rc = finalize_sqlite_statement(statement, rc);
-    free(sql);
-
-    return rc;
 }

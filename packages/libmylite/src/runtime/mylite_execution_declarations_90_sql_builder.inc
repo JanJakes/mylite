@@ -2706,6 +2706,7 @@ static int append_select_limit_sql(
     const struct planned_select_limit *limit,
     size_t *next_parameter
 );
+static int append_limit_integer_sql(struct mylite_dynamic_string *string, int64_t value);
 static int build_delete_sql(const struct planned_delete *plan, char **out_sql);
 static int append_delete_rowid_limited_sql(
     struct mylite_dynamic_string *string,

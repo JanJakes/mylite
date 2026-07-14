@@ -1256,10 +1256,9 @@ enum select_parameter_bind_item_kind {
     SELECT_PARAMETER_BIND_JOIN_CONDITION = 3,
     SELECT_PARAMETER_BIND_PREDICATE = 4,
     SELECT_PARAMETER_BIND_ORDER = 5,
-    SELECT_PARAMETER_BIND_LIMIT = 6,
-    SELECT_PARAMETER_BIND_GROUPED_AGGREGATE = 7,
-    SELECT_PARAMETER_BIND_COMPOUND_SELECT = 8,
-    SELECT_PARAMETER_BIND_ROW_SCALAR_SELECT = 9,
+    SELECT_PARAMETER_BIND_GROUPED_AGGREGATE = 6,
+    SELECT_PARAMETER_BIND_COMPOUND_SELECT = 7,
+    SELECT_PARAMETER_BIND_ROW_SCALAR_SELECT = 8,
 };
 
 struct select_parameter_bind_item {
@@ -1273,7 +1272,6 @@ struct select_parameter_bind_item {
     const struct planned_select_join_condition *join_condition;
     const struct planned_select_predicate *predicate;
     const struct planned_select_order *order;
-    const struct planned_select_limit *limit;
     size_t source_count;
 };
 

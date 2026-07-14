@@ -47,6 +47,8 @@ struct expected_query {
 static int test_order_limit_success_persistence_rename_and_drop(void);
 static int test_order_limit_diagnostics(void);
 static int test_independent_order_limit_handles(void);
+static int test_cached_literal_limit_does_not_reprepare(void);
+static sqlite3_stmt *find_cached_statement_containing(sqlite3 *connection, const char *needle);
 static int seed_schema(mylite_db *database, const char *name);
 static int create_order_tables(mylite_db *database);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
@@ -85,8 +87,82 @@ int main(void) {
     failures += test_order_limit_success_persistence_rename_and_drop();
     failures += test_order_limit_diagnostics();
     failures += test_independent_order_limit_handles();
+    failures += test_cached_literal_limit_does_not_reprepare();
 
     return failures == 0 ? 0 : 1;
+}
+
+static int test_cached_literal_limit_does_not_reprepare(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    sqlite3 *sqlite = NULL;
+    sqlite3_stmt *statement = NULL;
+    const char *sqlite_sql = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "cached_literal_limit") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open cached limit file");
+    failures += seed_schema(database, "app");
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += create_order_tables(database);
+
+    for (size_t execution = 0U; execution < 2U; ++execution) {
+        failures += execute_ok(
+            database,
+            "SELECT id FROM ordered_numbers ORDER BY id LIMIT 1 OFFSET 1",
+            &result
+        );
+        failures += expect_size(mylite_result_row_count(result), 1U, "cached limit row count");
+        mylite_result_free(result);
+        result = NULL;
+    }
+
+    sqlite = mylite_connection_sqlite_for_test(database);
+    statement = find_cached_statement_containing(sqlite, " LIMIT 1 OFFSET 1");
+    failures += expect_true(statement != NULL, "cached literal limit statement");
+    if (statement != NULL) {
+        sqlite_sql = sqlite3_sql(statement);
+        failures += expect_contains(sqlite_sql, " LIMIT 1 OFFSET 1", "literal limit SQL");
+        failures += expect_int(
+            sqlite3_bind_parameter_count(statement),
+            0,
+            "literal limit parameter count"
+        );
+        failures += expect_int(
+            sqlite3_stmt_status(statement, SQLITE_STMTSTATUS_REPREPARE, 0),
+            0,
+            "literal limit reprepare count"
+        );
+    }
+
+    mylite_close(database);
+    remove_related_files(path);
+
+    return failures;
+}
+
+static sqlite3_stmt *find_cached_statement_containing(sqlite3 *connection, const char *needle) {
+    sqlite3_stmt *statement = NULL;
+
+    if (connection == NULL || needle == NULL) {
+        return NULL;
+    }
+    while ((statement = sqlite3_next_stmt(connection, statement)) != NULL) {
+        const char *sql = sqlite3_sql(statement);
+
+        if (sql != NULL && strstr(sql, needle) != NULL) {
+            return statement;
+        }
+    }
+
+    return NULL;
 }
 
 static int test_order_limit_success_persistence_rename_and_drop(void) {

@@ -4220,26 +4220,34 @@ static int append_select_limit_sql(
 ) {
     int rc = MYLITE_OK;
 
+    (void)next_parameter;
     if (!limit->has_limit) {
         return MYLITE_OK;
     }
 
     rc = mylite_dynamic_string_append(string, " LIMIT ");
     if (rc == MYLITE_OK) {
-        rc = append_numbered_parameter(string, *next_parameter);
-    }
-    if (rc == MYLITE_OK) {
-        ++(*next_parameter);
+        rc = append_limit_integer_sql(string, limit->row_count);
     }
     if (rc == MYLITE_OK && limit->has_offset) {
         rc = mylite_dynamic_string_append(string, " OFFSET ");
     }
     if (rc == MYLITE_OK && limit->has_offset) {
-        rc = append_numbered_parameter(string, *next_parameter);
-    }
-    if (rc == MYLITE_OK && limit->has_offset) {
-        ++(*next_parameter);
+        rc = append_limit_integer_sql(string, limit->offset);
     }
 
     return rc;
+}
+
+static int append_limit_integer_sql(struct mylite_dynamic_string *string, int64_t value) {
+    enum { limit_integer_text_capacity = 32 };
+
+    char text[limit_integer_text_capacity];
+    int written = snprintf(text, sizeof(text), "%" PRId64, value);
+
+    if (written < 0 || (size_t)written >= sizeof(text)) {
+        return MYLITE_ERROR;
+    }
+
+    return mylite_dynamic_string_append(string, text);
 }

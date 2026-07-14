@@ -123,8 +123,6 @@ static int bind_select_parameter_work_item(
         return bind_select_predicate_parameters(statement, item->predicate, parameter_index);
     case SELECT_PARAMETER_BIND_ORDER:
         return bind_select_order_parameters(statement, item->order, parameter_index);
-    case SELECT_PARAMETER_BIND_LIMIT:
-        return bind_select_limit_parameters(statement, item->limit, parameter_index);
     }
 
     return MYLITE_ERROR;
@@ -142,19 +140,10 @@ static int push_select_plan_parameter_work(
     rc = select_parameter_bind_stack_push(
         stack,
         (struct select_parameter_bind_item){
-            .kind = SELECT_PARAMETER_BIND_LIMIT,
-            .limit = &plan->limit,
+            .kind = SELECT_PARAMETER_BIND_ORDER,
+            .order = &plan->order,
         }
     );
-    if (rc == MYLITE_OK) {
-        rc = select_parameter_bind_stack_push(
-            stack,
-            (struct select_parameter_bind_item){
-                .kind = SELECT_PARAMETER_BIND_ORDER,
-                .order = &plan->order,
-            }
-        );
-    }
     if (rc == MYLITE_OK) {
         rc = select_parameter_bind_stack_push(
             stack,
@@ -227,28 +216,6 @@ static int push_select_source_list_parameter_work(
         }
     }
     return MYLITE_OK;
-}
-
-static int bind_select_limit_parameters(
-    sqlite3_stmt *statement,
-    const struct planned_select_limit *limit,
-    int *parameter_index
-) {
-    int rc = MYLITE_OK;
-
-    if (limit == NULL || parameter_index == NULL) {
-        return MYLITE_MISUSE;
-    }
-    if (limit->has_limit) {
-        rc = bind_int64_parameter(statement, *parameter_index, limit->row_count);
-        if (rc == MYLITE_OK) {
-            ++(*parameter_index);
-        }
-    }
-    if (rc == MYLITE_OK && limit->has_offset) {
-        rc = bind_int64_parameter(statement, *parameter_index, limit->offset);
-    }
-    return rc;
 }
 
 static int select_parameter_bind_stack_push(
@@ -403,9 +370,6 @@ static int bind_row_scalar_select_source_parameters(
     if (rc == MYLITE_OK) {
         rc = bind_select_order_parameters(statement, &plan->order, parameter_index);
     }
-    if (rc == MYLITE_OK) {
-        rc = bind_select_limit_parameters(statement, &plan->limit, parameter_index);
-    }
     return rc;
 }
 
@@ -430,9 +394,6 @@ static int bind_row_scalar_tableless_filter_parameters(
             &plan->tableless_filter.subquery,
             parameter_index
         );
-    }
-    if (rc == MYLITE_OK) {
-        rc = bind_select_limit_parameters(statement, &plan->limit, parameter_index);
     }
     return rc;
 }

@@ -520,11 +520,6 @@ static int push_select_source_list_parameter_work(
     const struct planned_select_source *sources,
     size_t source_count
 );
-static int bind_select_limit_parameters(
-    sqlite3_stmt *statement,
-    const struct planned_select_limit *limit,
-    int *parameter_index
-);
 static int select_parameter_bind_stack_push(
     struct select_parameter_bind_stack *stack,
     struct select_parameter_bind_item item

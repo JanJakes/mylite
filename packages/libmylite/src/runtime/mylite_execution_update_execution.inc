@@ -1065,12 +1065,6 @@ static int bind_parent_update_cascade_parameters(
     if (rc == MYLITE_OK) {
         rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
     }
-    if (rc == MYLITE_OK && plan->limit.has_limit) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
-        if (rc == MYLITE_OK) {
-            ++parameter_index;
-        }
-    }
     if (rc == MYLITE_OK &&
         (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC ||
          !plan->assignment_value.is_null)) {
@@ -1098,12 +1092,6 @@ static int bind_parent_update_set_null_parameters(
     }
     if (rc == MYLITE_OK) {
         rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
-    }
-    if (rc == MYLITE_OK && plan->limit.has_limit) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
-        if (rc == MYLITE_OK) {
-            ++parameter_index;
-        }
     }
     if (rc == MYLITE_OK &&
         (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC ||
@@ -1671,12 +1659,6 @@ static int bind_update_arithmetic_condition_parameters(
     int parameter_index = 1;
     int rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
 
-    if (rc == MYLITE_OK && plan->limit.has_limit) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
-        if (rc == MYLITE_OK) {
-            ++parameter_index;
-        }
-    }
     if (rc == MYLITE_OK && check->condition != UPDATE_ARITHMETIC_RANGE_ANY_NON_NULL) {
         rc = bind_int64_parameter(statement, parameter_index, check->threshold);
     }

@@ -579,12 +579,6 @@ static int bind_update_unique_key_conflict_parameters(
             &parameter_index
         );
     }
-    if (rc == MYLITE_OK && request->plan->limit.has_limit) {
-        rc = bind_int64_parameter(statement, parameter_index, request->plan->limit.row_count);
-        if (rc == MYLITE_OK) {
-            ++parameter_index;
-        }
-    }
     if (rc == MYLITE_OK && planned_update_has_multiple_assignments(request->plan)) {
         rc = bind_update_multiple_changed_condition_parameters(
             statement,
@@ -631,12 +625,6 @@ static int bind_update_unique_key_internal_conflict_parameters(
             &request->plan->predicate,
             &parameter_index
         );
-    }
-    if (rc == MYLITE_OK && request->plan->limit.has_limit) {
-        rc = bind_int64_parameter(statement, parameter_index, request->plan->limit.row_count);
-        if (rc == MYLITE_OK) {
-            ++parameter_index;
-        }
     }
     if (rc == MYLITE_OK && planned_update_has_multiple_assignments(request->plan)) {
         rc = bind_update_multiple_changed_condition_parameters(

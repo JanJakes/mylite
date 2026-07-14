@@ -69,12 +69,6 @@ static int bind_select_exists_predicate_parameters(
         &subquery->predicate,
         parameter_index
     );
-    if (rc == MYLITE_OK && subquery->limit.has_limit) {
-        rc = bind_int64_parameter(statement, *parameter_index, subquery->limit.row_count);
-        if (rc == MYLITE_OK) {
-            ++(*parameter_index);
-        }
-    }
 
     return rc;
 }
@@ -920,19 +914,6 @@ static int bind_grouped_aggregate_parameters_at(
     if (rc == MYLITE_OK && include_limit) {
         rc = bind_grouped_order_parameters(statement, plan, parameter_index);
     }
-    if (rc == MYLITE_OK && include_limit && plan->limit.has_limit) {
-        rc = bind_int64_parameter(statement, *parameter_index, plan->limit.row_count);
-        if (rc == MYLITE_OK) {
-            ++(*parameter_index);
-        }
-    }
-    if (rc == MYLITE_OK && include_limit && plan->limit.has_offset) {
-        rc = bind_int64_parameter(statement, *parameter_index, plan->limit.offset);
-        if (rc == MYLITE_OK) {
-            ++(*parameter_index);
-        }
-    }
-
     return rc;
 }
 
@@ -1120,10 +1101,6 @@ static int bind_delete_parameters(sqlite3_stmt *statement, const struct planned_
     } else {
         rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
     }
-    if (rc == MYLITE_OK && plan->limit.has_limit) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
-    }
-
     return rc;
 }
 
@@ -1164,12 +1141,6 @@ static int bind_update_parameters(sqlite3_stmt *statement, const struct planned_
     }
     if (rc == MYLITE_OK) {
         rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
-    }
-    if (rc == MYLITE_OK && plan->limit.has_limit) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
-        if (rc == MYLITE_OK) {
-            ++parameter_index;
-        }
     }
     if (rc == MYLITE_OK && planned_update_has_multiple_assignments(plan)) {
         rc = bind_update_multiple_changed_condition_parameters(statement, &parameter_index, plan);
@@ -1434,11 +1405,6 @@ static int bind_update_matched_count_parameters(
     if (rc == MYLITE_OK) {
         rc = bind_select_predicate_parameters(statement, &plan->predicate, &parameter_index);
     }
-
-    if (rc == MYLITE_OK && plan->limit.has_limit) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
-    }
-
     return rc;
 }
 

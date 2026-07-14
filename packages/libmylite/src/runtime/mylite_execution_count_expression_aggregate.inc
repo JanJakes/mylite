@@ -823,16 +823,6 @@ static int bind_count_expression_aggregate_parameters(
     if (rc == MYLITE_OK) {
         rc = bind_select_parameters_at(statement, &plan->source, &parameter_index);
     }
-    if (rc == MYLITE_OK && plan->limit.has_limit) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->limit.row_count);
-        if (rc == MYLITE_OK) {
-            ++parameter_index;
-        }
-    }
-    if (rc == MYLITE_OK && plan->limit.has_offset) {
-        rc = bind_int64_parameter(statement, parameter_index, plan->limit.offset);
-    }
-
     return rc;
 }
 

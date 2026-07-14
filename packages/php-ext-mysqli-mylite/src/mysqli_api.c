@@ -1084,6 +1084,13 @@ PHP_FUNCTION(mysqli_fetch_object) {
     ZEND_PARSE_PARAMETERS_END();
 
     (void)constructor_args;
+    if (class_name == NULL) {
+        mylite_mysqli_result_fetch_object(
+            mylite_mysqli_result_from_obj(Z_OBJ_P(result_zval)),
+            return_value
+        );
+        return;
+    }
     mylite_mysqli_result_fetch(
         mylite_mysqli_result_from_obj(Z_OBJ_P(result_zval)),
         MYLITE_MYSQLI_ASSOC,
@@ -1094,9 +1101,12 @@ PHP_FUNCTION(mysqli_fetch_object) {
         return;
     }
 
-    class_entry = class_name == NULL
-                      ? zend_standard_class_def
-                      : zend_lookup_class(zend_string_init(class_name, class_name_length, false));
+    {
+        zend_string *lookup_name = zend_string_init(class_name, class_name_length, false);
+
+        class_entry = zend_lookup_class(lookup_name);
+        zend_string_release(lookup_name);
+    }
     if (class_entry == NULL) {
         zval_ptr_dtor(&row);
         RETURN_FALSE;
@@ -2527,6 +2537,7 @@ PHP_METHOD(mysqli_result, fetch_object) {
     zval *constructor_args = NULL;
     zval row;
     zend_class_entry *class_entry = NULL;
+    mylite_mysqli_result *result = mylite_mysqli_result_from_obj(Z_OBJ_P(ZEND_THIS));
 
     ZEND_PARSE_PARAMETERS_START(0, 2)
     Z_PARAM_OPTIONAL
@@ -2535,19 +2546,17 @@ PHP_METHOD(mysqli_result, fetch_object) {
     ZEND_PARSE_PARAMETERS_END();
 
     (void)constructor_args;
-    mylite_mysqli_result_fetch(
-        mylite_mysqli_result_from_obj(Z_OBJ_P(getThis())),
-        MYLITE_MYSQLI_ASSOC,
-        &row
-    );
+    if (class_name == NULL) {
+        mylite_mysqli_result_fetch_object(result, return_value);
+        return;
+    }
+    mylite_mysqli_result_fetch(result, MYLITE_MYSQLI_ASSOC, &row);
     if (Z_TYPE(row) != IS_ARRAY) {
         ZVAL_COPY_VALUE(return_value, &row);
         return;
     }
 
-    if (class_name == NULL) {
-        class_entry = zend_standard_class_def;
-    } else {
+    {
         zend_string *lookup_name = zend_string_init(class_name, class_name_length, false);
 
         class_entry = zend_lookup_class(lookup_name);

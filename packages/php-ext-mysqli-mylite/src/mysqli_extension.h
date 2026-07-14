@@ -240,6 +240,7 @@ bool mylite_mysqli_stmt_prepare_internal(
 );
 bool mylite_mysqli_stmt_execute_internal(mylite_mysqli_stmt *stmt, zval *params);
 void mylite_mysqli_result_fetch(mylite_mysqli_result *result, int mode, zval *return_value);
+void mylite_mysqli_result_fetch_object(mylite_mysqli_result *result, zval *return_value);
 void mylite_mysqli_result_fetch_column(
     mylite_mysqli_result *result,
     zend_long column,

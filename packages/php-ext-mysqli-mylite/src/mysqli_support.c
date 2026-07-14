@@ -100,6 +100,7 @@ static void mylite_mysqli_link_clear_last_result(mylite_mysqli_link *link);
 static void mylite_mysqli_result_close_cursor(mylite_mysqli_result *result);
 static void mylite_mysqli_result_clear_current_row(mylite_mysqli_result *result);
 static int mylite_mysqli_result_read_cursor_row(mylite_mysqli_result *result);
+static int mylite_mysqli_result_next_row(mylite_mysqli_result *result, zval **out_row_values);
 static zend_string *mylite_mysqli_column_string(const char *value);
 static int mylite_mysqli_column_type(enum mylite_result_column_type type);
 static zend_string *mylite_mysqli_param_to_sql(zval *value);
@@ -1753,22 +1754,13 @@ static int mylite_mysqli_column_type(enum mylite_result_column_type type) {
 void mylite_mysqli_result_fetch(mylite_mysqli_result *result, int mode, zval *return_value) {
     uint32_t element_count = 0U;
     zval *row_values = NULL;
+    int status = mylite_mysqli_result_next_row(result, &row_values);
 
-    if (result->unbuffered) {
-        int status = mylite_mysqli_result_read_cursor_row(result);
-
-        if (status == MYLITE_DONE) {
-            RETURN_NULL();
-        }
-        if (status != MYLITE_ROW) {
-            RETURN_FALSE;
-        }
-        row_values = result->values;
-    } else {
-        if (result->cursor >= result->row_count) {
-            RETURN_NULL();
-        }
-        row_values = &result->values[(size_t)result->cursor * result->column_count];
+    if (status == MYLITE_DONE) {
+        RETURN_NULL();
+    }
+    if (status != MYLITE_ROW) {
+        RETURN_FALSE;
     }
 
     if ((mode & MYLITE_MYSQLI_NUM) != 0) {
@@ -1796,8 +1788,28 @@ void mylite_mysqli_result_fetch(mylite_mysqli_result *result, int mode, zval *re
             );
         }
     }
-    if (!result->unbuffered) {
-        result->cursor++;
+}
+
+void mylite_mysqli_result_fetch_object(mylite_mysqli_result *result, zval *return_value) {
+    zval *row_values = NULL;
+    int status = mylite_mysqli_result_next_row(result, &row_values);
+    HashTable *properties = NULL;
+
+    if (status == MYLITE_DONE) {
+        RETURN_NULL();
+    }
+    if (status != MYLITE_ROW) {
+        RETURN_FALSE;
+    }
+
+    object_init(return_value);
+    properties = Z_OBJPROP_P(return_value);
+    zend_hash_extend(properties, result->column_count, false);
+    for (uint32_t column = 0; column < result->column_count; column++) {
+        zval value;
+
+        ZVAL_COPY(&value, &row_values[column]);
+        zend_hash_update(properties, result->fields[column].name, &value);
     }
 }
 
@@ -1807,31 +1819,20 @@ void mylite_mysqli_result_fetch_column(
     zval *return_value
 ) {
     zval *row_values = NULL;
+    int status = 0;
 
     if (column < 0 || (uint32_t)column >= result->column_count) {
         RETURN_FALSE;
     }
-    if (result->unbuffered) {
-        int status = mylite_mysqli_result_read_cursor_row(result);
-
-        if (status == MYLITE_DONE) {
-            RETURN_NULL();
-        }
-        if (status != MYLITE_ROW) {
-            RETURN_FALSE;
-        }
-        row_values = result->values;
-    } else {
-        if (result->cursor >= result->row_count) {
-            RETURN_NULL();
-        }
-        row_values = &result->values[(size_t)result->cursor * result->column_count];
+    status = mylite_mysqli_result_next_row(result, &row_values);
+    if (status == MYLITE_DONE) {
+        RETURN_NULL();
+    }
+    if (status != MYLITE_ROW) {
+        RETURN_FALSE;
     }
 
     ZVAL_COPY(return_value, &row_values[(uint32_t)column]);
-    if (!result->unbuffered) {
-        result->cursor++;
-    }
 }
 
 void mylite_mysqli_result_fetch_field(
@@ -1871,6 +1872,24 @@ void mylite_mysqli_result_fetch_field(
     add_property_long(return_value, "max_length", (zend_long)field->max_length);
     add_property_long(return_value, "decimals", (zend_long)field->decimals);
     add_property_long(return_value, "charsetnr", (zend_long)field->charset);
+}
+
+static int mylite_mysqli_result_next_row(mylite_mysqli_result *result, zval **out_row_values) {
+    if (result->unbuffered) {
+        int status = mylite_mysqli_result_read_cursor_row(result);
+
+        if (status == MYLITE_ROW) {
+            *out_row_values = result->values;
+        }
+        return status;
+    }
+    if (result->cursor >= result->row_count) {
+        return MYLITE_DONE;
+    }
+
+    *out_row_values = &result->values[(size_t)result->cursor * result->column_count];
+    result->cursor++;
+    return MYLITE_ROW;
 }
 
 zend_string *mylite_mysqli_interpolate_query(

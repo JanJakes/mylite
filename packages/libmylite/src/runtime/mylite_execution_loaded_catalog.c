@@ -793,6 +793,8 @@ int mylite_execution_load_table_foreign_key_infos(
     struct loaded_foreign_key_info **out_foreign_keys,
     size_t *out_foreign_key_count
 ) {
+    bool has_child_foreign_keys = false;
+    bool has_parent_foreign_keys = false;
     struct load_foreign_key_infos_context context = {
         .database = database,
         .child_columns = child_columns,
@@ -808,8 +810,18 @@ int mylite_execution_load_table_foreign_key_infos(
     }
     *out_foreign_keys = NULL;
     *out_foreign_key_count = 0U;
-    if (table_id < 0) {
+    if (table_id <= 0) {
         return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_read_table_foreign_key_roles(
+        database,
+        table_id,
+        &has_child_foreign_keys,
+        &has_parent_foreign_keys
+    );
+    if (rc != MYLITE_OK || !has_child_foreign_keys) {
+        return rc;
     }
 
     rc = mylite_catalog_for_each_foreign_key_in_child_table(
@@ -837,6 +849,8 @@ int mylite_execution_load_parent_foreign_key_infos(
     struct loaded_foreign_key_info **out_foreign_keys,
     size_t *out_foreign_key_count
 ) {
+    bool has_child_foreign_keys = false;
+    bool has_parent_foreign_keys = false;
     struct load_foreign_key_infos_context context = {
         .database = database,
         .child_columns = NULL,
@@ -854,6 +868,16 @@ int mylite_execution_load_parent_foreign_key_infos(
     *out_foreign_key_count = 0U;
     if (parent_table_id <= 0) {
         return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_read_table_foreign_key_roles(
+        database,
+        parent_table_id,
+        &has_child_foreign_keys,
+        &has_parent_foreign_keys
+    );
+    if (rc != MYLITE_OK || !has_parent_foreign_keys) {
+        return rc;
     }
 
     rc = mylite_catalog_for_each_foreign_key_for_parent_table(
@@ -1010,12 +1034,10 @@ int mylite_execution_load_foreign_key_info(
 ) {
     struct mylite_catalog_column_descriptor *owned_child_columns = NULL;
     struct mylite_catalog_column_descriptor *parent_columns = NULL;
-    struct loaded_index_info *parent_indexes = NULL;
     const struct mylite_catalog_column_descriptor *child_columns = provided_child_columns;
     struct loaded_foreign_key_part *parts = NULL;
     size_t child_column_count = provided_child_column_count;
     size_t parent_column_count = 0U;
-    size_t parent_index_count = 0U;
     size_t part_count = 0U;
     int rc = MYLITE_OK;
 
@@ -1050,24 +1072,12 @@ int mylite_execution_load_foreign_key_info(
         );
     }
     if (rc == MYLITE_OK) {
-        bool found_parent_index = false;
-
-        rc = mylite_execution_load_table_index_infos(
+        rc = mylite_catalog_read_index_by_id(
             database,
-            out_info->parent_table.table_id,
-            parent_columns,
-            parent_column_count,
-            &parent_indexes,
-            &parent_index_count
+            foreign_key->parent_index_id,
+            &out_info->parent_index
         );
-        for (size_t index = 0U; rc == MYLITE_OK && index < parent_index_count; ++index) {
-            if (parent_indexes[index].index.index_id == foreign_key->parent_index_id) {
-                out_info->parent_index = parent_indexes[index].index;
-                found_parent_index = true;
-                break;
-            }
-        }
-        if (rc == MYLITE_OK && !found_parent_index) {
+        if (rc == MYLITE_OK && out_info->parent_index.table_id != out_info->parent_table.table_id) {
             mylite_execution_set_runtime_error(
                 database,
                 "foreign-key parent index descriptor is stale"
@@ -1088,7 +1098,6 @@ int mylite_execution_load_foreign_key_info(
         );
     }
 
-    mylite_execution_loaded_index_infos_deinit(&parent_indexes, &parent_index_count);
     free(parent_columns);
     free(owned_child_columns);
     if (rc != MYLITE_OK) {

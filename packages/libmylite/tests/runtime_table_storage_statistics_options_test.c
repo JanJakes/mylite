@@ -47,6 +47,7 @@ static int expect_catalog_state_versions(
     int64_t expected_minimum_reader_schema_version,
     const char *context
 );
+static int expect_parent_foreign_key_index(sqlite3 *sqlite, const char *context);
 static int create_app_schema(mylite_db *database);
 static int expect_show_create_contains(
     mylite_db *database,
@@ -478,6 +479,7 @@ static int test_catalog_v30_migration_defaults(void) {
         catalog_minimum_reader_version_after_storage_statistics_options,
         "v30 migration preserves minimum reader version"
     );
+    failures += expect_parent_foreign_key_index(sqlite, "v30 migration creates FK parent index");
     failures += expect_show_create_not_contains(
         database,
         "migrated",
@@ -600,6 +602,36 @@ static int expect_catalog_state_versions(
     return failures;
 }
 
+static int expect_parent_foreign_key_index(sqlite3 *sqlite, const char *context) {
+    sqlite3_stmt *statement = NULL;
+    int failures = 0;
+    int sqlite_rc = sqlite3_prepare_v2(
+        sqlite,
+        "SELECT count(*) FROM sqlite_master WHERE type = 'index' "
+        "AND name = '_mylite_catalog_foreign_keys_parent_table_id'",
+        -1,
+        &statement,
+        NULL
+    );
+
+    if (sqlite_rc != SQLITE_OK) {
+        fprintf(stderr, "%s: failed to prepare index query\n", context);
+        return 1;
+    }
+    sqlite_rc = sqlite3_step(statement);
+    if (sqlite_rc != SQLITE_ROW) {
+        fprintf(stderr, "%s: expected index count row\n", context);
+        failures = 1;
+    } else {
+        failures += expect_int64(sqlite3_column_int64(statement, 0), 1, context);
+    }
+    if (sqlite3_finalize(statement) != SQLITE_OK) {
+        fprintf(stderr, "%s: failed to finalize index query\n", context);
+        ++failures;
+    }
+    return failures;
+}
+
 static int make_catalog_look_like_v30(sqlite3 *sqlite) {
     int failures = 0;
 
@@ -621,6 +653,8 @@ static int make_catalog_look_like_v30(sqlite3 *sqlite) {
         execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN avg_row_length");
     failures +=
         execute_sql(sqlite, "ALTER TABLE _mylite_catalog_tables DROP COLUMN delay_key_write");
+    failures +=
+        execute_sql(sqlite, "DROP INDEX IF EXISTS _mylite_catalog_foreign_keys_parent_table_id");
     failures += execute_sql(
         sqlite,
         "UPDATE _mylite_catalog_state "

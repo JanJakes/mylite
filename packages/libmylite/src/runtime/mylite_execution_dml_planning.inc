@@ -214,6 +214,9 @@ static int load_insert_target_foreign_key_infos(
     struct mylite_db *database,
     struct planned_insert *plan
 ) {
+    if (!foreign_key_checks_system_variable_value(database, false)) {
+        return MYLITE_OK;
+    }
     return mylite_execution_load_table_foreign_key_infos(
         database,
         plan->table.table_id,

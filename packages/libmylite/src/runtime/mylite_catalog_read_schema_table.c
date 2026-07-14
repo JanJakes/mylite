@@ -14,6 +14,7 @@
 enum {
     catalog_schema_descriptor_cache_limit = 16,
     catalog_table_descriptor_cache_limit = 16,
+    catalog_foreign_key_role_cache_limit = 16,
 };
 
 struct cached_schema_descriptor {
@@ -27,9 +28,18 @@ struct cached_table_descriptor {
     uint64_t last_used;
 };
 
+struct cached_foreign_key_roles {
+    int64_t table_id;
+    uint64_t last_used;
+    bool has_child_foreign_keys;
+    bool has_parent_foreign_keys;
+    bool is_valid;
+};
+
 struct mylite_catalog_descriptor_cache {
     struct cached_schema_descriptor schemas[catalog_schema_descriptor_cache_limit];
     struct cached_table_descriptor tables[catalog_table_descriptor_cache_limit];
+    struct cached_foreign_key_roles foreign_key_roles[catalog_foreign_key_role_cache_limit];
     uint64_t clock;
 };
 
@@ -187,6 +197,9 @@ static struct cached_schema_descriptor *prepare_schema_cache_entry(
     struct mylite_catalog_descriptor_cache *cache
 );
 static struct cached_table_descriptor *prepare_table_cache_entry(
+    struct mylite_catalog_descriptor_cache *cache
+);
+static struct cached_foreign_key_roles *prepare_foreign_key_role_cache_entry(
     struct mylite_catalog_descriptor_cache *cache
 );
 
@@ -530,6 +543,11 @@ void mylite_catalog_schema_table_cache_invalidate(struct mylite_catalog *catalog
     }
 
     memset(catalog->descriptor_cache->schemas, 0, sizeof(catalog->descriptor_cache->schemas));
+    memset(
+        catalog->descriptor_cache->foreign_key_roles,
+        0,
+        sizeof(catalog->descriptor_cache->foreign_key_roles)
+    );
     mylite_catalog_table_cache_invalidate(catalog);
 }
 
@@ -570,6 +588,61 @@ void mylite_catalog_schema_table_cache_deinit(struct mylite_catalog *catalog) {
     catalog->descriptor_cache = NULL;
     catalog->cached_generation = 0U;
     catalog->descriptor_cache_is_valid = false;
+}
+
+bool mylite_catalog_find_cached_foreign_key_roles(
+    struct mylite_catalog *catalog,
+    int64_t table_id,
+    bool *out_has_child_foreign_keys,
+    bool *out_has_parent_foreign_keys
+) {
+    struct mylite_catalog_descriptor_cache *cache = NULL;
+
+    if (catalog == NULL || out_has_child_foreign_keys == NULL ||
+        out_has_parent_foreign_keys == NULL || !catalog->descriptor_cache_is_valid ||
+        catalog->cached_generation != catalog->generation) {
+        return false;
+    }
+    cache = catalog->descriptor_cache;
+    if (cache == NULL) {
+        return false;
+    }
+
+    for (size_t index = 0U; index < catalog_foreign_key_role_cache_limit; ++index) {
+        struct cached_foreign_key_roles *entry = &cache->foreign_key_roles[index];
+
+        if (entry->is_valid && entry->table_id == table_id) {
+            entry->last_used = descriptor_cache_next_clock(cache);
+            *out_has_child_foreign_keys = entry->has_child_foreign_keys;
+            *out_has_parent_foreign_keys = entry->has_parent_foreign_keys;
+            return true;
+        }
+    }
+    return false;
+}
+
+void mylite_catalog_cache_foreign_key_roles(
+    struct mylite_catalog *catalog,
+    int64_t table_id,
+    bool has_child_foreign_keys,
+    bool has_parent_foreign_keys
+) {
+    struct mylite_catalog_descriptor_cache *cache = ensure_descriptor_cache(catalog);
+    struct cached_foreign_key_roles *entry = NULL;
+
+    if (cache == NULL) {
+        return;
+    }
+    entry = prepare_foreign_key_role_cache_entry(cache);
+    *entry = (struct cached_foreign_key_roles){
+        .table_id = table_id,
+        .last_used = descriptor_cache_next_clock(cache),
+        .has_child_foreign_keys = has_child_foreign_keys,
+        .has_parent_foreign_keys = has_parent_foreign_keys,
+        .is_valid = true,
+    };
+    catalog->cached_generation = catalog->generation;
+    catalog->descriptor_cache_is_valid = true;
 }
 
 static const struct mylite_catalog_schema_descriptor *find_cached_schema_by_name(
@@ -744,6 +817,9 @@ static uint64_t descriptor_cache_next_clock(struct mylite_catalog_descriptor_cac
         for (size_t index = 0U; index < catalog_table_descriptor_cache_limit; ++index) {
             cache->tables[index].last_used = 0U;
         }
+        for (size_t index = 0U; index < catalog_foreign_key_role_cache_limit; ++index) {
+            cache->foreign_key_roles[index].last_used = 0U;
+        }
         cache->clock = 0U;
     }
     ++cache->clock;
@@ -777,6 +853,24 @@ static struct cached_table_descriptor *prepare_table_cache_entry(
         struct cached_table_descriptor *entry = &cache->tables[index];
 
         if (entry->descriptor == NULL) {
+            return entry;
+        }
+        if (entry->last_used < oldest->last_used) {
+            oldest = entry;
+        }
+    }
+    return oldest;
+}
+
+static struct cached_foreign_key_roles *prepare_foreign_key_role_cache_entry(
+    struct mylite_catalog_descriptor_cache *cache
+) {
+    struct cached_foreign_key_roles *oldest = &cache->foreign_key_roles[0];
+
+    for (size_t index = 0U; index < catalog_foreign_key_role_cache_limit; ++index) {
+        struct cached_foreign_key_roles *entry = &cache->foreign_key_roles[index];
+
+        if (!entry->is_valid) {
             return entry;
         }
         if (entry->last_used < oldest->last_used) {

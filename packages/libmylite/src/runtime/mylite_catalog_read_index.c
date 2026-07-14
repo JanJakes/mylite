@@ -100,6 +100,56 @@ int mylite_catalog_for_each_index_in_table(
     return mylite_catalog_finalize_statement(statement, rc);
 }
 
+int mylite_catalog_read_index_by_id(
+    struct mylite_db *database,
+    int64_t index_id,
+    struct mylite_catalog_index_descriptor *out_index
+) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = mylite_catalog_validate_ready_database(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (out_index == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_index = (struct mylite_catalog_index_descriptor){0};
+    rc = mylite_catalog_validate_positive_id(index_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = mylite_catalog_prepare_statement(
+        database->sqlite,
+        "SELECT index_id, table_id, name, kind, is_unique, is_visible, physical_name, "
+        "comment, show_create_explicit_btree, descriptor_version, created_catalog_generation, "
+        "updated_catalog_generation "
+        "FROM _mylite_catalog_indexes WHERE index_id = ?1",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(statement, 1, index_id);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            rc = materialize_index(statement, out_index);
+            if (rc == MYLITE_OK) {
+                sqlite_rc = sqlite3_step(statement);
+                if (sqlite_rc != SQLITE_DONE) {
+                    rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+                }
+            }
+        } else {
+            rc =
+                sqlite_rc == SQLITE_DONE ? MYLITE_ERROR : mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    return mylite_catalog_finalize_statement(statement, rc);
+}
+
 int mylite_catalog_for_each_index_column_in_index(
     struct mylite_db *database,
     int64_t index_id,

@@ -60,6 +60,18 @@ void mylite_catalog_schema_table_cache_invalidate(struct mylite_catalog *catalog
 void mylite_catalog_table_cache_invalidate(struct mylite_catalog *catalog);
 void mylite_catalog_table_cache_invalidate_entry(struct mylite_catalog *catalog, int64_t table_id);
 void mylite_catalog_schema_table_cache_deinit(struct mylite_catalog *catalog);
+bool mylite_catalog_find_cached_foreign_key_roles(
+    struct mylite_catalog *catalog,
+    int64_t table_id,
+    bool *out_has_child_foreign_keys,
+    bool *out_has_parent_foreign_keys
+);
+void mylite_catalog_cache_foreign_key_roles(
+    struct mylite_catalog *catalog,
+    int64_t table_id,
+    bool has_child_foreign_keys,
+    bool has_parent_foreign_keys
+);
 
 int mylite_catalog_migrate_schema_one_step(sqlite3 *sqlite, uint32_t *schema_version);
 int mylite_catalog_begin_generation_change(

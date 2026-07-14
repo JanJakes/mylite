@@ -617,6 +617,8 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "updated_catalog_generation INTEGER NOT NULL,"
         "UNIQUE(child_table_id, name)"
         ");",
+        "CREATE INDEX _mylite_catalog_foreign_keys_parent_table_id "
+        "ON _mylite_catalog_foreign_keys(parent_table_id, foreign_key_id);",
         "CREATE TABLE _mylite_catalog_foreign_key_columns ("
         "foreign_key_column_id INTEGER PRIMARY KEY,"
         "foreign_key_id INTEGER NOT NULL,"

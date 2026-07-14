@@ -2,6 +2,9 @@
 
 #include "runtime_test_support.h"
 
+#include "runtime/mylite_catalog.h"
+#include "runtime/mylite_connection.h"
+#include "sqlite3.h"
 #include "storage/mylite_file_format.h"
 
 #include <stdio.h>
@@ -58,6 +61,11 @@ struct expected_dml_status {
     size_t warning_count;
 };
 
+struct foreign_key_probe_trace {
+    size_t role_probe_count;
+};
+
+static int test_no_foreign_key_role_cache(void);
 static int test_create_table_foreign_key_lifecycle(void);
 static int test_self_referencing_foreign_key_lifecycle(void);
 static int test_inline_foreign_key_references_are_ignored(void);
@@ -109,10 +117,17 @@ static int expect_bytes(
     const char *context
 );
 static int read_preamble(const char *path, unsigned char preamble[MYLITE_FILE_PREAMBLE_SIZE]);
+static int count_foreign_key_role_probe(
+    unsigned trace_kind,
+    void *user_data,
+    void *statement_handle,
+    void *unused_sql
+);
 
 int main(void) {
     int failures = 0;
 
+    failures += test_no_foreign_key_role_cache();
     failures += test_create_table_foreign_key_lifecycle();
     failures += test_self_referencing_foreign_key_lifecycle();
     failures += test_inline_foreign_key_references_are_ignored();
@@ -131,6 +146,161 @@ int main(void) {
     failures += test_drop_database_cleans_foreign_key_descriptors();
 
     return failures == 0 ? 0 : 1;
+}
+
+static int test_no_foreign_key_role_cache(void) {
+    struct foreign_key_probe_trace trace = {0};
+    mylite_db *database = NULL;
+    sqlite3 *sqlite = NULL;
+    bool has_child_foreign_keys = false;
+    bool has_parent_foreign_keys = false;
+    struct mylite_catalog_schema_descriptor schema = {0};
+    struct mylite_catalog_table_descriptor table = {0};
+    struct mylite_catalog_table_descriptor parent_table = {0};
+    int failures =
+        expect_int(mylite_test_open_temporary(&database), MYLITE_OK, "open FK role cache database");
+
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(database, "CREATE TABLE no_fk (id INT PRIMARY KEY, v INT)");
+    failures += expect_int(
+        mylite_catalog_read_schema_by_name(database, "app", &schema),
+        MYLITE_OK,
+        "read FK role cache schema"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "no_fk", &table),
+        MYLITE_OK,
+        "read FK role cache table"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_foreign_key_roles(
+            database,
+            table.table_id,
+            &has_child_foreign_keys,
+            &has_parent_foreign_keys
+        ),
+        MYLITE_OK,
+        "warm no-FK role cache"
+    );
+    failures += expect_int(has_child_foreign_keys, 0, "ordinary table has no child FK role");
+    failures += expect_int(has_parent_foreign_keys, 0, "ordinary table has no parent FK role");
+
+    sqlite = mylite_connection_sqlite_for_test(database);
+    failures += expect_int(
+        sqlite3_trace_v2(sqlite, SQLITE_TRACE_STMT, count_foreign_key_role_probe, &trace),
+        SQLITE_OK,
+        "install FK role probe trace"
+    );
+    failures += expect_dml_ok(database, "INSERT INTO no_fk VALUES (1, 10)", 1);
+    failures += expect_dml_ok(database, "UPDATE no_fk SET v = 11 WHERE id = 1", 1);
+    failures += expect_dml_ok(database, "DELETE FROM no_fk WHERE id = 1", 1);
+    failures += expect_int(
+        sqlite3_trace_v2(sqlite, 0U, NULL, NULL),
+        SQLITE_OK,
+        "remove FK role probe trace"
+    );
+    failures += expect_size(trace.role_probe_count, 0U, "warmed no-FK DML skips role probes");
+
+    failures += expect_statement_ok(database, "CREATE TABLE parent (id INT PRIMARY KEY)");
+    failures +=
+        expect_statement_ok(database, "CREATE TABLE child (id INT PRIMARY KEY, parent_id INT)");
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "child", &table),
+        MYLITE_OK,
+        "read uncoupled child table"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_foreign_key_roles(
+            database,
+            table.table_id,
+            &has_child_foreign_keys,
+            &has_parent_foreign_keys
+        ),
+        MYLITE_OK,
+        "cache uncoupled child roles"
+    );
+    failures += expect_int(has_child_foreign_keys, 0, "uncoupled child role absent");
+    failures += expect_statement_ok(
+        database,
+        "ALTER TABLE child ADD CONSTRAINT fk_role_parent FOREIGN KEY (parent_id) "
+        "REFERENCES parent (id)"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_foreign_key_roles(
+            database,
+            table.table_id,
+            &has_child_foreign_keys,
+            &has_parent_foreign_keys
+        ),
+        MYLITE_OK,
+        "reload child roles after adding FK"
+    );
+    failures += expect_int(has_child_foreign_keys, 1, "added child FK invalidates role cache");
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "parent", &parent_table),
+        MYLITE_OK,
+        "read FK role parent table"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_foreign_key_roles(
+            database,
+            parent_table.table_id,
+            &has_child_foreign_keys,
+            &has_parent_foreign_keys
+        ),
+        MYLITE_OK,
+        "load parent roles after adding FK"
+    );
+    failures += expect_int(has_parent_foreign_keys, 1, "added parent FK role is visible");
+    failures += expect_statement_ok(database, "ALTER TABLE child DROP FOREIGN KEY fk_role_parent");
+    failures += expect_int(
+        mylite_catalog_read_table_foreign_key_roles(
+            database,
+            table.table_id,
+            &has_child_foreign_keys,
+            &has_parent_foreign_keys
+        ),
+        MYLITE_OK,
+        "reload child roles after dropping FK"
+    );
+    failures += expect_int(has_child_foreign_keys, 0, "dropped child FK invalidates role cache");
+    failures += expect_int(
+        mylite_catalog_read_table_foreign_key_roles(
+            database,
+            parent_table.table_id,
+            &has_child_foreign_keys,
+            &has_parent_foreign_keys
+        ),
+        MYLITE_OK,
+        "reload parent roles after dropping FK"
+    );
+    failures += expect_int(has_parent_foreign_keys, 0, "dropped parent FK invalidates role cache");
+
+    mylite_close(database);
+    return failures;
+}
+
+static int count_foreign_key_role_probe(
+    unsigned trace_kind,
+    void *user_data,
+    void *statement_handle,
+    void *unused_sql
+) {
+    struct foreign_key_probe_trace *trace = user_data;
+    sqlite3_stmt *statement = statement_handle;
+    const char *sql = NULL;
+
+    (void)unused_sql;
+    if (trace_kind != SQLITE_TRACE_STMT || trace == NULL || statement == NULL) {
+        return 0;
+    }
+    sql = sqlite3_sql(statement);
+    if (sql != NULL &&
+        strstr(sql, "SELECT EXISTS(SELECT 1 FROM _mylite_catalog_foreign_keys") != NULL) {
+        ++trace->role_probe_count;
+    }
+    return 0;
 }
 
 static int test_create_table_foreign_key_lifecycle(void) {

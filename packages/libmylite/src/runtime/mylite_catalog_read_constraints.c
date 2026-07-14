@@ -175,6 +175,73 @@ int mylite_catalog_for_each_foreign_key_for_parent_table(
     return mylite_catalog_finalize_statement(statement, rc);
 }
 
+int mylite_catalog_read_table_foreign_key_roles(
+    struct mylite_db *database,
+    int64_t table_id,
+    bool *out_has_child_foreign_keys,
+    bool *out_has_parent_foreign_keys
+) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = mylite_catalog_validate_ready_database(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (out_has_child_foreign_keys == NULL || out_has_parent_foreign_keys == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_has_child_foreign_keys = false;
+    *out_has_parent_foreign_keys = false;
+    rc = mylite_catalog_validate_positive_id(table_id);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (mylite_catalog_find_cached_foreign_key_roles(
+            &database->catalog,
+            table_id,
+            out_has_child_foreign_keys,
+            out_has_parent_foreign_keys
+        )) {
+        return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_prepare_statement(
+        database->sqlite,
+        "SELECT EXISTS(SELECT 1 FROM _mylite_catalog_foreign_keys "
+        "WHERE child_table_id = ?1 LIMIT 1), "
+        "EXISTS(SELECT 1 FROM _mylite_catalog_foreign_keys "
+        "WHERE parent_table_id = ?1 LIMIT 1)",
+        &statement
+    );
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(statement, 1, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW) {
+            *out_has_child_foreign_keys = sqlite3_column_int(statement, 0) != 0;
+            *out_has_parent_foreign_keys = sqlite3_column_int(statement, 1) != 0;
+            sqlite_rc = sqlite3_step(statement);
+            if (sqlite_rc != SQLITE_DONE) {
+                rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+            }
+        } else {
+            rc = mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    rc = mylite_catalog_finalize_statement(statement, rc);
+    if (rc == MYLITE_OK) {
+        mylite_catalog_cache_foreign_key_roles(
+            &database->catalog,
+            table_id,
+            *out_has_child_foreign_keys,
+            *out_has_parent_foreign_keys
+        );
+    }
+    return rc;
+}
+
 int mylite_catalog_for_each_foreign_key_column_in_foreign_key(
     struct mylite_db *database,
     int64_t foreign_key_id,

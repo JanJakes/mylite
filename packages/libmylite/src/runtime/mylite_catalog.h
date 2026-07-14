@@ -9,7 +9,7 @@
 
 #define MYLITE_CATALOG_STRINGIFY_DETAIL(value) #value
 #define MYLITE_CATALOG_STRINGIFY(value) MYLITE_CATALOG_STRINGIFY_DETAIL(value)
-#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 35
+#define MYLITE_CATALOG_SCHEMA_VERSION_VALUE 36
 #define MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_VALUE 35
 #define MYLITE_CATALOG_SCHEMA_VERSION_TEXT                                                         \
     MYLITE_CATALOG_STRINGIFY(MYLITE_CATALOG_SCHEMA_VERSION_VALUE)
@@ -699,6 +699,11 @@ int mylite_catalog_for_each_index_in_table(
     mylite_catalog_index_callback callback,
     void *user_data
 );
+int mylite_catalog_read_index_by_id(
+    struct mylite_db *database,
+    int64_t index_id,
+    struct mylite_catalog_index_descriptor *out_index
+);
 int mylite_catalog_for_each_index_column_in_index(
     struct mylite_db *database,
     int64_t index_id,
@@ -716,6 +721,12 @@ int mylite_catalog_for_each_foreign_key_for_parent_table(
     int64_t parent_table_id,
     mylite_catalog_foreign_key_callback callback,
     void *user_data
+);
+int mylite_catalog_read_table_foreign_key_roles(
+    struct mylite_db *database,
+    int64_t table_id,
+    bool *out_has_child_foreign_keys,
+    bool *out_has_parent_foreign_keys
 );
 int mylite_catalog_for_each_foreign_key_column_in_foreign_key(
     struct mylite_db *database,

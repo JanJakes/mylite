@@ -84,6 +84,7 @@ static int test_catalog_created_in_shifted_payload_without_preamble_changes(void
     int catalog_tables = 0;
     int state_rows = 0;
     int schema_rows = 0;
+    int parent_foreign_key_indexes = 0;
     int failures = 0;
 
     if (make_test_path(path, sizeof(path), "create") != 0) {
@@ -122,10 +123,17 @@ static int test_catalog_created_in_shifted_payload_without_preamble_changes(void
             query_single_int(sqlite, "SELECT count(*) FROM _mylite_catalog_state", &state_rows);
         failures +=
             query_single_int(sqlite, "SELECT count(*) FROM _mylite_catalog_schemas", &schema_rows);
+        failures += query_single_int(
+            sqlite,
+            "SELECT count(*) FROM sqlite_master WHERE type = 'index' "
+            "AND name = '_mylite_catalog_foreign_keys_parent_table_id'",
+            &parent_foreign_key_indexes
+        );
     }
     failures += expect_int(catalog_tables, expected_catalog_table_count, "catalog table count");
     failures += expect_int(state_rows, 1, "catalog state singleton row");
     failures += expect_int(schema_rows, 0, "initial schema row count");
+    failures += expect_int(parent_foreign_key_indexes, 1, "foreign-key parent lookup index");
 
     mylite_close(database);
 

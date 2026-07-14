@@ -2,6 +2,8 @@ static int validate_child_foreign_keys_after_write(
     struct mylite_db *database,
     int64_t child_table_id
 ) {
+    bool has_child_foreign_keys = false;
+    bool has_parent_foreign_keys = false;
     struct mylite_catalog_column_descriptor *columns = NULL;
     struct loaded_foreign_key_info *foreign_keys = NULL;
     size_t column_count = 0U;
@@ -13,6 +15,16 @@ static int validate_child_foreign_keys_after_write(
     }
     if (!foreign_key_checks_system_variable_value(database, false)) {
         return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_read_table_foreign_key_roles(
+        database,
+        child_table_id,
+        &has_child_foreign_keys,
+        &has_parent_foreign_keys
+    );
+    if (rc != MYLITE_OK || !has_child_foreign_keys) {
+        return rc;
     }
 
     rc = mylite_execution_load_table_columns(database, child_table_id, &columns, &column_count);
@@ -40,6 +52,8 @@ static int validate_parent_foreign_keys_after_write(
     struct mylite_db *database,
     int64_t parent_table_id
 ) {
+    bool has_child_foreign_keys = false;
+    bool has_parent_foreign_keys = false;
     struct validate_parent_foreign_keys_context context = {
         .database = database,
         .rc = MYLITE_OK,
@@ -51,6 +65,16 @@ static int validate_parent_foreign_keys_after_write(
     }
     if (!foreign_key_checks_system_variable_value(database, false)) {
         return MYLITE_OK;
+    }
+
+    rc = mylite_catalog_read_table_foreign_key_roles(
+        database,
+        parent_table_id,
+        &has_child_foreign_keys,
+        &has_parent_foreign_keys
+    );
+    if (rc != MYLITE_OK || !has_parent_foreign_keys) {
+        return rc;
     }
 
     rc = mylite_catalog_for_each_foreign_key_for_parent_table(

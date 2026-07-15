@@ -438,7 +438,6 @@ static enum mylite_sql_parse_status scan_row_constructor_predicate_retries(
                 scan,
                 index,
                 placeholder_text,
-                sizeof(placeholder_text) - 1U,
                 out_retries,
                 out_can_retry,
                 &end_index
@@ -457,7 +456,6 @@ static enum mylite_sql_parse_status scan_row_constructor_predicate_retries(
             index,
             predicate_scan.left_right_paren_index,
             placeholder_text,
-            sizeof(placeholder_text) - 1U,
             out_retries,
             out_can_retry
         );
@@ -467,7 +465,6 @@ static enum mylite_sql_parse_status scan_row_constructor_predicate_retries(
                 predicate_scan.right_row_index,
                 predicate_scan.right_right_paren_index,
                 placeholder_text,
-                sizeof(placeholder_text) - 1U,
                 out_retries,
                 out_can_retry
             );
@@ -552,7 +549,6 @@ static enum mylite_sql_parse_status scan_row_constructor_in_predicate_retries_at
     const struct placeholder_statement_scan *scan,
     size_t row_index,
     const char *placeholder_text,
-    size_t placeholder_text_length,
     struct placeholder_row_arithmetic_subject_retries *out_retries,
     bool *out_can_retry,
     size_t *out_end_index
@@ -577,7 +573,6 @@ static enum mylite_sql_parse_status scan_row_constructor_in_predicate_retries_at
         row_index,
         predicate_scan.left_right_paren_index,
         placeholder_text,
-        placeholder_text_length,
         out_retries,
         out_can_retry
     );
@@ -696,7 +691,6 @@ static enum mylite_sql_parse_status append_row_constructor_predicate_retry(
     size_t start_index,
     size_t end_index,
     const char *placeholder_text,
-    size_t placeholder_text_length,
     struct placeholder_row_arithmetic_subject_retries *retries,
     bool *inout_can_retry
 ) {
@@ -713,7 +707,8 @@ static enum mylite_sql_parse_status append_row_constructor_predicate_retry(
         .placeholder_token = {
             .kind = MYLITE_SQL_TOKEN_IDENTIFIER,
             .text = placeholder_text,
-            .length = placeholder_text_length,
+            .length = scan->tokens[end_index].offset + scan->tokens[end_index].length -
+                      scan->tokens[start_index].offset,
             .offset = scan->tokens[start_index].offset,
         },
     };
@@ -849,7 +844,8 @@ static enum mylite_sql_parse_status scan_parenthesized_row_arithmetic_predicate_
             .placeholder_token = {
                 .kind = MYLITE_SQL_TOKEN_IDENTIFIER,
                 .text = placeholder_text,
-                .length = sizeof(placeholder_text) - 1U,
+                .length = scan->tokens[right_paren_index].offset +
+                          scan->tokens[right_paren_index].length - scan->tokens[index].offset,
                 .offset = scan->tokens[index].offset,
             },
         };
@@ -1238,7 +1234,8 @@ static enum mylite_sql_parse_status append_row_scalar_predicate_subject_retry(
         .placeholder_token = {
             .kind = MYLITE_SQL_TOKEN_IDENTIFIER,
             .text = placeholder_text,
-            .length = sizeof(placeholder_text) - 1U,
+            .length = scan->tokens[end_index].offset + scan->tokens[end_index].length -
+                      scan->tokens[start_index].offset,
             .offset = scan->tokens[start_index].offset,
         },
     };
@@ -1959,7 +1956,8 @@ static enum mylite_sql_parse_status append_row_bitwise_order_key_retry(
         .placeholder_token = {
             .kind = MYLITE_SQL_TOKEN_IDENTIFIER,
             .text = placeholder_text,
-            .length = sizeof(placeholder_text) - 1U,
+            .length = scan->tokens[end_index].offset + scan->tokens[end_index].length -
+                      scan->tokens[start_index].offset,
             .offset = scan->tokens[start_index].offset,
         },
     };
@@ -3254,7 +3252,8 @@ static enum mylite_sql_parse_status append_row_arithmetic_predicate_value_retry(
         .placeholder_token = {
             .kind = MYLITE_SQL_TOKEN_INTEGER,
             .text = placeholder_text,
-            .length = sizeof(placeholder_text) - 1U,
+            .length = scan->tokens[end_index].offset + scan->tokens[end_index].length -
+                      scan->tokens[start_index].offset,
             .offset = scan->tokens[start_index].offset,
         },
     };
@@ -4086,7 +4085,7 @@ static bool row_arithmetic_placeholder_node_matches(
          mylite_sql_ast_node_literal_kind(node) != MYLITE_SQL_AST_LITERAL_INTEGER)) {
         return false;
     }
-    return strncmp(node->span.text, placeholder_token->text, placeholder_token->length) == 0;
+    return node->span.text == placeholder_token->text;
 }
 
 static bool placeholder_ast_node_stack_push(

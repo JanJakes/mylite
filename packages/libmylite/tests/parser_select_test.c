@@ -2089,6 +2089,23 @@ static int test_select_where_predicates(void) {
     );
     mylite_sql_parse_result_deinit(&result);
 
+    failures += parser_test_parse_sql(
+        "SELECT id FROM numbers WHERE (i + nn) > 7 ORDER BY id",
+        MYLITE_SQL_PARSE_OK,
+        &result
+    );
+    failures += parser_test_expect_span_text(
+        result.root,
+        "SELECT id FROM numbers WHERE (i + nn) > 7 ORDER BY id",
+        "parenthesized arithmetic script span"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(parser_test_child_at(result.root, 0U), 2U),
+        "WHERE (i + nn) > 7",
+        "parenthesized arithmetic WHERE span"
+    );
+    mylite_sql_parse_result_deinit(&result);
+
     return failures;
 }
 

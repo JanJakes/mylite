@@ -45,6 +45,7 @@ enum {
     parse_status_bucket_count = MYLITE_SQL_PARSE_STACK_OVERFLOW + 1,
     percentile_median = 50,
     percentile_p95 = 95,
+    percentile_p99 = 99,
     percentile_max = 100,
     percentile_rounding_offset = percentile_max - 1,
 };
@@ -94,11 +95,14 @@ struct borrowed_query_list {
 
 struct benchmark_measurement {
     uint64_t elapsed_ns;
+    uint64_t *request_latency_ns;
     size_t operations;
     size_t bytes;
     size_t ok_count;
     size_t error_count;
     size_t token_count;
+    size_t request_latency_count;
+    size_t request_latency_capacity;
     size_t parse_status_counts[parse_status_bucket_count];
 #ifdef MYLITE_ENABLE_PROFILING
     struct mylite_profile_snapshot profile;
@@ -487,6 +491,12 @@ static int run_runtime_stress_scenario(
     const struct runtime_repetition_options *repeat_options,
     struct benchmark_measurement *out_measurement
 );
+static int benchmark_measurement_prepare_request_latencies(
+    struct benchmark_measurement *measurement,
+    size_t count,
+    const char *scenario_name
+);
+static void benchmark_measurement_deinit(struct benchmark_measurement *measurement);
 static int run_runtime_query_iterations(
     mylite_db *database,
     const struct runtime_scenario *scenario,
@@ -585,6 +595,11 @@ static void print_runtime_summary(
     const char *kind,
     size_t samples,
     const double *average_us_values
+);
+static void print_runtime_latency_summary(
+    const char *scenario,
+    const char *kind,
+    const struct benchmark_measurement *measurement
 );
 static int initialize_profile_output(const struct benchmark_options *options);
 static int append_profile_json(
@@ -1384,6 +1399,7 @@ static int run_repeated_runtime_scenario(
         int rc = runner(scenario, &repeat_options, &measurement);
 
         if (rc != 0) {
+            benchmark_measurement_deinit(&measurement);
             free(average_us_values);
             return rc;
         }
@@ -1399,6 +1415,7 @@ static int run_repeated_runtime_scenario(
             scenario->query_count,
             &measurement
         );
+        print_runtime_latency_summary(scenario->name, kind, &measurement);
         rc = append_profile_json(
             repeat_options.profile_json_path,
             scenario,
@@ -1407,9 +1424,11 @@ static int run_repeated_runtime_scenario(
             &measurement
         );
         if (rc != 0) {
+            benchmark_measurement_deinit(&measurement);
             free(average_us_values);
             return rc;
         }
+        benchmark_measurement_deinit(&measurement);
     }
     if (average_us_values != NULL) {
         print_runtime_summary(scenario->name, kind, repeat_options.samples, average_us_values);
@@ -1443,6 +1462,15 @@ static int run_runtime_scenario(
         return 1;
     }
     if (setup_runtime_database(database, scenario) != 0) {
+        mylite_close(database);
+        remove_related_database_files(path);
+        return 1;
+    }
+    if (benchmark_measurement_prepare_request_latencies(
+            out_measurement,
+            repeat_options->iterations,
+            scenario->name
+        ) != 0) {
         mylite_close(database);
         remove_related_database_files(path);
         return 1;
@@ -1533,6 +1561,15 @@ static int run_runtime_cursor_scenario(
         remove_related_database_files(path);
         return 1;
     }
+    if (benchmark_measurement_prepare_request_latencies(
+            out_measurement,
+            repeat_options->iterations,
+            scenario->name
+        ) != 0) {
+        mylite_close(database);
+        remove_related_database_files(path);
+        return 1;
+    }
     if (run_runtime_query_iterations(
             database,
             scenario,
@@ -1614,6 +1651,38 @@ static int run_runtime_stress_scenario(
     return rc;
 }
 
+static int benchmark_measurement_prepare_request_latencies(
+    struct benchmark_measurement *measurement,
+    size_t count,
+    const char *scenario_name
+) {
+    if (measurement == NULL || count == 0U) {
+        return 0;
+    }
+    if (count > SIZE_MAX / sizeof(*measurement->request_latency_ns)) {
+        fprintf(stderr, "%s: request-latency allocation is too large\n", scenario_name);
+        return 1;
+    }
+    measurement->request_latency_ns =
+        (uint64_t *)calloc(count, sizeof(*measurement->request_latency_ns));
+    if (measurement->request_latency_ns == NULL) {
+        fprintf(stderr, "%s: failed to allocate request-latency samples\n", scenario_name);
+        return 1;
+    }
+    measurement->request_latency_capacity = count;
+    return 0;
+}
+
+static void benchmark_measurement_deinit(struct benchmark_measurement *measurement) {
+    if (measurement == NULL) {
+        return;
+    }
+    free(measurement->request_latency_ns);
+    measurement->request_latency_ns = NULL;
+    measurement->request_latency_count = 0U;
+    measurement->request_latency_capacity = 0U;
+}
+
 static int run_runtime_query_iterations(
     mylite_db *database,
     const struct runtime_scenario *scenario,
@@ -1622,6 +1691,8 @@ static int run_runtime_query_iterations(
     struct benchmark_measurement *measurement
 ) {
     for (size_t iteration = 0U; iteration < iterations; ++iteration) {
+        uint64_t request_started = measurement == NULL ? 0U : monotonic_now_ns();
+
         for (size_t query_index = 0U; query_index < scenario->query_count; ++query_index) {
             const struct benchmark_query *query = &scenario->queries[query_index];
             int rc =
@@ -1639,6 +1710,12 @@ static int run_runtime_query_iterations(
             if (rc != 0) {
                 return 1;
             }
+        }
+        if (measurement != NULL &&
+            measurement->request_latency_count < measurement->request_latency_capacity) {
+            measurement->request_latency_ns[measurement->request_latency_count] =
+                monotonic_now_ns() - request_started;
+            ++measurement->request_latency_count;
         }
     }
     return 0;
@@ -2304,6 +2381,49 @@ static void print_runtime_summary(
         sorted_percentile_value(sorted_values, samples, percentile_median),
         sorted_percentile_value(sorted_values, samples, percentile_p95),
         sorted_values[samples - 1U]
+    );
+    free(sorted_values);
+}
+
+static void print_runtime_latency_summary(
+    const char *scenario,
+    const char *kind,
+    const struct benchmark_measurement *measurement
+) {
+    double *sorted_values = NULL;
+
+    if (measurement->request_latency_count == 0U) {
+        return;
+    }
+    sorted_values = (double *)malloc(measurement->request_latency_count * sizeof(*sorted_values));
+    if (sorted_values == NULL) {
+        fprintf(stderr, "%s: failed to allocate request-latency sorting buffer\n", scenario);
+        return;
+    }
+    for (size_t index = 0U; index < measurement->request_latency_count; ++index) {
+        sorted_values[index] = (double)measurement->request_latency_ns[index] /
+                               (double)(nanoseconds_per_second / microseconds_per_second);
+    }
+    qsort(
+        sorted_values,
+        measurement->request_latency_count,
+        sizeof(*sorted_values),
+        compare_double_values
+    );
+    printf(
+        "# latency scenario=%s kind=%s requests=%zu p50_us=%.3f p95_us=%.3f p99_us=%.3f "
+        "max_us=%.3f\n",
+        scenario,
+        kind,
+        measurement->request_latency_count,
+        sorted_percentile_value(
+            sorted_values,
+            measurement->request_latency_count,
+            percentile_median
+        ),
+        sorted_percentile_value(sorted_values, measurement->request_latency_count, percentile_p95),
+        sorted_percentile_value(sorted_values, measurement->request_latency_count, percentile_p99),
+        sorted_values[measurement->request_latency_count - 1U]
     );
     free(sorted_values);
 }

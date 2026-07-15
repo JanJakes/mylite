@@ -196,7 +196,7 @@ static int build_insert_select_table_materialize_sql(
         rc = append_select_order_sql(&string, &plan->source.order, &next_parameter);
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_limit_sql(&string, &plan->source.limit, &next_parameter);
+        rc = append_select_limit_sql(&string, &plan->source.limit);
     }
     if (rc == MYLITE_OK) {
         *out_sql = mylite_dynamic_string_take(&string);
@@ -1057,7 +1057,7 @@ static int build_create_table_select_insert_sql(
         rc = append_select_order_sql(&string, &plan->source.order, &next_parameter);
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_limit_sql(&string, &plan->source.limit, &next_parameter);
+        rc = append_select_limit_sql(&string, &plan->source.limit);
     }
     if (rc == MYLITE_OK) {
         *out_sql = mylite_dynamic_string_take(&string);

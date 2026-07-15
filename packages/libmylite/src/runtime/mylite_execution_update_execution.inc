@@ -259,7 +259,7 @@ static int build_single_table_update_matched_count_sql(
         rc = append_select_order_sql(&string, &plan->order, &next_parameter);
     }
     if (rc == MYLITE_OK && plan->limit.has_limit) {
-        rc = append_select_limit_sql(&string, &plan->limit, &next_parameter);
+        rc = append_select_limit_sql(&string, &plan->limit);
     }
     if (rc == MYLITE_OK && plan->limit.has_limit) {
         rc = mylite_dynamic_string_append_char(&string, ')');

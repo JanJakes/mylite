@@ -953,7 +953,7 @@ static int append_grouped_aggregate_query_sql(
         rc = append_grouped_order_sql(string, plan, next_parameter);
     }
     if (rc == MYLITE_OK && include_limit) {
-        rc = append_select_limit_sql(string, &plan->limit, next_parameter);
+        rc = append_select_limit_sql(string, &plan->limit);
     }
 
     return rc;
@@ -3210,7 +3210,7 @@ static int append_select_exists_predicate_sql(
         );
     }
     if (rc == MYLITE_OK && subquery->limit.has_limit) {
-        rc = append_select_limit_sql(string, &subquery->limit, next_parameter);
+        rc = append_select_limit_sql(string, &subquery->limit);
     }
     if (rc == MYLITE_OK) {
         rc = mylite_dynamic_string_append_char(string, ')');
@@ -4215,12 +4215,10 @@ static int append_select_order_direction_sql(
 
 static int append_select_limit_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_select_limit *limit,
-    size_t *next_parameter
+    const struct planned_select_limit *limit
 ) {
     int rc = MYLITE_OK;
 
-    (void)next_parameter;
     if (!limit->has_limit) {
         return MYLITE_OK;
     }

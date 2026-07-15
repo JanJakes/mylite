@@ -2703,8 +2703,7 @@ static int append_select_join_condition_sql(
 );
 static int append_select_limit_sql(
     struct mylite_dynamic_string *string,
-    const struct planned_select_limit *limit,
-    size_t *next_parameter
+    const struct planned_select_limit *limit
 );
 static int append_limit_integer_sql(struct mylite_dynamic_string *string, int64_t value);
 static int build_delete_sql(const struct planned_delete *plan, char **out_sql);

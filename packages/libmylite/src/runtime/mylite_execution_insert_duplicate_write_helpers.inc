@@ -117,8 +117,10 @@ static int apply_insert_duplicate_key_update(
             plan,
             row_index,
             conflicting_index,
-            assignment_values.values,
-            current_values
+            (struct insert_duplicate_projected_row_inputs){
+                .current_values = current_values,
+                .assignment_values = assignment_values.values,
+            }
         );
     }
     if (rc == MYLITE_OK && count_executable_insert_duplicate_assignments(plan) == 0U) {
@@ -216,12 +218,11 @@ static int validate_insert_duplicate_key_assignment_conflicts(
     const struct planned_insert *plan,
     size_t row_index,
     const struct loaded_index_info *conflicting_index,
-    const struct planned_value *assignment_values,
-    const struct planned_value *known_current_values
+    struct insert_duplicate_projected_row_inputs inputs
 ) {
     struct planned_value *owned_current_values = NULL;
     struct planned_value *projected_values = NULL;
-    const struct planned_value *current_values = known_current_values;
+    const struct planned_value *current_values = inputs.current_values;
     int rc = MYLITE_OK;
 
     if (!insert_duplicate_assignment_requires_key_conflict_validation(plan, conflicting_index)) {
@@ -244,7 +245,7 @@ static int validate_insert_duplicate_key_assignment_conflicts(
             plan,
             (struct insert_duplicate_projected_row_inputs){
                 .current_values = current_values,
-                .assignment_values = assignment_values,
+                .assignment_values = inputs.assignment_values,
             },
             &projected_values
         );

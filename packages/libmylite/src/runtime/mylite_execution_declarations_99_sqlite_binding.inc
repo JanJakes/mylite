@@ -131,8 +131,7 @@ static int validate_insert_duplicate_key_assignment_conflicts(
     const struct planned_insert *plan,
     size_t row_index,
     const struct loaded_index_info *conflicting_index,
-    const struct planned_value *assignment_values,
-    const struct planned_value *known_current_values
+    struct insert_duplicate_projected_row_inputs inputs
 );
 static bool insert_duplicate_assignment_requires_key_conflict_validation(
     const struct planned_insert *plan,

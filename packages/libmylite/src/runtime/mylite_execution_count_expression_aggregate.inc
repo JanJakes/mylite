@@ -734,7 +734,7 @@ static int build_count_expression_aggregate_sql(
         rc = append_select_predicate_sql(&string, &plan->source.predicate, &next_parameter);
     }
     if (rc == MYLITE_OK) {
-        rc = append_select_limit_sql(&string, &plan->limit, &next_parameter);
+        rc = append_select_limit_sql(&string, &plan->limit);
     }
     if (rc == MYLITE_OK) {
         *out_sql = mylite_dynamic_string_take(&string);

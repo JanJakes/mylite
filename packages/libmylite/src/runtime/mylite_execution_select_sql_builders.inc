@@ -108,7 +108,7 @@ static int append_select_sql_work_item(
     case SELECT_SQL_WORK_ORDER:
         return append_select_order_sql(string, item->order, next_parameter);
     case SELECT_SQL_WORK_LIMIT:
-        return append_select_limit_sql(string, item->limit, next_parameter);
+        return append_select_limit_sql(string, item->limit);
     case SELECT_SQL_WORK_TEXT:
         return mylite_dynamic_string_append(string, item->text);
     case SELECT_SQL_WORK_SOURCE_ALIAS:
@@ -690,13 +690,13 @@ static int append_row_scalar_select_query_sql(
         rc = append_select_order_sql(string, &plan->order, next_parameter);
     }
     if (rc == MYLITE_OK && plan->has_source) {
-        rc = append_select_limit_sql(string, &plan->limit, next_parameter);
+        rc = append_select_limit_sql(string, &plan->limit);
     }
     if (rc == MYLITE_OK && !plan->has_source) {
         rc = append_row_scalar_tableless_filter_sql(string, plan, next_parameter);
     }
     if (rc == MYLITE_OK && !plan->has_source) {
-        rc = append_select_limit_sql(string, &plan->limit, next_parameter);
+        rc = append_select_limit_sql(string, &plan->limit);
     }
     return rc;
 }

@@ -906,7 +906,7 @@ static int append_parent_delete_target_sql(
             rc = append_select_order_sql(string, &plan->order, next_parameter);
         }
         if (rc == MYLITE_OK) {
-            rc = append_select_limit_sql(string, &plan->limit, next_parameter);
+            rc = append_select_limit_sql(string, &plan->limit);
         }
         if (rc == MYLITE_OK) {
             rc = mylite_dynamic_string_append_char(string, ')');

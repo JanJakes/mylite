@@ -136,7 +136,8 @@ static int test_cursor_read_transaction_lifecycle(void) {
     );
     failures += expect_true(blocked_result == NULL, "rejected command result");
     failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "read transaction first row");
-    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "early finalize read transaction");
+    failures +=
+        expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "early finalize read transaction");
     stmt = NULL;
     failures += expect_int(sqlite3_get_autocommit(sqlite), 1, "early finalize ends transaction");
 
@@ -188,13 +189,11 @@ static int test_cursor_read_transaction_lifecycle(void) {
         MYLITE_OK,
         "prepare cursor in user transaction"
     );
-    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize cursor in user transaction");
+    failures +=
+        expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize cursor in user transaction");
     stmt = NULL;
-    failures += expect_int(
-        sqlite3_get_autocommit(sqlite),
-        0,
-        "cursor leaves user transaction active"
-    );
+    failures +=
+        expect_int(sqlite3_get_autocommit(sqlite), 0, "cursor leaves user transaction active");
     failures += execute_ok(database, "ROLLBACK");
     failures += expect_int(sqlite3_get_autocommit(sqlite), 1, "rollback ends user transaction");
 
@@ -214,11 +213,8 @@ static int test_cursor_read_transaction_lifecycle(void) {
         0,
         "autocommit-disabled cursor starts user transaction"
     );
-    failures += expect_int(
-        mylite_stmt_finalize(stmt),
-        MYLITE_OK,
-        "finalize autocommit-disabled cursor"
-    );
+    failures +=
+        expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize autocommit-disabled cursor");
     stmt = NULL;
     failures += expect_int(
         sqlite3_get_autocommit(sqlite),

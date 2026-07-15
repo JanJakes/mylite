@@ -130,11 +130,8 @@ static int test_cached_literal_limit_does_not_reprepare(void) {
     if (statement != NULL) {
         sqlite_sql = sqlite3_sql(statement);
         failures += expect_contains(sqlite_sql, " LIMIT 1 OFFSET 1", "literal limit SQL");
-        failures += expect_int(
-            sqlite3_bind_parameter_count(statement),
-            0,
-            "literal limit parameter count"
-        );
+        failures +=
+            expect_int(sqlite3_bind_parameter_count(statement), 0, "literal limit parameter count");
         failures += expect_int(
             sqlite3_stmt_status(statement, SQLITE_STMTSTATUS_REPREPARE, 0),
             0,

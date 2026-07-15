@@ -450,7 +450,7 @@ static int execute_row_scalar_select_from_plan(
         rc = build_row_scalar_select_sql(plan, &sql);
     }
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
     }
     if (rc == MYLITE_OK) {
         rc = bind_row_scalar_select_parameters(statement, plan);
@@ -466,7 +466,7 @@ static int execute_row_scalar_select_from_plan(
         }
         rc = append_selected_sqlite_row(database, statement, result, NULL, 0U, &row_storage);
     }
-    rc = finalize_sqlite_statement(statement, rc);
+    rc = finish_cached_sqlite_statement(database, statement, rc);
     sqlite_result_row_storage_deinit(&row_storage);
     free(sql);
     result_column_metadata_context_deinit(&metadata_context);
@@ -3347,7 +3347,7 @@ static int read_select_found_row_count(
     int rc = build_select_found_rows_sql(plan, &sql);
 
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
     }
     if (rc == MYLITE_OK) {
         for (size_t join_index = 0U; rc == MYLITE_OK && join_index < plan->join_count;
@@ -3365,7 +3365,7 @@ static int read_select_found_row_count(
     if (rc == MYLITE_OK) {
         rc = step_count_statement(statement, out_count);
     }
-    rc = finalize_sqlite_statement(statement, rc);
+    rc = finish_cached_sqlite_statement(database, statement, rc);
     free(sql);
     if (rc == MYLITE_NOMEM) {
         set_nomem_error(database);

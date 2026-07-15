@@ -81,7 +81,7 @@ static int read_grouped_aggregate_found_row_count(
     int rc = build_grouped_aggregate_found_rows_sql(plan, &sql);
 
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
     }
     if (rc == MYLITE_OK) {
         rc = bind_grouped_aggregate_count_parameters(statement, plan);
@@ -89,7 +89,7 @@ static int read_grouped_aggregate_found_row_count(
     if (rc == MYLITE_OK) {
         rc = step_count_statement(statement, out_count);
     }
-    rc = finalize_sqlite_statement(statement, rc);
+    rc = finish_cached_sqlite_statement(database, statement, rc);
     free(sql);
     return rc;
 }
@@ -1034,7 +1034,7 @@ static int read_count_from_source(
     int rc = build_count_sql(plan, &sql);
 
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
     }
     if (rc == MYLITE_OK) {
         rc = bind_count_parameters(statement, plan);
@@ -1043,7 +1043,7 @@ static int read_count_from_source(
         rc = step_count_statement(statement, out_count);
     }
 
-    rc = finalize_sqlite_statement(statement, rc);
+    rc = finish_cached_sqlite_statement(database, statement, rc);
     free(sql);
 
     return rc;
@@ -2351,7 +2351,7 @@ static int read_column_aggregate_from_source(
     int rc = build_column_aggregate_sql(plan, &sql);
 
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
     }
     if (rc == MYLITE_OK) {
         rc = bind_column_aggregate_parameters(statement, plan);
@@ -2368,7 +2368,7 @@ static int read_column_aggregate_from_source(
         rc = step_column_aggregate_statement(database, statement, plan, result);
     }
 
-    rc = finalize_sqlite_statement(statement, rc);
+    rc = finish_cached_sqlite_statement(database, statement, rc);
     free(sql);
 
     return rc;
@@ -2386,7 +2386,7 @@ static int read_grouped_aggregate_from_source(
     int rc = build_grouped_aggregate_sql(plan, &sql);
 
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
     }
     if (rc == MYLITE_OK) {
         rc = bind_grouped_aggregate_parameters(statement, plan);
@@ -2411,7 +2411,7 @@ static int read_grouped_aggregate_from_source(
         rc = append_grouped_aggregate_sqlite_row(database, statement, plan, result);
     }
 
-    rc = finalize_sqlite_statement(statement, rc);
+    rc = finish_cached_sqlite_statement(database, statement, rc);
     free(sql);
     if (rc == MYLITE_OK && plan->with_rollup &&
         mylite_result_row_count(result) > initial_row_count) {
@@ -2443,7 +2443,7 @@ static int append_grouped_aggregate_rollup_row(
 
     rc = build_grouped_aggregate_rollup_sql(plan, &sql);
     if (rc == MYLITE_OK) {
-        rc = prepare_sqlite_statement(database, sql, &statement);
+        rc = prepare_cached_sqlite_statement(database, sql, &statement);
     }
     if (rc == MYLITE_OK) {
         rc = bind_grouped_aggregate_rollup_parameters(statement, plan);
@@ -2471,7 +2471,7 @@ static int append_grouped_aggregate_rollup_row(
         }
     }
 
-    rc = finalize_sqlite_statement(statement, rc);
+    rc = finish_cached_sqlite_statement(database, statement, rc);
     free(sql);
     return rc;
 }

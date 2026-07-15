@@ -34,7 +34,12 @@ static int ensure_catalog_schema(struct mylite_db *database);
 static int load_existing_catalog(struct mylite_db *database);
 static int migrate_catalog_schema(struct mylite_db *database, const struct mylite_catalog *catalog);
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite);
-static int validate_select_shape(sqlite3 *sqlite, const char *sql);
+static int validate_catalog_table_columns(
+    sqlite3 *sqlite,
+    const char *table_name,
+    const char *const *column_names,
+    size_t column_count
+);
 static int initialize_catalog_schema(struct mylite_db *database);
 static int existing_catalog_table_count(sqlite3 *sqlite, int *out_count);
 static int read_catalog_state(sqlite3 *sqlite, struct mylite_catalog *catalog);
@@ -377,105 +382,254 @@ static int migrate_catalog_schema(
 }
 
 static int validate_catalog_descriptor_tables(sqlite3 *sqlite) {
-    int rc = validate_select_shape(
+    static const char *const schema_columns[] = {
+        "schema_id",
+        "name",
+        "default_charset",
+        "default_collation",
+        "descriptor_version",
+        "created_catalog_generation",
+        "updated_catalog_generation",
+    };
+    static const char *const table_columns[] = {
+        "table_id",
+        "schema_id",
+        "name",
+        "kind",
+        "physical_name",
+        "auto_increment_next",
+        "auto_increment_status",
+        "default_charset",
+        "default_collation",
+        "comment",
+        "row_format_option",
+        "key_block_size",
+        "pack_keys",
+        "checksum",
+        "stats_persistent",
+        "stats_auto_recalc",
+        "stats_sample_pages",
+        "min_rows",
+        "max_rows",
+        "avg_row_length",
+        "delay_key_write",
+        "fulltext_doc_id_initialized",
+        "created_time_utc_epoch",
+        "updated_time_utc_epoch",
+        "descriptor_version",
+        "created_catalog_generation",
+        "updated_catalog_generation",
+    };
+    static const char *const view_columns[] = {
+        "table_id",
+        "view_definition",
+        "show_create_sql",
+        "check_option",
+        "is_updatable",
+        "definer",
+        "security_type",
+        "character_set_client",
+        "collation_connection",
+        "source_schema_id",
+        "source_table_id",
+        "source_schema_name",
+        "source_table_name",
+        "descriptor_version",
+        "created_catalog_generation",
+        "updated_catalog_generation",
+    };
+    static const char *const column_columns[] = {
+        "column_id",
+        "table_id",
+        "ordinal_position",
+        "name",
+        "logical_type",
+        "physical_type",
+        "is_nullable",
+        "is_visible",
+        "is_auto_increment",
+        "default_kind",
+        "default_integer",
+        "default_text",
+        "on_update_current_timestamp",
+        "character_set_name",
+        "collation_name",
+        "comment",
+        "is_generated",
+        "generated_kind",
+        "generation_expression",
+        "sqlite_generation_expression",
+        "descriptor_version",
+        "created_catalog_generation",
+        "updated_catalog_generation",
+    };
+    static const char *const index_columns[] = {
+        "index_id",
+        "table_id",
+        "name",
+        "kind",
+        "is_unique",
+        "is_visible",
+        "physical_name",
+        "comment",
+        "show_create_explicit_btree",
+        "descriptor_version",
+        "created_catalog_generation",
+        "updated_catalog_generation",
+    };
+    static const char *const index_column_columns[] = {
+        "index_column_id",
+        "index_id",
+        "table_id",
+        "column_id",
+        "ordinal_position",
+        "prefix_length",
+        "sort_direction",
+        "descriptor_version",
+        "created_catalog_generation",
+        "updated_catalog_generation",
+    };
+    static const char *const foreign_key_columns[] = {
+        "foreign_key_id",
+        "child_table_id",
+        "parent_table_id",
+        "name",
+        "parent_index_id",
+        "child_index_id",
+        "update_rule",
+        "delete_rule",
+        "match_option",
+        "descriptor_version",
+        "created_catalog_generation",
+        "updated_catalog_generation",
+    };
+    static const char *const foreign_key_column_columns[] = {
+        "foreign_key_column_id",
+        "foreign_key_id",
+        "child_table_id",
+        "parent_table_id",
+        "child_column_id",
+        "parent_column_id",
+        "ordinal_position",
+        "position_in_unique_constraint",
+        "descriptor_version",
+        "created_catalog_generation",
+        "updated_catalog_generation",
+    };
+    static const char *const check_constraint_columns[] = {
+        "check_constraint_id",
+        "table_id",
+        "name",
+        "physical_name",
+        "check_clause",
+        "sqlite_expression",
+        "is_enforced",
+        "name_is_generated",
+        "generated_ordinal",
+        "ordinal_position",
+        "descriptor_version",
+        "created_catalog_generation",
+        "updated_catalog_generation",
+    };
+    int rc = validate_catalog_table_columns(
         sqlite,
-        "SELECT schema_id, name, default_charset, default_collation, "
-        "descriptor_version, created_catalog_generation, "
-        "updated_catalog_generation "
-        "FROM _mylite_catalog_schemas WHERE 0"
+        "_mylite_catalog_schemas",
+        schema_columns,
+        sizeof(schema_columns) / sizeof(schema_columns[0])
     );
 
     if (rc == MYLITE_OK) {
-        rc = validate_select_shape(
+        rc = validate_catalog_table_columns(
             sqlite,
-            "SELECT table_id, schema_id, name, kind, physical_name, auto_increment_next, "
-            "auto_increment_status, default_charset, default_collation, comment, "
-            "row_format_option, key_block_size, "
-            "pack_keys, checksum, stats_persistent, stats_auto_recalc, stats_sample_pages, "
-            "min_rows, max_rows, avg_row_length, delay_key_write, "
-            "fulltext_doc_id_initialized, "
-            "created_time_utc_epoch, updated_time_utc_epoch, "
-            "descriptor_version, created_catalog_generation, updated_catalog_generation "
-            "FROM _mylite_catalog_tables WHERE 0"
+            "_mylite_catalog_tables",
+            table_columns,
+            sizeof(table_columns) / sizeof(table_columns[0])
         );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_select_shape(
+        rc = validate_catalog_table_columns(
             sqlite,
-            "SELECT table_id, view_definition, show_create_sql, check_option, is_updatable, "
-            "definer, security_type, character_set_client, collation_connection, "
-            "source_schema_id, source_table_id, source_schema_name, source_table_name, "
-            "descriptor_version, created_catalog_generation, updated_catalog_generation "
-            "FROM _mylite_catalog_views WHERE 0"
+            "_mylite_catalog_views",
+            view_columns,
+            sizeof(view_columns) / sizeof(view_columns[0])
         );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_select_shape(
+        rc = validate_catalog_table_columns(
             sqlite,
-            "SELECT column_id, table_id, ordinal_position, name, logical_type, physical_type, "
-            "is_nullable, is_visible, is_auto_increment, default_kind, default_integer, "
-            "default_text, on_update_current_timestamp, character_set_name, collation_name, "
-            "comment, is_generated, generated_kind, generation_expression, "
-            "sqlite_generation_expression, "
-            "descriptor_version, created_catalog_generation, updated_catalog_generation "
-            "FROM _mylite_catalog_columns WHERE 0"
+            "_mylite_catalog_columns",
+            column_columns,
+            sizeof(column_columns) / sizeof(column_columns[0])
         );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_select_shape(
+        rc = validate_catalog_table_columns(
             sqlite,
-            "SELECT index_id, table_id, name, kind, is_unique, is_visible, physical_name, "
-            "comment, show_create_explicit_btree, descriptor_version, created_catalog_generation, "
-            "updated_catalog_generation "
-            "FROM _mylite_catalog_indexes WHERE 0"
+            "_mylite_catalog_indexes",
+            index_columns,
+            sizeof(index_columns) / sizeof(index_columns[0])
         );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_select_shape(
+        rc = validate_catalog_table_columns(
             sqlite,
-            "SELECT index_column_id, index_id, table_id, column_id, ordinal_position, "
-            "prefix_length, sort_direction, "
-            "descriptor_version, created_catalog_generation, updated_catalog_generation "
-            "FROM _mylite_catalog_index_columns WHERE 0"
+            "_mylite_catalog_index_columns",
+            index_column_columns,
+            sizeof(index_column_columns) / sizeof(index_column_columns[0])
         );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_select_shape(
+        rc = validate_catalog_table_columns(
             sqlite,
-            "SELECT foreign_key_id, child_table_id, parent_table_id, name, parent_index_id, "
-            "child_index_id, update_rule, delete_rule, match_option, descriptor_version, "
-            "created_catalog_generation, updated_catalog_generation "
-            "FROM _mylite_catalog_foreign_keys WHERE 0"
+            "_mylite_catalog_foreign_keys",
+            foreign_key_columns,
+            sizeof(foreign_key_columns) / sizeof(foreign_key_columns[0])
         );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_select_shape(
+        rc = validate_catalog_table_columns(
             sqlite,
-            "SELECT foreign_key_column_id, foreign_key_id, child_table_id, parent_table_id, "
-            "child_column_id, parent_column_id, ordinal_position, position_in_unique_constraint, "
-            "descriptor_version, created_catalog_generation, updated_catalog_generation "
-            "FROM _mylite_catalog_foreign_key_columns WHERE 0"
+            "_mylite_catalog_foreign_key_columns",
+            foreign_key_column_columns,
+            sizeof(foreign_key_column_columns) / sizeof(foreign_key_column_columns[0])
         );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_select_shape(
+        rc = validate_catalog_table_columns(
             sqlite,
-            "SELECT check_constraint_id, table_id, name, physical_name, check_clause, "
-            "sqlite_expression, is_enforced, name_is_generated, generated_ordinal, "
-            "ordinal_position, descriptor_version, created_catalog_generation, "
-            "updated_catalog_generation "
-            "FROM _mylite_catalog_check_constraints WHERE 0"
+            "_mylite_catalog_check_constraints",
+            check_constraint_columns,
+            sizeof(check_constraint_columns) / sizeof(check_constraint_columns[0])
         );
     }
-
     return rc;
 }
 
-static int validate_select_shape(sqlite3 *sqlite, const char *sql) {
-    sqlite3_stmt *statement = NULL;
-    int rc = mylite_catalog_prepare_statement(sqlite, sql, &statement);
+static int validate_catalog_table_columns(
+    sqlite3 *sqlite,
+    const char *table_name,
+    const char *const *column_names,
+    size_t column_count
+) {
+    int sqlite_rc = SQLITE_OK;
 
-    return mylite_catalog_finalize_statement(statement, rc);
+    for (size_t index = 0U; index < column_count; ++index) {
+        sqlite_rc = sqlite3_table_column_metadata(
+            sqlite,
+            "main",
+            table_name,
+            column_names[index],
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL
+        );
+        if (sqlite_rc != SQLITE_OK) {
+            return mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+    return MYLITE_OK;
 }
 
 static int initialize_catalog_schema(struct mylite_db *database) {

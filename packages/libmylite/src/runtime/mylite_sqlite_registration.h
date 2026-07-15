@@ -4,6 +4,9 @@
 #include <mylite/mylite.h>
 
 #include "sqlite3.h"
+#ifdef MYLITE_ENABLE_PROFILING
+#  include "mylite_profile_internal.h"
+#endif
 
 #include <stddef.h>
 
@@ -53,5 +56,9 @@ int mylite_sqlite_register_collations(
 );
 
 int mylite_sqlite_status_to_mylite(int sqlite_status);
+
+#ifdef MYLITE_ENABLE_PROFILING
+#  define sqlite3_step(statement) mylite_profile_sqlite3_step(statement)
+#endif
 
 #endif

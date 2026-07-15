@@ -2,6 +2,9 @@
 #define MYLITE_RUNTIME_MYLITE_CONNECTION_H
 
 #include <mylite/mylite.h>
+#ifdef MYLITE_ENABLE_PROFILING
+#  include "mylite_profile_internal.h"
+#endif
 
 #include "mylite_catalog.h"
 #include "mylite_diagnostics.h"
@@ -347,6 +350,10 @@ struct mylite_db {
     struct loaded_table_key_metadata_cache_entry
         table_key_metadata_cache[MYLITE_EXECUTION_TABLE_KEY_METADATA_CACHE_LIMIT];
     size_t table_key_metadata_cache_count;
+#ifdef MYLITE_ENABLE_PROFILING
+    struct mylite_profile_snapshot profile;
+    bool profile_active;
+#endif
     mylite_stmt *active_cursor;
     struct mylite_db *processlist_next;
 };

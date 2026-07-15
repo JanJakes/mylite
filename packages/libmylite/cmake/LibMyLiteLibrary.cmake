@@ -227,6 +227,11 @@ add_library(mylite STATIC
 )
 add_library(MyLite::mylite ALIAS mylite)
 
+if(MYLITE_ENABLE_PROFILING)
+  target_sources(mylite PRIVATE src/runtime/mylite_profile.c)
+  target_compile_definitions(mylite PRIVATE MYLITE_ENABLE_PROFILING=1)
+endif()
+
 target_include_directories(mylite
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"

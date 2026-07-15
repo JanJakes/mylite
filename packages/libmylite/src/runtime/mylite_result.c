@@ -1,4 +1,7 @@
 #include "mylite_result.h"
+#ifdef MYLITE_ENABLE_PROFILING
+#  include "mylite_profile_internal.h"
+#endif
 
 #include <stdlib.h>
 #include <string.h>
@@ -102,15 +105,25 @@ int mylite_result_append_column_descriptor(
 int mylite_result_append_bytes_row(mylite_result *result, const struct mylite_result_cell *values) {
     size_t column_count = 0U;
     size_t value_offset = 0U;
+#ifdef MYLITE_ENABLE_PROFILING
+    size_t value_bytes = 0U;
+    uint64_t profile_started_ns = 0U;
+#endif
     int rc = MYLITE_OK;
 
     if (result == NULL || values == NULL || result->column_count == 0U) {
         return MYLITE_MISUSE;
     }
 
+#ifdef MYLITE_ENABLE_PROFILING
+    profile_started_ns = mylite_profile_now_ns();
+#endif
     column_count = result->column_count;
     rc = reserve_rows(result, result->row_count + 1U);
     if (rc != MYLITE_OK) {
+#ifdef MYLITE_ENABLE_PROFILING
+        mylite_profile_record_result_buffer(profile_started_ns, false, 0U);
+#endif
         return rc;
     }
 
@@ -130,11 +143,20 @@ int mylite_result_append_bytes_row(mylite_result *result, const struct mylite_re
                 result->values[value_offset + rollback_index] = NULL;
                 result->value_sizes[value_offset + rollback_index] = 0U;
             }
+#ifdef MYLITE_ENABLE_PROFILING
+            mylite_profile_record_result_buffer(profile_started_ns, false, 0U);
+#endif
             return rc;
         }
         result->value_sizes[value_offset + column_index] = cell->size;
+#ifdef MYLITE_ENABLE_PROFILING
+        value_bytes += cell->size;
+#endif
     }
     ++result->row_count;
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_result_buffer(profile_started_ns, true, value_bytes);
+#endif
 
     return MYLITE_OK;
 }

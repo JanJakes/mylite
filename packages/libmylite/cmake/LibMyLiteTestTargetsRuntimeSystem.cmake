@@ -1,3 +1,16 @@
+  if(MYLITE_ENABLE_PROFILING)
+    add_executable(mylite_runtime_profile_test
+      tests/runtime_profile_test.c
+    )
+    target_link_libraries(mylite_runtime_profile_test PRIVATE MyLite::mylite)
+    target_compile_definitions(mylite_runtime_profile_test PRIVATE MYLITE_ENABLE_PROFILING=1)
+    target_include_directories(mylite_runtime_profile_test PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    )
+    add_dependencies(mylite_runtime_profile_test mylite_benchmark)
+    mylite_configure_c_target(mylite_runtime_profile_test)
+  endif()
+
   add_executable(mylite_runtime_system_table_lookup_test
     tests/runtime_system_table_lookup_test.c
   )

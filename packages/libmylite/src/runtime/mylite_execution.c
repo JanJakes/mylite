@@ -42,6 +42,9 @@
 #include "mylite_named_locks.h"
 #include "mylite_parser.h"
 #include "mylite_period_functions.h"
+#ifdef MYLITE_ENABLE_PROFILING
+#  include "mylite_profile_internal.h"
+#endif
 #include "mylite_rand.h"
 #include "mylite_regexp.h"
 #include "mylite_result.h"
@@ -127,6 +130,10 @@ int mylite_execute(
     size_t statement_count = 0U;
     bool preserve_diagnostics_snapshot = false;
     bool completed_statement_is_select = false;
+#ifdef MYLITE_ENABLE_PROFILING
+    uint64_t profile_statement_started_ns = 0U;
+    uint64_t profile_phase_started_ns = 0U;
+#endif
     int rc = MYLITE_OK;
 
     if (out_result == NULL) {
@@ -157,12 +164,25 @@ int mylite_execute(
         return rc;
     }
 
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_enter_api(database);
+    profile_statement_started_ns = mylite_profile_now_ns();
+#endif
     if (database->session.statement_id != UINT64_MAX) {
         ++database->session.statement_id;
     }
     normalized_sql = (struct mylite_execution_normalized_sql){0};
+#ifdef MYLITE_ENABLE_PROFILING
+    profile_phase_started_ns = mylite_profile_now_ns();
+#endif
     rc = mylite_execution_normalize_mysql_compat_sql(database, sql, sql_size, &normalized_sql);
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_normalization(database, profile_phase_started_ns);
+#endif
     if (rc != MYLITE_OK) {
+#ifdef MYLITE_ENABLE_PROFILING
+        mylite_profile_record_statement(database, profile_statement_started_ns);
+#endif
         return rc;
     }
 
@@ -176,11 +196,17 @@ int mylite_execute(
     if (rc != MYLITE_OK) {
         mylite_execution_normalized_sql_deinit(&normalized_sql);
         mylite_statement_context_deinit(&context);
+#ifdef MYLITE_ENABLE_PROFILING
+        mylite_profile_record_statement(database, profile_statement_started_ns);
+#endif
         return rc;
     }
     mylite_statement_context_set_previous_row_count(&context, database->session.previous_row_count);
     mylite_statement_context_set_previous_found_rows(&context, database->session.found_rows);
 
+#ifdef MYLITE_ENABLE_PROFILING
+    profile_phase_started_ns = mylite_profile_now_ns();
+#endif
     rc = status_from_parse_status(mylite_sql_parse(
         (struct mylite_sql_parse_config){
             .input = normalized_sql.sql,
@@ -189,12 +215,18 @@ int mylite_execute(
         },
         &parse_result
     ));
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_parse(database, profile_phase_started_ns);
+#endif
     if (rc != MYLITE_OK) {
         rc = finish_parse_failure(database, &parse_result, rc);
         mylite_sql_parse_result_deinit(&parse_result);
         (void)mylite_statement_context_end(&context, rc);
         mylite_statement_context_deinit(&context);
         mylite_execution_normalized_sql_deinit(&normalized_sql);
+#ifdef MYLITE_ENABLE_PROFILING
+        mylite_profile_record_statement(database, profile_statement_started_ns);
+#endif
         return rc;
     }
 
@@ -229,6 +261,9 @@ int mylite_execute(
     (void)mylite_statement_context_end(&context, rc);
     mylite_statement_context_deinit(&context);
     mylite_execution_normalized_sql_deinit(&normalized_sql);
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_statement(database, profile_statement_started_ns);
+#endif
 
     return rc;
 }
@@ -241,6 +276,9 @@ int mylite_execute_transaction_control(
     struct mylite_statement_context context;
     const char *sql = NULL;
     int64_t completed_row_count = 0;
+#ifdef MYLITE_ENABLE_PROFILING
+    uint64_t profile_statement_started_ns = 0U;
+#endif
     int rc = MYLITE_OK;
 
     if (out_result == NULL) {
@@ -283,6 +321,10 @@ int mylite_execute_transaction_control(
         return MYLITE_MISUSE;
     }
 
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_enter_api(database);
+    profile_statement_started_ns = mylite_profile_now_ns();
+#endif
     if (database->session.statement_id != UINT64_MAX) {
         ++database->session.statement_id;
     }
@@ -290,6 +332,9 @@ int mylite_execute_transaction_control(
     rc = mylite_statement_context_begin(&context, database, sql, strlen(sql));
     if (rc != MYLITE_OK) {
         mylite_statement_context_deinit(&context);
+#ifdef MYLITE_ENABLE_PROFILING
+        mylite_profile_record_statement(database, profile_statement_started_ns);
+#endif
         return rc;
     }
     mylite_statement_context_set_previous_row_count(&context, database->session.previous_row_count);
@@ -319,11 +364,17 @@ int mylite_execute_transaction_control(
     }
     (void)mylite_statement_context_end(&context, rc);
     mylite_statement_context_deinit(&context);
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_statement(database, profile_statement_started_ns);
+#endif
     return rc;
 }
 
 int mylite_prepare(mylite_db *database, const char *sql, size_t sql_size, mylite_stmt **out_stmt) {
     mylite_stmt *stmt = NULL;
+#ifdef MYLITE_ENABLE_PROFILING
+    uint64_t profile_statement_started_ns = 0U;
+#endif
     int rc = MYLITE_OK;
 
     if (out_stmt == NULL) {
@@ -354,24 +405,40 @@ int mylite_prepare(mylite_db *database, const char *sql, size_t sql_size, mylite
         return rc;
     }
 
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_enter_api(database);
+    profile_statement_started_ns = mylite_profile_now_ns();
+#endif
     stmt = calloc(1U, sizeof(*stmt));
     if (stmt == NULL) {
         set_nomem_error(database);
+#ifdef MYLITE_ENABLE_PROFILING
+        mylite_profile_record_statement(database, profile_statement_started_ns);
+#endif
         return MYLITE_NOMEM;
     }
     stmt->metadata_context = result_column_metadata_context_init();
     rc = prepare_cursor_select_statement(database, sql, sql_size, stmt);
     if (rc != MYLITE_OK) {
         destroy_cursor_statement(stmt);
+#ifdef MYLITE_ENABLE_PROFILING
+        mylite_profile_record_statement(database, profile_statement_started_ns);
+#endif
         return rc;
     }
 
     *out_stmt = stmt;
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_statement(database, profile_statement_started_ns);
+#endif
     return MYLITE_OK;
 }
 
 int mylite_stmt_step(mylite_stmt *stmt) {
     int sqlite_rc = SQLITE_OK;
+#ifdef MYLITE_ENABLE_PROFILING
+    uint64_t profile_step_started_ns = 0U;
+#endif
     int rc = MYLITE_OK;
 
     if (stmt == NULL || stmt->database == NULL ||
@@ -382,21 +449,57 @@ int mylite_stmt_step(mylite_stmt *stmt) {
         return MYLITE_DONE;
     }
 
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_enter_api(stmt->database);
+    profile_step_started_ns = mylite_profile_now_ns();
+#endif
     stmt->current_row_available = false;
     if (stmt->has_materialized_rows) {
         if (stmt->materialized_row_index >= mylite_result_row_count(stmt->metadata_result)) {
             stmt->done = true;
             rc = set_materialized_cursor_found_row_count(stmt);
             if (rc != MYLITE_OK) {
+#ifdef MYLITE_ENABLE_PROFILING
+                mylite_profile_record_cursor_step(
+                    stmt->database,
+                    profile_step_started_ns,
+                    false,
+                    0U
+                );
+#endif
                 return rc;
             }
             rc = finish_cursor_statement(stmt, true);
+#ifdef MYLITE_ENABLE_PROFILING
+            mylite_profile_record_cursor_step(stmt->database, profile_step_started_ns, false, 0U);
+#endif
             return rc == MYLITE_OK ? MYLITE_DONE : rc;
         }
         stmt->current_materialized_row = stmt->materialized_row_index;
         ++stmt->materialized_row_index;
         ++stmt->row_count;
         stmt->current_row_available = true;
+#ifdef MYLITE_ENABLE_PROFILING
+        {
+            size_t value_bytes = 0U;
+
+            for (size_t column_index = 0U;
+                 column_index < mylite_result_column_count(stmt->metadata_result);
+                 ++column_index) {
+                value_bytes += mylite_result_value_size(
+                    stmt->metadata_result,
+                    stmt->current_materialized_row,
+                    column_index
+                );
+            }
+            mylite_profile_record_cursor_step(
+                stmt->database,
+                profile_step_started_ns,
+                true,
+                value_bytes
+            );
+        }
+#endif
         return MYLITE_ROW;
     }
 
@@ -411,10 +514,32 @@ int mylite_stmt_step(mylite_stmt *stmt) {
             &stmt->row_storage
         );
         if (rc != MYLITE_OK) {
+#ifdef MYLITE_ENABLE_PROFILING
+            mylite_profile_record_cursor_step(stmt->database, profile_step_started_ns, false, 0U);
+#endif
             return rc;
         }
         ++stmt->row_count;
         stmt->current_row_available = true;
+#ifdef MYLITE_ENABLE_PROFILING
+        {
+            size_t value_bytes = 0U;
+
+            for (size_t column_index = 0U;
+                 column_index < mylite_result_column_count(stmt->metadata_result);
+                 ++column_index) {
+                if (!stmt->row_storage.values[column_index].is_null) {
+                    value_bytes += stmt->row_storage.values[column_index].size;
+                }
+            }
+            mylite_profile_record_cursor_step(
+                stmt->database,
+                profile_step_started_ns,
+                true,
+                value_bytes
+            );
+        }
+#endif
         return MYLITE_ROW;
     }
     if (sqlite_rc != SQLITE_DONE) {
@@ -427,7 +552,11 @@ int mylite_stmt_step(mylite_stmt *stmt) {
         stmt->done = true;
         mylite_result *result = NULL;
 
-        return finish_failed_statement(stmt->database, rc, &result);
+        rc = finish_failed_statement(stmt->database, rc, &result);
+#ifdef MYLITE_ENABLE_PROFILING
+        mylite_profile_record_cursor_step(stmt->database, profile_step_started_ns, false, 0U);
+#endif
+        return rc;
     }
 
     rc = finish_cursor_sqlite_statement(stmt, MYLITE_OK);
@@ -438,15 +567,27 @@ int mylite_stmt_step(mylite_stmt *stmt) {
     if (rc == MYLITE_OK) {
         rc = finish_cursor_statement(stmt, true);
     }
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_cursor_step(stmt->database, profile_step_started_ns, false, 0U);
+#endif
     return rc == MYLITE_OK ? MYLITE_DONE : rc;
 }
 
 int mylite_stmt_finalize(mylite_stmt *stmt) {
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_db *profile_database = NULL;
+    uint64_t profile_finalize_started_ns = 0U;
+#endif
     int rc = MYLITE_OK;
 
     if (stmt == NULL) {
         return MYLITE_OK;
     }
+#ifdef MYLITE_ENABLE_PROFILING
+    profile_database = stmt->database;
+    mylite_profile_enter_api(profile_database);
+    profile_finalize_started_ns = mylite_profile_now_ns();
+#endif
     if (stmt->sqlite_statement != NULL) {
         rc = finish_cursor_sqlite_statement(stmt, MYLITE_OK);
     }
@@ -455,6 +596,9 @@ int mylite_stmt_finalize(mylite_stmt *stmt) {
         rc = finish_cursor_statement(stmt, false);
     }
     destroy_cursor_statement(stmt);
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_cursor_finalize(profile_database, profile_finalize_started_ns);
+#endif
     return rc;
 }
 
@@ -606,6 +750,9 @@ static int prepare_cursor_select_statement(
     mylite_stmt *stmt
 ) {
     size_t statement_count = 0U;
+#ifdef MYLITE_ENABLE_PROFILING
+    uint64_t profile_phase_started_ns = 0U;
+#endif
     int rc = MYLITE_OK;
 
     stmt->database = database;
@@ -613,8 +760,14 @@ static int prepare_cursor_select_statement(
         ++database->session.statement_id;
     }
 
+#ifdef MYLITE_ENABLE_PROFILING
+    profile_phase_started_ns = mylite_profile_now_ns();
+#endif
     rc =
         mylite_execution_normalize_mysql_compat_sql(database, sql, sql_size, &stmt->normalized_sql);
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_normalization(database, profile_phase_started_ns);
+#endif
     if (rc != MYLITE_OK) {
         return rc;
     }
@@ -637,6 +790,9 @@ static int prepare_cursor_select_statement(
     );
     mylite_statement_context_set_previous_found_rows(&stmt->context, database->session.found_rows);
 
+#ifdef MYLITE_ENABLE_PROFILING
+    profile_phase_started_ns = mylite_profile_now_ns();
+#endif
     rc = status_from_parse_status(mylite_sql_parse(
         (struct mylite_sql_parse_config){
             .input = stmt->normalized_sql.sql,
@@ -645,6 +801,9 @@ static int prepare_cursor_select_statement(
         },
         &stmt->parse_result
     ));
+#ifdef MYLITE_ENABLE_PROFILING
+    mylite_profile_record_parse(database, profile_phase_started_ns);
+#endif
     stmt->has_parse_result = true;
     if (rc != MYLITE_OK) {
         rc = finish_parse_failure(database, &stmt->parse_result, rc);

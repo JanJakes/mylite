@@ -22,6 +22,27 @@ build/ci/packages/libmylite/mylite_benchmark --only parse --iterations 1000
 build/ci/packages/libmylite/mylite_benchmark --only runtime --iterations 1000
 ```
 
+List scenarios or select one scenario:
+
+```sh
+build/ci/packages/libmylite/mylite_benchmark --list
+build/ci/packages/libmylite/mylite_benchmark \
+  --only runtime \
+  --scenario runtime.wp_frontend_request \
+  --iterations 1000 \
+  --samples 7 \
+  --warmup 2
+```
+
+`--warmup` runs unmeasured runtime iterations after database setup and before
+each sample. Runtime scenarios default to one warmup iteration. Use
+`--warmup 0` to measure the initial state, including the insert branch of an
+upsert; the default measures steady-state request behavior. `--samples`
+reports every sample plus minimum, median, 95th-percentile, and maximum average
+operation times. Pinning a run to an otherwise idle CPU core, where supported,
+reduces scheduler noise. `--per-query` expands each selected request scenario
+into independently measured `.queryN` scenarios.
+
 The benchmark reports CSV rows:
 
 ```text
@@ -32,6 +53,56 @@ scenario,kind,iterations,queries,operations,ok,errors,tokens,bytes,total_ms,avg_
 the parse result. `kind=lexer` measures tokenization only. `kind=execute`
 measures `mylite_execute()` against a temporary file-backed MyLite database and
 does not use PHP, WordPress, or the PHP extensions.
+
+`runtime.wp_frontend_request` executes six representative WordPress frontend
+reads per iteration. `runtime.wp_write_request` executes a five-query mixed
+request containing a read, an upsert, two updates, and a delete. These scenarios
+measure a request-shaped sequence while retaining the existing `.queryN`
+isolation for hotspot analysis.
+
+## Runtime Phase Profiling
+
+An opt-in Release preset adds phase counters without affecting production
+builds:
+
+```sh
+cmake --preset perf-profile
+cmake --build --preset perf-profile --target mylite_benchmark
+build/perf-profile/packages/libmylite/mylite_benchmark \
+  --only runtime \
+  --scenario runtime.wp_frontend_request \
+  --iterations 1000 \
+  --samples 7 \
+  --warmup 2 \
+  --profile-json build/perf-profile/wp-frontend.jsonl
+```
+
+`--profile-json` truncates the destination once and appends one JSON object per
+measured sample. Each object includes wall time and these cumulative counters:
+
+- `statement_api_ns`: time inside buffered statement execution or cursor
+  preparation.
+- `normalization_ns` and `parse_ns`: compatibility normalization and MyLite
+  lex/parse time.
+- `sqlite_step_ns`: time spent inside runtime `sqlite3_step()` calls, measured
+  with MyLite's monotonic clock.
+- `result_buffer_ns`: time copying rows into buffered MyLite results.
+- `cursor_step_ns`: time spent stepping cursor results.
+- `cursor_finalize_ns`: time finalizing cursor statements and their transaction
+  state.
+- `unattributed_ns`: saturating remainder after subtracting normalization,
+  parse, SQLite step, and result-buffer time from the profiled API time.
+- Statement, SQLite step, cursor-finalize, buffered/cursor row, and result-value
+  byte counts used to normalize the timings.
+
+The unattributed remainder includes planning, compatibility evaluation,
+metadata, catalog, transaction, allocation, and other uninstrumented MyLite
+work outside `sqlite3_step()`. SQLite scalar callbacks execute inside a step and
+are therefore included in `sqlite_step_ns`. The profiler is an internal
+benchmark facility rather than a public libmylite ABI.
+Use this preset to locate phase and call-count gaps, then confirm absolute
+performance with the normal `ci` Release build because instrumentation adds
+clock overhead.
 
 ## WordPress MySQL Server-Test Query CSV
 

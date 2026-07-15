@@ -9,4 +9,7 @@ target_include_directories(mylite_benchmark PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks"
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
+if(MYLITE_ENABLE_PROFILING)
+  target_compile_definitions(mylite_benchmark PRIVATE MYLITE_ENABLE_PROFILING=1)
+endif()
 mylite_configure_c_target(mylite_benchmark)

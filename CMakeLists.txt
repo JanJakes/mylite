@@ -20,6 +20,7 @@ include(MyLitePHP)
 option(MYLITE_BUILD_TOOLS "Build MyLite command-line tools" ON)
 option(MYLITE_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(MYLITE_BUILD_PHP_EXTENSIONS "Build MyLite PHP extensions" OFF)
+option(MYLITE_ENABLE_PROFILING "Enable opt-in runtime profiling instrumentation" OFF)
 
 if(MYLITE_BUILD_PHP_EXTENSIONS)
   set(CMAKE_POSITION_INDEPENDENT_CODE ON)

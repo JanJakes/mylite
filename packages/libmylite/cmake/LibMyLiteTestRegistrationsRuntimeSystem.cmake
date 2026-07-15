@@ -1,3 +1,14 @@
+  if(MYLITE_ENABLE_PROFILING)
+    add_test(NAME libmylite.runtime.profile COMMAND mylite_runtime_profile_test)
+    add_test(
+      NAME libmylite.benchmark.profile_cli
+      COMMAND "${CMAKE_COMMAND}"
+        "-DBENCHMARK=$<TARGET_FILE:mylite_benchmark>"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/benchmark-profile-cli.jsonl"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/benchmark_profile_cli_test.cmake"
+    )
+  endif()
+
   add_test(
     NAME libmylite.runtime.system_table_lookup
     COMMAND mylite_runtime_system_table_lookup_test

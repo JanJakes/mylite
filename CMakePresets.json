@@ -43,6 +43,15 @@
       "cacheVariables": {
         "MYLITE_BUILD_PHP_EXTENSIONS": "ON"
       }
+    },
+    {
+      "name": "perf-profile",
+      "displayName": "Release build with profiling instrumentation",
+      "inherits": "ci",
+      "binaryDir": "${sourceDir}/build/perf-profile",
+      "cacheVariables": {
+        "MYLITE_ENABLE_PROFILING": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -61,6 +70,10 @@
     {
       "name": "php-ci",
       "configurePreset": "php-ci"
+    },
+    {
+      "name": "perf-profile",
+      "configurePreset": "perf-profile"
     },
     {
       "name": "format",
@@ -109,6 +122,13 @@
     {
       "name": "php-ci",
       "configurePreset": "php-ci",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "perf-profile",
+      "configurePreset": "perf-profile",
       "output": {
         "outputOnFailure": true
       }

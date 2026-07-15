@@ -1,4 +1,7 @@
 #include <mylite/mylite.h>
+#ifdef MYLITE_ENABLE_PROFILING
+#  include "runtime/mylite_profile_internal.h"
+#endif
 
 #include "mylite_benchmark_csv.h"
 #include "mylite_benchmark_parse_expectations.h"
@@ -30,6 +33,7 @@ enum {
     default_iterations = 1000,
     default_csv_iterations = 1,
     default_samples = 1,
+    default_runtime_warmup_iterations = 1,
     runtime_database_path_capacity = 1024,
     runtime_database_suffix_capacity = 16,
     runtime_query_scenario_name_capacity = 256,
@@ -58,10 +62,12 @@ struct benchmark_options {
     const char *csv_path;
     const char *parse_failure_dump_path;
     const char *expected_parse_failures_path;
+    const char *profile_json_path;
     const char *runtime_scenario_name;
     size_t iterations;
     size_t csv_iterations;
     size_t samples;
+    size_t warmup_iterations;
     bool csv_replay_sql_mode;
     bool runtime_per_query;
     bool list_only;
@@ -71,6 +77,8 @@ struct benchmark_options {
 struct runtime_repetition_options {
     size_t iterations;
     size_t samples;
+    size_t warmup_iterations;
+    const char *profile_json_path;
 };
 
 struct benchmark_query {
@@ -91,6 +99,9 @@ struct benchmark_measurement {
     size_t error_count;
     size_t token_count;
     size_t parse_status_counts[parse_status_bucket_count];
+#ifdef MYLITE_ENABLE_PROFILING
+    struct mylite_profile_snapshot profile;
+#endif
 };
 
 struct text_coordinates {
@@ -232,6 +243,30 @@ static const struct benchmark_query wordpress_metadata_queries[] = {
     QUERY("SHOW CREATE TABLE wp_postmeta"),
 };
 
+static const struct benchmark_query wordpress_frontend_request_queries[] = {
+    QUERY("SELECT option_name, option_value FROM wp_options WHERE autoload = 'yes'"),
+    QUERY("SELECT option_value FROM wp_options WHERE option_name = 'siteurl' LIMIT 1"),
+    QUERY("SELECT ID, post_title, post_date FROM wp_posts "
+          "WHERE post_type = 'post' AND post_status = 'publish' "
+          "ORDER BY post_date DESC LIMIT 10"),
+    QUERY("SELECT COUNT(*) FROM wp_posts WHERE post_type = 'post' AND post_status = 'publish'"),
+    QUERY("SELECT ID, post_content, post_title FROM wp_posts WHERE ID = 1 LIMIT 1"),
+    QUERY("SELECT meta_key, meta_value FROM wp_postmeta WHERE post_id = 1"),
+};
+
+static const struct benchmark_query wordpress_write_request_queries[] = {
+    QUERY("SELECT option_value FROM wp_options WHERE option_name = 'cron' LIMIT 1"),
+    QUERY("INSERT INTO wp_options (option_name, option_value, autoload) "
+          "VALUES ('_transient_request','1','no') "
+          "ON DUPLICATE KEY UPDATE option_value = VALUES(option_value), "
+          "autoload = VALUES(autoload)"),
+    QUERY("UPDATE wp_postmeta SET meta_value = '1700000003:1' "
+          "WHERE post_id = 1 AND meta_key = '_edit_lock'"),
+    QUERY("UPDATE wp_posts SET post_modified = '2026-01-01 10:01:00', "
+          "post_modified_gmt = '2026-01-01 10:01:00' WHERE ID = 1"),
+    QUERY("DELETE FROM wp_options WHERE option_name = '_transient_request_miss'"),
+};
+
 static const struct benchmark_query information_schema_tables_lookup_queries[] = {
     QUERY("SELECT 1 AS expression FROM INFORMATION_SCHEMA.TABLES "
           "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wp_options' "
@@ -298,6 +333,22 @@ static const struct runtime_scenario runtime_scenarios[] = {
         .query_count = sizeof(wordpress_metadata_queries) / sizeof(wordpress_metadata_queries[0]),
     },
     {
+        .name = "runtime.wp_frontend_request",
+        .setup_queries = wordpress_setup_queries,
+        .setup_query_count = sizeof(wordpress_setup_queries) / sizeof(wordpress_setup_queries[0]),
+        .queries = wordpress_frontend_request_queries,
+        .query_count = sizeof(wordpress_frontend_request_queries) /
+                       sizeof(wordpress_frontend_request_queries[0]),
+    },
+    {
+        .name = "runtime.wp_write_request",
+        .setup_queries = wordpress_setup_queries,
+        .setup_query_count = sizeof(wordpress_setup_queries) / sizeof(wordpress_setup_queries[0]),
+        .queries = wordpress_write_request_queries,
+        .query_count =
+            sizeof(wordpress_write_request_queries) / sizeof(wordpress_write_request_queries[0]),
+    },
+    {
         .name = "runtime.information_schema_tables_lookup",
         .setup_queries = wordpress_setup_queries,
         .setup_query_count = sizeof(wordpress_setup_queries) / sizeof(wordpress_setup_queries[0]),
@@ -332,6 +383,13 @@ static int parse_size_argument(
     const char *option_name,
     size_t *out_value
 );
+static int parse_nonnegative_size_argument(
+    int argc,
+    char **argv,
+    int *index,
+    const char *option_name,
+    size_t *out_value
+);
 static int parse_text_argument(
     int argc,
     char **argv,
@@ -347,7 +405,7 @@ static int parse_filter_argument(
 );
 static const char *consume_option_value(int argc, char **argv, int *index, const char *option_name);
 static int parse_filter_option(const char *text, enum benchmark_filter *out_filter);
-static int parse_size_option(const char *text, size_t *out_value);
+static int parse_size_option(const char *text, bool allow_zero, size_t *out_value);
 static void print_usage(const char *program_name, FILE *stream);
 static void print_scenario_list(void);
 static void print_runtime_scenario_list(
@@ -360,9 +418,10 @@ static int run_builtin_lexer_benchmark(const struct benchmark_options *options);
 static int run_builtin_parse_benchmark(const struct benchmark_options *options);
 static int run_csv_benchmarks(const struct benchmark_options *options);
 static int run_runtime_benchmarks(const struct benchmark_options *options);
+static bool runtime_scenario_filter_exists(const struct benchmark_options *options);
 typedef int (*runtime_scenario_runner)(
     const struct runtime_scenario *scenario,
-    size_t iterations,
+    const struct runtime_repetition_options *repeat_options,
     struct benchmark_measurement *out_measurement
 );
 static int run_filtered_runtime_scenario(
@@ -414,13 +473,20 @@ static int run_repeated_runtime_scenario(
 );
 static int run_runtime_scenario(
     const struct runtime_scenario *scenario,
-    size_t iterations,
+    const struct runtime_repetition_options *repeat_options,
     struct benchmark_measurement *out_measurement
 );
 static int run_runtime_cursor_scenario(
     const struct runtime_scenario *scenario,
-    size_t iterations,
+    const struct runtime_repetition_options *repeat_options,
     struct benchmark_measurement *out_measurement
+);
+static int run_runtime_query_iterations(
+    mylite_db *database,
+    const struct runtime_scenario *scenario,
+    size_t iterations,
+    bool cursor,
+    struct benchmark_measurement *measurement
 );
 static int setup_runtime_database(mylite_db *database, const struct runtime_scenario *scenario);
 static int execute_query(mylite_db *database, const struct benchmark_query *query);
@@ -514,6 +580,17 @@ static void print_runtime_summary(
     size_t samples,
     const double *average_us_values
 );
+static int initialize_profile_output(const struct benchmark_options *options);
+static int append_profile_json(
+    const char *path,
+    const struct runtime_scenario *scenario,
+    const char *kind,
+    size_t sample_index,
+    const struct benchmark_measurement *measurement
+);
+#ifdef MYLITE_ENABLE_PROFILING
+static uint64_t subtract_saturating(uint64_t value, uint64_t amount);
+#endif
 static double sorted_percentile_value(const double *values, size_t count, size_t percentile);
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): qsort fixes this callback shape.
 static int compare_double_values(const void *left, const void *right);
@@ -528,10 +605,12 @@ int main(int argc, char **argv) {
         .csv_path = NULL,
         .parse_failure_dump_path = NULL,
         .expected_parse_failures_path = NULL,
+        .profile_json_path = NULL,
         .runtime_scenario_name = NULL,
         .iterations = default_iterations,
         .csv_iterations = default_csv_iterations,
         .samples = default_samples,
+        .warmup_iterations = default_runtime_warmup_iterations,
         .csv_replay_sql_mode = false,
         .runtime_per_query = false,
         .list_only = false,
@@ -598,6 +677,15 @@ static int parse_option(
     if (strcmp(argument, "--samples") == 0) {
         return parse_size_argument(argc, argv, index, "--samples", &out_options->samples);
     }
+    if (strcmp(argument, "--warmup") == 0) {
+        return parse_nonnegative_size_argument(
+            argc,
+            argv,
+            index,
+            "--warmup",
+            &out_options->warmup_iterations
+        );
+    }
     if (strcmp(argument, "--csv") == 0) {
         return parse_text_argument(argc, argv, index, "--csv", &out_options->csv_path);
     }
@@ -616,6 +704,15 @@ static int parse_option(
             index,
             "--scenario",
             &out_options->runtime_scenario_name
+        );
+    }
+    if (strcmp(argument, "--profile-json") == 0) {
+        return parse_text_argument(
+            argc,
+            argv,
+            index,
+            "--profile-json",
+            &out_options->profile_json_path
         );
     }
     if (strcmp(argument, "--dump-parse-failures") == 0) {
@@ -654,7 +751,22 @@ static int parse_size_argument(
 ) {
     const char *value = consume_option_value(argc, argv, index, option_name);
 
-    if (value == NULL || parse_size_option(value, out_value) != 0) {
+    if (value == NULL || parse_size_option(value, false, out_value) != 0) {
+        return 1;
+    }
+    return 0;
+}
+
+static int parse_nonnegative_size_argument(
+    int argc,
+    char **argv,
+    int *index,
+    const char *option_name,
+    size_t *out_value
+) {
+    const char *value = consume_option_value(argc, argv, index, option_name);
+
+    if (value == NULL || parse_size_option(value, true, out_value) != 0) {
         return 1;
     }
     return 0;
@@ -726,7 +838,7 @@ static int parse_filter_option(const char *text, enum benchmark_filter *out_filt
     return 1;
 }
 
-static int parse_size_option(const char *text, size_t *out_value) {
+static int parse_size_option(const char *text, bool allow_zero, size_t *out_value) {
     char *end = NULL;
     unsigned long long value = 0ULL;
 
@@ -736,7 +848,7 @@ static int parse_size_option(const char *text, size_t *out_value) {
 
     errno = 0;
     value = strtoull(text, &end, decimal_option_base);
-    if (errno != 0 || end == text || *end != '\0' || value == 0ULL) {
+    if (errno != 0 || end == text || *end != '\0' || (!allow_zero && value == 0ULL)) {
         return 1;
     }
     if (value > (unsigned long long)SIZE_MAX) {
@@ -749,8 +861,9 @@ static int parse_size_option(const char *text, size_t *out_value) {
 static void print_usage(const char *program_name, FILE *stream) {
     fprintf(
         stream,
-        "usage: %s [--iterations N] [--samples N] [--csv PATH] [--csv-iterations N] "
-        "[--csv-replay-sql-mode] [--per-query] [--scenario NAME] "
+        "usage: %s [--iterations N] [--samples N] [--warmup N] [--csv PATH] "
+        "[--csv-iterations N] [--csv-replay-sql-mode] [--per-query] [--scenario NAME] "
+        "[--profile-json PATH] "
         "[--dump-parse-failures PATH] [--expected-parse-failures PATH] "
         "[--only all|lexer|parse|runtime] [--list]\n",
         program_name
@@ -812,7 +925,6 @@ static int run_benchmarks(const struct benchmark_options *options) {
         fprintf(stderr, "--expected-parse-failures requires --csv and a parse benchmark filter\n");
         return 1;
     }
-
     puts("scenario,kind,iterations,queries,operations,ok,errors,tokens,bytes,total_ms,avg_us,"
          "ops_per_sec");
 
@@ -855,6 +967,38 @@ static int run_builtin_lexer_benchmark(const struct benchmark_options *options) 
     }
     print_result("lexer.wp_builtin", "lexer", options->iterations, queries.count, &measurement);
     return 0;
+}
+
+static int initialize_profile_output(const struct benchmark_options *options) {
+    if (options->profile_json_path == NULL) {
+        return 0;
+    }
+    if (!filter_includes(options->filter, benchmark_filter_runtime)) {
+        fprintf(stderr, "--profile-json requires a runtime benchmark filter\n");
+        return 1;
+    }
+#ifndef MYLITE_ENABLE_PROFILING
+    fprintf(stderr, "--profile-json requires a MYLITE_ENABLE_PROFILING build\n");
+    return 1;
+#else
+    FILE *file = NULL;
+
+    file = fopen(options->profile_json_path, "wb");
+    if (file == NULL) {
+        fprintf(
+            stderr,
+            "%s: failed to create profile output: %s\n",
+            options->profile_json_path,
+            strerror(errno)
+        );
+        return 1;
+    }
+    if (fclose(file) != 0) {
+        fprintf(stderr, "%s: failed to close profile output\n", options->profile_json_path);
+        return 1;
+    }
+    return 0;
+#endif
 }
 
 static int run_builtin_parse_benchmark(const struct benchmark_options *options) {
@@ -944,12 +1088,24 @@ static int run_runtime_benchmarks(const struct benchmark_options *options) {
     struct runtime_repetition_options repeat_options = {
         .iterations = options->iterations,
         .samples = options->samples,
+        .warmup_iterations = options->warmup_iterations,
+        .profile_json_path = options->profile_json_path,
     };
+    int rc = 0;
+
+    if (!runtime_scenario_filter_exists(options)) {
+        fprintf(stderr, "unknown runtime scenario: %s\n", options->runtime_scenario_name);
+        return 1;
+    }
+    rc = initialize_profile_output(options);
+    if (rc != 0) {
+        return rc;
+    }
 
     for (size_t scenario_index = 0U;
          scenario_index < sizeof(runtime_scenarios) / sizeof(runtime_scenarios[0]);
          ++scenario_index) {
-        int rc = run_filtered_runtime_scenario(
+        rc = run_filtered_runtime_scenario(
             options,
             &runtime_scenarios[scenario_index],
             "execute",
@@ -965,7 +1121,7 @@ static int run_runtime_benchmarks(const struct benchmark_options *options) {
     for (size_t scenario_index = 0U;
          scenario_index < sizeof(runtime_cursor_scenarios) / sizeof(runtime_cursor_scenarios[0]);
          ++scenario_index) {
-        int rc = run_filtered_runtime_scenario(
+        rc = run_filtered_runtime_scenario(
             options,
             &runtime_cursor_scenarios[scenario_index],
             "cursor",
@@ -983,6 +1139,42 @@ static int run_runtime_benchmarks(const struct benchmark_options *options) {
         return 1;
     }
     return 0;
+}
+
+static bool runtime_scenario_filter_exists(const struct benchmark_options *options) {
+    size_t query_index = 0U;
+
+    if (options == NULL || options->runtime_scenario_name == NULL) {
+        return true;
+    }
+    for (size_t scenario_index = 0U;
+         scenario_index < sizeof(runtime_scenarios) / sizeof(runtime_scenarios[0]);
+         ++scenario_index) {
+        if (runtime_scenario_matches_base_filter(options, &runtime_scenarios[scenario_index]) ||
+            runtime_scenario_filter_query_index(
+                options,
+                &runtime_scenarios[scenario_index],
+                &query_index
+            )) {
+            return true;
+        }
+    }
+    for (size_t scenario_index = 0U;
+         scenario_index < sizeof(runtime_cursor_scenarios) / sizeof(runtime_cursor_scenarios[0]);
+         ++scenario_index) {
+        if (runtime_scenario_matches_base_filter(
+                options,
+                &runtime_cursor_scenarios[scenario_index]
+            ) ||
+            runtime_scenario_filter_query_index(
+                options,
+                &runtime_cursor_scenarios[scenario_index],
+                &query_index
+            )) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static int run_filtered_runtime_scenario(
@@ -1138,13 +1330,13 @@ static int run_repeated_runtime_scenario(
     }
     for (size_t sample_index = 0U; sample_index < repeat_options.samples; ++sample_index) {
         struct benchmark_measurement measurement = {0};
-        int rc = runner(scenario, repeat_options.iterations, &measurement);
+        int rc = runner(scenario, &repeat_options, &measurement);
 
         if (rc != 0) {
             free(average_us_values);
             return rc;
         }
-        if (repeat_options.samples > 1U) {
+        if (average_us_values != NULL) {
             average_us_values[sample_index] =
                 ns_to_average_us(measurement.elapsed_ns, measurement.operations);
             print_runtime_sample_marker(scenario->name, kind, sample_index, repeat_options.samples);
@@ -1156,8 +1348,19 @@ static int run_repeated_runtime_scenario(
             scenario->query_count,
             &measurement
         );
+        rc = append_profile_json(
+            repeat_options.profile_json_path,
+            scenario,
+            kind,
+            sample_index,
+            &measurement
+        );
+        if (rc != 0) {
+            free(average_us_values);
+            return rc;
+        }
     }
-    if (repeat_options.samples > 1U) {
+    if (average_us_values != NULL) {
         print_runtime_summary(scenario->name, kind, repeat_options.samples, average_us_values);
     }
     free(average_us_values);
@@ -1166,13 +1369,16 @@ static int run_repeated_runtime_scenario(
 
 static int run_runtime_scenario(
     const struct runtime_scenario *scenario,
-    size_t iterations,
+    const struct runtime_repetition_options *repeat_options,
     struct benchmark_measurement *out_measurement
 ) {
     mylite_db *database = NULL;
     char path[runtime_database_path_capacity];
     uint64_t started = 0U;
     uint64_t ended = 0U;
+#ifdef MYLITE_ENABLE_PROFILING
+    bool profile_started = false;
+#endif
     int rc = make_runtime_database_path(path, sizeof(path), scenario->name);
 
     if (rc != 0) {
@@ -1190,26 +1396,57 @@ static int run_runtime_scenario(
         remove_related_database_files(path);
         return 1;
     }
-
-    started = monotonic_now_ns();
-    for (size_t iteration = 0U; iteration < iterations; ++iteration) {
-        for (size_t query_index = 0U; query_index < scenario->query_count; ++query_index) {
-            const struct benchmark_query *query = &scenario->queries[query_index];
-
-            ++out_measurement->operations;
-            out_measurement->bytes += query->length;
-            if (execute_query(database, query) == 0) {
-                ++out_measurement->ok_count;
-            } else {
-                ++out_measurement->error_count;
-                mylite_close(database);
-                remove_related_database_files(path);
-                return 1;
-            }
-        }
+    if (run_runtime_query_iterations(
+            database,
+            scenario,
+            repeat_options->warmup_iterations,
+            false,
+            NULL
+        ) != 0) {
+        mylite_close(database);
+        remove_related_database_files(path);
+        return 1;
     }
+#ifdef MYLITE_ENABLE_PROFILING
+    if (repeat_options->profile_json_path != NULL) {
+        rc = mylite_profile_start(database);
+        if (rc != MYLITE_OK) {
+            fprintf(stderr, "%s: failed to start runtime profile: %d\n", scenario->name, rc);
+            mylite_close(database);
+            remove_related_database_files(path);
+            return 1;
+        }
+        profile_started = true;
+    }
+#endif
+    started = monotonic_now_ns();
+    rc = run_runtime_query_iterations(
+        database,
+        scenario,
+        repeat_options->iterations,
+        false,
+        out_measurement
+    );
     ended = monotonic_now_ns();
+    if (rc != 0) {
+#ifdef MYLITE_ENABLE_PROFILING
+        if (profile_started) {
+            (void)mylite_profile_stop(database, &out_measurement->profile);
+        }
+#endif
+        mylite_close(database);
+        remove_related_database_files(path);
+        return 1;
+    }
     out_measurement->elapsed_ns = ended - started;
+#ifdef MYLITE_ENABLE_PROFILING
+    if (profile_started && mylite_profile_stop(database, &out_measurement->profile) != MYLITE_OK) {
+        fprintf(stderr, "%s: failed to stop runtime profile\n", scenario->name);
+        mylite_close(database);
+        remove_related_database_files(path);
+        return 1;
+    }
+#endif
 
     mylite_close(database);
     remove_related_database_files(path);
@@ -1218,13 +1455,16 @@ static int run_runtime_scenario(
 
 static int run_runtime_cursor_scenario(
     const struct runtime_scenario *scenario,
-    size_t iterations,
+    const struct runtime_repetition_options *repeat_options,
     struct benchmark_measurement *out_measurement
 ) {
     mylite_db *database = NULL;
     char path[runtime_database_path_capacity];
     uint64_t started = 0U;
     uint64_t ended = 0U;
+#ifdef MYLITE_ENABLE_PROFILING
+    bool profile_started = false;
+#endif
     int rc = make_runtime_database_path(path, sizeof(path), scenario->name);
 
     if (rc != 0) {
@@ -1242,29 +1482,90 @@ static int run_runtime_cursor_scenario(
         remove_related_database_files(path);
         return 1;
     }
-
+    if (run_runtime_query_iterations(
+            database,
+            scenario,
+            repeat_options->warmup_iterations,
+            true,
+            NULL
+        ) != 0) {
+        mylite_close(database);
+        remove_related_database_files(path);
+        return 1;
+    }
+#ifdef MYLITE_ENABLE_PROFILING
+    if (repeat_options->profile_json_path != NULL) {
+        rc = mylite_profile_start(database);
+        if (rc != MYLITE_OK) {
+            fprintf(stderr, "%s: failed to start cursor profile: %d\n", scenario->name, rc);
+            mylite_close(database);
+            remove_related_database_files(path);
+            return 1;
+        }
+        profile_started = true;
+    }
+#endif
     started = monotonic_now_ns();
+    rc = run_runtime_query_iterations(
+        database,
+        scenario,
+        repeat_options->iterations,
+        true,
+        out_measurement
+    );
+    ended = monotonic_now_ns();
+    if (rc != 0) {
+#ifdef MYLITE_ENABLE_PROFILING
+        if (profile_started) {
+            (void)mylite_profile_stop(database, &out_measurement->profile);
+        }
+#endif
+        mylite_close(database);
+        remove_related_database_files(path);
+        return 1;
+    }
+    out_measurement->elapsed_ns = ended - started;
+#ifdef MYLITE_ENABLE_PROFILING
+    if (profile_started && mylite_profile_stop(database, &out_measurement->profile) != MYLITE_OK) {
+        fprintf(stderr, "%s: failed to stop cursor profile\n", scenario->name);
+        mylite_close(database);
+        remove_related_database_files(path);
+        return 1;
+    }
+#endif
+
+    mylite_close(database);
+    remove_related_database_files(path);
+    return 0;
+}
+
+static int run_runtime_query_iterations(
+    mylite_db *database,
+    const struct runtime_scenario *scenario,
+    size_t iterations,
+    bool cursor,
+    struct benchmark_measurement *measurement
+) {
     for (size_t iteration = 0U; iteration < iterations; ++iteration) {
         for (size_t query_index = 0U; query_index < scenario->query_count; ++query_index) {
             const struct benchmark_query *query = &scenario->queries[query_index];
+            int rc =
+                cursor ? execute_cursor_query(database, query) : execute_query(database, query);
 
-            ++out_measurement->operations;
-            out_measurement->bytes += query->length;
-            if (execute_cursor_query(database, query) == 0) {
-                ++out_measurement->ok_count;
-            } else {
-                ++out_measurement->error_count;
-                mylite_close(database);
-                remove_related_database_files(path);
+            if (measurement != NULL) {
+                ++measurement->operations;
+                measurement->bytes += query->length;
+                if (rc == 0) {
+                    ++measurement->ok_count;
+                } else {
+                    ++measurement->error_count;
+                }
+            }
+            if (rc != 0) {
                 return 1;
             }
         }
     }
-    ended = monotonic_now_ns();
-    out_measurement->elapsed_ns = ended - started;
-
-    mylite_close(database);
-    remove_related_database_files(path);
     return 0;
 }
 
@@ -1931,6 +2232,84 @@ static void print_runtime_summary(
     );
     free(sorted_values);
 }
+
+static int append_profile_json(
+    const char *path,
+    const struct runtime_scenario *scenario,
+    const char *kind,
+    size_t sample_index,
+    const struct benchmark_measurement *measurement
+) {
+    if (path == NULL) {
+        return 0;
+    }
+#ifndef MYLITE_ENABLE_PROFILING
+    (void)scenario;
+    (void)kind;
+    (void)sample_index;
+    (void)measurement;
+    return 1;
+#else
+    const struct mylite_profile_snapshot *profile = &measurement->profile;
+    uint64_t profiled_library_ns =
+        profile->statement_api_ns + profile->cursor_step_ns + profile->cursor_finalize_ns;
+    uint64_t unattributed_ns = profiled_library_ns;
+    FILE *file = NULL;
+
+    unattributed_ns = subtract_saturating(unattributed_ns, profile->normalization_ns);
+    unattributed_ns = subtract_saturating(unattributed_ns, profile->parse_ns);
+    unattributed_ns = subtract_saturating(unattributed_ns, profile->sqlite_step_ns);
+    unattributed_ns = subtract_saturating(unattributed_ns, profile->result_buffer_ns);
+    file = fopen(path, "ab");
+    if (file == NULL) {
+        fprintf(stderr, "%s: failed to append profile output: %s\n", path, strerror(errno));
+        return 1;
+    }
+    fprintf(
+        file,
+        "{\"scenario\":\"%s\",\"kind\":\"%s\",\"sample\":%zu,"
+        "\"operations\":%zu,\"wall_ns\":%" PRIu64 ",\"statement_api_ns\":%" PRIu64
+        ",\"normalization_ns\":%" PRIu64 ",\"parse_ns\":%" PRIu64 ",\"sqlite_step_ns\":%" PRIu64
+        ",\"result_buffer_ns\":%" PRIu64 ",\"cursor_step_ns\":%" PRIu64
+        ",\"cursor_finalize_ns\":%" PRIu64 ",\"unattributed_ns\":%" PRIu64
+        ",\"statement_count\":%" PRIu64 ",\"sqlite_step_count\":%" PRIu64
+        ",\"result_row_count\":%" PRIu64 ",\"result_value_bytes\":%" PRIu64
+        ",\"cursor_row_count\":%" PRIu64 ",\"cursor_value_bytes\":%" PRIu64
+        ",\"cursor_finalize_count\":%" PRIu64 "}\n",
+        scenario->name,
+        kind,
+        sample_index + 1U,
+        measurement->operations,
+        measurement->elapsed_ns,
+        profile->statement_api_ns,
+        profile->normalization_ns,
+        profile->parse_ns,
+        profile->sqlite_step_ns,
+        profile->result_buffer_ns,
+        profile->cursor_step_ns,
+        profile->cursor_finalize_ns,
+        unattributed_ns,
+        profile->statement_count,
+        profile->sqlite_step_count,
+        profile->result_row_count,
+        profile->result_value_bytes,
+        profile->cursor_row_count,
+        profile->cursor_value_bytes,
+        profile->cursor_finalize_count
+    );
+    if (fclose(file) != 0) {
+        fprintf(stderr, "%s: failed to close profile output\n", path);
+        return 1;
+    }
+    return 0;
+#endif
+}
+
+#ifdef MYLITE_ENABLE_PROFILING
+static uint64_t subtract_saturating(uint64_t value, uint64_t amount) {
+    return amount < value ? value - amount : 0U;
+}
+#endif
 
 static double sorted_percentile_value(const double *values, size_t count, size_t percentile) {
     size_t index = 0U;

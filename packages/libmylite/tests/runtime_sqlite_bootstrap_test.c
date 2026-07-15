@@ -58,6 +58,8 @@ static int test_bootstrap_policy_on_independent_handles(void) {
     int second_trusted_schema = -1;
     int first_foreign_keys = -1;
     int second_foreign_keys = -1;
+    int first_busy_timeout = -1;
+    int second_busy_timeout = -1;
     int failures = 0;
 
     failures += expect_int(mylite_open_memory(&first), MYLITE_OK, "open first handle");
@@ -115,6 +117,8 @@ static int test_bootstrap_policy_on_independent_handles(void) {
             true,
             "first hook surface"
         );
+        failures +=
+            expect_bool(first_state->hooks.busy_handler_is_registered, true, "first busy handler");
     }
     if (second_state != NULL) {
         failures += expect_bool(second_state->initialized, true, "second bootstrap initialized");
@@ -129,6 +133,11 @@ static int test_bootstrap_policy_on_independent_handles(void) {
             second_state->foreign_key_policy_is_placeholder,
             true,
             "second foreign-key placeholder"
+        );
+        failures += expect_bool(
+            second_state->hooks.busy_handler_is_registered,
+            true,
+            "second busy handler"
         );
     }
 
@@ -154,6 +163,10 @@ static int test_bootstrap_policy_on_independent_handles(void) {
     failures += expect_int(second_trusted_schema, 0, "second SQLite trusted-schema setting");
     failures += expect_int(first_foreign_keys, 0, "first SQLite foreign-key setting");
     failures += expect_int(second_foreign_keys, 0, "second SQLite foreign-key setting");
+    failures += query_single_int(first_sqlite, "PRAGMA busy_timeout", &first_busy_timeout);
+    failures += query_single_int(second_sqlite, "PRAGMA busy_timeout", &second_busy_timeout);
+    failures += expect_int(first_busy_timeout, 5000, "first SQLite busy timeout");
+    failures += expect_int(second_busy_timeout, 5000, "second SQLite busy timeout");
 
     mylite_close(second);
     mylite_close(first);

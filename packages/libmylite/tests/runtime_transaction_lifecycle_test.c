@@ -12,6 +12,8 @@
 #ifdef _WIN32
 #  include <process.h>
 #else
+#  include <pthread.h>
+#  include <time.h>
 #  include <unistd.h>
 #endif
 
@@ -48,6 +50,14 @@ struct expected_transaction_control {
     const char *context;
 };
 
+#ifndef _WIN32
+struct concurrent_write_context {
+    mylite_db *database;
+    int rc;
+    int64_t affected_rows;
+};
+#endif
+
 static int test_transaction_control_and_dml(void);
 static int test_public_transaction_control_api(void);
 static int test_set_transaction_lifecycle(void);
@@ -59,6 +69,10 @@ static int test_savepoint_lifecycle(void);
 static int test_independent_savepoint_handles(void);
 static int test_independent_transaction_characteristic_handles(void);
 static int test_read_only_transaction_does_not_reserve_writer_lock(void);
+#ifndef _WIN32
+static int test_writer_waits_for_active_read_cursor(void);
+static void *execute_concurrent_write(void *argument);
+#endif
 static int test_drop_table_missing_implicitly_commits_transaction(void);
 static int test_file_close_rolls_back_transaction(void);
 static int seed_schema(mylite_db *database);
@@ -119,6 +133,9 @@ int main(void) {
     failures += test_independent_savepoint_handles();
     failures += test_independent_transaction_characteristic_handles();
     failures += test_read_only_transaction_does_not_reserve_writer_lock();
+#ifndef _WIN32
+    failures += test_writer_waits_for_active_read_cursor();
+#endif
     failures += test_drop_table_missing_implicitly_commits_transaction();
     failures += test_file_close_rolls_back_transaction();
 
@@ -1653,6 +1670,76 @@ static int test_read_only_transaction_does_not_reserve_writer_lock(void) {
     remove_related_files(path);
     return failures;
 }
+
+#ifndef _WIN32
+static int test_writer_waits_for_active_read_cursor(void) {
+    static const char query[] = "SELECT id FROM t ORDER BY id";
+    char path[test_path_capacity];
+    mylite_db *reader = NULL;
+    mylite_db *writer = NULL;
+    mylite_stmt *cursor = NULL;
+    pthread_t writer_thread;
+    struct concurrent_write_context write = {0};
+    struct timespec release_delay = {.tv_sec = 0, .tv_nsec = 100000000L};
+    int thread_was_created = 0;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "writer_busy_wait") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &reader), MYLITE_OK, "open busy-wait reader");
+    failures += seed_schema(reader);
+    failures += expect_nonquery(reader, "CREATE TABLE t (id INT PRIMARY KEY, v INT)", 0);
+    failures += expect_nonquery(reader, "INSERT INTO t VALUES (1, 10), (2, 20)", 2);
+    failures += expect_int(mylite_open(path, &writer), MYLITE_OK, "open busy-wait writer");
+    failures += expect_nonquery(writer, "USE app", 0);
+    failures += expect_int(
+        mylite_prepare(reader, query, strlen(query), &cursor),
+        MYLITE_OK,
+        "prepare active read cursor"
+    );
+    failures += expect_int(mylite_stmt_step(cursor), MYLITE_ROW, "step active read cursor");
+
+    write.database = writer;
+    if (failures == 0 &&
+        pthread_create(&writer_thread, NULL, execute_concurrent_write, &write) == 0) {
+        thread_was_created = 1;
+        (void)nanosleep(&release_delay, NULL);
+    } else if (failures == 0) {
+        fprintf(stderr, "create busy-wait writer thread: failed\n");
+        failures++;
+    }
+
+    failures += expect_int(mylite_stmt_finalize(cursor), MYLITE_OK, "release active read cursor");
+    cursor = NULL;
+    if (thread_was_created) {
+        failures += expect_int(pthread_join(writer_thread, NULL), 0, "join busy-wait writer");
+        failures += expect_int(write.rc, MYLITE_OK, "concurrent write waits for reader");
+        failures += expect_int64(write.affected_rows, 1, "concurrent write affected rows");
+    }
+
+    mylite_close(writer);
+    mylite_close(reader);
+    remove_related_files(path);
+    return failures;
+}
+
+static void *execute_concurrent_write(void *argument) {
+    struct concurrent_write_context *write = argument;
+    mylite_result *result = NULL;
+    static const char sql[] = "UPDATE t SET v = 30 WHERE id = 1";
+
+    write->rc = mylite_execute(write->database, sql, strlen(sql), &result);
+    if (write->rc == MYLITE_OK && result != NULL) {
+        write->affected_rows = mylite_result_affected_rows(result);
+    }
+    mylite_result_free(result);
+
+    return NULL;
+}
+#endif
 
 static int test_drop_table_missing_implicitly_commits_transaction(void) {
     static const char *const first_insert_committed[] = {"1"};

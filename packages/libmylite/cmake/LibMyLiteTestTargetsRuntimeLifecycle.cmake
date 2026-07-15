@@ -2259,6 +2259,7 @@
   )
   target_link_libraries(mylite_runtime_transaction_lifecycle_test PRIVATE
     MyLite::mylite
+    Threads::Threads
   )
   target_include_directories(mylite_runtime_transaction_lifecycle_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"

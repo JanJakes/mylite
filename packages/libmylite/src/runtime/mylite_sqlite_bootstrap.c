@@ -61,6 +61,10 @@
 #include <stddef.h>
 #include <string.h>
 
+enum {
+    default_busy_timeout_milliseconds = 5000,
+};
+
 static const char *owner_client_data_key(void);
 static int attach_owner_client_data(
     sqlite3 *sqlite,
@@ -68,6 +72,7 @@ static int attach_owner_client_data(
     struct mylite_sqlite_bootstrap_state *state
 );
 static int apply_connection_policy(sqlite3 *sqlite, struct mylite_sqlite_bootstrap_state *state);
+static int apply_busy_timeout_policy(sqlite3 *sqlite, struct mylite_sqlite_bootstrap_state *state);
 static int apply_trusted_schema_policy(
     sqlite3 *sqlite,
     struct mylite_sqlite_bootstrap_state *state
@@ -197,13 +202,30 @@ static int attach_owner_client_data(
 }
 
 static int apply_connection_policy(sqlite3 *sqlite, struct mylite_sqlite_bootstrap_state *state) {
-    int rc = apply_trusted_schema_policy(sqlite, state);
+    int rc = apply_busy_timeout_policy(sqlite, state);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    rc = apply_trusted_schema_policy(sqlite, state);
 
     if (rc != MYLITE_OK) {
         return rc;
     }
 
     return apply_foreign_key_policy(sqlite, state);
+}
+
+static int apply_busy_timeout_policy(sqlite3 *sqlite, struct mylite_sqlite_bootstrap_state *state) {
+    int rc = sqlite3_busy_timeout(sqlite, default_busy_timeout_milliseconds);
+
+    if (rc != SQLITE_OK) {
+        return mylite_sqlite_status_to_mylite(rc);
+    }
+
+    state->hooks.busy_handler_is_registered = true;
+
+    return MYLITE_OK;
 }
 
 static int apply_trusted_schema_policy(

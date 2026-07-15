@@ -1,3 +1,8 @@
+  add_test(
+    NAME libmylite.runtime.system_table_lookup
+    COMMAND mylite_runtime_system_table_lookup_test
+  )
+
   add_test(NAME libmylite.runtime.diagnostics COMMAND mylite_runtime_diagnostics_test)
   add_test(
     NAME libmylite.runtime.catalog_foundation

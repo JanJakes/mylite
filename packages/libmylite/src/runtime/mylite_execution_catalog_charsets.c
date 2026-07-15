@@ -37,6 +37,7 @@ static const char *canonical_character_set_name_for_lookup(const char *name);
 static const char *canonical_collation_name_for_lookup(const char *name);
 
 static const struct mylite_execution_catalog_character_set supported_character_sets[] = {
+    {"utf8mb4", "utf8mb4_0900_ai_ci", "UTF-8 Unicode", "4"},
     {"binary", "binary", "Binary pseudo charset", "1"},
     {"ascii", "ascii_general_ci", "US ASCII", "1"},
     {"big5", "big5_chinese_ci", "Big5 Traditional Chinese", "2"},
@@ -47,7 +48,6 @@ static const struct mylite_execution_catalog_character_set supported_character_s
     {"tis620", "tis620_thai_ci", "TIS620 Thai", "1"},
     {"ujis", "ujis_japanese_ci", "EUC-JP Japanese", "3"},
     {"utf8mb3", "utf8mb3_general_ci", "UTF-8 Unicode", "3"},
-    {"utf8mb4", "utf8mb4_0900_ai_ci", "UTF-8 Unicode", "4"},
 };
 
 static const struct mylite_execution_catalog_character_set mysql_character_set_catalog[] = {
@@ -413,32 +413,32 @@ static const struct mylite_execution_catalog_collation mysql_collation_catalog[]
 };
 
 static const struct mylite_execution_catalog_scalar_collation scalar_supported_collations[] = {
-    {"binary", "binary", mysql_collation_binary_id},
-    {"ascii_bin", "ascii", 65},
-    {"ascii_general_ci", "ascii", 11},
-    {"big5_chinese_ci", "big5", mysql_collation_big5_chinese_ci_id},
-    {"cp1251_general_ci", "cp1251", mysql_collation_cp1251_general_ci_id},
-    {"hebrew_general_ci", "hebrew", mysql_collation_hebrew_general_ci_id},
-    {"koi8r_general_ci", "koi8r", mysql_collation_koi8r_general_ci_id},
-    {"latin1_german1_ci", "latin1", mysql_collation_latin1_german1_ci_id},
-    {"latin1_german2_ci", "latin1", mysql_collation_latin1_german2_ci_id},
-    {"latin1_general_ci", "latin1", mysql_collation_latin1_general_ci_id},
-    {"latin1_general_cs", "latin1", mysql_collation_latin1_general_cs_id},
-    {"latin1_swedish_ci", "latin1", mysql_collation_latin1_swedish_ci_id},
-    {"latin1_bin", "latin1", mysql_collation_latin1_bin_id},
-    {"tis620_thai_ci", "tis620", mysql_collation_tis620_thai_ci_id},
-    {"ujis_japanese_ci", "ujis", mysql_collation_ujis_japanese_ci_id},
-    {"utf8mb3_general_ci", "utf8mb3", mysql_collation_utf8mb3_general_ci_id},
-    {"utf8mb3_bin", "utf8mb3", mysql_collation_utf8mb3_bin_id},
-    {"utf8mb3_unicode_ci", "utf8mb3", mysql_collation_utf8mb3_unicode_ci_id},
-    {"utf8mb4_general_ci", "utf8mb4", 45},
-    {"utf8mb4_bin", "utf8mb4", 46},
-    {"utf8mb4_unicode_ci", "utf8mb4", 224},
-    {"utf8mb4_unicode_520_ci", "utf8mb4", 246},
-    {"utf8mb4_0900_ai_ci", "utf8mb4", mysql_collation_utf8mb4_0900_ai_ci_id},
-    {"utf8mb4_0900_as_cs", "utf8mb4", mysql_collation_utf8mb4_0900_as_cs_id},
-    {"utf8mb4_0900_as_ci", "utf8mb4", mysql_collation_utf8mb4_0900_as_ci_id},
-    {"utf8mb4_0900_bin", "utf8mb4", 309},
+    {"utf8mb4_0900_ai_ci", "utf8mb4", mysql_collation_utf8mb4_0900_ai_ci_id, 4},
+    {"binary", "binary", mysql_collation_binary_id, 1},
+    {"ascii_bin", "ascii", 65, 1},
+    {"ascii_general_ci", "ascii", 11, 1},
+    {"big5_chinese_ci", "big5", mysql_collation_big5_chinese_ci_id, 2},
+    {"cp1251_general_ci", "cp1251", mysql_collation_cp1251_general_ci_id, 1},
+    {"hebrew_general_ci", "hebrew", mysql_collation_hebrew_general_ci_id, 1},
+    {"koi8r_general_ci", "koi8r", mysql_collation_koi8r_general_ci_id, 1},
+    {"latin1_german1_ci", "latin1", mysql_collation_latin1_german1_ci_id, 1},
+    {"latin1_german2_ci", "latin1", mysql_collation_latin1_german2_ci_id, 1},
+    {"latin1_general_ci", "latin1", mysql_collation_latin1_general_ci_id, 1},
+    {"latin1_general_cs", "latin1", mysql_collation_latin1_general_cs_id, 1},
+    {"latin1_swedish_ci", "latin1", mysql_collation_latin1_swedish_ci_id, 1},
+    {"latin1_bin", "latin1", mysql_collation_latin1_bin_id, 1},
+    {"tis620_thai_ci", "tis620", mysql_collation_tis620_thai_ci_id, 1},
+    {"ujis_japanese_ci", "ujis", mysql_collation_ujis_japanese_ci_id, 3},
+    {"utf8mb3_general_ci", "utf8mb3", mysql_collation_utf8mb3_general_ci_id, 3},
+    {"utf8mb3_bin", "utf8mb3", mysql_collation_utf8mb3_bin_id, 3},
+    {"utf8mb3_unicode_ci", "utf8mb3", mysql_collation_utf8mb3_unicode_ci_id, 3},
+    {"utf8mb4_general_ci", "utf8mb4", 45, 4},
+    {"utf8mb4_bin", "utf8mb4", 46, 4},
+    {"utf8mb4_unicode_ci", "utf8mb4", 224, 4},
+    {"utf8mb4_unicode_520_ci", "utf8mb4", 246, 4},
+    {"utf8mb4_0900_as_cs", "utf8mb4", mysql_collation_utf8mb4_0900_as_cs_id, 4},
+    {"utf8mb4_0900_as_ci", "utf8mb4", mysql_collation_utf8mb4_0900_as_ci_id, 4},
+    {"utf8mb4_0900_bin", "utf8mb4", 309, 4},
 };
 
 static const struct mylite_catalog_name_alias character_set_aliases[] = {
@@ -501,7 +501,10 @@ const struct mylite_execution_catalog_character_set *mylite_execution_catalog_ch
     if (name == NULL) {
         return NULL;
     }
-    for (size_t index = 0U;
+    if (catalog_text_equals_ascii_case_insensitive(lookup_name, supported_character_sets[0].name)) {
+        return &supported_character_sets[0];
+    }
+    for (size_t index = 1U;
          index < sizeof(supported_character_sets) / sizeof(supported_character_sets[0]);
          ++index) {
         if (catalog_text_equals_ascii_case_insensitive(
@@ -558,7 +561,13 @@ const struct mylite_execution_catalog_scalar_collation *mylite_execution_catalog
     if (collation_name == NULL) {
         return NULL;
     }
-    for (size_t index = 0U;
+    if (catalog_text_equals_ascii_case_insensitive(
+            lookup_name,
+            scalar_supported_collations[0].collation
+        )) {
+        return &scalar_supported_collations[0];
+    }
+    for (size_t index = 1U;
          index < sizeof(scalar_supported_collations) / sizeof(scalar_supported_collations[0]);
          ++index) {
         if (catalog_text_equals_ascii_case_insensitive(
@@ -569,6 +578,19 @@ const struct mylite_execution_catalog_scalar_collation *mylite_execution_catalog
         }
     }
     return NULL;
+}
+
+size_t mylite_execution_catalog_scalar_collation_count(void) {
+    return sizeof(scalar_supported_collations) / sizeof(scalar_supported_collations[0]);
+}
+
+const struct mylite_execution_catalog_scalar_collation *mylite_execution_catalog_scalar_collation_at(
+    size_t index
+) {
+    if (index >= mylite_execution_catalog_scalar_collation_count()) {
+        return NULL;
+    }
+    return &scalar_supported_collations[index];
 }
 
 size_t mylite_execution_catalog_mysql_character_set_count(void) {

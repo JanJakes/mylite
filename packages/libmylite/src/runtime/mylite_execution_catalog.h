@@ -380,6 +380,7 @@ struct mylite_execution_catalog_scalar_collation {
     const char *collation;
     const char *charset;
     uint32_t id;
+    uint32_t max_bytes_per_character;
 };
 
 struct mylite_execution_catalog_keyword {
@@ -518,6 +519,10 @@ const struct mylite_execution_catalog_collation *mylite_execution_catalog_utf8mb
 );
 const struct mylite_execution_catalog_scalar_collation *mylite_execution_catalog_scalar_collation_info_by_name(
     const char *collation_name
+);
+size_t mylite_execution_catalog_scalar_collation_count(void);
+const struct mylite_execution_catalog_scalar_collation *mylite_execution_catalog_scalar_collation_at(
+    size_t index
 );
 
 size_t mylite_execution_catalog_mysql_character_set_count(void);

@@ -1289,10 +1289,7 @@ static uint64_t result_metadata_collation_max_bytes_per_character(const char *co
 
     scalar_collation = mylite_execution_scalar_collation_info_by_name(collation_name);
     if (scalar_collation != NULL) {
-        max_bytes = character_set_max_bytes_per_character(scalar_collation->charset);
-        if (max_bytes != 0U) {
-            return max_bytes;
-        }
+        return scalar_collation->max_bytes_per_character;
     }
 
     collation = collation_by_name(collation_name);

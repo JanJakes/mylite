@@ -4,30 +4,41 @@
 #include <string.h>
 
 struct mylite_execution_catalog_system_table_provider {
+    const char *schema_name;
     size_t (*count)(void);
     const struct mylite_execution_catalog_mysql_system_table *(*at)(size_t index);
 };
 
 static const struct mylite_execution_catalog_system_table_provider system_table_providers[] = {
-    {mylite_execution_catalog_mysql_auth_system_table_definition_count,
+    {"mysql",
+     mylite_execution_catalog_mysql_auth_system_table_definition_count,
      mylite_execution_catalog_mysql_auth_system_table_definition_at},
-    {mylite_execution_catalog_mysql_service_system_table_definition_count,
+    {"mysql",
+     mylite_execution_catalog_mysql_service_system_table_definition_count,
      mylite_execution_catalog_mysql_service_system_table_definition_at},
-    {mylite_execution_catalog_mysql_replication_system_table_definition_count,
+    {"mysql",
+     mylite_execution_catalog_mysql_replication_system_table_definition_count,
      mylite_execution_catalog_mysql_replication_system_table_definition_at},
-    {mylite_execution_catalog_mysql_misc_system_table_definition_count,
+    {"mysql",
+     mylite_execution_catalog_mysql_misc_system_table_definition_count,
      mylite_execution_catalog_mysql_misc_system_table_definition_at},
-    {mylite_execution_catalog_performance_schema_system_table_definition_count,
+    {"performance_schema",
+     mylite_execution_catalog_performance_schema_system_table_definition_count,
      mylite_execution_catalog_performance_schema_system_table_definition_at},
-    {mylite_execution_catalog_sys_core_system_table_definition_count,
+    {"sys",
+     mylite_execution_catalog_sys_core_system_table_definition_count,
      mylite_execution_catalog_sys_core_system_table_definition_at},
-    {mylite_execution_catalog_sys_summary_system_table_definition_count,
+    {"sys",
+     mylite_execution_catalog_sys_summary_system_table_definition_count,
      mylite_execution_catalog_sys_summary_system_table_definition_at},
-    {mylite_execution_catalog_sys_schema_system_table_definition_count,
+    {"sys",
+     mylite_execution_catalog_sys_schema_system_table_definition_count,
      mylite_execution_catalog_sys_schema_system_table_definition_at},
-    {mylite_execution_catalog_sys_summary_x_system_table_definition_count,
+    {"sys",
+     mylite_execution_catalog_sys_summary_x_system_table_definition_count,
      mylite_execution_catalog_sys_summary_x_system_table_definition_at},
-    {mylite_execution_catalog_sys_schema_x_system_table_definition_count,
+    {"sys",
+     mylite_execution_catalog_sys_schema_x_system_table_definition_count,
      mylite_execution_catalog_sys_schema_x_system_table_definition_at},
 };
 
@@ -66,14 +77,29 @@ const struct mylite_execution_catalog_mysql_system_table *mylite_execution_catal
     if (schema_name == NULL || table_name == NULL) {
         return NULL;
     }
+    if (strcmp(schema_name, "mysql") != 0 && strcmp(schema_name, "performance_schema") != 0 &&
+        strcmp(schema_name, "sys") != 0) {
+        return NULL;
+    }
 
-    for (size_t index = 0U; index < mylite_execution_catalog_mysql_system_table_definition_count();
-         ++index) {
-        const struct mylite_execution_catalog_mysql_system_table *definition =
-            mylite_execution_catalog_mysql_system_table_definition_at(index);
-        if (definition != NULL && strcmp(schema_name, definition->schema_name) == 0 &&
-            strcmp(table_name, definition->query_definition.name) == 0) {
-            return definition;
+    for (size_t provider_index = 0U;
+         provider_index < sizeof(system_table_providers) / sizeof(system_table_providers[0]);
+         ++provider_index) {
+        const struct mylite_execution_catalog_system_table_provider *provider =
+            &system_table_providers[provider_index];
+        size_t provider_count = 0U;
+
+        if (strcmp(schema_name, provider->schema_name) != 0) {
+            continue;
+        }
+        provider_count = provider->count();
+        for (size_t index = 0U; index < provider_count; ++index) {
+            const struct mylite_execution_catalog_mysql_system_table *definition =
+                provider->at(index);
+
+            if (definition != NULL && strcmp(table_name, definition->query_definition.name) == 0) {
+                return definition;
+            }
         }
     }
 

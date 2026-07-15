@@ -59,6 +59,7 @@ static int count_catalog_sync_statement(
     void *statement_pointer,
     void *expanded_sql
 );
+static sqlite3_stmt *find_cached_statement_equal(sqlite3 *connection, const char *expected_sql);
 static sqlite3_stmt *find_cached_statement_containing(sqlite3 *connection, const char *needle);
 static int seed_schema(mylite_db *database, const char *name);
 static int create_order_tables(mylite_db *database);
@@ -110,6 +111,8 @@ static int test_table_select_synchronizes_catalog_once(void) {
     mylite_db *database = NULL;
     mylite_result *result = NULL;
     sqlite3 *sqlite = NULL;
+    sqlite3_stmt *begin_statement = NULL;
+    sqlite3_stmt *commit_statement = NULL;
     int failures = 0;
 
     if (make_test_path(path, sizeof(path), "single_catalog_sync") != 0) {
@@ -136,6 +139,38 @@ static int test_table_select_synchronizes_catalog_once(void) {
     mylite_result_free(result);
     result = NULL;
     failures += expect_size(trace.data_version_count, 1U, "table SELECT catalog sync count");
+    begin_statement = find_cached_statement_equal(sqlite, "BEGIN");
+    commit_statement = find_cached_statement_equal(sqlite, "COMMIT");
+    failures += expect_true(begin_statement != NULL, "cached SELECT BEGIN statement");
+    failures += expect_true(commit_statement != NULL, "cached SELECT COMMIT statement");
+
+    trace.data_version_count = 0U;
+    failures += execute_ok(database, "SELECT id FROM items", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_size(trace.data_version_count, 1U, "second table SELECT catalog sync count");
+    failures += expect_true(
+        find_cached_statement_equal(sqlite, "BEGIN") == begin_statement,
+        "reuse cached SELECT BEGIN statement"
+    );
+    failures += expect_true(
+        find_cached_statement_equal(sqlite, "COMMIT") == commit_statement,
+        "reuse cached SELECT COMMIT statement"
+    );
+    if (begin_statement != NULL) {
+        failures += expect_int(
+            sqlite3_stmt_status(begin_statement, SQLITE_STMTSTATUS_RUN, 0),
+            2,
+            "cached SELECT BEGIN execution count"
+        );
+    }
+    if (commit_statement != NULL) {
+        failures += expect_int(
+            sqlite3_stmt_status(commit_statement, SQLITE_STMTSTATUS_RUN, 0),
+            2,
+            "cached SELECT COMMIT execution count"
+        );
+    }
 
     trace.data_version_count = 0U;
     failures += execute_ok(database, "SELECT 1", &result);
@@ -222,6 +257,23 @@ static int test_cached_literal_limit_does_not_reprepare(void) {
     remove_related_files(path);
 
     return failures;
+}
+
+static sqlite3_stmt *find_cached_statement_equal(sqlite3 *connection, const char *expected_sql) {
+    sqlite3_stmt *statement = NULL;
+
+    if (connection == NULL || expected_sql == NULL) {
+        return NULL;
+    }
+    while ((statement = sqlite3_next_stmt(connection, statement)) != NULL) {
+        const char *sql = sqlite3_sql(statement);
+
+        if (sql != NULL && strcmp(sql, expected_sql) == 0) {
+            return statement;
+        }
+    }
+
+    return NULL;
 }
 
 static sqlite3_stmt *find_cached_statement_containing(sqlite3 *connection, const char *needle) {

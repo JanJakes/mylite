@@ -7,6 +7,7 @@ struct mylite_db;
 
 int mylite_execution_execute_sqlite_schema_sql(struct mylite_db *database, const char *sql);
 int mylite_execution_execute_sqlite_control_sql(const struct mylite_db *database, const char *sql);
+int mylite_execution_execute_cached_sqlite_control_sql(struct mylite_db *database, const char *sql);
 int mylite_execution_prepare_sqlite_statement(
     const struct mylite_db *database,
     const char *sql,
@@ -31,6 +32,10 @@ static inline int execute_sqlite_schema_sql(struct mylite_db *database, const ch
 
 static inline int execute_sqlite_control_sql(const struct mylite_db *database, const char *sql) {
     return mylite_execution_execute_sqlite_control_sql(database, sql);
+}
+
+static inline int execute_cached_sqlite_control_sql(struct mylite_db *database, const char *sql) {
+    return mylite_execution_execute_cached_sqlite_control_sql(database, sql);
 }
 
 static inline int prepare_sqlite_statement(

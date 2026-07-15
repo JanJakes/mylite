@@ -18,7 +18,10 @@ int mylite_execution_begin_statement_transaction(
     if (database->session.user_transaction_active) {
         rc = mylite_execution_normalize_sqlite_control_rc(
             database,
-            mylite_execution_execute_sqlite_control_sql(database, "SAVEPOINT _mylite_statement")
+            mylite_execution_execute_cached_sqlite_control_sql(
+                database,
+                "SAVEPOINT _mylite_statement"
+            )
         );
         if (rc == MYLITE_OK) {
             transaction->kind = MYLITE_STATEMENT_TRANSACTION_SAVEPOINT;
@@ -31,7 +34,10 @@ int mylite_execution_begin_statement_transaction(
         if (rc == MYLITE_OK) {
             rc = mylite_execution_normalize_sqlite_control_rc(
                 database,
-                mylite_execution_execute_sqlite_control_sql(database, "SAVEPOINT _mylite_statement")
+                mylite_execution_execute_cached_sqlite_control_sql(
+                    database,
+                    "SAVEPOINT _mylite_statement"
+                )
             );
         }
         if (rc == MYLITE_OK) {
@@ -43,7 +49,7 @@ int mylite_execution_begin_statement_transaction(
 
     rc = mylite_execution_normalize_sqlite_control_rc(
         database,
-        mylite_execution_execute_sqlite_control_sql(database, "BEGIN IMMEDIATE")
+        mylite_execution_execute_cached_sqlite_control_sql(database, "BEGIN IMMEDIATE")
     );
     if (rc == MYLITE_OK) {
         transaction->kind = MYLITE_STATEMENT_TRANSACTION_DIRECT;
@@ -71,7 +77,7 @@ int mylite_execution_begin_read_statement_transaction(
 
     rc = mylite_execution_normalize_sqlite_control_rc(
         database,
-        mylite_execution_execute_sqlite_control_sql(database, "BEGIN")
+        mylite_execution_execute_cached_sqlite_control_sql(database, "BEGIN")
     );
     if (rc == MYLITE_OK) {
         transaction->kind = MYLITE_STATEMENT_TRANSACTION_DIRECT;
@@ -96,7 +102,7 @@ int mylite_execution_begin_autocommit_disabled_transaction(struct mylite_db *dat
                   MYLITE_TRANSACTION_ACCESS_READ_ONLY;
     rc = mylite_execution_normalize_sqlite_control_rc(
         database,
-        mylite_execution_execute_sqlite_control_sql(
+        mylite_execution_execute_cached_sqlite_control_sql(
             database,
             read_only ? "BEGIN" : "BEGIN IMMEDIATE"
         )
@@ -129,7 +135,7 @@ int mylite_execution_commit_statement_transaction(
     if (transaction->kind == MYLITE_STATEMENT_TRANSACTION_SAVEPOINT) {
         rc = mylite_execution_normalize_sqlite_control_rc(
             database,
-            mylite_execution_execute_sqlite_control_sql(
+            mylite_execution_execute_cached_sqlite_control_sql(
                 database,
                 "RELEASE SAVEPOINT _mylite_statement"
             )
@@ -137,7 +143,7 @@ int mylite_execution_commit_statement_transaction(
     } else {
         rc = mylite_execution_normalize_sqlite_control_rc(
             database,
-            mylite_execution_execute_sqlite_control_sql(database, "COMMIT")
+            mylite_execution_execute_cached_sqlite_control_sql(database, "COMMIT")
         );
     }
     if (rc == MYLITE_OK) {
@@ -156,16 +162,16 @@ void mylite_execution_rollback_statement_transaction(
     }
 
     if (transaction->kind == MYLITE_STATEMENT_TRANSACTION_SAVEPOINT) {
-        (void)mylite_execution_execute_sqlite_control_sql(
+        (void)mylite_execution_execute_cached_sqlite_control_sql(
             database,
             "ROLLBACK TO SAVEPOINT _mylite_statement"
         );
-        (void)mylite_execution_execute_sqlite_control_sql(
+        (void)mylite_execution_execute_cached_sqlite_control_sql(
             database,
             "RELEASE SAVEPOINT _mylite_statement"
         );
     } else {
-        (void)mylite_execution_execute_sqlite_control_sql(database, "ROLLBACK");
+        (void)mylite_execution_execute_cached_sqlite_control_sql(database, "ROLLBACK");
     }
     mylite_catalog_invalidate_descriptor_cache(database);
     transaction->active = false;

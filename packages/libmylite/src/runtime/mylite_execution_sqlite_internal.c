@@ -64,6 +64,22 @@ int mylite_execution_execute_sqlite_control_sql(const struct mylite_db *database
     return mylite_sqlite_status_to_mylite(sqlite_rc);
 }
 
+int mylite_execution_execute_cached_sqlite_control_sql(
+    struct mylite_db *database,
+    const char *sql
+) {
+    sqlite3_stmt *statement = NULL;
+    int rc = mylite_execution_prepare_cached_sqlite_statement(database, sql, &statement);
+
+    if (rc == MYLITE_OK) {
+        int sqlite_rc = sqlite3_step(statement);
+
+        rc = sqlite_rc == SQLITE_DONE ? MYLITE_OK : mylite_sqlite_status_to_mylite(sqlite_rc);
+    }
+
+    return mylite_execution_finish_cached_sqlite_statement(database, statement, rc);
+}
+
 int mylite_execution_prepare_sqlite_statement(
     const struct mylite_db *database,
     const char *sql,

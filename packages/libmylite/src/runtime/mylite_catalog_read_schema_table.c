@@ -598,9 +598,9 @@ bool mylite_catalog_find_cached_foreign_key_roles(
 ) {
     struct mylite_catalog_descriptor_cache *cache = NULL;
 
-    if (catalog == NULL || out_has_child_foreign_keys == NULL ||
-        out_has_parent_foreign_keys == NULL || !catalog->descriptor_cache_is_valid ||
-        catalog->cached_generation != catalog->generation) {
+    if (catalog == NULL || catalog->descriptor_cache_is_suspended ||
+        out_has_child_foreign_keys == NULL || out_has_parent_foreign_keys == NULL ||
+        !catalog->descriptor_cache_is_valid || catalog->cached_generation != catalog->generation) {
         return false;
     }
     cache = catalog->descriptor_cache;
@@ -627,9 +627,13 @@ void mylite_catalog_cache_foreign_key_roles(
     bool has_child_foreign_keys,
     bool has_parent_foreign_keys
 ) {
-    struct mylite_catalog_descriptor_cache *cache = ensure_descriptor_cache(catalog);
+    struct mylite_catalog_descriptor_cache *cache = NULL;
     struct cached_foreign_key_roles *entry = NULL;
 
+    if (catalog == NULL || catalog->descriptor_cache_is_suspended) {
+        return;
+    }
+    cache = ensure_descriptor_cache(catalog);
     if (cache == NULL) {
         return;
     }
@@ -651,8 +655,8 @@ static const struct mylite_catalog_schema_descriptor *find_cached_schema_by_name
 ) {
     struct mylite_catalog_descriptor_cache *cache = NULL;
 
-    if (catalog == NULL || name == NULL || !catalog->descriptor_cache_is_valid ||
-        catalog->cached_generation != catalog->generation) {
+    if (catalog == NULL || catalog->descriptor_cache_is_suspended || name == NULL ||
+        !catalog->descriptor_cache_is_valid || catalog->cached_generation != catalog->generation) {
         return NULL;
     }
     cache = catalog->descriptor_cache;
@@ -677,8 +681,8 @@ static const struct mylite_catalog_schema_descriptor *find_cached_schema_by_id(
 ) {
     struct mylite_catalog_descriptor_cache *cache = NULL;
 
-    if (catalog == NULL || !catalog->descriptor_cache_is_valid ||
-        catalog->cached_generation != catalog->generation) {
+    if (catalog == NULL || catalog->descriptor_cache_is_suspended ||
+        !catalog->descriptor_cache_is_valid || catalog->cached_generation != catalog->generation) {
         return NULL;
     }
     cache = catalog->descriptor_cache;
@@ -701,10 +705,14 @@ static void cache_schema_descriptor(
     struct mylite_catalog *catalog,
     const struct mylite_catalog_schema_descriptor *schema
 ) {
-    struct mylite_catalog_descriptor_cache *cache = ensure_descriptor_cache(catalog);
+    struct mylite_catalog_descriptor_cache *cache = NULL;
     struct cached_schema_descriptor *entry = NULL;
 
-    if (cache == NULL || schema == NULL) {
+    if (catalog == NULL || catalog->descriptor_cache_is_suspended || schema == NULL) {
+        return;
+    }
+    cache = ensure_descriptor_cache(catalog);
+    if (cache == NULL) {
         return;
     }
     entry = prepare_schema_cache_entry(cache);
@@ -724,8 +732,8 @@ static const struct mylite_catalog_table_descriptor *find_cached_table_by_name(
 ) {
     struct mylite_catalog_descriptor_cache *cache = NULL;
 
-    if (catalog == NULL || name == NULL || !catalog->descriptor_cache_is_valid ||
-        catalog->cached_generation != catalog->generation) {
+    if (catalog == NULL || catalog->descriptor_cache_is_suspended || name == NULL ||
+        !catalog->descriptor_cache_is_valid || catalog->cached_generation != catalog->generation) {
         return NULL;
     }
     cache = catalog->descriptor_cache;
@@ -751,8 +759,8 @@ static const struct mylite_catalog_table_descriptor *find_cached_table_by_id(
 ) {
     struct mylite_catalog_descriptor_cache *cache = NULL;
 
-    if (catalog == NULL || !catalog->descriptor_cache_is_valid ||
-        catalog->cached_generation != catalog->generation) {
+    if (catalog == NULL || catalog->descriptor_cache_is_suspended ||
+        !catalog->descriptor_cache_is_valid || catalog->cached_generation != catalog->generation) {
         return NULL;
     }
     cache = catalog->descriptor_cache;
@@ -775,11 +783,15 @@ static void cache_table_descriptor(
     struct mylite_catalog *catalog,
     const struct mylite_catalog_table_descriptor *table
 ) {
-    struct mylite_catalog_descriptor_cache *cache = ensure_descriptor_cache(catalog);
+    struct mylite_catalog_descriptor_cache *cache = NULL;
     struct cached_table_descriptor *entry = NULL;
     struct mylite_catalog_table_descriptor *copy = NULL;
 
-    if (cache == NULL || table == NULL) {
+    if (catalog == NULL || catalog->descriptor_cache_is_suspended || table == NULL) {
+        return;
+    }
+    cache = ensure_descriptor_cache(catalog);
+    if (cache == NULL) {
         return;
     }
     copy = malloc(sizeof(*copy));

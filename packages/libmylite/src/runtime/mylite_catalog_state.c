@@ -202,6 +202,8 @@ int mylite_catalog_begin_mutation(
 
     mutation->active = true;
     mutation->next_generation = catalog.generation + 1U;
+    database->catalog.descriptor_cache_is_suspended = true;
+    mylite_catalog_invalidate_descriptor_cache(database);
 
     return MYLITE_OK;
 }
@@ -226,6 +228,7 @@ int mylite_catalog_commit_mutation(
     }
     if (rc != MYLITE_OK) {
         rollback_catalog_transaction(database->sqlite);
+        database->catalog.descriptor_cache_is_suspended = false;
         mylite_catalog_invalidate_descriptor_cache(database);
         mylite_catalog_mutation_deinit(mutation);
         return rc;
@@ -233,6 +236,7 @@ int mylite_catalog_commit_mutation(
 
     database->catalog.generation = mutation->next_generation;
     database->session.catalog_generation = mutation->next_generation;
+    database->catalog.descriptor_cache_is_suspended = false;
     mylite_catalog_invalidate_descriptor_cache(database);
     mylite_catalog_mutation_deinit(mutation);
 
@@ -245,6 +249,7 @@ void mylite_catalog_rollback_mutation(
 ) {
     if (database != NULL && mutation != NULL && mutation->active) {
         rollback_catalog_transaction(database->sqlite);
+        database->catalog.descriptor_cache_is_suspended = false;
         mylite_catalog_invalidate_descriptor_cache(database);
     }
     mylite_catalog_mutation_deinit(mutation);

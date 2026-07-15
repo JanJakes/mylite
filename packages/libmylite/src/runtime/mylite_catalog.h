@@ -111,6 +111,7 @@ struct mylite_catalog {
     uint64_t cached_generation;
     uint64_t observed_data_version;
     bool descriptor_cache_is_valid;
+    bool descriptor_cache_is_suspended;
     bool has_observed_data_version;
     struct mylite_catalog_descriptor_cache *descriptor_cache;
     struct mylite_catalog_statement_cache_entry

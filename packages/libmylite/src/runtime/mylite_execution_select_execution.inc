@@ -88,72 +88,6 @@ static int execute_select_from_plan(
     return finish_successful_result(database, result, out_result);
 }
 
-static bool expression_contains_generic_function_named(
-    const struct mylite_sql_ast_node *expression,
-    const char *function_name
-) {
-    struct scalar_arithmetic_node_stack stack = {0};
-    bool found = false;
-
-    if (function_name == NULL || !scalar_arithmetic_node_stack_push(&stack, expression)) {
-        return false;
-    }
-    while (stack.count != 0U && !found) {
-        const struct mylite_sql_ast_node *current =
-            unwrap_parenthesized_expression(stack.items[--stack.count]);
-        size_t child_count = 0U;
-
-        if (current == NULL) {
-            continue;
-        }
-        if (generic_function_name_equals(current, function_name)) {
-            found = true;
-            break;
-        }
-        child_count = mylite_sql_ast_node_child_count(current);
-        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
-            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
-                scalar_arithmetic_node_stack_deinit(&stack);
-                return false;
-            }
-        }
-    }
-    scalar_arithmetic_node_stack_deinit(&stack);
-    return found;
-}
-
-static bool expression_contains_sys_function(const struct mylite_sql_ast_node *expression) {
-    struct scalar_arithmetic_node_stack stack = {0};
-    bool found = false;
-
-    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
-        return false;
-    }
-    while (stack.count != 0U && !found) {
-        const struct mylite_sql_ast_node *current =
-            unwrap_parenthesized_expression(stack.items[--stack.count]);
-        enum mylite_sys_function_kind kind = MYLITE_SYS_FUNCTION_NONE;
-        size_t child_count = 0U;
-
-        if (current == NULL) {
-            continue;
-        }
-        if (generic_sys_function_kind(current, &kind)) {
-            found = true;
-            break;
-        }
-        child_count = mylite_sql_ast_node_child_count(current);
-        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
-            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
-                scalar_arithmetic_node_stack_deinit(&stack);
-                return false;
-            }
-        }
-    }
-    scalar_arithmetic_node_stack_deinit(&stack);
-    return found;
-}
-
 static bool select_statement_is_row_scalar_projection_attempt(
     const struct mylite_sql_ast_node *statement
 ) {
@@ -263,24 +197,50 @@ static bool expression_is_supported_row_scalar_system_function(
 static bool expression_contains_supported_row_scalar_system_function(
     const struct mylite_sql_ast_node *expression
 ) {
-    if (expression_contains_sys_function(expression)) {
-        return true;
-    }
+    struct scalar_arithmetic_node_stack stack = {0};
+    bool found = false;
+
     if (expression_contains_spatial_function(expression)) {
         return true;
     }
-    return expression_contains_generic_function_named(expression, "GET_LOCK") ||
-           expression_contains_generic_function_named(expression, "IS_FREE_LOCK") ||
-           expression_contains_generic_function_named(expression, "IS_USED_LOCK") ||
-           expression_contains_generic_function_named(expression, "RELEASE_LOCK") ||
-           expression_contains_generic_function_named(expression, "RELEASE_ALL_LOCKS") ||
-           expression_contains_generic_function_named(expression, "ICU_VERSION") ||
-           expression_contains_generic_function_named(expression, "BENCHMARK") ||
-           expression_contains_generic_function_named(expression, "SLEEP") ||
-           expression_contains_generic_function_named(expression, "NAME_CONST") ||
-           expression_contains_generic_function_named(expression, "LOAD_FILE") ||
-           expression_contains_generic_function_named(expression, "EXTRACTVALUE") ||
-           expression_contains_generic_function_named(expression, "UPDATEXML");
+    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
+        return false;
+    }
+    while (stack.count != 0U && !found) {
+        const struct mylite_sql_ast_node *current =
+            unwrap_parenthesized_expression(stack.items[--stack.count]);
+        enum mylite_sys_function_kind sys_function_kind = MYLITE_SYS_FUNCTION_NONE;
+        size_t child_count = 0U;
+
+        if (current == NULL) {
+            continue;
+        }
+        if (generic_sys_function_kind(current, &sys_function_kind) ||
+            generic_function_name_equals(current, "GET_LOCK") ||
+            generic_function_name_equals(current, "IS_FREE_LOCK") ||
+            generic_function_name_equals(current, "IS_USED_LOCK") ||
+            generic_function_name_equals(current, "RELEASE_LOCK") ||
+            generic_function_name_equals(current, "RELEASE_ALL_LOCKS") ||
+            generic_function_name_equals(current, "ICU_VERSION") ||
+            generic_function_name_equals(current, "BENCHMARK") ||
+            generic_function_name_equals(current, "SLEEP") ||
+            generic_function_name_equals(current, "NAME_CONST") ||
+            generic_function_name_equals(current, "LOAD_FILE") ||
+            generic_function_name_equals(current, "EXTRACTVALUE") ||
+            generic_function_name_equals(current, "UPDATEXML")) {
+            found = true;
+            break;
+        }
+        child_count = mylite_sql_ast_node_child_count(current);
+        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
+            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
+                scalar_arithmetic_node_stack_deinit(&stack);
+                return false;
+            }
+        }
+    }
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return found;
 }
 
 static bool select_statement_optional_clauses_contain_row_scalar_function(

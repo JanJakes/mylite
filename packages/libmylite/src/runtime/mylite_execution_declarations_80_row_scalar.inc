@@ -3712,10 +3712,11 @@ static bool row_scalar_column_descriptor_is_supported(
 static bool row_scalar_expression_contains_row_function(
     const struct mylite_sql_ast_node *expression
 );
-static bool row_scalar_expression_contains_sys_function(
-    const struct mylite_sql_ast_node *expression
-);
 static bool row_scalar_expression_contains_context_expression_attempt(
+    const struct mylite_sql_ast_node *expression,
+    bool allow_insert_values_reference
+);
+static bool row_scalar_expression_is_context_expression_node_attempt(
     const struct mylite_sql_ast_node *expression,
     bool allow_insert_values_reference
 );
@@ -3724,9 +3725,6 @@ static bool row_scalar_expression_contains_insert_values_reference(
 );
 static size_t planned_row_scalar_expression_insert_values_reference_count(
     const struct planned_row_scalar_expression *expression
-);
-static bool row_scalar_expression_contains_statement_context_function(
-    const struct mylite_sql_ast_node *expression
 );
 static bool row_scalar_expression_is_context_expression_attempt(
     const struct mylite_sql_ast_node *expression,
@@ -3751,28 +3749,10 @@ static bool row_scalar_expression_references_descriptor_column(
 static bool row_scalar_expression_root_is_context_expression_attempt(
     const struct mylite_sql_ast_node *expression
 );
-static bool row_scalar_expression_contains_numeric_function(
-    const struct mylite_sql_ast_node *expression
-);
-static bool row_scalar_expression_contains_base_conversion_function(
-    const struct mylite_sql_ast_node *expression
-);
-static bool row_scalar_expression_contains_numeric_extra_function(
-    const struct mylite_sql_ast_node *expression
-);
-static bool row_scalar_expression_contains_conversion_expression(
-    const struct mylite_sql_ast_node *expression
-);
 static bool row_scalar_expression_contains_rand_function(
     const struct mylite_sql_ast_node *expression
 );
 static bool row_scalar_expression_contains_any_value_function(
-    const struct mylite_sql_ast_node *expression
-);
-static bool row_scalar_expression_contains_date_interval_second_function(
-    const struct mylite_sql_ast_node *expression
-);
-static bool row_scalar_expression_contains_control_flow_function(
     const struct mylite_sql_ast_node *expression
 );
 static bool row_scalar_expression_contains_statement_time_function(

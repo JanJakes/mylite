@@ -1530,44 +1530,33 @@ static bool row_scalar_expression_contains_context_expression_attempt(
     const struct mylite_sql_ast_node *expression,
     bool allow_insert_values_reference
 ) {
-    return row_scalar_expression_contains_row_function(expression) ||
-           row_scalar_expression_contains_sys_function(expression) ||
-           row_scalar_expression_contains_statement_context_function(expression) ||
-           (allow_insert_values_reference &&
-            row_scalar_expression_contains_insert_values_reference(expression)) ||
-           row_scalar_expression_contains_numeric_function(expression) ||
-           row_scalar_expression_contains_base_conversion_function(expression) ||
-           row_scalar_expression_contains_numeric_extra_function(expression) ||
-           expression_contains_spatial_function(expression) ||
-           row_scalar_expression_contains_conversion_expression(expression) ||
-           row_scalar_expression_contains_rand_function(expression) ||
-           row_scalar_expression_contains_any_value_function(expression) ||
-           row_scalar_expression_contains_date_interval_second_function(expression) ||
-           row_scalar_expression_contains_control_flow_function(expression) ||
-           row_scalar_expression_contains_statement_time_function(expression) ||
-           row_scalar_expression_contains_bitwise_attempt(expression) ||
-           row_scalar_expression_contains_integer_arithmetic_attempt(expression) ||
-           row_scalar_expression_is_concat_operator(expression);
-}
-
-static bool row_scalar_expression_contains_sys_function(const struct mylite_sql_ast_node *expression
-) {
     struct scalar_arithmetic_node_stack stack = {0};
     bool found = false;
 
+    expression = unwrap_parenthesized_expression(expression);
+    if (expression == NULL) {
+        return false;
+    }
+    if (row_scalar_expression_is_concat_operator(expression) ||
+        row_scalar_expression_contains_statement_time_function(expression) ||
+        row_scalar_expression_contains_row_function(expression)) {
+        return true;
+    }
     if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
         return false;
     }
     while (stack.count != 0U && !found) {
         const struct mylite_sql_ast_node *current =
             unwrap_parenthesized_expression(stack.items[--stack.count]);
-        enum mylite_sys_function_kind kind = MYLITE_SYS_FUNCTION_NONE;
         size_t child_count = 0U;
 
         if (current == NULL) {
             continue;
         }
-        if (generic_sys_function_kind(current, &kind)) {
+        if (row_scalar_expression_is_context_expression_node_attempt(
+                current,
+                allow_insert_values_reference
+            )) {
             found = true;
             break;
         }
@@ -1584,6 +1573,68 @@ static bool row_scalar_expression_contains_sys_function(const struct mylite_sql_
     }
     scalar_arithmetic_node_stack_deinit(&stack);
     return found;
+}
+
+static bool row_scalar_expression_is_context_expression_node_attempt(
+    const struct mylite_sql_ast_node *expression,
+    bool allow_insert_values_reference
+) {
+    enum mylite_sys_function_kind sys_function_kind = MYLITE_SYS_FUNCTION_NONE;
+
+    if (expression == NULL) {
+        return false;
+    }
+    if (generic_sys_function_kind(expression, &sys_function_kind) ||
+        generic_spatial_function_kind(expression, &(enum mylite_spatial_function_kind){0}) ||
+        row_scalar_numeric_function_kind_is_supported(expression->kind) ||
+        row_scalar_base_conversion_kind_is_supported(expression->kind) ||
+        row_scalar_numeric_extra_kind_is_supported(expression->kind) ||
+        row_scalar_conversion_kind_from_expression(expression) !=
+            PLANNED_ROW_SCALAR_CONVERSION_NONE ||
+        is_row_scalar_control_flow_expression(expression) ||
+        mylite_execution_is_date_interval_second_function_kind(expression->kind) ||
+        row_scalar_expression_is_bitwise_attempt(expression)) {
+        return true;
+    }
+    if (allow_insert_values_reference &&
+        row_scalar_expression_is_insert_values_reference(expression)) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_CONNECTION_ID_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_CURRENT_USER_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_FOUND_ROWS_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_ROW_COUNT_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_SESSION_USER_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_VERSION_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_SYSTEM_USER_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_USER_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_RAND_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_RAND_SEED_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_RAND_ARGUMENT_COUNT_ERROR ||
+        expression->kind == MYLITE_SQL_AST_ANY_VALUE_FUNCTION ||
+        expression->kind == MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR ||
+        expression->kind == MYLITE_SQL_AST_MOD_FUNCTION) {
+        return true;
+    }
+    if (expression->kind == MYLITE_SQL_AST_BINARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        return integer_arithmetic_operator_is_attempt(operator_kind) ||
+               bitwise_operator_is_attempt(operator_kind);
+    }
+    if (expression->kind == MYLITE_SQL_AST_UNARY_EXPRESSION) {
+        enum mylite_sql_ast_operator operator_kind = mylite_sql_ast_node_operator(expression);
+
+        return operator_kind == MYLITE_SQL_AST_OPERATOR_POSITIVE ||
+               operator_kind == MYLITE_SQL_AST_OPERATOR_NEGATIVE ||
+               bitwise_operator_is_attempt(operator_kind);
+    }
+    return false;
 }
 
 static bool row_scalar_expression_contains_insert_values_reference(
@@ -1641,54 +1692,6 @@ static size_t planned_row_scalar_expression_insert_values_reference_count(
         );
     }
     return count;
-}
-
-static bool row_scalar_expression_contains_statement_context_function(
-    const struct mylite_sql_ast_node *expression
-) {
-    struct scalar_arithmetic_node_stack stack = {0};
-    bool found = false;
-
-    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
-        return false;
-    }
-    while (stack.count != 0U && !found) {
-        const struct mylite_sql_ast_node *current =
-            unwrap_parenthesized_expression(stack.items[--stack.count]);
-        size_t child_count = 0U;
-
-        if (current == NULL) {
-            continue;
-        }
-        if (current->kind == MYLITE_SQL_AST_CONNECTION_ID_FUNCTION ||
-            current->kind == MYLITE_SQL_AST_CURRENT_ROLE_FUNCTION ||
-            current->kind == MYLITE_SQL_AST_CURRENT_USER_FUNCTION ||
-            current->kind == MYLITE_SQL_AST_DATABASE_FUNCTION ||
-            current->kind == MYLITE_SQL_AST_FOUND_ROWS_FUNCTION ||
-            current->kind == MYLITE_SQL_AST_LAST_INSERT_ID_FUNCTION ||
-            current->kind == MYLITE_SQL_AST_LAST_INSERT_ID_SET_FUNCTION ||
-            current->kind == MYLITE_SQL_AST_ROW_COUNT_FUNCTION ||
-            current->kind == MYLITE_SQL_AST_SESSION_USER_FUNCTION ||
-            current->kind == MYLITE_SQL_AST_VERSION_FUNCTION ||
-            current->kind == MYLITE_SQL_AST_SCHEMA_FUNCTION ||
-            current->kind == MYLITE_SQL_AST_SYSTEM_USER_FUNCTION ||
-            current->kind == MYLITE_SQL_AST_USER_FUNCTION) {
-            found = true;
-            break;
-        }
-        if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
-            continue;
-        }
-        child_count = mylite_sql_ast_node_child_count(current);
-        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
-            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
-                scalar_arithmetic_node_stack_deinit(&stack);
-                return false;
-            }
-        }
-    }
-    scalar_arithmetic_node_stack_deinit(&stack);
-    return found;
 }
 
 static bool row_scalar_expression_is_dml_assignment_context_attempt(
@@ -1955,164 +1958,6 @@ static bool row_scalar_expression_root_is_context_expression_attempt(
            row_scalar_control_flow_condition_operator(expression) == MYLITE_SQL_AST_OPERATOR_LIKE;
 }
 
-static bool row_scalar_expression_contains_numeric_function(
-    const struct mylite_sql_ast_node *expression
-) {
-    struct scalar_arithmetic_node_stack stack = {0};
-    bool found = false;
-
-    if (expression == NULL) {
-        return false;
-    }
-    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
-        return false;
-    }
-    while (stack.count != 0U && !found) {
-        const struct mylite_sql_ast_node *current = stack.items[--stack.count];
-        size_t child_count = 0U;
-
-        current = unwrap_parenthesized_expression(current);
-        if (current == NULL) {
-            continue;
-        }
-        if (row_scalar_numeric_function_kind_is_supported(current->kind)) {
-            found = true;
-            break;
-        }
-        if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
-            continue;
-        }
-        child_count = mylite_sql_ast_node_child_count(current);
-        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
-            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
-                scalar_arithmetic_node_stack_deinit(&stack);
-                return false;
-            }
-        }
-    }
-    scalar_arithmetic_node_stack_deinit(&stack);
-
-    return found;
-}
-
-static bool row_scalar_expression_contains_base_conversion_function(
-    const struct mylite_sql_ast_node *expression
-) {
-    struct scalar_arithmetic_node_stack stack = {0};
-    bool found = false;
-
-    if (expression == NULL) {
-        return false;
-    }
-    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
-        return false;
-    }
-    while (stack.count != 0U && !found) {
-        const struct mylite_sql_ast_node *current = stack.items[--stack.count];
-        size_t child_count = 0U;
-
-        current = unwrap_parenthesized_expression(current);
-        if (current == NULL) {
-            continue;
-        }
-        if (row_scalar_base_conversion_kind_is_supported(current->kind)) {
-            found = true;
-            break;
-        }
-        if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
-            continue;
-        }
-        child_count = mylite_sql_ast_node_child_count(current);
-        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
-            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
-                scalar_arithmetic_node_stack_deinit(&stack);
-                return false;
-            }
-        }
-    }
-    scalar_arithmetic_node_stack_deinit(&stack);
-
-    return found;
-}
-
-static bool row_scalar_expression_contains_numeric_extra_function(
-    const struct mylite_sql_ast_node *expression
-) {
-    struct scalar_arithmetic_node_stack stack = {0};
-    bool found = false;
-
-    if (expression == NULL) {
-        return false;
-    }
-    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
-        return false;
-    }
-    while (stack.count != 0U && !found) {
-        const struct mylite_sql_ast_node *current = stack.items[--stack.count];
-        size_t child_count = 0U;
-
-        current = unwrap_parenthesized_expression(current);
-        if (current == NULL) {
-            continue;
-        }
-        if (row_scalar_numeric_extra_kind_is_supported(current->kind)) {
-            found = true;
-            break;
-        }
-        if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
-            continue;
-        }
-        child_count = mylite_sql_ast_node_child_count(current);
-        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
-            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
-                scalar_arithmetic_node_stack_deinit(&stack);
-                return false;
-            }
-        }
-    }
-    scalar_arithmetic_node_stack_deinit(&stack);
-
-    return found;
-}
-
-static bool row_scalar_expression_contains_conversion_expression(
-    const struct mylite_sql_ast_node *expression
-) {
-    struct scalar_arithmetic_node_stack stack = {0};
-    bool found = false;
-
-    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
-        return false;
-    }
-    while (stack.count != 0U && !found) {
-        const struct mylite_sql_ast_node *current = stack.items[--stack.count];
-        size_t child_count = 0U;
-
-        current = unwrap_parenthesized_expression(current);
-        if (current == NULL) {
-            continue;
-        }
-        if (row_scalar_conversion_kind_from_expression(current) !=
-            PLANNED_ROW_SCALAR_CONVERSION_NONE) {
-            found = true;
-            break;
-        }
-        if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
-            continue;
-        }
-        child_count = mylite_sql_ast_node_child_count(current);
-        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
-            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
-                scalar_arithmetic_node_stack_deinit(&stack);
-                return false;
-            }
-        }
-    }
-    scalar_arithmetic_node_stack_deinit(&stack);
-
-    return found;
-}
-
 static bool row_scalar_expression_contains_rand_function(
     const struct mylite_sql_ast_node *expression
 ) {
@@ -2376,80 +2221,6 @@ static bool bitwise_operator_is_attempt(enum mylite_sql_ast_operator operator_ki
 
 static bool bitwise_operator_is_supported(enum mylite_sql_ast_operator operator_kind) {
     return bitwise_operator_is_attempt(operator_kind);
-}
-
-static bool row_scalar_expression_contains_date_interval_second_function(
-    const struct mylite_sql_ast_node *expression
-) {
-    struct scalar_arithmetic_node_stack stack = {0};
-    bool found = false;
-
-    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
-        return false;
-    }
-    while (stack.count != 0U && !found) {
-        const struct mylite_sql_ast_node *current = stack.items[--stack.count];
-        size_t child_count = 0U;
-
-        current = unwrap_parenthesized_expression(current);
-        if (current == NULL) {
-            continue;
-        }
-        if (mylite_execution_is_date_interval_second_function_kind(current->kind)) {
-            found = true;
-            break;
-        }
-        if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
-            continue;
-        }
-        child_count = mylite_sql_ast_node_child_count(current);
-        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
-            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
-                scalar_arithmetic_node_stack_deinit(&stack);
-                return false;
-            }
-        }
-    }
-    scalar_arithmetic_node_stack_deinit(&stack);
-
-    return found;
-}
-
-static bool row_scalar_expression_contains_control_flow_function(
-    const struct mylite_sql_ast_node *expression
-) {
-    struct scalar_arithmetic_node_stack stack = {0};
-    bool found = false;
-
-    if (!scalar_arithmetic_node_stack_push(&stack, expression)) {
-        return false;
-    }
-    while (stack.count != 0U && !found) {
-        const struct mylite_sql_ast_node *current = stack.items[--stack.count];
-        size_t child_count = 0U;
-
-        current = unwrap_parenthesized_expression(current);
-        if (current == NULL) {
-            continue;
-        }
-        if (is_row_scalar_control_flow_expression(current)) {
-            found = true;
-            break;
-        }
-        if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
-            continue;
-        }
-        child_count = mylite_sql_ast_node_child_count(current);
-        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
-            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
-                scalar_arithmetic_node_stack_deinit(&stack);
-                return false;
-            }
-        }
-    }
-    scalar_arithmetic_node_stack_deinit(&stack);
-
-    return found;
 }
 
 static bool row_scalar_expression_contains_statement_time_function(

@@ -5,6 +5,7 @@
 
 #include "mylite_benchmark_csv.h"
 #include "mylite_benchmark_parse_expectations.h"
+#include "mylite_benchmark_runtime_stress.h"
 #include "mylite_benchmark_sql_mode.h"
 #include "sql/mylite_lexer.h"
 #include "sql/mylite_parser.h"
@@ -481,6 +482,11 @@ static int run_runtime_cursor_scenario(
     const struct runtime_repetition_options *repeat_options,
     struct benchmark_measurement *out_measurement
 );
+static int run_runtime_stress_scenario(
+    const struct runtime_scenario *scenario,
+    const struct runtime_repetition_options *repeat_options,
+    struct benchmark_measurement *out_measurement
+);
 static int run_runtime_query_iterations(
     mylite_db *database,
     const struct runtime_scenario *scenario,
@@ -881,6 +887,9 @@ static void print_scenario_list(void) {
         runtime_cursor_scenarios,
         sizeof(runtime_cursor_scenarios) / sizeof(runtime_cursor_scenarios[0])
     );
+    for (size_t index = 0U; index < mylite_benchmark_runtime_stress_scenario_count(); ++index) {
+        puts(mylite_benchmark_runtime_stress_scenario_name(index));
+    }
     puts("lexer.csv.mysql_server_tests");
     puts("parse.csv.mysql_server_tests");
 }
@@ -1134,6 +1143,38 @@ static int run_runtime_benchmarks(const struct benchmark_options *options) {
             return rc;
         }
     }
+    for (size_t scenario_index = 0U;
+         scenario_index < mylite_benchmark_runtime_stress_scenario_count();
+         ++scenario_index) {
+        const char *scenario_name = mylite_benchmark_runtime_stress_scenario_name(scenario_index);
+        struct runtime_scenario scenario = {
+            .name = scenario_name,
+            .query_count = 1U,
+        };
+
+        if (options->runtime_scenario_name == NULL ||
+            strcmp(options->runtime_scenario_name, scenario_name) != 0) {
+            continue;
+        }
+        matched_scenario = true;
+        if (options->profile_json_path != NULL) {
+            fprintf(
+                stderr,
+                "%s: runtime profiling is not available for stress scenarios\n",
+                scenario_name
+            );
+            return 1;
+        }
+        rc = run_repeated_runtime_scenario(
+            &scenario,
+            "stress",
+            run_runtime_stress_scenario,
+            repeat_options
+        );
+        if (rc != 0) {
+            return rc;
+        }
+    }
     if (options->runtime_scenario_name != NULL && !matched_scenario) {
         fprintf(stderr, "unknown runtime scenario: %s\n", options->runtime_scenario_name);
         return 1;
@@ -1171,6 +1212,16 @@ static bool runtime_scenario_filter_exists(const struct benchmark_options *optio
                 &runtime_cursor_scenarios[scenario_index],
                 &query_index
             )) {
+            return true;
+        }
+    }
+    for (size_t scenario_index = 0U;
+         scenario_index < mylite_benchmark_runtime_stress_scenario_count();
+         ++scenario_index) {
+        if (strcmp(
+                options->runtime_scenario_name,
+                mylite_benchmark_runtime_stress_scenario_name(scenario_index)
+            ) == 0) {
             return true;
         }
     }
@@ -1537,6 +1588,30 @@ static int run_runtime_cursor_scenario(
     mylite_close(database);
     remove_related_database_files(path);
     return 0;
+}
+
+static int run_runtime_stress_scenario(
+    const struct runtime_scenario *scenario,
+    const struct runtime_repetition_options *repeat_options,
+    struct benchmark_measurement *out_measurement
+) {
+    struct mylite_benchmark_runtime_stress_measurement measurement = {0};
+    int rc = mylite_benchmark_run_runtime_stress_scenario(
+        scenario->name,
+        repeat_options->iterations,
+        repeat_options->warmup_iterations,
+        &measurement
+    );
+
+    out_measurement->elapsed_ns = measurement.elapsed_ns;
+    out_measurement->operations = measurement.operations;
+    out_measurement->bytes = measurement.bytes;
+    out_measurement->ok_count = measurement.ok_count;
+    out_measurement->error_count = measurement.error_count;
+    if (rc != 0) {
+        fprintf(stderr, "%s: stress benchmark failed\n", scenario->name);
+    }
+    return rc;
 }
 
 static int run_runtime_query_iterations(

@@ -59,6 +59,7 @@ expect_true($stream->fetch(PDO::FETCH_ASSOC) === ['id' => '1', 'name' => 'Ada'],
 expect_true($pdo->beginTransaction(), 'beginTransaction failed');
 expect_true($pdo->exec("INSERT INTO people VALUES (3, 'Katherine')") === 1, 'transaction INSERT failed');
 expect_true($pdo->rollBack(), 'rollBack failed');
+expect_true($stream->fetch(PDO::FETCH_ASSOC) === ['id' => '2', 'name' => 'Grace'], 'buffered SELECT unread row mismatch');
 expect_true($pdo->query('SELECT COUNT(*) AS total FROM people')->fetch() === ['total' => '2'], 'rollback count mismatch');
 
 $expectedEscape = 'A' . '\\0' . '\\n' . '\\r' . '\\\\' . "\\'" . '\\"' . '\\Z' . 'B';

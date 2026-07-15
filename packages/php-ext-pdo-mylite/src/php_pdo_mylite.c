@@ -12,8 +12,6 @@
 
 #include <mylite/mylite.h>
 
-#include <ctype.h>
-#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -32,8 +30,6 @@ typedef struct pdo_mylite_stmt {
     pdo_mylite_db_handle *handle;
     zend_string *sql;
     mylite_result *result;
-    mylite_stmt *native_stmt;
-    size_t native_column_count;
     size_t cursor;
     size_t current_row;
 } pdo_mylite_stmt;
@@ -76,14 +72,6 @@ static int pdo_mylite_stmt_cursor_closer(pdo_stmt_t *stmt);
 static int pdo_mylite_error(pdo_dbh_t *dbh, pdo_stmt_t *stmt, int status, const char *fallback);
 static void pdo_mylite_clear_error(pdo_dbh_t *dbh, pdo_stmt_t *stmt);
 static void pdo_mylite_stmt_release_storage(pdo_mylite_stmt *statement_data);
-static bool pdo_mylite_sql_may_stream_select(const char *sql, size_t length);
-static bool pdo_mylite_sql_keyword_at(
-    const char *sql,
-    size_t length,
-    size_t offset,
-    const char *keyword
-);
-static bool pdo_mylite_is_identifier_byte(unsigned char ch);
 static void pdo_mylite_update_status(pdo_dbh_t *dbh, const mylite_result *result);
 static zend_string *pdo_mylite_quote_string(const char *value, size_t length);
 static char *pdo_mylite_resolve_path(pdo_dbh_t *dbh);
@@ -354,26 +342,6 @@ static int pdo_mylite_stmt_execute(pdo_stmt_t *stmt) {
     statement_data->cursor = 0U;
     statement_data->current_row = 0U;
 
-    if (pdo_mylite_sql_may_stream_select(ZSTR_VAL(sql), ZSTR_LEN(sql))) {
-        mylite_stmt *native_stmt = NULL;
-        const int prepare_status =
-            mylite_prepare(statement_data->handle->db, ZSTR_VAL(sql), ZSTR_LEN(sql), &native_stmt);
-
-        if (prepare_status == MYLITE_OK) {
-            statement_data->native_stmt = native_stmt;
-            statement_data->native_column_count = mylite_stmt_column_count(native_stmt);
-            if (statement_data->native_column_count > (size_t)INT_MAX) {
-                pdo_mylite_stmt_release_storage(statement_data);
-                pdo_mylite_error(dbh, stmt, MYLITE_ERROR, "result set has too many columns");
-                return 0;
-            }
-            pdo_mylite_clear_error(dbh, stmt);
-            php_pdo_stmt_set_column_count(stmt, (int)statement_data->native_column_count);
-            stmt->row_count = 0;
-            return 1;
-        }
-    }
-
     const int status = mylite_execute(
         statement_data->handle->db,
         ZSTR_VAL(sql),
@@ -400,19 +368,6 @@ static int pdo_mylite_stmt_fetch(
     (void)orientation;
     (void)offset;
     pdo_mylite_stmt *statement_data = (pdo_mylite_stmt *)stmt->driver_data;
-    if (statement_data->native_stmt != NULL) {
-        const int status = mylite_stmt_step(statement_data->native_stmt);
-
-        if (status == MYLITE_ROW) {
-            return 1;
-        }
-        if (status == MYLITE_DONE) {
-            return 0;
-        }
-        pdo_mylite_error(stmt->dbh, stmt, status, "could not fetch MyLite statement row");
-        pdo_mylite_stmt_release_storage(statement_data);
-        return 0;
-    }
     if (statement_data->result == NULL ||
         statement_data->cursor >= mylite_result_row_count(statement_data->result)) {
         return 0;
@@ -424,19 +379,6 @@ static int pdo_mylite_stmt_fetch(
 
 static int pdo_mylite_stmt_describe(pdo_stmt_t *stmt, int column) {
     pdo_mylite_stmt *statement_data = (pdo_mylite_stmt *)stmt->driver_data;
-    if (statement_data->native_stmt != NULL) {
-        const char *name = NULL;
-
-        if (column < 0 || (size_t)column >= statement_data->native_column_count) {
-            return 0;
-        }
-        name = mylite_stmt_column_name(statement_data->native_stmt, (size_t)column);
-        stmt->columns[column].name =
-            zend_string_init(name == NULL ? "" : name, name == NULL ? 0U : strlen(name), false);
-        stmt->columns[column].maxlen = 0;
-        stmt->columns[column].precision = 0;
-        return 1;
-    }
     if (column < 0 || statement_data->result == NULL ||
         (size_t)column >= mylite_result_column_count(statement_data->result)) {
         return 0;
@@ -457,25 +399,6 @@ static int pdo_mylite_stmt_get_col(
 ) {
     (void)type;
     pdo_mylite_stmt *statement_data = (pdo_mylite_stmt *)stmt->driver_data;
-    if (statement_data->native_stmt != NULL) {
-        const void *bytes = NULL;
-
-        if (column < 0 || (size_t)column >= statement_data->native_column_count) {
-            ZVAL_NULL(result);
-            return 0;
-        }
-        bytes = mylite_stmt_value_bytes(statement_data->native_stmt, (size_t)column);
-        if (bytes == NULL) {
-            ZVAL_NULL(result);
-        } else {
-            ZVAL_STRINGL(
-                result,
-                (const char *)bytes,
-                mylite_stmt_value_size(statement_data->native_stmt, (size_t)column)
-            );
-        }
-        return 1;
-    }
     if (column < 0 || statement_data->result == NULL ||
         (size_t)column >= mylite_result_column_count(statement_data->result)) {
         ZVAL_NULL(result);
@@ -567,74 +490,6 @@ static void pdo_mylite_stmt_release_storage(pdo_mylite_stmt *statement_data) {
         mylite_result_free(statement_data->result);
         statement_data->result = NULL;
     }
-    if (statement_data->native_stmt != NULL) {
-        (void)mylite_stmt_finalize(statement_data->native_stmt);
-        statement_data->native_stmt = NULL;
-    }
-    statement_data->native_column_count = 0U;
-}
-
-static bool pdo_mylite_sql_may_stream_select(const char *sql, size_t length) {
-    size_t offset = 0U;
-
-    for (;;) {
-        while (offset < length && isspace((unsigned char)sql[offset])) {
-            ++offset;
-        }
-        if (offset + 1U < length && sql[offset] == '/' && sql[offset + 1U] == '*') {
-            offset += 2U;
-            while (offset + 1U < length && !(sql[offset] == '*' && sql[offset + 1U] == '/')) {
-                ++offset;
-            }
-            if (offset + 1U >= length) {
-                return false;
-            }
-            offset += 2U;
-            continue;
-        }
-        if (offset < length && sql[offset] == '#') {
-            while (offset < length && sql[offset] != '\n' && sql[offset] != '\r') {
-                ++offset;
-            }
-            continue;
-        }
-        if (offset + 2U < length && sql[offset] == '-' && sql[offset + 1U] == '-' &&
-            isspace((unsigned char)sql[offset + 2U])) {
-            offset += 2U;
-            while (offset < length && sql[offset] != '\n' && sql[offset] != '\r') {
-                ++offset;
-            }
-            continue;
-        }
-        break;
-    }
-
-    return pdo_mylite_sql_keyword_at(sql, length, offset, "select") ||
-           pdo_mylite_sql_keyword_at(sql, length, offset, "with");
-}
-
-static bool pdo_mylite_sql_keyword_at(
-    const char *sql,
-    size_t length,
-    size_t offset,
-    const char *keyword
-) {
-    size_t keyword_length = strlen(keyword);
-
-    if (offset + keyword_length > length) {
-        return false;
-    }
-    for (size_t index = 0U; index < keyword_length; ++index) {
-        if (tolower((unsigned char)sql[offset + index]) != keyword[index]) {
-            return false;
-        }
-    }
-    return offset + keyword_length == length ||
-           !pdo_mylite_is_identifier_byte((unsigned char)sql[offset + keyword_length]);
-}
-
-static bool pdo_mylite_is_identifier_byte(unsigned char ch) {
-    return isalnum(ch) || ch == '_' || ch == '$';
 }
 
 static void pdo_mylite_update_status(pdo_dbh_t *dbh, const mylite_result *result) {

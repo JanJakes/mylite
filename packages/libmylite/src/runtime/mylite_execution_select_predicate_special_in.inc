@@ -820,6 +820,7 @@ static int plan_row_constructor_in_predicate(
     const struct mylite_sql_ast_node *left_node =
         unwrap_parenthesized_predicate(child_at(predicate_node, 0U));
     const struct mylite_sql_ast_node *value_list = child_at(predicate_node, 1U);
+    const struct mylite_sql_ast_node *value_node = NULL;
     size_t element_count = 0U;
     size_t value_count = 0U;
     size_t root_index = SIZE_MAX;
@@ -847,9 +848,10 @@ static int plan_row_constructor_in_predicate(
         set_unsupported_error(database, "WHERE row constructor IN predicates require a value list");
         return MYLITE_ERROR;
     }
+    value_node = value_list->first_child;
     for (size_t value_index = 0U; value_index < value_count && rc == MYLITE_OK; ++value_index) {
         const struct mylite_sql_ast_node *right_node =
-            unwrap_parenthesized_predicate(child_at(value_list, value_index));
+            unwrap_parenthesized_predicate(value_node);
         size_t value_root_index = SIZE_MAX;
 
         if (!predicate_node_is_row_constructor(right_node)) {
@@ -887,6 +889,7 @@ static int plan_row_constructor_in_predicate(
                 &root_index
             );
         }
+        value_node = value_node->next_sibling;
     }
     if (rc == MYLITE_OK) {
         predicate->qualify_column_references =
@@ -928,14 +931,15 @@ static int plan_row_scalar_expression_in_predicate(
     }
 
     if (predicate_node_is_literal_left_predicate_value(child_at(predicate_node, 0U))) {
+        const struct mylite_sql_ast_node *value_node = right->first_child;
         size_t value_count = mylite_sql_ast_node_child_count(right);
 
         for (size_t value_index = 0U;
              rc == MYLITE_OK && !has_context_column && value_index < value_count;
-             ++value_index) {
+             ++value_index, value_node = value_node->next_sibling) {
             rc = resolve_literal_left_predicate_context_column(
                 database,
-                child_at(right, value_index),
+                value_node,
                 source_context,
                 table_columns,
                 table_column_count,
@@ -1109,19 +1113,18 @@ static int plan_in_literal_predicate(
 static bool predicate_value_list_contains_row_scalar_predicate_value(
     const struct mylite_sql_ast_node *value_list
 ) {
-    size_t value_count = 0U;
+    const struct mylite_sql_ast_node *value_node = NULL;
 
     if (value_list == NULL || value_list->kind != MYLITE_SQL_AST_PREDICATE_VALUE_LIST) {
         return false;
     }
 
-    value_count = mylite_sql_ast_node_child_count(value_list);
-    for (size_t value_index = 0U; value_index < value_count; ++value_index) {
-        if (predicate_node_is_supported_row_scalar_predicate_value_expression(
-                child_at(value_list, value_index)
-            )) {
+    value_node = value_list->first_child;
+    while (value_node != NULL) {
+        if (predicate_node_is_supported_row_scalar_predicate_value_expression(value_node)) {
             return true;
         }
+        value_node = value_node->next_sibling;
     }
     return false;
 }
@@ -1134,6 +1137,7 @@ static int plan_descriptor_in_value_list(
     size_t table_column_count,
     struct planned_select_predicate_node *node
 ) {
+    const struct mylite_sql_ast_node *value_node = NULL;
     size_t value_count = 0U;
     int rc = MYLITE_OK;
 
@@ -1165,11 +1169,14 @@ static int plan_descriptor_in_value_list(
         return MYLITE_NOMEM;
     }
     node->value_count = value_count;
+    value_node = value_list->first_child;
 
-    for (size_t value_index = 0U; rc == MYLITE_OK && value_index < value_count; ++value_index) {
+    for (size_t value_index = 0U;
+         rc == MYLITE_OK && value_index < value_count;
+         ++value_index, value_node = value_node->next_sibling) {
         rc = plan_descriptor_in_value(
             database,
-            child_at(value_list, value_index),
+            value_node,
             source_context,
             table_columns,
             table_column_count,
@@ -1695,6 +1702,7 @@ static int plan_row_scalar_in_value_list(
     size_t table_column_count,
     struct planned_select_predicate_node *node
 ) {
+    const struct mylite_sql_ast_node *value_node = NULL;
     size_t value_count = 0U;
     int rc = MYLITE_OK;
 
@@ -1726,11 +1734,14 @@ static int plan_row_scalar_in_value_list(
         return MYLITE_NOMEM;
     }
     node->value_count = value_count;
+    value_node = value_list->first_child;
 
-    for (size_t value_index = 0U; rc == MYLITE_OK && value_index < value_count; ++value_index) {
+    for (size_t value_index = 0U;
+         rc == MYLITE_OK && value_index < value_count;
+         ++value_index, value_node = value_node->next_sibling) {
         rc = plan_row_scalar_in_value(
             database,
-            child_at(value_list, value_index),
+            value_node,
             context_column,
             source_context,
             table_columns,
@@ -1789,6 +1800,7 @@ static int convert_predicate_in_value_list(
     struct planned_value **out_values,
     size_t *out_value_count
 ) {
+    const struct mylite_sql_ast_node *value_node = NULL;
     struct planned_value *values = NULL;
     size_t value_count = mylite_sql_ast_node_child_count(value_list);
     int rc = MYLITE_OK;
@@ -1819,11 +1831,14 @@ static int convert_predicate_in_value_list(
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
+    value_node = value_list->first_child;
 
-    for (size_t value_index = 0U; rc == MYLITE_OK && value_index < value_count; ++value_index) {
+    for (size_t value_index = 0U;
+         rc == MYLITE_OK && value_index < value_count;
+         ++value_index, value_node = value_node->next_sibling) {
         rc = convert_predicate_in_value(
             database,
-            child_at(value_list, value_index),
+            value_node,
             column,
             &values[value_index]
         );
@@ -1863,6 +1878,7 @@ static int convert_predicate_year_in_value_list(
     struct planned_value **out_values,
     size_t *out_value_count
 ) {
+    const struct mylite_sql_ast_node *value_node = NULL;
     struct planned_value *values = NULL;
     size_t value_count = mylite_sql_ast_node_child_count(value_list);
     bool uses_string_conversion =
@@ -1878,8 +1894,10 @@ static int convert_predicate_year_in_value_list(
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
-    for (size_t value_index = 0U; rc == MYLITE_OK && value_index < value_count; ++value_index) {
-        const struct mylite_sql_ast_node *value_node = child_at(value_list, value_index);
+    value_node = value_list->first_child;
+    for (size_t value_index = 0U;
+         rc == MYLITE_OK && value_index < value_count;
+         ++value_index, value_node = value_node->next_sibling) {
 
         if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_LITERAL &&
             mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
@@ -1907,21 +1925,28 @@ static bool year_in_value_list_uses_string_conversion(
     const struct mylite_sql_ast_node *value_list,
     size_t value_count
 ) {
+    const struct mylite_sql_ast_node *value_node = NULL;
+
     if (value_count == 1U) {
         return true;
     }
+    value_node = value_list->first_child;
     for (size_t value_index = 0U; value_index < value_count; ++value_index) {
-        const struct mylite_sql_ast_node *value_node =
-            unwrap_parenthesized_expression(child_at(value_list, value_index));
+        const struct mylite_sql_ast_node *unwrapped_value_node =
+            unwrap_parenthesized_expression(value_node);
 
-        if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_LITERAL &&
-            mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
+        if (unwrapped_value_node != NULL &&
+            unwrapped_value_node->kind == MYLITE_SQL_AST_LITERAL &&
+            mylite_sql_ast_node_literal_kind(unwrapped_value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
+            value_node = value_node->next_sibling;
             continue;
         }
-        if (value_node == NULL || value_node->kind != MYLITE_SQL_AST_LITERAL ||
-            mylite_sql_ast_node_literal_kind(value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
+        if (unwrapped_value_node == NULL ||
+            unwrapped_value_node->kind != MYLITE_SQL_AST_LITERAL ||
+            mylite_sql_ast_node_literal_kind(unwrapped_value_node) != MYLITE_SQL_AST_LITERAL_STRING) {
             return false;
         }
+        value_node = value_node->next_sibling;
     }
     return true;
 }

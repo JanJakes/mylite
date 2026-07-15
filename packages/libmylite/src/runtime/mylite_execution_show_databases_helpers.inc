@@ -373,8 +373,8 @@ static int evaluate_show_databases_where_in_predicate(
 ) {
     const struct mylite_sql_ast_node *left_node = child_at(predicate, 0U);
     const struct mylite_sql_ast_node *value_list = child_at(predicate, 1U);
+    const struct mylite_sql_ast_node *value_node = NULL;
     const char *left = NULL;
-    size_t value_count = 0U;
     bool matched = false;
     bool saw_null = false;
     int rc = show_databases_where_column_value(database, left_node, name, &left);
@@ -387,9 +387,8 @@ static int evaluate_show_databases_where_in_predicate(
         return MYLITE_ERROR;
     }
 
-    value_count = mylite_sql_ast_node_child_count(value_list);
-    for (size_t index = 0U; index < value_count; ++index) {
-        const struct mylite_sql_ast_node *value_node = child_at(value_list, index);
+    for (value_node = value_list->first_child; value_node != NULL;
+         value_node = value_node->next_sibling) {
         enum mylite_sql_ast_literal_kind literal_kind = MYLITE_SQL_AST_LITERAL_NONE;
         char *right = NULL;
 

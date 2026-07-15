@@ -887,6 +887,7 @@ static int convert_grouped_having_in_values(
     struct planned_value **out_values,
     size_t *out_value_count
 ) {
+    const struct mylite_sql_ast_node *value_node = NULL;
     struct planned_value *values = NULL;
     size_t value_count = 0U;
     int rc = MYLITE_OK;
@@ -913,10 +914,11 @@ static int convert_grouped_having_in_values(
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
+    value_node = value_list->first_child;
 
-    for (size_t value_index = 0U; rc == MYLITE_OK && value_index < value_count; ++value_index) {
-        const struct mylite_sql_ast_node *value_node = child_at(value_list, value_index);
-
+    for (size_t value_index = 0U;
+         rc == MYLITE_OK && value_index < value_count;
+         ++value_index, value_node = value_node->next_sibling) {
         if (value_node != NULL && value_node->kind == MYLITE_SQL_AST_LITERAL &&
             mylite_sql_ast_node_literal_kind(value_node) == MYLITE_SQL_AST_LITERAL_NULL) {
             values[value_index] = (struct planned_value){.is_null = true};

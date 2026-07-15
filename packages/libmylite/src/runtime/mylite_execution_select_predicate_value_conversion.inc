@@ -580,9 +580,12 @@ static int convert_predicate_date_in_values(
     size_t value_count,
     bool *out_uses_datetime
 ) {
+    const struct mylite_sql_ast_node *value_node = value_list->first_child;
+
     *out_uses_datetime = false;
-    for (size_t value_index = 0U; value_index < value_count; ++value_index) {
-        const struct mylite_sql_ast_node *value_node = child_at(value_list, value_index);
+    for (size_t value_index = 0U;
+         value_index < value_count;
+         ++value_index, value_node = value_node->next_sibling) {
         bool value_is_datetime = false;
         int rc = MYLITE_OK;
 
@@ -615,8 +618,11 @@ static int convert_predicate_date_in_values_to_datetime(
     struct planned_value *values,
     size_t value_count
 ) {
-    for (size_t value_index = 0U; value_index < value_count; ++value_index) {
-        const struct mylite_sql_ast_node *value_node = child_at(value_list, value_index);
+    const struct mylite_sql_ast_node *value_node = value_list->first_child;
+
+    for (size_t value_index = 0U;
+         value_index < value_count;
+         ++value_index, value_node = value_node->next_sibling) {
 
         if (date_in_value_already_compares_as_datetime(value_node, &values[value_index])) {
             continue;

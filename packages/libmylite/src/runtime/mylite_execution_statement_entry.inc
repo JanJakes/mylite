@@ -103,9 +103,11 @@ static int execute_parsed_statement(
     if (rc != MYLITE_OK) {
         return rc;
     }
-    rc = mylite_catalog_synchronize_snapshot(database);
-    if (rc != MYLITE_OK) {
-        return rc;
+    if (!statement_defers_catalog_synchronization(statement)) {
+        rc = mylite_catalog_synchronize_snapshot(database);
+        if (rc != MYLITE_OK) {
+            return rc;
+        }
     }
     {
         rc = validate_alter_table_algorithm_lock_options(database, statement);
@@ -212,6 +214,27 @@ static int execute_parsed_statement(
     }
 
     return execute_non_prepared_statement(database, context, statement, out_result);
+}
+
+static bool statement_defers_catalog_synchronization(
+    const struct mylite_sql_ast_node *statement
+) {
+    const struct mylite_sql_ast_node *source = NULL;
+
+    if (statement == NULL) {
+        return false;
+    }
+    if (statement->kind == MYLITE_SQL_AST_SELECT_STATEMENT) {
+        source = select_statement_source_clause(statement);
+        return source != NULL && source->kind != MYLITE_SQL_AST_FROM_DUAL;
+    }
+    if (statement->kind == MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT) {
+        return compound_select_statement_has_table_source(statement);
+    }
+    if (statement->kind == MYLITE_SQL_AST_PARENTHESIZED_QUERY_EXPRESSION) {
+        return statement_defers_catalog_synchronization(child_at(statement, 0U));
+    }
+    return false;
 }
 
 static int execute_non_prepared_statement(

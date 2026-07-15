@@ -44,10 +44,21 @@ struct expected_query {
     const char *context;
 };
 
+struct catalog_sync_trace {
+    size_t data_version_count;
+};
+
 static int test_order_limit_success_persistence_rename_and_drop(void);
 static int test_order_limit_diagnostics(void);
 static int test_independent_order_limit_handles(void);
 static int test_cached_literal_limit_does_not_reprepare(void);
+static int test_table_select_synchronizes_catalog_once(void);
+static int count_catalog_sync_statement(
+    unsigned int trace_type,
+    void *context,
+    void *statement_pointer,
+    void *expanded_sql
+);
 static sqlite3_stmt *find_cached_statement_containing(sqlite3 *connection, const char *needle);
 static int seed_schema(mylite_db *database, const char *name);
 static int create_order_tables(mylite_db *database);
@@ -88,8 +99,76 @@ int main(void) {
     failures += test_order_limit_diagnostics();
     failures += test_independent_order_limit_handles();
     failures += test_cached_literal_limit_does_not_reprepare();
+    failures += test_table_select_synchronizes_catalog_once();
 
     return failures == 0 ? 0 : 1;
+}
+
+static int test_table_select_synchronizes_catalog_once(void) {
+    char path[test_path_capacity];
+    struct catalog_sync_trace trace = {0};
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    sqlite3 *sqlite = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "single_catalog_sync") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open catalog sync file");
+    failures += seed_schema(database, "app");
+    failures += execute_ok(database, "USE app", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += execute_ok(database, "CREATE TABLE items (id INT)", &result);
+    mylite_result_free(result);
+    result = NULL;
+
+    sqlite = mylite_connection_sqlite_for_test(database);
+    failures += expect_int(
+        sqlite3_trace_v2(sqlite, SQLITE_TRACE_STMT, count_catalog_sync_statement, &trace),
+        SQLITE_OK,
+        "install catalog sync trace"
+    );
+    failures += execute_ok(database, "SELECT id FROM items", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_size(trace.data_version_count, 1U, "table SELECT catalog sync count");
+
+    trace.data_version_count = 0U;
+    failures += execute_ok(database, "SELECT 1", &result);
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_size(trace.data_version_count, 1U, "tableless SELECT catalog sync count");
+    failures += expect_int(
+        sqlite3_trace_v2(sqlite, 0U, NULL, NULL),
+        SQLITE_OK,
+        "remove catalog sync trace"
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int count_catalog_sync_statement(
+    unsigned int trace_type,
+    void *context,
+    void *statement_pointer,
+    void *expanded_sql
+) {
+    struct catalog_sync_trace *trace = (struct catalog_sync_trace *)context;
+    sqlite3_stmt *statement = (sqlite3_stmt *)statement_pointer;
+    const char *sql = statement == NULL ? NULL : sqlite3_sql(statement);
+
+    (void)expanded_sql;
+    if (trace_type == SQLITE_TRACE_STMT && trace != NULL && sql != NULL &&
+        strcmp(sql, "PRAGMA main.data_version") == 0) {
+        ++trace->data_version_count;
+    }
+    return 0;
 }
 
 static int test_cached_literal_limit_does_not_reprepare(void) {

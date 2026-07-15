@@ -42,6 +42,7 @@ enum {
     nanoseconds_per_second = 1000000000ULL,
     milliseconds_per_second = 1000,
     microseconds_per_second = 1000000,
+    nanoseconds_per_microsecond = nanoseconds_per_second / microseconds_per_second,
     parse_status_bucket_count = MYLITE_SQL_PARSE_STACK_OVERFLOW + 1,
     percentile_median = 50,
     percentile_p95 = 95,
@@ -2585,8 +2586,8 @@ static void print_runtime_latency_summary(
         return;
     }
     for (size_t index = 0U; index < measurement->request_latency_count; ++index) {
-        sorted_values[index] = (double)measurement->request_latency_ns[index] /
-                               (double)(nanoseconds_per_second / microseconds_per_second);
+        sorted_values[index] =
+            (double)measurement->request_latency_ns[index] / nanoseconds_per_microsecond;
     }
     qsort(
         sorted_values,

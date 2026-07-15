@@ -24,6 +24,7 @@
 
 enum {
     stress_path_capacity = 1024,
+    stress_safe_name_capacity = 128,
     generated_sql_base_capacity = 128,
     generated_sql_item_capacity = 32,
     nanoseconds_per_second = 1000000000ULL,
@@ -57,7 +58,7 @@ struct runtime_stress_worker {
 
 static int run_cold_open_scenario(
     const struct runtime_stress_scenario *scenario,
-    size_t iterations,
+    size_t iterations, // NOLINT(bugprone-easily-swappable-parameters): measured then warmup counts.
     size_t warmup_iterations,
     struct mylite_benchmark_runtime_stress_measurement *out_measurement
 );
@@ -75,7 +76,7 @@ static int run_wide_projection_scenario(
 );
 static int run_cache_saturation_scenario(
     const struct runtime_stress_scenario *scenario,
-    size_t iterations,
+    size_t iterations, // NOLINT(bugprone-easily-swappable-parameters): measured then warmup counts.
     size_t warmup_iterations,
     struct mylite_benchmark_runtime_stress_measurement *out_measurement
 );
@@ -193,7 +194,7 @@ int mylite_benchmark_run_runtime_stress_scenario(
 
 static int run_cold_open_scenario(
     const struct runtime_stress_scenario *scenario,
-    size_t iterations,
+    size_t iterations, // NOLINT(bugprone-easily-swappable-parameters): measured then warmup counts.
     size_t warmup_iterations,
     struct mylite_benchmark_runtime_stress_measurement *out_measurement
 ) {
@@ -315,7 +316,7 @@ cleanup:
 
 static int run_cache_saturation_scenario(
     const struct runtime_stress_scenario *scenario,
-    size_t iterations,
+    size_t iterations, // NOLINT(bugprone-easily-swappable-parameters): measured then warmup counts.
     size_t warmup_iterations,
     struct mylite_benchmark_runtime_stress_measurement *out_measurement
 ) {
@@ -349,7 +350,7 @@ static int run_cache_saturation_scenario(
         }
     }
     for (size_t index = 0U; index < warmup_iterations; ++index) {
-        size_t table_index = cache_warm_table_count + index % 2U;
+        size_t table_index = cache_warm_table_count + (index % 2U);
         int length = snprintf(sql, sizeof(sql), "SELECT id FROM cache_table_%zu", table_index);
 
         if (length < 0 || (size_t)length >= sizeof(sql) ||
@@ -360,7 +361,7 @@ static int run_cache_saturation_scenario(
 
     started = monotonic_now_ns();
     for (size_t index = 0U; index < iterations; ++index) {
-        size_t table_index = cache_warm_table_count + index % 2U;
+        size_t table_index = cache_warm_table_count + (index % 2U);
         int length = snprintf(sql, sizeof(sql), "SELECT id FROM cache_table_%zu", table_index);
 
         if (length < 0 || (size_t)length >= sizeof(sql) ||
@@ -383,7 +384,7 @@ cleanup:
 
 static int run_concurrent_read_write_scenario(
     const struct runtime_stress_scenario *scenario,
-    size_t iterations,
+    size_t iterations, // NOLINT(bugprone-easily-swappable-parameters): measured then warmup counts.
     size_t warmup_iterations,
     struct mylite_benchmark_runtime_stress_measurement *out_measurement
 ) {
@@ -405,7 +406,6 @@ static int run_concurrent_read_write_scenario(
     pthread_t reader_thread;
     pthread_t writer_thread;
     bool reader_started = false;
-    bool writer_started = false;
 #endif
 
     if (make_stress_path(path, sizeof(path), scenario->name) != 0) {
@@ -469,7 +469,6 @@ static int run_concurrent_read_write_scenario(
         atomic_store_explicit(&start, true, memory_order_release);
         goto cleanup;
     }
-    writer_started = true;
 #endif
     started = monotonic_now_ns();
     atomic_store_explicit(&start, true, memory_order_release);
@@ -484,7 +483,6 @@ static int run_concurrent_read_write_scenario(
     (void)pthread_join(reader_thread, NULL);
     reader_started = false;
     (void)pthread_join(writer_thread, NULL);
-    writer_started = false;
 #endif
     out_measurement->elapsed_ns = monotonic_now_ns() - started;
     out_measurement->ok_count = reader_worker.ok_count + writer_worker.ok_count;
@@ -530,9 +528,6 @@ cleanup:
 #else
     if (reader_started) {
         (void)pthread_join(reader_thread, NULL);
-    }
-    if (writer_started) {
-        (void)pthread_join(writer_thread, NULL);
     }
 #endif
     mylite_close(writer);
@@ -582,7 +577,7 @@ static int execute_stress_sql(mylite_db *database, const char *sql, size_t sql_l
 static int execute_stress_iterations(
     mylite_db *database,
     const char *sql,
-    size_t sql_length,
+    size_t sql_length, // NOLINT(bugprone-easily-swappable-parameters): SQL span then repeat count.
     size_t iterations,
     struct mylite_benchmark_runtime_stress_measurement *measurement
 ) {
@@ -711,7 +706,7 @@ static bool append_generated_indexed_sql(
 }
 
 static int make_stress_path(char *path, size_t path_size, const char *name) {
-    char safe_name[128];
+    char safe_name[stress_safe_name_capacity];
     size_t name_length = strlen(name);
     int written = 0;
 
@@ -721,7 +716,10 @@ static int make_stress_path(char *path, size_t path_size, const char *name) {
     for (size_t index = 0U; index <= name_length; ++index) {
         char byte = name[index];
 
-        safe_name[index] = byte == '.' ? '_' : byte;
+        if (byte == '.') {
+            byte = '_';
+        }
+        safe_name[index] = byte;
     }
     written =
         snprintf(path, path_size, "mylite_benchmark_%d_%s.mylite", current_process_id(), safe_name);

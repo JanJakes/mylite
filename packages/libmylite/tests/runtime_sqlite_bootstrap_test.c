@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <string.h>
 
+enum { sqlite_busy_timeout_ms = 5000 };
+
 static int test_bootstrap_policy_on_independent_handles(void);
 static int test_callback_owner_lookup_from_scalar_function(void);
 static int test_function_registration_surface(void);
@@ -165,8 +167,9 @@ static int test_bootstrap_policy_on_independent_handles(void) {
     failures += expect_int(second_foreign_keys, 0, "second SQLite foreign-key setting");
     failures += query_single_int(first_sqlite, "PRAGMA busy_timeout", &first_busy_timeout);
     failures += query_single_int(second_sqlite, "PRAGMA busy_timeout", &second_busy_timeout);
-    failures += expect_int(first_busy_timeout, 5000, "first SQLite busy timeout");
-    failures += expect_int(second_busy_timeout, 5000, "second SQLite busy timeout");
+    failures += expect_int(first_busy_timeout, sqlite_busy_timeout_ms, "first SQLite busy timeout");
+    failures +=
+        expect_int(second_busy_timeout, sqlite_busy_timeout_ms, "second SQLite busy timeout");
 
     mylite_close(second);
     mylite_close(first);

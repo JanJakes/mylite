@@ -27,6 +27,7 @@ enum {
     mysql_error_transaction_characteristics_changed = 1568,
     mysql_error_read_only_transaction = 1792,
     mysql_warning_consistent_snapshot_ignored = 138,
+    writer_release_delay_ns = 100000000,
     transaction_variable_default_scalar_column_count = 10,
     transaction_variable_changed_scalar_column_count = 5,
 };
@@ -1680,7 +1681,7 @@ static int test_writer_waits_for_active_read_cursor(void) {
     mylite_stmt *cursor = NULL;
     pthread_t writer_thread;
     struct concurrent_write_context write = {0};
-    struct timespec release_delay = {.tv_sec = 0, .tv_nsec = 100000000L};
+    struct timespec release_delay = {.tv_sec = 0, .tv_nsec = writer_release_delay_ns};
     int thread_was_created = 0;
     int failures = 0;
 

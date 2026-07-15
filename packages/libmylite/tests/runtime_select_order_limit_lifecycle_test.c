@@ -55,7 +55,7 @@ static int test_cached_literal_limit_does_not_reprepare(void);
 static int test_table_select_synchronizes_catalog_once(void);
 static int count_catalog_sync_statement(
     unsigned int trace_type,
-    void *context,
+    void *context, // NOLINT(bugprone-easily-swappable-parameters): SQLite trace callback ABI.
     void *statement_pointer,
     void *expanded_sql
 );
@@ -190,7 +190,7 @@ static int test_table_select_synchronizes_catalog_once(void) {
 
 static int count_catalog_sync_statement(
     unsigned int trace_type,
-    void *context,
+    void *context, // NOLINT(bugprone-easily-swappable-parameters): SQLite trace callback ABI.
     void *statement_pointer,
     void *expanded_sql
 ) {

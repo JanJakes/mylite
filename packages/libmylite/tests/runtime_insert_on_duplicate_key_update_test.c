@@ -1704,7 +1704,7 @@ static int test_duplicate_update_success_warnings_and_persistence(void) {
 
 static int count_duplicate_current_row_select(
     unsigned trace_kind,
-    void *user_data,
+    void *user_data, // NOLINT(bugprone-easily-swappable-parameters): SQLite trace ABI.
     void *statement_handle,
     void *unused_sql
 ) {

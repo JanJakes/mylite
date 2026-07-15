@@ -1040,6 +1040,13 @@ static int test_drop_schema_physical_failure_preserves_catalog(void) {
 }
 
 static int test_same_file_schema_handles(void) {
+    enum {
+        committed_updated_time = 42,
+        transaction_updated_time = 84,
+        savepoint_updated_time = 126,
+        external_updated_time = 43,
+    };
+
     char path[test_path_capacity];
     mylite_db *first = NULL;
     mylite_db *second = NULL;
@@ -1108,7 +1115,11 @@ static int test_same_file_schema_handles(void) {
     second_column_cache_count = second->table_columns_cache_count;
     second_key_cache_count = second->table_key_metadata_cache_count;
     failures += expect_int(
-        mylite_catalog_update_table_updated_time(second, second_table.table_id, 42),
+        mylite_catalog_update_table_updated_time(
+            second,
+            second_table.table_id,
+            committed_updated_time
+        ),
         MYLITE_OK,
         "update second shared table status"
     );
@@ -1129,14 +1140,18 @@ static int test_same_file_schema_handles(void) {
     );
     failures += expect_int64(
         updated_second_table.updated_time_utc_epoch,
-        42,
+        committed_updated_time,
         "table status update evicts affected descriptor"
     );
     failures += execute_ok(second, "START TRANSACTION", &result);
     mylite_result_free(result);
     result = NULL;
     failures += expect_int(
-        mylite_catalog_update_table_updated_time(second, second_table.table_id, 84),
+        mylite_catalog_update_table_updated_time(
+            second,
+            second_table.table_id,
+            transaction_updated_time
+        ),
         MYLITE_OK,
         "update table status in transaction"
     );
@@ -1147,7 +1162,7 @@ static int test_same_file_schema_handles(void) {
     );
     failures += expect_int64(
         updated_second_table.updated_time_utc_epoch,
-        84,
+        transaction_updated_time,
         "read uncommitted table status"
     );
     failures += execute_ok(second, "ROLLBACK", &result);
@@ -1160,7 +1175,7 @@ static int test_same_file_schema_handles(void) {
     );
     failures += expect_int64(
         updated_second_table.updated_time_utc_epoch,
-        42,
+        committed_updated_time,
         "transaction rollback evicts uncommitted table status"
     );
     failures += execute_ok(second, "START TRANSACTION", &result);
@@ -1170,7 +1185,11 @@ static int test_same_file_schema_handles(void) {
     mylite_result_free(result);
     result = NULL;
     failures += expect_int(
-        mylite_catalog_update_table_updated_time(second, second_table.table_id, 126),
+        mylite_catalog_update_table_updated_time(
+            second,
+            second_table.table_id,
+            savepoint_updated_time
+        ),
         MYLITE_OK,
         "update table status after savepoint"
     );
@@ -1189,7 +1208,7 @@ static int test_same_file_schema_handles(void) {
     );
     failures += expect_int64(
         updated_second_table.updated_time_utc_epoch,
-        42,
+        committed_updated_time,
         "savepoint rollback evicts uncommitted table status"
     );
     failures += execute_ok(second, "ROLLBACK", &result);
@@ -1213,11 +1232,15 @@ static int test_same_file_schema_handles(void) {
     );
     failures += expect_int64(
         second_table.updated_time_utc_epoch,
-        42,
+        committed_updated_time,
         "first handle caches shared table status"
     );
     failures += expect_int(
-        mylite_catalog_update_table_updated_time(second, second_table.table_id, 43),
+        mylite_catalog_update_table_updated_time(
+            second,
+            second_table.table_id,
+            external_updated_time
+        ),
         MYLITE_OK,
         "update shared table status from second handle"
     );
@@ -1231,7 +1254,7 @@ static int test_same_file_schema_handles(void) {
     );
     failures += expect_int64(
         updated_second_table.updated_time_utc_epoch,
-        43,
+        external_updated_time,
         "data version invalidates routine table status"
     );
     memcpy(first_physical, first_table.physical_name, sizeof(first_physical));

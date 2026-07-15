@@ -283,7 +283,7 @@ static int test_no_foreign_key_role_cache(void) {
 
 static int count_foreign_key_role_probe(
     unsigned trace_kind,
-    void *user_data,
+    void *user_data, // NOLINT(bugprone-easily-swappable-parameters): SQLite trace ABI.
     void *statement_handle,
     void *unused_sql
 ) {

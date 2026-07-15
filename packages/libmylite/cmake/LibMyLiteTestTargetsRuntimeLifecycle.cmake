@@ -1464,6 +1464,7 @@
   )
   target_link_libraries(mylite_runtime_foreign_key_constraints_test PRIVATE
     MyLite::mylite
+    MyLite::sqlite
   )
   target_include_directories(mylite_runtime_foreign_key_constraints_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"

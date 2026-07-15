@@ -1697,7 +1697,6 @@ static bool row_scalar_expression_contains_explicit_binary_conversion(
     }
     while (stack.count != 0U && !found) {
         const struct mylite_sql_ast_node *current = stack.items[--stack.count];
-        size_t child_count = 0U;
 
         current = unwrap_parenthesized_expression(current);
         if (current == NULL) {
@@ -1710,12 +1709,9 @@ static bool row_scalar_expression_contains_explicit_binary_conversion(
         if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
             continue;
         }
-        child_count = mylite_sql_ast_node_child_count(current);
-        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
-            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
-                scalar_arithmetic_node_stack_deinit(&stack);
-                return false;
-            }
+        if (!scalar_arithmetic_node_stack_push_children(&stack, current)) {
+            scalar_arithmetic_node_stack_deinit(&stack);
+            return false;
         }
     }
     scalar_arithmetic_node_stack_deinit(&stack);

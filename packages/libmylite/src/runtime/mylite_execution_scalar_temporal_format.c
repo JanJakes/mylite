@@ -59,6 +59,10 @@ static int str_to_date_set_unknown_identifier_reference(
     struct mylite_db *database,
     const struct mylite_sql_ast_node *expression
 );
+static bool scalar_temporal_node_stack_push_children_reverse(
+    struct scalar_temporal_node_stack *stack,
+    const struct mylite_sql_ast_node *expression
+);
 static bool scalar_temporal_node_stack_push(
     struct scalar_temporal_node_stack *stack,
     const struct mylite_sql_ast_node *expression
@@ -563,7 +567,6 @@ static int str_to_date_set_unknown_identifier_reference(
     while (stack.count != 0U) {
         const struct mylite_sql_ast_node *current =
             mylite_execution_unwrap_parenthesized_expression(stack.items[--stack.count]);
-        size_t child_count = 0U;
 
         if (current == NULL) {
             continue;
@@ -573,16 +576,10 @@ static int str_to_date_set_unknown_identifier_reference(
             return mylite_execution_date_add_set_unknown_identifier_error(database, current);
         }
 
-        child_count = mylite_sql_ast_node_child_count(current);
-        for (size_t index = child_count; index > 0U; --index) {
-            if (!scalar_temporal_node_stack_push(
-                    &stack,
-                    mylite_execution_child_at(current, index - 1U)
-                )) {
-                scalar_temporal_node_stack_deinit(&stack);
-                mylite_execution_set_nomem_error(database);
-                return MYLITE_NOMEM;
-            }
+        if (!scalar_temporal_node_stack_push_children_reverse(&stack, current)) {
+            scalar_temporal_node_stack_deinit(&stack);
+            mylite_execution_set_nomem_error(database);
+            return MYLITE_NOMEM;
         }
     }
     scalar_temporal_node_stack_deinit(&stack);
@@ -1405,6 +1402,41 @@ bool mylite_execution_date_format_numeric_comparison_format_is_supported(
         }
     }
     return false;
+}
+
+static bool scalar_temporal_node_stack_push_children_reverse(
+    struct scalar_temporal_node_stack *stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_ast_node *child = expression == NULL ? NULL : expression->first_child;
+    size_t first_child_index = 0U;
+    size_t left = 0U;
+    size_t right = 0U;
+
+    if (stack == NULL) {
+        return false;
+    }
+    first_child_index = stack->count;
+    while (child != NULL) {
+        if (!scalar_temporal_node_stack_push(stack, child)) {
+            return false;
+        }
+        child = child->next_sibling;
+    }
+    left = first_child_index;
+    right = stack->count;
+    while (left < right) {
+        const struct mylite_sql_ast_node *item = stack->items[left];
+
+        --right;
+        if (left >= right) {
+            break;
+        }
+        stack->items[left] = stack->items[right];
+        stack->items[right] = item;
+        ++left;
+    }
+    return true;
 }
 
 static bool scalar_temporal_node_stack_push(

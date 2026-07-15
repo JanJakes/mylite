@@ -707,7 +707,6 @@ static int plan_row_scalar_str_to_date_resolve_short_circuit_references(
     while (rc == MYLITE_OK && stack.count != 0U) {
         const struct mylite_sql_ast_node *current =
             unwrap_parenthesized_expression(stack.items[--stack.count]);
-        size_t child_count = 0U;
 
         if (current == NULL) {
             continue;
@@ -724,12 +723,9 @@ static int plan_row_scalar_str_to_date_resolve_short_circuit_references(
             continue;
         }
 
-        child_count = mylite_sql_ast_node_child_count(current);
-        for (size_t index = child_count; rc == MYLITE_OK && index > 0U; --index) {
-            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, index - 1U))) {
-                set_nomem_error(database);
-                rc = MYLITE_NOMEM;
-            }
+        if (!scalar_arithmetic_node_stack_push_children_reverse(&stack, current)) {
+            set_nomem_error(database);
+            rc = MYLITE_NOMEM;
         }
     }
     scalar_arithmetic_node_stack_deinit(&stack);

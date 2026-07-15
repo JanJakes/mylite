@@ -210,7 +210,6 @@ static bool expression_contains_supported_row_scalar_system_function(
         const struct mylite_sql_ast_node *current =
             unwrap_parenthesized_expression(stack.items[--stack.count]);
         enum mylite_sys_function_kind sys_function_kind = MYLITE_SYS_FUNCTION_NONE;
-        size_t child_count = 0U;
 
         if (current == NULL) {
             continue;
@@ -231,12 +230,9 @@ static bool expression_contains_supported_row_scalar_system_function(
             found = true;
             break;
         }
-        child_count = mylite_sql_ast_node_child_count(current);
-        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
-            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
-                scalar_arithmetic_node_stack_deinit(&stack);
-                return false;
-            }
+        if (!scalar_arithmetic_node_stack_push_children(&stack, current)) {
+            scalar_arithmetic_node_stack_deinit(&stack);
+            return false;
         }
     }
     scalar_arithmetic_node_stack_deinit(&stack);

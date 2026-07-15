@@ -337,28 +337,36 @@ static bool select_statement_has_unsupported_aggregate_window_expression(
 static bool ast_node_has_unsupported_aggregate_window_expression(
     const struct mylite_sql_ast_node *node
 ) {
-    const struct mylite_sql_ast_node *child = NULL;
+    struct scalar_arithmetic_node_stack stack = {0};
+    bool found = false;
 
     if (node == NULL) {
         return false;
     }
-    if (ast_node_is_aggregate_function(node)) {
-        child = child_at(node, 0U);
-        while (child != NULL) {
-            if (ast_node_is_window_clause_marker(child)) {
-                return !row_scalar_expression_is_window_function(node);
+    if (!scalar_arithmetic_node_stack_push(&stack, node)) {
+        return false;
+    }
+    while (stack.count != 0U && !found) {
+        const struct mylite_sql_ast_node *current = stack.items[--stack.count];
+
+        if (ast_node_is_aggregate_function(current)) {
+            const struct mylite_sql_ast_node *child = current->first_child;
+
+            while (child != NULL) {
+                if (ast_node_is_window_clause_marker(child)) {
+                    found = !row_scalar_expression_is_window_function(current);
+                    break;
+                }
+                child = child->next_sibling;
             }
-            child = child->next_sibling;
+        }
+        if (!found && !scalar_arithmetic_node_stack_push_children(&stack, current)) {
+            scalar_arithmetic_node_stack_deinit(&stack);
+            return false;
         }
     }
-    child = child_at(node, 0U);
-    while (child != NULL) {
-        if (ast_node_has_unsupported_aggregate_window_expression(child)) {
-            return true;
-        }
-        child = child->next_sibling;
-    }
-    return false;
+    scalar_arithmetic_node_stack_deinit(&stack);
+    return found;
 }
 
 static bool ast_node_is_generic_aggregate_window_function(const struct mylite_sql_ast_node *node) {

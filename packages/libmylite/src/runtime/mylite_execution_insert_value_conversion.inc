@@ -276,7 +276,8 @@ static bool dml_scalar_expression_is_constant_arithmetic(
 static bool dml_scalar_expression_contains_unsupported_source(
     const struct mylite_sql_ast_node *value_node
 ) {
-    size_t child_count = 0U;
+    const struct mylite_sql_ast_node *child = NULL;
+    size_t child_index = 0U;
 
     value_node = unwrap_parenthesized_expression(value_node);
     if (value_node == NULL) {
@@ -289,16 +290,18 @@ static bool dml_scalar_expression_contains_unsupported_source(
         return true;
     }
 
-    child_count = mylite_sql_ast_node_child_count(value_node);
-    for (size_t child_index = 0U; child_index < child_count; ++child_index) {
-        const struct mylite_sql_ast_node *child = child_at(value_node, child_index);
-
+    child = value_node->first_child;
+    while (child != NULL) {
         if (dml_scalar_expression_child_is_syntax_metadata(value_node, child_index, child)) {
+            child = child->next_sibling;
+            ++child_index;
             continue;
         }
         if (dml_scalar_expression_contains_unsupported_source(child)) {
             return true;
         }
+        child = child->next_sibling;
+        ++child_index;
     }
     return false;
 }

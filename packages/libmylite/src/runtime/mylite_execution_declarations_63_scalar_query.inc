@@ -1544,6 +1544,14 @@ static bool scalar_arithmetic_value_stack_pop(
     struct scalar_arithmetic_value *out_value
 );
 static void scalar_arithmetic_value_stack_deinit(struct scalar_arithmetic_value_stack *stack);
+static bool scalar_arithmetic_node_stack_push_children(
+    struct scalar_arithmetic_node_stack *stack,
+    const struct mylite_sql_ast_node *expression
+);
+static bool scalar_arithmetic_node_stack_push_children_reverse(
+    struct scalar_arithmetic_node_stack *stack,
+    const struct mylite_sql_ast_node *expression
+);
 static bool scalar_arithmetic_node_stack_push(
     struct scalar_arithmetic_node_stack *stack,
     const struct mylite_sql_ast_node *expression

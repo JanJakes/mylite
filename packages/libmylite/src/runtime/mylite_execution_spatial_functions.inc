@@ -40,7 +40,6 @@ static bool expression_contains_spatial_function(const struct mylite_sql_ast_nod
     while (stack.count != 0U && !found) {
         const struct mylite_sql_ast_node *current =
             unwrap_parenthesized_expression(stack.items[--stack.count]);
-        size_t child_count = 0U;
 
         if (current == NULL) {
             continue;
@@ -52,12 +51,9 @@ static bool expression_contains_spatial_function(const struct mylite_sql_ast_nod
         if (current->kind == MYLITE_SQL_AST_SCALAR_SUBQUERY) {
             continue;
         }
-        child_count = mylite_sql_ast_node_child_count(current);
-        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
-            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
-                scalar_arithmetic_node_stack_deinit(&stack);
-                return false;
-            }
+        if (!scalar_arithmetic_node_stack_push_children(&stack, current)) {
+            scalar_arithmetic_node_stack_deinit(&stack);
+            return false;
         }
     }
     scalar_arithmetic_node_stack_deinit(&stack);

@@ -821,7 +821,7 @@ static bool is_compression_random_projection_expression(const struct mylite_sql_
 static bool scalar_projection_expression_contains_compression_random_function(
     const struct mylite_sql_ast_node *expression
 ) {
-    size_t child_count = 0U;
+    const struct mylite_sql_ast_node *child = NULL;
 
     expression = unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
@@ -839,13 +839,12 @@ static bool scalar_projection_expression_contains_compression_random_function(
         break;
     }
 
-    child_count = mylite_sql_ast_node_child_count(expression);
-    for (size_t child_index = 0U; child_index < child_count; ++child_index) {
-        if (scalar_projection_expression_contains_compression_random_function(
-                child_at(expression, child_index)
-            )) {
+    child = expression->first_child;
+    while (child != NULL) {
+        if (scalar_projection_expression_contains_compression_random_function(child)) {
             return true;
         }
+        child = child->next_sibling;
     }
     return false;
 }

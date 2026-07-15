@@ -94,7 +94,6 @@ static int append_session_scalar_expression_warnings(
     while (rc == MYLITE_OK && stack.count != 0U) {
         const struct mylite_sql_ast_node *current =
             unwrap_parenthesized_expression(stack.items[--stack.count]);
-        size_t child_count = 0U;
 
         if (current == NULL) {
             continue;
@@ -118,12 +117,9 @@ static int append_session_scalar_expression_warnings(
             }
         }
 
-        child_count = mylite_sql_ast_node_child_count(current);
-        for (size_t child_index = 0U; rc == MYLITE_OK && child_index < child_count; ++child_index) {
-            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
-                set_nomem_error(database);
-                rc = MYLITE_NOMEM;
-            }
+        if (rc == MYLITE_OK && !scalar_arithmetic_node_stack_push_children(&stack, current)) {
+            set_nomem_error(database);
+            rc = MYLITE_NOMEM;
         }
     }
 

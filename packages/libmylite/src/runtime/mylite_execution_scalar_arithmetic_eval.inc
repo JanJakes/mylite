@@ -452,22 +452,24 @@ static int scalar_arithmetic_div_short_circuit_push_function_arguments(
     const struct mylite_sql_ast_node *arguments,
     bool *out_short_circuits
 ) {
-    size_t child_count = mylite_sql_ast_node_child_count(arguments);
+    const struct mylite_sql_ast_node *child =
+        arguments == NULL ? NULL : arguments->first_child;
 
-    if (child_count == 0U) {
+    if (child == NULL) {
         *out_short_circuits = false;
         return MYLITE_OK;
     }
-    for (size_t child_index = 0U; child_index < child_count; ++child_index) {
+    while (child != NULL) {
         int rc = scalar_arithmetic_div_short_circuit_push_child(
             database,
             stack,
-            child_at(arguments, child_index)
+            child
         );
 
         if (rc != MYLITE_OK) {
             return rc;
         }
+        child = child->next_sibling;
     }
     return MYLITE_OK;
 }
@@ -763,6 +765,53 @@ static void scalar_arithmetic_value_stack_deinit(struct scalar_arithmetic_value_
 
     free((void *)stack->items);
     *stack = (struct scalar_arithmetic_value_stack){0};
+}
+
+static bool scalar_arithmetic_node_stack_push_children(
+    struct scalar_arithmetic_node_stack *stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    const struct mylite_sql_ast_node *child =
+        expression == NULL ? NULL : expression->first_child;
+
+    while (child != NULL) {
+        if (!scalar_arithmetic_node_stack_push(stack, child)) {
+            return false;
+        }
+        child = child->next_sibling;
+    }
+    return true;
+}
+
+static bool scalar_arithmetic_node_stack_push_children_reverse(
+    struct scalar_arithmetic_node_stack *stack,
+    const struct mylite_sql_ast_node *expression
+) {
+    size_t first_child_index = 0U;
+    size_t left = 0U;
+    size_t right = 0U;
+
+    if (stack == NULL) {
+        return false;
+    }
+    first_child_index = stack->count;
+    if (!scalar_arithmetic_node_stack_push_children(stack, expression)) {
+        return false;
+    }
+    left = first_child_index;
+    right = stack->count;
+    while (left < right) {
+        const struct mylite_sql_ast_node *child = stack->items[left];
+
+        --right;
+        if (left >= right) {
+            break;
+        }
+        stack->items[left] = stack->items[right];
+        stack->items[right] = child;
+        ++left;
+    }
+    return true;
 }
 
 static bool scalar_arithmetic_node_stack_push(

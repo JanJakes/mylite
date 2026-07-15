@@ -1133,7 +1133,7 @@ static bool string_case_scalar_argument_is_admitted(const struct mylite_sql_ast_
 
 static bool string_case_argument_contains_binary_value(const struct mylite_sql_ast_node *expression
 ) {
-    size_t child_count = 0U;
+    const struct mylite_sql_ast_node *child = NULL;
 
     expression = mylite_execution_unwrap_parenthesized_expression(expression);
     if (expression == NULL) {
@@ -1142,13 +1142,12 @@ static bool string_case_argument_contains_binary_value(const struct mylite_sql_a
     if (string_scalar_argument_is_binary_conversion(expression)) {
         return true;
     }
-    child_count = mylite_sql_ast_node_child_count(expression);
-    for (size_t child_index = 0U; child_index < child_count; ++child_index) {
-        if (string_case_argument_contains_binary_value(
-                mylite_execution_child_at(expression, child_index)
-            )) {
+    child = expression->first_child;
+    while (child != NULL) {
+        if (string_case_argument_contains_binary_value(child)) {
             return true;
         }
+        child = child->next_sibling;
     }
     return false;
 }

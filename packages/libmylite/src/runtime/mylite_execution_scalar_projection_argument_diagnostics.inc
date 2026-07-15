@@ -57,7 +57,6 @@ static const char *argument_count_error_function_name(
     }
     while (stack.count != 0U && function_name == NULL) {
         const struct mylite_sql_ast_node *current = stack.items[--stack.count];
-        size_t child_count = 0U;
 
         if (current == NULL) {
             continue;
@@ -67,12 +66,9 @@ static const char *argument_count_error_function_name(
             break;
         }
 
-        child_count = mylite_sql_ast_node_child_count(current);
-        for (size_t child_index = 0U; child_index < child_count; ++child_index) {
-            if (!scalar_arithmetic_node_stack_push(&stack, child_at(current, child_index))) {
-                scalar_arithmetic_node_stack_deinit(&stack);
-                return NULL;
-            }
+        if (!scalar_arithmetic_node_stack_push_children(&stack, current)) {
+            scalar_arithmetic_node_stack_deinit(&stack);
+            return NULL;
         }
     }
     scalar_arithmetic_node_stack_deinit(&stack);

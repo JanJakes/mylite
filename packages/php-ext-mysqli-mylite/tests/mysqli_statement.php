@@ -36,6 +36,14 @@ expect_true(mysqli_stmt_fetch($select), 'fetch first');
 expect_same('1', $outId, 'first id');
 expect_same('100', $outValue, 'first value');
 
+$min = 2;
+expect_true(mysqli_stmt_execute($select), 'execute select again');
+expect_same(
+    ['id' => '2', 'value' => '200'],
+    mysqli_stmt_get_result($select)->fetch_assoc(),
+    'second execution result'
+);
+
 $result = $mysqli->execute_query('SELECT value FROM items WHERE id = ?', [2]);
 expect_same(['value' => '200'], $result->fetch_assoc(), 'execute_query result');
 

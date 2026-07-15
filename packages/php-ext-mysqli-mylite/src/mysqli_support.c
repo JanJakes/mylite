@@ -561,7 +561,25 @@ bool mylite_mysqli_stmt_execute_internal(mylite_mysqli_stmt *stmt, zval *params)
         return false;
     }
 
-    if (!mylite_mysqli_execute_sql(link, ZSTR_VAL(sql), ZSTR_LEN(sql), &result)) {
+    if (mylite_mysqli_sql_may_stream_select(ZSTR_VAL(sql), ZSTR_LEN(sql))) {
+        if (!mylite_mysqli_execute_buffered_cursor_sql(
+                link,
+                ZSTR_VAL(sql),
+                ZSTR_LEN(sql),
+                &result
+            ) &&
+            !mylite_mysqli_execute_sql(link, ZSTR_VAL(sql), ZSTR_LEN(sql), &result)) {
+            mylite_mysqli_set_stmt_error(
+                stmt,
+                link->error_code,
+                link->sqlstate,
+                ZSTR_VAL(link->error)
+            );
+            zend_string_release(sql);
+            mylite_mysqli_report_stmt_error(stmt);
+            return false;
+        }
+    } else if (!mylite_mysqli_execute_sql(link, ZSTR_VAL(sql), ZSTR_LEN(sql), &result)) {
         mylite_mysqli_set_stmt_error(stmt, link->error_code, link->sqlstate, ZSTR_VAL(link->error));
         zend_string_release(sql);
         mylite_mysqli_report_stmt_error(stmt);

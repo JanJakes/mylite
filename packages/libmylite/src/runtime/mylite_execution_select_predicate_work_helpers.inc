@@ -4,27 +4,62 @@ static int append_planned_select_predicate_node(
     const struct planned_select_predicate_node *node,
     size_t *out_node_index
 ) {
-    struct planned_select_predicate_node *nodes = NULL;
-    size_t required_count = predicate->node_count + 1U;
+    size_t required_count = 0U;
+    int rc = MYLITE_OK;
 
-    if (required_count > SIZE_MAX / sizeof(*nodes)) {
+    if (predicate->node_count == SIZE_MAX) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
-
-    nodes = realloc(predicate->nodes, required_count * sizeof(*nodes));
-    if (nodes == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
+    required_count = predicate->node_count + 1U;
+    rc = reserve_planned_select_predicate_nodes(database, predicate, required_count);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
-
-    predicate->nodes = nodes;
     predicate->nodes[predicate->node_count] = *node;
     if (out_node_index != NULL) {
         *out_node_index = predicate->node_count;
     }
     predicate->node_count = required_count;
 
+    return MYLITE_OK;
+}
+
+static int reserve_planned_select_predicate_nodes(
+    struct mylite_db *database,
+    struct planned_select_predicate *predicate,
+    size_t required_capacity
+) {
+    enum { initial_predicate_node_capacity = 4 };
+
+    struct planned_select_predicate_node *nodes = NULL;
+    size_t capacity = predicate->node_capacity;
+
+    if (required_capacity <= capacity) {
+        return MYLITE_OK;
+    }
+    if (capacity == 0U) {
+        capacity = initial_predicate_node_capacity;
+    }
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (capacity > SIZE_MAX / sizeof(*nodes)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    nodes = realloc(predicate->nodes, capacity * sizeof(*nodes));
+    if (nodes == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    predicate->nodes = nodes;
+    predicate->node_capacity = capacity;
     return MYLITE_OK;
 }
 

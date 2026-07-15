@@ -64,6 +64,11 @@ static int append_planned_row_scalar_select_item(
     struct planned_row_scalar_select *plan,
     struct planned_row_scalar_select_item *item
 );
+static int reserve_planned_row_scalar_select_items(
+    struct mylite_db *database,
+    struct planned_row_scalar_select *plan,
+    size_t required_capacity
+);
 static void planned_row_scalar_select_item_deinit(struct planned_row_scalar_select_item *item);
 static int plan_row_scalar_expression(
     struct mylite_db *database,

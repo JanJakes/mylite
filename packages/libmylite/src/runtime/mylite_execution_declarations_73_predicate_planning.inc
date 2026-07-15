@@ -1301,6 +1301,11 @@ static int append_planned_select_predicate_node(
     const struct planned_select_predicate_node *node,
     size_t *out_node_index
 );
+static int reserve_planned_select_predicate_nodes(
+    struct mylite_db *database,
+    struct planned_select_predicate *predicate,
+    size_t required_capacity
+);
 static int append_deprecated_logical_and_warning(struct mylite_db *database);
 static int append_deprecated_logical_or_warning(struct mylite_db *database);
 static bool planned_select_predicate_has_expression(const struct planned_select_predicate *predicate

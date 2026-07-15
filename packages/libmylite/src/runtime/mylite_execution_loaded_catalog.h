@@ -70,8 +70,10 @@ struct loaded_table_columns_cache_entry {
     int64_t table_id;
     uint64_t catalog_generation;
     uint64_t sqlite_schema_generation;
+    uint64_t last_use;
     struct mylite_catalog_column_descriptor *columns;
     size_t column_count;
+    size_t reference_count;
 };
 
 struct loaded_table_key_metadata_cache_entry {
@@ -87,6 +89,17 @@ int mylite_execution_load_table_columns(
     int64_t table_id,
     struct mylite_catalog_column_descriptor **out_columns,
     size_t *out_column_count
+);
+int mylite_execution_acquire_table_columns(
+    struct mylite_db *database,
+    int64_t table_id,
+    struct mylite_catalog_column_descriptor **out_columns,
+    size_t *out_column_count,
+    struct loaded_table_columns_cache_entry **out_cache_entry
+);
+void mylite_execution_release_table_columns(
+    struct loaded_table_columns_cache_entry *cache_entry,
+    struct mylite_catalog_column_descriptor *columns
 );
 void mylite_execution_table_columns_cache_invalidate(struct mylite_db *database);
 void mylite_execution_table_columns_cache_deinit(struct mylite_db *database);

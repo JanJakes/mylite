@@ -325,6 +325,11 @@ static int append_select_column_from_source(
     size_t source_index,
     const struct mylite_sql_ast_node *alias
 );
+static int reserve_select_columns(
+    struct mylite_db *database,
+    struct planned_select *plan,
+    size_t required_capacity
+);
 static void planned_select_order_deinit(struct planned_select_order *order);
 static void planned_compound_select_deinit(struct planned_compound_select *plan);
 static void planned_select_source_deinit(struct planned_select_source *source);
@@ -462,7 +467,8 @@ static int plan_row_scalar_select_source(
     struct planned_row_scalar_select *out_plan,
     struct select_source_context *out_source_context,
     struct mylite_catalog_column_descriptor **out_table_columns,
-    size_t *out_table_column_count
+    size_t *out_table_column_count,
+    struct loaded_table_columns_cache_entry **out_table_columns_cache_entry
 );
 static int plan_row_scalar_select_join_source(
     struct mylite_db *database,

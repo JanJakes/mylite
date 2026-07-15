@@ -35,6 +35,7 @@ static int plan_select(
     const struct mylite_sql_ast_node *from_clause = select_statement_source_clause(statement);
     struct select_optional_clauses clauses = {0};
     struct mylite_catalog_column_descriptor *table_columns = NULL;
+    struct loaded_table_columns_cache_entry *table_columns_cache_entry = NULL;
     struct select_source_context source_context = {0};
     struct planned_select_predicate having_predicate = {0};
     struct select_predicate_plan_options predicate_options = {
@@ -180,18 +181,21 @@ static int plan_select(
     }
     copy_plan_source_alias_if_present(out_plan, &source_context);
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(
+        rc = mylite_execution_acquire_table_columns(
             database,
             out_plan->table.table_id,
             &table_columns,
-            &table_column_count
+            &table_column_count,
+            &table_columns_cache_entry
         );
     }
     if (rc == MYLITE_OK) {
         out_plan->source_columns = table_columns;
         out_plan->source_column_count = table_column_count;
+        out_plan->source_columns_cache_entry = table_columns_cache_entry;
         table_columns = NULL;
         table_column_count = 0U;
+        table_columns_cache_entry = NULL;
     }
     if (rc == MYLITE_OK) {
         rc = plan_select_projection(
@@ -255,7 +259,7 @@ static int plan_select(
         rc = plan_select_limit(database, clauses.limit_clause, &out_plan->limit);
     }
 
-    free(table_columns);
+    mylite_execution_release_table_columns(table_columns_cache_entry, table_columns);
     if (rc != MYLITE_OK) {
         planned_select_deinit(out_plan);
     }
@@ -1274,11 +1278,12 @@ static int plan_joined_select_table_source(
         out_source->has_alias = true;
     }
 
-    return mylite_execution_load_table_columns(
+    return mylite_execution_acquire_table_columns(
         database,
         out_source->table.table_id,
         &out_source->columns,
-        &out_source->column_count
+        &out_source->column_count,
+        &out_source->columns_cache_entry
     );
 }
 
@@ -2547,7 +2552,10 @@ static void planned_select_deinit_shallow(struct planned_select *plan) {
         planned_select_source_deinit_shallow(&plan->sources[source_index]);
     }
     free(plan->sources);
-    free(plan->source_columns);
+    mylite_execution_release_table_columns(
+        plan->source_columns_cache_entry,
+        plan->source_columns
+    );
     free(plan->columns);
     free((void *)plan->column_aliases);
     free(plan->column_source_indexes);
@@ -2656,7 +2664,7 @@ static void planned_select_source_deinit_shallow(struct planned_select_source *s
         source->is_json_table = false;
     }
     assert(source->json_table.values == NULL);
-    free(source->columns);
+    mylite_execution_release_table_columns(source->columns_cache_entry, source->columns);
     *source = (struct planned_select_source){0};
 }
 
@@ -2683,6 +2691,7 @@ static int plan_row_scalar_select(
     const struct select_source_context *item_source_context = NULL;
     struct row_scalar_select_clauses clauses = {0};
     struct mylite_catalog_column_descriptor *table_columns = NULL;
+    struct loaded_table_columns_cache_entry *table_columns_cache_entry = NULL;
     struct select_source_context source_context = {0};
     const struct mylite_catalog_table_descriptor *item_table = NULL;
     struct row_scalar_window_definitions window_definitions = {0};
@@ -2717,7 +2726,8 @@ static int plan_row_scalar_select(
                 out_plan,
                 &source_context,
                 &table_columns,
-                &table_column_count
+                &table_column_count,
+                &table_columns_cache_entry
             );
         }
         if (rc == MYLITE_OK) {
@@ -2814,7 +2824,7 @@ static int plan_row_scalar_select(
         rc = plan_row_scalar_select_tableless_clauses(database, &clauses, out_plan);
     }
 
-    free(table_columns);
+    mylite_execution_release_table_columns(table_columns_cache_entry, table_columns);
     row_scalar_window_definitions_deinit(&window_definitions);
     if (rc != MYLITE_OK) {
         planned_row_scalar_select_deinit(out_plan);
@@ -2859,7 +2869,8 @@ static int plan_row_scalar_select_source(
     struct planned_row_scalar_select *out_plan,
     struct select_source_context *out_source_context,
     struct mylite_catalog_column_descriptor **out_table_columns,
-    size_t *out_table_column_count
+    size_t *out_table_column_count,
+    struct loaded_table_columns_cache_entry **out_table_columns_cache_entry
 ) {
     int rc = resolve_visible_table_reference(
         database,
@@ -2883,11 +2894,12 @@ static int plan_row_scalar_select_source(
         out_plan->source_has_alias = true;
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_execution_load_table_columns(
+        rc = mylite_execution_acquire_table_columns(
             database,
             out_plan->table.table_id,
             out_table_columns,
-            out_table_column_count
+            out_table_column_count,
+            out_table_columns_cache_entry
         );
     }
 

@@ -1157,6 +1157,7 @@ struct planned_select_predicate_node {
 struct planned_select_predicate {
     struct planned_select_predicate_node *nodes;
     size_t node_count;
+    size_t node_capacity;
     size_t root_index;
     bool has_root;
     bool qualify_column_references;
@@ -1395,6 +1396,7 @@ struct planned_select_source {
     struct mylite_catalog_table_descriptor table;
     struct mylite_catalog_column_descriptor *columns;
     size_t column_count;
+    struct loaded_table_columns_cache_entry *columns_cache_entry;
     char alias[MYLITE_CATALOG_IDENTIFIER_CAPACITY];
     bool has_alias;
     bool is_derived;
@@ -1459,10 +1461,12 @@ struct planned_select {
     size_t source_count;
     struct mylite_catalog_column_descriptor *source_columns;
     size_t source_column_count;
+    struct loaded_table_columns_cache_entry *source_columns_cache_entry;
     struct mylite_catalog_column_descriptor *columns;
     const struct mylite_sql_ast_node **column_aliases;
     size_t *column_source_indexes;
     size_t column_count;
+    size_t column_capacity;
     bool is_distinct;
     bool calc_found_rows;
     bool requires_source_alias;
@@ -1949,6 +1953,7 @@ struct planned_row_scalar_select {
     size_t join_count;
     struct planned_row_scalar_select_item *items;
     size_t item_count;
+    size_t item_capacity;
     bool source_has_alias;
     struct planned_row_scalar_exists_filter tableless_filter;
     struct planned_select_predicate predicate;

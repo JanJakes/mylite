@@ -444,30 +444,66 @@ static int append_planned_row_scalar_select_item(
     struct planned_row_scalar_select *plan,
     struct planned_row_scalar_select_item *item
 ) {
-    struct planned_row_scalar_select_item *items = NULL;
     size_t required_count = 0U;
+    int rc = MYLITE_OK;
 
     if (plan == NULL || item == NULL) {
         return MYLITE_MISUSE;
     }
 
-    required_count = plan->item_count + 1U;
-    if (required_count > SIZE_MAX / sizeof(*items)) {
+    if (plan->item_count == SIZE_MAX) {
         planned_row_scalar_select_item_deinit(item);
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
-    items = realloc(plan->items, required_count * sizeof(*items));
-    if (items == NULL) {
+    required_count = plan->item_count + 1U;
+    rc = reserve_planned_row_scalar_select_items(database, plan, required_count);
+    if (rc != MYLITE_OK) {
         planned_row_scalar_select_item_deinit(item);
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
+        return rc;
     }
 
-    plan->items = items;
     plan->items[plan->item_count] = *item;
     plan->item_count = required_count;
 
+    return MYLITE_OK;
+}
+
+static int reserve_planned_row_scalar_select_items(
+    struct mylite_db *database,
+    struct planned_row_scalar_select *plan,
+    size_t required_capacity
+) {
+    enum { initial_row_scalar_select_item_capacity = 4 };
+
+    struct planned_row_scalar_select_item *items = NULL;
+    size_t capacity = plan->item_capacity;
+
+    if (required_capacity <= capacity) {
+        return MYLITE_OK;
+    }
+    if (capacity == 0U) {
+        capacity = initial_row_scalar_select_item_capacity;
+    }
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (capacity > SIZE_MAX / sizeof(*items)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    items = realloc(plan->items, capacity * sizeof(*items));
+    if (items == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    plan->items = items;
+    plan->item_capacity = capacity;
     return MYLITE_OK;
 }
 

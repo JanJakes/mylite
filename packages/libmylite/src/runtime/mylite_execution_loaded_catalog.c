@@ -6,6 +6,7 @@
 
 #include <mylite/mylite.h>
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -197,6 +198,7 @@ static struct loaded_table_columns_cache_entry *find_table_columns_cache_entry(
 static struct loaded_table_columns_cache_entry *prepare_table_columns_cache_entry(
     struct mylite_db *database
 );
+static uint64_t table_columns_cache_next_clock(struct mylite_db *database);
 static void loaded_table_columns_cache_entry_deinit(struct loaded_table_columns_cache_entry *entry);
 static struct loaded_table_key_metadata_cache_entry *find_table_key_metadata_cache_entry(
     struct mylite_db *database,
@@ -208,6 +210,76 @@ static struct loaded_table_key_metadata_cache_entry *prepare_table_key_metadata_
 static void loaded_table_key_metadata_cache_entry_deinit(
     struct loaded_table_key_metadata_cache_entry *entry
 );
+
+int mylite_execution_acquire_table_columns(
+    struct mylite_db *database,
+    int64_t table_id,
+    struct mylite_catalog_column_descriptor **out_columns,
+    size_t *out_column_count,
+    struct loaded_table_columns_cache_entry **out_cache_entry
+) {
+    struct loaded_table_columns_cache_entry *entry = NULL;
+    int rc = MYLITE_OK;
+
+    if (database == NULL || out_columns == NULL || out_column_count == NULL ||
+        out_cache_entry == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_columns = NULL;
+    *out_column_count = 0U;
+    *out_cache_entry = NULL;
+    if (table_id < 0) {
+        return load_table_columns_uncached(database, table_id, out_columns, out_column_count);
+    }
+
+    entry = find_table_columns_cache_entry(database, table_id);
+    if (entry != NULL) {
+        ++entry->reference_count;
+        *out_columns = entry->columns;
+        *out_column_count = entry->column_count;
+        *out_cache_entry = entry;
+        return MYLITE_OK;
+    }
+
+    rc = load_table_columns_uncached(database, table_id, out_columns, out_column_count);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    entry = prepare_table_columns_cache_entry(database);
+    if (entry == NULL) {
+        return MYLITE_OK;
+    }
+    *entry = (struct loaded_table_columns_cache_entry){
+        .is_valid = true,
+        .table_id = table_id,
+        .catalog_generation = database->session.catalog_generation,
+        .sqlite_schema_generation = database->session.sqlite_schema_generation,
+        .last_use = table_columns_cache_next_clock(database),
+        .columns = *out_columns,
+        .column_count = *out_column_count,
+        .reference_count = 1U,
+    };
+    *out_cache_entry = entry;
+    return MYLITE_OK;
+}
+
+void mylite_execution_release_table_columns(
+    struct loaded_table_columns_cache_entry *cache_entry,
+    struct mylite_catalog_column_descriptor *columns
+) {
+    if (cache_entry == NULL) {
+        free(columns);
+        return;
+    }
+
+    assert(cache_entry->columns == columns);
+    assert(cache_entry->reference_count > 0U);
+    --cache_entry->reference_count;
+    if (cache_entry->reference_count == 0U && !cache_entry->is_valid) {
+        loaded_table_columns_cache_entry_deinit(cache_entry);
+    }
+}
 
 int mylite_execution_load_table_columns(
     struct mylite_db *database,
@@ -250,7 +322,18 @@ int mylite_execution_load_table_columns(
 }
 
 void mylite_execution_table_columns_cache_invalidate(struct mylite_db *database) {
-    mylite_execution_table_columns_cache_deinit(database);
+    if (database == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < database->table_columns_cache_count; ++index) {
+        struct loaded_table_columns_cache_entry *entry = &database->table_columns_cache[index];
+
+        entry->is_valid = false;
+        if (entry->reference_count == 0U) {
+            loaded_table_columns_cache_entry_deinit(entry);
+        }
+    }
 }
 
 void mylite_execution_table_columns_cache_deinit(struct mylite_db *database) {
@@ -368,6 +451,7 @@ static void maybe_cache_loaded_table_columns(
         .table_id = table_id,
         .catalog_generation = database->session.catalog_generation,
         .sqlite_schema_generation = database->session.sqlite_schema_generation,
+        .last_use = table_columns_cache_next_clock(database),
         .columns = copy,
         .column_count = column_count,
     };
@@ -534,6 +618,7 @@ static struct loaded_table_columns_cache_entry *find_table_columns_cache_entry(
         if (entry->is_valid && entry->table_id == table_id &&
             entry->catalog_generation == database->session.catalog_generation &&
             entry->sqlite_schema_generation == database->session.sqlite_schema_generation) {
+            entry->last_use = table_columns_cache_next_clock(database);
             return entry;
         }
     }
@@ -545,19 +630,44 @@ static struct loaded_table_columns_cache_entry *prepare_table_columns_cache_entr
     struct mylite_db *database
 ) {
     struct loaded_table_columns_cache_entry *entry = NULL;
+    uint64_t oldest_use = UINT64_MAX;
 
     if (database == NULL) {
         return NULL;
+    }
+    for (size_t index = 0U; index < database->table_columns_cache_count; ++index) {
+        struct loaded_table_columns_cache_entry *candidate = &database->table_columns_cache[index];
+
+        if (candidate->reference_count == 0U && !candidate->is_valid) {
+            loaded_table_columns_cache_entry_deinit(candidate);
+            return candidate;
+        }
+        if (candidate->reference_count == 0U && candidate->last_use < oldest_use) {
+            oldest_use = candidate->last_use;
+            entry = candidate;
+        }
     }
     if (database->table_columns_cache_count < MYLITE_EXECUTION_TABLE_COLUMNS_CACHE_LIMIT) {
         entry = &database->table_columns_cache[database->table_columns_cache_count];
         ++database->table_columns_cache_count;
         return entry;
     }
-
-    entry = &database->table_columns_cache[0];
+    if (entry == NULL) {
+        return NULL;
+    }
     loaded_table_columns_cache_entry_deinit(entry);
     return entry;
+}
+
+static uint64_t table_columns_cache_next_clock(struct mylite_db *database) {
+    if (database->table_columns_cache_clock == UINT64_MAX) {
+        for (size_t index = 0U; index < database->table_columns_cache_count; ++index) {
+            database->table_columns_cache[index].last_use = 0U;
+        }
+        database->table_columns_cache_clock = 0U;
+    }
+    ++database->table_columns_cache_clock;
+    return database->table_columns_cache_clock;
 }
 
 static void loaded_table_columns_cache_entry_deinit(struct loaded_table_columns_cache_entry *entry

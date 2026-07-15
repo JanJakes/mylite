@@ -1,5 +1,6 @@
 #include <mylite/mylite.h>
 
+#include "runtime/mylite_catalog.h"
 #include "runtime/mylite_connection.h"
 #include "sqlite3.h"
 
@@ -30,6 +31,7 @@ struct expected_query_scalar_text {
 };
 
 static int test_cursor_select_streams_rows_and_metadata(void);
+static int test_cursor_keeps_borrowed_columns_across_invalidation(void);
 static int test_cursor_reuses_finalized_select_statements(void);
 static int test_cursor_materializes_information_schema_selects(void);
 static int test_cursor_prepare_rejects_unsupported_statements(void);
@@ -62,6 +64,7 @@ int main(void) {
     int failures = 0;
 
     failures += test_cursor_select_streams_rows_and_metadata();
+    failures += test_cursor_keeps_borrowed_columns_across_invalidation();
     failures += test_cursor_reuses_finalized_select_statements();
     failures += test_cursor_materializes_information_schema_selects();
     failures += test_cursor_prepare_rejects_unsupported_statements();
@@ -357,6 +360,62 @@ static int test_cursor_select_streams_rows_and_metadata(void) {
     failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize cursor");
     stmt = NULL;
     failures += expect_int(mylite_stmt_finalize(NULL), MYLITE_OK, "finalize null cursor");
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_cursor_keeps_borrowed_columns_across_invalidation(void) {
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    struct loaded_table_columns_cache_entry *borrowed_entry = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "borrowed_columns") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open borrowed columns file");
+    failures += execute_ok(database, "CREATE DATABASE app");
+    failures += execute_ok(database, "USE app");
+    failures += execute_ok(database, "CREATE TABLE items (id INT NOT NULL, name VARCHAR(20))");
+    failures += execute_ok(database, "INSERT INTO items VALUES (1, 'alpha')");
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT name FROM items WHERE id = 1",
+            strlen("SELECT name FROM items WHERE id = 1"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare borrowed columns cursor"
+    );
+    for (size_t index = 0U; index < database->table_columns_cache_count; ++index) {
+        if (database->table_columns_cache[index].reference_count != 0U) {
+            borrowed_entry = &database->table_columns_cache[index];
+            break;
+        }
+    }
+    failures += expect_true(borrowed_entry != NULL, "cursor pins table columns cache entry");
+    if (borrowed_entry != NULL) {
+        failures += expect_size(borrowed_entry->reference_count, 1U, "borrowed column reference");
+        mylite_catalog_invalidate_descriptor_cache(database);
+        failures += expect_true(!borrowed_entry->is_valid, "invalidated borrowed column entry");
+        failures +=
+            expect_true(borrowed_entry->columns != NULL, "borrowed columns remain allocated");
+    }
+    failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "borrowed columns cursor row");
+    failures += expect_cursor_text(stmt, 0U, "alpha", "borrowed columns cursor value");
+    failures +=
+        expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize borrowed columns cursor");
+    stmt = NULL;
+    if (borrowed_entry != NULL) {
+        failures += expect_size(borrowed_entry->reference_count, 0U, "released column reference");
+        failures += expect_true(borrowed_entry->columns == NULL, "released invalid column entry");
+    }
 
     mylite_close(database);
     remove_related_files(path);

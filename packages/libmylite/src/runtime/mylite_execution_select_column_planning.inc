@@ -368,51 +368,78 @@ static int append_select_column_from_source(
     size_t source_index,
     const struct mylite_sql_ast_node *alias
 ) {
-    struct mylite_catalog_column_descriptor *columns = NULL;
-    const struct mylite_sql_ast_node **aliases = NULL;
-    size_t *source_indexes = NULL;
-    size_t required_count = plan->column_count + 1U;
+    size_t required_count = 0U;
+    int rc = MYLITE_OK;
 
-    if (required_count > SIZE_MAX / sizeof(*columns)) {
+    if (plan->column_count == SIZE_MAX) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
-    if (required_count > SIZE_MAX / sizeof(*aliases)) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
+    required_count = plan->column_count + 1U;
+    rc = reserve_select_columns(database, plan, required_count);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
-    if (required_count > SIZE_MAX / sizeof(*source_indexes)) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-
-    columns = realloc(plan->columns, required_count * sizeof(*columns));
-    if (columns == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    plan->columns = columns;
-
-    aliases = (const struct mylite_sql_ast_node **)
-        realloc((void *)plan->column_aliases, required_count * sizeof(*aliases));
-    if (aliases == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    plan->column_aliases = aliases;
-
-    source_indexes = realloc(plan->column_source_indexes, required_count * sizeof(*source_indexes));
-    if (source_indexes == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
-    }
-    plan->column_source_indexes = source_indexes;
 
     plan->columns[plan->column_count] = *column;
     plan->column_aliases[plan->column_count] = alias;
     plan->column_source_indexes[plan->column_count] = source_index;
     plan->column_count = required_count;
 
+    return MYLITE_OK;
+}
+
+static int reserve_select_columns(
+    struct mylite_db *database,
+    struct planned_select *plan,
+    size_t required_capacity
+) {
+    enum { initial_select_column_capacity = 4 };
+
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    const struct mylite_sql_ast_node **aliases = NULL;
+    size_t *source_indexes = NULL;
+    size_t capacity = plan->column_capacity;
+
+    if (required_capacity <= capacity) {
+        return MYLITE_OK;
+    }
+    if (capacity == 0U) {
+        capacity = initial_select_column_capacity;
+    }
+    while (capacity < required_capacity) {
+        if (capacity > SIZE_MAX / 2U) {
+            set_nomem_error(database);
+            return MYLITE_NOMEM;
+        }
+        capacity *= 2U;
+    }
+    if (capacity > SIZE_MAX / sizeof(*columns) || capacity > SIZE_MAX / sizeof(*aliases) ||
+        capacity > SIZE_MAX / sizeof(*source_indexes)) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+
+    columns = realloc(plan->columns, capacity * sizeof(*columns));
+    if (columns == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    plan->columns = columns;
+    aliases = (const struct mylite_sql_ast_node **)
+        realloc((void *)plan->column_aliases, capacity * sizeof(*aliases));
+    if (aliases == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    plan->column_aliases = aliases;
+    source_indexes = realloc(plan->column_source_indexes, capacity * sizeof(*source_indexes));
+    if (source_indexes == NULL) {
+        set_nomem_error(database);
+        return MYLITE_NOMEM;
+    }
+    plan->column_source_indexes = source_indexes;
+    plan->column_capacity = capacity;
     return MYLITE_OK;
 }
 

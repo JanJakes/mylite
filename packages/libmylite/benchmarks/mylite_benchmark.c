@@ -126,6 +126,8 @@ struct runtime_scenario {
     const char *name;
     const struct benchmark_query *setup_queries;
     size_t setup_query_count;
+    const struct benchmark_query *additional_setup_queries;
+    size_t additional_setup_query_count;
     const struct benchmark_query *queries;
     size_t query_count;
 };
@@ -212,6 +214,142 @@ static const struct benchmark_query wordpress_setup_queries[] = {
           "(3,'_wp_page_template','default')"),
 };
 
+#define WORDPRESS_COPY_POSTS_SQL                                                                   \
+    "INSERT INTO wp_posts "                                                                        \
+    "(post_author, post_date, post_date_gmt, post_content, post_title, post_excerpt, "             \
+    "post_status, comment_status, ping_status, post_password, post_name, to_ping, pinged, "        \
+    "post_modified, post_modified_gmt, post_content_filtered, post_parent, guid, menu_order, "     \
+    "post_type, post_mime_type, comment_count) "                                                   \
+    "SELECT post_author, post_date, post_date_gmt, post_content, post_title, post_excerpt, "       \
+    "post_status, comment_status, ping_status, post_password, post_name, to_ping, pinged, "        \
+    "post_modified, post_modified_gmt, post_content_filtered, post_parent, guid, menu_order, "     \
+    "post_type, post_mime_type, comment_count FROM wp_posts"
+
+static const struct benchmark_query wordpress_medium_additional_setup_queries[] = {
+    QUERY("CREATE TABLE wp_users ("
+          "ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
+          "user_login VARCHAR(60) NOT NULL DEFAULT '',"
+          "user_pass VARCHAR(255) NOT NULL DEFAULT '',"
+          "user_nicename VARCHAR(50) NOT NULL DEFAULT '',"
+          "user_email VARCHAR(100) NOT NULL DEFAULT '',"
+          "user_url VARCHAR(100) NOT NULL DEFAULT '',"
+          "user_registered DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00',"
+          "user_activation_key VARCHAR(255) NOT NULL DEFAULT '',"
+          "user_status INT NOT NULL DEFAULT 0,"
+          "display_name VARCHAR(250) NOT NULL DEFAULT '',"
+          "PRIMARY KEY (ID),"
+          "KEY user_login_key (user_login),"
+          "KEY user_nicename (user_nicename),"
+          "KEY user_email (user_email)"
+          ")"),
+    QUERY("CREATE TABLE wp_usermeta ("
+          "umeta_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
+          "user_id BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+          "meta_key VARCHAR(255) DEFAULT NULL,"
+          "meta_value LONGTEXT,"
+          "PRIMARY KEY (umeta_id),"
+          "KEY user_id (user_id),"
+          "KEY meta_key (meta_key(191))"
+          ")"),
+    QUERY("CREATE TABLE wp_terms ("
+          "term_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
+          "name VARCHAR(200) NOT NULL DEFAULT '',"
+          "slug VARCHAR(200) NOT NULL DEFAULT '',"
+          "term_group BIGINT NOT NULL DEFAULT 0,"
+          "PRIMARY KEY (term_id),"
+          "KEY slug (slug(191)),"
+          "KEY name (name(191))"
+          ")"),
+    QUERY("CREATE TABLE wp_term_taxonomy ("
+          "term_taxonomy_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
+          "term_id BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+          "taxonomy VARCHAR(32) NOT NULL DEFAULT '',"
+          "description LONGTEXT NOT NULL,"
+          "parent BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+          "count BIGINT NOT NULL DEFAULT 0,"
+          "PRIMARY KEY (term_taxonomy_id),"
+          "UNIQUE KEY term_id_taxonomy (term_id,taxonomy),"
+          "KEY taxonomy (taxonomy)"
+          ")"),
+    QUERY("CREATE TABLE wp_term_relationships ("
+          "object_id BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+          "term_taxonomy_id BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+          "term_order INT NOT NULL DEFAULT 0,"
+          "PRIMARY KEY (object_id,term_taxonomy_id),"
+          "KEY term_taxonomy_id (term_taxonomy_id)"
+          ")"),
+    QUERY("CREATE TABLE wp_comments ("
+          "comment_ID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,"
+          "comment_post_ID BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+          "comment_author TINYTEXT NOT NULL,"
+          "comment_author_email VARCHAR(100) NOT NULL DEFAULT '',"
+          "comment_author_url VARCHAR(200) NOT NULL DEFAULT '',"
+          "comment_author_IP VARCHAR(100) NOT NULL DEFAULT '',"
+          "comment_date DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00',"
+          "comment_date_gmt DATETIME NOT NULL DEFAULT '0000-00-00 00:00:00',"
+          "comment_content TEXT NOT NULL,"
+          "comment_karma INT NOT NULL DEFAULT 0,"
+          "comment_approved VARCHAR(20) NOT NULL DEFAULT '1',"
+          "comment_agent VARCHAR(255) NOT NULL DEFAULT '',"
+          "comment_type VARCHAR(20) NOT NULL DEFAULT 'comment',"
+          "comment_parent BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+          "user_id BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+          "PRIMARY KEY (comment_ID),"
+          "KEY comment_post_ID (comment_post_ID),"
+          "KEY comment_approved_date_gmt (comment_approved,comment_date_gmt),"
+          "KEY comment_date_gmt (comment_date_gmt),"
+          "KEY comment_parent (comment_parent),"
+          "KEY comment_author_email (comment_author_email(10))"
+          ")"),
+    QUERY("INSERT INTO wp_users "
+          "(user_login,user_pass,user_nicename,user_email,user_url,user_registered,"
+          "user_activation_key,user_status,display_name) VALUES "
+          "('admin','$P$bench','admin','admin@example.test','https://example.test',"
+          "'2025-01-01 00:00:00','',0,'Administrator'),"
+          "('editor','$P$bench','editor','editor@example.test','',"
+          "'2025-02-01 00:00:00','',0,'Site Editor'),"
+          "('author','$P$bench','author','author@example.test','',"
+          "'2025-03-01 00:00:00','',0,'Post Author')"),
+    QUERY("INSERT INTO wp_usermeta (user_id,meta_key,meta_value) VALUES "
+          "(1,'wp_capabilities','a:1:{s:13:\"administrator\";b:1;}'),"
+          "(1,'wp_user_level','10'),"
+          "(2,'wp_capabilities','a:1:{s:6:\"editor\";b:1;}'),"
+          "(2,'wp_user_level','7'),"
+          "(3,'wp_capabilities','a:1:{s:6:\"author\";b:1;}'),"
+          "(3,'wp_user_level','2')"),
+    QUERY("INSERT INTO wp_terms (name,slug,term_group) VALUES "
+          "('News','news',0),('Performance','performance',0),"
+          "('WordPress','wordpress',0),('MyLite','mylite',0)"),
+    QUERY("INSERT INTO wp_term_taxonomy (term_id,taxonomy,description,parent,count) VALUES "
+          "(1,'category','',0,48),(2,'category','',0,24),"
+          "(3,'post_tag','',0,12),(4,'post_tag','',0,12)"),
+    QUERY("INSERT INTO wp_term_relationships (object_id,term_taxonomy_id,term_order) VALUES "
+          "(1,1,0),(1,3,0),(2,2,0),(3,1,0)"),
+    QUERY("INSERT INTO wp_comments "
+          "(comment_post_ID,comment_author,comment_author_email,comment_author_url,"
+          "comment_author_IP,comment_date,comment_date_gmt,comment_content,comment_karma,"
+          "comment_approved,comment_agent,comment_type,comment_parent,user_id) VALUES "
+          "(1,'Reader','reader@example.test','','127.0.0.1','2026-01-04 10:00:00',"
+          "'2026-01-04 10:00:00','First comment',0,'1','','comment',0,0),"
+          "(1,'Editor','editor@example.test','','127.0.0.1','2026-01-05 10:00:00',"
+          "'2026-01-05 10:00:00','Second comment',0,'1','','comment',0,2),"
+          "(1,'Pending','pending@example.test','','127.0.0.1','2026-01-06 10:00:00',"
+          "'2026-01-06 10:00:00','Pending comment',0,'0','','comment',0,0)"),
+    QUERY(WORDPRESS_COPY_POSTS_SQL),
+    QUERY(WORDPRESS_COPY_POSTS_SQL),
+    QUERY(WORDPRESS_COPY_POSTS_SQL),
+    QUERY(WORDPRESS_COPY_POSTS_SQL),
+    QUERY(WORDPRESS_COPY_POSTS_SQL),
+    QUERY("INSERT INTO wp_postmeta (post_id,meta_key,meta_value) "
+          "SELECT post_id,meta_key,meta_value FROM wp_postmeta"),
+    QUERY("INSERT INTO wp_postmeta (post_id,meta_key,meta_value) "
+          "SELECT post_id,meta_key,meta_value FROM wp_postmeta"),
+    QUERY("INSERT INTO wp_postmeta (post_id,meta_key,meta_value) "
+          "SELECT post_id,meta_key,meta_value FROM wp_postmeta"),
+};
+
+#undef WORDPRESS_COPY_POSTS_SQL
+
 static const struct benchmark_query wordpress_options_queries[] = {
     QUERY("SELECT option_value FROM wp_options WHERE option_name = 'siteurl' LIMIT 1"),
     QUERY("SELECT option_name, option_value FROM wp_options WHERE autoload = 'yes'"),
@@ -257,6 +395,29 @@ static const struct benchmark_query wordpress_frontend_request_queries[] = {
     QUERY("SELECT COUNT(*) FROM wp_posts WHERE post_type = 'post' AND post_status = 'publish'"),
     QUERY("SELECT ID, post_content, post_title FROM wp_posts WHERE ID = 1 LIMIT 1"),
     QUERY("SELECT meta_key, meta_value FROM wp_postmeta WHERE post_id = 1"),
+};
+
+static const struct benchmark_query wordpress_medium_frontend_request_queries[] = {
+    QUERY("SELECT option_name, option_value FROM wp_options WHERE autoload = 'yes'"),
+    QUERY("SELECT option_value FROM wp_options WHERE option_name = 'siteurl' LIMIT 1"),
+    QUERY("SELECT SQL_CALC_FOUND_ROWS ID, post_author, post_title, post_date FROM wp_posts "
+          "WHERE post_type = 'post' AND post_status = 'publish' "
+          "ORDER BY post_date DESC LIMIT 10"),
+    QUERY("SELECT FOUND_ROWS()"),
+    QUERY("SELECT ID, post_author, post_content, post_title, post_date FROM wp_posts "
+          "WHERE ID = 1 LIMIT 1"),
+    QUERY("SELECT meta_key, meta_value FROM wp_postmeta WHERE post_id = 1"),
+    QUERY("SELECT t.term_id, t.name, tt.taxonomy FROM wp_terms t "
+          "INNER JOIN wp_term_taxonomy tt ON t.term_id = tt.term_id "
+          "INNER JOIN wp_term_relationships tr "
+          "ON tr.term_taxonomy_id = tt.term_taxonomy_id WHERE tr.object_id = 1"),
+    QUERY("SELECT comment_ID, comment_author, comment_content, comment_date_gmt "
+          "FROM wp_comments WHERE comment_post_ID = 1 AND comment_approved = '1' "
+          "ORDER BY comment_date_gmt LIMIT 10"),
+    QUERY("SELECT COUNT(*) FROM wp_comments WHERE comment_post_ID = 1 "
+          "AND comment_approved = '1'"),
+    QUERY("SELECT ID, user_login, display_name FROM wp_users WHERE ID = 1 LIMIT 1"),
+    QUERY("SELECT meta_key, meta_value FROM wp_usermeta WHERE user_id = 1"),
 };
 
 static const struct benchmark_query wordpress_write_request_queries[] = {
@@ -344,6 +505,17 @@ static const struct runtime_scenario runtime_scenarios[] = {
         .queries = wordpress_frontend_request_queries,
         .query_count = sizeof(wordpress_frontend_request_queries) /
                        sizeof(wordpress_frontend_request_queries[0]),
+    },
+    {
+        .name = "runtime.wp_medium_frontend_request",
+        .setup_queries = wordpress_setup_queries,
+        .setup_query_count = sizeof(wordpress_setup_queries) / sizeof(wordpress_setup_queries[0]),
+        .additional_setup_queries = wordpress_medium_additional_setup_queries,
+        .additional_setup_query_count = sizeof(wordpress_medium_additional_setup_queries) /
+                                        sizeof(wordpress_medium_additional_setup_queries[0]),
+        .queries = wordpress_medium_frontend_request_queries,
+        .query_count = sizeof(wordpress_medium_frontend_request_queries) /
+                       sizeof(wordpress_medium_frontend_request_queries[0]),
     },
     {
         .name = "runtime.wp_write_request",
@@ -1725,6 +1897,18 @@ static int setup_runtime_database(mylite_db *database, const struct runtime_scen
     for (size_t query_index = 0U; query_index < scenario->setup_query_count; ++query_index) {
         if (execute_query(database, &scenario->setup_queries[query_index]) != 0) {
             fprintf(stderr, "%s: setup query %zu failed\n", scenario->name, query_index + 1U);
+            return 1;
+        }
+    }
+    for (size_t query_index = 0U; query_index < scenario->additional_setup_query_count;
+         ++query_index) {
+        if (execute_query(database, &scenario->additional_setup_queries[query_index]) != 0) {
+            fprintf(
+                stderr,
+                "%s: additional setup query %zu failed\n",
+                scenario->name,
+                query_index + 1U
+            );
             return 1;
         }
     }

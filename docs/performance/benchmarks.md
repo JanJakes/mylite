@@ -39,9 +39,11 @@ each sample. Runtime scenarios default to one warmup iteration. Use
 `--warmup 0` to measure the initial state, including the insert branch of an
 upsert; the default measures steady-state request behavior. `--samples`
 reports every sample plus minimum, median, 95th-percentile, and maximum average
-operation times. Pinning a run to an otherwise idle CPU core, where supported,
-reduces scheduler noise. `--per-query` expands each selected request scenario
-into independently measured `.queryN` scenarios.
+operation times. Request-shaped scenarios also report the p50, p95, p99, and
+maximum latency of complete request iterations for every sample. Pinning a run
+to an otherwise idle CPU core, where supported, reduces scheduler noise.
+`--per-query` expands each selected request scenario into independently measured
+`.queryN` scenarios.
 
 The benchmark reports CSV rows:
 
@@ -55,10 +57,26 @@ measures `mylite_execute()` against a temporary file-backed MyLite database and
 does not use PHP, WordPress, or the PHP extensions.
 
 `runtime.wp_frontend_request` executes six representative WordPress frontend
-reads per iteration. `runtime.wp_write_request` executes a five-query mixed
-request containing a read, an upsert, two updates, and a delete. These scenarios
-measure a request-shaped sequence while retaining the existing `.queryN`
-isolation for hotspot analysis.
+reads per iteration. `runtime.wp_medium_frontend_request` uses nine WordPress
+tables and eleven queries, including pagination with `SQL_CALC_FOUND_ROWS`,
+taxonomy joins, comments, users, and metadata. `runtime.wp_write_request`
+executes a five-query mixed request containing a read, an upsert, two updates,
+and a delete. These scenarios measure a request-shaped sequence while retaining
+the existing `.queryN` isolation for hotspot analysis.
+
+The following focused stress scenarios are listed by `--list` but run only when
+selected explicitly with `--scenario`:
+
+- `runtime.cold_open`
+- `runtime.large_in_256` and `runtime.large_in_4096`
+- `runtime.wide_projection_16` and `runtime.wide_projection_128`
+- `runtime.catalog_cache_saturation`
+- `runtime.concurrent_read_write`
+
+Runtime databases are created below `TMPDIR`. Use a tmpfs directory to isolate
+CPU and allocator cost, or point `TMPDIR` at a block-backed filesystem to retain
+journal and synchronization latency in the measurement. Record the filesystem
+type with benchmark results; the two modes are not directly comparable.
 
 ## Runtime Phase Profiling
 

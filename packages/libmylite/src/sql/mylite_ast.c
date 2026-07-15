@@ -1,5 +1,7 @@
 #include "mylite_ast.h"
 
+#include <stdatomic.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
 
@@ -18,15 +20,12 @@ static struct mylite_sql_ast_node *ast_allocate_node(struct mylite_sql_ast *ast)
 static struct mylite_sql_ast_node_chunk *ast_new_chunk(struct mylite_sql_ast *ast);
 static struct mylite_sql_ast_node_chunk *ast_take_cached_chunk(void);
 static void ast_release_chunk(struct mylite_sql_ast_node_chunk *chunk);
+static void ast_cache_lock(void);
+static void ast_cache_unlock(void);
 
-#if defined(_MSC_VER)
-#  define MYLITE_THREAD_LOCAL __declspec(thread)
-#else
-#  define MYLITE_THREAD_LOCAL _Thread_local
-#endif
-
-static MYLITE_THREAD_LOCAL struct mylite_sql_ast_node_chunk *cached_ast_chunks;
-static MYLITE_THREAD_LOCAL size_t cached_ast_chunk_count;
+static struct mylite_sql_ast_node_chunk *cached_ast_chunks;
+static size_t cached_ast_chunk_count;
+static atomic_flag cached_ast_chunks_lock = ATOMIC_FLAG_INIT;
 
 void mylite_sql_ast_init(struct mylite_sql_ast *ast) {
     if (ast == NULL) {
@@ -112,29 +111,46 @@ static struct mylite_sql_ast_node_chunk *ast_new_chunk(struct mylite_sql_ast *as
 }
 
 static struct mylite_sql_ast_node_chunk *ast_take_cached_chunk(void) {
-    struct mylite_sql_ast_node_chunk *chunk = cached_ast_chunks;
+    struct mylite_sql_ast_node_chunk *chunk = NULL;
 
-    if (chunk == NULL) {
-        return NULL;
+    ast_cache_lock();
+    chunk = cached_ast_chunks;
+    if (chunk != NULL) {
+        cached_ast_chunks = chunk->next;
+        --cached_ast_chunk_count;
     }
+    ast_cache_unlock();
 
-    cached_ast_chunks = chunk->next;
-    --cached_ast_chunk_count;
     return chunk;
 }
 
 static void ast_release_chunk(struct mylite_sql_ast_node_chunk *chunk) {
+    bool cache_chunk = false;
+
     if (chunk == NULL) {
         return;
     }
-    if (cached_ast_chunk_count >= (size_t)ast_cached_chunk_limit) {
-        free(chunk);
-        return;
+    ast_cache_lock();
+    if (cached_ast_chunk_count < (size_t)ast_cached_chunk_limit) {
+        chunk->next = cached_ast_chunks;
+        chunk->used = 0U;
+        cached_ast_chunks = chunk;
+        ++cached_ast_chunk_count;
+        cache_chunk = true;
     }
-    chunk->next = cached_ast_chunks;
-    chunk->used = 0U;
-    cached_ast_chunks = chunk;
-    ++cached_ast_chunk_count;
+    ast_cache_unlock();
+
+    if (!cache_chunk) {
+        free(chunk);
+    }
+}
+
+static void ast_cache_lock(void) {
+    while (atomic_flag_test_and_set_explicit(&cached_ast_chunks_lock, memory_order_acquire)) {}
+}
+
+static void ast_cache_unlock(void) {
+    atomic_flag_clear_explicit(&cached_ast_chunks_lock, memory_order_release);
 }
 
 void mylite_sql_ast_node_append_child(

@@ -298,8 +298,8 @@ static int merge_select_predicate_with_and(
     struct planned_select_predicate *target,
     struct planned_select_predicate *addition
 ) {
-    struct planned_select_predicate_node *nodes = NULL;
     struct planned_select_predicate_node logical_node = {0};
+    size_t merged_count = 0U;
     size_t original_count = 0U;
     size_t node_index = 0U;
     bool addition_qualifies = false;
@@ -313,28 +313,25 @@ static int merge_select_predicate_with_and(
         *addition = (struct planned_select_predicate){0};
         return MYLITE_OK;
     }
-    if (addition->node_count > (SIZE_MAX - target->node_count - 1U)) {
+    if (target->node_count == SIZE_MAX ||
+        addition->node_count > (SIZE_MAX - target->node_count - 1U)) {
         set_nomem_error(database);
         return MYLITE_NOMEM;
     }
 
     addition_qualifies = addition->qualify_column_references;
     original_count = target->node_count;
-    nodes = realloc(
-        target->nodes,
-        (target->node_count + addition->node_count) * sizeof(*target->nodes)
-    );
-    if (nodes == NULL) {
-        set_nomem_error(database);
-        return MYLITE_NOMEM;
+    merged_count = target->node_count + addition->node_count;
+    rc = reserve_planned_select_predicate_nodes(database, target, merged_count + 1U);
+    if (rc != MYLITE_OK) {
+        return rc;
     }
-    target->nodes = nodes;
     memcpy(
         &target->nodes[target->node_count],
         addition->nodes,
         addition->node_count * sizeof(*addition->nodes)
     );
-    target->node_count += addition->node_count;
+    target->node_count = merged_count;
     for (size_t index = original_count; index < target->node_count; ++index) {
         if (target->nodes[index].left_index != SIZE_MAX) {
             target->nodes[index].left_index += original_count;

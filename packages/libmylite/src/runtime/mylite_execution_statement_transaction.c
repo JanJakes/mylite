@@ -82,15 +82,24 @@ int mylite_execution_begin_read_statement_transaction(
 }
 
 int mylite_execution_begin_autocommit_disabled_transaction(struct mylite_db *database) {
+    bool read_only = false;
     int rc = MYLITE_OK;
 
     if (database->session.user_transaction_active || database->session.autocommit_enabled) {
         return MYLITE_OK;
     }
 
+    read_only =
+        database->session.has_next_transaction_access_mode
+            ? database->session.next_transaction_access_mode == MYLITE_TRANSACTION_ACCESS_READ_ONLY
+            : database->session.session_transaction_access_mode ==
+                  MYLITE_TRANSACTION_ACCESS_READ_ONLY;
     rc = mylite_execution_normalize_sqlite_control_rc(
         database,
-        mylite_execution_execute_sqlite_control_sql(database, "BEGIN IMMEDIATE")
+        mylite_execution_execute_sqlite_control_sql(
+            database,
+            read_only ? "BEGIN" : "BEGIN IMMEDIATE"
+        )
     );
     if (rc == MYLITE_OK) {
         database->session.user_transaction_active = true;
@@ -98,12 +107,7 @@ int mylite_execution_begin_autocommit_disabled_transaction(struct mylite_db *dat
             database->session.has_next_transaction_isolation
                 ? database->session.next_transaction_isolation
                 : database->session.session_transaction_isolation;
-        database->session.active_transaction_read_only =
-            database->session.has_next_transaction_access_mode
-                ? database->session.next_transaction_access_mode ==
-                      MYLITE_TRANSACTION_ACCESS_READ_ONLY
-                : database->session.session_transaction_access_mode ==
-                      MYLITE_TRANSACTION_ACCESS_READ_ONLY;
+        database->session.active_transaction_read_only = read_only;
         database->session.has_next_transaction_isolation = false;
         database->session.has_next_transaction_access_mode = false;
         database->session.next_transaction_isolation_from_system_variable = false;

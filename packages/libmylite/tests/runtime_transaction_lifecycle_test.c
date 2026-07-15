@@ -58,6 +58,7 @@ static int test_transaction_after_buffered_result_lifecycle(void);
 static int test_savepoint_lifecycle(void);
 static int test_independent_savepoint_handles(void);
 static int test_independent_transaction_characteristic_handles(void);
+static int test_read_only_transaction_does_not_reserve_writer_lock(void);
 static int test_drop_table_missing_implicitly_commits_transaction(void);
 static int test_file_close_rolls_back_transaction(void);
 static int seed_schema(mylite_db *database);
@@ -117,6 +118,7 @@ int main(void) {
     failures += test_savepoint_lifecycle();
     failures += test_independent_savepoint_handles();
     failures += test_independent_transaction_characteristic_handles();
+    failures += test_read_only_transaction_does_not_reserve_writer_lock();
     failures += test_drop_table_missing_implicitly_commits_transaction();
     failures += test_file_close_rolls_back_transaction();
 
@@ -1610,6 +1612,45 @@ static int test_independent_transaction_characteristic_handles(void) {
     mylite_close(first);
     remove_related_files(second_path);
     remove_related_files(first_path);
+    return failures;
+}
+
+static int test_read_only_transaction_does_not_reserve_writer_lock(void) {
+    static const char *const rows[] = {"1", "10", "2", "20"};
+    char path[test_path_capacity];
+    mylite_db *reader = NULL;
+    mylite_db *writer = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "read_only_writer_concurrency") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &reader), MYLITE_OK, "open read-only reader");
+    failures += seed_schema(reader);
+    failures += expect_nonquery(reader, "CREATE TABLE t (id INT PRIMARY KEY, v INT)", 0);
+    failures += expect_nonquery(reader, "INSERT INTO t VALUES (1, 10)", 1);
+    failures += expect_int(mylite_open(path, &writer), MYLITE_OK, "open concurrent writer");
+    failures += expect_nonquery(writer, "USE app", 0);
+
+    failures += expect_nonquery(reader, "START TRANSACTION READ ONLY", 0);
+    failures += expect_nonquery(writer, "INSERT INTO t VALUES (2, 20)", 1);
+    failures += expect_nonquery(reader, "COMMIT", 0);
+    failures += expect_query_values(
+        reader,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM t ORDER BY id",
+            .values = rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "concurrent writer after read-only transaction",
+        }
+    );
+
+    mylite_close(writer);
+    mylite_close(reader);
+    remove_related_files(path);
     return failures;
 }
 

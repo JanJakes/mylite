@@ -80,7 +80,11 @@ static int execute_start_transaction_statement_with_characteristics(
     if (rc == MYLITE_OK) {
         rc = normalize_sqlite_control_rc(
             database,
-            execute_sqlite_control_sql(database, "BEGIN IMMEDIATE")
+            execute_sqlite_control_sql(
+                database,
+                effective_access_mode == MYLITE_TRANSACTION_ACCESS_READ_ONLY ? "BEGIN"
+                                                                             : "BEGIN IMMEDIATE"
+            )
         );
         if (rc == MYLITE_OK) {
             database->session.user_transaction_active = true;
@@ -241,7 +245,10 @@ static int begin_chained_transaction(
     clear_session_table_locks(database);
     rc = normalize_sqlite_control_rc(
         database,
-        execute_sqlite_control_sql(database, "BEGIN IMMEDIATE")
+        execute_sqlite_control_sql(
+            database,
+            access_mode == MYLITE_TRANSACTION_ACCESS_READ_ONLY ? "BEGIN" : "BEGIN IMMEDIATE"
+        )
     );
     if (rc == MYLITE_OK) {
         database->session.user_transaction_active = true;

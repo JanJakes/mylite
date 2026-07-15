@@ -2838,7 +2838,10 @@
   add_executable(mylite_runtime_cursor_api_test
     tests/runtime_cursor_api_test.c
   )
-  target_link_libraries(mylite_runtime_cursor_api_test PRIVATE MyLite::mylite)
+  target_link_libraries(mylite_runtime_cursor_api_test PRIVATE
+    MyLite::mylite
+    MyLite::sqlite
+  )
   target_include_directories(mylite_runtime_cursor_api_test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
   )

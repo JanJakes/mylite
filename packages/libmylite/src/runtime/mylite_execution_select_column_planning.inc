@@ -1156,11 +1156,12 @@ static void apply_result_column_descriptor_flags(
     };
     bool is_key_part = false;
 
-    assert(key_metadata != NULL);
-    indexes = (struct loaded_index_info_span){
-        .indexes = key_metadata->indexes,
-        .count = key_metadata->index_count,
-    };
+    if (key_metadata != NULL) {
+        indexes = (struct loaded_index_info_span){
+            .indexes = key_metadata->indexes,
+            .count = key_metadata->index_count,
+        };
+    }
 
     if (!column->is_nullable) {
         descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_NOT_NULL;
@@ -1172,10 +1173,10 @@ static void apply_result_column_descriptor_flags(
         column->default_kind == MYLITE_CATALOG_COLUMN_DEFAULT_NONE) {
         descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT;
     }
-    if (mylite_execution_primary_key_info_contains_column_id(
-            &key_metadata->primary_key,
-            column->column_id
-        )) {
+    if (key_metadata != NULL && mylite_execution_primary_key_info_contains_column_id(
+                                    &key_metadata->primary_key,
+                                    column->column_id
+                                )) {
         descriptor->flags |= MYLITE_RESULT_COLUMN_FLAG_PRI_KEY;
         is_key_part = true;
     } else if (mylite_execution_column_has_unique_secondary_index(indexes, column->column_id)) {

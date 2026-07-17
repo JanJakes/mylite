@@ -286,8 +286,11 @@ classification when they are implemented.
 ### Close Behavior
 
 `mylite_close()` rolls back an active user transaction before closing SQLite.
-The close function remains `void` and ignores rollback failures during cleanup,
-matching the existing no-fail close API shape.
+Before rollback state is discarded, clean close preserves consumed persistent
+AUTO_INCREMENT values through the lifecycle's high-water reconciliation.
+`mylite_close_checked()` returns cleanup failures and leaves the handle owned by
+the caller. The legacy `void` close wrapper performs best-effort cleanup and
+force-releases the handle only when that fallible preparation fails.
 
 ## Result And Diagnostics
 

@@ -11,6 +11,7 @@ static int execute_update_from_plan(
     uint64_t matched_row_count = 0U;
     int64_t affected_rows = 0;
     int64_t auto_increment_next_after_update = plan->table.auto_increment_next;
+    int64_t current_auto_increment_next = plan->table.auto_increment_next;
     bool executes_physical_update = !plan->generated_default_noop;
     int rc = MYLITE_OK;
 
@@ -22,6 +23,17 @@ static int execute_update_from_plan(
     }
     if (rc == MYLITE_OK) {
         rc = begin_statement_transaction(database, &transaction);
+    }
+    if (rc == MYLITE_OK && executes_physical_update &&
+        planned_update_assigns_auto_increment(plan)) {
+        rc = read_current_auto_increment_next_after_write_lock(
+            database,
+            &plan->table,
+            plan->table.auto_increment_next,
+            false,
+            &current_auto_increment_next
+        );
+        auto_increment_next_after_update = current_auto_increment_next;
     }
     if (rc == MYLITE_OK) {
         rc = read_limited_update_matched_row_state(
@@ -59,6 +71,7 @@ static int execute_update_from_plan(
             plan,
             &executable_plan,
             affected_rows,
+            current_auto_increment_next,
             &auto_increment_next_after_update
         );
     }
@@ -78,7 +91,7 @@ static int execute_update_from_plan(
         rc = rollback_statement_transaction(database, &transaction, rc);
     }
     executable_update_deinit(&executable_plan);
-    if (rc == MYLITE_OK && auto_increment_next_after_update != plan->table.auto_increment_next) {
+    if (rc == MYLITE_OK && auto_increment_next_after_update != current_auto_increment_next) {
         rc = record_persistent_auto_increment_high_water(
             database,
             &plan->table,
@@ -600,8 +613,9 @@ static int append_update_integer_string_adjustment_diagnostic(
         );
         if (rc == MYLITE_OK && exceeds_range) {
             rc = append_out_of_range_warning(database, column->name, row_number);
-        } else if (rc == MYLITE_OK &&
-                   parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED) {
+        } else if (
+            rc == MYLITE_OK && parse_result == MYLITE_EXECUTION_DML_NUMERIC_PARSE_TRUNCATED
+        ) {
             rc = append_data_truncated_warning(database, column->name, row_number);
         }
     }
@@ -1414,9 +1428,11 @@ static int prepare_executable_update_plan(
         rc = prepare_update_multiple_assignments(database, plan, executable_plan);
     } else if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_SAME_COLUMN_ARITHMETIC) {
         rc = prepare_update_arithmetic_assignment(database, plan, executable_plan);
-    } else if (plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL ||
-               plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY ||
-               plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR) {
+    } else if (
+        plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_DATE_INTERVAL ||
+        plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_COLUMN_COPY ||
+        plan->assignment_value_kind == PLANNED_UPDATE_ASSIGNMENT_ROW_SCALAR
+    ) {
         rc = MYLITE_OK;
     } else {
         rc = convert_update_value(database, plan, &executable_plan->assignment_value);
@@ -1924,16 +1940,17 @@ static int advance_auto_increment_after_update(
     const struct planned_update *plan,
     const struct planned_update *executable_plan,
     int64_t affected_rows,
+    int64_t current_auto_increment_next,
     int64_t *out_auto_increment_next
 ) {
     const struct mylite_catalog_column_descriptor *assignment_column = NULL;
     const struct planned_value *assignment_value = NULL;
     struct integer_column_range range = {0};
-    int64_t next_value = plan->table.auto_increment_next;
+    int64_t next_value = current_auto_increment_next;
     int rc = MYLITE_OK;
 
     if (out_auto_increment_next != NULL) {
-        *out_auto_increment_next = plan->table.auto_increment_next;
+        *out_auto_increment_next = current_auto_increment_next;
     }
     if (affected_rows <= 0) {
         return MYLITE_OK;
@@ -1980,7 +1997,7 @@ static int advance_auto_increment_after_update(
             &next_value
         );
     }
-    if (rc == MYLITE_OK && next_value != plan->table.auto_increment_next) {
+    if (rc == MYLITE_OK && next_value != current_auto_increment_next) {
         rc = update_table_auto_increment_next(database, &plan->table, next_value);
         if (rc == MYLITE_OK && out_auto_increment_next != NULL) {
             *out_auto_increment_next = next_value;

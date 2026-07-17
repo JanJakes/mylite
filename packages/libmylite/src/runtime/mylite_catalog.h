@@ -829,6 +829,11 @@ int mylite_catalog_read_table_by_id(
     int64_t table_id,
     struct mylite_catalog_table_descriptor *out_table
 );
+int mylite_catalog_read_table_auto_increment_next(
+    struct mylite_db *database,
+    int64_t table_id,
+    int64_t *out_auto_increment_next
+);
 int mylite_catalog_read_view_by_table_id(
     struct mylite_db *database,
     int64_t table_id,

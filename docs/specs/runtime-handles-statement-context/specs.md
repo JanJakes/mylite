@@ -88,6 +88,7 @@ typedef struct mylite_db mylite_db;
 
 MYLITE_API int mylite_open_memory(mylite_db **out_db);
 MYLITE_API void mylite_close(mylite_db *db);
+MYLITE_API int mylite_close_checked(mylite_db *db);
 
 MYLITE_API int mylite_errcode(const mylite_db *db);
 MYLITE_API const char *mylite_sqlstate(const mylite_db *db);
@@ -100,6 +101,15 @@ a non-NULL handle and returns `MYLITE_OK`. On failure, it stores `NULL` and
 returns a MyLite status code.
 
 `mylite_close(NULL)` is a no-op.
+
+`mylite_close_checked()` provides the fallible close path. It returns
+`MYLITE_MISUSE` for `NULL`. Before releasing a non-NULL handle, it detaches live
+statements, rolls back an active user transaction, and reconciles any consumed
+persistent AUTO_INCREMENT high-water values in a new transaction. On cleanup
+failure it returns the status and leaves the handle owned by the caller so the
+diagnostic can be inspected and close can be retried. The legacy
+`mylite_close()` wrapper performs the same preparation but force-releases the
+handle if cleanup fails because its ABI cannot return a status.
 
 The connection owns a registry of every live statement and cursor. Closing a
 connection first releases each statement's SQLite resources, statement

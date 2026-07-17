@@ -1011,6 +1011,32 @@ static int finish_cursor_statement(mylite_stmt *stmt, bool exhausted) {
     return MYLITE_OK;
 }
 
+int mylite_execution_prepare_connection_close(struct mylite_db *database) {
+    int rc = MYLITE_OK;
+
+    if (database == NULL) {
+        return MYLITE_MISUSE;
+    }
+    mylite_execution_detach_connection_statements(database);
+    if (database->session.user_transaction_active) {
+        rc =
+            normalize_sqlite_control_rc(database, execute_sqlite_control_sql(database, "ROLLBACK"));
+        if (rc == MYLITE_OK) {
+            mylite_catalog_invalidate_descriptor_cache(database);
+            database->session.user_transaction_active = false;
+            clear_active_transaction_characteristics(database);
+            clear_user_savepoints(database);
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = reconcile_persistent_auto_increment_high_waters(database);
+    }
+    if (rc == MYLITE_OK) {
+        clear_persistent_auto_increment_high_waters(database);
+    }
+    return rc;
+}
+
 void mylite_execution_detach_connection_statements(struct mylite_db *database) {
     if (database == NULL) {
         return;

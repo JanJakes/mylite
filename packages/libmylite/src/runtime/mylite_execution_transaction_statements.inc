@@ -348,6 +348,54 @@ static int record_persistent_auto_increment_high_water(
     return rc;
 }
 
+static int read_current_auto_increment_next_after_write_lock(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    int64_t planned_next,
+    bool use_session_insert_id,
+    int64_t *out_next
+) {
+    int rc = MYLITE_OK;
+
+    if (database == NULL || table == NULL || out_next == NULL || planned_next <= 0) {
+        if (database != NULL) {
+            set_runtime_error(database, "invalid auto-increment counter request");
+        }
+        return MYLITE_ERROR;
+    }
+    *out_next = planned_next;
+    if (use_session_insert_id && database->session.insert_id != 0U) {
+        return MYLITE_OK;
+    }
+    if (table->table_id < 0) {
+        return MYLITE_OK;
+    }
+    if (sqlite3_get_autocommit(database->sqlite) != 0) {
+        set_runtime_error(database, "auto-increment counter read requires a write transaction");
+        return MYLITE_ERROR;
+    }
+
+    rc = mylite_catalog_read_table_auto_increment_next(database, table->table_id, out_next);
+    for (size_t index = 0U;
+         rc == MYLITE_OK && index < database->session.auto_increment_high_water_count;
+         ++index) {
+        const struct mylite_session_auto_increment_high_water *high_water =
+            &database->session.auto_increment_high_waters[index];
+
+        if (high_water->table_id == table->table_id && high_water->next_value > *out_next) {
+            *out_next = high_water->next_value;
+        }
+    }
+    if (rc == MYLITE_OK && *out_next <= 0) {
+        rc = MYLITE_ERROR;
+    }
+    if (rc != MYLITE_OK) {
+        set_internal_error_if_clear(database, rc, "failed to read auto-increment counter");
+        return rc;
+    }
+    return MYLITE_OK;
+}
+
 static int reconcile_persistent_auto_increment_high_waters(struct mylite_db *database) {
     struct mylite_session_state *session = database == NULL ? NULL : &database->session;
     bool started_transaction = false;

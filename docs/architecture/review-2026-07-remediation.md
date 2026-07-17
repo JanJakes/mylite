@@ -121,13 +121,14 @@ complete.
 
 ### AUTO_INCREMENT integrity
 
-- [ ] Acquire the serialized writer boundary before reading or reserving the
+- [x] Acquire the serialized writer boundary before reading or reserving the
   high-water mark.
-- [ ] Keep reservation, row mutation, and counter advancement in one explicit
+- [x] Keep reservation, row mutation, and counter advancement in one explicit
   transaction protocol.
-- [ ] Prevent generated ODKU keys from targeting rows committed after planning.
-- [ ] Define and persist clean-close and crash-durable high-water behavior.
-- [ ] Cover plain INSERT, IGNORE, REPLACE, ODKU, multi-row, explicit values,
+- [x] Prevent generated ODKU keys from targeting rows committed after planning.
+- [x] Define clean-close persistence and document process-death gap reuse as an
+  explicit single-writer storage limitation.
+- [x] Cover plain INSERT, IGNORE, REPLACE, ODKU, multi-row, explicit values,
   rollback, savepoints, concurrent handles, close, reopen, and process death.
 
 ## Phase 4: Catalog, metadata, and SQL semantics

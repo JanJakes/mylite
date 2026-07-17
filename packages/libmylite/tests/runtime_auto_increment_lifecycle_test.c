@@ -1,8 +1,10 @@
 #include <mylite/mylite.h>
 
 #include "runtime/mylite_connection.h"
+#include "sqlite3.h"
 #include "storage/mylite_file_format.h"
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +13,7 @@
 #ifdef _WIN32
 #  include <process.h>
 #else
+#  include <sys/wait.h>
 #  include <unistd.h>
 #endif
 
@@ -51,10 +54,37 @@ struct expected_statement {
     size_t warning_count;
 };
 
+struct interleaved_auto_increment_writer {
+    mylite_db *database;
+    const char *sql;
+    int rc;
+    int64_t affected_rows;
+    uint64_t insert_id;
+    bool triggered;
+};
+
+static int test_auto_increment_concurrent_writer_rebase(void);
+static int test_auto_increment_close_and_process_death(void);
 static int test_auto_increment_success_metadata_persistence_and_mutation(void);
 static int test_auto_increment_user_rollback_high_water(void);
 static int test_auto_increment_type_families_and_diagnostics(void);
 static int test_auto_increment_independent_handles(void);
+static int expect_interleaved_auto_increment_statement(
+    mylite_db *first,
+    mylite_db *second,
+    const char *writer_sql,
+    const char *first_sql,
+    int64_t expected_first_affected_rows,
+    uint64_t expected_first_insert_id,
+    uint64_t expected_writer_insert_id,
+    const char *context
+);
+static int execute_interleaved_writer_before_begin(
+    unsigned int trace_kind,
+    void *context,
+    void *statement,
+    void *detail
+);
 static int execute_ok(mylite_db *database, const char *sql, mylite_result **out_result);
 static int execute_error(mylite_db *database, const char *sql, struct expected_sql_error expected);
 static int expect_statement_ok(mylite_db *database, const char *sql);
@@ -98,12 +128,568 @@ static int expect_bytes(
 int main(void) {
     int failures = 0;
 
+    failures += test_auto_increment_concurrent_writer_rebase();
+    failures += test_auto_increment_close_and_process_death();
     failures += test_auto_increment_success_metadata_persistence_and_mutation();
     failures += test_auto_increment_user_rollback_high_water();
     failures += test_auto_increment_type_families_and_diagnostics();
     failures += test_auto_increment_independent_handles();
 
     return failures == 0 ? 0 : 1;
+}
+
+static int test_auto_increment_concurrent_writer_rebase(void) {
+    static const struct {
+        const char *name;
+        const char *statement;
+    } cases[] = {
+        {"plain", "INSERT INTO concurrent_plain(v) VALUES(100)"},
+        {"ignore", "INSERT IGNORE INTO concurrent_ignore(v) VALUES(100)"},
+        {"replace", "REPLACE INTO concurrent_replace(v) VALUES(100)"},
+        {"odku",
+         "INSERT INTO concurrent_odku(v) VALUES(100) "
+         "ON DUPLICATE KEY UPDATE v=VALUES(v)"},
+    };
+
+    static const char *const expected_rows[] = {"1", "200", "2", "100"};
+    char path[test_path_capacity];
+    char table_name[128];
+    char create_sql[256];
+    char writer_sql[256];
+    char query_sql[256];
+    char load_path[test_path_capacity];
+    char load_sql[test_path_capacity + 128U];
+    mylite_db *first = NULL;
+    mylite_db *second = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "concurrent_writer") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    failures += expect_int(mylite_open(path, &first), MYLITE_OK, "open concurrent first handle");
+    failures += expect_statement_ok(first, "CREATE DATABASE app");
+    failures += expect_statement_ok(first, "USE app");
+    failures += expect_int(mylite_open(path, &second), MYLITE_OK, "open concurrent second handle");
+    failures += expect_statement_ok(second, "USE app");
+
+    for (size_t index = 0U; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+        int written = snprintf(table_name, sizeof(table_name), "concurrent_%s", cases[index].name);
+
+        failures += expect_int(
+            written > 0 && (size_t)written < sizeof(table_name),
+            1,
+            "format concurrent table name"
+        );
+        written = snprintf(
+            create_sql,
+            sizeof(create_sql),
+            "CREATE TABLE %s (id INT AUTO_INCREMENT PRIMARY KEY, v INT)",
+            table_name
+        );
+        failures += expect_int(
+            written > 0 && (size_t)written < sizeof(create_sql),
+            1,
+            "format concurrent table SQL"
+        );
+        written =
+            snprintf(writer_sql, sizeof(writer_sql), "INSERT INTO %s(v) VALUES(200)", table_name);
+        failures += expect_int(
+            written > 0 && (size_t)written < sizeof(writer_sql),
+            1,
+            "format interleaved writer SQL"
+        );
+        failures += expect_statement_ok(first, create_sql);
+        failures += expect_interleaved_auto_increment_statement(
+            first,
+            second,
+            writer_sql,
+            cases[index].statement,
+            1,
+            2U,
+            1U,
+            cases[index].name
+        );
+
+        written =
+            snprintf(query_sql, sizeof(query_sql), "SELECT id, v FROM %s ORDER BY id", table_name);
+        failures += expect_int(
+            written > 0 && (size_t)written < sizeof(query_sql),
+            1,
+            "format concurrent row query"
+        );
+        failures += expect_query_values(
+            second,
+            (struct expected_query){
+                .sql = query_sql,
+                .values = expected_rows,
+                .column_count = 2U,
+                .row_count = 2U,
+                .context = "concurrent generated rows",
+            }
+        );
+        failures += expect_show_table_status_auto_increment(
+            second,
+            table_name,
+            "3",
+            "concurrent durable counter"
+        );
+    }
+
+    failures += expect_statement_ok(
+        first,
+        "CREATE TABLE concurrent_multi (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
+    failures += expect_interleaved_auto_increment_statement(
+        first,
+        second,
+        "INSERT INTO concurrent_multi(v) VALUES(200)",
+        "INSERT INTO concurrent_multi(v) VALUES(100),(101)",
+        2,
+        2U,
+        1U,
+        "multi-row generated rebase"
+    );
+    failures += expect_query_values(
+        second,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM concurrent_multi ORDER BY id",
+            .values = (const char *const[]){"1", "200", "2", "100", "3", "101"},
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "concurrent multi-row generated values",
+        }
+    );
+
+    failures += expect_statement_ok(
+        first,
+        "CREATE TABLE concurrent_explicit (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
+    failures += expect_interleaved_auto_increment_statement(
+        first,
+        second,
+        "INSERT INTO concurrent_explicit(id, v) VALUES(20, 200)",
+        "INSERT INTO concurrent_explicit(id, v) VALUES(10, 100)",
+        1,
+        10U,
+        20U,
+        "explicit counter non-regression"
+    );
+    {
+        mylite_result *result = NULL;
+
+        failures += execute_ok(first, "INSERT INTO concurrent_explicit(v) VALUES(210)", &result);
+        if (result != NULL) {
+            failures += expect_uint64(
+                mylite_result_insert_id(result),
+                21U,
+                "explicit interleave preserves higher counter"
+            );
+        }
+        mylite_result_free(result);
+    }
+    failures += expect_query_values(
+        second,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM concurrent_explicit ORDER BY id",
+            .values = (const char *const[]){"10", "100", "20", "200", "21", "210"},
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "concurrent explicit high-water rows",
+        }
+    );
+
+    failures += expect_statement_ok(first, "CREATE TABLE concurrent_select_source(v INT)");
+    failures += expect_statement_ok(first, "INSERT INTO concurrent_select_source VALUES(100)");
+    failures += expect_statement_ok(
+        first,
+        "CREATE TABLE concurrent_table_select (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
+    failures += expect_interleaved_auto_increment_statement(
+        first,
+        second,
+        "INSERT INTO concurrent_table_select(v) VALUES(200)",
+        "INSERT INTO concurrent_table_select(v) SELECT v FROM concurrent_select_source",
+        1,
+        2U,
+        1U,
+        "table insert-select rebase"
+    );
+    failures += expect_query_values(
+        second,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM concurrent_table_select ORDER BY id",
+            .values = expected_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "concurrent table insert-select rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        first,
+        "CREATE TABLE concurrent_row_select (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
+    failures += expect_interleaved_auto_increment_statement(
+        first,
+        second,
+        "INSERT INTO concurrent_row_select(v) VALUES(200)",
+        "INSERT INTO concurrent_row_select(v) SELECT 100",
+        1,
+        2U,
+        1U,
+        "row-scalar insert-select rebase"
+    );
+    failures += expect_query_values(
+        second,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM concurrent_row_select ORDER BY id",
+            .values = expected_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "concurrent row-scalar insert-select rows",
+        }
+    );
+
+    {
+        FILE *load_file = NULL;
+        int written = snprintf(load_path, sizeof(load_path), "%s.tsv", path);
+
+        failures += expect_int(
+            written > 0 && (size_t)written < sizeof(load_path),
+            1,
+            "format concurrent LOAD DATA path"
+        );
+        load_file = fopen(load_path, "wb");
+        failures += expect_int(load_file != NULL, 1, "open concurrent LOAD DATA fixture");
+        if (load_file != NULL) {
+            failures += expect_int(
+                fputs("\\N\t100\n", load_file) >= 0,
+                1,
+                "write concurrent LOAD DATA fixture"
+            );
+            failures += expect_int(fclose(load_file), 0, "close concurrent LOAD DATA fixture");
+        }
+        written = snprintf(
+            load_sql,
+            sizeof(load_sql),
+            "LOAD DATA INFILE '%s' INTO TABLE concurrent_load",
+            load_path
+        );
+        failures += expect_int(
+            written > 0 && (size_t)written < sizeof(load_sql),
+            1,
+            "format concurrent LOAD DATA statement"
+        );
+    }
+    failures += expect_statement_ok(
+        first,
+        "CREATE TABLE concurrent_load (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
+    failures += expect_interleaved_auto_increment_statement(
+        first,
+        second,
+        "INSERT INTO concurrent_load(v) VALUES(200)",
+        load_sql,
+        1,
+        2U,
+        1U,
+        "LOAD DATA rebase"
+    );
+    failures += expect_query_values(
+        second,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM concurrent_load ORDER BY id",
+            .values = expected_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "concurrent LOAD DATA rows",
+        }
+    );
+
+    failures += expect_statement_ok(
+        first,
+        "CREATE TABLE concurrent_update (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
+    failures += expect_statement_ok(first, "INSERT INTO concurrent_update VALUES(5, 50)");
+    failures += expect_interleaved_auto_increment_statement(
+        first,
+        second,
+        "INSERT INTO concurrent_update(id, v) VALUES(20, 200)",
+        "UPDATE concurrent_update SET id=10 WHERE id=5",
+        1,
+        0U,
+        20U,
+        "UPDATE counter non-regression"
+    );
+    {
+        mylite_result *result = NULL;
+
+        failures += execute_ok(first, "INSERT INTO concurrent_update(v) VALUES(210)", &result);
+        if (result != NULL) {
+            failures += expect_uint64(
+                mylite_result_insert_id(result),
+                21U,
+                "UPDATE interleave preserves higher counter"
+            );
+        }
+        mylite_result_free(result);
+    }
+    failures += expect_query_values(
+        second,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM concurrent_update ORDER BY id",
+            .values = (const char *const[]){"10", "50", "20", "200", "21", "210"},
+            .column_count = 2U,
+            .row_count = 3U,
+            .context = "concurrent UPDATE high-water rows",
+        }
+    );
+
+    mylite_close(second);
+    mylite_close(first);
+    (void)remove(load_path);
+    remove_related_files(path);
+    return failures;
+}
+
+static int expect_interleaved_auto_increment_statement(
+    mylite_db *first,
+    mylite_db *second,
+    const char *writer_sql,
+    const char *first_sql,
+    int64_t expected_first_affected_rows,
+    uint64_t expected_first_insert_id,
+    uint64_t expected_writer_insert_id,
+    const char *context
+) {
+    struct interleaved_auto_increment_writer writer = {
+        .database = second,
+        .sql = writer_sql,
+        .rc = MYLITE_ERROR,
+    };
+    sqlite3 *sqlite = mylite_connection_sqlite_for_test(first);
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    failures += expect_int(
+        sqlite3_trace_v2(
+            sqlite,
+            SQLITE_TRACE_STMT,
+            execute_interleaved_writer_before_begin,
+            &writer
+        ),
+        SQLITE_OK,
+        "install auto-increment writer trace"
+    );
+    failures += execute_ok(first, first_sql, &result);
+    failures += expect_int(
+        sqlite3_trace_v2(sqlite, 0U, NULL, NULL),
+        SQLITE_OK,
+        "remove auto-increment writer trace"
+    );
+    failures += expect_int(writer.triggered, 1, context);
+    failures += expect_int(writer.rc, MYLITE_OK, "interleaved writer committed");
+    failures += expect_int64(writer.affected_rows, 1, "interleaved writer affected rows");
+    failures +=
+        expect_uint64(writer.insert_id, expected_writer_insert_id, "interleaved writer insert id");
+    if (result != NULL) {
+        failures += expect_int64(
+            mylite_result_affected_rows(result),
+            expected_first_affected_rows,
+            "rebased statement affected rows"
+        );
+        failures += expect_uint64(
+            mylite_result_insert_id(result),
+            expected_first_insert_id,
+            "rebased statement insert id"
+        );
+    }
+    mylite_result_free(result);
+    return failures;
+}
+
+static int execute_interleaved_writer_before_begin(
+    unsigned int trace_kind,
+    void *context,
+    void *statement,
+    void *detail
+) {
+    struct interleaved_auto_increment_writer *writer = context;
+    const char *sql = NULL;
+    mylite_result *result = NULL;
+
+    (void)detail;
+    if (trace_kind != SQLITE_TRACE_STMT || writer == NULL || writer->triggered ||
+        statement == NULL) {
+        return 0;
+    }
+    sql = sqlite3_sql((sqlite3_stmt *)statement);
+    if (sql == NULL || strcmp(sql, "BEGIN IMMEDIATE") != 0) {
+        return 0;
+    }
+
+    writer->triggered = true;
+    writer->rc = mylite_execute(writer->database, writer->sql, strlen(writer->sql), &result);
+    if (writer->rc == MYLITE_OK && result != NULL) {
+        writer->affected_rows = mylite_result_affected_rows(result);
+        writer->insert_id = mylite_result_insert_id(result);
+    }
+    mylite_result_free(result);
+    return 0;
+}
+
+static int test_auto_increment_close_and_process_death(void) {
+    static const char *const empty_rows[] = {"0"};
+    static const char *const clean_close_rows[] = {"2", "20"};
+#ifndef _WIN32
+    static const char *const process_death_rows[] = {"2", "20", "3", "40"};
+#endif
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "close_and_process_death") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open close lifecycle file");
+    failures += expect_statement_ok(database, "CREATE DATABASE app");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_statement_ok(
+        database,
+        "CREATE TABLE close_tx (id INT AUTO_INCREMENT PRIMARY KEY, v INT)"
+    );
+    failures += expect_statement_ok(database, "START TRANSACTION");
+    failures += expect_statement_result(
+        database,
+        "INSERT INTO close_tx(v) VALUES(10)",
+        (struct expected_statement){.affected_rows = 1, .warning_count = 0U}
+    );
+    failures += expect_int(
+        mylite_close_checked(database),
+        MYLITE_OK,
+        "checked close reconciles generated high water"
+    );
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen clean-close file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM close_tx",
+            .values = empty_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "clean close rolls back user rows",
+        }
+    );
+    failures += execute_ok(database, "INSERT INTO close_tx(v) VALUES(20)", &result);
+    if (result != NULL) {
+        failures += expect_uint64(
+            mylite_result_insert_id(result),
+            2U,
+            "clean close preserves consumed generated id"
+        );
+    }
+    mylite_result_free(result);
+    result = NULL;
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM close_tx",
+            .values = clean_close_rows,
+            .column_count = 2U,
+            .row_count = 1U,
+            .context = "clean close next generated row",
+        }
+    );
+    mylite_close(database);
+    database = NULL;
+
+#ifndef _WIN32
+    {
+        pid_t child = fork();
+        int child_status = 0;
+
+        if (child == 0) {
+            mylite_db *child_database = NULL;
+            mylite_result *child_result = NULL;
+            int child_rc = mylite_open(path, &child_database);
+
+            if (child_rc == MYLITE_OK) {
+                child_rc = mylite_execute(
+                    child_database,
+                    "USE app",
+                    sizeof("USE app") - 1U,
+                    &child_result
+                );
+                mylite_result_free(child_result);
+                child_result = NULL;
+            }
+            if (child_rc == MYLITE_OK) {
+                child_rc = mylite_execute(
+                    child_database,
+                    "START TRANSACTION",
+                    sizeof("START TRANSACTION") - 1U,
+                    &child_result
+                );
+                mylite_result_free(child_result);
+                child_result = NULL;
+            }
+            if (child_rc == MYLITE_OK) {
+                child_rc = mylite_execute(
+                    child_database,
+                    "INSERT INTO close_tx(v) VALUES(30)",
+                    sizeof("INSERT INTO close_tx(v) VALUES(30)") - 1U,
+                    &child_result
+                );
+                mylite_result_free(child_result);
+            }
+            _exit(child_rc == MYLITE_OK ? 0 : 1);
+        }
+        failures += expect_int(child >= 0, 1, "fork auto-increment process-death writer");
+        if (child > 0) {
+            failures += expect_int(
+                waitpid(child, &child_status, 0) == child,
+                1,
+                "wait for auto-increment process-death writer"
+            );
+            failures += expect_int(
+                WIFEXITED(child_status) && WEXITSTATUS(child_status) == 0,
+                1,
+                "process-death writer reached uncommitted insert"
+            );
+        }
+    }
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen process-death file");
+    failures += expect_statement_ok(database, "USE app");
+    failures += execute_ok(database, "INSERT INTO close_tx(v) VALUES(40)", &result);
+    if (result != NULL) {
+        failures += expect_uint64(
+            mylite_result_insert_id(result),
+            3U,
+            "process death may reuse uncommitted generated id"
+        );
+    }
+    mylite_result_free(result);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT id, v FROM close_tx ORDER BY id",
+            .values = process_death_rows,
+            .column_count = 2U,
+            .row_count = 2U,
+            .context = "process-death counter recovery contract",
+        }
+    );
+    mylite_close(database);
+#endif
+
+    remove_related_files(path);
+    return failures;
 }
 
 static int test_auto_increment_success_metadata_persistence_and_mutation(void) {

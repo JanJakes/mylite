@@ -489,6 +489,7 @@ static int advance_auto_increment_after_update(
     const struct planned_update *plan,
     const struct planned_update *executable_plan,
     int64_t affected_rows,
+    int64_t current_auto_increment_next,
     int64_t *out_auto_increment_next
 );
 static int update_table_auto_increment_next(

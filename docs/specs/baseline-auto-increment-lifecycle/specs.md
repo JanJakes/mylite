@@ -424,6 +424,14 @@ consumed counter high-water mark is restored so a later generated value is not
 reused. `ROLLBACK TO SAVEPOINT` may roll back catalog writes inside SQLite;
 the same high-water mark is reconciled before the final `COMMIT`.
 
+Persistent allocation is serialized at execution rather than fixed during
+planning. After acquiring the SQLite writer boundary, MyLite reads the current
+catalog counter without using descriptor caches and rebases generated values
+before duplicate handling. This prevents a generated duplicate-update key from
+targeting an unrelated row committed by another handle after planning. See
+`docs/specs/auto-increment-concurrency-integrity/specs.md` for the writer and
+crash-durability contract.
+
 The durable counter persists across close/reopen. Deleting rows does not reset
 the counter. `TRUNCATE TABLE` resets the counter to `1` after deleting rows.
 

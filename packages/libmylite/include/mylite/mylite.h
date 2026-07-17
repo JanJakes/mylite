@@ -90,6 +90,8 @@ MYLITE_API int mylite_open(const char *path, mylite_db **out_db);
 MYLITE_API int mylite_open_memory(mylite_db **out_db);
 /* Live statements are detached and remain valid only for mylite_stmt_finalize(). */
 MYLITE_API void mylite_close(mylite_db *database);
+/* On failure, the handle remains owned by the caller and may be closed again. */
+MYLITE_API int mylite_close_checked(mylite_db *database);
 
 MYLITE_API int mylite_execute(
     mylite_db *database,

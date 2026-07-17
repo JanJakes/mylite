@@ -516,6 +516,50 @@ int mylite_catalog_read_table_by_id(
     return rc;
 }
 
+int mylite_catalog_read_table_auto_increment_next(
+    struct mylite_db *database,
+    int64_t table_id,
+    int64_t *out_auto_increment_next
+) {
+    sqlite3_stmt *statement = NULL;
+    int sqlite_rc = SQLITE_OK;
+    int rc = mylite_catalog_validate_ready_database(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+    if (out_auto_increment_next == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_auto_increment_next = 0;
+    rc = mylite_catalog_validate_positive_id(table_id);
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_prepare_statement(
+            database->sqlite,
+            "SELECT auto_increment_next FROM _mylite_catalog_tables WHERE table_id = ?1",
+            &statement
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_catalog_bind_i64(statement, 1, table_id);
+    }
+    if (rc == MYLITE_OK) {
+        sqlite_rc = sqlite3_step(statement);
+        if (sqlite_rc == SQLITE_ROW && sqlite3_column_type(statement, 0) == SQLITE_INTEGER) {
+            *out_auto_increment_next = sqlite3_column_int64(statement, 0);
+            if (*out_auto_increment_next <= 0) {
+                rc = MYLITE_ERROR;
+            }
+        } else {
+            rc = sqlite_rc == SQLITE_ROW || sqlite_rc == SQLITE_DONE
+                     ? MYLITE_ERROR
+                     : mylite_sqlite_status_to_mylite(sqlite_rc);
+        }
+    }
+
+    return mylite_catalog_finalize_statement(statement, rc);
+}
+
 int mylite_catalog_read_view_by_table_id(
     struct mylite_db *database,
     int64_t table_id,

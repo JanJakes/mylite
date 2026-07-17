@@ -101,7 +101,24 @@ void mylite_close(mylite_db *database) {
         return;
     }
 
+    if (mylite_close_checked(database) != MYLITE_OK) {
+        destroy_database_handle(database);
+    }
+}
+
+int mylite_close_checked(mylite_db *database) {
+    int rc = MYLITE_OK;
+
+    if (database == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = mylite_execution_prepare_connection_close(database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
     destroy_database_handle(database);
+    return MYLITE_OK;
 }
 
 int mylite_errcode(const mylite_db *database) {

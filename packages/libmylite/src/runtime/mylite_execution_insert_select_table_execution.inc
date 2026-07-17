@@ -70,6 +70,7 @@ static int execute_insert_select_table(
     const struct planned_insert_select *plan,
     struct insert_select_table_execution *execution
 ) {
+    struct planned_insert_select locked_plan = *plan;
     int rc = MYLITE_OK;
 
     if (plan->target.has_auto_increment) {
@@ -78,6 +79,17 @@ static int execute_insert_select_table(
     if (rc == MYLITE_OK) {
         rc = begin_statement_transaction(database, &execution->transaction);
     }
+    if (rc == MYLITE_OK && locked_plan.target.has_auto_increment) {
+        rc = read_current_auto_increment_next_after_write_lock(
+            database,
+            &locked_plan.target.table,
+            locked_plan.target.auto_increment_next,
+            true,
+            &locked_plan.target.auto_increment_next
+        );
+        locked_plan.target.auto_increment_next_after_statement =
+            locked_plan.target.auto_increment_next;
+    }
     if (rc == MYLITE_OK) {
         rc = execute_sqlite_control_sql(database, execution->drop_sql);
     }
@@ -85,24 +97,24 @@ static int execute_insert_select_table(
         rc = execute_insert_select_materialize(
             database,
             execution->materialize_sql,
-            plan,
+            &locked_plan,
             &execution->temporary_table_created
         );
     }
     if (rc == MYLITE_OK) {
-        rc = validate_insert_select_table_rows(database, plan, execution);
+        rc = validate_insert_select_table_rows(database, &locked_plan, execution);
     }
     if (rc == MYLITE_OK) {
         rc = execute_insert_select_insert(
             database,
             execution->validation_sql,
             execution->insert_sql,
-            plan,
+            &locked_plan,
             &execution->counters
         );
     }
     if (rc == MYLITE_OK) {
-        rc = finish_insert_select_table_side_effects(database, plan, execution);
+        rc = finish_insert_select_table_side_effects(database, &locked_plan, execution);
     }
     if (rc == MYLITE_OK) {
         rc = execute_sqlite_control_sql(database, execution->drop_sql);
@@ -114,11 +126,12 @@ static int execute_insert_select_table(
     if (rc != MYLITE_OK) {
         rc = rollback_statement_transaction(database, &execution->transaction, rc);
     }
-    if (rc == MYLITE_OK && plan->target.has_auto_increment &&
-        execution->counters.auto_increment_next_after_rows != plan->target.auto_increment_next) {
+    if (rc == MYLITE_OK && locked_plan.target.has_auto_increment &&
+        execution->counters.auto_increment_next_after_rows !=
+            locked_plan.target.auto_increment_next) {
         rc = record_persistent_auto_increment_high_water(
             database,
-            &plan->target.table,
+            &locked_plan.target.table,
             execution->counters.auto_increment_next_after_rows
         );
     }

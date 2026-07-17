@@ -141,8 +141,12 @@ static void planned_insert_deinit(struct planned_insert *plan);
 static void planned_value_deinit(struct planned_value *value);
 static int execute_insert_from_plan(
     struct mylite_db *database,
-    const struct planned_insert *plan,
+    struct planned_insert *plan,
     mylite_result *result
+);
+static int rebase_insert_auto_increment_after_write_lock(
+    struct mylite_db *database,
+    struct planned_insert *plan
 );
 static int append_insert_duplicate_update_warnings_if_needed(
     struct mylite_db *database,

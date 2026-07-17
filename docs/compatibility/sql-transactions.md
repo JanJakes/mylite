@@ -20,12 +20,15 @@ autocommit-disabled user transactions with statement-level rollback.
 User-visible savepoints can roll back or release work inside those transactions
 and are cleared by `COMMIT`, full `ROLLBACK`, nested `START TRANSACTION`,
 supported `LOCK TABLES` transaction effects, supported DDL implicit commits,
-and `mylite_close()`. Current supported DDL/object lifecycle statements and
+and connection close. Current supported DDL/object lifecycle statements and
 limited `LOCK TABLES` implicitly commit an active user transaction before they
 run; for `LOCK TABLES`, verified runtime target-acquisition failures also keep
 that commit effect and release previous lock intent. This matches the baseline
-MySQL behavior for permanent objects and explicit table locks. `mylite_close()`
-rolls back an active uncommitted transaction.
+MySQL behavior for permanent objects and explicit table locks. Connection close
+rolls back an active uncommitted transaction and preserves consumed persistent
+AUTO_INCREMENT high-water values. Embedders that need cleanup errors use
+`mylite_close_checked()`; the legacy `mylite_close()` remains a best-effort
+`void` wrapper.
 
 `SET TRANSACTION` state is connection-local. Next-transaction characteristics
 are consumed by successful transaction-consuming statements, and read-only

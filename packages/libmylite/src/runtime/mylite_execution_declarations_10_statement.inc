@@ -143,6 +143,13 @@ static int record_persistent_auto_increment_high_water(
     const struct mylite_catalog_table_descriptor *table,
     int64_t next_value
 );
+static int read_current_auto_increment_next_after_write_lock(
+    struct mylite_db *database,
+    const struct mylite_catalog_table_descriptor *table,
+    int64_t planned_next,
+    bool use_session_insert_id,
+    int64_t *out_next
+);
 static int reconcile_persistent_auto_increment_high_waters(struct mylite_db *database);
 static bool has_persistent_auto_increment_high_water_updates(
     const struct mylite_session_state *session

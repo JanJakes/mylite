@@ -1,6 +1,6 @@
 static int execute_insert_from_plan(
     struct mylite_db *database,
-    const struct planned_insert *plan,
+    struct planned_insert *plan,
     mylite_result *result
 ) {
     sqlite3_stmt *statement = NULL;
@@ -10,14 +10,17 @@ static int execute_insert_from_plan(
     bool statement_is_cached = false;
     int rc = build_insert_sql(plan, &sql);
 
-    if (plan->has_auto_increment) {
-        counters.auto_increment_next_after_rows = plan->auto_increment_next;
-    }
     if (rc == MYLITE_OK && plan->has_auto_increment) {
         rc = ensure_persistent_auto_increment_high_water_slot(database, &plan->table);
     }
     if (rc == MYLITE_OK) {
         rc = begin_statement_transaction(database, &transaction);
+    }
+    if (rc == MYLITE_OK) {
+        rc = rebase_insert_auto_increment_after_write_lock(database, plan);
+    }
+    if (rc == MYLITE_OK && plan->has_auto_increment) {
+        counters.auto_increment_next_after_rows = plan->auto_increment_next;
     }
     if (rc == MYLITE_OK) {
         rc = prepare_cached_sqlite_statement(database, sql, &statement);
@@ -100,6 +103,88 @@ static int execute_insert_from_plan(
     return MYLITE_OK;
 }
 
+static int rebase_insert_auto_increment_after_write_lock(
+    struct mylite_db *database,
+    struct planned_insert *plan
+) {
+    int64_t next_value = 0;
+    int rc = MYLITE_OK;
+
+    if (plan == NULL || !plan->has_auto_increment) {
+        return MYLITE_OK;
+    }
+    rc = read_current_auto_increment_next_after_write_lock(
+        database,
+        &plan->table,
+        plan->auto_increment_next,
+        true,
+        &next_value
+    );
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    plan->auto_increment_next = next_value;
+    plan->auto_increment_next_after_statement = next_value;
+    plan->generated_auto_increment = false;
+    plan->first_generated_auto_increment = 0;
+    for (size_t row_index = 0U; row_index < plan->row_count; ++row_index) {
+        struct planned_value *value =
+            &plan->rows[row_index].values[plan->auto_increment_column_index];
+
+        if (plan->rows[row_index].generated_auto_increment) {
+            int64_t generated_value = 0;
+
+            rc = generated_auto_increment_value_for_lower_bound(
+                database,
+                next_value,
+                &plan->auto_increment_range,
+                &generated_value
+            );
+            if (rc == MYLITE_OK &&
+                (generated_value <= 0 ||
+                 (uint64_t)generated_value > plan->auto_increment_range.positive_max)) {
+                set_failed_read_auto_increment_error(database);
+                rc = MYLITE_ERROR;
+            }
+            if (rc == MYLITE_OK) {
+                rc = assign_generated_auto_increment_value(
+                    database,
+                    plan,
+                    row_index,
+                    generated_value
+                );
+            }
+            if (rc == MYLITE_OK && !plan->generated_auto_increment) {
+                plan->first_generated_auto_increment = generated_value;
+                plan->generated_auto_increment = true;
+            }
+            if (rc == MYLITE_OK) {
+                rc = next_auto_increment_after_generated_value(
+                    database,
+                    generated_value,
+                    &plan->auto_increment_range,
+                    &next_value
+                );
+            }
+        } else if (!value->is_null && !value->is_text && value->integer > 0) {
+            rc = next_auto_increment_after_explicit_insert_value(
+                next_value,
+                value->integer,
+                &plan->auto_increment_range,
+                &next_value
+            );
+        }
+        if (rc != MYLITE_OK) {
+            set_unsupported_error(database, "AUTO_INCREMENT counter is out of range");
+            return MYLITE_ERROR;
+        }
+    }
+
+    plan->auto_increment_next_after_statement = next_value;
+    return MYLITE_OK;
+}
+
 static int execute_load_data_infile_from_plan(
     struct mylite_db *database,
     const struct planned_load_data_infile *plan,
@@ -110,11 +195,9 @@ static int execute_load_data_infile_from_plan(
     char *sql = NULL;
     struct insert_execution_counters counters = {0};
     struct mylite_statement_transaction transaction = {0};
+    int64_t auto_increment_next = plan->insert.auto_increment_next;
     int rc = build_insert_sql(&plan->insert, &sql);
 
-    if (plan->insert.has_auto_increment) {
-        counters.auto_increment_next_after_rows = plan->insert.auto_increment_next;
-    }
     if (rc == MYLITE_OK && plan->insert.has_auto_increment) {
         rc = ensure_persistent_auto_increment_high_water_slot(database, &plan->insert.table);
     }
@@ -128,6 +211,18 @@ static int execute_load_data_infile_from_plan(
     }
     if (rc == MYLITE_OK) {
         rc = begin_statement_transaction(database, &transaction);
+    }
+    if (rc == MYLITE_OK && plan->insert.has_auto_increment) {
+        rc = read_current_auto_increment_next_after_write_lock(
+            database,
+            &plan->insert.table,
+            plan->insert.auto_increment_next,
+            true,
+            &auto_increment_next
+        );
+    }
+    if (rc == MYLITE_OK && plan->insert.has_auto_increment) {
+        counters.auto_increment_next_after_rows = auto_increment_next;
     }
     if (rc == MYLITE_OK) {
         rc = prepare_sqlite_statement(database, sql, &statement);
@@ -145,7 +240,7 @@ static int execute_load_data_infile_from_plan(
         file = NULL;
     }
     if (rc == MYLITE_OK && plan->insert.has_auto_increment &&
-        counters.auto_increment_next_after_rows != plan->insert.auto_increment_next) {
+        counters.auto_increment_next_after_rows != auto_increment_next) {
         rc = update_table_auto_increment_next(
             database,
             &plan->insert.table,
@@ -171,7 +266,7 @@ static int execute_load_data_infile_from_plan(
     }
     free(sql);
     if (rc == MYLITE_OK && plan->insert.has_auto_increment &&
-        counters.auto_increment_next_after_rows != plan->insert.auto_increment_next) {
+        counters.auto_increment_next_after_rows != auto_increment_next) {
         rc = record_persistent_auto_increment_high_water(
             database,
             &plan->insert.table,

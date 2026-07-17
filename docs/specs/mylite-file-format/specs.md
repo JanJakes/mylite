@@ -2,23 +2,44 @@
 
 ## Status
 
-This feature defines the first `.mylite` container preamble and adds internal
-helpers for initializing and validating it. Runtime file opening, shifted SQLite
-I/O, journaling, WAL, shared-memory behavior, and any required SQLite extension
-point or fork patch are intentionally out of scope for this slice.
+The `.mylite` container uses a 4096-byte MyLite-owned preamble followed by a
+shifted SQLite payload. Format version 2 is current. Format version 1 remains
+readable as a legacy committed file.
+
+The identity-bound creation and publication protocol is specified in
+`docs/specs/storage-file-initialization-lifecycle/specs.md`. Offset translation
+is specified in `docs/specs/file-backed-mylite-opening-vfs/specs.md`.
 
 ## Sources
 
-- SQLite Database File Format:
-  https://www.sqlite.org/fileformat.html
+- SQLite Database File Format: https://www.sqlite.org/fileformat.html
+- MyLite engineering standards:
+  `docs/architecture/engineering-standards.md`
 
 ## Preamble Layout
 
-The MyLite preamble is 4096 bytes. This is a fixed format-version-1 boundary:
-future SQLite payload bytes begin at physical byte `4096`, and the preamble
-before that offset belongs to MyLite.
+All integer fields are big-endian. The SQLite payload begins at physical byte
+4096 in both supported versions.
 
-All integer fields are big-endian.
+### Version 2
+
+| Offset | Size | Field | Value |
+| --- | ---: | --- | --- |
+| 0 | 16 | Magic | `MyLite format 1\0` |
+| 16 | 2 | MyLite file format version | `2` |
+| 18 | 1 | Lifecycle state | `1`, `2`, or `3` |
+| 19 | 4077 | Reserved | zero-filled |
+
+Lifecycle values are:
+
+- `1`: initialization is in progress and the file is not openable;
+- `2`: initialization is committed and the file may be opened;
+- `3`: recovery is required and ordinary open must reject the file.
+
+The magic text remains unchanged so format-family detection is stable; the
+numeric version field governs layout interpretation.
+
+### Legacy Version 1
 
 | Offset | Size | Field | Value |
 | --- | ---: | --- | --- |
@@ -26,40 +47,38 @@ All integer fields are big-endian.
 | 16 | 2 | MyLite file format version | `1` |
 | 18 | 4078 | Reserved | zero-filled |
 
-The future SQLite payload offset is not stored in the file. It is fixed by
-MyLite file format version 1. This avoids duplicated truth in the preamble while
-keeping the payload aligned for ordinary page sizes and mmap-friendly file
-access. Future formats that need a different payload offset must use a new
-format version.
+An otherwise valid version-1 preamble is interpreted as committed. Any nonzero
+legacy reserved byte is invalid.
 
-## Helper Behavior
+## Validation
 
-The internal file-format helper module exposes three operations:
+The file-format helper:
 
-- initialize a 4096-byte buffer with the version-1 preamble
-- validate a 4096-byte buffer as a version-1 preamble
-- read big-endian unsigned 16-bit fields from a preamble buffer
+- initializes a version-2 preamble in a requested lifecycle state;
+- initializes committed version-2 preambles for ordinary test fixtures;
+- classifies version-1 and version-2 lifecycle state;
+- validates only committed preambles as ordinarily openable; and
+- reads big-endian unsigned 16-bit fields.
 
-Validation rejects any mismatched magic, unsupported format version, or non-zero
-reserved byte. The helper does not perform file I/O.
+Validation rejects mismatched magic, unsupported versions, invalid lifecycle
+values, and nonzero reserved bytes. It does not perform file I/O. The VFS adds
+exact-handle file-size and SQLite-header validation.
 
 ## Compatibility Decisions
 
-- Plain SQLite files cannot be valid `.mylite` files because they lack the
-  MyLite preamble.
-- `.mylite` files are not meant to be directly readable by default SQLite tools
-  once runtime storage lands, because the SQLite header will start at offset
-  `4096`, not offset `0`.
-- Sidecar files, VFS behavior, and any required targeted SQLite extension point
-  or shifted-offset fork patch are deferred to runtime storage work.
+- Plain SQLite files are not `.mylite` files and are rejected.
+- Existing version-1 files remain readable and are not rewritten on open.
+- New files use version 2 and are not readable by binaries that only understand
+  version 1.
+- `created_with_file_format_version` in the catalog records provenance. A
+  supported historical value is accepted and is not required to equal the
+  current writer version.
+- Interrupted or failed version-2 initialization is rejected deterministically;
+  automatic repair is deferred until payload and catalog recovery can be
+  proven safe.
 
 ## Test Plan
 
-Fast C tests must cover:
-
-- initialized preambles contain the MyLite magic at offset `0`
-- initialized preambles record format version `1`
-- initialized preambles keep reserved bytes zero-filled
-- validation accepts an initialized preamble
-- validation rejects corrupted magic, version, and reserved bytes
-- big-endian unsigned 16-bit field reads are stable
+Fast C tests cover magic, versions, lifecycle classification, reserved bytes,
+legacy acceptance, invalid state and corruption rejection, and big-endian field
+reads. File-backed tests cover exact-handle publication and open behavior.

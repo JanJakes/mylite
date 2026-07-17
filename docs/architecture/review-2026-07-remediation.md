@@ -96,13 +96,12 @@ complete.
 
 ### File identity, initialization, and recovery
 
-- [ ] Bind create, validation, SQLite open, and failure cleanup to one proven
+- [x] Bind create, validation, SQLite open, and failure cleanup to one proven
   file identity.
-- [ ] Ensure cleanup can unlink only the inode/file identity created by the
-  failing opener.
-- [ ] Add explicit preamble initialization states and deterministic interrupted
+- [x] Ensure failed-open cleanup never unlinks an unverified pathname.
+- [x] Add explicit preamble initialization states and deterministic interrupted
   initialization recovery.
-- [ ] Reject preamble-only, replaced, truncated, or mismatched files without
+- [x] Reject preamble-only, replaced, truncated, or mismatched files without
   silently reinitializing them.
 - [ ] Qualify hot rollback-journal/WAL recovery through the shifted VFS.
 - [ ] Add multi-process barriers, replacement/symlink tests, and VFS fault

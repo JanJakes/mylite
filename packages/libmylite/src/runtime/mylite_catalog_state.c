@@ -815,7 +815,8 @@ static int initialize_catalog_schema(struct mylite_db *database) {
         "(singleton_id, schema_version, minimum_reader_schema_version, catalog_generation, "
         "created_with_file_format_version) "
         "VALUES (1, " MYLITE_CATALOG_SCHEMA_VERSION_TEXT
-        ", " MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT ", 1, 1);",
+        ", " MYLITE_CATALOG_MINIMUM_READER_SCHEMA_VERSION_TEXT
+        ", 1, " MYLITE_FILE_FORMAT_VERSION_TEXT ");",
     };
     struct mylite_catalog catalog = {.initialized = false};
     int rc = mylite_catalog_execute_sql(database->sqlite, "BEGIN IMMEDIATE;");
@@ -1018,7 +1019,8 @@ static int read_catalog_state(sqlite3 *sqlite, struct mylite_catalog *catalog) {
                             schema_version > MYLITE_CATALOG_SCHEMA_VERSION ||
                             minimum_reader_schema_version > MYLITE_CATALOG_SCHEMA_VERSION ||
                             minimum_reader_schema_version < 1 ||
-                            file_format_version != MYLITE_FILE_FORMAT_VERSION || generation < 1)) {
+                            file_format_version < MYLITE_FILE_LEGACY_FORMAT_VERSION ||
+                            file_format_version > MYLITE_FILE_FORMAT_VERSION || generation < 1)) {
         rc = MYLITE_ERROR;
     }
     if (rc == MYLITE_OK) {

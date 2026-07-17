@@ -11,7 +11,14 @@ struct mylite_offset_file {
     sqlite3_file base;
     sqlite3_file *inner_file;
     bool shifts_offsets;
+    bool initialization_owner;
 };
+
+#ifdef _WIN32
+#  define MYLITE_STORAGE_THREAD_LOCAL __declspec(thread)
+#else
+#  define MYLITE_STORAGE_THREAD_LOCAL _Thread_local
+#endif
 
 static int offset_close(sqlite3_file *file);
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): SQLite fixes this VFS ABI.
@@ -63,6 +70,14 @@ static int open_inner_file(
 );
 static void close_failed_inner_file(struct mylite_offset_file *file);
 static bool file_shifts_offsets(int flags);
+static int prepare_main_database_file(struct mylite_offset_file *file, bool exclusive_create);
+static int initialize_new_main_database_file(struct mylite_offset_file *file);
+static int validate_existing_main_database_file(struct mylite_offset_file *file);
+static int validate_sqlite_payload_header(struct mylite_offset_file *file);
+static int transition_initialization_state(
+    struct mylite_offset_file *file,
+    enum mylite_file_lifecycle_state state
+);
 static bool logical_to_physical_offset(sqlite3_int64 logical, sqlite3_int64 *out_physical);
 static sqlite3_int64 logical_size_from_physical_size(sqlite3_int64 physical_size);
 static int translate_size_file_control(
@@ -95,6 +110,7 @@ static const sqlite3_io_methods offset_io_methods = {
 };
 
 static sqlite3_vfs mylite_offset_vfs;
+static MYLITE_STORAGE_THREAD_LOCAL bool exclusive_create_enabled;
 
 int mylite_storage_vfs_ensure_registered(void) {
     sqlite3_mutex *mutex = NULL;
@@ -115,6 +131,21 @@ int mylite_storage_vfs_ensure_registered(void) {
 
 const char *mylite_storage_vfs_name(void) {
     return "mylite-offset-vfs";
+}
+
+void mylite_storage_vfs_set_exclusive_create(bool enabled) {
+    exclusive_create_enabled = enabled;
+}
+
+int mylite_storage_vfs_transition_initialization(sqlite3_file *file, bool commit) {
+    if (file == NULL || file->pMethods != &offset_io_methods) {
+        return SQLITE_NOTFOUND;
+    }
+
+    return transition_initialization_state(
+        offset_file_from_sqlite_file(file),
+        commit ? MYLITE_FILE_LIFECYCLE_COMMITTED : MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED
+    );
 }
 
 static int ensure_vfs_registered_locked(void) {
@@ -165,6 +196,12 @@ static int offset_close(sqlite3_file *file) {
     int rc = SQLITE_OK;
 
     if (offset_file->inner_file != NULL) {
+        if (offset_file->initialization_owner) {
+            (void)transition_initialization_state(
+                offset_file,
+                MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED
+            );
+        }
         if (offset_file->inner_file->pMethods != NULL) {
             rc = offset_file->inner_file->pMethods->xClose(offset_file->inner_file);
         }
@@ -291,17 +328,30 @@ static int offset_vfs_open(
 ) {
     sqlite3_vfs *base_vfs = wrapped_vfs(vfs);
     struct mylite_offset_file *offset_file = offset_file_from_sqlite_file(file);
+    bool exclusive_create = exclusive_create_enabled && file_shifts_offsets(flags);
+    int inner_flags = exclusive_create ? flags | SQLITE_OPEN_EXCLUSIVE : flags;
     int rc = SQLITE_OK;
 
     memset(offset_file, 0, sizeof(*offset_file));
 
-    rc = open_inner_file(base_vfs, filename, file, flags, out_flags);
+    rc = open_inner_file(base_vfs, filename, file, inner_flags, out_flags);
     if (rc != SQLITE_OK) {
         close_failed_inner_file(offset_file);
         return rc;
     }
+    if (exclusive_create && out_flags != NULL && (*out_flags & SQLITE_OPEN_READONLY) != 0) {
+        close_failed_inner_file(offset_file);
+        return SQLITE_CANTOPEN;
+    }
 
     offset_file->shifts_offsets = file_shifts_offsets(flags);
+    if (offset_file->shifts_offsets) {
+        rc = prepare_main_database_file(offset_file, exclusive_create);
+        if (rc != SQLITE_OK) {
+            close_failed_inner_file(offset_file);
+            return rc;
+        }
+    }
     offset_file->base.pMethods = &offset_io_methods;
 
     return SQLITE_OK;
@@ -409,16 +459,127 @@ static void close_failed_inner_file(struct mylite_offset_file *file) {
         return;
     }
 
+    if (file->initialization_owner && file->inner_file->pMethods != NULL) {
+        (void)transition_initialization_state(file, MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED);
+    }
     if (file->inner_file->pMethods != NULL) {
         (void)file->inner_file->pMethods->xClose(file->inner_file);
     }
     sqlite3_free(file->inner_file);
     file->inner_file = NULL;
+    file->initialization_owner = false;
     file->base.pMethods = NULL;
 }
 
 static bool file_shifts_offsets(int flags) {
     return (flags & SQLITE_OPEN_MAIN_DB) != 0;
+}
+
+static int prepare_main_database_file(struct mylite_offset_file *file, bool exclusive_create) {
+    if (exclusive_create) {
+        return initialize_new_main_database_file(file);
+    }
+
+    return validate_existing_main_database_file(file);
+}
+
+static int initialize_new_main_database_file(struct mylite_offset_file *file) {
+    unsigned char preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    sqlite3_int64 physical_size = 0;
+    int rc = file->inner_file->pMethods->xFileSize(file->inner_file, &physical_size);
+
+    if (rc != SQLITE_OK) {
+        return rc;
+    }
+    if (physical_size != 0) {
+        return SQLITE_CANTOPEN;
+    }
+
+    file->initialization_owner = true;
+    mylite_file_preamble_init_with_state(preamble, MYLITE_FILE_LIFECYCLE_INITIALIZING);
+    rc = file->inner_file->pMethods
+             ->xWrite(file->inner_file, preamble, MYLITE_FILE_PREAMBLE_SIZE, 0);
+    if (rc != SQLITE_OK) {
+        return rc;
+    }
+
+    return file->inner_file->pMethods->xSync(file->inner_file, SQLITE_SYNC_FULL);
+}
+
+static int validate_existing_main_database_file(struct mylite_offset_file *file) {
+    unsigned char preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    sqlite3_int64 physical_size = 0;
+    int rc = file->inner_file->pMethods->xFileSize(file->inner_file, &physical_size);
+
+    if (rc != SQLITE_OK) {
+        return rc;
+    }
+    if (physical_size < MYLITE_FILE_PREAMBLE_SIZE) {
+        return SQLITE_NOTADB;
+    }
+    rc =
+        file->inner_file->pMethods->xRead(file->inner_file, preamble, MYLITE_FILE_PREAMBLE_SIZE, 0);
+    if (rc != SQLITE_OK ||
+        mylite_file_preamble_lifecycle_state(preamble) != MYLITE_FILE_LIFECYCLE_COMMITTED) {
+        return SQLITE_NOTADB;
+    }
+
+    return validate_sqlite_payload_header(file);
+}
+
+static int validate_sqlite_payload_header(struct mylite_offset_file *file) {
+    static const unsigned char sqlite_header[] = "SQLite format 3";
+    unsigned char actual_header[sizeof(sqlite_header)];
+    sqlite3_int64 physical_size = 0;
+    int rc = file->inner_file->pMethods->xFileSize(file->inner_file, &physical_size);
+
+    if (rc != SQLITE_OK) {
+        return rc;
+    }
+    if (physical_size < (sqlite3_int64)MYLITE_FILE_SQLITE_PAYLOAD_OFFSET +
+                            (sqlite3_int64)MYLITE_FILE_SQLITE_MINIMUM_DATABASE_SIZE) {
+        return SQLITE_NOTADB;
+    }
+    rc = file->inner_file->pMethods->xRead(
+        file->inner_file,
+        actual_header,
+        (int)sizeof(actual_header),
+        MYLITE_FILE_SQLITE_PAYLOAD_OFFSET
+    );
+    if (rc != SQLITE_OK || memcmp(actual_header, sqlite_header, sizeof(sqlite_header)) != 0) {
+        return SQLITE_NOTADB;
+    }
+
+    return SQLITE_OK;
+}
+
+static int transition_initialization_state(
+    struct mylite_offset_file *file,
+    enum mylite_file_lifecycle_state state
+) {
+    unsigned char stored_state = (unsigned char)state;
+    int rc = SQLITE_OK;
+
+    if (!file->initialization_owner) {
+        return SQLITE_OK;
+    }
+    if (state == MYLITE_FILE_LIFECYCLE_COMMITTED) {
+        rc = validate_sqlite_payload_header(file);
+        if (rc != SQLITE_OK) {
+            return rc;
+        }
+    }
+    rc = file->inner_file->pMethods
+             ->xWrite(file->inner_file, &stored_state, 1, MYLITE_FILE_LIFECYCLE_STATE_OFFSET);
+    if (rc != SQLITE_OK) {
+        return rc;
+    }
+    rc = file->inner_file->pMethods->xSync(file->inner_file, SQLITE_SYNC_FULL);
+    if (rc == SQLITE_OK) {
+        file->initialization_owner = false;
+    }
+
+    return rc;
 }
 
 static bool logical_to_physical_offset(sqlite3_int64 logical, sqlite3_int64 *out_physical) {

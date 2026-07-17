@@ -4,6 +4,8 @@
 #include <string.h>
 
 static int test_preamble_init_sets_format_fields(void);
+static int test_preamble_lifecycle_states(void);
+static int test_legacy_preamble_is_committed(void);
 static int test_preamble_validate_rejects_corruption(void);
 static int test_preamble_u16_is_big_endian(void);
 static int expect_int(int actual, int expected, const char *context);
@@ -19,6 +21,8 @@ int main(void) {
     int failures = 0;
 
     failures += test_preamble_init_sets_format_fields();
+    failures += test_preamble_lifecycle_states();
+    failures += test_legacy_preamble_is_committed();
     failures += test_preamble_validate_rejects_corruption();
     failures += test_preamble_u16_is_big_endian();
 
@@ -39,6 +43,11 @@ static int test_preamble_init_sets_format_fields(void) {
         MYLITE_FILE_FORMAT_VERSION,
         "format version"
     );
+    failures += expect_int(
+        (int)mylite_file_preamble_lifecycle_state(preamble),
+        MYLITE_FILE_LIFECYCLE_COMMITTED,
+        "committed lifecycle state"
+    );
     failures += expect_bytes(
         &preamble[MYLITE_FILE_RESERVED_OFFSET],
         zeroes,
@@ -46,6 +55,62 @@ static int test_preamble_init_sets_format_fields(void) {
         "reserved bytes"
     );
     failures += expect_int(mylite_file_preamble_validate(preamble), 1, "validate initialized");
+
+    return failures;
+}
+
+static int test_preamble_lifecycle_states(void) {
+    unsigned char preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    int failures = 0;
+
+    mylite_file_preamble_init_with_state(preamble, MYLITE_FILE_LIFECYCLE_INITIALIZING);
+    failures += expect_int(
+        (int)mylite_file_preamble_lifecycle_state(preamble),
+        MYLITE_FILE_LIFECYCLE_INITIALIZING,
+        "initializing lifecycle state"
+    );
+    failures += expect_int(mylite_file_preamble_validate(preamble), 0, "initializing not openable");
+
+    mylite_file_preamble_init_with_state(preamble, MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED);
+    failures += expect_int(
+        (int)mylite_file_preamble_lifecycle_state(preamble),
+        MYLITE_FILE_LIFECYCLE_RECOVERY_REQUIRED,
+        "recovery-required lifecycle state"
+    );
+    failures +=
+        expect_int(mylite_file_preamble_validate(preamble), 0, "recovery-required not openable");
+
+    mylite_file_preamble_init(preamble);
+    preamble[MYLITE_FILE_LIFECYCLE_STATE_OFFSET] = 0xffU;
+    failures += expect_int(
+        (int)mylite_file_preamble_lifecycle_state(preamble),
+        MYLITE_FILE_LIFECYCLE_INVALID,
+        "invalid lifecycle state"
+    );
+
+    return failures;
+}
+
+static int test_legacy_preamble_is_committed(void) {
+    unsigned char preamble[MYLITE_FILE_PREAMBLE_SIZE];
+    int failures = 0;
+
+    memset(preamble, 0, sizeof(preamble));
+    memcpy(preamble, MYLITE_FILE_MAGIC_TEXT, MYLITE_FILE_MAGIC_SIZE);
+    preamble[MYLITE_FILE_FORMAT_VERSION_OFFSET + 1U] = MYLITE_FILE_LEGACY_FORMAT_VERSION;
+    failures += expect_int(
+        (int)mylite_file_preamble_lifecycle_state(preamble),
+        MYLITE_FILE_LIFECYCLE_COMMITTED,
+        "legacy lifecycle state"
+    );
+    failures += expect_int(mylite_file_preamble_validate(preamble), 1, "legacy preamble validates");
+
+    preamble[MYLITE_FILE_LIFECYCLE_STATE_OFFSET] = 1U;
+    failures += expect_int(
+        (int)mylite_file_preamble_lifecycle_state(preamble),
+        MYLITE_FILE_LIFECYCLE_INVALID,
+        "legacy reserved bytes remain zero"
+    );
 
     return failures;
 }

@@ -625,6 +625,68 @@ static int test_rejects_incompatible_and_incomplete_catalog_metadata(void) {
     failures += expect_true(database == NULL, "bad version leaves output null");
     remove_related_files(path);
 
+    if (make_test_path(path, sizeof(path), "legacy_file_format_provenance") != 0) {
+        return failures + 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open legacy provenance file");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += execute_sql(
+            sqlite,
+            "UPDATE _mylite_catalog_state SET created_with_file_format_version = 1"
+        );
+    }
+    mylite_close(database);
+    database = NULL;
+    failures +=
+        expect_int(mylite_open(path, &database), MYLITE_OK, "accept legacy file-format provenance");
+    mylite_close(database);
+    database = NULL;
+    remove_related_files(path);
+
+    if (make_test_path(path, sizeof(path), "bad_file_format_provenance") != 0) {
+        return failures + 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open bad provenance file");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        failures += execute_sql(
+            sqlite,
+            "UPDATE _mylite_catalog_state SET created_with_file_format_version = 0"
+        );
+    }
+    mylite_close(database);
+    database = NULL;
+    failures += expect_int(mylite_open(path, &database), MYLITE_ERROR, "reject invalid provenance");
+    failures += expect_true(database == NULL, "invalid provenance leaves output null");
+    remove_related_files(path);
+
+    if (make_test_path(path, sizeof(path), "future_file_format_provenance") != 0) {
+        return failures + 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open future provenance file");
+    sqlite = mylite_connection_sqlite_for_test(database);
+    if (sqlite != NULL) {
+        snprintf(
+            sql,
+            sizeof(sql),
+            "UPDATE _mylite_catalog_state SET created_with_file_format_version = %u",
+            (unsigned int)(MYLITE_FILE_FORMAT_VERSION + 1U)
+        );
+        failures += execute_sql(sqlite, sql);
+    }
+    mylite_close(database);
+    database = NULL;
+    failures += expect_int(mylite_open(path, &database), MYLITE_ERROR, "reject future provenance");
+    failures += expect_true(database == NULL, "future provenance leaves output null");
+    remove_related_files(path);
+
     if (make_test_path(path, sizeof(path), "bad_state_type") != 0) {
         return failures + 1;
     }

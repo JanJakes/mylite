@@ -1,46 +1,58 @@
 #include "mylite_file_open.h"
 
-#include "mylite_file_format.h"
 #include "sqlite3.h"
 
-#include <errno.h>
-#include <stdio.h>
-#include <string.h>
-
-static int validate_or_create_preamble(const char *path, struct mylite_storage_open_state *state);
-static int validate_existing_preamble(FILE *file);
-static int create_file_with_preamble(const char *path, struct mylite_storage_open_state *state);
-static int write_preamble(FILE *file);
+static int open_sqlite(const char *path, int flags, bool exclusive_create, sqlite3 **out_sqlite);
+static int control_sqlite_initialization(sqlite3 *sqlite, bool commit);
 static int sqlite_status_to_mylite(int sqlite_status);
 
-int mylite_storage_prepare_mylite_file(const char *path, struct mylite_storage_open_state *state) {
-    if (path == NULL || path[0] == '\0' || state == NULL) {
+int mylite_storage_open_sqlite_payload(const char *path, sqlite3 **out_sqlite) {
+    sqlite3 *sqlite = NULL;
+    int rc = MYLITE_OK;
+
+    if (path == NULL || path[0] == '\0' || out_sqlite == NULL) {
+        return MYLITE_MISUSE;
+    }
+    *out_sqlite = NULL;
+
+    rc = mylite_storage_vfs_ensure_registered();
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
+
+    rc = open_sqlite(path, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, true, &sqlite);
+    if (rc == MYLITE_ERROR) {
+        if (sqlite != NULL) {
+            (void)sqlite3_close(sqlite);
+            sqlite = NULL;
+        }
+        rc = open_sqlite(path, SQLITE_OPEN_READWRITE, false, &sqlite);
+    }
+    if (rc != MYLITE_OK) {
+        if (sqlite != NULL) {
+            (void)sqlite3_close(sqlite);
+        }
+        return rc;
+    }
+
+    *out_sqlite = sqlite;
+    return MYLITE_OK;
+}
+
+int mylite_storage_commit_sqlite_initialization(sqlite3 *sqlite) {
+    if (sqlite == NULL) {
         return MYLITE_MISUSE;
     }
 
-    memset(state, 0, sizeof(*state));
-
-    return validate_or_create_preamble(path, state);
+    return sqlite_status_to_mylite(control_sqlite_initialization(sqlite, true));
 }
 
-void mylite_storage_open_state_mark_published(struct mylite_storage_open_state *state) {
-    if (state == NULL) {
+void mylite_storage_abort_sqlite_initialization(sqlite3 *sqlite) {
+    if (sqlite == NULL) {
         return;
     }
 
-    state->published = true;
-}
-
-void mylite_storage_open_state_deinit(struct mylite_storage_open_state *state, const char *path) {
-    if (state == NULL) {
-        return;
-    }
-
-    if (state->created_file && !state->published && path != NULL && path[0] != '\0') {
-        (void)remove(path);
-    }
-
-    memset(state, 0, sizeof(*state));
+    (void)control_sqlite_initialization(sqlite, false);
 }
 
 int mylite_storage_configure_sqlite_payload(sqlite3 *sqlite) {
@@ -63,76 +75,24 @@ int mylite_storage_configure_sqlite_payload(sqlite3 *sqlite) {
     return MYLITE_OK;
 }
 
-static int validate_or_create_preamble(const char *path, struct mylite_storage_open_state *state) {
-    FILE *file = fopen(path, "rb");
-    int rc = MYLITE_OK;
+static int open_sqlite(const char *path, int flags, bool exclusive_create, sqlite3 **out_sqlite) {
+    int sqlite_rc = SQLITE_OK;
 
-    if (file == NULL) {
-        if (errno != ENOENT) {
-            return MYLITE_ERROR;
-        }
+    mylite_storage_vfs_set_exclusive_create(exclusive_create);
+    sqlite_rc = sqlite3_open_v2(path, out_sqlite, flags, mylite_storage_vfs_name());
+    mylite_storage_vfs_set_exclusive_create(false);
 
-        return create_file_with_preamble(path, state);
-    }
-
-    rc = validate_existing_preamble(file);
-    if (fclose(file) != 0 && rc == MYLITE_OK) {
-        rc = MYLITE_ERROR;
-    }
-
-    return rc;
+    return sqlite_status_to_mylite(sqlite_rc);
 }
 
-static int validate_existing_preamble(FILE *file) {
-    unsigned char preamble[MYLITE_FILE_PREAMBLE_SIZE];
-    size_t read_count = 0U;
+static int control_sqlite_initialization(sqlite3 *sqlite, bool commit) {
+    sqlite3_file *file = NULL;
+    int rc = sqlite3_file_control(sqlite, "main", SQLITE_FCNTL_FILE_POINTER, &file);
 
-    read_count = fread(preamble, 1U, sizeof(preamble), file);
-    if (read_count != sizeof(preamble)) {
-        return MYLITE_ERROR;
-    }
-    if (!mylite_file_preamble_validate(preamble)) {
-        return MYLITE_ERROR;
-    }
-
-    return MYLITE_OK;
-}
-
-static int create_file_with_preamble(const char *path, struct mylite_storage_open_state *state) {
-    FILE *file = fopen(path, "wbx");
-    int rc = MYLITE_OK;
-
-    if (file == NULL) {
-        return MYLITE_ERROR;
-    }
-
-    rc = write_preamble(file);
-    if (fclose(file) != 0 && rc == MYLITE_OK) {
-        rc = MYLITE_ERROR;
-    }
-    if (rc != MYLITE_OK) {
-        (void)remove(path);
+    if (rc != SQLITE_OK) {
         return rc;
     }
-
-    state->created_file = true;
-
-    return MYLITE_OK;
-}
-
-static int write_preamble(FILE *file) {
-    unsigned char preamble[MYLITE_FILE_PREAMBLE_SIZE];
-
-    mylite_file_preamble_init(preamble);
-
-    if (fwrite(preamble, 1U, sizeof(preamble), file) != sizeof(preamble)) {
-        return MYLITE_ERROR;
-    }
-    if (fflush(file) != 0) {
-        return MYLITE_ERROR;
-    }
-
-    return MYLITE_OK;
+    return mylite_storage_vfs_transition_initialization(file, commit);
 }
 
 static int sqlite_status_to_mylite(int sqlite_status) {

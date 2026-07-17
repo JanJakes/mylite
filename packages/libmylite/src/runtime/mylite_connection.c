@@ -70,7 +70,6 @@ int mylite_open_memory(mylite_db **out_db) {
 }
 
 int mylite_open(const char *path, mylite_db **out_db) {
-    struct mylite_storage_open_state open_state;
     struct mylite_db *database = NULL;
     int rc = MYLITE_OK;
 
@@ -83,23 +82,15 @@ int mylite_open(const char *path, mylite_db **out_db) {
         return MYLITE_MISUSE;
     }
 
-    rc = mylite_storage_prepare_mylite_file(path, &open_state);
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-
     rc = allocate_database_handle(&database);
     if (rc == MYLITE_OK) {
         rc = open_file_sqlite(database, path);
     }
     if (rc != MYLITE_OK) {
         destroy_database_handle(database);
-        mylite_storage_open_state_deinit(&open_state, path);
         return rc;
     }
 
-    mylite_storage_open_state_mark_published(&open_state);
-    mylite_storage_open_state_deinit(&open_state, path);
     *out_db = database;
 
     return MYLITE_OK;
@@ -303,37 +294,28 @@ static int open_file_sqlite(struct mylite_db *database, const char *path) {
     sqlite3 *sqlite = NULL;
     int rc = MYLITE_OK;
 
-    rc = mylite_storage_vfs_ensure_registered();
+    rc = mylite_storage_open_sqlite_payload(path, &sqlite);
     if (rc != MYLITE_OK) {
         return rc;
-    }
-
-    rc = sqlite3_open_v2(
-        path,
-        &sqlite,
-        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
-        mylite_storage_vfs_name()
-    );
-    if (rc != SQLITE_OK) {
-        if (sqlite != NULL) {
-            (void)sqlite3_close(sqlite);
-        }
-        return sqlite_status_to_mylite(rc);
     }
 
     database->sqlite = sqlite;
 
     rc = bootstrap_sqlite_connection(database);
+    if (rc == MYLITE_OK) {
+        rc = mylite_storage_configure_sqlite_payload(database->sqlite);
+    }
+    if (rc == MYLITE_OK) {
+        rc = initialize_file_backed_catalog(database);
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_storage_commit_sqlite_initialization(database->sqlite);
+    }
     if (rc != MYLITE_OK) {
-        return rc;
+        mylite_storage_abort_sqlite_initialization(database->sqlite);
     }
 
-    rc = mylite_storage_configure_sqlite_payload(database->sqlite);
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-
-    return initialize_file_backed_catalog(database);
+    return rc;
 }
 
 static int bootstrap_sqlite_connection(struct mylite_db *database) {

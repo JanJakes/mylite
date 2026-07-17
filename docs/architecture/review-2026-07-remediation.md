@@ -143,7 +143,7 @@ complete.
   contract.
 - [ ] Replace unchecked system-metadata parallel arrays with typed records or
   generated definitions with static validation.
-- [ ] Pin borrowed key metadata or give it an explicit acquisition/release
+- [x] Pin borrowed key metadata or give it an explicit acquisition/release
   lifetime.
 
 ### Metadata correctness and scale

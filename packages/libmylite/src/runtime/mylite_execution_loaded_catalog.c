@@ -207,6 +207,10 @@ static struct loaded_table_key_metadata_cache_entry *find_table_key_metadata_cac
 static struct loaded_table_key_metadata_cache_entry *prepare_table_key_metadata_cache_entry(
     struct mylite_db *database
 );
+static uint64_t table_key_metadata_cache_next_clock(struct mylite_db *database);
+static void release_table_key_metadata_cache_entry(
+    struct loaded_table_key_metadata_cache_entry *entry
+);
 static void loaded_table_key_metadata_cache_entry_deinit(
     struct loaded_table_key_metadata_cache_entry *entry
 );
@@ -475,6 +479,31 @@ void mylite_execution_loaded_table_key_metadata_deinit(struct loaded_table_key_m
     *metadata = mylite_execution_loaded_table_key_metadata_init();
 }
 
+struct loaded_table_key_metadata_reference mylite_execution_loaded_table_key_metadata_reference_init(
+    void
+) {
+    return (struct loaded_table_key_metadata_reference){
+        .owned_metadata = mylite_execution_loaded_table_key_metadata_init(),
+        .metadata = NULL,
+        .cache_entry = NULL,
+    };
+}
+
+void mylite_execution_loaded_table_key_metadata_reference_deinit(
+    struct loaded_table_key_metadata_reference *reference
+) {
+    if (reference == NULL) {
+        return;
+    }
+
+    if (reference->cache_entry != NULL) {
+        release_table_key_metadata_cache_entry(reference->cache_entry);
+    } else {
+        mylite_execution_loaded_table_key_metadata_deinit(&reference->owned_metadata);
+    }
+    *reference = mylite_execution_loaded_table_key_metadata_reference_init();
+}
+
 int mylite_execution_load_table_key_metadata(
     struct mylite_db *database,
     int64_t table_id,
@@ -513,28 +542,40 @@ int mylite_execution_load_table_key_metadata(
     return rc;
 }
 
-int mylite_execution_borrow_cached_table_key_metadata(
+int mylite_execution_acquire_table_key_metadata(
     struct mylite_db *database,
     int64_t table_id,
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count,
-    const struct loaded_table_key_metadata **out_metadata
+    struct loaded_table_key_metadata_reference *out_reference
 ) {
     struct loaded_table_key_metadata_cache_entry *entry = NULL;
     struct loaded_table_key_metadata metadata = mylite_execution_loaded_table_key_metadata_init();
     int rc = MYLITE_OK;
 
-    if (database == NULL || columns == NULL || column_count == 0U || out_metadata == NULL) {
+    if (database == NULL || columns == NULL || column_count == 0U || out_reference == NULL) {
         return MYLITE_MISUSE;
     }
-    *out_metadata = NULL;
+    *out_reference = mylite_execution_loaded_table_key_metadata_reference_init();
     if (table_id < 0) {
-        return MYLITE_MISUSE;
+        rc = mylite_execution_load_table_key_metadata(
+            database,
+            table_id,
+            columns,
+            column_count,
+            &out_reference->owned_metadata
+        );
+        if (rc == MYLITE_OK) {
+            out_reference->metadata = &out_reference->owned_metadata;
+        }
+        return rc;
     }
 
     entry = find_table_key_metadata_cache_entry(database, table_id);
     if (entry != NULL) {
-        *out_metadata = &entry->metadata;
+        ++entry->reference_count;
+        out_reference->metadata = &entry->metadata;
+        out_reference->cache_entry = entry;
         return MYLITE_OK;
     }
 
@@ -551,8 +592,9 @@ int mylite_execution_borrow_cached_table_key_metadata(
 
     entry = prepare_table_key_metadata_cache_entry(database);
     if (entry == NULL) {
-        mylite_execution_loaded_table_key_metadata_deinit(&metadata);
-        return MYLITE_NOMEM;
+        out_reference->owned_metadata = metadata;
+        out_reference->metadata = &out_reference->owned_metadata;
+        return MYLITE_OK;
     }
 
     *entry = (struct loaded_table_key_metadata_cache_entry){
@@ -560,15 +602,30 @@ int mylite_execution_borrow_cached_table_key_metadata(
         .table_id = table_id,
         .catalog_generation = database->session.catalog_generation,
         .sqlite_schema_generation = database->session.sqlite_schema_generation,
+        .last_use = table_key_metadata_cache_next_clock(database),
         .metadata = metadata,
+        .reference_count = 1U,
     };
-    *out_metadata = &entry->metadata;
+    out_reference->metadata = &entry->metadata;
+    out_reference->cache_entry = entry;
 
     return MYLITE_OK;
 }
 
 void mylite_execution_table_key_metadata_cache_invalidate(struct mylite_db *database) {
-    mylite_execution_table_key_metadata_cache_deinit(database);
+    if (database == NULL) {
+        return;
+    }
+
+    for (size_t index = 0U; index < database->table_key_metadata_cache_count; ++index) {
+        struct loaded_table_key_metadata_cache_entry *entry =
+            &database->table_key_metadata_cache[index];
+
+        entry->is_valid = false;
+        if (entry->reference_count == 0U) {
+            loaded_table_key_metadata_cache_entry_deinit(entry);
+        }
+    }
 }
 
 void mylite_execution_table_key_metadata_cache_deinit(struct mylite_db *database) {
@@ -670,14 +727,15 @@ static uint64_t table_columns_cache_next_clock(struct mylite_db *database) {
     return database->table_columns_cache_clock;
 }
 
-static void loaded_table_columns_cache_entry_deinit(struct loaded_table_columns_cache_entry *entry
+static void loaded_table_columns_cache_entry_deinit(
+    struct loaded_table_columns_cache_entry *entry
 ) {
     if (entry == NULL) {
         return;
     }
 
     free(entry->columns);
-    *entry = (struct loaded_table_columns_cache_entry){0};
+    *entry = (struct loaded_table_columns_cache_entry){.is_valid = false};
 }
 
 static struct loaded_table_key_metadata_cache_entry *find_table_key_metadata_cache_entry(
@@ -695,6 +753,7 @@ static struct loaded_table_key_metadata_cache_entry *find_table_key_metadata_cac
         if (entry->is_valid && entry->table_id == table_id &&
             entry->catalog_generation == database->session.catalog_generation &&
             entry->sqlite_schema_generation == database->session.sqlite_schema_generation) {
+            entry->last_use = table_key_metadata_cache_next_clock(database);
             return entry;
         }
     }
@@ -706,9 +765,23 @@ static struct loaded_table_key_metadata_cache_entry *prepare_table_key_metadata_
     struct mylite_db *database
 ) {
     struct loaded_table_key_metadata_cache_entry *entry = NULL;
+    uint64_t oldest_use = UINT64_MAX;
 
     if (database == NULL) {
         return NULL;
+    }
+    for (size_t index = 0U; index < database->table_key_metadata_cache_count; ++index) {
+        struct loaded_table_key_metadata_cache_entry *candidate =
+            &database->table_key_metadata_cache[index];
+
+        if (candidate->reference_count == 0U && !candidate->is_valid) {
+            loaded_table_key_metadata_cache_entry_deinit(candidate);
+            return candidate;
+        }
+        if (candidate->reference_count == 0U && candidate->last_use < oldest_use) {
+            oldest_use = candidate->last_use;
+            entry = candidate;
+        }
     }
     if (database->table_key_metadata_cache_count <
         MYLITE_EXECUTION_TABLE_KEY_METADATA_CACHE_LIMIT) {
@@ -717,9 +790,34 @@ static struct loaded_table_key_metadata_cache_entry *prepare_table_key_metadata_
         return entry;
     }
 
-    entry = &database->table_key_metadata_cache[0];
+    if (entry == NULL) {
+        return NULL;
+    }
     loaded_table_key_metadata_cache_entry_deinit(entry);
     return entry;
+}
+
+static uint64_t table_key_metadata_cache_next_clock(struct mylite_db *database) {
+    if (database->table_key_metadata_cache_clock == UINT64_MAX) {
+        for (size_t index = 0U; index < database->table_key_metadata_cache_count; ++index) {
+            database->table_key_metadata_cache[index].last_use = 0U;
+        }
+        database->table_key_metadata_cache_clock = 0U;
+    }
+    ++database->table_key_metadata_cache_clock;
+    return database->table_key_metadata_cache_clock;
+}
+
+static void release_table_key_metadata_cache_entry(
+    struct loaded_table_key_metadata_cache_entry *entry
+) {
+    assert(entry != NULL);
+    assert(entry->reference_count > 0U);
+
+    --entry->reference_count;
+    if (entry->reference_count == 0U && !entry->is_valid) {
+        loaded_table_key_metadata_cache_entry_deinit(entry);
+    }
 }
 
 static void loaded_table_key_metadata_cache_entry_deinit(
@@ -730,7 +828,7 @@ static void loaded_table_key_metadata_cache_entry_deinit(
     }
 
     mylite_execution_loaded_table_key_metadata_deinit(&entry->metadata);
-    *entry = (struct loaded_table_key_metadata_cache_entry){0};
+    *entry = (struct loaded_table_key_metadata_cache_entry){.is_valid = false};
 }
 
 struct primary_key_info mylite_execution_primary_key_info_init(void) {

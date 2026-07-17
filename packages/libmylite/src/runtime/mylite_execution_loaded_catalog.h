@@ -60,6 +60,14 @@ struct loaded_table_key_metadata {
     size_t index_count;
 };
 
+struct loaded_table_key_metadata_cache_entry;
+
+struct loaded_table_key_metadata_reference {
+    struct loaded_table_key_metadata owned_metadata;
+    const struct loaded_table_key_metadata *metadata;
+    struct loaded_table_key_metadata_cache_entry *cache_entry;
+};
+
 enum {
     MYLITE_EXECUTION_TABLE_COLUMNS_CACHE_LIMIT = 64,
     MYLITE_EXECUTION_TABLE_KEY_METADATA_CACHE_LIMIT = 64,
@@ -81,7 +89,9 @@ struct loaded_table_key_metadata_cache_entry {
     int64_t table_id;
     uint64_t catalog_generation;
     uint64_t sqlite_schema_generation;
+    uint64_t last_use;
     struct loaded_table_key_metadata metadata;
+    size_t reference_count;
 };
 
 int mylite_execution_load_table_columns(
@@ -105,6 +115,12 @@ void mylite_execution_table_columns_cache_invalidate(struct mylite_db *database)
 void mylite_execution_table_columns_cache_deinit(struct mylite_db *database);
 struct loaded_table_key_metadata mylite_execution_loaded_table_key_metadata_init(void);
 void mylite_execution_loaded_table_key_metadata_deinit(struct loaded_table_key_metadata *metadata);
+struct loaded_table_key_metadata_reference mylite_execution_loaded_table_key_metadata_reference_init(
+    void
+);
+void mylite_execution_loaded_table_key_metadata_reference_deinit(
+    struct loaded_table_key_metadata_reference *reference
+);
 int mylite_execution_load_table_key_metadata(
     struct mylite_db *database,
     int64_t table_id,
@@ -112,12 +128,12 @@ int mylite_execution_load_table_key_metadata(
     size_t column_count,
     struct loaded_table_key_metadata *out_metadata
 );
-int mylite_execution_borrow_cached_table_key_metadata(
+int mylite_execution_acquire_table_key_metadata(
     struct mylite_db *database,
     int64_t table_id,
     const struct mylite_catalog_column_descriptor *columns,
     size_t column_count,
-    const struct loaded_table_key_metadata **out_metadata
+    struct loaded_table_key_metadata_reference *out_reference
 );
 void mylite_execution_table_key_metadata_cache_invalidate(struct mylite_db *database);
 void mylite_execution_table_key_metadata_cache_deinit(struct mylite_db *database);

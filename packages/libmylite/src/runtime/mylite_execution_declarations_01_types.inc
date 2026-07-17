@@ -2545,8 +2545,7 @@ struct show_variables_where_truth_stack {
 };
 
 struct result_column_metadata_context {
-    struct loaded_table_key_metadata owned_key_metadata;
-    const struct loaded_table_key_metadata *key_metadata;
+    struct loaded_table_key_metadata_reference key_metadata;
     bool has_single_source_metadata;
 };
 

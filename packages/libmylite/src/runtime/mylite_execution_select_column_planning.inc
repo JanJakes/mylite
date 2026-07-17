@@ -522,8 +522,7 @@ static int append_select_result_column(
 
 static struct result_column_metadata_context result_column_metadata_context_init(void) {
     return (struct result_column_metadata_context){
-        .owned_key_metadata = mylite_execution_loaded_table_key_metadata_init(),
-        .key_metadata = NULL,
+        .key_metadata = mylite_execution_loaded_table_key_metadata_reference_init(),
         .has_single_source_metadata = false,
     };
 }
@@ -533,7 +532,7 @@ static void result_column_metadata_context_deinit(struct result_column_metadata_
         return;
     }
 
-    mylite_execution_loaded_table_key_metadata_deinit(&context->owned_key_metadata);
+    mylite_execution_loaded_table_key_metadata_reference_deinit(&context->key_metadata);
     *context = result_column_metadata_context_init();
 }
 
@@ -606,26 +605,13 @@ static int load_result_column_metadata_context_for_table_columns(
         return MYLITE_MISUSE;
     }
 
-    if (table_id >= 0) {
-        rc = mylite_execution_borrow_cached_table_key_metadata(
-            database,
-            table_id,
-            columns,
-            column_count,
-            &context->key_metadata
-        );
-    } else {
-        rc = mylite_execution_load_table_key_metadata(
-            database,
-            table_id,
-            columns,
-            column_count,
-            &context->owned_key_metadata
-        );
-        if (rc == MYLITE_OK) {
-            context->key_metadata = &context->owned_key_metadata;
-        }
-    }
+    rc = mylite_execution_acquire_table_key_metadata(
+        database,
+        table_id,
+        columns,
+        column_count,
+        &context->key_metadata
+    );
     if (rc != MYLITE_OK) {
         result_column_metadata_context_deinit(context);
         return rc;
@@ -889,8 +875,9 @@ static int populate_string_result_column_descriptor(
         descriptor->charset_id =
             result_metadata_collation_id(database->session.collation_connection);
         descriptor->collation_id = descriptor->charset_id;
-        max_bytes_per_character =
-            result_metadata_collation_max_bytes_per_character(database->session.collation_connection);
+        max_bytes_per_character = result_metadata_collation_max_bytes_per_character(
+            database->session.collation_connection
+        );
     } else {
         descriptor->charset_id =
             result_metadata_collation_id(column_effective_collation_name(table, column));
@@ -1162,16 +1149,14 @@ static void apply_result_column_descriptor_flags(
     const struct result_column_metadata_context *metadata_context,
     struct mylite_result_column_descriptor *descriptor
 ) {
-    const struct loaded_table_key_metadata *key_metadata = metadata_context->key_metadata;
+    const struct loaded_table_key_metadata *key_metadata = metadata_context->key_metadata.metadata;
     struct loaded_index_info_span indexes = {
         .indexes = NULL,
         .count = 0U,
     };
     bool is_key_part = false;
 
-    if (key_metadata == NULL) {
-        key_metadata = &metadata_context->owned_key_metadata;
-    }
+    assert(key_metadata != NULL);
     indexes = (struct loaded_index_info_span){
         .indexes = key_metadata->indexes,
         .count = key_metadata->index_count,

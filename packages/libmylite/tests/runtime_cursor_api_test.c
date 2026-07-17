@@ -22,6 +22,8 @@ enum {
     mysql_int_display_length = 11,
     mysql_varchar_20_display_length = 80,
     mysql_error_commands_out_of_sync = 2014,
+    sql_text_capacity = 128,
+    diagnostic_text_capacity = 256,
 };
 
 struct expected_query_scalar_text {
@@ -31,7 +33,8 @@ struct expected_query_scalar_text {
 };
 
 static int test_cursor_select_streams_rows_and_metadata(void);
-static int test_cursor_keeps_borrowed_columns_across_invalidation(void);
+static int test_cursor_keeps_borrowed_metadata_across_invalidation(void);
+static int test_key_metadata_cache_uses_lru_replacement(void);
 static int test_cursor_reuses_finalized_select_statements(void);
 static int test_cursor_materializes_information_schema_selects(void);
 static int test_cursor_prepare_rejects_unsupported_statements(void);
@@ -61,12 +64,14 @@ static int expect_uint32(uint32_t actual, uint32_t expected, const char *context
 static int expect_uint64(uint64_t actual, uint64_t expected, const char *context);
 static int expect_text(const char *actual, const char *expected, const char *context);
 static int expect_true(int condition, const char *context);
+static bool key_metadata_cache_contains_table(const mylite_db *database, int64_t table_id);
 
 int main(void) {
     int failures = 0;
 
     failures += test_cursor_select_streams_rows_and_metadata();
-    failures += test_cursor_keeps_borrowed_columns_across_invalidation();
+    failures += test_cursor_keeps_borrowed_metadata_across_invalidation();
+    failures += test_key_metadata_cache_uses_lru_replacement();
     failures += test_cursor_reuses_finalized_select_statements();
     failures += test_cursor_materializes_information_schema_selects();
     failures += test_cursor_prepare_rejects_unsupported_statements();
@@ -136,7 +141,7 @@ static int test_cursor_connection_close_order(void) {
 
 static int test_materialized_cursor_does_not_overwrite_later_statement_state(void) {
     char path[test_path_capacity];
-    char later_error[256];
+    char later_error[diagnostic_text_capacity];
     const struct mylite_session_state *session = NULL;
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
@@ -496,11 +501,12 @@ static int test_cursor_select_streams_rows_and_metadata(void) {
     return failures;
 }
 
-static int test_cursor_keeps_borrowed_columns_across_invalidation(void) {
+static int test_cursor_keeps_borrowed_metadata_across_invalidation(void) {
     char path[test_path_capacity];
     mylite_db *database = NULL;
     mylite_stmt *stmt = NULL;
     struct loaded_table_columns_cache_entry *borrowed_entry = NULL;
+    struct loaded_table_key_metadata_cache_entry *borrowed_key_entry = NULL;
     int failures = 0;
 
     if (make_test_path(path, sizeof(path), "borrowed_columns") != 0) {
@@ -511,7 +517,10 @@ static int test_cursor_keeps_borrowed_columns_across_invalidation(void) {
     failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open borrowed columns file");
     failures += execute_ok(database, "CREATE DATABASE app");
     failures += execute_ok(database, "USE app");
-    failures += execute_ok(database, "CREATE TABLE items (id INT NOT NULL, name VARCHAR(20))");
+    failures += execute_ok(
+        database,
+        "CREATE TABLE items (id INT NOT NULL PRIMARY KEY, name VARCHAR(20), INDEX idx_name (name))"
+    );
     failures += execute_ok(database, "INSERT INTO items VALUES (1, 'alpha')");
     failures += expect_int(
         mylite_prepare(
@@ -529,13 +538,37 @@ static int test_cursor_keeps_borrowed_columns_across_invalidation(void) {
             break;
         }
     }
+    for (size_t index = 0U; index < database->table_key_metadata_cache_count; ++index) {
+        if (database->table_key_metadata_cache[index].reference_count != 0U) {
+            borrowed_key_entry = &database->table_key_metadata_cache[index];
+            break;
+        }
+    }
     failures += expect_true(borrowed_entry != NULL, "cursor pins table columns cache entry");
+    failures += expect_true(borrowed_key_entry != NULL, "cursor pins table key cache entry");
     if (borrowed_entry != NULL) {
         failures += expect_size(borrowed_entry->reference_count, 1U, "borrowed column reference");
-        mylite_catalog_invalidate_descriptor_cache(database);
+    }
+    if (borrowed_key_entry != NULL) {
+        failures +=
+            expect_size(borrowed_key_entry->reference_count, 1U, "borrowed key metadata reference");
+    }
+    mylite_catalog_invalidate_descriptor_cache(database);
+    if (borrowed_entry != NULL) {
         failures += expect_true(!borrowed_entry->is_valid, "invalidated borrowed column entry");
         failures +=
             expect_true(borrowed_entry->columns != NULL, "borrowed columns remain allocated");
+    }
+    if (borrowed_key_entry != NULL) {
+        failures += expect_true(!borrowed_key_entry->is_valid, "invalidated borrowed key entry");
+        failures += expect_true(
+            borrowed_key_entry->metadata.primary_key.parts != NULL,
+            "borrowed primary key metadata remains allocated"
+        );
+        failures += expect_true(
+            borrowed_key_entry->metadata.indexes != NULL,
+            "borrowed secondary key metadata remains allocated"
+        );
     }
     failures += expect_int(mylite_stmt_step(stmt), MYLITE_ROW, "borrowed columns cursor row");
     failures += expect_cursor_text(stmt, 0U, "alpha", "borrowed columns cursor value");
@@ -546,6 +579,129 @@ static int test_cursor_keeps_borrowed_columns_across_invalidation(void) {
         failures += expect_size(borrowed_entry->reference_count, 0U, "released column reference");
         failures += expect_true(borrowed_entry->columns == NULL, "released invalid column entry");
     }
+    if (borrowed_key_entry != NULL) {
+        failures +=
+            expect_size(borrowed_key_entry->reference_count, 0U, "released key metadata reference");
+        failures += expect_true(
+            borrowed_key_entry->metadata.primary_key.parts == NULL,
+            "released invalid primary key metadata"
+        );
+        failures += expect_true(
+            borrowed_key_entry->metadata.indexes == NULL,
+            "released invalid secondary key metadata"
+        );
+    }
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int test_key_metadata_cache_uses_lru_replacement(void) {
+    char path[test_path_capacity];
+    char sql[sql_text_capacity];
+    mylite_db *database = NULL;
+    mylite_stmt *stmt = NULL;
+    struct mylite_catalog_schema_descriptor schema = {0};
+    struct mylite_catalog_table_descriptor first_table = {0};
+    struct mylite_catalog_table_descriptor second_table = {0};
+    struct mylite_catalog_table_descriptor last_table = {0};
+    int failures = 0;
+
+    if (make_test_path(path, sizeof(path), "key_metadata_lru") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open key metadata LRU file");
+    failures += execute_ok(database, "CREATE DATABASE app");
+    failures += execute_ok(database, "USE app");
+    for (size_t index = 0U; index <= MYLITE_EXECUTION_TABLE_KEY_METADATA_CACHE_LIMIT; ++index) {
+        int written = snprintf(
+            sql,
+            sizeof(sql),
+            "CREATE TABLE table_%zu (id INT NOT NULL PRIMARY KEY)",
+            index
+        );
+
+        failures += expect_true(written > 0 && (size_t)written < sizeof(sql), "format LRU table");
+        if (written > 0 && (size_t)written < sizeof(sql)) {
+            failures += execute_ok(database, sql);
+        }
+    }
+    failures += expect_int(
+        mylite_catalog_read_schema_by_name(database, "app", &schema),
+        MYLITE_OK,
+        "read LRU schema"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "table_0", &first_table),
+        MYLITE_OK,
+        "read first LRU table"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "table_1", &second_table),
+        MYLITE_OK,
+        "read second LRU table"
+    );
+    failures += expect_int(
+        mylite_catalog_read_table_by_name(database, schema.schema_id, "table_64", &last_table),
+        MYLITE_OK,
+        "read last LRU table"
+    );
+
+    for (size_t index = 0U; index < MYLITE_EXECUTION_TABLE_KEY_METADATA_CACHE_LIMIT; ++index) {
+        int written = snprintf(sql, sizeof(sql), "SELECT id FROM table_%zu", index);
+
+        failures += expect_true(written > 0 && (size_t)written < sizeof(sql), "format LRU select");
+        if (written > 0 && (size_t)written < sizeof(sql)) {
+            failures += expect_int(
+                mylite_prepare(database, sql, (size_t)written, &stmt),
+                MYLITE_OK,
+                "prepare LRU select"
+            );
+            failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize LRU select");
+            stmt = NULL;
+        }
+    }
+    failures += expect_size(
+        database->table_key_metadata_cache_count,
+        MYLITE_EXECUTION_TABLE_KEY_METADATA_CACHE_LIMIT,
+        "filled key metadata cache"
+    );
+    failures += expect_int(
+        mylite_prepare(database, "SELECT id FROM table_0", strlen("SELECT id FROM table_0"), &stmt),
+        MYLITE_OK,
+        "refresh hot LRU entry"
+    );
+    failures += expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize hot LRU select");
+    stmt = NULL;
+    failures += expect_int(
+        mylite_prepare(
+            database,
+            "SELECT id FROM table_64",
+            strlen("SELECT id FROM table_64"),
+            &stmt
+        ),
+        MYLITE_OK,
+        "prepare replacement LRU select"
+    );
+    failures +=
+        expect_int(mylite_stmt_finalize(stmt), MYLITE_OK, "finalize replacement LRU select");
+    stmt = NULL;
+
+    failures += expect_true(
+        (int)key_metadata_cache_contains_table(database, first_table.table_id),
+        "hot key metadata entry survives"
+    );
+    failures += expect_true(
+        !key_metadata_cache_contains_table(database, second_table.table_id),
+        "oldest key metadata entry evicted"
+    );
+    failures += expect_true(
+        (int)key_metadata_cache_contains_table(database, last_table.table_id),
+        "replacement key metadata entry cached"
+    );
 
     mylite_close(database);
     remove_related_files(path);
@@ -908,4 +1064,16 @@ static int expect_true(int condition, const char *context) {
     }
 
     return 0;
+}
+
+static bool key_metadata_cache_contains_table(const mylite_db *database, int64_t table_id) {
+    for (size_t index = 0U; index < database->table_key_metadata_cache_count; ++index) {
+        const struct loaded_table_key_metadata_cache_entry *entry =
+            &database->table_key_metadata_cache[index];
+
+        if (entry->is_valid && entry->table_id == table_id) {
+            return true;
+        }
+    }
+    return false;
 }

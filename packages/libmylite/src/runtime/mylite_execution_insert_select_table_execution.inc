@@ -112,7 +112,7 @@ static int execute_insert_select_table(
         rc = commit_statement_transaction(database, &execution->transaction);
     }
     if (rc != MYLITE_OK) {
-        rollback_statement_transaction(database, &execution->transaction);
+        rc = rollback_statement_transaction(database, &execution->transaction, rc);
     }
     if (rc == MYLITE_OK && plan->target.has_auto_increment &&
         execution->counters.auto_increment_next_after_rows != plan->target.auto_increment_next) {

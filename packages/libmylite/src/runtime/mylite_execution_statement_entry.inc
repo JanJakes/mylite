@@ -72,6 +72,11 @@ static bool statement_result_is_select(
 }
 
 static int reject_command_with_active_cursor(struct mylite_db *database) {
+    int rc = reject_poisoned_connection(database);
+
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
     if (database->active_cursor == NULL) {
         return MYLITE_OK;
     }
@@ -81,6 +86,20 @@ static int reject_command_with_active_cursor(struct mylite_db *database) {
         mysql_error_commands_out_of_sync,
         "HY000",
         "Commands out of sync; you can't run this command now"
+    );
+    return MYLITE_ERROR;
+}
+
+static int reject_poisoned_connection(struct mylite_db *database) {
+    if (!database->transaction_state_uncertain) {
+        return MYLITE_OK;
+    }
+
+    mylite_diagnostics_set_error(
+        mylite_connection_diagnostics(database),
+        mysql_error_unknown,
+        "HY000",
+        "MyLite connection is unusable after a transaction cleanup failure; close and reopen it"
     );
     return MYLITE_ERROR;
 }

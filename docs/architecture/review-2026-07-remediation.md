@@ -84,12 +84,12 @@ complete.
 
 - [x] Route mysqli autocommit through the core transaction state machine.
 - [ ] Audit adapter methods that report success while discarding arguments.
-- [ ] Check and propagate savepoint rollback, release, full rollback, and
+- [x] Check and propagate savepoint rollback, release, full rollback, and
   commit cleanup failures.
-- [ ] Preserve the primary error and append cleanup context.
-- [ ] Poison handles whose atomicity or transaction state cannot be proven and
+- [x] Preserve the primary error and append cleanup context.
+- [x] Poison handles whose atomicity or transaction state cannot be proven and
   reject further SQL until close.
-- [ ] Add autocommit transition, DDL, savepoint, error, close, and injected
+- [x] Add autocommit transition, DDL, savepoint, error, close, and injected
   rollback/commit failure coverage.
 
 ## Phase 3: Storage and generated identities

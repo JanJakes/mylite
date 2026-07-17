@@ -29,9 +29,10 @@ int mylite_execution_commit_statement_transaction(
     struct mylite_db *database,
     struct mylite_statement_transaction *transaction
 );
-void mylite_execution_rollback_statement_transaction(
+int mylite_execution_rollback_statement_transaction(
     struct mylite_db *database,
-    struct mylite_statement_transaction *transaction
+    struct mylite_statement_transaction *transaction,
+    int primary_rc
 );
 int mylite_execution_normalize_sqlite_control_rc(struct mylite_db *database, int rc);
 
@@ -56,11 +57,12 @@ static inline int commit_statement_transaction(
     return mylite_execution_commit_statement_transaction(database, transaction);
 }
 
-static inline void rollback_statement_transaction(
+static inline int rollback_statement_transaction(
     struct mylite_db *database,
-    struct mylite_statement_transaction *transaction
+    struct mylite_statement_transaction *transaction,
+    int primary_rc
 ) {
-    mylite_execution_rollback_statement_transaction(database, transaction);
+    return mylite_execution_rollback_statement_transaction(database, transaction, primary_rc);
 }
 
 static inline int normalize_sqlite_control_rc(struct mylite_db *database, int rc) {

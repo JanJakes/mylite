@@ -75,7 +75,7 @@ static int execute_update_from_plan(
         rc = commit_statement_transaction(database, &transaction);
     }
     if (rc != MYLITE_OK) {
-        rollback_statement_transaction(database, &transaction);
+        rc = rollback_statement_transaction(database, &transaction, rc);
     }
     executable_update_deinit(&executable_plan);
     if (rc == MYLITE_OK && auto_increment_next_after_update != plan->table.auto_increment_next) {

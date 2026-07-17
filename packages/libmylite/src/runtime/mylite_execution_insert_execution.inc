@@ -57,7 +57,7 @@ static int execute_insert_from_plan(
         rc = commit_statement_transaction(database, &transaction);
     }
     if (rc != MYLITE_OK) {
-        rollback_statement_transaction(database, &transaction);
+        rc = rollback_statement_transaction(database, &transaction, rc);
     }
     free(sql);
     if (rc == MYLITE_OK && plan->has_auto_increment &&
@@ -167,7 +167,7 @@ static int execute_load_data_infile_from_plan(
         rc = commit_statement_transaction(database, &transaction);
     }
     if (rc != MYLITE_OK) {
-        rollback_statement_transaction(database, &transaction);
+        rc = rollback_statement_transaction(database, &transaction, rc);
     }
     free(sql);
     if (rc == MYLITE_OK && plan->insert.has_auto_increment &&

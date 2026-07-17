@@ -5,6 +5,7 @@ static int execute_parsed_statement(
     mylite_result **out_result
 );
 static bool statement_defers_catalog_synchronization(const struct mylite_sql_ast_node *statement);
+static int reject_poisoned_connection(struct mylite_db *database);
 static int reject_command_with_active_cursor(struct mylite_db *database);
 static int prepare_cursor_select_statement(
     struct mylite_db *database,

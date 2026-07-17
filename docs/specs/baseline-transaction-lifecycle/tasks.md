@@ -15,6 +15,8 @@
 - [x] Add focused C runtime tests for commit, rollback, nested start, DDL
       implicit commit, statement-error savepoints, file-backed persistence, and
       close-time rollback.
+- [x] Propagate internal rollback and completion failures, attempt emergency
+      rollback, preserve primary diagnostics, and poison uncertain handles.
 - [x] Update compatibility docs for the exact supported subset.
 - [x] Run the feature MySQL expectation script.
 - [x] Run targeted parser/runtime CTest entries.

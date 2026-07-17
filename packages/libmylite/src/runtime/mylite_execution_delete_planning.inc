@@ -588,7 +588,7 @@ static int execute_delete_from_plan(
         rc = commit_statement_transaction(database, &transaction);
     }
     if (rc != MYLITE_OK) {
-        rollback_statement_transaction(database, &transaction);
+        rc = rollback_statement_transaction(database, &transaction, rc);
     }
     free(sql);
 

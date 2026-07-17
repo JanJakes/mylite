@@ -4,8 +4,21 @@
 #include "mylite_connection.h"
 #include "mylite_execution_diagnostics.h"
 #include "mylite_execution_sqlite_internal.h"
+#include "mylite_mysql_error_codes.h"
 
 #include <mylite/mylite.h>
+
+#include <stdio.h>
+#include <string.h>
+
+static void mark_transaction_state_uncertain(
+    struct mylite_db *database,
+    const char *primary_sqlite_error,
+    const char *failure_kind,
+    const char *operation,
+    const char *failure_error,
+    int emergency_rc
+);
 
 int mylite_execution_begin_statement_transaction(
     struct mylite_db *database,
@@ -126,6 +139,9 @@ int mylite_execution_commit_statement_transaction(
     struct mylite_db *database,
     struct mylite_statement_transaction *transaction
 ) {
+    char commit_error[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    const char *failed_operation = "COMMIT";
+    int emergency_rc = MYLITE_OK;
     int rc = MYLITE_OK;
 
     if (!transaction->active) {
@@ -133,6 +149,7 @@ int mylite_execution_commit_statement_transaction(
     }
 
     if (transaction->kind == MYLITE_STATEMENT_TRANSACTION_SAVEPOINT) {
+        failed_operation = "RELEASE SAVEPOINT";
         rc = mylite_execution_normalize_sqlite_control_rc(
             database,
             mylite_execution_execute_cached_sqlite_control_sql(
@@ -149,33 +166,145 @@ int mylite_execution_commit_statement_transaction(
     if (rc == MYLITE_OK) {
         transaction->active = false;
         transaction->kind = MYLITE_STATEMENT_TRANSACTION_NONE;
+        return MYLITE_OK;
     }
+
+    (void)snprintf(commit_error, sizeof(commit_error), "%s", sqlite3_errmsg(database->sqlite));
+    if (sqlite3_get_autocommit(database->sqlite) == 0) {
+        emergency_rc = mylite_execution_execute_cached_sqlite_control_sql(database, "ROLLBACK");
+    }
+    if (sqlite3_get_autocommit(database->sqlite) != 0) {
+        transaction->active = false;
+        transaction->kind = MYLITE_STATEMENT_TRANSACTION_NONE;
+        database->session.user_transaction_active = false;
+        database->session.active_transaction_read_only = false;
+        database->session.active_transaction_isolation =
+            MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ;
+    }
+    mylite_catalog_invalidate_descriptor_cache(database);
+    mark_transaction_state_uncertain(
+        database,
+        commit_error,
+        "completion",
+        failed_operation,
+        commit_error,
+        emergency_rc
+    );
     return rc;
 }
 
-void mylite_execution_rollback_statement_transaction(
+int mylite_execution_rollback_statement_transaction(
     struct mylite_db *database,
-    struct mylite_statement_transaction *transaction
+    struct mylite_statement_transaction *transaction,
+    int primary_rc
 ) {
+    char cleanup_error[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    char primary_sqlite_error[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+    const char *failed_operation = "ROLLBACK";
+    int cleanup_rc = MYLITE_OK;
+    int emergency_rc = MYLITE_OK;
+
     if (!transaction->active) {
-        return;
+        return primary_rc;
     }
+    (void)snprintf(
+        primary_sqlite_error,
+        sizeof(primary_sqlite_error),
+        "%s",
+        sqlite3_errmsg(database->sqlite)
+    );
 
     if (transaction->kind == MYLITE_STATEMENT_TRANSACTION_SAVEPOINT) {
-        (void)mylite_execution_execute_cached_sqlite_control_sql(
+        failed_operation = "ROLLBACK TO SAVEPOINT";
+        cleanup_rc = mylite_execution_execute_cached_sqlite_control_sql(
             database,
             "ROLLBACK TO SAVEPOINT _mylite_statement"
         );
-        (void)mylite_execution_execute_cached_sqlite_control_sql(
-            database,
-            "RELEASE SAVEPOINT _mylite_statement"
-        );
+        if (cleanup_rc == MYLITE_OK) {
+            failed_operation = "RELEASE SAVEPOINT";
+            cleanup_rc = mylite_execution_execute_cached_sqlite_control_sql(
+                database,
+                "RELEASE SAVEPOINT _mylite_statement"
+            );
+        }
     } else {
-        (void)mylite_execution_execute_cached_sqlite_control_sql(database, "ROLLBACK");
+        cleanup_rc = mylite_execution_execute_cached_sqlite_control_sql(database, "ROLLBACK");
     }
     mylite_catalog_invalidate_descriptor_cache(database);
-    transaction->active = false;
-    transaction->kind = MYLITE_STATEMENT_TRANSACTION_NONE;
+    if (cleanup_rc == MYLITE_OK) {
+        transaction->active = false;
+        transaction->kind = MYLITE_STATEMENT_TRANSACTION_NONE;
+        return primary_rc;
+    }
+
+    (void)snprintf(cleanup_error, sizeof(cleanup_error), "%s", sqlite3_errmsg(database->sqlite));
+    if (sqlite3_get_autocommit(database->sqlite) == 0) {
+        emergency_rc = mylite_execution_execute_cached_sqlite_control_sql(database, "ROLLBACK");
+    }
+    if (sqlite3_get_autocommit(database->sqlite) != 0) {
+        transaction->active = false;
+        transaction->kind = MYLITE_STATEMENT_TRANSACTION_NONE;
+        database->session.user_transaction_active = false;
+        database->session.active_transaction_read_only = false;
+        database->session.active_transaction_isolation =
+            MYLITE_TRANSACTION_ISOLATION_REPEATABLE_READ;
+    }
+    mark_transaction_state_uncertain(
+        database,
+        primary_sqlite_error,
+        "cleanup",
+        failed_operation,
+        cleanup_error,
+        emergency_rc
+    );
+    return primary_rc == MYLITE_OK ? cleanup_rc : primary_rc;
+}
+
+static void mark_transaction_state_uncertain(
+    struct mylite_db *database,
+    const char *primary_sqlite_error,
+    const char *failure_kind,
+    const char *operation,
+    const char *failure_error,
+    int emergency_rc
+) {
+    struct mylite_diagnostics *diagnostics = mylite_connection_diagnostics(database);
+    struct mylite_diagnostic_record primary = diagnostics->condition;
+    char message[MYLITE_DIAGNOSTIC_MESSAGE_CAPACITY];
+
+    database->transaction_state_uncertain = true;
+    if (primary.code == MYLITE_OK) {
+        primary.code = mysql_error_unknown;
+        (void)snprintf(primary.sqlstate, sizeof(primary.sqlstate), "%s", "HY000");
+        (void)snprintf(
+            primary.message,
+            sizeof(primary.message),
+            "%s",
+            primary_sqlite_error[0] == '\0' ? "statement execution failed" : primary_sqlite_error
+        );
+    }
+    if (emergency_rc == MYLITE_OK) {
+        (void)snprintf(
+            message,
+            sizeof(message),
+            "%.112s; transaction %s failed during %s: %.72s",
+            primary.message,
+            failure_kind,
+            operation,
+            failure_error
+        );
+    } else {
+        (void)snprintf(
+            message,
+            sizeof(message),
+            "%.88s; transaction %s failed during %s: %.56s; emergency rollback failed",
+            primary.message,
+            failure_kind,
+            operation,
+            failure_error
+        );
+    }
+    mylite_diagnostics_set_error(diagnostics, primary.code, primary.sqlstate, message);
 }
 
 int mylite_execution_normalize_sqlite_control_rc(struct mylite_db *database, int rc) {

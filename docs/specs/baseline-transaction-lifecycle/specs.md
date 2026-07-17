@@ -68,6 +68,11 @@ records the MySQL 8.4.9 expectations for this slice:
 - A duplicate-key statement error inside a transaction rolls back only the
   failed statement. The transaction remains active and can commit later
   successful DML.
+- If MyLite cannot roll back or release an internal statement savepoint, or
+  cannot prove whether a statement transaction committed, the connection is
+  poisoned. MyLite attempts an emergency full SQLite rollback, preserves the
+  primary statement or completion diagnostic with cleanup context, and rejects
+  all later SQL on that handle until it is closed and reopened.
 - Disconnecting an active session rolls back the uncommitted transaction.
 
 ## Scope
@@ -303,6 +308,10 @@ Diagnostics:
   unsupported diagnostics once parsed;
 - SQLite begin/commit/rollback failures use the existing physical SQLite
   diagnostic surface;
+- internal rollback, savepoint release, and commit failures preserve the
+  primary diagnostic and append the failed transaction operation; because the
+  original transaction boundary can no longer be proven, the handle rejects
+  subsequent statements with `HY000` until close and reopen;
 - allocation failures return `MYLITE_NOMEM`;
 - public API misuse is unchanged.
 

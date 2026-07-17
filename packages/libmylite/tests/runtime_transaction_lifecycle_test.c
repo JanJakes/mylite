@@ -3,6 +3,7 @@
 #include "runtime_test_support.h"
 
 #include "runtime/mylite_connection.h"
+#include "sqlite3.h"
 #include "storage/mylite_file_format.h"
 
 #include <stdio.h>
@@ -20,6 +21,7 @@
 enum {
     test_path_capacity = 1024,
     mysql_error_parse = 1064,
+    mysql_error_unknown = 1105,
     mysql_error_unknown_table = 1051,
     mysql_error_duplicate_key = 1062,
     mysql_error_variable_cant_be_set = 1231,
@@ -51,6 +53,16 @@ struct expected_transaction_control {
     const char *context;
 };
 
+struct rollback_fault_state {
+    bool statement_savepoint_started;
+    bool rollback_denied;
+};
+
+struct commit_fault_state {
+    bool statement_savepoint_started;
+    bool release_denied;
+};
+
 #ifndef _WIN32
 struct concurrent_write_context {
     mylite_db *database;
@@ -76,6 +88,24 @@ static void *execute_concurrent_write(void *argument);
 #endif
 static int test_drop_table_missing_implicitly_commits_transaction(void);
 static int test_file_close_rolls_back_transaction(void);
+static int test_failed_statement_rollback_poisons_connection(void);
+static int test_failed_statement_commit_poisons_connection(void);
+static int deny_statement_savepoint_rollback(
+    void *context,
+    int action,
+    const char *first,
+    const char *second,
+    const char *database_name,
+    const char *trigger_name
+);
+static int deny_statement_savepoint_release(
+    void *context,
+    int action,
+    const char *first,
+    const char *second,
+    const char *database_name,
+    const char *trigger_name
+);
 static int seed_schema(mylite_db *database);
 static int expect_nonquery(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_transaction_control(
@@ -113,6 +143,7 @@ static int expect_int(int actual, int expected, const char *context);
 static int expect_int64(int64_t actual, int64_t expected, const char *context);
 static int expect_size(size_t actual, size_t expected, const char *context);
 static int expect_text(const char *actual, const char *expected, const char *context);
+static int expect_contains(const char *actual, const char *expected, const char *context);
 static int expect_bytes(
     const unsigned char *actual,
     const void *expected,
@@ -139,8 +170,232 @@ int main(void) {
 #endif
     failures += test_drop_table_missing_implicitly_commits_transaction();
     failures += test_file_close_rolls_back_transaction();
+    failures += test_failed_statement_rollback_poisons_connection();
+    failures += test_failed_statement_commit_poisons_connection();
 
     return failures == 0 ? 0 : 1;
+}
+
+static int test_failed_statement_rollback_poisons_connection(void) {
+    static const char *const no_rows[] = {"0"};
+    struct rollback_fault_state fault = {0};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    sqlite3 *sqlite = NULL;
+    int failures = 0;
+    int rc = MYLITE_OK;
+
+    if (make_test_path(path, sizeof(path), "rollback_failure") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open rollback failure file");
+    failures += seed_schema(database);
+    failures += expect_nonquery(database, "CREATE TABLE rollback_t (id INT PRIMARY KEY)", 0);
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    sqlite = mylite_connection_sqlite_for_test(database);
+    failures += expect_int(
+        sqlite3_set_authorizer(sqlite, deny_statement_savepoint_rollback, &fault),
+        SQLITE_OK,
+        "install rollback authorizer"
+    );
+
+    rc = mylite_execute(
+        database,
+        "INSERT INTO rollback_t VALUES (1), (1)",
+        strlen("INSERT INTO rollback_t VALUES (1), (1)"),
+        &result
+    );
+    failures += expect_int(rc, MYLITE_ERROR, "failing multi-row insert");
+    failures += expect_size((size_t)(result != NULL), 0U, "rollback failure result");
+    failures += expect_int(fault.rollback_denied ? 1 : 0, 1, "statement rollback denied");
+    failures += expect_int(
+        database->transaction_state_uncertain ? 1 : 0,
+        1,
+        "connection transaction state poisoned"
+    );
+    failures += expect_contains(
+        mylite_errmsg(database),
+        "transaction cleanup failed during ROLLBACK TO SAVEPOINT",
+        "rollback failure diagnostic context"
+    );
+    failures += expect_int(
+        sqlite3_get_autocommit(sqlite),
+        1,
+        "emergency rollback restores SQLite autocommit"
+    );
+    failures += expect_int(
+        sqlite3_set_authorizer(sqlite, NULL, NULL),
+        SQLITE_OK,
+        "remove rollback authorizer"
+    );
+
+    rc = mylite_execute(
+        database,
+        "SELECT COUNT(*) FROM rollback_t",
+        strlen("SELECT COUNT(*) FROM rollback_t"),
+        &result
+    );
+    failures += expect_int(rc, MYLITE_ERROR, "poisoned connection rejects SQL");
+    failures += expect_int(mylite_errcode(database), mysql_error_unknown, "poisoned error code");
+    failures += expect_contains(
+        mylite_errmsg(database),
+        "close and reopen",
+        "poisoned connection diagnostic"
+    );
+    mylite_result_free(result);
+    result = NULL;
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen rollback failure file");
+    failures += expect_nonquery(database, "USE app", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM rollback_t",
+            .values = no_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "failed statement leaves no committed row",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int deny_statement_savepoint_rollback(
+    void *context,
+    int action,
+    const char *first,
+    const char *second,
+    const char *database_name,
+    const char *trigger_name
+) {
+    struct rollback_fault_state *fault = context;
+
+    (void)database_name;
+    (void)trigger_name;
+    if (action != SQLITE_SAVEPOINT || first == NULL || second == NULL ||
+        strcmp(second, "_mylite_statement") != 0) {
+        return SQLITE_OK;
+    }
+    if (strcmp(first, "BEGIN") == 0) {
+        fault->statement_savepoint_started = true;
+        return SQLITE_OK;
+    }
+    if (fault->statement_savepoint_started && strcmp(first, "ROLLBACK") == 0) {
+        fault->rollback_denied = true;
+        return SQLITE_DENY;
+    }
+    return SQLITE_OK;
+}
+
+static int test_failed_statement_commit_poisons_connection(void) {
+    static const char *const no_rows[] = {"0"};
+    struct commit_fault_state fault = {0};
+    char path[test_path_capacity];
+    mylite_db *database = NULL;
+    mylite_result *result = NULL;
+    sqlite3 *sqlite = NULL;
+    int failures = 0;
+    int rc = MYLITE_OK;
+
+    if (make_test_path(path, sizeof(path), "commit_failure") != 0) {
+        return 1;
+    }
+    remove_related_files(path);
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "open commit failure file");
+    failures += seed_schema(database);
+    failures += expect_nonquery(database, "CREATE TABLE commit_t (id INT PRIMARY KEY)", 0);
+    failures += expect_nonquery(database, "START TRANSACTION", 0);
+    sqlite = mylite_connection_sqlite_for_test(database);
+    failures += expect_int(
+        sqlite3_set_authorizer(sqlite, deny_statement_savepoint_release, &fault),
+        SQLITE_OK,
+        "install commit authorizer"
+    );
+
+    rc = mylite_execute(
+        database,
+        "INSERT INTO commit_t VALUES (1)",
+        strlen("INSERT INTO commit_t VALUES (1)"),
+        &result
+    );
+    failures += expect_int(rc, MYLITE_ERROR, "failing statement commit");
+    failures += expect_size((size_t)(result != NULL), 0U, "commit failure result");
+    failures += expect_int(fault.release_denied ? 1 : 0, 1, "statement release denied");
+    failures += expect_int(
+        database->transaction_state_uncertain ? 1 : 0,
+        1,
+        "commit failure poisons connection"
+    );
+    failures += expect_contains(
+        mylite_errmsg(database),
+        "transaction completion failed during RELEASE SAVEPOINT",
+        "commit failure diagnostic context"
+    );
+    failures += expect_int(
+        sqlite3_get_autocommit(sqlite),
+        1,
+        "commit emergency rollback restores SQLite autocommit"
+    );
+    failures += expect_int(
+        sqlite3_set_authorizer(sqlite, NULL, NULL),
+        SQLITE_OK,
+        "remove commit authorizer"
+    );
+    mylite_close(database);
+    database = NULL;
+
+    failures += expect_int(mylite_open(path, &database), MYLITE_OK, "reopen commit failure file");
+    failures += expect_nonquery(database, "USE app", 0);
+    failures += expect_query_values(
+        database,
+        (struct expected_query){
+            .sql = "SELECT COUNT(*) FROM commit_t",
+            .values = no_rows,
+            .column_count = 1U,
+            .row_count = 1U,
+            .context = "failed statement commit leaves no committed row",
+        }
+    );
+
+    mylite_close(database);
+    remove_related_files(path);
+    return failures;
+}
+
+static int deny_statement_savepoint_release(
+    void *context,
+    int action,
+    const char *first,
+    const char *second,
+    const char *database_name,
+    const char *trigger_name
+) {
+    struct commit_fault_state *fault = context;
+
+    (void)database_name;
+    (void)trigger_name;
+    if (action != SQLITE_SAVEPOINT || first == NULL || second == NULL ||
+        strcmp(second, "_mylite_statement") != 0) {
+        return SQLITE_OK;
+    }
+    if (strcmp(first, "BEGIN") == 0) {
+        fault->statement_savepoint_started = true;
+        return SQLITE_OK;
+    }
+    if (fault->statement_savepoint_started && strcmp(first, "RELEASE") == 0) {
+        fault->release_denied = true;
+        return SQLITE_DENY;
+    }
+    return SQLITE_OK;
 }
 
 static int test_transaction_control_and_dml(void) {
@@ -2120,6 +2375,21 @@ static int expect_text(const char *actual, const char *expected, const char *con
     }
 
     fprintf(stderr, "%s: expected \"%s\", got \"%s\"\n", context, expected, actual);
+    return 1;
+}
+
+static int expect_contains(const char *actual, const char *expected, const char *context) {
+    if (actual != NULL && expected != NULL && strstr(actual, expected) != NULL) {
+        return 0;
+    }
+
+    fprintf(
+        stderr,
+        "%s: expected \"%s\" in \"%s\"\n",
+        context,
+        expected == NULL ? "(null)" : expected,
+        actual == NULL ? "(null)" : actual
+    );
     return 1;
 }
 

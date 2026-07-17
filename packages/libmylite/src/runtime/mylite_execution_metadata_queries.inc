@@ -117,10 +117,10 @@ static int execute_select_statement(
     if (rc == MYLITE_OK) {
         rc = commit_statement_transaction(database, &read_transaction);
         if (rc != MYLITE_OK) {
-            rollback_statement_transaction(database, &read_transaction);
+            rc = rollback_statement_transaction(database, &read_transaction, rc);
         }
     } else {
-        rollback_statement_transaction(database, &read_transaction);
+        rc = rollback_statement_transaction(database, &read_transaction, rc);
     }
     return rc;
 }
@@ -593,10 +593,10 @@ static int execute_compound_select_statement(
     if (rc == MYLITE_OK) {
         rc = commit_statement_transaction(database, &read_transaction);
         if (rc != MYLITE_OK) {
-            rollback_statement_transaction(database, &read_transaction);
+            rc = rollback_statement_transaction(database, &read_transaction, rc);
         }
     } else {
-        rollback_statement_transaction(database, &read_transaction);
+        rc = rollback_statement_transaction(database, &read_transaction, rc);
     }
     return rc;
 }

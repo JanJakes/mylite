@@ -357,6 +357,7 @@ struct mylite_db {
 #endif
     mylite_stmt *active_cursor;
     mylite_stmt *live_statements;
+    bool transaction_state_uncertain;
     struct mylite_db *processlist_next;
 };
 

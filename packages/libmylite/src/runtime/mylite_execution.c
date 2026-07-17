@@ -446,6 +446,10 @@ int mylite_stmt_step(mylite_stmt *stmt) {
     if (stmt == NULL || stmt->database == NULL) {
         return MYLITE_MISUSE;
     }
+    rc = reject_poisoned_connection(stmt->database);
+    if (rc != MYLITE_OK) {
+        return rc;
+    }
     if (stmt->sqlite_statement == NULL && !stmt->has_materialized_rows) {
         return stmt->done ? MYLITE_DONE : MYLITE_MISUSE;
     }
@@ -549,7 +553,7 @@ int mylite_stmt_step(mylite_stmt *stmt) {
     if (sqlite_rc != SQLITE_DONE) {
         rc = mylite_sqlite_status_to_mylite(sqlite_rc);
         rc = finish_cursor_sqlite_statement(stmt, rc);
-        rollback_statement_transaction(stmt->database, &stmt->read_transaction);
+        rc = rollback_statement_transaction(stmt->database, &stmt->read_transaction, rc);
         if (stmt->database->active_cursor == stmt) {
             stmt->database->active_cursor = NULL;
         }
@@ -861,7 +865,7 @@ static int prepare_cursor_select_statement(
     if (rc != MYLITE_OK) {
         mylite_result *result = NULL;
 
-        rollback_statement_transaction(database, &stmt->read_transaction);
+        rc = rollback_statement_transaction(database, &stmt->read_transaction, rc);
         rc = finish_failed_statement(database, rc, &result);
         (void)mylite_statement_context_end(&stmt->context, rc);
         mylite_statement_context_deinit(&stmt->context);
@@ -1067,7 +1071,7 @@ static void release_cursor_statement_resources(mylite_stmt *stmt) {
     if (stmt->sqlite_statement != NULL) {
         (void)finish_cursor_sqlite_statement(stmt, MYLITE_OK);
     }
-    rollback_statement_transaction(stmt->database, &stmt->read_transaction);
+    (void)rollback_statement_transaction(stmt->database, &stmt->read_transaction, MYLITE_OK);
     free(stmt->sqlite_sql);
     stmt->sqlite_sql = NULL;
     sqlite_result_row_storage_deinit(&stmt->row_storage);

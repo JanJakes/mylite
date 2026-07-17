@@ -142,6 +142,15 @@ modifier, and literal values. Text inside comments or string literals cannot
 select a bridge. Extra clauses that a bridge does not implement are rejected
 instead of being silently ignored.
 
+Bridge results expose the same typed field descriptors as direct
+`INFORMATION_SCHEMA` projections. Source columns retain their source schema,
+table or source alias, origin table and column, logical type, flags, connection
+collation, display length, and nullability. The dynamic WordPress bridge also
+retains the descriptor of the selected user-table `id` column. The CTE name
+expression is a nullable connection-collated `VAR_STRING` with a 73-character
+maximum, and the grouped byte total is a nullable binary `NEWDECIMAL` with
+display length 45 and scale zero.
+
 ## Deliberately excluded surface
 
 This phase does not implement:
@@ -154,8 +163,7 @@ This phase does not implement:
   `REGEXP`, `BETWEEN`, parameters, prepared-statement metadata, privileges,
   roles, or metadata locks, except for the explicitly listed projection,
   predicate, and compatibility query bridge forms;
-- protocol-grade field flags, charset metadata, origin metadata, or exact
-  volatile timestamp/statistics fidelity;
+- exact volatile timestamp/statistics fidelity;
 - `INFORMATION_SCHEMA` tables beyond `SCHEMATA`, `TABLES`, and `COLUMNS`.
 
 Unsupported `INFORMATION_SCHEMA` tables fail with MySQL-compatible
@@ -389,6 +397,8 @@ Fast C tests must cover:
 - `COUNT(*)`;
 - the WordPress-shaped grouped `TABLES` metadata projection with
   `SUM(DATA_LENGTH + INDEX_LENGTH)`;
+- result descriptors for source columns, bridge aliases, the CTE `CONCAT`
+  expression, the grouped byte total, and the dynamic user-table `id` source;
 - `ORDER BY` default, `ASC`, `DESC`, and `LIMIT`;
 - source aliases and qualified metadata columns;
 - user table metadata for integer, unsigned integer, `VARCHAR`, primary key,

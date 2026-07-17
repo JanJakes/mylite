@@ -173,6 +173,78 @@ expect_contains "information schema count length" 'Length:     21' \
 expect_contains "information schema count flags" 'Flags:      NOT_NULL BINARY NUM ' \
     "$information_schema_count_output"
 
+information_schema_join_output=$(run_mysql_type_info \
+    "USE ${DATABASE}; SET NAMES utf8mb4; "\
+"SELECT cols.DATA_TYPE, stats.INDEX_NAME, stats.COLUMN_NAME "\
+"FROM INFORMATION_SCHEMA.COLUMNS AS cols "\
+"JOIN INFORMATION_SCHEMA.STATISTICS AS stats "\
+"ON cols.TABLE_SCHEMA = stats.TABLE_SCHEMA "\
+"AND cols.TABLE_NAME = stats.TABLE_NAME "\
+"AND cols.COLUMN_NAME = stats.COLUMN_NAME "\
+"WHERE cols.TABLE_SCHEMA = '${DATABASE}' AND cols.TABLE_NAME = 'meta' "\
+"ORDER BY INDEX_NAME ASC LIMIT 0;" \
+    "$DATABASE")
+
+expect_contains "information schema join data type field" 'Field   1:  `DATA_TYPE`' \
+    "$information_schema_join_output"
+expect_contains "information schema join data type" 'Type:       LONG_BLOB' \
+    "$information_schema_join_output"
+expect_contains "information schema join data length" 'Length:     201326580' \
+    "$information_schema_join_output"
+expect_contains "information schema join index field" 'Field   2:  `INDEX_NAME`' \
+    "$information_schema_join_output"
+expect_contains "information schema join column field" 'Field   3:  `COLUMN_NAME`' \
+    "$information_schema_join_output"
+expect_contains "information schema join name type" 'Type:       VAR_STRING' \
+    "$information_schema_join_output"
+expect_contains "information schema join name length" 'Length:     256' \
+    "$information_schema_join_output"
+
+information_schema_union_output=$(run_mysql_type_info \
+    "USE ${DATABASE}; SET NAMES utf8mb4; "\
+"WITH cols AS (SELECT COLUMN_NAME AS column_name FROM INFORMATION_SCHEMA.COLUMNS "\
+"WHERE TABLE_SCHEMA = '${DATABASE}' AND TABLE_NAME = 'meta'), "\
+"indexes AS (SELECT DISTINCT INDEX_NAME AS index_name FROM INFORMATION_SCHEMA.STATISTICS "\
+"WHERE TABLE_SCHEMA = '${DATABASE}' AND TABLE_NAME = 'meta') "\
+"SELECT CONCAT(column_name, ' (column)') AS name FROM cols UNION ALL "\
+"SELECT CONCAT(index_name, ' (index)') AS name FROM indexes ORDER BY name;" \
+    "$DATABASE")
+
+expect_contains "information schema union name field" 'Field   1:  `name`' \
+    "$information_schema_union_output"
+expect_contains "information schema union name type" 'Type:       VAR_STRING' \
+    "$information_schema_union_output"
+expect_contains "information schema union name length" 'Length:     292' \
+    "$information_schema_union_output"
+expect_contains "information schema union name decimals" 'Decimals:   0' \
+    "$information_schema_union_output"
+
+information_schema_group_output=$(run_mysql_type_info \
+    "USE ${DATABASE}; SET NAMES utf8mb4; "\
+"SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'ONLY_FULL_GROUP_BY', ''); "\
+"SELECT TABLE_NAME AS 'table', TABLE_ROWS AS 'rows', "\
+"SUM(DATA_LENGTH + INDEX_LENGTH) AS 'bytes' FROM INFORMATION_SCHEMA.TABLES "\
+"WHERE TABLE_SCHEMA = '${DATABASE}' AND TABLE_NAME = 'meta' "\
+"GROUP BY TABLE_NAME ORDER BY TABLE_NAME;" \
+    "$DATABASE")
+
+expect_contains "information schema grouped table field" 'Field   1:  `table`' \
+    "$information_schema_group_output"
+expect_contains "information schema grouped table type" 'Type:       VAR_STRING' \
+    "$information_schema_group_output"
+expect_contains "information schema grouped rows field" 'Field   2:  `rows`' \
+    "$information_schema_group_output"
+expect_contains "information schema grouped rows type" 'Type:       LONGLONG' \
+    "$information_schema_group_output"
+expect_contains "information schema grouped bytes field" 'Field   3:  `bytes`' \
+    "$information_schema_group_output"
+expect_contains "information schema grouped bytes type" 'Type:       NEWDECIMAL' \
+    "$information_schema_group_output"
+expect_contains "information schema grouped bytes length" 'Length:     45' \
+    "$information_schema_group_output"
+expect_contains "information schema grouped bytes flags" 'Flags:      BINARY NUM ' \
+    "$information_schema_group_output"
+
 performance_schema_output=$(run_mysql_type_info \
     "SELECT THREAD_ID FROM performance_schema.threads LIMIT 0;")
 

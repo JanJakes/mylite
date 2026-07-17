@@ -18,6 +18,13 @@ struct information_schema_join_compat_statistics_order {
     size_t right_index;
 };
 
+struct information_schema_join_compat_source_column {
+    const struct mylite_execution_catalog_table_definition *definition;
+    const char *source_alias;
+    const char *source_column_name;
+    const char *label;
+};
+
 static int information_schema_join_compat_execute_columns_statistics_join(
     struct mylite_db *database,
     const struct information_schema_join_compat_plan *plan,
@@ -61,13 +68,37 @@ static int information_schema_join_compat_finish_result(
 static int information_schema_join_compat_append_definition_columns(
     struct mylite_db *database,
     mylite_result *result,
-    const struct mylite_execution_catalog_table_definition *definition
+    const struct mylite_execution_catalog_table_definition *definition,
+    const char *source_alias
 );
-static int information_schema_join_compat_append_named_result_columns(
+static int information_schema_join_compat_append_source_columns(
     struct mylite_db *database,
     mylite_result *result,
-    const char *const *names,
-    size_t name_count
+    const struct information_schema_join_compat_source_column *columns,
+    size_t column_count
+);
+static int information_schema_join_compat_append_source_column(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct information_schema_join_compat_source_column *column
+);
+static int information_schema_join_compat_find_definition_column(
+    const struct mylite_execution_catalog_table_definition *definition,
+    const char *name,
+    size_t *out_index
+);
+static int information_schema_join_compat_append_concat_name_column(
+    struct mylite_db *database,
+    mylite_result *result
+);
+static int information_schema_join_compat_append_grouped_bytes_column(
+    struct mylite_db *database,
+    mylite_result *result
+);
+static int information_schema_join_compat_append_dynamic_id_column(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct mylite_catalog_table_descriptor *table
 );
 static int information_schema_join_compat_append_columns_statistics_join_rows(
     struct mylite_db *database,
@@ -198,6 +229,7 @@ static size_t information_schema_join_compat_next_schema_row(
 );
 static int information_schema_join_compat_read_dynamic_schema_id(
     struct mylite_db *database,
+    struct mylite_catalog_table_descriptor *out_table,
     char **out_id
 );
 static int information_schema_join_compat_build_dynamic_schema_id_sql(
@@ -309,11 +341,15 @@ static int information_schema_join_compat_execute_columns_statistics_join(
     bool apply_sql_select_limit,
     mylite_result **out_result
 ) {
-    static const char *const column_names[] = {"DATA_TYPE", "INDEX_NAME", "COLUMN_NAME"};
     const struct mylite_execution_catalog_table_definition *columns_definition =
         find_information_schema_table_definition("COLUMNS");
     const struct mylite_execution_catalog_table_definition *statistics_definition =
         find_information_schema_table_definition("STATISTICS");
+    const struct information_schema_join_compat_source_column result_columns[] = {
+        {columns_definition, "cols", "DATA_TYPE", "DATA_TYPE"},
+        {statistics_definition, "stats", "INDEX_NAME", "INDEX_NAME"},
+        {statistics_definition, "stats", "COLUMN_NAME", "COLUMN_NAME"},
+    };
     struct information_schema_row_set columns = {0};
     struct information_schema_row_set statistics = {0};
     mylite_result *result = NULL;
@@ -328,11 +364,11 @@ static int information_schema_join_compat_execute_columns_statistics_join(
         set_nomem_error(database);
         return rc;
     }
-    rc = information_schema_join_compat_append_named_result_columns(
+    rc = information_schema_join_compat_append_source_columns(
         database,
         result,
-        column_names,
-        sizeof(column_names) / sizeof(column_names[0])
+        result_columns,
+        sizeof(result_columns) / sizeof(result_columns[0])
     );
     if (rc == MYLITE_OK) {
         rc = build_information_schema_rows(database, NULL, columns_definition, &columns);
@@ -375,7 +411,6 @@ static int information_schema_join_compat_execute_columns_statistics_union(
     bool apply_sql_select_limit,
     mylite_result **out_result
 ) {
-    static const char *const column_names[] = {"name"};
     const struct mylite_execution_catalog_table_definition *columns_definition =
         find_information_schema_table_definition("COLUMNS");
     const struct mylite_execution_catalog_table_definition *statistics_definition =
@@ -394,12 +429,7 @@ static int information_schema_join_compat_execute_columns_statistics_union(
         set_nomem_error(database);
         return rc;
     }
-    rc = information_schema_join_compat_append_named_result_columns(
-        database,
-        result,
-        column_names,
-        sizeof(column_names) / sizeof(column_names[0])
-    );
+    rc = information_schema_join_compat_append_concat_name_column(database, result);
     if (rc == MYLITE_OK) {
         rc = build_information_schema_rows(database, NULL, columns_definition, &columns);
     }
@@ -441,27 +471,27 @@ static int information_schema_join_compat_execute_columns_tables_join(
     bool apply_sql_select_limit,
     mylite_result **out_result
 ) {
-    static const char *const column_names[] = {
-        "TABLE_NAME",
-        "field",
-        "type",
-        "COLUMN_TYPE",
-        "CHARACTER_MAXIMUM_LENGTH",
-        "CHARACTER_OCTET_LENGTH",
-        "NUMERIC_PRECISION",
-        "NUMERIC_SCALE",
-        "null",
-        "key",
-        "default",
-        "EXTRA",
-        "comment",
-        "characterset",
-        "collation",
-    };
     const struct mylite_execution_catalog_table_definition *columns_definition =
         find_information_schema_table_definition("COLUMNS");
     const struct mylite_execution_catalog_table_definition *tables_definition =
         find_information_schema_table_definition("TABLES");
+    const struct information_schema_join_compat_source_column result_columns[] = {
+        {columns_definition, "c", "TABLE_NAME", "TABLE_NAME"},
+        {columns_definition, "c", "COLUMN_NAME", "field"},
+        {columns_definition, "c", "DATA_TYPE", "type"},
+        {columns_definition, "c", "COLUMN_TYPE", "COLUMN_TYPE"},
+        {columns_definition, "c", "CHARACTER_MAXIMUM_LENGTH", "CHARACTER_MAXIMUM_LENGTH"},
+        {columns_definition, "c", "CHARACTER_OCTET_LENGTH", "CHARACTER_OCTET_LENGTH"},
+        {columns_definition, "c", "NUMERIC_PRECISION", "NUMERIC_PRECISION"},
+        {columns_definition, "c", "NUMERIC_SCALE", "NUMERIC_SCALE"},
+        {columns_definition, "c", "IS_NULLABLE", "null"},
+        {columns_definition, "c", "COLUMN_KEY", "key"},
+        {columns_definition, "c", "COLUMN_DEFAULT", "default"},
+        {columns_definition, "c", "EXTRA", "EXTRA"},
+        {columns_definition, "c", "COLUMN_COMMENT", "comment"},
+        {columns_definition, "c", "CHARACTER_SET_NAME", "characterset"},
+        {columns_definition, "c", "COLLATION_NAME", "collation"},
+    };
     struct information_schema_row_set columns = {0};
     struct information_schema_row_set tables = {0};
     mylite_result *result = NULL;
@@ -476,11 +506,11 @@ static int information_schema_join_compat_execute_columns_tables_join(
         set_nomem_error(database);
         return rc;
     }
-    rc = information_schema_join_compat_append_named_result_columns(
+    rc = information_schema_join_compat_append_source_columns(
         database,
         result,
-        column_names,
-        sizeof(column_names) / sizeof(column_names[0])
+        result_columns,
+        sizeof(result_columns) / sizeof(result_columns[0])
     );
     if (rc == MYLITE_OK) {
         rc = build_information_schema_rows(database, NULL, columns_definition, &columns);
@@ -525,9 +555,12 @@ static int information_schema_join_compat_execute_tables_grouped_size_select(
     bool apply_sql_select_limit,
     mylite_result **out_result
 ) {
-    static const char *const column_names[] = {"table", "rows", "bytes"};
     const struct mylite_execution_catalog_table_definition *definition =
         find_information_schema_table_definition("TABLES");
+    const struct information_schema_join_compat_source_column result_columns[] = {
+        {definition, NULL, "TABLE_NAME", "table"},
+        {definition, NULL, "TABLE_ROWS", "rows"},
+    };
     struct information_schema_row_set rows = {0};
     struct information_schema_query query = {.definition = definition};
     mylite_result *result = NULL;
@@ -542,12 +575,15 @@ static int information_schema_join_compat_execute_tables_grouped_size_select(
         set_nomem_error(database);
         return rc;
     }
-    rc = information_schema_join_compat_append_named_result_columns(
+    rc = information_schema_join_compat_append_source_columns(
         database,
         result,
-        column_names,
-        sizeof(column_names) / sizeof(column_names[0])
+        result_columns,
+        sizeof(result_columns) / sizeof(result_columns[0])
     );
+    if (rc == MYLITE_OK) {
+        rc = information_schema_join_compat_append_grouped_bytes_column(database, result);
+    }
     if (rc == MYLITE_OK) {
         rc = build_information_schema_rows(database, NULL, definition, &rows);
     }
@@ -584,6 +620,7 @@ static int information_schema_join_compat_execute_dynamic_columns_select(
     const struct mylite_execution_catalog_table_definition *definition =
         find_information_schema_table_definition("COLUMNS");
     struct information_schema_row_set rows = {0};
+    struct mylite_catalog_table_descriptor table = {0};
     mylite_result *result = NULL;
     char *id_text = NULL;
     int rc = MYLITE_OK;
@@ -598,19 +635,24 @@ static int information_schema_join_compat_execute_dynamic_columns_select(
         return rc;
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_result_append_column(result, "id");
+        rc = information_schema_join_compat_read_dynamic_schema_id(database, &table, &id_text);
     }
     if (rc == MYLITE_OK) {
-        rc = mylite_result_append_column(result, "TABLE_SCHEMA");
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_result_append_column(result, "TABLE_NAME");
-    }
-    if (rc == MYLITE_OK) {
-        rc = mylite_result_append_column(result, "COLUMN_NAME");
-    }
-    if (rc == MYLITE_OK) {
-        rc = information_schema_join_compat_read_dynamic_schema_id(database, &id_text);
+        const struct information_schema_join_compat_source_column result_columns[] = {
+            {definition, "sub", "TABLE_SCHEMA", "TABLE_SCHEMA"},
+            {definition, "sub", "TABLE_NAME", "TABLE_NAME"},
+            {definition, "sub", "COLUMN_NAME", "COLUMN_NAME"},
+        };
+
+        rc = information_schema_join_compat_append_dynamic_id_column(database, result, &table);
+        if (rc == MYLITE_OK) {
+            rc = information_schema_join_compat_append_source_columns(
+                database,
+                result,
+                result_columns,
+                sizeof(result_columns) / sizeof(result_columns[0])
+            );
+        }
     }
     if (rc == MYLITE_OK && id_text != NULL) {
         rc = build_information_schema_rows(database, NULL, definition, &rows);
@@ -666,7 +708,8 @@ static int information_schema_join_compat_execute_schemata_tables_left_join(
     rc = information_schema_join_compat_append_definition_columns(
         database,
         result,
-        schemata_definition
+        schemata_definition,
+        "s"
     );
     if (rc == MYLITE_OK) {
         rc = build_information_schema_rows(database, NULL, schemata_definition, &schemata);
@@ -715,7 +758,8 @@ static int information_schema_join_compat_finish_result(
 static int information_schema_join_compat_append_definition_columns(
     struct mylite_db *database,
     mylite_result *result,
-    const struct mylite_execution_catalog_table_definition *definition
+    const struct mylite_execution_catalog_table_definition *definition,
+    const char *source_alias
 ) {
     int rc = MYLITE_OK;
 
@@ -725,27 +769,212 @@ static int information_schema_join_compat_append_definition_columns(
     }
     for (size_t column_index = 0U; rc == MYLITE_OK && column_index < definition->column_count;
          ++column_index) {
-        rc = mylite_result_append_column(result, definition->columns[column_index].name);
-        if (rc != MYLITE_OK) {
-            set_nomem_error(database);
-        }
+        const struct information_schema_join_compat_source_column column = {
+            .definition = definition,
+            .source_alias = source_alias,
+            .source_column_name = definition->columns[column_index].name,
+            .label = definition->columns[column_index].name,
+        };
+
+        rc = information_schema_join_compat_append_source_column(database, result, &column);
     }
     return rc;
 }
 
-static int information_schema_join_compat_append_named_result_columns(
+static int information_schema_join_compat_append_source_columns(
     struct mylite_db *database,
     mylite_result *result,
-    const char *const *names,
-    size_t name_count
+    const struct information_schema_join_compat_source_column *columns,
+    size_t column_count
 ) {
     int rc = MYLITE_OK;
 
-    for (size_t index = 0U; rc == MYLITE_OK && index < name_count; ++index) {
-        rc = mylite_result_append_column(result, names[index]);
-        if (rc != MYLITE_OK) {
+    if (columns == NULL && column_count != 0U) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t index = 0U; rc == MYLITE_OK && index < column_count; ++index) {
+        rc = information_schema_join_compat_append_source_column(database, result, &columns[index]);
+    }
+    return rc;
+}
+
+static int information_schema_join_compat_append_source_column(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct information_schema_join_compat_source_column *column
+) {
+    size_t projection_index = 0U;
+    enum information_schema_projection_kind projection_kind = INFORMATION_SCHEMA_PROJECTION_COLUMN;
+    const struct mylite_sql_ast_node *projection_expression = NULL;
+    char *projection_name = NULL;
+    struct information_schema_query query = {0};
+    struct mylite_result_column_descriptor descriptor = {0};
+    size_t alias_length = 0U;
+    int rc = MYLITE_OK;
+
+    if (column == NULL || column->definition == NULL || column->source_column_name == NULL ||
+        column->label == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = information_schema_join_compat_find_definition_column(
+        column->definition,
+        column->source_column_name,
+        &projection_index
+    );
+    if (rc != MYLITE_OK) {
+        set_runtime_error(database, "missing INFORMATION_SCHEMA result column definition");
+        return MYLITE_ERROR;
+    }
+
+    projection_name = (char *)column->label;
+    query = (struct information_schema_query){
+        .definition = column->definition,
+        .source_schema_name = "information_schema",
+        .projection_indexes = &projection_index,
+        .projection_kinds = &projection_kind,
+        .projection_expressions = &projection_expression,
+        .projection_names = &projection_name,
+        .projection_count = 1U,
+    };
+    if (column->source_alias != NULL) {
+        alias_length = strlen(column->source_alias);
+        if (alias_length >= sizeof(query.alias)) {
+            set_runtime_error(database, "INFORMATION_SCHEMA source alias is too long");
+            return MYLITE_ERROR;
+        }
+        memcpy(query.alias, column->source_alias, alias_length + 1U);
+        query.has_alias = true;
+    }
+    rc = information_schema_make_source_column_descriptor(database, &query, 0U, &descriptor);
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_column_descriptor(result, &descriptor);
+    }
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int information_schema_join_compat_find_definition_column(
+    const struct mylite_execution_catalog_table_definition *definition,
+    const char *name,
+    size_t *out_index
+) {
+    if (definition == NULL || name == NULL || out_index == NULL) {
+        return MYLITE_MISUSE;
+    }
+    for (size_t index = 0U; index < definition->column_count; ++index) {
+        if (text_equals_ascii_case_insensitive(definition->columns[index].name, name)) {
+            *out_index = index;
+            return MYLITE_OK;
+        }
+    }
+    return MYLITE_ERROR;
+}
+
+static int information_schema_join_compat_append_concat_name_column(
+    struct mylite_db *database,
+    mylite_result *result
+) {
+    const uint64_t character_length = 73U;
+    const uint64_t max_bytes =
+        result_metadata_collation_max_bytes_per_character(database->session.collation_connection);
+    struct mylite_result_column_descriptor descriptor = unknown_result_column_descriptor("name");
+    int rc = MYLITE_OK;
+
+    descriptor.logical_type = MYLITE_RESULT_LOGICAL_TYPE_VAR_STRING;
+    descriptor.charset_id = result_metadata_collation_id(database->session.collation_connection);
+    descriptor.collation_id = descriptor.charset_id;
+    descriptor.display_length = result_metadata_display_length_cap(character_length * max_bytes);
+    rc = mylite_result_append_column_descriptor(result, &descriptor);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int information_schema_join_compat_append_grouped_bytes_column(
+    struct mylite_db *database,
+    mylite_result *result
+) {
+    struct mylite_result_column_descriptor descriptor = unknown_result_column_descriptor("bytes");
+    int rc = MYLITE_OK;
+
+    descriptor.logical_type = MYLITE_RESULT_LOGICAL_TYPE_NEWDECIMAL;
+    descriptor.flags = MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM;
+    descriptor.charset_id = mysql_collation_binary_id;
+    descriptor.collation_id = mysql_collation_binary_id;
+    descriptor.display_length = 45U;
+    descriptor.decimals = 0U;
+    descriptor.nullable = true;
+    rc = mylite_result_append_column_descriptor(result, &descriptor);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
+    }
+    return rc;
+}
+
+static int information_schema_join_compat_append_dynamic_id_column(
+    struct mylite_db *database,
+    mylite_result *result,
+    const struct mylite_catalog_table_descriptor *table
+) {
+    struct mylite_catalog_column_descriptor *columns = NULL;
+    size_t column_count = 0U;
+    size_t column_index = 0U;
+    struct result_column_metadata_context metadata_context = result_column_metadata_context_init();
+    struct mylite_result_column_descriptor descriptor = unknown_result_column_descriptor("id");
+    int rc = MYLITE_OK;
+
+    if (table == NULL) {
+        return MYLITE_MISUSE;
+    }
+    if (table->table_id == 0) {
+        rc = mylite_result_append_column_descriptor(result, &descriptor);
+        if (rc == MYLITE_NOMEM) {
             set_nomem_error(database);
         }
+        return rc;
+    }
+    rc = mylite_execution_load_table_columns(database, table->table_id, &columns, &column_count);
+    if (rc == MYLITE_OK) {
+        rc = find_column_index(columns, column_count, "id", &column_index);
+        if (rc != MYLITE_OK) {
+            set_runtime_error(database, "dynamic INFORMATION_SCHEMA source is missing id column");
+            rc = MYLITE_ERROR;
+        }
+    }
+    if (rc == MYLITE_OK) {
+        rc = load_result_column_metadata_context_for_table_columns(
+            database,
+            table->table_id,
+            columns,
+            column_count,
+            &metadata_context
+        );
+    }
+    if (rc == MYLITE_OK) {
+        descriptor.schema_name = database->session.selected_schema;
+        descriptor.table_name = "sub";
+        descriptor.origin_schema_name = database->session.selected_schema;
+        descriptor.origin_table_name = table->name;
+        descriptor.origin_column_name = columns[column_index].name;
+        descriptor.nullable = columns[column_index].is_nullable;
+        rc = populate_select_result_column_descriptor(
+            database,
+            table,
+            &columns[column_index],
+            &metadata_context,
+            &descriptor
+        );
+    }
+    if (rc == MYLITE_OK) {
+        rc = mylite_result_append_column_descriptor(result, &descriptor);
+    }
+    result_column_metadata_context_deinit(&metadata_context);
+    free(columns);
+    if (rc == MYLITE_NOMEM) {
+        set_nomem_error(database);
     }
     return rc;
 }
@@ -1444,6 +1673,7 @@ static size_t information_schema_join_compat_next_schema_row(
 
 static int information_schema_join_compat_read_dynamic_schema_id(
     struct mylite_db *database,
+    struct mylite_catalog_table_descriptor *out_table,
     char **out_id
 ) {
     struct mylite_catalog_schema_descriptor schema = {0};
@@ -1453,9 +1683,10 @@ static int information_schema_join_compat_read_dynamic_schema_id(
     int sqlite_rc = SQLITE_OK;
     int rc = MYLITE_OK;
 
-    if (out_id == NULL) {
+    if (out_table == NULL || out_id == NULL) {
         return MYLITE_MISUSE;
     }
+    *out_table = (struct mylite_catalog_table_descriptor){0};
     *out_id = NULL;
     if (!database->session.has_selected_schema) {
         return MYLITE_OK;
@@ -1471,6 +1702,7 @@ static int information_schema_join_compat_read_dynamic_schema_id(
         }
     }
     if (rc == MYLITE_OK) {
+        *out_table = table;
         rc = information_schema_join_compat_build_dynamic_schema_id_sql(&table, &sql);
     }
     if (rc == MYLITE_OK) {

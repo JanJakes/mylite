@@ -62,6 +62,13 @@ static int expect_query_columns(
     size_t column_count,
     const char *context
 );
+static int expect_query_result_metadata(
+    mylite_db *database,
+    const char *sql,
+    const struct expected_column_metadata *expected,
+    size_t column_count,
+    const char *context
+);
 static int expect_result_metadata(
     const mylite_result *result,
     const struct expected_column_metadata *expected,
@@ -352,6 +359,147 @@ static int test_information_schema_result_metadata(void) {
 }
 
 static int test_information_schema_core_queries(void) {
+    static const struct expected_column_metadata join_bridge_metadata[] = {
+        {
+            .label = "DATA_TYPE",
+            .schema_name = "information_schema",
+            .table_name = "cols",
+            .origin_schema_name = "information_schema",
+            .origin_table_name = "COLUMNS",
+            .origin_column_name = "DATA_TYPE",
+            .type = MYLITE_RESULT_COLUMN_TYPE_BLOB,
+            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_BLOB | MYLITE_RESULT_COLUMN_FLAG_BINARY,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_BLOB | MYLITE_RESULT_COLUMN_FLAG_BINARY,
+            .charset_id = 255U,
+            .collation_id = 255U,
+            .display_length = UINT32_MAX,
+            .nullable = 1,
+        },
+        {
+            .label = "INDEX_NAME",
+            .schema_name = "information_schema",
+            .table_name = "stats",
+            .origin_schema_name = "information_schema",
+            .origin_table_name = "STATISTICS",
+            .origin_column_name = "INDEX_NAME",
+            .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            .flag_mask = 0U,
+            .flags = 0U,
+            .charset_id = 255U,
+            .collation_id = 255U,
+            .display_length = 256U,
+            .nullable = 1,
+        },
+        {
+            .label = "COLUMN_NAME",
+            .schema_name = "information_schema",
+            .table_name = "stats",
+            .origin_schema_name = "information_schema",
+            .origin_table_name = "STATISTICS",
+            .origin_column_name = "COLUMN_NAME",
+            .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            .flag_mask = 0U,
+            .flags = 0U,
+            .charset_id = 255U,
+            .collation_id = 255U,
+            .display_length = 256U,
+            .nullable = 1,
+        },
+    };
+    static const struct expected_column_metadata grouped_size_bridge_metadata[] = {
+        {
+            .label = "table",
+            .schema_name = "information_schema",
+            .table_name = "TABLES",
+            .origin_schema_name = "information_schema",
+            .origin_table_name = "TABLES",
+            .origin_column_name = "TABLE_NAME",
+            .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                         MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                     MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+            .charset_id = 255U,
+            .collation_id = 255U,
+            .display_length = 256U,
+            .nullable = 0,
+        },
+        {
+            .label = "rows",
+            .schema_name = "information_schema",
+            .table_name = "TABLES",
+            .origin_schema_name = "information_schema",
+            .origin_table_name = "TABLES",
+            .origin_column_name = "TABLE_ROWS",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONGLONG,
+            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED | MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                         MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_UNSIGNED | MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                     MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .charset_id = 63U,
+            .collation_id = 63U,
+            .display_length = 20U,
+            .nullable = 1,
+        },
+        {
+            .label = "bytes",
+            .schema_name = "",
+            .table_name = "",
+            .origin_schema_name = "",
+            .origin_table_name = "",
+            .origin_column_name = "",
+            .type = MYLITE_RESULT_COLUMN_TYPE_NEWDECIMAL,
+            .flag_mask = UINT32_MAX,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_BINARY | MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .charset_id = 63U,
+            .collation_id = 63U,
+            .display_length = 45U,
+            .nullable = 1,
+        },
+    };
+    static const struct expected_column_metadata union_bridge_metadata[] = {
+        {
+            .label = "name",
+            .schema_name = "",
+            .table_name = "",
+            .origin_schema_name = "",
+            .origin_table_name = "",
+            .origin_column_name = "",
+            .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            .flag_mask = UINT32_MAX,
+            .flags = 0U,
+            .charset_id = 255U,
+            .collation_id = 255U,
+            .display_length = 292U,
+            .nullable = 1,
+        },
+    };
+    static const char join_bridge_sql[] =
+        "SELECT cols.DATA_TYPE, stats.INDEX_NAME, stats.COLUMN_NAME "
+        "FROM INFORMATION_SCHEMA.COLUMNS AS cols "
+        "JOIN INFORMATION_SCHEMA.STATISTICS AS stats "
+        "ON cols.TABLE_SCHEMA = stats.TABLE_SCHEMA "
+        "AND cols.TABLE_NAME = stats.TABLE_NAME "
+        "AND cols.COLUMN_NAME = stats.COLUMN_NAME "
+        "WHERE cols.TABLE_SCHEMA = 'app' AND cols.TABLE_NAME = 'wp_users' "
+        "ORDER BY INDEX_NAME ASC";
+    static const char grouped_size_bridge_sql[] =
+        "SELECT TABLE_NAME AS 'table', TABLE_ROWS AS 'rows', "
+        "SUM(DATA_LENGTH + INDEX_LENGTH) AS 'bytes' "
+        "FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'app' "
+        "AND TABLE_NAME IN ('t', 'other', 'wp_users') "
+        "GROUP BY TABLE_NAME ORDER BY TABLE_NAME";
+    static const char union_bridge_sql[] =
+        "WITH cols AS ("
+        "SELECT COLUMN_NAME AS column_name FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'wp_users'), "
+        "indexes AS ("
+        "SELECT DISTINCT INDEX_NAME AS index_name FROM INFORMATION_SCHEMA.STATISTICS "
+        "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'wp_users') "
+        "SELECT CONCAT(column_name, ' (column)') AS name FROM cols "
+        "UNION ALL "
+        "SELECT CONCAT(index_name, ' (index)') AS name FROM indexes "
+        "ORDER BY name";
     static const char *const schemata_columns[] = {
         "CATALOG_NAME",
         "SCHEMA_NAME",
@@ -752,6 +900,27 @@ static int test_information_schema_core_queries(void) {
             .context = "quoted information schema WITH union bridge rows",
         }
     );
+    failures += expect_query_result_metadata(
+        database,
+        join_bridge_sql,
+        join_bridge_metadata,
+        sizeof(join_bridge_metadata) / sizeof(join_bridge_metadata[0]),
+        "columns statistics join bridge metadata"
+    );
+    failures += expect_query_result_metadata(
+        database,
+        grouped_size_bridge_sql,
+        grouped_size_bridge_metadata,
+        sizeof(grouped_size_bridge_metadata) / sizeof(grouped_size_bridge_metadata[0]),
+        "grouped table size bridge metadata"
+    );
+    failures += expect_query_result_metadata(
+        database,
+        union_bridge_sql,
+        union_bridge_metadata,
+        sizeof(union_bridge_metadata) / sizeof(union_bridge_metadata[0]),
+        "information schema WITH union bridge metadata"
+    );
     failures += expect_query(
         database,
         (struct expected_query){
@@ -1090,6 +1259,81 @@ static int seed_database(mylite_db *database) {
 }
 
 static int test_information_schema_wordpress_bridge_queries(void) {
+    static const struct expected_column_metadata dynamic_metadata[] = {
+        {
+            .label = "id",
+            .schema_name = "app",
+            .table_name = "sub",
+            .origin_schema_name = "app",
+            .origin_table_name = "t",
+            .origin_column_name = "id",
+            .type = MYLITE_RESULT_COLUMN_TYPE_LONG,
+            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NUM,
+            .charset_id = 63U,
+            .collation_id = 63U,
+            .display_length = 11U,
+            .nullable = 1,
+        },
+        {
+            .label = "TABLE_SCHEMA",
+            .schema_name = "information_schema",
+            .table_name = "sub",
+            .origin_schema_name = "information_schema",
+            .origin_table_name = "COLUMNS",
+            .origin_column_name = "TABLE_SCHEMA",
+            .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                         MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                     MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+            .charset_id = 255U,
+            .collation_id = 255U,
+            .display_length = 256U,
+            .nullable = 0,
+        },
+        {
+            .label = "TABLE_NAME",
+            .schema_name = "information_schema",
+            .table_name = "sub",
+            .origin_schema_name = "information_schema",
+            .origin_table_name = "COLUMNS",
+            .origin_column_name = "TABLE_NAME",
+            .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            .flag_mask = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                         MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+            .flags = MYLITE_RESULT_COLUMN_FLAG_NOT_NULL | MYLITE_RESULT_COLUMN_FLAG_BINARY |
+                     MYLITE_RESULT_COLUMN_FLAG_NO_DEFAULT,
+            .charset_id = 255U,
+            .collation_id = 255U,
+            .display_length = 256U,
+            .nullable = 0,
+        },
+        {
+            .label = "COLUMN_NAME",
+            .schema_name = "information_schema",
+            .table_name = "sub",
+            .origin_schema_name = "information_schema",
+            .origin_table_name = "COLUMNS",
+            .origin_column_name = "COLUMN_NAME",
+            .type = MYLITE_RESULT_COLUMN_TYPE_VAR_STRING,
+            .flag_mask = 0U,
+            .flags = 0U,
+            .charset_id = 255U,
+            .collation_id = 255U,
+            .display_length = 256U,
+            .nullable = 1,
+        },
+    };
+    static const char dynamic_sql[] =
+        "SELECT sub.id, sub.table_schema, sub.table_name, sub.column_name "
+        "FROM ("
+        "SELECT * FROM information_schema.columns c "
+        "JOIN t ON t.db_name = CONCAT(COALESCE(c.table_schema, 'default'), '') "
+        "JOIN information_schema.schemata s ON s.schema_name = c.table_schema "
+        "WHERE c.table_name = 't'"
+        ") sub "
+        "ORDER BY ordinal_position";
     static const char *const dynamic_columns[] = {
         "id",
         "TABLE_SCHEMA",
@@ -1142,6 +1386,13 @@ static int test_information_schema_wordpress_bridge_queries(void) {
                          (sizeof(dynamic_columns) / sizeof(dynamic_columns[0])),
             .context = "wordpress dynamic information schema columns bridge",
         }
+    );
+    failures += expect_query_result_metadata(
+        database,
+        dynamic_sql,
+        dynamic_metadata,
+        sizeof(dynamic_metadata) / sizeof(dynamic_metadata[0]),
+        "wordpress dynamic information schema bridge metadata"
     );
 
     mylite_close(database);
@@ -1430,6 +1681,35 @@ static int expect_query_columns(
             context
         );
     }
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_query_result_metadata(
+    mylite_db *database,
+    const char *sql,
+    const struct expected_column_metadata *expected,
+    size_t column_count,
+    const char *context
+) {
+    mylite_result *result = NULL;
+    int failures = 0;
+    int rc = mylite_execute(database, sql, strlen(sql), &result);
+
+    if (rc != MYLITE_OK) {
+        fprintf(
+            stderr,
+            "%s: expected OK, got %d / %d %s %s\n",
+            context,
+            rc,
+            mylite_errcode(database),
+            mylite_sqlstate(database),
+            mylite_errmsg(database)
+        );
+        mylite_result_free(result);
+        return 1;
+    }
+    failures += expect_result_metadata(result, expected, column_count, context);
     mylite_result_free(result);
     return failures;
 }

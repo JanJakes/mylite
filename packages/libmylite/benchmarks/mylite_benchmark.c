@@ -2587,7 +2587,7 @@ static void print_runtime_latency_summary(
     }
     for (size_t index = 0U; index < measurement->request_latency_count; ++index) {
         sorted_values[index] =
-            (double)measurement->request_latency_ns[index] / nanoseconds_per_microsecond;
+            (double)measurement->request_latency_ns[index] / (double)nanoseconds_per_microsecond;
     }
     qsort(
         sorted_values,

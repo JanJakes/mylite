@@ -55,6 +55,13 @@ static int test_information_schema_doctrine_bridge_queries(void);
 static int seed_database(mylite_db *database);
 static int expect_statement_ok(mylite_db *database, const char *sql, int64_t affected_rows);
 static int expect_query(mylite_db *database, struct expected_query expected);
+static int expect_query_columns(
+    mylite_db *database,
+    const char *sql,
+    const char *const *columns,
+    size_t column_count,
+    const char *context
+);
 static int expect_result_metadata(
     const mylite_result *result,
     const struct expected_column_metadata *expected,
@@ -408,6 +415,7 @@ static int test_information_schema_core_queries(void) {
     static const char *const auto_increment_predicate_values[] = {"t"};
     static const char *const table_computed_columns[] = {"name", "engine", "data"};
     static const char *const table_computed_values[] = {"t", "InnoDB", "0"};
+    static const char *const table_name_values[] = {"other", "t", "wp_users"};
     static const char *const table_size_columns[] = {"table", "rows", "bytes"};
     static const char *const table_size_values[] = {
         "other",
@@ -560,6 +568,15 @@ static int test_information_schema_core_queries(void) {
             .context = "schemata wildcard app row",
         }
     );
+    failures += expect_query_columns(
+        database,
+        "SELECT s.* FROM INFORMATION_SCHEMA.SCHEMATA AS s LEFT JOIN "
+        "INFORMATION_SCHEMA.TABLES AS t ON t.TABLE_SCHEMA = s.SCHEMA_NAME "
+        "ORDER BY s.SCHEMA_NAME",
+        schemata_columns,
+        sizeof(schemata_columns) / sizeof(schemata_columns[0]),
+        "schemata tables left join bridge"
+    );
     failures += expect_query(
         database,
         (struct expected_query){
@@ -679,6 +696,22 @@ static int test_information_schema_core_queries(void) {
             .context = "columns statistics join bridge rows",
         }
     );
+    failures += expect_error(
+        database,
+        (struct expected_sql_error){
+            .sql = "SELECT cols.DATA_TYPE, stats.INDEX_NAME, stats.COLUMN_NAME "
+                   "FROM INFORMATION_SCHEMA.COLUMNS AS cols "
+                   "JOIN INFORMATION_SCHEMA.STATISTICS AS stats "
+                   "ON cols.TABLE_SCHEMA = stats.TABLE_SCHEMA "
+                   "AND cols.TABLE_NAME = stats.TABLE_NAME "
+                   "AND cols.COLUMN_NAME = stats.COLUMN_NAME "
+                   "WHERE cols.TABLE_SCHEMA = 'app' AND cols.TABLE_NAME = 'wp_users' "
+                   "ORDER BY INDEX_NAME ASC LIMIT 1",
+            .code = 1064,
+            .sqlstate = "42000",
+            .message_part = "INFORMATION_SCHEMA SELECT requires a schema-qualified metadata table",
+        }
+    );
     failures += expect_query(
         database,
         (struct expected_query){
@@ -697,6 +730,59 @@ static int test_information_schema_core_queries(void) {
             .values = with_union_values,
             .row_count = sizeof(with_union_values) / sizeof(with_union_values[0]),
             .context = "information schema WITH union bridge rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "WITH `cols` AS ("
+                   "SELECT `COLUMN_NAME` AS `column_name` FROM "
+                   "`INFORMATION_SCHEMA`.`COLUMNS` WHERE `TABLE_SCHEMA` = 'app' "
+                   "AND `TABLE_NAME` = 'wp_users'), "
+                   "`indexes` AS (SELECT DISTINCT `INDEX_NAME` AS `index_name` FROM "
+                   "`INFORMATION_SCHEMA`.`STATISTICS` WHERE `TABLE_SCHEMA` = 'app' "
+                   "AND `TABLE_NAME` = 'wp_users') "
+                   "SELECT CONCAT(`column_name`, ' (column)') AS `name` FROM `cols` "
+                   "UNION ALL SELECT CONCAT(`index_name`, ' (index)') AS `name` "
+                   "FROM `indexes` ORDER BY `name`",
+            .column_names = with_union_column,
+            .column_count = 1U,
+            .values = with_union_values,
+            .row_count = sizeof(with_union_values) / sizeof(with_union_values[0]),
+            .context = "quoted information schema WITH union bridge rows",
+        }
+    );
+    failures += expect_query(
+        database,
+        (struct expected_query){
+            .sql = "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES "
+                   "/* cols.data_type stats.index_name stats.column_name "
+                   "information_schema.columns information_schema.statistics "
+                   "cols.table_schema = stats.table_schema "
+                   "cols.table_name = stats.table_name "
+                   "cols.column_name = stats.column_name order by index_name */ "
+                   "WHERE TABLE_SCHEMA = 'app' ORDER BY TABLE_NAME",
+            .column_names = auto_increment_predicate_columns,
+            .column_count = 1U,
+            .values = table_name_values,
+            .row_count = sizeof(table_name_values) / sizeof(table_name_values[0]),
+            .context = "bridge dispatch ignores comment text",
+        }
+    );
+    failures += expect_error(
+        database,
+        (struct expected_sql_error){
+            .sql = "WITH cols AS ("
+                   "SELECT COLUMN_NAME AS column_name FROM INFORMATION_SCHEMA.COLUMNS "
+                   "WHERE TABLE_SCHEMA = 'app' AND TABLE_NAME = 'wp_users'), "
+                   "indexes AS (SELECT DISTINCT INDEX_NAME AS index_name FROM "
+                   "INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'app' "
+                   "AND TABLE_NAME = 'wp_users') "
+                   "SELECT CONCAT(column_name, ' wrong') AS name FROM cols UNION ALL "
+                   "SELECT CONCAT(index_name, ' (index)') AS name FROM indexes ORDER BY name",
+            .code = 1064,
+            .sqlstate = "42000",
+            .message_part = "SELECT supports only descriptor-backed table reads",
         }
     );
     failures += expect_query(
@@ -1303,6 +1389,46 @@ static int expect_query(mylite_db *database, struct expected_query expected) {
                 expected.context
             );
         }
+    }
+    mylite_result_free(result);
+    return failures;
+}
+
+static int expect_query_columns(
+    mylite_db *database,
+    const char *sql,
+    const char *const *columns,
+    size_t column_count,
+    const char *context
+) {
+    mylite_result *result = NULL;
+    int failures = 0;
+    int rc = mylite_execute(database, sql, strlen(sql), &result);
+
+    if (rc != MYLITE_OK) {
+        fprintf(
+            stderr,
+            "%s: expected query OK, got %d / %d %s %s\n",
+            context,
+            rc,
+            mylite_errcode(database),
+            mylite_sqlstate(database),
+            mylite_errmsg(database)
+        );
+        mylite_result_free(result);
+        return 1;
+    }
+    failures += expect_size(mylite_result_column_count(result), column_count, context);
+    if (mylite_result_row_count(result) == 0U) {
+        fprintf(stderr, "%s: expected at least one row\n", context);
+        ++failures;
+    }
+    for (size_t column = 0U; column < column_count; ++column) {
+        failures += expect_text_or_null(
+            mylite_result_column_name(result, column),
+            columns[column],
+            context
+        );
     }
     mylite_result_free(result);
     return failures;

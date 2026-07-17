@@ -3846,6 +3846,12 @@ static int test_select_with_information_schema_union_clause(void) {
         "ORDER BY name";
     struct mylite_sql_parse_result result;
     const struct mylite_sql_ast_node *statement = NULL;
+    const struct mylite_sql_ast_node *with_clause = NULL;
+    const struct mylite_sql_ast_node *columns_cte = NULL;
+    const struct mylite_sql_ast_node *indexes_cte = NULL;
+    const struct mylite_sql_ast_node *compound = NULL;
+    const struct mylite_sql_ast_node *union_term = NULL;
+    const struct mylite_sql_ast_node *order_clause = NULL;
     int failures = 0;
 
     failures += parser_test_parse_sql(sql, MYLITE_SQL_PARSE_OK, &result);
@@ -3855,8 +3861,71 @@ static int test_select_with_information_schema_union_clause(void) {
         MYLITE_SQL_AST_SELECT_STATEMENT,
         "information schema WITH union bridge statement"
     );
-    failures += parser_test_expect_child_count(statement, 0U, "WITH bridge select child count");
+    failures += parser_test_expect_child_count(statement, 3U, "WITH bridge select child count");
     failures += parser_test_expect_span_text(statement, sql, "WITH bridge statement span");
+    with_clause = parser_test_child_at(statement, 0U);
+    compound = parser_test_child_at(statement, 1U);
+    order_clause = parser_test_child_at(statement, 2U);
+    failures +=
+        parser_test_expect_node(with_clause, MYLITE_SQL_AST_WITH_CLAUSE, "WITH bridge clause");
+    failures += parser_test_expect_child_count(with_clause, 2U, "WITH bridge CTE count");
+    columns_cte = parser_test_child_at(with_clause, 0U);
+    indexes_cte = parser_test_child_at(with_clause, 1U);
+    failures += parser_test_expect_node(
+        columns_cte,
+        MYLITE_SQL_AST_COMMON_TABLE_EXPRESSION,
+        "WITH bridge columns CTE"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(columns_cte, 0U),
+        "cols",
+        "WITH bridge columns CTE name"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(columns_cte, 1U), 1U), 0U),
+        "INFORMATION_SCHEMA.COLUMNS",
+        "WITH bridge columns source"
+    );
+    failures += parser_test_expect_node(
+        indexes_cte,
+        MYLITE_SQL_AST_COMMON_TABLE_EXPRESSION,
+        "WITH bridge indexes CTE"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(indexes_cte, 0U),
+        "indexes",
+        "WITH bridge indexes CTE name"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(parser_test_child_at(parser_test_child_at(indexes_cte, 1U), 1U), 0U),
+        "INFORMATION_SCHEMA.STATISTICS",
+        "WITH bridge indexes source"
+    );
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_select_modifier(parser_test_child_at(indexes_cte, 1U)) ==
+            MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT,
+        "WITH bridge indexes DISTINCT"
+    );
+    failures += parser_test_expect_node(
+        compound,
+        MYLITE_SQL_AST_COMPOUND_SELECT_STATEMENT,
+        "WITH bridge compound query"
+    );
+    union_term = parser_test_child_at(parser_test_child_at(compound, 1U), 0U);
+    failures += parser_test_expect_true(
+        mylite_sql_ast_node_union_modifier(union_term) == MYLITE_SQL_AST_UNION_MODIFIER_ALL,
+        "WITH bridge UNION ALL"
+    );
+    failures += parser_test_expect_node(
+        order_clause,
+        MYLITE_SQL_AST_ORDER_BY_CLAUSE,
+        "WITH bridge order clause"
+    );
+    failures += parser_test_expect_span_text(
+        parser_test_child_at(order_clause, 0U),
+        "name",
+        "WITH bridge order key"
+    );
     mylite_sql_parse_result_deinit(&result);
 
     return failures;

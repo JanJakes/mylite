@@ -5731,50 +5731,146 @@ parenthesized_query_expression(A) ::=
 }
 
 with_select_statement(A) ::=
-    WITH(W) common_table_expression_list with_union_select with_select_order_clause(O). {
-    A = mylite_sql_parser_make_with_select_statement(state, W, NULL, O);
+    WITH(W) common_table_expression_list(C) with_union_select(U) with_select_order_clause(O). {
+    A = mylite_sql_parser_make_with_select_statement(state, W, C, U, O);
 }
 
 common_table_expression_list(A) ::= common_table_expression(E). {
-    A = E;
+    A = mylite_sql_parser_make_with_clause(state, E);
 }
 common_table_expression_list(A) ::= common_table_expression_list(L) COMMA
     common_table_expression(E). {
-    (void)E;
-    A = L;
+    A = mylite_sql_parser_append_common_table_expression(state, L, E);
 }
 
-common_table_expression(A) ::= identifier AS LPAREN with_columns_cte_select(S) RPAREN. {
-    A = S;
+common_table_expression(A) ::= identifier(N) AS LPAREN with_columns_cte_select(S) RPAREN(R). {
+    A = mylite_sql_parser_make_common_table_expression(state, N, S, R);
 }
-common_table_expression(A) ::= identifier AS LPAREN with_indexes_cte_select(S) RPAREN. {
-    A = S;
+common_table_expression(A) ::= identifier(N) AS LPAREN with_indexes_cte_select(S) RPAREN(R). {
+    A = mylite_sql_parser_make_common_table_expression(state, N, S, R);
 }
 
-with_columns_cte_select(A) ::= SELECT(S) identifier AS identifier FROM table_name WHERE
-    with_table_filter. {
+with_columns_cte_select(A) ::= SELECT(S) identifier(C) AS identifier(AL) FROM(F) table_name(T)
+    WHERE(W) with_table_filter(P). {
     A = mylite_sql_parser_make_select_statement(
-        state, S, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        state,
+        S,
+        mylite_sql_parser_make_select_list(
+            state,
+            mylite_sql_parser_make_select_item(state, C, AL)),
+        mylite_sql_parser_make_from_table(state, F, T, NULL, NULL),
+        mylite_sql_parser_make_where_clause(state, W, P),
+        NULL,
+        NULL,
+        NULL,
+        NULL);
 }
 
-with_indexes_cte_select(A) ::= SELECT(S) DISTINCT identifier AS identifier FROM table_name WHERE
-    with_table_filter. {
+with_indexes_cte_select(A) ::= SELECT(S) DISTINCT identifier(C) AS identifier(AL) FROM(F)
+    table_name(T) WHERE(W) with_table_filter(P). {
     A = mylite_sql_parser_make_select_statement(
-        state, S, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        state,
+        S,
+        mylite_sql_parser_make_select_list(
+            state,
+            mylite_sql_parser_make_select_item(state, C, AL)),
+        mylite_sql_parser_make_from_table(state, F, T, NULL, NULL),
+        mylite_sql_parser_make_where_clause(state, W, P),
+        NULL,
+        NULL,
+        NULL,
+        NULL);
+    mylite_sql_ast_node_set_select_modifier(A, MYLITE_SQL_AST_SELECT_MODIFIER_DISTINCT);
 }
 
-with_table_filter(A) ::= identifier EQUAL STRING AND identifier EQUAL STRING. {
-    A = NULL;
+with_table_filter(A) ::= identifier(LC) EQUAL(LE) STRING(LV) AND(O) identifier(RC)
+    EQUAL(RE) STRING(RV). {
+    A = mylite_sql_parser_make_and_predicate(
+        state,
+        mylite_sql_parser_make_comparison_predicate(
+            state,
+            LC,
+            LE,
+            MYLITE_SQL_AST_OPERATOR_EQUAL,
+            mylite_sql_parser_make_literal(state, LV, MYLITE_SQL_AST_LITERAL_STRING)),
+        O,
+        MYLITE_SQL_AST_OPERATOR_LOGICAL_AND,
+        mylite_sql_parser_make_comparison_predicate(
+            state,
+            RC,
+            RE,
+            MYLITE_SQL_AST_OPERATOR_EQUAL,
+            mylite_sql_parser_make_literal(state, RV, MYLITE_SQL_AST_LITERAL_STRING)));
 }
 
 with_union_select(A) ::=
-    SELECT CONCAT LPAREN identifier COMMA STRING RPAREN AS identifier FROM identifier UNION ALL
-    SELECT CONCAT LPAREN identifier COMMA STRING RPAREN AS identifier FROM identifier(I). {
-    A = I;
+    SELECT(LS) CONCAT(LC) LPAREN identifier(LI) COMMA STRING(LV) RPAREN(LR) AS identifier(LA)
+    FROM(LF) identifier(LT) UNION(U) ALL SELECT(RS) CONCAT(RC) LPAREN identifier(RI)
+    COMMA STRING(RV) RPAREN(RR) AS identifier(RA) FROM(RF) identifier(RT). {
+    A = mylite_sql_parser_make_compound_select_statement(
+        state,
+        mylite_sql_parser_make_select_statement(
+            state,
+            LS,
+            mylite_sql_parser_make_select_list(
+                state,
+                mylite_sql_parser_make_select_item(
+                    state,
+                    mylite_sql_parser_make_list_argument_function(
+                        state,
+                        LC,
+                        MYLITE_SQL_AST_CONCAT_FUNCTION,
+                        mylite_sql_parser_append_function_argument(
+                            state,
+                            mylite_sql_parser_make_function_argument_list(state, LI),
+                            mylite_sql_parser_make_literal(
+                                state,
+                                LV,
+                                MYLITE_SQL_AST_LITERAL_STRING)),
+                        LR),
+                    LA)),
+            mylite_sql_parser_make_from_table(state, LF, LT, NULL, NULL),
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            NULL),
+        mylite_sql_parser_make_union_term_list(
+            state,
+            mylite_sql_parser_make_union_term(
+                state,
+                U,
+                MYLITE_SQL_AST_UNION_MODIFIER_ALL,
+                mylite_sql_parser_make_select_statement(
+                    state,
+                    RS,
+                    mylite_sql_parser_make_select_list(
+                        state,
+                        mylite_sql_parser_make_select_item(
+                            state,
+                            mylite_sql_parser_make_list_argument_function(
+                                state,
+                                RC,
+                                MYLITE_SQL_AST_CONCAT_FUNCTION,
+                                mylite_sql_parser_append_function_argument(
+                                    state,
+                                    mylite_sql_parser_make_function_argument_list(state, RI),
+                                    mylite_sql_parser_make_literal(
+                                        state,
+                                        RV,
+                                        MYLITE_SQL_AST_LITERAL_STRING)),
+                                RR),
+                            RA)),
+                    mylite_sql_parser_make_from_table(state, RF, RT, NULL, NULL),
+                    NULL,
+                    NULL,
+                    NULL,
+                    NULL,
+                    NULL))));
 }
 
-with_select_order_clause(A) ::= ORDER BY identifier(I). {
-    A = I;
+with_select_order_clause(A) ::= ORDER(O) BY identifier(I). {
+    A = mylite_sql_parser_make_order_by_clause(state, O, I, NULL);
 }
 
 union_term_list(A) ::= union_term(T). {

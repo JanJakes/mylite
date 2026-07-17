@@ -136,6 +136,12 @@ Compatibility query bridges:
   table-name set. This is a compatibility bridge for descriptor-backed metadata
   rows, not general expression aggregate support.
 
+Bridge admission is based on the parsed statement structure, including source
+tables, aliases, projections, predicates, join keys, grouping, ordering, union
+modifier, and literal values. Text inside comments or string literals cannot
+select a bridge. Extra clauses that a bridge does not implement are rejected
+instead of being silently ignored.
+
 ## Deliberately excluded surface
 
 This phase does not implement:

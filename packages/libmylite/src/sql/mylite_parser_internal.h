@@ -234,8 +234,24 @@ struct mylite_sql_ast_node *mylite_sql_parser_make_select_statement(
 struct mylite_sql_ast_node *mylite_sql_parser_make_with_select_statement(
     struct mylite_sql_parser_state *state,
     struct mylite_sql_token with_token,
-    struct mylite_sql_ast_node *union_terms,
+    struct mylite_sql_ast_node *with_clause,
+    struct mylite_sql_ast_node *query,
     struct mylite_sql_ast_node *order_clause
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_with_clause(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *expression
+);
+struct mylite_sql_ast_node *mylite_sql_parser_append_common_table_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *with_clause,
+    struct mylite_sql_ast_node *expression
+);
+struct mylite_sql_ast_node *mylite_sql_parser_make_common_table_expression(
+    struct mylite_sql_parser_state *state,
+    struct mylite_sql_ast_node *name,
+    struct mylite_sql_ast_node *query,
+    struct mylite_sql_token right_parenthesis
 );
 struct mylite_sql_ast_node *mylite_sql_parser_make_table_statement(
     struct mylite_sql_parser_state *state,

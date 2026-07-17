@@ -20,19 +20,19 @@ struct information_schema_join_compat_statistics_order {
 
 static int information_schema_join_compat_execute_columns_statistics_join(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_join_compat_plan *plan,
     bool apply_sql_select_limit,
     mylite_result **out_result
 );
 static int information_schema_join_compat_execute_columns_statistics_union(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_join_compat_plan *plan,
     bool apply_sql_select_limit,
     mylite_result **out_result
 );
 static int information_schema_join_compat_execute_columns_tables_join(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_join_compat_plan *plan,
     bool apply_sql_select_limit,
     mylite_result **out_result
 );
@@ -68,20 +68,6 @@ static int information_schema_join_compat_append_named_result_columns(
     mylite_result *result,
     const char *const *names,
     size_t name_count
-);
-static int information_schema_join_compat_copy_schema_table_filters(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    const char *schema_needle,
-    const char *table_needle,
-    char **out_schema_name,
-    char **out_table_name
-);
-static int information_schema_join_compat_copy_literal_after(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    const char *needle,
-    char **out_value
 );
 static int information_schema_join_compat_append_columns_statistics_join_rows(
     struct mylite_db *database,
@@ -224,23 +210,6 @@ static int information_schema_join_compat_append_dynamic_columns_rows(
     const struct information_schema_row_set *rows,
     const char *id_text
 );
-static int information_schema_join_compat_statement_contains_all(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    const char *const *needles,
-    size_t needle_count,
-    bool *out_matches
-);
-static const char *information_schema_join_compat_find_ascii_ci(
-    const char *text,
-    const char *needle
-);
-static bool information_schema_join_compat_text_contains_ascii_ci(
-    const char *text,
-    const char *needle
-);
-static int information_schema_join_compat_ascii_lower(int byte);
-
 static int execute_information_schema_join_compat_select_if_needed(
     struct mylite_db *database,
     const struct mylite_statement_context *context,
@@ -249,186 +218,71 @@ static int execute_information_schema_join_compat_select_if_needed(
     mylite_result **out_result,
     bool *out_handled
 ) {
-    static const char *const dynamic_columns_needles[] = {
-        "FROM (",
-        "information_schema.columns",
-        "JOIN t ON",
-        "CONCAT",
-        "COALESCE",
-        "information_schema.schemata",
-        "ORDER BY ordinal_position",
-    };
-    static const char *const schemata_left_join_needles[] = {
-        "s.*",
-        "information_schema.schemata",
-        "LEFT JOIN",
-        "information_schema.tables",
-        "t.table_schema = s.schema_name",
-    };
-    static const char *const columns_statistics_join_needles[] = {
-        "cols.data_type",
-        "stats.index_name",
-        "stats.column_name",
-        "information_schema.columns",
-        "information_schema.statistics",
-        "cols.table_schema = stats.table_schema",
-        "cols.table_name = stats.table_name",
-        "cols.column_name = stats.column_name",
-        "order by index_name",
-    };
-    static const char *const columns_statistics_union_needles[] = {
-        "with",
-        "information_schema.columns",
-        "information_schema.statistics",
-        "select distinct index_name",
-        "concat(column_name",
-        "concat(index_name",
-        "union all",
-        "order by name",
-    };
-    static const char *const columns_tables_join_needles[] = {
-        "information_schema.columns",
-        "inner join",
-        "information_schema.tables",
-        "t.table_name = c.table_name",
-        "t.table_type = 'base table'",
-        "order by c.table_name",
-        "c.ordinal_position",
-    };
-    static const char *const tables_grouped_size_needles[] = {
-        "information_schema.tables",
-        "table_rows",
-        "sum(data_length + index_length)",
-        "group by table_name",
-    };
-    bool matches = false;
-    int rc = MYLITE_OK;
+    struct information_schema_join_compat_plan plan = {0};
+    int rc = information_schema_join_compat_plan_select(database, statement, &plan);
 
     (void)context;
     if (out_handled == NULL) {
         return MYLITE_MISUSE;
     }
     *out_handled = false;
-
-    rc = information_schema_join_compat_statement_contains_all(
-        database,
-        statement,
-        columns_statistics_join_needles,
-        sizeof(columns_statistics_join_needles) / sizeof(columns_statistics_join_needles[0]),
-        &matches
-    );
-    if (rc != MYLITE_OK || matches) {
-        *out_handled = matches;
-        if (matches) {
-            return information_schema_join_compat_execute_columns_statistics_join(
-                database,
-                statement,
-                apply_sql_select_limit,
-                out_result
-            );
-        }
+    if (rc != MYLITE_OK) {
+        information_schema_join_compat_plan_deinit(&plan);
         return rc;
     }
-
-    rc = information_schema_join_compat_statement_contains_all(
-        database,
-        statement,
-        columns_statistics_union_needles,
-        sizeof(columns_statistics_union_needles) / sizeof(columns_statistics_union_needles[0]),
-        &matches
-    );
-    if (rc != MYLITE_OK || matches) {
-        *out_handled = matches;
-        if (matches) {
-            return information_schema_join_compat_execute_columns_statistics_union(
-                database,
-                statement,
-                apply_sql_select_limit,
-                out_result
-            );
-        }
-        return rc;
+    *out_handled = plan.kind != INFORMATION_SCHEMA_JOIN_COMPAT_NONE;
+    switch (plan.kind) {
+    case INFORMATION_SCHEMA_JOIN_COMPAT_COLUMNS_STATISTICS:
+        rc = information_schema_join_compat_execute_columns_statistics_join(
+            database,
+            &plan,
+            apply_sql_select_limit,
+            out_result
+        );
+        break;
+    case INFORMATION_SCHEMA_JOIN_COMPAT_COLUMNS_STATISTICS_UNION:
+        rc = information_schema_join_compat_execute_columns_statistics_union(
+            database,
+            &plan,
+            apply_sql_select_limit,
+            out_result
+        );
+        break;
+    case INFORMATION_SCHEMA_JOIN_COMPAT_COLUMNS_TABLES:
+        rc = information_schema_join_compat_execute_columns_tables_join(
+            database,
+            &plan,
+            apply_sql_select_limit,
+            out_result
+        );
+        break;
+    case INFORMATION_SCHEMA_JOIN_COMPAT_TABLES_GROUPED_SIZE:
+        rc = information_schema_join_compat_execute_tables_grouped_size_select(
+            database,
+            statement,
+            apply_sql_select_limit,
+            out_result
+        );
+        break;
+    case INFORMATION_SCHEMA_JOIN_COMPAT_DYNAMIC_COLUMNS:
+        rc = information_schema_join_compat_execute_dynamic_columns_select(
+            database,
+            apply_sql_select_limit,
+            out_result
+        );
+        break;
+    case INFORMATION_SCHEMA_JOIN_COMPAT_SCHEMATA_TABLES:
+        rc = information_schema_join_compat_execute_schemata_tables_left_join(
+            database,
+            apply_sql_select_limit,
+            out_result
+        );
+        break;
+    case INFORMATION_SCHEMA_JOIN_COMPAT_NONE:
+        break;
     }
-
-    rc = information_schema_join_compat_statement_contains_all(
-        database,
-        statement,
-        columns_tables_join_needles,
-        sizeof(columns_tables_join_needles) / sizeof(columns_tables_join_needles[0]),
-        &matches
-    );
-    if (rc != MYLITE_OK || matches) {
-        *out_handled = matches;
-        if (matches) {
-            return information_schema_join_compat_execute_columns_tables_join(
-                database,
-                statement,
-                apply_sql_select_limit,
-                out_result
-            );
-        }
-        return rc;
-    }
-
-    rc = information_schema_join_compat_statement_contains_all(
-        database,
-        statement,
-        tables_grouped_size_needles,
-        sizeof(tables_grouped_size_needles) / sizeof(tables_grouped_size_needles[0]),
-        &matches
-    );
-    if (rc != MYLITE_OK || matches) {
-        *out_handled = matches;
-        if (matches) {
-            return information_schema_join_compat_execute_tables_grouped_size_select(
-                database,
-                statement,
-                apply_sql_select_limit,
-                out_result
-            );
-        }
-        return rc;
-    }
-
-    rc = information_schema_join_compat_statement_contains_all(
-        database,
-        statement,
-        dynamic_columns_needles,
-        sizeof(dynamic_columns_needles) / sizeof(dynamic_columns_needles[0]),
-        &matches
-    );
-    if (rc != MYLITE_OK || matches) {
-        *out_handled = matches;
-        if (matches) {
-            return information_schema_join_compat_execute_dynamic_columns_select(
-                database,
-                apply_sql_select_limit,
-                out_result
-            );
-        }
-        return rc;
-    }
-
-    rc = information_schema_join_compat_statement_contains_all(
-        database,
-        statement,
-        schemata_left_join_needles,
-        sizeof(schemata_left_join_needles) / sizeof(schemata_left_join_needles[0]),
-        &matches
-    );
-    if (rc != MYLITE_OK || matches) {
-        *out_handled = matches;
-        if (matches) {
-            return information_schema_join_compat_execute_schemata_tables_left_join(
-                database,
-                apply_sql_select_limit,
-                out_result
-            );
-        }
-        return rc;
-    }
-
-    return MYLITE_OK;
+    information_schema_join_compat_plan_deinit(&plan);
+    return rc;
 }
 
 static int information_schema_join_compat_select_statement_is_supported(
@@ -436,29 +290,22 @@ static int information_schema_join_compat_select_statement_is_supported(
     const struct mylite_sql_ast_node *statement,
     bool *out_matches
 ) {
-    static const char *const columns_statistics_union_needles[] = {
-        "with",
-        "information_schema.columns",
-        "information_schema.statistics",
-        "select distinct index_name",
-        "concat(column_name",
-        "concat(index_name",
-        "union all",
-        "order by name",
-    };
+    struct information_schema_join_compat_plan plan = {0};
+    int rc = MYLITE_OK;
 
-    return information_schema_join_compat_statement_contains_all(
-        database,
-        statement,
-        columns_statistics_union_needles,
-        sizeof(columns_statistics_union_needles) / sizeof(columns_statistics_union_needles[0]),
-        out_matches
-    );
+    if (out_matches == NULL) {
+        return MYLITE_MISUSE;
+    }
+    rc = information_schema_join_compat_plan_select(database, statement, &plan);
+    *out_matches =
+        rc == MYLITE_OK && plan.kind == INFORMATION_SCHEMA_JOIN_COMPAT_COLUMNS_STATISTICS_UNION;
+    information_schema_join_compat_plan_deinit(&plan);
+    return rc;
 }
 
 static int information_schema_join_compat_execute_columns_statistics_join(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_join_compat_plan *plan,
     bool apply_sql_select_limit,
     mylite_result **out_result
 ) {
@@ -470,8 +317,6 @@ static int information_schema_join_compat_execute_columns_statistics_join(
     struct information_schema_row_set columns = {0};
     struct information_schema_row_set statistics = {0};
     mylite_result *result = NULL;
-    char *schema_name = NULL;
-    char *table_name = NULL;
     int rc = MYLITE_OK;
 
     if (columns_definition == NULL || statistics_definition == NULL) {
@@ -490,22 +335,12 @@ static int information_schema_join_compat_execute_columns_statistics_join(
         sizeof(column_names) / sizeof(column_names[0])
     );
     if (rc == MYLITE_OK) {
-        rc = information_schema_join_compat_copy_schema_table_filters(
-            database,
-            statement,
-            "cols.table_schema = '",
-            "cols.table_name = '",
-            &schema_name,
-            &table_name
-        );
-    }
-    if (rc == MYLITE_OK) {
         rc = build_information_schema_rows(database, NULL, columns_definition, &columns);
     }
     if (rc == MYLITE_OK) {
         rc = build_information_schema_rows(database, NULL, statistics_definition, &statistics);
     }
-    if (rc == MYLITE_OK && schema_name != NULL && table_name != NULL) {
+    if (rc == MYLITE_OK && plan->schema_name != NULL && plan->table_name != NULL) {
         rc = information_schema_join_compat_append_columns_statistics_join_rows(
             database,
             result,
@@ -513,14 +348,12 @@ static int information_schema_join_compat_execute_columns_statistics_join(
                 .columns = &columns,
                 .statistics = &statistics,
             },
-            schema_name,
-            table_name
+            plan->schema_name,
+            plan->table_name
         );
     }
     information_schema_row_set_deinit(&statistics);
     information_schema_row_set_deinit(&columns);
-    free(table_name);
-    free(schema_name);
     if (rc == MYLITE_OK) {
         return information_schema_join_compat_finish_result(
             database,
@@ -538,7 +371,7 @@ static int information_schema_join_compat_execute_columns_statistics_join(
 
 static int information_schema_join_compat_execute_columns_statistics_union(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_join_compat_plan *plan,
     bool apply_sql_select_limit,
     mylite_result **out_result
 ) {
@@ -550,8 +383,6 @@ static int information_schema_join_compat_execute_columns_statistics_union(
     struct information_schema_row_set columns = {0};
     struct information_schema_row_set statistics = {0};
     mylite_result *result = NULL;
-    char *schema_name = NULL;
-    char *table_name = NULL;
     int rc = MYLITE_OK;
 
     if (columns_definition == NULL || statistics_definition == NULL) {
@@ -570,22 +401,12 @@ static int information_schema_join_compat_execute_columns_statistics_union(
         sizeof(column_names) / sizeof(column_names[0])
     );
     if (rc == MYLITE_OK) {
-        rc = information_schema_join_compat_copy_schema_table_filters(
-            database,
-            statement,
-            "table_schema = '",
-            "table_name = '",
-            &schema_name,
-            &table_name
-        );
-    }
-    if (rc == MYLITE_OK) {
         rc = build_information_schema_rows(database, NULL, columns_definition, &columns);
     }
     if (rc == MYLITE_OK) {
         rc = build_information_schema_rows(database, NULL, statistics_definition, &statistics);
     }
-    if (rc == MYLITE_OK && schema_name != NULL && table_name != NULL) {
+    if (rc == MYLITE_OK && plan->schema_name != NULL && plan->table_name != NULL) {
         rc = information_schema_join_compat_append_columns_statistics_union_rows(
             database,
             result,
@@ -593,14 +414,12 @@ static int information_schema_join_compat_execute_columns_statistics_union(
                 .columns = &columns,
                 .statistics = &statistics,
             },
-            schema_name,
-            table_name
+            plan->schema_name,
+            plan->table_name
         );
     }
     information_schema_row_set_deinit(&statistics);
     information_schema_row_set_deinit(&columns);
-    free(table_name);
-    free(schema_name);
     if (rc == MYLITE_OK) {
         return information_schema_join_compat_finish_result(
             database,
@@ -618,7 +437,7 @@ static int information_schema_join_compat_execute_columns_statistics_union(
 
 static int information_schema_join_compat_execute_columns_tables_join(
     struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
+    const struct information_schema_join_compat_plan *plan,
     bool apply_sql_select_limit,
     mylite_result **out_result
 ) {
@@ -646,8 +465,6 @@ static int information_schema_join_compat_execute_columns_tables_join(
     struct information_schema_row_set columns = {0};
     struct information_schema_row_set tables = {0};
     mylite_result *result = NULL;
-    char *schema_name = NULL;
-    char *table_name = NULL;
     int rc = MYLITE_OK;
 
     if (columns_definition == NULL || tables_definition == NULL) {
@@ -666,22 +483,12 @@ static int information_schema_join_compat_execute_columns_tables_join(
         sizeof(column_names) / sizeof(column_names[0])
     );
     if (rc == MYLITE_OK) {
-        rc = information_schema_join_compat_copy_schema_table_filters(
-            database,
-            statement,
-            "c.table_schema = '",
-            "t.table_name = '",
-            &schema_name,
-            &table_name
-        );
-    }
-    if (rc == MYLITE_OK) {
         rc = build_information_schema_rows(database, NULL, columns_definition, &columns);
     }
     if (rc == MYLITE_OK) {
         rc = build_information_schema_rows(database, NULL, tables_definition, &tables);
     }
-    if (rc == MYLITE_OK && schema_name != NULL && table_name != NULL) {
+    if (rc == MYLITE_OK && plan->schema_name != NULL && plan->table_name != NULL) {
         const struct information_schema_join_compat_columns_tables_request request = {
             .columns = &columns,
             .tables = &tables,
@@ -691,14 +498,12 @@ static int information_schema_join_compat_execute_columns_tables_join(
             database,
             result,
             &request,
-            schema_name,
-            table_name
+            plan->schema_name,
+            plan->table_name
         );
     }
     information_schema_row_set_deinit(&tables);
     information_schema_row_set_deinit(&columns);
-    free(table_name);
-    free(schema_name);
     if (rc == MYLITE_OK) {
         return information_schema_join_compat_finish_result(
             database,
@@ -942,104 +747,6 @@ static int information_schema_join_compat_append_named_result_columns(
             set_nomem_error(database);
         }
     }
-    return rc;
-}
-
-static int information_schema_join_compat_copy_schema_table_filters(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    const char *schema_needle,
-    const char *table_needle,
-    char **out_schema_name,
-    char **out_table_name
-) {
-    int rc = MYLITE_OK;
-
-    if (out_schema_name == NULL || out_table_name == NULL) {
-        return MYLITE_MISUSE;
-    }
-    *out_schema_name = NULL;
-    *out_table_name = NULL;
-    rc = information_schema_join_compat_copy_literal_after(
-        database,
-        statement,
-        schema_needle,
-        out_schema_name
-    );
-    if (rc == MYLITE_OK && *out_schema_name == NULL && database->session.has_selected_schema) {
-        rc = duplicate_text(database, database->session.selected_schema, out_schema_name);
-    }
-    if (rc == MYLITE_OK) {
-        rc = information_schema_join_compat_copy_literal_after(
-            database,
-            statement,
-            table_needle,
-            out_table_name
-        );
-    }
-    if (rc != MYLITE_OK) {
-        free(*out_table_name);
-        free(*out_schema_name);
-        *out_table_name = NULL;
-        *out_schema_name = NULL;
-    }
-    return rc;
-}
-
-static int information_schema_join_compat_copy_literal_after(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    const char *needle,
-    char **out_value
-) {
-    struct mylite_dynamic_string string;
-    char *text = NULL;
-    const char *match = NULL;
-    const char *cursor = NULL;
-    int rc = MYLITE_OK;
-
-    if (out_value == NULL) {
-        return MYLITE_MISUSE;
-    }
-    *out_value = NULL;
-    rc = copy_source_span_text(database, &statement->span, &text);
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    match = information_schema_join_compat_find_ascii_ci(text, needle);
-    if (match == NULL) {
-        free(text);
-        return MYLITE_OK;
-    }
-
-    mylite_dynamic_string_init(&string);
-    cursor = match + strlen(needle);
-    while (rc == MYLITE_OK && *cursor != '\0') {
-        if (*cursor == '\'') {
-            if (cursor[1] == '\'') {
-                rc = mylite_dynamic_string_append_char(&string, '\'');
-                cursor += 2;
-                continue;
-            }
-            break;
-        }
-        rc = mylite_dynamic_string_append_char(&string, *cursor);
-        ++cursor;
-    }
-    if (rc == MYLITE_OK && string.text == NULL) {
-        rc = mylite_dynamic_string_append(&string, "");
-    }
-    if (rc == MYLITE_OK) {
-        *out_value = mylite_dynamic_string_take(&string);
-        if (*out_value == NULL) {
-            rc = MYLITE_NOMEM;
-        }
-    }
-    if (rc == MYLITE_NOMEM) {
-        set_nomem_error(database);
-    }
-    mylite_dynamic_string_deinit(&string);
-    free(text);
     return rc;
 }
 
@@ -1884,83 +1591,4 @@ static int information_schema_join_compat_append_dynamic_columns_rows(
         }
     }
     return rc;
-}
-
-static int information_schema_join_compat_statement_contains_all(
-    struct mylite_db *database,
-    const struct mylite_sql_ast_node *statement,
-    const char *const *needles,
-    size_t needle_count,
-    bool *out_matches
-) {
-    char *text = NULL;
-    int rc = MYLITE_OK;
-
-    if (statement == NULL || out_matches == NULL) {
-        return MYLITE_MISUSE;
-    }
-    *out_matches = false;
-    rc = copy_source_span_text(database, &statement->span, &text);
-    if (rc != MYLITE_OK) {
-        return rc;
-    }
-    for (size_t needle_index = 0U; needle_index < needle_count; ++needle_index) {
-        if (!information_schema_join_compat_text_contains_ascii_ci(
-                text,
-                needles[needle_index]
-            )) {
-            free(text);
-            return MYLITE_OK;
-        }
-    }
-    free(text);
-    *out_matches = true;
-    return MYLITE_OK;
-}
-
-static bool information_schema_join_compat_text_contains_ascii_ci(
-    const char *text,
-    const char *needle
-) {
-    return information_schema_join_compat_find_ascii_ci(text, needle) != NULL;
-}
-
-static const char *information_schema_join_compat_find_ascii_ci(
-    const char *text,
-    const char *needle
-) {
-    size_t text_length = 0U;
-    size_t needle_length = 0U;
-
-    if (text == NULL || needle == NULL) {
-        return NULL;
-    }
-    text_length = strlen(text);
-    needle_length = strlen(needle);
-    if (needle_length == 0U) {
-        return text;
-    }
-    if (text_length < needle_length) {
-        return NULL;
-    }
-    for (size_t offset = 0U; offset <= text_length - needle_length; ++offset) {
-        size_t index = 0U;
-
-        while (index < needle_length &&
-               information_schema_join_compat_ascii_lower((unsigned char)text[offset + index]) ==
-                   information_schema_join_compat_ascii_lower((unsigned char)needle[index])) {
-            ++index;
-        }
-        if (index == needle_length) {
-            return text + offset;
-        }
-    }
-    return NULL;
-}
-
-static int information_schema_join_compat_ascii_lower(int byte) {
-    if (byte >= 'A' && byte <= 'Z') {
-        return byte + ('a' - 'A');
-    }
-    return byte;
 }

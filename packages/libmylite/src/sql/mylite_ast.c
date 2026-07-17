@@ -2297,6 +2297,10 @@ const char *mylite_sql_ast_node_kind_name(enum mylite_sql_ast_node_kind kind) {
         return "json_table_path_column";
     case MYLITE_SQL_AST_JSON_TABLE_EXISTS_COLUMN:
         return "json_table_exists_column";
+    case MYLITE_SQL_AST_WITH_CLAUSE:
+        return "with_clause";
+    case MYLITE_SQL_AST_COMMON_TABLE_EXPRESSION:
+        return "common_table_expression";
     case MYLITE_SQL_AST_ANY_VALUE_FUNCTION:
         return "any_value_function";
     case MYLITE_SQL_AST_ANY_VALUE_ARGUMENT_COUNT_ERROR:

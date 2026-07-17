@@ -56,7 +56,7 @@ complete.
   transformations.
 - [ ] Prevent SET rewrites inside strings, identifiers, and comments.
 - [ ] Preserve user-visible expression text instead of internal helper names.
-- [ ] Replace raw-SQL INFORMATION_SCHEMA bridge dispatch with typed plan data.
+- [x] Replace raw-SQL INFORMATION_SCHEMA bridge dispatch with typed plan data.
 - [ ] Add successful, invalid, retry, nested-comment, and sanitizer coverage.
 
 ## Phase 2: Handle and transaction lifecycle

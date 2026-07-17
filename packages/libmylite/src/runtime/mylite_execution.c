@@ -2203,6 +2203,7 @@ void mylite_execution_session_scalar_cell_deinit(struct session_scalar_cell *cel
 
 #include "mylite_execution_select_into_user_variables.inc"
 
+#include "mylite_execution_information_schema_join_plan.inc"
 #include "mylite_execution_information_schema_join_compat.inc"
 
 #include "mylite_execution_mysql_system_query_dispatch.inc"
